@@ -38,6 +38,15 @@ test('detects the verified Commerzbank structure automatically', () => {
   assert.equal(detected.result.adapterId, 'commerzbank-v1');
 });
 
+test('asks for mapping when a partial Commerzbank shape is missing required columns', () => {
+  const partial = `Booking date;Value date;Transaction type;Booking text;Amount;Currency;Account IBAN
+08.08.2026;;Debit;Coffee;-5,00;EUR;DE00000000000000000000`;
+
+  const detected = detectCsvFormat(partial, 'partial.csv', []);
+
+  assert.equal(detected.kind, 'mapping-required');
+});
+
 test('asks for mapping when a bank shape is unknown', () => {
   const detected = detectCsvFormat(unknownCsv, 'unknown.csv', []);
 

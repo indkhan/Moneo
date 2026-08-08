@@ -1,16 +1,6 @@
-import { normalizeCommerzbankCsv, parseCsv } from './csv-import.mjs';
+import { normalizeCommerzbankCsv, parseCsv, requiredCommerzbankHeaders } from './csv-import.mjs';
 import { mappingSignature, normalizeMappedCsv } from './csv-mapping.mjs';
 import { sha256Hex } from './transaction-dedup.mjs';
-
-const commerzbankHeaders = [
-  'Booking date',
-  'Value date',
-  'Transaction type',
-  'Booking text',
-  'Amount',
-  'Currency',
-  'Account IBAN',
-];
 
 export function decodeCsvBytes(bytes) {
   const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -23,7 +13,7 @@ export function decodeCsvBytes(bytes) {
 
 export function detectCsvFormat(text, fileName, savedMappings) {
   const parsed = parseCsv(text);
-  if (commerzbankHeaders.every((header) => parsed.headers.includes(header))) {
+  if (requiredCommerzbankHeaders.every((header) => parsed.headers.includes(header))) {
     return { kind: 'normalized', result: normalizeCommerzbankCsv(text, fileName), mapping: undefined };
   }
 

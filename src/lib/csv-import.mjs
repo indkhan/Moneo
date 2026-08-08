@@ -174,7 +174,7 @@ function extractReferences(text) {
   })).filter((reference) => reference.value);
 }
 
-const requiredCommerzbankHeaders = [
+export const requiredCommerzbankHeaders = [
   'Booking date',
   'Value date',
   'Transaction type',
