@@ -8,9 +8,11 @@ import {
 } from "react";
 import { Platform } from "react-native";
 import type { FinanceData } from "@/lib/transaction-types";
+import { categorizeTransaction } from "@/lib/transaction-categorization.mjs";
 import {
   loadFinanceData,
   openMoneoDatabase,
+  saveMissingAutomaticCategories,
 } from "@/lib/transaction-store.mjs";
 
 const emptyData: FinanceData = {
@@ -55,7 +57,25 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
           return;
         }
         setDatabase(opened);
-        setData((await loadFinanceData(opened)) as FinanceData);
+        let loaded = (await loadFinanceData(opened)) as FinanceData;
+        const updates = loaded.transactions.flatMap((transaction) => {
+          if (transaction.category) return [];
+          const decision = categorizeTransaction(transaction, loaded.categoryRules);
+          return decision.status === "assigned" ? [{
+            id: transaction.id,
+            category: {
+              categoryId: decision.categoryId,
+              method: decision.method,
+              classifierVersion: "moneo-category-v1" as const,
+              evidence: decision.evidence,
+            },
+          }] : [];
+        });
+        if (updates.length) {
+          await saveMissingAutomaticCategories(opened, updates);
+          loaded = (await loadFinanceData(opened)) as FinanceData;
+        }
+        setData(loaded);
       })
       .catch((caught: unknown) => {
         if (active)

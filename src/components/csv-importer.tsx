@@ -15,6 +15,7 @@ import type {
   TransactionDraft,
 } from "@/lib/transaction-types";
 import { normalizeCommerzbankCsv } from "@/lib/csv-import.mjs";
+import { categorizeTransaction } from "@/lib/transaction-categorization.mjs";
 import { mappingSignature, normalizeMappedCsv } from "@/lib/csv-mapping.mjs";
 import {
   decodeCsvBytes,
@@ -381,12 +382,23 @@ export function CsvImporter() {
       const importId = crypto.randomUUID();
       const sourceFileId = crypto.randomUUID();
       const transactions = duplicateResult.accepted.map(
-        (transaction: TransactionDraft) => ({
-          ...transaction,
-          id: crypto.randomUUID(),
-          accountId,
-          importId,
-        }),
+        (transaction: TransactionDraft) => {
+          const decision = categorizeTransaction(transaction, data.categoryRules);
+          return {
+            ...transaction,
+            ...(decision.status === "assigned" ? {
+              category: {
+                categoryId: decision.categoryId,
+                method: decision.method,
+                classifierVersion: "moneo-category-v1" as const,
+                evidence: decision.evidence,
+              },
+            } : {}),
+            id: crypto.randomUUID(),
+            accountId,
+            importId,
+          };
+        },
       );
       await saveImport(database, {
         account: { ...current.result.account, id: accountId },
