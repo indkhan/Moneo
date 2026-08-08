@@ -10,6 +10,7 @@ Expo/React Native personal-finance prototype for iOS, Android, and web. Uses Exp
 - Bad rows can be corrected, skipped explicitly, or cancelled before storage. Import deletion removes its source file and transactions.
 - No login, cloud/backend, PDF import, bank connection, Moneo category assignment, recurring detection, investment feed, real AI, notifications, or working settings exists yet.
 - Helpers cover navigation, responsive layout, CSV parsing/mapping, deduplication, local storage, transaction display, and cash-flow summaries in `src/lib/`.
+- `extra/transaction-categorization-plan.html` and `extra/transaction-categorization-implementation-plan.md` document the proposed local category system; neither changes product behavior.
 
 Run with `npm start`; run helper tests with `npm test`.
 

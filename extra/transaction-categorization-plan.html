@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Moneo — Transaction categorization plan</title>
+  <style>
+    :root {
+      --paper: #f7f9f5;
+      --card: #ffffff;
+      --ink: #203a31;
+      --muted: #6f7f76;
+      --line: #dfe6df;
+      --teal: #2f846f;
+      --teal-dark: #1f6655;
+      --teal-soft: #e3f2eb;
+      --amber: #ad7129;
+      --amber-soft: #fbefdc;
+      --red: #a9493e;
+      --red-soft: #fae9e6;
+      --blue: #466a82;
+      --blue-soft: #e8f0f4;
+      --shadow: 0 18px 50px rgba(32, 58, 49, 0.08);
+      --radius: 22px;
+      --display: Georgia, "Times New Roman", serif;
+      --body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(rgba(47, 132, 111, 0.025) 1px, transparent 1px),
+        var(--paper);
+      background-size: 100% 34px;
+      font-family: var(--body);
+      line-height: 1.55;
+    }
+    button, a { font: inherit; }
+    a { color: var(--teal-dark); }
+    button:focus-visible, a:focus-visible { outline: 3px solid #80c7b3; outline-offset: 3px; }
+
+    .shell { width: min(1180px, calc(100% - 40px)); margin: 0 auto; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid rgba(223, 230, 223, 0.9);
+      background: rgba(247, 249, 245, 0.92);
+      backdrop-filter: blur(16px);
+    }
+    .topbar-inner {
+      min-height: 66px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+    .brand { display: flex; align-items: baseline; gap: 12px; }
+    .brand strong { font-family: var(--display); font-size: 24px; letter-spacing: -0.03em; }
+    .brand span, .eyebrow, .utility {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .brand span { color: var(--muted); }
+    nav { display: flex; gap: 18px; }
+    nav a { color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 700; }
+    nav a:hover { color: var(--teal); }
+
+    .hero {
+      min-height: 660px;
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      align-items: center;
+      gap: 72px;
+      padding: 92px 0 72px;
+    }
+    .eyebrow { color: var(--teal); font-weight: 800; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      max-width: 690px;
+      margin: 20px 0 24px;
+      font-family: var(--display);
+      font-size: clamp(48px, 6.5vw, 86px);
+      font-weight: 500;
+      line-height: 0.96;
+      letter-spacing: -0.055em;
+    }
+    h1 em { color: var(--teal); font-weight: inherit; }
+    .lede { max-width: 620px; color: #4f6258; font-size: 19px; line-height: 1.65; }
+    .principles { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 30px; }
+    .principles span, .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--card);
+      padding: 8px 11px;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .verdict-card {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 30px;
+      background: var(--card);
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    .verdict-card::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 5px;
+      background: linear-gradient(90deg, var(--teal) 0 67%, var(--amber) 67% 84%, var(--line) 84%);
+    }
+    .receipt-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 30px; }
+    .receipt-head span { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+    .amount { font-size: 26px; font-weight: 800; letter-spacing: -0.03em; }
+    .merchant { font-family: var(--display); font-size: 34px; letter-spacing: -0.03em; }
+    .raw { margin: 8px 0 24px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
+    .evidence-line { display: grid; grid-template-columns: 86px 1fr; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+    .evidence-line dt { color: var(--muted); font-family: var(--mono); font-size: 11px; text-transform: uppercase; }
+    .evidence-line dd { margin: 0; font-size: 13px; font-weight: 700; }
+    .result-stamp {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-top: 18px;
+      border-radius: 18px;
+      background: var(--teal-soft);
+      padding: 16px;
+    }
+    .result-stamp strong { display: block; font-size: 16px; }
+    .result-stamp small { color: var(--teal-dark); }
+    .status { border-radius: 999px; padding: 6px 9px; background: var(--teal); color: white; font-size: 10px; font-weight: 850; text-transform: uppercase; letter-spacing: 0.08em; }
+
+    main section { padding: 92px 0; border-top: 1px solid var(--line); }
+    .section-head { display: grid; grid-template-columns: 0.36fr 0.64fr; gap: 48px; margin-bottom: 42px; }
+    .section-head h2 {
+      max-width: 720px;
+      margin: 0;
+      font-family: var(--display);
+      font-size: clamp(36px, 4.5vw, 58px);
+      font-weight: 500;
+      line-height: 1.04;
+      letter-spacing: -0.045em;
+    }
+    .section-head p { max-width: 620px; margin: 6px 0 0; color: var(--muted); font-size: 16px; }
+
+    .competitors { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+    .competitor {
+      min-height: 250px;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,255,255,0.78);
+      padding: 20px;
+    }
+    .competitor h3 { margin: 14px 0 10px; font-size: 17px; }
+    .competitor p { color: var(--muted); font-size: 13px; }
+    .competitor .take { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--line); color: var(--ink); font-size: 12px; font-weight: 750; }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+      counter-reset: stage;
+    }
+    .stage {
+      position: relative;
+      min-height: 220px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--card);
+      padding: 20px 17px;
+      counter-increment: stage;
+    }
+    .stage::before { content: "0" counter(stage); color: var(--teal); font-family: var(--mono); font-size: 11px; font-weight: 800; }
+    .stage:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      z-index: 2;
+      top: 50%;
+      right: -9px;
+      width: 9px;
+      border-top: 2px solid var(--teal);
+    }
+    .stage h3 { margin: 20px 0 9px; font-size: 15px; }
+    .stage p { color: var(--muted); font-size: 12px; }
+    .stage.final { background: var(--ink); color: white; }
+    .stage.final p { color: #bfcac4; }
+
+    .demo-grid { display: grid; grid-template-columns: 280px 1fr; gap: 28px; align-items: start; }
+    .scenario-list { display: grid; gap: 8px; }
+    .scenario {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--card);
+      color: var(--ink);
+      padding: 14px 15px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .scenario:hover, .scenario.active { border-color: var(--teal); background: var(--teal-soft); }
+    .scenario strong, .scenario span { display: block; }
+    .scenario span { margin-top: 3px; color: var(--muted); font-size: 11px; }
+    .trace {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--card);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .trace-head { display: flex; justify-content: space-between; gap: 16px; padding: 22px 24px; border-bottom: 1px solid var(--line); }
+    .trace-title { font-family: var(--display); font-size: 26px; }
+    .trace-body { padding: 24px; }
+    .source-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .source {
+      min-height: 88px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--paper);
+      padding: 12px;
+    }
+    .source label { display: block; margin-bottom: 6px; color: var(--muted); font-family: var(--mono); font-size: 10px; text-transform: uppercase; }
+    .source span { font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+    .trail { margin: 22px 0; border-left: 2px solid var(--line); padding-left: 20px; }
+    .trail-item { position: relative; margin: 0 0 18px; }
+    .trail-item::before { content: ""; position: absolute; top: 7px; left: -26px; width: 10px; height: 10px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 4px var(--teal-soft); }
+    .trail-item strong { display: block; font-size: 13px; }
+    .trail-item span { color: var(--muted); font-size: 12px; }
+    .decision {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
+      border-radius: 17px;
+      padding: 18px;
+      background: var(--teal-soft);
+    }
+    .decision.medium { background: var(--amber-soft); }
+    .decision.low { background: var(--red-soft); }
+    .decision h3 { margin: 0 0 3px; }
+    .decision p { margin: 0; color: var(--muted); font-size: 12px; }
+    .confidence { font-family: var(--mono); font-size: 11px; font-weight: 850; text-transform: uppercase; }
+
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .panel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); padding: 26px; }
+    .panel h3 { font-family: var(--display); font-size: 29px; font-weight: 500; letter-spacing: -0.03em; }
+    .rule-stack { display: grid; gap: 8px; margin-top: 20px; }
+    .rule {
+      display: grid;
+      grid-template-columns: 34px 1fr auto;
+      align-items: center;
+      gap: 12px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      padding: 12px;
+      font-size: 12px;
+    }
+    .rule b { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--teal-soft); color: var(--teal-dark); font-family: var(--mono); }
+    .rule small { color: var(--muted); }
+    .correction {
+      margin-top: 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+    }
+    .correction-head { padding: 16px; border-bottom: 1px solid var(--line); background: var(--paper); }
+    .choice { display: flex; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    .choice:last-child { border-bottom: 0; }
+    .radio { flex: 0 0 18px; width: 18px; height: 18px; border: 2px solid var(--line); border-radius: 50%; }
+    .choice.recommended .radio { border: 5px solid var(--teal); }
+    .choice strong, .choice small { display: block; }
+    .choice small { color: var(--muted); margin-top: 2px; }
+
+    .matrix { width: 100%; border-collapse: collapse; border-radius: 16px; overflow: hidden; background: var(--card); box-shadow: 0 0 0 1px var(--line); }
+    .matrix th, .matrix td { padding: 15px 16px; border-bottom: 1px solid var(--line); text-align: left; font-size: 13px; vertical-align: top; }
+    .matrix th { color: var(--muted); background: var(--paper); font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; }
+    .matrix tr:last-child td { border-bottom: 0; }
+    .yes { color: var(--teal-dark); font-weight: 800; }
+    .no { color: var(--red); font-weight: 800; }
+
+    .roadmap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .phase { border-top: 4px solid var(--line); background: var(--card); padding: 22px; border-radius: 4px 4px 18px 18px; }
+    .phase.ready { border-color: var(--teal); }
+    .phase.blocked { border-color: var(--amber); }
+    .phase h3 { font-size: 16px; }
+    .phase ul { margin: 14px 0 0; padding-left: 17px; color: var(--muted); font-size: 12px; }
+    .phase li + li { margin-top: 7px; }
+
+    .question {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 28px;
+      border-radius: 28px;
+      background: var(--ink);
+      color: white;
+      padding: 36px;
+    }
+    .question h2 { margin: 8px 0 10px; font-family: var(--display); font-size: 38px; font-weight: 500; letter-spacing: -0.04em; }
+    .question p { margin: 0; color: #c7d1cc; }
+    .question .badge { min-width: 140px; border: 1px solid #4b6259; border-radius: 18px; padding: 16px; color: #c7d1cc; text-align: center; }
+    .question .badge strong { display: block; color: white; font-size: 18px; }
+
+    footer { padding: 34px 0 50px; color: var(--muted); font-size: 12px; }
+    footer .shell { display: flex; justify-content: space-between; gap: 24px; }
+
+    @media (max-width: 980px) {
+      nav { display: none; }
+      .hero { min-height: auto; grid-template-columns: 1fr; gap: 44px; padding-top: 70px; }
+      .competitors { grid-template-columns: repeat(2, 1fr); }
+      .pipeline { grid-template-columns: repeat(3, 1fr); }
+      .stage:nth-child(3)::after { display: none; }
+      .roadmap { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 700px) {
+      .shell { width: min(100% - 24px, 1180px); }
+      .brand span { display: none; }
+      .hero { padding: 54px 0 62px; }
+      h1 { font-size: 50px; }
+      main section { padding: 66px 0; }
+      .section-head, .demo-grid, .split, .question { grid-template-columns: 1fr; }
+      .section-head { gap: 16px; }
+      .competitors, .pipeline, .roadmap { grid-template-columns: 1fr; }
+      .stage::after { display: none; }
+      .source-grid { grid-template-columns: 1fr; }
+      .matrix { display: block; overflow-x: auto; white-space: nowrap; }
+      .question .badge { text-align: left; }
+      footer .shell { display: block; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <div class="brand"><strong>Moneo</strong><span>category design brief</span></div>
+      <nav aria-label="Page sections">
+        <a href="#learned">Competition</a>
+        <a href="#system">System</a>
+        <a href="#demo">Examples</a>
+        <a href="#delivery">Delivery</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="shell hero">
+      <div>
+        <div class="eyebrow">Decision brief · local only</div>
+        <h1>Automatic when <em>evidence agrees.</em> Honest when it does not.</h1>
+        <p class="lede">Moneo should categorize from raw bank evidence, explain every decision, learn only from deliberate corrections, and leave uncertain money untouched.</p>
+        <div class="principles" aria-label="Core principles">
+          <span>No cloud</span><span>No invented certainty</span><span>Raw data preserved</span><span>User rules win</span>
+        </div>
+      </div>
+      <aside class="verdict-card" aria-label="Example automatic categorization">
+        <div class="receipt-head"><span>Imported transaction</span><span>08 Aug 2026</span></div>
+        <div class="merchant">REWE Markt</div>
+        <div class="raw">REWE MARKT 0412 // KARTENZAHLUNG</div>
+        <div class="amount">− €42.18</div>
+        <dl>
+          <div class="evidence-line"><dt>Recipient</dt><dd>REWE MARKT 0412</dd></div>
+          <div class="evidence-line"><dt>Bank label</dt><dd>Groceries</dd></div>
+          <div class="evidence-line"><dt>Purpose</dt><dd>Kartenzahlung</dd></div>
+        </dl>
+        <div class="result-stamp">
+          <div><strong>Food → Groceries</strong><small>Merchant and bank label agree</small></div>
+          <span class="status">High</span>
+        </div>
+      </aside>
+    </div>
+
+    <section id="learned">
+      <div class="shell">
+        <div class="section-head">
+          <div class="eyebrow">What competition teaches</div>
+          <div><h2>No winner relies on one signal.</h2><p>Strong products combine an automatic baseline with corrections, reusable rules, transfer handling, and a review path. Their algorithms differ; their product shape converges.</p></div>
+        </div>
+        <div class="competitors">
+          <article class="competitor"><div class="utility">Finanzguru</div><h3>Automatic first</h3><p>Two-level categories, manual edits, same-recipient bulk correction, separate paired transfers.</p><div class="take">Borrow: calm correction flow.</div></article>
+          <article class="competitor"><div class="utility">Copilot Money</div><h3>Review trains model</h3><p>Separates regular, income, and internal transfer. Personalized ML starts after reviewed history.</p><div class="take">Borrow: review state. Skip cloud ML.</div></article>
+          <article class="competitor"><div class="utility">Monarch</div><h3>Rules stay visible</h3><p>Matches merchant, original statement, amount, account, and category. Previews changes.</p><div class="take">Borrow: explainable rule preview.</div></article>
+          <article class="competitor"><div class="utility">YNAB</div><h3>Payee memory</h3><p>Remembers category per payee, but allows disabling it for ambiguous stores.</p><div class="take">Borrow: ambiguity exceptions.</div></article>
+          <article class="competitor"><div class="utility">Actual Budget</div><h3>Local rule engine</h3><p>Cleans raw payees before category rules and lets specific rules beat broad rules.</p><div class="take">Best architecture reference.</div></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="system">
+      <div class="shell">
+        <div class="section-head">
+          <div class="eyebrow">Proposed system</div>
+          <div><h2>Six stages. One traceable verdict.</h2><p>Transaction type never becomes a spending category by itself. It constrains possible answers; purpose and counterparty explain intent.</p></div>
+        </div>
+        <div class="pipeline" aria-label="Categorization pipeline">
+          <article class="stage"><h3>Preserve evidence</h3><p>Keep title, bank category, transfer purpose, sender, recipient, transaction type, references, amount direction, and raw CSV.</p></article>
+          <article class="stage"><h3>Normalize text</h3><p>Case-fold, Unicode-normalize, remove bank boilerplate, isolate words and phrases, retain original values.</p></article>
+          <article class="stage"><h3>Resolve counterparty</h3><p>Turn changing statement strings into stable entities without confusing marketplaces with underlying merchants.</p></article>
+          <article class="stage"><h3>Set financial role</h3><p>Regular spend, income, internal transfer, refund, fee, or cash. This is not the budget category.</p></article>
+          <article class="stage"><h3>Apply evidence</h3><p>User rules first. Then structured signals, merchant knowledge, bank mappings, purpose/title phrases, and agreement checks.</p></article>
+          <article class="stage final"><h3>Decide or abstain</h3><p>High assigns. Medium suggests but needs review. Low remains uncategorized. Save method, evidence, and classifier version.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="demo">
+      <div class="shell">
+        <div class="section-head">
+          <div class="eyebrow">Interactive evidence trail</div>
+          <div><h2>Same engine. Different certainty.</h2><p>Select examples to see why Moneo should sometimes assign and sometimes stop.</p></div>
+        </div>
+        <div class="demo-grid">
+          <div class="scenario-list" role="tablist" aria-label="Transaction examples">
+            <button class="scenario active" data-case="rewe" role="tab" aria-selected="true"><strong>REWE purchase</strong><span>Signals agree</span></button>
+            <button class="scenario" data-case="rent" role="tab" aria-selected="false"><strong>SEPA rent</strong><span>Purpose beats payment type</span></button>
+            <button class="scenario" data-case="salary" role="tab" aria-selected="false"><strong>Salary payment</strong><span>Direction plus purpose</span></button>
+            <button class="scenario" data-case="amazon" role="tab" aria-selected="false"><strong>Amazon order</strong><span>Merchant is ambiguous</span></button>
+          </div>
+          <div class="trace" aria-live="polite">
+            <div class="trace-head"><div><div class="utility">Evidence record</div><div class="trace-title" id="trace-title">REWE purchase</div></div><div class="amount" id="trace-amount">− €42.18</div></div>
+            <div class="trace-body">
+              <div class="source-grid" id="source-grid"></div>
+              <div class="trail" id="trail"></div>
+              <div class="decision" id="decision"><div><h3 id="decision-title"></h3><p id="decision-copy"></p></div><span class="confidence" id="confidence"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="shell">
+        <div class="section-head">
+          <div class="eyebrow">Learning without surprises</div>
+          <div><h2>Corrections become rules only with clear scope.</h2><p>Blindly learning “last category for merchant” breaks on Amazon, PayPal, Apple, department stores, and mixed-use merchants.</p></div>
+        </div>
+        <div class="split">
+          <article class="panel">
+            <div class="utility">Rule precedence</div>
+            <h3>Personal truth beats defaults.</h3>
+            <div class="rule-stack">
+              <div class="rule"><b>1</b><span>User-created exact rule</span><small>always wins</small></div>
+              <div class="rule"><b>2</b><span>User counterparty default</span><small>unless ambiguous</small></div>
+              <div class="rule"><b>3</b><span>Built-in high-precision rule</span><small>versioned</small></div>
+              <div class="rule"><b>4</b><span>Combined weaker evidence</span><small>suggest only</small></div>
+              <div class="rule"><b>5</b><span>No safe match</span><small>needs category</small></div>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="utility">Correction prompt</div>
+            <h3>Use “Groceries” for…</h3>
+            <div class="correction">
+              <div class="correction-head"><strong>REWE MARKT 0412</strong></div>
+              <div class="choice"><span class="radio"></span><div><strong>This transaction only</strong><small>No rule created.</small></div></div>
+              <div class="choice recommended"><span class="radio"></span><div><strong>All REWE transactions</strong><small>Recommended for a stable grocery merchant.</small></div></div>
+              <div class="choice"><span class="radio"></span><div><strong>A more specific match</strong><small>Choose account, amount, purpose, or exact statement phrase.</small></div></div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="shell">
+        <div class="section-head">
+          <div class="eyebrow">Decision policy</div>
+          <div><h2>Confidence is a behavior, not decoration.</h2><p>No fake percentages. Each level has a concrete UI and data consequence.</p></div>
+        </div>
+        <table class="matrix">
+          <thead><tr><th>Level</th><th>Meaning</th><th>UI behavior</th><th>Included in budgets</th><th>Example</th></tr></thead>
+          <tbody>
+            <tr><td class="yes">High</td><td>Strong rule or independent evidence agrees.</td><td>Assign automatically; explanation available.</td><td class="yes">Yes</td><td>REWE + Groceries bank label.</td></tr>
+            <tr><td style="color:var(--amber);font-weight:800">Medium</td><td>Plausible answer, but meaningful alternative exists.</td><td>Show suggestion under “Needs category.”</td><td class="no">No, until confirmed</td><td>Unknown café-like phrase without stable merchant.</td></tr>
+            <tr><td class="no">Low</td><td>Insufficient or conflicting evidence.</td><td>No category guess; request manual choice.</td><td class="no">No, until assigned</td><td>Generic Amazon or PayPal payment.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="delivery">
+      <div class="shell">
+        <div class="section-head">
+          <div class="eyebrow">Shippable sequence</div>
+          <div><h2>Accuracy gate before category code.</h2><p>Current import risks can change transaction identity and evidence. Fixing them first prevents rules attaching to the wrong account or disappearing after re-import.</p></div>
+        </div>
+        <div class="roadmap">
+          <article class="phase blocked"><div class="utility">Gate 0</div><h3>Prove imports</h3><ul><li>Account separation</li><li>Malformed-row recovery</li><li>Status and transfer-purpose preservation</li><li>Deletion provenance</li><li>Real Commerzbank and Revolut fixtures</li></ul></article>
+          <article class="phase ready"><div class="utility">Phase 1</div><h3>Category foundation</h3><ul><li>Versioned two-level taxonomy</li><li>Separate category assignments</li><li>Financial roles</li><li>Manual assignment and review queue</li><li>Migration-safe IndexedDB stores</li></ul></article>
+          <article class="phase ready"><div class="utility">Phase 2</div><h3>Local automation</h3><ul><li>Evidence extractor</li><li>Counterparty normalization</li><li>High-precision German rule pack</li><li>Bank-specific category mappings</li><li>Explanation and confidence</li></ul></article>
+          <article class="phase"><div class="utility">Phase 3</div><h3>Personal learning</h3><ul><li>Correction scope prompt</li><li>Rule preview</li><li>Apply to existing matches</li><li>Ambiguous merchant safeguards</li><li>Coverage and correction metrics</li></ul></article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="shell question">
+        <div><div class="eyebrow">Decision 02</div><h2>Should custom categories ship immediately?</h2><p>Recommendation: built-in two-level taxonomy first, but allow custom subcategories under fixed top-level groups. This gives personal control without breaking reports and future budgets.</p></div>
+        <div class="badge"><span class="utility">Suggested answer</span><strong>Custom subcategories</strong><span>Fixed top level</span></div>
+      </div>
+    </section>
+  </main>
+
+  <footer><div class="shell"><span>Moneo category design brief · 08 Aug 2026</span><span>Planning artifact — no product behavior changed</span></div></footer>
+
+  <script>
+    const cases = {
+      rewe: {
+        title: "REWE purchase", amount: "− €42.18", level: "high", category: "Food → Groceries",
+        copy: "Assign automatically. Merchant and bank category independently agree.",
+        sources: { recipient: "REWE MARKT 0412", "bank category": "Groceries", "transaction type": "Card payment", purpose: "Kartenzahlung" },
+        trail: [["Counterparty resolved", "REWE MARKT 0412 becomes REWE."], ["Financial role", "Regular outflow; eligible for spending category."], ["Evidence agreement", "Known grocery merchant and bank label both point to Groceries."]]
+      },
+      rent: {
+        title: "SEPA rent", amount: "− €1,240.00", level: "high", category: "Housing → Rent",
+        copy: "Assign automatically. SEPA describes movement; purpose supplies intent.",
+        sources: { recipient: "HAUSVERWALTUNG MUSTER", "bank category": "Transfer", "transaction type": "SEPA transfer", purpose: "MIETE AUGUST 2026 WHG 14" },
+        trail: [["Counterparty resolved", "Hausverwaltung Muster is stable."], ["Financial role", "Regular outflow, not internal transfer."], ["Purpose evidence", "Whole-word match for “Miete” provides specific intent."]]
+      },
+      salary: {
+        title: "Salary payment", amount: "+ €3,420.00", level: "high", category: "Income → Salary",
+        copy: "Assign automatically. Inflow direction, sender, and purpose agree.",
+        sources: { sender: "MUSTER GMBH", "bank category": "Other income", "transaction type": "Credit transfer", purpose: "GEHALT 07/2026" },
+        trail: [["Counterparty resolved", "Muster GmbH remains sender."], ["Financial role", "Income candidate because money enters account."], ["Evidence agreement", "“Gehalt” plus employer-like sender identifies salary."]]
+      },
+      amazon: {
+        title: "Amazon order", amount: "− €63.29", level: "low", category: "Needs category",
+        copy: "Do not guess. Marketplace can represent groceries, electronics, books, or household spending.",
+        sources: { recipient: "AMAZON EU SARL", "bank category": "Shopping", "transaction type": "Card payment", purpose: "AMZN Mktp DE 7K2…" },
+        trail: [["Counterparty resolved", "Amazon identified as marketplace."], ["Financial role", "Regular outflow; spending category required."], ["Ambiguity guard", "Merchant covers many categories; no item-level purpose exists."]]
+      }
+    };
+
+    const escapeHtml = (value) => String(value).replace(/[&<>"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[character]);
+
+    function renderCase(name) {
+      const item = cases[name];
+      document.querySelectorAll(".scenario").forEach((button) => {
+        const active = button.dataset.case === name;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", String(active));
+      });
+      document.getElementById("trace-title").textContent = item.title;
+      document.getElementById("trace-amount").textContent = item.amount;
+      document.getElementById("source-grid").innerHTML = Object.entries(item.sources).map(([label, value]) => `<div class="source"><label>${escapeHtml(label)}</label><span>${escapeHtml(value)}</span></div>`).join("");
+      document.getElementById("trail").innerHTML = item.trail.map(([title, copy]) => `<div class="trail-item"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(copy)}</span></div>`).join("");
+      const decision = document.getElementById("decision");
+      decision.className = `decision ${item.level}`;
+      document.getElementById("decision-title").textContent = item.category;
+      document.getElementById("decision-copy").textContent = item.copy;
+      document.getElementById("confidence").textContent = item.level;
+    }
+
+    document.querySelectorAll(".scenario").forEach((button) => button.addEventListener("click", () => renderCase(button.dataset.case)));
+    renderCase("rewe");
+  </script>
+</body>
+</html>
