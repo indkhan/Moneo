@@ -2,12 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { IDBFactory } from 'fake-indexeddb';
 import {
+  applyCategoryRule,
   deleteImport,
   findImportByFileHash,
   getSourceFile,
   loadFinanceData,
   openMoneoDatabase,
+  saveCategoryRule,
   saveImport,
+  saveMissingAutomaticCategories,
+  setTransactionCategory,
 } from './transaction-store.mjs';
 
 function samplePayload(suffix = 'one') {
@@ -159,5 +163,93 @@ test('keeps a transaction when a retained overlapping import also contained it',
   assert.equal(data.transactions[0].id, 'transaction-one');
   assert.equal(data.transactions[0].importId, 'import-two');
   assert.deepEqual(data.imports[0].duplicateTransactionIds, []);
+  database.close();
+});
+
+test('upgrades version 1 data and adds the category rules store', async () => {
+  const factory = new IDBFactory();
+  const request = factory.open('moneo-test-upgrade', 1);
+  request.onupgradeneeded = () => {
+    const db = request.result;
+    db.createObjectStore('accounts', { keyPath: 'id' });
+    db.createObjectStore('sourceFiles', { keyPath: 'id' });
+    const imports = db.createObjectStore('imports', { keyPath: 'id' });
+    imports.createIndex('fileHash', 'fileHash', { unique: true });
+    imports.createIndex('accountId', 'accountId');
+    const transactions = db.createObjectStore('transactions', { keyPath: 'id' });
+    transactions.createIndex('accountId', 'accountId');
+    transactions.createIndex('importId', 'importId');
+    db.createObjectStore('mappings', { keyPath: 'signature' });
+  };
+  const old = await new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  await saveImport(old, samplePayload());
+  old.close();
+
+  const upgraded = await openMoneoDatabase('moneo-test-upgrade', factory);
+  const data = await loadFinanceData(upgraded);
+
+  assert.equal(upgraded.version, 2);
+  assert.equal(data.transactions.length, 1);
+  assert.deepEqual(data.categoryRules, []);
+  upgraded.close();
+});
+
+test('persists category rules and keeps them when imports are deleted', async () => {
+  const database = await openMoneoDatabase('moneo-test-rules', new IDBFactory());
+  await saveImport(database, samplePayload());
+  const rule = { id: 'rule-1', counterpartyKey: 'coffee', categoryId: 'food.restaurants', createdAt: '2026-08-08T00:00:00Z' };
+  await saveCategoryRule(database, rule);
+  await deleteImport(database, 'import-one');
+
+  assert.deepEqual((await loadFinanceData(database)).categoryRules, [rule]);
+  database.close();
+});
+
+test('manual assignment changes only the selected transaction', async () => {
+  const database = await openMoneoDatabase('moneo-test-manual-category', new IDBFactory());
+  await saveImport(database, samplePayload('one'));
+  const second = samplePayload('two');
+  second.importRecord.fileHash = 'different-hash';
+  await saveImport(database, second);
+  const assignment = { categoryId: 'food.restaurants', method: 'manual', classifierVersion: 'moneo-category-v1', evidence: ['Chosen by you'] };
+
+  await setTransactionCategory(database, 'transaction-one', assignment);
+
+  const data = await loadFinanceData(database);
+  assert.deepEqual(data.transactions.find(({ id }) => id === 'transaction-one').category, assignment);
+  assert.equal(data.transactions.find(({ id }) => id === 'transaction-two').category, undefined);
+  database.close();
+});
+
+test('applies a reusable rule and matching assignments atomically', async () => {
+  const database = await openMoneoDatabase('moneo-test-apply-rule', new IDBFactory());
+  await saveImport(database, samplePayload('one'));
+  const second = samplePayload('two');
+  second.importRecord.fileHash = 'different-hash';
+  await saveImport(database, second);
+  const rule = { id: 'rule-1', counterpartyKey: 'coffee', categoryId: 'food.restaurants', createdAt: '2026-08-08T00:00:00Z' };
+
+  await applyCategoryRule(database, rule, ['transaction-one', 'transaction-two']);
+
+  const data = await loadFinanceData(database);
+  assert.deepEqual(data.categoryRules, [rule]);
+  assert.ok(data.transactions.every(({ category }) => category?.method === 'user-rule' && category.categoryId === 'food.restaurants'));
+  database.close();
+});
+
+test('automatic backfill writes only missing categories', async () => {
+  const database = await openMoneoDatabase('moneo-test-category-backfill', new IDBFactory());
+  const payload = samplePayload();
+  payload.transactions[0].category = { categoryId: 'gifts.donation', method: 'manual', classifierVersion: 'moneo-category-v1', evidence: ['Chosen by you'] };
+  await saveImport(database, payload);
+
+  await saveMissingAutomaticCategories(database, [
+    { id: 'transaction-one', category: { categoryId: 'food.restaurants', method: 'built-in', classifierVersion: 'moneo-category-v1', evidence: ['Automatic'] } },
+  ]);
+
+  assert.equal((await loadFinanceData(database)).transactions[0].category.categoryId, 'gifts.donation');
   database.close();
 });
