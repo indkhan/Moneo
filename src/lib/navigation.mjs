@@ -5,5 +5,3 @@ export const navigationItems = [
   { route: 'investments', label: 'Investments', icon: '⌁' },
   { route: 'recurring', label: 'Recurring', icon: '↻' },
 ];
-
-export const isWorkspaceRoute = (route) => route === 'ai';
