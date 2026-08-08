@@ -20,7 +20,7 @@ import Svg, {
   Stop,
 } from "react-native-svg";
 import { navigationItems } from "@/lib/navigation.mjs";
-import { chartPoints, pointAtIndex } from "@/lib/net-worth-chart";
+import { chartPoints, pointAtIndex, tooltipLeft } from "@/lib/net-worth-chart";
 import { isDesktopLayout } from "@/lib/responsive-layout";
 
 type Page =
@@ -35,7 +35,8 @@ function useWindowDimensions() {
   const [webWidth, setWebWidth] = useState(0);
   useEffect(() => {
     if (Platform.OS !== "web") return;
-    const syncWidth = () => setWebWidth(window.innerWidth);
+    const syncWidth = () =>
+      setWebWidth(document.documentElement.clientWidth || window.innerWidth);
     syncWidth();
     window.addEventListener("resize", syncWidth);
     return () => window.removeEventListener("resize", syncWidth);
@@ -153,6 +154,11 @@ function NetWorth() {
   const values = [68_200, 70_140, 71_980, 74_510, 76_920, 79_430, 83_967];
   const activePoint = pointAtIndex(points, activeIndex) ?? points[2];
   const activeValue = values[activeIndex] ?? values[2];
+  const [chartWidth, setChartWidth] = useState(0);
+  const chartTooltipLeft = tooltipLeft(
+    (activePoint.x / 100) * chartWidth,
+    chartWidth,
+  );
   const path = points
     .map((point, index) => `${index ? "L" : "M"}${point.x} ${point.y}`)
     .join(" ");
@@ -166,7 +172,10 @@ function NetWorth() {
           <Text style={styles.heroHint}>vs. last month</Text>
         </View>
       </View>
-      <View style={styles.lineChart}>
+      <View
+        style={styles.lineChart}
+        onLayout={({ nativeEvent }) => setChartWidth(nativeEvent.layout.width)}
+      >
         <Svg
           width="100%"
           height="100%"
@@ -203,6 +212,7 @@ function NetWorth() {
             <Pressable
               key={point.label}
               accessibilityLabel={`Show ${point.label} net worth`}
+              focusable={false}
               onHoverIn={() => setActiveIndex(index)}
               onPointerMove={() => setActiveIndex(index)}
               onPress={() => setActiveIndex(index)}
@@ -214,7 +224,7 @@ function NetWorth() {
           pointerEvents="none"
           style={[
             styles.chartTooltip,
-            { left: `${activePoint.x}%`, top: `${activePoint.y}%` },
+            { left: chartTooltipLeft, top: `${activePoint.y}%` },
           ]}
         >
           <Text style={styles.tooltipMonth}>{activePoint.label}</Text>
@@ -581,7 +591,10 @@ function AIWorkspace({ compact = false }: { compact?: boolean }) {
 export function FinanceWorkspace({ page }: { page: Page }) {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const desktop = width >= 1024;
+  const desktop =
+    Platform.OS === "web" && typeof document !== "undefined"
+      ? document.documentElement.clientWidth >= 1024
+      : width >= 1024;
   const title: Record<Page, [string, string]> = {
     index: [
       "Good morning, Mara",
@@ -969,8 +982,8 @@ const styles = StyleSheet.create({
   },
   chartMonths: {
     flexDirection: "row",
-    justifyContent: "space-around",
-    paddingHorizontal: 20,
+    justifyContent: "space-between",
+    paddingHorizontal: 8,
     paddingBottom: 15,
   },
   chartMonth: { fontSize: 11, color: C.muted },
@@ -1323,7 +1336,6 @@ const styles = StyleSheet.create({
     borderColor: C.line,
     borderRadius: 16,
     padding: 14,
-    marginLeft: 12,
     marginTop: -24,
     shadowColor: C.ink,
     shadowOpacity: 0.1,

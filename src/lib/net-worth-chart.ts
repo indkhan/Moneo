@@ -24,3 +24,12 @@ export function pointAtIndex(
 ): ChartPoint | undefined {
   return points[Math.max(0, Math.min(index, points.length - 1))];
 }
+
+export function tooltipLeft(
+  anchorX: number,
+  chartWidth: number,
+  tooltipWidth = 168,
+  gutter = 8,
+) {
+  return Math.max(gutter, Math.min(anchorX, chartWidth - tooltipWidth - gutter));
+}

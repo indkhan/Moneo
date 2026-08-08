@@ -15,3 +15,7 @@ export function chartPoints(values) {
 export function pointAtIndex(points, index) {
   return points[Math.max(0, Math.min(index, points.length - 1))];
 }
+
+export function tooltipLeft(anchorX, chartWidth, tooltipWidth = 168, gutter = 8) {
+  return Math.max(gutter, Math.min(anchorX, chartWidth - tooltipWidth - gutter));
+}
