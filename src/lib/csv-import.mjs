@@ -138,6 +138,13 @@ export function parseMoneyWithFormat(value, currency, numberFormat) {
   throw new Error('Number format is not supported');
 }
 
+export function normalizeCurrency(value) {
+  const currency = value.trim().toUpperCase();
+  if (!currency) throw new Error('Currency is required');
+  if (!/^[A-Z]{3}$/.test(currency)) throw new Error('Currency must be a three-letter code');
+  return currency;
+}
+
 export function parseDateWithFormat(value, format) {
   const text = value.trim();
   const patterns = {
@@ -199,13 +206,13 @@ export function normalizeCommerzbankCsv(text, fileName, corrections = {}) {
     const row = source.rawRecord;
     const correction = corrections[source.rowNumber] ?? {};
     try {
-      const currency = (correction.currency || row.Currency).trim().toUpperCase();
-      if (!currency) throw { field: 'currency', message: 'Currency is required' };
+      let currency;
+      try { currency = normalizeCurrency(correction.currency || row.Currency); } catch (error) { throw { field: 'currency', message: error.message }; }
       let bookingDate;
       let valueDate;
       let money;
-      try { bookingDate = correction.bookingDate || parseDate(row['Booking date']); } catch (error) { throw { field: 'bookingDate', message: error.message }; }
-      try { valueDate = correction.valueDate || (row['Value date'].trim() ? parseDate(row['Value date']) : undefined); } catch (error) { throw { field: 'valueDate', message: error.message }; }
+      try { bookingDate = correction.bookingDate ? parseDateWithFormat(correction.bookingDate, 'YYYY-MM-DD') : parseDate(row['Booking date']); } catch (error) { throw { field: 'bookingDate', message: error.message }; }
+      try { valueDate = correction.valueDate ? parseDateWithFormat(correction.valueDate, 'YYYY-MM-DD') : (row['Value date'].trim() ? parseDate(row['Value date']) : undefined); } catch (error) { throw { field: 'valueDate', message: error.message }; }
       try { money = parseMoney(correction.amount || row.Amount, currency); } catch (error) { throw { field: 'amount', message: error.message }; }
 
       const outgoing = money.amountMinor.startsWith('-');

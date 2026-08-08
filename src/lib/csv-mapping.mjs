@@ -2,6 +2,7 @@ import {
   parseCsv,
   parseDateWithFormat,
   parseMoneyWithFormat,
+  normalizeCurrency,
 } from './csv-import.mjs';
 
 const mappingVersion = 'mapped-v1';
@@ -58,20 +59,28 @@ export function normalizeMappedCsv(text, fileName, mapping, corrections = {}) {
     const row = source.rawRecord;
     const correction = corrections[source.rowNumber] ?? {};
     try {
-      const currency = (correction.currency || mapping.constantCurrency || valueAt(row, mapping.columns.currency)).trim().toUpperCase();
-      if (!currency) throw { field: 'currency', message: 'Currency is required' };
+      let currency;
+      try {
+        currency = normalizeCurrency(correction.currency || mapping.constantCurrency || valueAt(row, mapping.columns.currency));
+      } catch (error) {
+        throw { field: 'currency', message: error.message };
+      }
 
       let bookingDate;
       let valueDate;
       let money;
       try {
-        bookingDate = correction.bookingDate || parseDateWithFormat(valueAt(row, mapping.columns.bookingDate), mapping.dateFormat);
+        bookingDate = correction.bookingDate
+          ? parseDateWithFormat(correction.bookingDate, 'YYYY-MM-DD')
+          : parseDateWithFormat(valueAt(row, mapping.columns.bookingDate), mapping.dateFormat);
       } catch (error) {
         throw { field: 'bookingDate', message: error.message };
       }
       try {
         const rawValueDate = valueAt(row, mapping.columns.valueDate);
-        valueDate = correction.valueDate || (rawValueDate ? parseDateWithFormat(rawValueDate, mapping.dateFormat) : undefined);
+        valueDate = correction.valueDate
+          ? parseDateWithFormat(correction.valueDate, 'YYYY-MM-DD')
+          : (rawValueDate ? parseDateWithFormat(rawValueDate, mapping.dateFormat) : undefined);
       } catch (error) {
         throw { field: 'valueDate', message: error.message };
       }

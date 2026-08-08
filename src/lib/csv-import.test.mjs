@@ -96,3 +96,22 @@ test('accepts a user correction for a malformed Commerzbank row', () => {
   assert.equal(corrected.transactions[0].amountMinor, '-575');
   assert.equal(corrected.transactions[0].source.rawRecord.Amount, 'broken');
 });
+
+test('rejects an invalid corrected Commerzbank date', () => {
+  const invalid = commerzbankCsv.replace('07.08.2026', 'not-a-date');
+  const corrected = normalizeCommerzbankCsv(invalid, 'statement.csv', {
+    2: { bookingDate: 'not-a-date' },
+  });
+
+  assert.equal(corrected.transactions.length, 2);
+  assert.equal(corrected.errors[0].field, 'bookingDate');
+});
+
+test('rejects an invalid corrected Commerzbank currency', () => {
+  const corrected = normalizeCommerzbankCsv(commerzbankCsv, 'statement.csv', {
+    2: { currency: 'EURO' },
+  });
+
+  assert.equal(corrected.transactions.length, 2);
+  assert.equal(corrected.errors[0].field, 'currency');
+});

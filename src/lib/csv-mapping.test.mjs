@@ -90,6 +90,25 @@ test('accepts edited normalized values for a bad row without changing its raw so
   assert.equal(corrected.transactions[0].source.rawRecord.Date, 'not-a-date');
 });
 
+test('rejects an invalid corrected mapped date', () => {
+  const invalid = unknownCsv.replace('07/31/2026', 'not-a-date');
+  const corrected = normalizeMappedCsv(invalid, 'example.csv', mapping, {
+    2: { bookingDate: 'not-a-date' },
+  });
+
+  assert.equal(corrected.transactions.length, 1);
+  assert.equal(corrected.errors[0].field, 'bookingDate');
+});
+
+test('rejects an invalid corrected mapped currency', () => {
+  const corrected = normalizeMappedCsv(unknownCsv, 'example.csv', mapping, {
+    2: { currency: 'EURO' },
+  });
+
+  assert.equal(corrected.transactions.length, 1);
+  assert.equal(corrected.errors[0].field, 'currency');
+});
+
 test('rejects mappings that omit required columns instead of guessing', () => {
   assert.throws(
     () => normalizeMappedCsv(unknownCsv, 'example.csv', {
