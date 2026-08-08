@@ -45,5 +45,33 @@ export type ImportRowError = {
   rowNumber: number;
   field: string;
   message: string;
+  rawRecord?: Record<string, string>;
+};
+
+export type ColumnMapping = {
+  bankName: string;
+  accountName: string;
+  accountIdentifier?: string;
+  dateFormat: "DD.MM.YYYY" | "YYYY-MM-DD" | "DD/MM/YYYY" | "MM/DD/YYYY";
+  numberFormat: "de-DE" | "en-US";
+  constantCurrency?: string;
+  columns: {
+    bookingDate: string;
+    title: string;
+    amount?: string;
+    debit?: string;
+    credit?: string;
+    currency?: string;
+    valueDate?: string;
+    description?: string;
+    sender?: string;
+    recipient?: string;
+    reference?: string;
+    transactionId?: string;
+    transactionType?: string;
+    status?: string;
+    balance?: string;
+    bankCategory?: string;
+  };
 };
 

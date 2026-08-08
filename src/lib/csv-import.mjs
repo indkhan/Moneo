@@ -127,11 +127,30 @@ export function parseMoney(value, currency) {
   };
 }
 
-function parseDate(value) {
+export function parseMoneyWithFormat(value, currency, numberFormat) {
   const text = value.trim();
-  const german = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(text);
-  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-  const parts = german ? [german[3], german[2], german[1]] : iso ? [iso[1], iso[2], iso[3]] : undefined;
+  if (numberFormat === 'de-DE') {
+    return parseMoney(text.replace(/\./g, '').replace(',', '.'), currency);
+  }
+  if (numberFormat === 'en-US') {
+    return parseMoney(text.replace(/,/g, ''), currency);
+  }
+  throw new Error('Number format is not supported');
+}
+
+export function parseDateWithFormat(value, format) {
+  const text = value.trim();
+  const patterns = {
+    'DD.MM.YYYY': /^(\d{2})\.(\d{2})\.(\d{4})$/,
+    'YYYY-MM-DD': /^(\d{4})-(\d{2})-(\d{2})$/,
+    'DD/MM/YYYY': /^(\d{2})\/(\d{2})\/(\d{4})$/,
+    'MM/DD/YYYY': /^(\d{2})\/(\d{2})\/(\d{4})$/,
+  };
+  const match = patterns[format]?.exec(text);
+  const parts = !match ? undefined
+    : format === 'YYYY-MM-DD' ? [match[1], match[2], match[3]]
+      : format === 'MM/DD/YYYY' ? [match[3], match[1], match[2]]
+        : [match[3], match[2], match[1]];
   if (!parts) throw new Error('Date format is not supported');
   const [year, month, day] = parts.map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
@@ -139,6 +158,11 @@ function parseDate(value) {
     throw new Error('Date is invalid');
   }
   return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function parseDate(value) {
+  const format = value.trim().includes('.') ? 'DD.MM.YYYY' : 'YYYY-MM-DD';
+  return parseDateWithFormat(value, format);
 }
 
 function extractReferences(text) {
