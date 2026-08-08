@@ -48,11 +48,25 @@ test('asks for mapping when a partial Commerzbank shape is missing required colu
 });
 
 test('asks for mapping when a bank shape is unknown', () => {
-  const detected = detectCsvFormat(unknownCsv, 'unknown.csv', []);
+  const detected = detectCsvFormat('Date,Details,Amount\n2026-08-08,Coffee,-5.00', 'unknown.csv', []);
 
   assert.equal(detected.kind, 'mapping-required');
-  assert.deepEqual(detected.headers, ['Date', 'Details', 'Amount', 'Currency']);
+  assert.deepEqual(detected.headers, ['Date', 'Details', 'Amount']);
   assert.equal(detected.sampleRows[0].Details, 'Coffee');
+});
+
+test('automatically maps an unambiguous generic CSV shape', () => {
+  const detected = detectCsvFormat(unknownCsv, 'unknown.csv', []);
+
+  assert.equal(detected.kind, 'auto-mapping');
+  assert.deepEqual(detected.mapping.columns, {
+    bookingDate: 'Date',
+    title: 'Details',
+    amount: 'Amount',
+    currency: 'Currency',
+  });
+  assert.equal(detected.mapping.dateFormat, 'YYYY-MM-DD');
+  assert.equal(detected.mapping.numberFormat, 'en-US');
 });
 
 test('reuses a saved mapping only when its exact signature matches', () => {
@@ -62,7 +76,7 @@ test('reuses a saved mapping only when its exact signature matches', () => {
 
   assert.equal(detected.kind, 'normalized');
   assert.equal(detected.result.adapterId, 'mapped-v1');
-  assert.equal(changed.kind, 'mapping-required');
+  assert.equal(changed.kind, 'auto-mapping');
 });
 
 test('creates a stable opaque local account ID from bank identity', async () => {

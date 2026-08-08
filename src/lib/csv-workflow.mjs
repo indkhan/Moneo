@@ -1,4 +1,4 @@
-import { normalizeCommerzbankCsv, parseCsv, requiredCommerzbankHeaders } from './csv-import.mjs';
+import { normalizeCommerzbankCsv, parseCsv, parseDateWithFormat, requiredCommerzbankHeaders } from './csv-import.mjs';
 import { legacyMappingSignature, mappingSignature, normalizeMappedCsv } from './csv-mapping.mjs';
 import { sha256Hex } from './transaction-dedup.mjs';
 
@@ -26,11 +26,32 @@ export function detectCsvFormat(text, fileName, savedMappings) {
     return { kind: 'normalized', result: normalizeMappedCsv(text, fileName, mapping), mapping };
   }
 
+  const automatic = automaticMapping(parsed);
+  if (automatic) return { kind: 'auto-mapping', headers: parsed.headers, sampleRows: parsed.rows.slice(0, 3).map((row) => row.rawRecord), mapping: automatic };
+
   return {
     kind: 'mapping-required',
     headers: parsed.headers,
     sampleRows: parsed.rows.slice(0, 3).map((row) => row.rawRecord),
   };
+}
+
+function automaticMapping(parsed) {
+  const columns = suggestColumnMapping(parsed.headers);
+  const required = ['bookingDate', 'title', 'amount', 'currency'];
+  if (!required.every((field) => columns[field])) return undefined;
+  if (new Set(required.map((field) => columns[field])).size !== required.length) return undefined;
+  const dates = parsed.rows.slice(0, 3).map((row) => row.rawRecord[columns.bookingDate]).filter(Boolean);
+  const dateFormat = ['YYYY-MM-DD', 'DD.MM.YYYY', 'DD/MM/YYYY', 'MM/DD/YYYY'].find((format) => (
+    dates.length > 0 && dates.every((value) => {
+      try { parseDateWithFormat(value, format); return true; } catch { return false; }
+    })
+  ));
+  const amounts = parsed.rows.slice(0, 3).map((row) => row.rawRecord[columns.amount]).filter(Boolean);
+  const numberFormat = amounts.every((value) => /^[-+]?\d+(?:\.\d+)?$/.test(value)) ? 'en-US'
+    : amounts.every((value) => /^[-+]?\d+(?:,\d+)?$/.test(value)) ? 'de-DE'
+      : undefined;
+  return dateFormat && numberFormat ? { columns, dateFormat, numberFormat } : undefined;
 }
 
 export async function localAccountId(account) {

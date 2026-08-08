@@ -65,6 +65,7 @@ type MappingRequest = {
   text: string;
   headers: string[];
   sampleRows: Record<string, string>[];
+  autoMapping?: Pick<ColumnMapping, "dateFormat" | "numberFormat" | "columns">;
 };
 
 type MappingColumnsDraft = Partial<ColumnMapping["columns"]>;
@@ -146,12 +147,10 @@ function MappingForm({
   const [bankName, setBankName] = useState("");
   const [accountName, setAccountName] = useState("");
   const [constantCurrency, setConstantCurrency] = useState("");
-  const [dateFormat, setDateFormat] = useState<ColumnMapping["dateFormat"]>(
-    "DD.MM.YYYY",
-  );
+  const [dateFormat, setDateFormat] = useState<ColumnMapping["dateFormat"]>(request.autoMapping?.dateFormat ?? "DD.MM.YYYY");
   const [numberFormat, setNumberFormat] =
-    useState<ColumnMapping["numberFormat"]>("de-DE");
-  const [columns, setColumns] = useState<MappingColumnsDraft>(suggested);
+    useState<ColumnMapping["numberFormat"]>(request.autoMapping?.numberFormat ?? "de-DE");
+  const [columns, setColumns] = useState<MappingColumnsDraft>(request.autoMapping?.columns ?? suggested);
   const [error, setError] = useState<string>();
 
   const setColumn = (
@@ -207,7 +206,9 @@ function MappingForm({
     <View style={styles.panel}>
       <Text style={styles.heading}>Map this bank once</Text>
       <Text style={styles.help}>
-        Moneo will reuse this mapping only when the CSV headers match exactly.
+        {request.autoMapping
+          ? "Moneo recognised these columns. Add an account label to import and save this mapping."
+          : "Moneo will reuse this mapping only when the CSV headers match exactly."}
       </Text>
       <View style={styles.formGrid}>
         <View style={styles.field}>
@@ -450,13 +451,16 @@ export function CsvImporter() {
       }
       const text = decodeCsvBytes(bytes);
       const detected = detectCsvFormat(text, file.name, data.mappings);
-      if (detected.kind === "mapping-required") {
+      if (detected.kind === "mapping-required" || detected.kind === "auto-mapping") {
         setMappingRequest({
           file,
           hash,
           text,
           headers: detected.headers as string[],
           sampleRows: detected.sampleRows as Record<string, string>[],
+          ...(detected.kind === "auto-mapping"
+            ? { autoMapping: detected.mapping as MappingRequest["autoMapping"] }
+            : {}),
         });
         return;
       }
