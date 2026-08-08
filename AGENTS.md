@@ -50,6 +50,7 @@ Preserve the desktop sidebar/multi-column layout and mobile stacked/bottom-nav l
 6. Do not refactor unrelated code or alter financial mock values unless required.
 7. Remove only unused code created by your own changes.
 8. Once done with things in very very consice way edit `application.md` as per what you edited
+9. During chat with the user if talked about implementing something ahead but could not in the scope of the current session just add that thing to `backlog.md`
 
 ## AI logbook
 
