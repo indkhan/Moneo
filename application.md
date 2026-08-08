@@ -4,10 +4,12 @@ Expo/React Native personal-finance prototype for iOS, Android, and web. Uses Exp
 
 - Routes in `src/app/`: Dashboard, Transactions, Budgets, Investments, Recurring, and AI Workspace.
 - Desktop (>=1024px): sidebar + multi-column workspace. Mobile: stacked content + bottom navigation.
-- Dashboard shows net worth, spending, budgets, transactions, accounts, recurring payments, investments, AI insight, and pinned example cards.
-- The net-worth chart is interactive; navigation works; AI supports local canned messages and chart/table tabs.
-- All financial data and AI output are hard-coded sample data. No login, database, bank/API connection, persistence, real AI, notifications, or working settings/pinning exists yet.
-- Helpers: navigation (`src/lib/navigation.mjs`), responsive breakpoint (`src/lib/responsive-layout.mjs`), net-worth chart math (`src/lib/net-worth-chart.mjs`).
+- Web users can import Commerzbank CSV files automatically or map unknown-bank columns once. Imports preserve raw rows, references, currencies, original files, and row-level errors.
+- Accounts, import history, mappings, files, and normalized transactions stay locally in IndexedDB. Exact files and overlapping transactions are skipped with visible counts.
+- Dashboard cash flow is calculated per currency without conversion; transaction details show normalized and original bank fields. Sample financial cards were removed.
+- Bad rows can be corrected, skipped explicitly, or cancelled before storage. Import deletion removes its source file and transactions.
+- No login, cloud/backend, PDF import, bank connection, Moneo category assignment, recurring detection, investment feed, real AI, notifications, or working settings exists yet.
+- Helpers cover navigation, responsive layout, CSV parsing/mapping, deduplication, local storage, transaction display, and cash-flow summaries in `src/lib/`.
 
 Run with `npm start`; run helper tests with `npm test`.
 
