@@ -30,7 +30,7 @@ Build a simple AI-powered personal finance app that helps users understand their
 
 Start with a few predefined financial views.
 
-Later, users can create custom AI-generated views and share them through a marketplace.
+Later, users can create custom AI-generated views and share them through a marketplace. like claude has artifacts that make html interactive views making things easier to understand we will do the same 
 
 ## Not in MVP
 
