@@ -1,0 +1,43 @@
+export async function sha256Hex(bytes) {
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export function transactionFingerprint(accountId, transaction) {
+  if (transaction.bankTransactionId) {
+    return `${accountId}|bank-id|${transaction.bankTransactionId}`;
+  }
+  return JSON.stringify([
+    accountId,
+    transaction.bookingDate,
+    transaction.valueDate ?? '',
+    transaction.amountMinor,
+    transaction.currency,
+    transaction.description,
+    transaction.transactionType ?? '',
+    transaction.references.map((reference) => [reference.type, reference.value]),
+  ]);
+}
+
+export function deduplicateTransactions(existing, incoming, accountId) {
+  const remainingExisting = new Map();
+  for (const transaction of existing) {
+    const key = transactionFingerprint(transaction.accountId, transaction);
+    remainingExisting.set(key, (remainingExisting.get(key) ?? 0) + 1);
+  }
+
+  const accepted = [];
+  const skipped = [];
+  for (const transaction of incoming) {
+    const key = transactionFingerprint(accountId, transaction);
+    const remaining = remainingExisting.get(key) ?? 0;
+    if (remaining > 0) {
+      skipped.push(transaction);
+      remainingExisting.set(key, remaining - 1);
+    } else {
+      accepted.push(transaction);
+    }
+  }
+  return { accepted, skipped };
+}
