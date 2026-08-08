@@ -10,3 +10,5 @@ Expo/React Native personal-finance prototype for iOS, Android, and web. Uses Exp
 - Helpers: navigation (`src/lib/navigation.mjs`), responsive breakpoint (`src/lib/responsive-layout.mjs`), net-worth chart math (`src/lib/net-worth-chart.mjs`).
 
 Run with `npm start`; run helper tests with `npm test`.
+
+AI work is recorded as immutable, per-task Markdown entries in `logbook_ai/`; see `AGENTS.md` for the convention.

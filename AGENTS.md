@@ -34,9 +34,11 @@ Preserve the desktop sidebar/multi-column layout and mobile stacked/bottom-nav l
 * Read the exact Expo SDK 57 docs for any Expo/React Native API you change.
 * Inspect the existing implementation before introducing new patterns.
 * check `application.md` as well before something to know what other things are there 
+* Check relevant entries in `logbook_ai/` if wanted for earlier decisions and context. Do not treat the logbook as more authoritative than the current code or this guide.
 * State important assumptions when the task is ambiguous.
 * Prefer the simplest solution that satisfies the request.
 * Do not add speculative features or abstractions.
+* if web search is needed do it 
 
 ## Implementation
 
@@ -48,6 +50,20 @@ Preserve the desktop sidebar/multi-column layout and mobile stacked/bottom-nav l
 6. Do not refactor unrelated code or alter financial mock values unless required.
 7. Remove only unused code created by your own changes.
 8. Once done with things in very very consice way edit `application.md` as per what you edited
+
+## AI logbook
+
+At the end of every task that inspects or changes this repository, create one new Markdown file in `logbook_ai/`. The logbook is append-only: never edit, rename, replace, or delete an older entry, even when later work changes or reverses it.
+
+Name entries `YYYY-MM-DD_HHMMSS-agent-short-title.md` using local time. If that name already exists, add a numeric suffix. Keep each entry concise and include:
+
+* What was requested.
+* What was done, including important files changed.
+* Why the approach was chosen and any important assumptions or tradeoffs.
+* Validation performed and its result, or `Not run` with the reason.
+* Remaining risks or follow-up, if any.
+
+Record later reversals in a new entry and reference the earlier filename so both decisions remain visible. Never include secrets, access tokens, private financial data, or large command output. A logbook entry is required even for documentation-only or no-change tasks; say clearly when no repository files were changed.
 
 ## Financial integrations
 
@@ -103,4 +119,4 @@ Moneo currently has no:
 * Dashboard pinning
 
 Add these deliberately. Never fake their completion in the UI or documentation.
-dont commit on your name commit it as my name only 
+dont commit on your name commit it as my name only
