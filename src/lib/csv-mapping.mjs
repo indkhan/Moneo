@@ -131,7 +131,7 @@ export function normalizeMappedCsv(text, fileName, mapping, corrections = {}) {
       const bankCategory = optionalValue(row, mapping.columns.bankCategory);
       const transferPurpose = optionalValue(row, mapping.columns.purpose);
       let status;
-      try { status = normalizeTransactionStatus(optionalValue(row, mapping.columns.status)); } catch (error) { throw { field: 'status', message: error.message }; }
+      try { status = normalizeTransactionStatus(correction.status || optionalValue(row, mapping.columns.status)); } catch (error) { throw { field: 'status', message: error.message }; }
       let balanceAfterMinor;
       const rawBalance = correction.balance || valueAt(row, mapping.columns.balance);
       if (rawBalance) {

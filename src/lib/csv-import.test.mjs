@@ -122,6 +122,25 @@ test('accepts a user correction for a malformed Commerzbank row', () => {
   assert.equal(corrected.transactions[0].source.rawRecord.Amount, 'broken');
 });
 
+test('accepts a corrected Commerzbank transaction status', () => {
+  const withStatusHeader = commerzbankCsv.replace(
+    'Transfer purpose\n',
+    'Transfer purpose;Status\n',
+  ).replace(/Dinner\n/, 'Dinner;In progress\n')
+    .replace(/August salary\n/, 'August salary;Booked\n')
+    .replace(/Electricity$/, 'Electricity;Booked');
+  const failed = normalizeCommerzbankCsv(withStatusHeader, 'statement.csv');
+  assert.equal(failed.errors[0].field, 'status');
+
+  const corrected = normalizeCommerzbankCsv(withStatusHeader, 'statement.csv', {
+    2: { status: 'Booked' },
+  });
+
+  assert.equal(corrected.errors.length, 0);
+  assert.equal(corrected.transactions[0].status, 'booked');
+  assert.equal(corrected.transactions[0].source.rawRecord.Status, 'In progress');
+});
+
 test('rejects an invalid corrected Commerzbank date', () => {
   const invalid = commerzbankCsv.replace('07.08.2026', 'not-a-date');
   const corrected = normalizeCommerzbankCsv(invalid, 'statement.csv', {

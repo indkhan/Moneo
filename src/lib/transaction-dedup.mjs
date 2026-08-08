@@ -30,6 +30,7 @@ export function deduplicateTransactions(existing, incoming, accountId) {
   const accepted = [];
   const skipped = [];
   const duplicateTransactionIds = [];
+  const acceptedFingerprints = new Set();
   for (const transaction of incoming) {
     const key = transactionFingerprint(accountId, transaction);
     const remaining = remainingExisting.get(key) ?? [];
@@ -37,8 +38,11 @@ export function deduplicateTransactions(existing, incoming, accountId) {
       skipped.push(transaction);
       duplicateTransactionIds.push(remaining[0]);
       remainingExisting.set(key, remaining.slice(1));
+    } else if (acceptedFingerprints.has(key)) {
+      skipped.push(transaction);
     } else {
       accepted.push(transaction);
+      acceptedFingerprints.add(key);
     }
   }
   return { accepted, skipped, duplicateTransactionIds };

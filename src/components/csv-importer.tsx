@@ -610,7 +610,9 @@ export function CsvImporter() {
                 </Text>
                 <Text style={styles.error}>{rowError.message}</Text>
               </View>
-              <TextInput
+              {rowError.field === "row" ? (
+                <Text style={styles.help}>This row has an invalid CSV shape and cannot be corrected here.</Text>
+              ) : <TextInput
                 value={corrections[rowError.rowNumber]?.[rowError.field] || ""}
                 onChangeText={(value) =>
                   setCorrections((current) => ({
@@ -627,7 +629,7 @@ export function CsvImporter() {
                     : `Correct ${rowError.field}`
                 }
                 style={[styles.input, styles.correctionInput]}
-              />
+              />}
             </View>
           ))}
           <View style={styles.actions}>

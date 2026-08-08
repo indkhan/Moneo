@@ -229,7 +229,7 @@ export function normalizeCommerzbankCsv(text, fileName, corrections = {}) {
       const recipient = row.Recipient.trim() || undefined;
       const transferPurpose = row['Transfer purpose'].trim();
       let status;
-      try { status = normalizeTransactionStatus(row.Status); } catch (error) { throw { field: 'status', message: error.message }; }
+      try { status = normalizeTransactionStatus(correction.status || row.Status); } catch (error) { throw { field: 'status', message: error.message }; }
       const description = (correction.description || row['Booking text']).trim();
       const title = (correction.title || (outgoing ? recipient || sender : sender || recipient) || transferPurpose || description).trim();
       if (!title) throw { field: 'title', message: 'Title or description is required' };

@@ -130,7 +130,7 @@ function Transactions({ limit }: { limit?: number }) {
     const decision = categorizeTransaction(transaction, data.categoryRules);
     setEditingId(transaction.id);
     setChosenCategoryId(transaction.category?.categoryId ?? (decision.status === "suggested" ? decision.categoryId : undefined));
-    setScope(decision.status === "suggested" ? "one" : "all");
+    setScope("one");
   };
 
   const saveCategory = async (transaction: MoneoTransaction) => {

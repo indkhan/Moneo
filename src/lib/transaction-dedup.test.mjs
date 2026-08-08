@@ -56,6 +56,19 @@ test('skips only matching occurrences from overlapping statements', () => {
   assert.equal(result.accepted[0].source.rowNumber, 4);
 });
 
+test('skips repeated rows within a single statement', () => {
+  const incoming = [
+    { ...transaction, source: { ...transaction.source, rowNumber: 2 } },
+    { ...transaction, source: { ...transaction.source, rowNumber: 3 } },
+  ];
+
+  const result = deduplicateTransactions([], incoming, 'account-a');
+
+  assert.equal(result.accepted.length, 1);
+  assert.equal(result.skipped.length, 1);
+  assert.deepEqual(result.duplicateTransactionIds, []);
+});
+
 test('does not match the same transaction details across different accounts', () => {
   const existing = [
     { ...transaction, id: 'old-1', accountId: 'account-b', importId: 'first' },

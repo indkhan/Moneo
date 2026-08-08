@@ -154,6 +154,34 @@ test('normalizes optional balance, status, transaction ID, and bank category fie
   assert.equal(result.transactions[0].bankCategory, 'Food');
 });
 
+test('accepts a corrected mapped transaction status', () => {
+  const csv = 'Date,Details,Amount,Currency,State\n2026-08-08,Coffee,-5.00,EUR,In progress';
+  const statusMapping = {
+    bankName: 'Example Bank',
+    accountName: 'Main',
+    dateFormat: 'YYYY-MM-DD',
+    numberFormat: 'en-US',
+    columns: {
+      bookingDate: 'Date',
+      title: 'Details',
+      amount: 'Amount',
+      currency: 'Currency',
+      status: 'State',
+    },
+  };
+
+  const failed = normalizeMappedCsv(csv, 'status.csv', statusMapping);
+  assert.equal(failed.errors[0].field, 'status');
+
+  const corrected = normalizeMappedCsv(csv, 'status.csv', statusMapping, {
+    2: { status: 'Booked' },
+  });
+
+  assert.equal(corrected.errors.length, 0);
+  assert.equal(corrected.transactions[0].status, 'booked');
+  assert.equal(corrected.transactions[0].source.rawRecord.State, 'In progress');
+});
+
 test('preserves mapped transfer purpose and interprets representative Revolut statuses', () => {
   const csv = `Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance,Account IBAN,Transfer purpose
 CARD,Current,2026-08-08,2026-08-08,REWE,-12.34,0,EUR,COMPLETED,987.66,DE111,Weekly groceries
