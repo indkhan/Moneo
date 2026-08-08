@@ -29,10 +29,25 @@ export type TransactionDraft = {
   source: RawTransactionSource;
 };
 
+export type TransactionCategoryAssignment = {
+  categoryId: string;
+  method: "built-in" | "user-rule" | "manual";
+  classifierVersion: "moneo-category-v1";
+  evidence: string[];
+};
+
+export type CategoryRule = {
+  id: string;
+  counterpartyKey: string;
+  categoryId: string;
+  createdAt: string;
+};
+
 export type MoneoTransaction = TransactionDraft & {
   id: string;
   accountId: string;
   importId: string;
+  category?: TransactionCategoryAssignment;
 };
 
 export type LocalAccount = {
@@ -108,4 +123,5 @@ export type FinanceData = {
   imports: ImportRecord[];
   transactions: MoneoTransaction[];
   mappings: SavedColumnMapping[];
+  categoryRules: CategoryRule[];
 };

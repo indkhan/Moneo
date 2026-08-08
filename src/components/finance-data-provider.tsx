@@ -18,6 +18,7 @@ const emptyData: FinanceData = {
   imports: [],
   transactions: [],
   mappings: [],
+  categoryRules: [],
 };
 
 type FinanceDataContextValue = {
