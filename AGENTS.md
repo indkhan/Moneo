@@ -32,7 +32,7 @@ Preserve the desktop sidebar/multi-column layout and mobile stacked/bottom-nav l
 ## Before coding
 
 * Read the exact Expo SDK 57 docs for any Expo/React Native API you change.
-* Inspect the existing implementation before introducing new patterns.
+* Inspect the existing implementation before introducing new patterns, prefer to solve something using what we already have over adding something new eg adding new table even tho another old table can be used with slight modification or something.
 * check `application.md` as well before something to know what other things are there 
 * Check relevant entries in `logbook_ai/` if wanted for earlier decisions and context. Do not treat the logbook as more authoritative than the current code or this guide.
 * State important assumptions when the task is ambiguous.
