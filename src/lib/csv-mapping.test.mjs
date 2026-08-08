@@ -72,7 +72,17 @@ test('creates an exact reusable signature from the parsed shape and mapping vers
 
   assert.equal(first, same);
   assert.notEqual(first, changedHeader);
-  assert.match(first, /^mapped-v1\|,/);
+  assert.match(first, /^mapped-v2\|,/);
+});
+
+test('distinguishes mappings with the same CSV headers but different columns', () => {
+  const first = mappingSignature(unknownCsv, mapping);
+  const second = mappingSignature(unknownCsv, {
+    ...mapping,
+    columns: { ...mapping.columns, title: 'Reference' },
+  });
+
+  assert.notEqual(first, second);
 });
 
 test('accepts edited normalized values for a bad row without changing its raw source', () => {

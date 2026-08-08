@@ -5,7 +5,8 @@ import {
   normalizeCurrency,
 } from './csv-import.mjs';
 
-const mappingVersion = 'mapped-v1';
+const mappingVersion = 'mapped-v2';
+const adapterId = 'mapped-v1';
 
 function mappedColumnNames(mapping) {
   return Object.values(mapping.columns).filter(Boolean);
@@ -44,9 +45,27 @@ function optionalValue(row, column) {
   return value || undefined;
 }
 
+export function legacyMappingSignature(text, mapping) {
+  const parsed = parseCsv(text);
+  return ['mapped-v1', parsed.delimiter, ...parsed.headers, mapping.dateFormat, mapping.numberFormat].join('|');
+}
+
 export function mappingSignature(text, mapping) {
   const parsed = parseCsv(text);
-  return [mappingVersion, parsed.delimiter, ...parsed.headers, mapping.dateFormat, mapping.numberFormat].join('|');
+  return [
+    mappingVersion,
+    parsed.delimiter,
+    ...parsed.headers,
+    JSON.stringify({
+      bankName: mapping.bankName,
+      accountName: mapping.accountName,
+      accountIdentifier: mapping.accountIdentifier,
+      dateFormat: mapping.dateFormat,
+      numberFormat: mapping.numberFormat,
+      constantCurrency: mapping.constantCurrency,
+      columns: mapping.columns,
+    }),
+  ].join('|');
 }
 
 export function normalizeMappedCsv(text, fileName, mapping, corrections = {}) {
@@ -144,7 +163,7 @@ export function normalizeMappedCsv(text, fileName, mapping, corrections = {}) {
   }
 
   return {
-    adapterId: mappingVersion,
+    adapterId,
     mappingSignature: mappingSignature(text, mapping),
     account: {
       institution: mapping.bankName.trim(),

@@ -1,5 +1,5 @@
 import { normalizeCommerzbankCsv, parseCsv, requiredCommerzbankHeaders } from './csv-import.mjs';
-import { mappingSignature, normalizeMappedCsv } from './csv-mapping.mjs';
+import { legacyMappingSignature, mappingSignature, normalizeMappedCsv } from './csv-mapping.mjs';
 import { sha256Hex } from './transaction-dedup.mjs';
 
 export function decodeCsvBytes(bytes) {
@@ -17,7 +17,11 @@ export function detectCsvFormat(text, fileName, savedMappings) {
     return { kind: 'normalized', result: normalizeCommerzbankCsv(text, fileName), mapping: undefined };
   }
 
-  const mapping = savedMappings.find((candidate) => mappingSignature(text, candidate) === candidate.signature);
+  const mapping = savedMappings.find((candidate) => (
+    (candidate.signature.startsWith('mapped-v1|')
+      ? legacyMappingSignature(text, candidate)
+      : mappingSignature(text, candidate)) === candidate.signature
+  ));
   if (mapping) {
     return { kind: 'normalized', result: normalizeMappedCsv(text, fileName, mapping), mapping };
   }
