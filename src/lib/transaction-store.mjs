@@ -75,16 +75,37 @@ export async function getSourceFile(database, id) {
 }
 
 export async function deleteImport(database, importId) {
-  const transaction = database.transaction(['imports', 'transactions', 'sourceFiles'], 'readwrite');
+  const transaction = database.transaction(['accounts', 'imports', 'transactions', 'sourceFiles'], 'readwrite');
   const done = transactionDone(transaction);
   const importStore = transaction.objectStore('imports');
   const transactionStore = transaction.objectStore('transactions');
-  const [importRecord, transactionIds] = await Promise.all([
+  const [importRecord, ownedTransactions, imports] = await Promise.all([
     requestResult(importStore.get(importId)),
-    requestResult(transactionStore.index('importId').getAllKeys(importId)),
+    requestResult(transactionStore.index('importId').getAll(importId)),
+    requestResult(importStore.getAll()),
   ]);
-  transactionIds.forEach((id) => transactionStore.delete(id));
+  if (!importRecord) {
+    await done;
+    return;
+  }
+  ownedTransactions.forEach((item) => {
+    const successor = imports.find((candidate) => (
+      candidate.id !== importId && candidate.duplicateTransactionIds?.includes(item.id)
+    ));
+    if (!successor) {
+      transactionStore.delete(item.id);
+      return;
+    }
+    transactionStore.put({ ...item, importId: successor.id });
+    importStore.put({
+      ...successor,
+      duplicateTransactionIds: successor.duplicateTransactionIds.filter((id) => id !== item.id),
+    });
+  });
   importStore.delete(importId);
-  if (importRecord?.sourceFileId) transaction.objectStore('sourceFiles').delete(importRecord.sourceFileId);
+  if (importRecord.sourceFileId) transaction.objectStore('sourceFiles').delete(importRecord.sourceFileId);
+  if (!imports.some((item) => item.id !== importId && item.accountId === importRecord.accountId)) {
+    transaction.objectStore('accounts').delete(importRecord.accountId);
+  }
   await done;
 }

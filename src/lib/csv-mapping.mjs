@@ -3,6 +3,7 @@ import {
   parseDateWithFormat,
   parseMoneyWithFormat,
   normalizeCurrency,
+  normalizeTransactionStatus,
 } from './csv-import.mjs';
 
 const mappingVersion = 'mapped-v2';
@@ -52,6 +53,9 @@ export function legacyMappingSignature(text, mapping) {
 
 export function mappingSignature(text, mapping) {
   const parsed = parseCsv(text);
+  const accountIdentifiers = mapping.columns.accountIdentifier
+    ? [...new Set(parsed.rows.map((row) => valueAt(row.rawRecord, mapping.columns.accountIdentifier)).filter(Boolean))].sort()
+    : [];
   return [
     mappingVersion,
     parsed.delimiter,
@@ -64,6 +68,7 @@ export function mappingSignature(text, mapping) {
       numberFormat: mapping.numberFormat,
       constantCurrency: mapping.constantCurrency,
       columns: mapping.columns,
+      accountIdentifiers,
     }),
   ].join('|');
 }
@@ -71,8 +76,12 @@ export function mappingSignature(text, mapping) {
 export function normalizeMappedCsv(text, fileName, mapping, corrections = {}) {
   const parsed = parseCsv(text);
   validateMapping(parsed, mapping);
+  const accountIdentifiers = mapping.columns.accountIdentifier
+    ? [...new Set(parsed.rows.map((row) => valueAt(row.rawRecord, mapping.columns.accountIdentifier)).filter(Boolean))]
+    : [];
+  if (accountIdentifiers.length > 1) throw new Error('CSV contains multiple accounts');
   const transactions = [];
-  const errors = [];
+  const errors = parsed.errors.map((error) => ({ ...error }));
 
   for (const source of parsed.rows) {
     const row = source.rawRecord;
@@ -120,11 +129,9 @@ export function normalizeMappedCsv(text, fileName, mapping, corrections = {}) {
       const bankTransactionId = optionalValue(row, mapping.columns.transactionId);
       const transactionType = optionalValue(row, mapping.columns.transactionType);
       const bankCategory = optionalValue(row, mapping.columns.bankCategory);
-      const rawStatus = optionalValue(row, mapping.columns.status)?.toLowerCase();
-      const status = rawStatus === 'booked' || rawStatus === 'completed' ? 'booked'
-        : rawStatus === 'pending' ? 'pending'
-          : rawStatus === 'reverted' || rawStatus === 'reversed' ? 'reverted'
-            : undefined;
+      const transferPurpose = optionalValue(row, mapping.columns.purpose);
+      let status;
+      try { status = normalizeTransactionStatus(optionalValue(row, mapping.columns.status)); } catch (error) { throw { field: 'status', message: error.message }; }
       let balanceAfterMinor;
       const rawBalance = correction.balance || valueAt(row, mapping.columns.balance);
       if (rawBalance) {
@@ -144,6 +151,7 @@ export function normalizeMappedCsv(text, fileName, mapping, corrections = {}) {
         description,
         ...(sender ? { sender } : {}),
         ...(recipient ? { recipient } : {}),
+        ...(transferPurpose ? { transferPurpose } : {}),
         references: reference ? [{ type: 'bank', value: reference }] : [],
         ...(bankTransactionId ? { bankTransactionId } : {}),
         ...(transactionType ? { transactionType } : {}),
@@ -168,7 +176,9 @@ export function normalizeMappedCsv(text, fileName, mapping, corrections = {}) {
     account: {
       institution: mapping.bankName.trim(),
       displayName: mapping.accountName.trim(),
-      ...(mapping.accountIdentifier?.trim() ? { identifier: mapping.accountIdentifier.trim() } : {}),
+      ...(accountIdentifiers[0] || mapping.accountIdentifier?.trim()
+        ? { identifier: accountIdentifiers[0] || mapping.accountIdentifier.trim() }
+        : {}),
     },
     transactions,
     errors,

@@ -19,6 +19,7 @@ export type TransactionDraft = {
   description: string;
   sender?: string;
   recipient?: string;
+  transferPurpose?: string;
   references: TransactionReference[];
   bankTransactionId?: string;
   bankCategory?: string;
@@ -72,6 +73,8 @@ export type ColumnMapping = {
     status?: string;
     balance?: string;
     bankCategory?: string;
+    accountIdentifier?: string;
+    purpose?: string;
   };
 };
 
@@ -92,6 +95,7 @@ export type ImportRecord = {
   importedAt: string;
   importedCount: number;
   duplicateCount: number;
+  duplicateTransactionIds?: string[];
   skippedRowNumbers: number[];
 };
 

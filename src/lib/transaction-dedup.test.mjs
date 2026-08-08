@@ -51,6 +51,7 @@ test('skips only matching occurrences from overlapping statements', () => {
   const result = deduplicateTransactions(existing, incoming, 'account-a');
 
   assert.equal(result.skipped.length, 2);
+  assert.deepEqual(result.duplicateTransactionIds, ['old-1', 'old-2']);
   assert.equal(result.accepted.length, 1);
   assert.equal(result.accepted[0].source.rowNumber, 4);
 });

@@ -77,16 +77,25 @@ export function parseCsv(text) {
 
   const headers = selected.records[0].values.map((header) => header.trim());
   if (new Set(headers).size !== headers.length) throw new Error('CSV headers must be unique');
-  const rows = selected.records.slice(1).map((record) => {
-    if (record.values.length !== headers.length) {
-      throw new Error(`CSV row ${record.rowNumber} has ${record.values.length} columns; expected ${headers.length}`);
-    }
-    return {
+  const errors = selected.records.slice(1).filter((record) => record.values.length !== headers.length).map((record) => ({
+    rowNumber: record.rowNumber,
+    field: 'row',
+    message: `CSV row ${record.rowNumber} has ${record.values.length} columns; expected ${headers.length}`,
+  }));
+  const rows = selected.records.slice(1).filter((record) => record.values.length === headers.length).map((record) => ({
       rowNumber: record.rowNumber,
       rawRecord: Object.fromEntries(headers.map((header, index) => [header, record.values[index] ?? ''])),
-    };
-  });
-  return { delimiter: selected.delimiter, headers, rows };
+    }));
+  return { delimiter: selected.delimiter, headers, rows, errors };
+}
+
+export function normalizeTransactionStatus(value) {
+  const status = value?.trim().toLowerCase();
+  if (!status) return undefined;
+  if (['booked', 'completed', 'gebucht', 'abgeschlossen'].includes(status)) return 'booked';
+  if (['pending', 'vorgemerkt', 'ausstehend'].includes(status)) return 'pending';
+  if (['reverted', 'reversed', 'storniert', 'zurueckgebucht', 'zurückgebucht'].includes(status)) return 'reverted';
+  throw new Error(`Transaction status is not supported: ${value}`);
 }
 
 function minorUnitFor(currency) {
@@ -201,7 +210,7 @@ export function normalizeCommerzbankCsv(text, fileName, corrections = {}) {
   if (missingHeader) throw new Error(`Commerzbank column is missing: ${missingHeader}`);
 
   const transactions = [];
-  const errors = [];
+  const errors = [...parsed.errors];
   for (const source of parsed.rows) {
     const row = source.rawRecord;
     const correction = corrections[source.rowNumber] ?? {};
@@ -219,6 +228,8 @@ export function normalizeCommerzbankCsv(text, fileName, corrections = {}) {
       const sender = row.Sender.trim() || undefined;
       const recipient = row.Recipient.trim() || undefined;
       const transferPurpose = row['Transfer purpose'].trim();
+      let status;
+      try { status = normalizeTransactionStatus(row.Status); } catch (error) { throw { field: 'status', message: error.message }; }
       const description = (correction.description || row['Booking text']).trim();
       const title = (correction.title || (outgoing ? recipient || sender : sender || recipient) || transferPurpose || description).trim();
       if (!title) throw { field: 'title', message: 'Title or description is required' };
@@ -232,9 +243,11 @@ export function normalizeCommerzbankCsv(text, fileName, corrections = {}) {
         description,
         ...(sender ? { sender } : {}),
         ...(recipient ? { recipient } : {}),
+        ...(transferPurpose ? { transferPurpose } : {}),
         references: extractReferences(description),
         ...(row.Category.trim() ? { bankCategory: row.Category.trim() } : {}),
         ...(row['Transaction type'].trim() ? { transactionType: row['Transaction type'].trim() } : {}),
+        ...(status ? { status } : {}),
         source: { fileName, rowNumber: source.rowNumber, rawRecord: row },
       });
     } catch (error) {

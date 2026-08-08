@@ -27,6 +27,18 @@ test('summarizes income and outflow separately for every currency', () => {
   ]);
 });
 
+test('excludes pending and reverted transactions from cash flow', () => {
+  const transactions = [
+    { ...base, id: '1', accountId: 'a', bookingDate: '2026-08-01', amountMinor: '10000', currency: 'EUR', status: 'booked' },
+    { ...base, id: '2', accountId: 'a', bookingDate: '2026-08-02', amountMinor: '-2500', currency: 'EUR', status: 'pending' },
+    { ...base, id: '3', accountId: 'a', bookingDate: '2026-08-03', amountMinor: '-5000', currency: 'EUR', status: 'reverted' },
+  ];
+
+  assert.deepEqual(summarizeByCurrency(transactions), [
+    { currency: 'EUR', currencyMinorUnit: 2, incomeMinor: '10000', outflowMinor: '0', netMinor: '10000', count: 1 },
+  ]);
+});
+
 test('uses only the latest source-backed balance for each account', () => {
   const transactions = [
     { ...base, id: '1', accountId: 'a', bookingDate: '2026-08-01', amountMinor: '-100', currency: 'EUR', balanceAfterMinor: '9000' },

@@ -153,3 +153,42 @@ test('normalizes optional balance, status, transaction ID, and bank category fie
   assert.equal(result.transactions[0].bankTransactionId, 'TX-1');
   assert.equal(result.transactions[0].bankCategory, 'Food');
 });
+
+test('preserves mapped transfer purpose and interprets representative Revolut statuses', () => {
+  const csv = `Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance,Account IBAN,Transfer purpose
+CARD,Current,2026-08-08,2026-08-08,REWE,-12.34,0,EUR,COMPLETED,987.66,DE111,Weekly groceries
+TRANSFER,Current,2026-08-09,,Rent,-700,0,EUR,PENDING,287.66,DE111,August rent`;
+  const mapping = {
+    bankName: 'Revolut',
+    accountName: 'Current',
+    dateFormat: 'YYYY-MM-DD',
+    numberFormat: 'en-US',
+    columns: {
+      bookingDate: 'Started Date',
+      title: 'Description',
+      amount: 'Amount',
+      currency: 'Currency',
+      status: 'State',
+      balance: 'Balance',
+      accountIdentifier: 'Account IBAN',
+      purpose: 'Transfer purpose',
+    },
+  };
+
+  const result = normalizeMappedCsv(csv, 'revolut.csv', mapping);
+
+  assert.equal(result.account.identifier, 'DE111');
+  assert.deepEqual(result.transactions.map((transaction) => transaction.status), ['booked', 'pending']);
+  assert.equal(result.transactions[1].transferPurpose, 'August rent');
+  assert.equal(result.transactions[1].source.rawRecord['Transfer purpose'], 'August rent');
+});
+
+test('rejects a mapped file containing multiple account identifiers', () => {
+  const csv = 'Date,Title,Amount,Currency,IBAN\n2026-08-08,Coffee,-5,EUR,DE111\n2026-08-09,Tea,-2,EUR,DE222';
+  const mapping = {
+    bankName: 'Example', accountName: 'Main', dateFormat: 'YYYY-MM-DD', numberFormat: 'en-US',
+    columns: { bookingDate: 'Date', title: 'Title', amount: 'Amount', currency: 'Currency', accountIdentifier: 'IBAN' },
+  };
+
+  assert.throws(() => normalizeMappedCsv(csv, 'mixed.csv', mapping), /multiple accounts/);
+});

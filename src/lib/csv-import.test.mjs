@@ -20,6 +20,16 @@ test('parses BOM, semicolon records, quoted fields, and source row numbers', () 
   assert.equal(parsed.rows[0].rawRecord.Text, 'Coffee; breakfast');
 });
 
+test('keeps valid CSV rows when another row has the wrong column count', () => {
+  const parsed = parseCsv('Date,Text,Amount\n2026-08-08,Coffee,-4.20\nmalformed,row\n2026-08-09,Tea,-2.10');
+
+  assert.equal(parsed.rows.length, 2);
+  assert.deepEqual(parsed.errors, [
+    { rowNumber: 3, field: 'row', message: 'CSV row 3 has 2 columns; expected 3' },
+  ]);
+  assert.equal(parsed.rows[1].rawRecord.Text, 'Tea');
+});
+
 test('parses German money exactly for currencies with different minor units', () => {
   assert.deepEqual(parseMoney('-1.234,56', 'EUR'), {
     amountMinor: '-123456',
@@ -71,6 +81,21 @@ test('normalizes the verified Commerzbank shape without losing source data', () 
   assert.equal(result.transactions[1].title, 'Example Employer');
   assert.equal(result.transactions[2].references[0].type, 'mandate');
   assert.equal(result.transactions[0].source.rawRecord['Transfer purpose'], 'Dinner');
+  assert.equal(result.transactions[0].transferPurpose, 'Dinner');
+});
+
+test('normalizes recognized Commerzbank status without changing raw source data', () => {
+  const csv = commerzbankCsv.replace(
+    'Transfer purpose\n',
+    'Transfer purpose;Status\n',
+  ).replace(/Dinner\n/, 'Dinner;Vorgemerkt\n')
+    .replace(/August salary\n/, 'August salary;Gebucht\n')
+    .replace(/Electricity$/, 'Electricity;Storniert');
+
+  const result = normalizeCommerzbankCsv(csv, 'statement.csv');
+
+  assert.deepEqual(result.transactions.map((transaction) => transaction.status), ['pending', 'booked', 'reverted']);
+  assert.equal(result.transactions[0].source.rawRecord.Status, 'Vorgemerkt');
 });
 
 test('returns row errors instead of inventing required Commerzbank values', () => {

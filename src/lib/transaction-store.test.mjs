@@ -93,7 +93,7 @@ test('rejects an exact file hash without leaving partial records', async () => {
   database.close();
 });
 
-test('deletes one import, its transactions, and its retained source file', async () => {
+test('deletes the account when its last import is deleted', async () => {
   const database = await openMoneoDatabase('moneo-test-delete', new IDBFactory());
   await saveImport(database, samplePayload());
 
@@ -103,7 +103,61 @@ test('deletes one import, its transactions, and its retained source file', async
   assert.equal(data.imports.length, 0);
   assert.equal(data.transactions.length, 0);
   assert.equal(await getSourceFile(database, 'file-one'), undefined);
-  assert.equal(data.accounts.length, 1);
+  assert.equal(data.accounts.length, 0);
   assert.equal(data.mappings.length, 1);
+  database.close();
+});
+
+test('keeps an account and mapping while another import still belongs to it', async () => {
+  const database = await openMoneoDatabase('moneo-test-delete-shared-account', new IDBFactory());
+  await saveImport(database, samplePayload('one'));
+  const second = samplePayload('two');
+  second.importRecord.fileHash = 'different-hash';
+  await saveImport(database, second);
+
+  await deleteImport(database, 'import-one');
+
+  const data = await loadFinanceData(database);
+  assert.deepEqual(data.imports.map(({ id }) => id), ['import-two']);
+  assert.deepEqual(data.transactions.map(({ id }) => id), ['transaction-two']);
+  assert.equal(await getSourceFile(database, 'file-one'), undefined);
+  assert.notEqual(await getSourceFile(database, 'file-two'), undefined);
+  assert.deepEqual(data.accounts.map(({ id }) => id), ['account-1']);
+  assert.equal(data.mappings.length, 1);
+  database.close();
+});
+
+test('ignores a missing import without deleting unrelated data', async () => {
+  const database = await openMoneoDatabase('moneo-test-delete-missing', new IDBFactory());
+  await saveImport(database, samplePayload());
+
+  await deleteImport(database, 'missing-import');
+
+  const data = await loadFinanceData(database);
+  assert.deepEqual(data.imports.map(({ id }) => id), ['import-one']);
+  assert.deepEqual(data.transactions.map(({ id }) => id), ['transaction-one']);
+  assert.notEqual(await getSourceFile(database, 'file-one'), undefined);
+  assert.deepEqual(data.accounts.map(({ id }) => id), ['account-1']);
+  assert.equal(data.mappings.length, 1);
+  database.close();
+});
+
+test('keeps a transaction when a retained overlapping import also contained it', async () => {
+  const database = await openMoneoDatabase('moneo-test-delete-overlap', new IDBFactory());
+  await saveImport(database, samplePayload('one'));
+  const overlapping = samplePayload('two');
+  overlapping.importRecord.fileHash = 'different-hash';
+  overlapping.importRecord.duplicateTransactionIds = ['transaction-one'];
+  overlapping.transactions = [];
+  await saveImport(database, overlapping);
+
+  await deleteImport(database, 'import-one');
+
+  const data = await loadFinanceData(database);
+  assert.deepEqual(data.imports.map(({ id }) => id), ['import-two']);
+  assert.equal(data.transactions.length, 1);
+  assert.equal(data.transactions[0].id, 'transaction-one');
+  assert.equal(data.transactions[0].importId, 'import-two');
+  assert.deepEqual(data.imports[0].duplicateTransactionIds, []);
   database.close();
 });

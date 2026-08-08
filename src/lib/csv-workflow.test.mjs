@@ -70,13 +70,37 @@ test('automatically maps an unambiguous generic CSV shape', () => {
 });
 
 test('reuses a saved mapping only when its exact signature matches', () => {
-  const saved = { ...mapping, signature: mappingSignature(unknownCsv, mapping) };
-  const detected = detectCsvFormat(unknownCsv, 'unknown.csv', [saved]);
-  const changed = detectCsvFormat(unknownCsv.replace('Details', 'Description'), 'unknown.csv', [saved]);
+  const identifiedCsv = `${unknownCsv.replace('\n', ',IBAN\n')},DE111`;
+  const identifiedMapping = { ...mapping, columns: { ...mapping.columns, accountIdentifier: 'IBAN' } };
+  const saved = { ...identifiedMapping, signature: mappingSignature(identifiedCsv, identifiedMapping) };
+  const detected = detectCsvFormat(identifiedCsv, 'unknown.csv', [saved]);
+  const changed = detectCsvFormat(identifiedCsv.replace('Details', 'Description'), 'unknown.csv', [saved]);
 
   assert.equal(detected.kind, 'normalized');
   assert.equal(detected.result.adapterId, 'mapped-v1');
   assert.equal(changed.kind, 'auto-mapping');
+});
+
+test('does not reuse a same-schema mapping without a CSV account identifier', () => {
+  const saved = { ...mapping, signature: mappingSignature(unknownCsv, mapping) };
+
+  const detected = detectCsvFormat(unknownCsv, 'other-account.csv', [saved]);
+
+  assert.equal(detected.kind, 'auto-mapping');
+});
+
+test('separates same-schema mappings by the account identifier in each file', () => {
+  const first = 'Date,Details,Amount,Currency,IBAN\n2026-08-08,Coffee,-5.00,EUR,DE111';
+  const second = first.replace('DE111', 'DE222');
+  const identifiedMapping = {
+    ...mapping,
+    columns: { ...mapping.columns, accountIdentifier: 'IBAN' },
+  };
+  const saved = { ...identifiedMapping, signature: mappingSignature(first, identifiedMapping) };
+
+  assert.equal(detectCsvFormat(first, 'first.csv', [saved]).kind, 'normalized');
+  assert.notEqual(mappingSignature(first, identifiedMapping), mappingSignature(second, identifiedMapping));
+  assert.notEqual(detectCsvFormat(second, 'second.csv', [saved]).kind, 'normalized');
 });
 
 test('creates a stable opaque local account ID from bank identity', async () => {

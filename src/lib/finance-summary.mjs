@@ -1,6 +1,7 @@
 export function summarizeByCurrency(transactions) {
   const summaries = new Map();
   for (const transaction of transactions) {
+    if (transaction.status && transaction.status !== 'booked') continue;
     const summary = summaries.get(transaction.currency) ?? {
       currency: transaction.currency,
       currencyMinorUnit: transaction.currencyMinorUnit,

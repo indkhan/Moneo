@@ -17,7 +17,7 @@ export function detectCsvFormat(text, fileName, savedMappings) {
     return { kind: 'normalized', result: normalizeCommerzbankCsv(text, fileName), mapping: undefined };
   }
 
-  const mapping = savedMappings.find((candidate) => (
+  const mapping = savedMappings.find((candidate) => candidate.columns.accountIdentifier && (
     (candidate.signature.startsWith('mapped-v1|')
       ? legacyMappingSignature(text, candidate)
       : mappingSignature(text, candidate)) === candidate.signature
@@ -75,8 +75,11 @@ export function suggestColumnMapping(headers) {
     reference: ['reference', 'referenz', 'kundenreferenz'],
     transactionId: ['transaction id', 'transactionid', 'transaktionsnummer'],
     transactionType: ['transaction type', 'type', 'buchungsart'],
+    status: ['status', 'state', 'buchungsstatus'],
     balance: ['balance', 'saldo', 'kontostand'],
     bankCategory: ['category', 'kategorie'],
+    accountIdentifier: ['account iban', 'iban', 'account number', 'kontonummer'],
+    purpose: ['purpose', 'transfer purpose', 'remittance'],
   };
   const normalized = new Map(headers.map((header) => [header.trim().toLowerCase(), header]));
   return Object.fromEntries(Object.entries(aliases).flatMap(([field, choices]) => {

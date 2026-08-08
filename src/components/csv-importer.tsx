@@ -200,6 +200,8 @@ function MappingForm({
     ["status", "Status"],
     ["balance", "Balance after"],
     ["bankCategory", "Bank category"],
+    ["accountIdentifier", "Account identifier"],
+    ["purpose", "Transfer purpose"],
   ];
 
   return (
@@ -404,6 +406,7 @@ export function CsvImporter() {
           importedAt: new Date().toISOString(),
           importedCount: transactions.length,
           duplicateCount: duplicateResult.skipped.length,
+          duplicateTransactionIds: duplicateResult.duplicateTransactionIds,
           skippedRowNumbers,
         },
         transactions,

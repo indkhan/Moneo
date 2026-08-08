@@ -24,20 +24,22 @@ export function deduplicateTransactions(existing, incoming, accountId) {
   const remainingExisting = new Map();
   for (const transaction of existing) {
     const key = transactionFingerprint(transaction.accountId, transaction);
-    remainingExisting.set(key, (remainingExisting.get(key) ?? 0) + 1);
+    remainingExisting.set(key, [...(remainingExisting.get(key) ?? []), transaction.id]);
   }
 
   const accepted = [];
   const skipped = [];
+  const duplicateTransactionIds = [];
   for (const transaction of incoming) {
     const key = transactionFingerprint(accountId, transaction);
-    const remaining = remainingExisting.get(key) ?? 0;
-    if (remaining > 0) {
+    const remaining = remainingExisting.get(key) ?? [];
+    if (remaining.length > 0) {
       skipped.push(transaction);
-      remainingExisting.set(key, remaining - 1);
+      duplicateTransactionIds.push(remaining[0]);
+      remainingExisting.set(key, remaining.slice(1));
     } else {
       accepted.push(transaction);
     }
   }
-  return { accepted, skipped };
+  return { accepted, skipped, duplicateTransactionIds };
 }
