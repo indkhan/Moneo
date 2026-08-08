@@ -75,3 +75,33 @@ export type ColumnMapping = {
   };
 };
 
+export type SourceFileRecord = {
+  id: string;
+  name: string;
+  type: string;
+  blob: Blob;
+};
+
+export type ImportRecord = {
+  id: string;
+  accountId: string;
+  sourceFileId: string;
+  fileName: string;
+  fileHash: string;
+  adapterId: string;
+  importedAt: string;
+  importedCount: number;
+  duplicateCount: number;
+  skippedRowNumbers: number[];
+};
+
+export type SavedColumnMapping = ColumnMapping & {
+  signature: string;
+};
+
+export type FinanceData = {
+  accounts: LocalAccount[];
+  imports: ImportRecord[];
+  transactions: MoneoTransaction[];
+  mappings: SavedColumnMapping[];
+};

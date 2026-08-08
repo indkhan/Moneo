@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "fake-indexeddb": "^6.2.4",
     "typescript": "~6.0.3"
   },
   "scripts": {
