@@ -21,7 +21,17 @@ import Svg, {
 } from "react-native-svg";
 import { navigationItems } from "@/lib/navigation.mjs";
 import { chartPoints, pointAtIndex, tooltipLeft } from "@/lib/net-worth-chart";
-import { isDesktopLayout } from "@/lib/responsive-layout";
+import {
+  hydrationSafeWebWidth,
+  isDesktopLayout,
+} from "@/lib/responsive-layout";
+import { CsvImporter } from "@/components/csv-importer";
+import { useFinanceData } from "@/components/finance-data-provider";
+import {
+  formatMinorMoney,
+  recentTransactions,
+} from "@/lib/finance-transactions.mjs";
+import type { MoneoTransaction } from "@/lib/transaction-types";
 
 type Page =
   | "index"
@@ -42,7 +52,9 @@ function useWindowDimensions() {
     return () => window.removeEventListener("resize", syncWidth);
   }, []);
   const width =
-    Platform.OS === "web" ? webWidth || dimensions.width : dimensions.width;
+    Platform.OS === "web"
+      ? hydrationSafeWebWidth(webWidth)
+      : dimensions.width;
   return {
     ...dimensions,
     width: isDesktopLayout(width) ? 1024 : width,
@@ -321,36 +333,109 @@ function Budgets() {
     </Panel>
   );
 }
-function Transactions({ limit = 6 }: { limit?: number }) {
+function Transactions({ limit }: { limit?: number }) {
+  const { data: financeData } = useFinanceData();
+  const [selectedId, setSelectedId] = useState<string>();
+  const transactions = recentTransactions(
+    financeData.transactions,
+    limit ?? financeData.transactions.length,
+  ) as MoneoTransaction[];
   return (
     <Panel>
-      <Title title="Transactions" hint="Auto-categorised" action="See all" />
-      {data.transactions.slice(0, limit).map((t) => (
-        <View key={t[0]} style={styles.transaction}>
-          <View style={styles.merchant}>
-            <Text style={styles.merchantText}>
-              {(t[0] as string).slice(0, 2).toUpperCase()}
-            </Text>
-          </View>
-          <View style={styles.grow}>
-            <Text style={styles.rowTitle}>{t[0]}</Text>
-            <Text style={styles.hint}>{t[1]}</Text>
-          </View>
-          <View>
-            <Text
-              style={[
-                (t[2] as string).startsWith("+")
-                  ? styles.greenText
-                  : styles.amount,
-                styles.amount,
-              ]}
+      <Title
+        title="Transactions"
+        hint={transactions.length ? `${financeData.transactions.length} stored locally` : "No bank data imported"}
+      />
+      {!transactions.length && (
+        <Text style={styles.emptyText}>Import a bank CSV to see exact transactions here.</Text>
+      )}
+      {transactions.map((transaction) => {
+        const account = financeData.accounts.find(
+          (item) => item.id === transaction.accountId,
+        );
+        const selected = selectedId === transaction.id;
+        return (
+          <View key={transaction.id}>
+            <Pressable
+              onPress={() => setSelectedId(selected ? undefined : transaction.id)}
+              style={styles.transaction}
             >
-              {t[2]}
-            </Text>
-            <Text style={[styles.hint, styles.right]}>{t[3]}</Text>
+              <View style={styles.merchant}>
+                <Text style={styles.merchantText}>
+                  {transaction.title.slice(0, 2).toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.grow}>
+                <Text style={styles.rowTitle}>{transaction.title}</Text>
+                <Text style={styles.hint} numberOfLines={1}>
+                  {transaction.transactionType || "Bank transaction"}
+                  {account ? ` · ${account.displayName}` : ""}
+                </Text>
+              </View>
+              <View>
+                <Text
+                  style={[
+                    transaction.amountMinor.startsWith("-")
+                      ? styles.amount
+                      : styles.greenText,
+                    styles.amount,
+                  ]}
+                >
+                  {formatMinorMoney(
+                    transaction.amountMinor,
+                    transaction.currency,
+                    transaction.currencyMinorUnit,
+                  )}
+                </Text>
+                <Text style={[styles.hint, styles.right]}>
+                  {transaction.bookingDate.split("-").reverse().join(".")}
+                </Text>
+              </View>
+            </Pressable>
+            {selected && (
+              <View style={styles.transactionDetail}>
+                <Text style={styles.detailLabel}>Original bank description</Text>
+                <Text style={styles.detailValue}>{transaction.description}</Text>
+                <View style={styles.detailGrid}>
+                  {transaction.valueDate && (
+                    <View style={styles.detailItem}>
+                      <Text style={styles.detailLabel}>Value date</Text>
+                      <Text style={styles.detailValue}>{transaction.valueDate}</Text>
+                    </View>
+                  )}
+                  {transaction.sender && (
+                    <View style={styles.detailItem}>
+                      <Text style={styles.detailLabel}>Sender</Text>
+                      <Text style={styles.detailValue}>{transaction.sender}</Text>
+                    </View>
+                  )}
+                  {transaction.recipient && (
+                    <View style={styles.detailItem}>
+                      <Text style={styles.detailLabel}>Recipient</Text>
+                      <Text style={styles.detailValue}>{transaction.recipient}</Text>
+                    </View>
+                  )}
+                  {transaction.bankCategory && (
+                    <View style={styles.detailItem}>
+                      <Text style={styles.detailLabel}>Bank category</Text>
+                      <Text style={styles.detailValue}>{transaction.bankCategory}</Text>
+                    </View>
+                  )}
+                </View>
+                {transaction.references.map((reference) => (
+                  <View key={`${reference.type}-${reference.value}`} style={styles.referenceRow}>
+                    <Text style={styles.detailLabel}>{reference.type}</Text>
+                    <Text selectable style={[styles.detailValue, styles.grow]}>{reference.value}</Text>
+                  </View>
+                ))}
+                <Text style={styles.sourceText}>
+                  Source: {transaction.source.fileName} · row {transaction.source.rowNumber}
+                </Text>
+              </View>
+            )}
           </View>
-        </View>
-      ))}
+        );
+      })}
     </Panel>
   );
 }
@@ -590,17 +675,20 @@ function AIWorkspace({ compact = false }: { compact?: boolean }) {
 
 export function FinanceWorkspace({ page }: { page: Page }) {
   const router = useRouter();
+  const { data: financeData } = useFinanceData();
   const { width } = useWindowDimensions();
-  const desktop =
-    Platform.OS === "web" && typeof document !== "undefined"
-      ? document.documentElement.clientWidth >= 1024
-      : width >= 1024;
+  const desktop = width >= 1024;
   const title: Record<Page, [string, string]> = {
     index: [
       "Good morning, Mara",
       "Saturday, 8 August · everything is up to date",
     ],
-    transactions: ["Transactions", "412 this month across 4 accounts"],
+    transactions: [
+      "Transactions",
+      financeData.transactions.length
+        ? `${financeData.transactions.length} stored locally across ${financeData.accounts.length} account${financeData.accounts.length === 1 ? "" : "s"}`
+        : "Import a bank CSV to begin",
+    ],
     budgets: ["Budgets", "August · €1,172 of €1,550 used"],
     investments: ["Investments", "Portfolio €62,190.83 · +4.7% this month"],
     recurring: [
@@ -616,8 +704,7 @@ export function FinanceWorkspace({ page }: { page: Page }) {
       <AIWorkspace compact={!desktop} />
     ) : page === "transactions" ? (
       <View style={[styles.contentGrid, !desktop && styles.mobileStack]}>
-        <Transactions limit={8} />
-        <Spending />
+        <Transactions />
       </View>
     ) : page === "budgets" ? (
       <View style={[styles.contentGrid, !desktop && styles.mobileStack]}>
@@ -740,6 +827,7 @@ export function FinanceWorkspace({ page }: { page: Page }) {
               !desktop && styles.mobileContent,
             ]}
           >
+            {(page === "index" || page === "transactions") && <CsvImporter />}
             {pageContent}
           </ScrollView>
         </View>
@@ -1058,6 +1146,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: "#edf0ec",
   },
+  emptyText: { color: C.muted, fontSize: 13, paddingVertical: 12 },
+  transactionDetail: {
+    backgroundColor: "#f7f9f6",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 8,
+    gap: 7,
+  },
+  detailGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  detailItem: { minWidth: 150, flex: 1 },
+  detailLabel: { color: C.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase" },
+  detailValue: { color: C.ink, fontSize: 12, lineHeight: 17 },
+  referenceRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
+  sourceText: { color: C.muted, fontSize: 10, marginTop: 3 },
   merchant: {
     height: 36,
     width: 36,

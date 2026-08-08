@@ -92,6 +92,20 @@ export function normalizeMappedCsv(text, fileName, mapping, corrections = {}) {
       const bankTransactionId = optionalValue(row, mapping.columns.transactionId);
       const transactionType = optionalValue(row, mapping.columns.transactionType);
       const bankCategory = optionalValue(row, mapping.columns.bankCategory);
+      const rawStatus = optionalValue(row, mapping.columns.status)?.toLowerCase();
+      const status = rawStatus === 'booked' || rawStatus === 'completed' ? 'booked'
+        : rawStatus === 'pending' ? 'pending'
+          : rawStatus === 'reverted' || rawStatus === 'reversed' ? 'reverted'
+            : undefined;
+      let balanceAfterMinor;
+      const rawBalance = correction.balance || valueAt(row, mapping.columns.balance);
+      if (rawBalance) {
+        try {
+          balanceAfterMinor = parseMoneyWithFormat(rawBalance, currency, mapping.numberFormat).amountMinor;
+        } catch (error) {
+          throw { field: 'balance', message: error.message };
+        }
+      }
 
       transactions.push({
         bookingDate,
@@ -106,6 +120,8 @@ export function normalizeMappedCsv(text, fileName, mapping, corrections = {}) {
         ...(bankTransactionId ? { bankTransactionId } : {}),
         ...(transactionType ? { transactionType } : {}),
         ...(bankCategory ? { bankCategory } : {}),
+        ...(status ? { status } : {}),
+        ...(balanceAfterMinor ? { balanceAfterMinor } : {}),
         source: { fileName, rowNumber: source.rowNumber, rawRecord: row },
       });
     } catch (error) {

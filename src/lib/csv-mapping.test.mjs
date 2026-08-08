@@ -99,3 +99,28 @@ test('rejects mappings that omit required columns instead of guessing', () => {
     /Mapped column is missing: Missing/,
   );
 });
+
+test('normalizes optional balance, status, transaction ID, and bank category fields', () => {
+  const csv = `Date,Details,Amount,Currency,Balance,State,ID,Category\n2026-08-08,Coffee,-5.00,EUR,995.00,BOOKED,TX-1,Food`;
+  const result = normalizeMappedCsv(csv, 'optional.csv', {
+    bankName: 'Example Bank',
+    accountName: 'Main',
+    dateFormat: 'YYYY-MM-DD',
+    numberFormat: 'en-US',
+    columns: {
+      bookingDate: 'Date',
+      title: 'Details',
+      amount: 'Amount',
+      currency: 'Currency',
+      balance: 'Balance',
+      status: 'State',
+      transactionId: 'ID',
+      bankCategory: 'Category',
+    },
+  });
+
+  assert.equal(result.transactions[0].balanceAfterMinor, '99500');
+  assert.equal(result.transactions[0].status, 'booked');
+  assert.equal(result.transactions[0].bankTransactionId, 'TX-1');
+  assert.equal(result.transactions[0].bankCategory, 'Food');
+});
