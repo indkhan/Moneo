@@ -4,7 +4,7 @@ Expo/React Native personal-finance prototype for iOS, Android, and web. Uses Exp
 
 - Routes in `src/app/`: Dashboard, Transactions, Budgets, Investments, Recurring, and AI Workspace.
 - Desktop (>=1024px): sidebar + multi-column workspace. Mobile: stacked content + bottom navigation.
-- Web users can import Commerzbank CSV files automatically or map unknown-bank columns once. Imports preserve raw rows, references, currencies, original files, and row-level errors.
+- Web users can import complete Commerzbank CSV files automatically. Clear generic CSV shapes have columns prefilled; ambiguous files use manual mapping. Imports validate corrected dates and currencies and preserve raw rows, references, original files, and row-level errors.
 - Accounts, import history, mappings, files, and normalized transactions stay locally in IndexedDB. Exact files and overlapping transactions are skipped with visible counts.
 - Dashboard cash flow is calculated per currency without conversion; transaction details show normalized and original bank fields. Sample financial cards were removed.
 - Bad rows can be corrected, skipped explicitly, or cancelled before storage. Import deletion removes its source file and transactions.
