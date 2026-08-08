@@ -188,7 +188,7 @@ const requiredCommerzbankHeaders = [
   'Transfer purpose',
 ];
 
-export function normalizeCommerzbankCsv(text, fileName) {
+export function normalizeCommerzbankCsv(text, fileName, corrections = {}) {
   const parsed = parseCsv(text);
   const missingHeader = requiredCommerzbankHeaders.find((header) => !parsed.headers.includes(header));
   if (missingHeader) throw new Error(`Commerzbank column is missing: ${missingHeader}`);
@@ -197,22 +197,23 @@ export function normalizeCommerzbankCsv(text, fileName) {
   const errors = [];
   for (const source of parsed.rows) {
     const row = source.rawRecord;
+    const correction = corrections[source.rowNumber] ?? {};
     try {
-      const currency = row.Currency.trim().toUpperCase();
+      const currency = (correction.currency || row.Currency).trim().toUpperCase();
       if (!currency) throw { field: 'currency', message: 'Currency is required' };
       let bookingDate;
       let valueDate;
       let money;
-      try { bookingDate = parseDate(row['Booking date']); } catch (error) { throw { field: 'bookingDate', message: error.message }; }
-      try { valueDate = row['Value date'].trim() ? parseDate(row['Value date']) : undefined; } catch (error) { throw { field: 'valueDate', message: error.message }; }
-      try { money = parseMoney(row.Amount, currency); } catch (error) { throw { field: 'amount', message: error.message }; }
+      try { bookingDate = correction.bookingDate || parseDate(row['Booking date']); } catch (error) { throw { field: 'bookingDate', message: error.message }; }
+      try { valueDate = correction.valueDate || (row['Value date'].trim() ? parseDate(row['Value date']) : undefined); } catch (error) { throw { field: 'valueDate', message: error.message }; }
+      try { money = parseMoney(correction.amount || row.Amount, currency); } catch (error) { throw { field: 'amount', message: error.message }; }
 
       const outgoing = money.amountMinor.startsWith('-');
       const sender = row.Sender.trim() || undefined;
       const recipient = row.Recipient.trim() || undefined;
       const transferPurpose = row['Transfer purpose'].trim();
-      const description = row['Booking text'].trim();
-      const title = (outgoing ? recipient || sender : sender || recipient) || transferPurpose || description;
+      const description = (correction.description || row['Booking text']).trim();
+      const title = (correction.title || (outgoing ? recipient || sender : sender || recipient) || transferPurpose || description).trim();
       if (!title) throw { field: 'title', message: 'Title or description is required' };
 
       transactions.push({

@@ -82,3 +82,17 @@ test('returns row errors instead of inventing required Commerzbank values', () =
     { rowNumber: 2, field: 'currency', message: 'Currency is required' },
   ]);
 });
+
+test('accepts a user correction for a malformed Commerzbank row', () => {
+  const invalid = commerzbankCsv.replace('-5,75;EUR', 'broken;EUR');
+  const failed = normalizeCommerzbankCsv(invalid, 'statement.csv');
+  assert.equal(failed.errors[0].field, 'amount');
+
+  const corrected = normalizeCommerzbankCsv(invalid, 'statement.csv', {
+    2: { amount: '-5,75' },
+  });
+
+  assert.equal(corrected.errors.length, 0);
+  assert.equal(corrected.transactions[0].amountMinor, '-575');
+  assert.equal(corrected.transactions[0].source.rawRecord.Amount, 'broken');
+});
