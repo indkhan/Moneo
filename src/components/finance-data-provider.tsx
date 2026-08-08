@@ -100,4 +100,3 @@ export function useFinanceData() {
     throw new Error("useFinanceData must be used inside FinanceDataProvider");
   return context;
 }
-
