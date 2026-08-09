@@ -1,0 +1,8 @@
+# Dashboard reference restoration
+
+- Requested: Implement the dashboard reference plan commit by commit, checking the web app before every commit.
+- Done: Restored the reference shell and responsive card hierarchy in `src/components/finance-workspace.tsx`; added truthful unavailable states; connected source-backed account balances, per-currency net-worth history/charting, booked monthly category spending, and recent transactions. Added small tested helpers in `src/lib/`, updated `application.md` and `backlog.md`, and retained the implementation plan in `extra/`.
+- Approach: Reused the visual intent from commit `800852e` without reverting current CSV/import/category work or restoring mock identity, balances, budgets, recurring payments, investments, or AI claims. Values remain source-backed and unlike currencies are never combined.
+- Commits: `b0ba71a`, `35794ed`, `102db8b`, `61a8932`, and `86dbc27`, followed by the final responsive/docs commit containing this entry.
+- Validation: Before each commit, ran `npm test` and `npx tsc --noEmit`, then inspected desktop and mobile web layouts. Final result: 77 tests passed, TypeScript passed, desktop and 390px mobile had no horizontal overflow, the browser console was clean, and budget/recurring/AI actions routed correctly. Imported-data checks reconciled dashboard totals and the temporary fixtures were removed afterward.
+- Remaining risks: Native Android/iOS visual QA was not run. Budgets, recurring detection, safe-to-spend, AI, notifications, settings, investments, and pinning remain explicitly unavailable until their separate product slices are implemented.

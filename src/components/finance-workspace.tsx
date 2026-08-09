@@ -1157,28 +1157,6 @@ const styles = StyleSheet.create({
   rawRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
   rawField: { color: C.muted, fontSize: 10, width: 110 },
   sourceText: { color: C.muted, fontSize: 10, marginTop: 3 },
-  cashFlowBlock: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderColor: C.line,
-  },
-  currencyHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  currency: { color: C.ink, fontSize: 13, fontWeight: "800" },
-  metricGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  metric: {
-    minWidth: 130,
-    flex: 1,
-    backgroundColor: "#f7f9f6",
-    borderRadius: 14,
-    padding: 12,
-  },
-  metricLabel: { color: C.muted, fontSize: 10, fontWeight: "700" },
-  metricValue: { color: C.ink, fontSize: 15, fontWeight: "800", marginTop: 5 },
   accountRow: {
     flexDirection: "row",
     alignItems: "center",
