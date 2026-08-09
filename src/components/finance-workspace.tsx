@@ -17,6 +17,7 @@ import { navigationItems } from "@/lib/navigation.mjs";
 import { dashboardHeader } from "@/lib/dashboard-header";
 import { dashboardPresentation } from "@/lib/dashboard-layout";
 import { summarizeMonthlySpending } from "@/lib/dashboard-spending";
+import { unavailableDashboardCapabilities as capabilityCopy } from "@/lib/dashboard-capabilities";
 import { chartPoints } from "@/lib/net-worth-chart";
 import {
   hydrationSafeWebWidth,
@@ -547,7 +548,7 @@ function Spending() {
   );
 }
 
-function BudgetsPreview() {
+function BudgetsPreview({ onOpen }: { onOpen: () => void }) {
   return (
     <Panel style={styles.dashboardHalfCard}>
       <Title title="Budgets" hint="Monthly progress" />
@@ -559,7 +560,10 @@ function BudgetsPreview() {
           </View>
         ))}
       </View>
-      <Text style={styles.emptyText}>No budgets set.</Text>
+      <View style={styles.previewFooter}>
+        <Text style={styles.emptyText}>{capabilityCopy.budgets}.</Text>
+        <Pressable onPress={onOpen}><Text style={styles.secondaryLink}>Open budgets</Text></Pressable>
+      </View>
     </Panel>
   );
 }
@@ -569,7 +573,7 @@ function InsightPreview({ onOpen }: { onOpen: () => void }) {
     <View style={styles.insight}>
       <Text style={styles.insightKicker}>✦  AI INSIGHT</Text>
       <Text style={styles.insightText}>
-        AI is not connected. Your financial data remains in this browser.
+        {capabilityCopy.ai}. Your financial data remains in this browser.
       </Text>
       <Pressable style={styles.insightButton} onPress={onOpen}>
         <Text style={styles.insightButtonText}>View AI workspace  ↗</Text>
@@ -578,10 +582,10 @@ function InsightPreview({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-function RecurringPreview() {
+function RecurringPreview({ onOpen }: { onOpen: () => void }) {
   return (
     <Panel style={styles.recurringCard}>
-      <Title title="Recurring" hint="Detection not available" />
+      <Title title="Recurring" hint={capabilityCopy.recurring} action="Learn more" onAction={onOpen} />
       <View style={styles.recurringEmptyRow}>
         <View style={styles.recurringMark} />
         <Text style={[styles.emptyText, styles.grow]}>
@@ -707,14 +711,14 @@ export function FinanceWorkspace({ page }: { page: Page }) {
           <NetWorth />
           <View style={[styles.dashboardSplit, !desktop && styles.mobileStack]}>
             <Spending />
-            <BudgetsPreview />
+            <BudgetsPreview onOpen={() => nav("budgets")} />
           </View>
           <Transactions limit={6} onSeeAll={() => nav("transactions")} />
         </View>
         <View style={styles.sideColumn}>
           <InsightPreview onOpen={() => nav("ai")} />
           <Accounts />
-          <RecurringPreview />
+          <RecurringPreview onOpen={() => nav("recurring")} />
         </View>
       </View>
     ) : page === "transactions" ? (
@@ -792,13 +796,18 @@ export function FinanceWorkspace({ page }: { page: Page }) {
             </Pressable>
             <View style={styles.safeSpend}>
               <Text style={styles.safeLabel}>Safe to spend</Text>
-              <Text style={styles.safeUnavailable}>Not calculated</Text>
+              <Text style={styles.safeUnavailable}>{capabilityCopy.safeToSpend}</Text>
               <Text style={styles.hint}>Needs budgets and recurring payments</Text>
             </View>
-            <View style={[styles.navItem, styles.disabledControl]}>
+            <Pressable
+              disabled
+              accessibilityLabel="Settings are not available"
+              accessibilityState={{ disabled: true }}
+              style={[styles.navItem, styles.disabledControl]}
+            >
               <Text style={styles.navIcon}>⚙</Text>
               <Text style={styles.navText}>Settings</Text>
-            </View>
+            </Pressable>
           </View>
         )}
         <View style={styles.body}>
@@ -809,14 +818,24 @@ export function FinanceWorkspace({ page }: { page: Page }) {
                 <Text style={styles.screenSubtitle}>{titles[page][1]}</Text>
               </View>
               {desktop && (
-                <View style={[styles.search, styles.disabledControl]}>
+                <Pressable
+                  disabled
+                  accessibilityLabel="AI search is not connected"
+                  accessibilityState={{ disabled: true }}
+                  style={[styles.search, styles.disabledControl]}
+                >
                   <Text style={styles.searchText}>⌕  AI not connected</Text>
                   <Text style={styles.shortcut}>⌘K</Text>
-                </View>
+                </Pressable>
               )}
-              <View style={[styles.bell, styles.disabledControl]}>
+              <Pressable
+                disabled
+                accessibilityLabel="Notifications are not available"
+                accessibilityState={{ disabled: true }}
+                style={[styles.bell, styles.disabledControl]}
+              >
                 <Text style={styles.bellText}>♧</Text>
-              </View>
+              </Pressable>
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>ME</Text>
               </View>
@@ -1067,6 +1086,8 @@ const styles = StyleSheet.create({
   placeholderLine: { height: 8, borderRadius: 4, backgroundColor: "#e9eeea" },
   barTrack: { height: 8, borderRadius: 4, backgroundColor: "#edf0ec", overflow: "hidden" },
   barGhost: { height: "100%", borderRadius: 4, backgroundColor: C.tealSoft },
+  previewFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  secondaryLink: { color: C.teal, fontSize: 10, fontWeight: "800" },
   insight: { borderRadius: 22, padding: 24, backgroundColor: "#24705f", boxShadow: "0 12px 28px rgba(36, 60, 52, 0.13)", elevation: 2 },
   insightKicker: { color: "#d9eee2", fontSize: 11, fontWeight: "800", letterSpacing: 1.4 },
   insightText: { color: C.card, fontSize: 15, lineHeight: 22, fontWeight: "700", marginTop: 12 },
