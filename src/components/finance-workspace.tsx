@@ -14,6 +14,7 @@ import { CsvImporter } from "@/components/csv-importer";
 import { useFinanceData } from "@/components/finance-data-provider";
 import { navigationItems } from "@/lib/navigation.mjs";
 import { dashboardHeader } from "@/lib/dashboard-header";
+import { dashboardPresentation } from "@/lib/dashboard-layout";
 import {
   hydrationSafeWebWidth,
   isDesktopLayout,
@@ -22,10 +23,7 @@ import {
   formatMinorMoney,
   recentTransactions,
 } from "@/lib/finance-transactions.mjs";
-import {
-  latestBalanceByAccount,
-  summarizeByCurrency,
-} from "@/lib/finance-summary.mjs";
+import { latestBalanceByAccount } from "@/lib/finance-summary.mjs";
 import {
   categorizeTransaction,
   counterpartyKeyFor,
@@ -364,80 +362,77 @@ function Transactions({ limit }: { limit?: number }) {
   );
 }
 
-function CashFlow() {
-  const { data } = useFinanceData();
-  const summaries = summarizeByCurrency(data.transactions) as {
-    currency: string;
-    currencyMinorUnit: number;
-    incomeMinor: string;
-    outflowMinor: string;
-    netMinor: string;
-    count: number;
-  }[];
-  const ordered = recentTransactions(data.transactions) as MoneoTransaction[];
-  const firstDate = ordered.at(-1)?.bookingDate;
-  const lastDate = ordered[0]?.bookingDate;
-
+function NetWorthPreview() {
   return (
-    <Panel>
-      <Title
-        title="Cash flow"
-        hint={
-          firstDate && lastDate
-            ? `${firstDate} to ${lastDate} · no currency conversion`
-            : "Waiting for imported transactions"
-        }
-      />
-      {!summaries.length && (
-        <Text style={styles.emptyText}>
-          Income and outflow will be calculated per currency.
+    <Panel style={styles.netWorth}>
+      <View style={styles.netWorthHero}>
+        <Text style={styles.kicker}>NET WORTH</Text>
+        <Text style={styles.unavailableValue}>No balance history</Text>
+        <Text style={styles.heroHint}>Import a CSV with source balances to build this view.</Text>
+      </View>
+      <View style={styles.chartEmpty}>
+        <View style={styles.chartGuide} />
+        <Text style={styles.emptyText}>A traceable balance trend will appear here.</Text>
+      </View>
+    </Panel>
+  );
+}
+
+function SpendingPreview() {
+  return (
+    <Panel style={styles.dashboardHalfCard}>
+      <Title title="Spending" hint="By Moneo category" />
+      <View style={styles.previewBody}>
+        <View style={styles.donutEmpty}><View style={styles.donutEmptyHole} /></View>
+        <Text style={[styles.emptyText, styles.previewCopy]}>
+          Categorised outflow will appear after transactions are imported.
         </Text>
-      )}
-      {summaries.map((summary) => (
-        <View key={summary.currency} style={styles.cashFlowBlock}>
-          <View style={styles.currencyHead}>
-            <Text style={styles.currency}>{summary.currency}</Text>
-            <Text style={styles.hint}>{summary.count} transactions</Text>
+      </View>
+    </Panel>
+  );
+}
+
+function BudgetsPreview() {
+  return (
+    <Panel style={styles.dashboardHalfCard}>
+      <Title title="Budgets" hint="Monthly progress" />
+      <View style={styles.placeholderBars}>
+        {[72, 92, 58, 44].map((width, index) => (
+          <View key={width} style={styles.placeholderBudget}>
+            <View style={[styles.placeholderLine, { width: `${index % 2 ? 55 : 38}%` }]} />
+            <View style={styles.barTrack}><View style={[styles.barGhost, { width: `${width}%` }]} /></View>
           </View>
-          <View style={styles.metricGrid}>
-            <View style={styles.metric}>
-              <Text style={styles.metricLabel}>Income</Text>
-              <Text style={[styles.metricValue, styles.positive]}>
-                {formatMinorMoney(
-                  summary.incomeMinor,
-                  summary.currency,
-                  summary.currencyMinorUnit,
-                )}
-              </Text>
-            </View>
-            <View style={styles.metric}>
-              <Text style={styles.metricLabel}>Outflow</Text>
-              <Text style={styles.metricValue}>
-                {formatMinorMoney(
-                  `-${summary.outflowMinor}`,
-                  summary.currency,
-                  summary.currencyMinorUnit,
-                )}
-              </Text>
-            </View>
-            <View style={styles.metric}>
-              <Text style={styles.metricLabel}>Net flow</Text>
-              <Text
-                style={[
-                  styles.metricValue,
-                  !summary.netMinor.startsWith("-") && styles.positive,
-                ]}
-              >
-                {formatMinorMoney(
-                  summary.netMinor,
-                  summary.currency,
-                  summary.currencyMinorUnit,
-                )}
-              </Text>
-            </View>
-          </View>
-        </View>
-      ))}
+        ))}
+      </View>
+      <Text style={styles.emptyText}>No budgets set.</Text>
+    </Panel>
+  );
+}
+
+function InsightPreview({ onOpen }: { onOpen: () => void }) {
+  return (
+    <View style={styles.insight}>
+      <Text style={styles.insightKicker}>✦  AI INSIGHT</Text>
+      <Text style={styles.insightText}>
+        AI is not connected. Your financial data remains in this browser.
+      </Text>
+      <Pressable style={styles.insightButton} onPress={onOpen}>
+        <Text style={styles.insightButtonText}>View AI workspace  ↗</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function RecurringPreview() {
+  return (
+    <Panel style={styles.recurringCard}>
+      <Title title="Recurring" hint="Detection not available" />
+      <View style={styles.recurringEmptyRow}>
+        <View style={styles.recurringMark} />
+        <Text style={[styles.emptyText, styles.grow]}>
+          Moneo does not infer subscriptions from limited history.
+        </Text>
+      </View>
     </Panel>
   );
 }
@@ -534,6 +529,7 @@ export function FinanceWorkspace({ page }: { page: Page }) {
   const nav = (route: string) =>
     router.push(`/${route === "index" ? "" : route}` as never);
   const dashboardHeading = dashboardHeader(new Date(), "en-GB");
+  const dashboard = dashboardPresentation(data.transactions.length);
 
   const titles: Record<Page, [string, string]> = {
     index: [dashboardHeading.title, dashboardHeading.subtitle],
@@ -553,11 +549,17 @@ export function FinanceWorkspace({ page }: { page: Page }) {
     page === "index" ? (
       <View style={[styles.dashboardGrid, !desktop && styles.mobileStack]}>
         <View style={styles.mainColumn}>
-          <CashFlow />
+          <NetWorthPreview />
+          <View style={[styles.dashboardSplit, !desktop && styles.mobileStack]}>
+            <SpendingPreview />
+            <BudgetsPreview />
+          </View>
           <Transactions limit={8} />
         </View>
         <View style={styles.sideColumn}>
+          <InsightPreview onOpen={() => nav("ai")} />
           <Accounts />
+          <RecurringPreview />
         </View>
       </View>
     ) : page === "transactions" ? (
@@ -671,7 +673,7 @@ export function FinanceWorkspace({ page }: { page: Page }) {
               !desktop && styles.mobileContent,
             ]}
           >
-            {(page === "index" || page === "transactions") && <CsvImporter />}
+            {((page === "index" && dashboard.showImporter) || page === "transactions") && <CsvImporter />}
             {pageContent}
           </ScrollView>
         </View>
@@ -871,6 +873,32 @@ const styles = StyleSheet.create({
   mobileStack: { flexDirection: "column" },
   mainColumn: { flex: 2, gap: 20, minWidth: 0 },
   sideColumn: { flex: 1, gap: 20, minWidth: 0 },
+  dashboardSplit: { flexDirection: "row", gap: 20 },
+  dashboardHalfCard: { flex: 1, minHeight: 294 },
+  netWorth: { padding: 0, overflow: "hidden", minHeight: 304 },
+  netWorthHero: { padding: 24, backgroundColor: "#eaf5ef" },
+  kicker: { color: C.muted, fontSize: 11, fontWeight: "800", letterSpacing: 1.4 },
+  unavailableValue: { color: C.ink, fontSize: 25, fontWeight: "800", marginTop: 10 },
+  heroHint: { color: C.muted, fontSize: 12, marginTop: 6 },
+  chartEmpty: { minHeight: 168, padding: 24, justifyContent: "center" },
+  chartGuide: { height: 2, borderRadius: 2, backgroundColor: C.tealSoft, transform: [{ rotate: "-5deg" }], marginBottom: 20 },
+  previewBody: { flexDirection: "row", alignItems: "center", gap: 18, flex: 1 },
+  previewCopy: { flex: 1 },
+  donutEmpty: { width: 126, height: 126, borderRadius: 63, borderWidth: 18, borderColor: C.tealSoft, alignItems: "center", justifyContent: "center" },
+  donutEmptyHole: { width: 56, height: 56, borderRadius: 28, backgroundColor: C.card },
+  placeholderBars: { gap: 18 },
+  placeholderBudget: { gap: 8 },
+  placeholderLine: { height: 8, borderRadius: 4, backgroundColor: "#e9eeea" },
+  barTrack: { height: 8, borderRadius: 4, backgroundColor: "#edf0ec", overflow: "hidden" },
+  barGhost: { height: "100%", borderRadius: 4, backgroundColor: C.tealSoft },
+  insight: { borderRadius: 22, padding: 24, backgroundColor: "#24705f", boxShadow: "0 12px 28px rgba(36, 60, 52, 0.13)", elevation: 2 },
+  insightKicker: { color: "#d9eee2", fontSize: 11, fontWeight: "800", letterSpacing: 1.4 },
+  insightText: { color: C.card, fontSize: 15, lineHeight: 22, fontWeight: "700", marginTop: 12 },
+  insightButton: { alignSelf: "flex-start", marginTop: 18, borderRadius: 18, backgroundColor: "#ffffff22", paddingHorizontal: 14, paddingVertical: 10 },
+  insightButtonText: { color: C.card, fontSize: 11, fontWeight: "700" },
+  recurringCard: { minHeight: 164 },
+  recurringEmptyRow: { flexDirection: "row", gap: 12, alignItems: "center" },
+  recurringMark: { width: 4, height: 42, borderRadius: 2, backgroundColor: C.tealSoft },
   emptyText: { color: C.muted, fontSize: 13, lineHeight: 20, paddingVertical: 8 },
   transaction: {
     flexDirection: "row",
