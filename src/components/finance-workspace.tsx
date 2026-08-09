@@ -16,6 +16,7 @@ import { useFinanceData } from "@/components/finance-data-provider";
 import { navigationItems } from "@/lib/navigation.mjs";
 import { dashboardHeader } from "@/lib/dashboard-header";
 import { dashboardPresentation } from "@/lib/dashboard-layout";
+import { summarizeMonthlySpending } from "@/lib/dashboard-spending";
 import { chartPoints } from "@/lib/net-worth-chart";
 import {
   hydrationSafeWebWidth,
@@ -89,11 +90,16 @@ function Panel({
   return <View style={[styles.panel, style]}>{children}</View>;
 }
 
-function Title({ title, hint }: { title: string; hint?: string }) {
+function Title({ title, hint, action, onAction }: { title: string; hint?: string; action?: string; onAction?: () => void }) {
   return (
     <View style={styles.panelTitle}>
-      <Text style={styles.panelHeading}>{title}</Text>
-      {hint && <Text style={styles.hint}>{hint}</Text>}
+      <View style={styles.grow}>
+        <Text style={styles.panelHeading}>{title}</Text>
+        {hint && <Text style={styles.hint}>{hint}</Text>}
+      </View>
+      {action && onAction && (
+        <Pressable onPress={onAction}><Text style={styles.panelAction}>{action}</Text></Pressable>
+      )}
     </View>
   );
 }
@@ -116,7 +122,7 @@ function categoryLabel(categoryId?: string) {
   return categoryOptions.find((category) => category.id === categoryId)?.label ?? "Needs category";
 }
 
-function Transactions({ limit }: { limit?: number }) {
+function Transactions({ limit, onSeeAll }: { limit?: number; onSeeAll?: () => void }) {
   const { data, database, refresh } = useFinanceData();
   const [selectedId, setSelectedId] = useState<string>();
   const [needsOnly, setNeedsOnly] = useState(false);
@@ -169,6 +175,8 @@ function Transactions({ limit }: { limit?: number }) {
     <Panel style={styles.flexPanel}>
       <Title
         title="Transactions"
+        action={onSeeAll ? "See all" : undefined}
+        onAction={onSeeAll}
         hint={
           transactions.length
             ? `${data.transactions.length} stored locally \u00b7 ${unmatchedCount} need${unmatchedCount === 1 ? "s" : ""} category`
@@ -460,16 +468,81 @@ function NetWorth() {
   );
 }
 
-function SpendingPreview() {
+const spendingColors = [C.teal, "#58b4c3", "#ddb96e", "#d88776", "#9a86bc", "#809389"];
+
+function Spending() {
+  const { data } = useFinanceData();
+  const latestMonth = recentTransactions(data.transactions)[0]?.bookingDate.slice(0, 7);
+  const summaries = latestMonth ? summarizeMonthlySpending(data.transactions, latestMonth) as {
+    currency: string;
+    currencyMinorUnit: number;
+    totalMinor: string;
+    categories: { categoryId: string; amountMinor: string }[];
+  }[] : [];
+  const summary = summaries[0];
+  const circumference = 2 * Math.PI * 44;
+  let consumed = 0;
+  const monthLabel = latestMonth
+    ? new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" })
+        .format(new Date(`${latestMonth}-01T00:00:00Z`))
+    : "By Moneo category";
+
   return (
     <Panel style={styles.dashboardHalfCard}>
-      <Title title="Spending" hint="By Moneo category" />
-      <View style={styles.previewBody}>
-        <View style={styles.donutEmpty}><View style={styles.donutEmptyHole} /></View>
-        <Text style={[styles.emptyText, styles.previewCopy]}>
-          Categorised outflow will appear after transactions are imported.
-        </Text>
-      </View>
+      <Title title="Spending" hint={summary ? `${monthLabel} · ${summary.currency}` : monthLabel} />
+      {summary ? (
+        <View style={styles.previewBody}>
+          <View style={styles.donutChart}>
+            <Svg width="126" height="126" viewBox="0 0 100 100">
+              <Circle cx="50" cy="50" r="44" fill="none" stroke="#edf0ec" strokeWidth="12" />
+              {summary.categories.map((category, index) => {
+                const length = Number(BigInt(category.amountMinor)) / Number(BigInt(summary.totalMinor)) * circumference;
+                const offset = -consumed;
+                consumed += length;
+                return (
+                  <Circle
+                    key={category.categoryId}
+                    cx="50"
+                    cy="50"
+                    r="44"
+                    fill="none"
+                    stroke={spendingColors[index % spendingColors.length]}
+                    strokeWidth="12"
+                    strokeDasharray={`${Math.max(length - 2, 0)} ${circumference}`}
+                    strokeDashoffset={offset}
+                    transform="rotate(-90 50 50)"
+                  />
+                );
+              })}
+            </Svg>
+            <View style={styles.donutCenter}>
+              <Text style={styles.donutMoney}>
+                {formatMinorMoney(summary.totalMinor, summary.currency, summary.currencyMinorUnit).replace(/^\+/, "")}
+              </Text>
+              <Text style={styles.donutCaption}>outflow</Text>
+            </View>
+          </View>
+          <View style={styles.spendingLegend}>
+            {summary.categories.slice(0, 5).map((category, index) => (
+              <View key={category.categoryId} style={styles.legendRow}>
+                <View style={[styles.legendDot, { backgroundColor: spendingColors[index % spendingColors.length] }]} />
+                <Text style={styles.legendLabel} numberOfLines={1}>{categoryLabel(category.categoryId)}</Text>
+                <Text style={styles.legendAmount}>
+                  {formatMinorMoney(category.amountMinor, summary.currency, summary.currencyMinorUnit).replace(/^\+/, "")}
+                </Text>
+              </View>
+            ))}
+            {summaries.length > 1 && <Text style={styles.currencyNote}>Other currencies kept separate</Text>}
+          </View>
+        </View>
+      ) : (
+        <View style={styles.previewBody}>
+          <View style={styles.donutEmpty}><View style={styles.donutEmptyHole} /></View>
+          <Text style={[styles.emptyText, styles.previewCopy]}>
+            Categorised outflow will appear after transactions are imported.
+          </Text>
+        </View>
+      )}
     </Panel>
   );
 }
@@ -633,10 +706,10 @@ export function FinanceWorkspace({ page }: { page: Page }) {
         <View style={styles.mainColumn}>
           <NetWorth />
           <View style={[styles.dashboardSplit, !desktop && styles.mobileStack]}>
-            <SpendingPreview />
+            <Spending />
             <BudgetsPreview />
           </View>
-          <Transactions limit={8} />
+          <Transactions limit={6} onSeeAll={() => nav("transactions")} />
         </View>
         <View style={styles.sideColumn}>
           <InsightPreview onOpen={() => nav("ai")} />
@@ -946,8 +1019,9 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   flexPanel: { flex: 1 },
-  panelTitle: { marginBottom: 18 },
+  panelTitle: { marginBottom: 18, flexDirection: "row", justifyContent: "space-between", gap: 10 },
   panelHeading: { fontSize: 15, fontWeight: "800", color: C.ink },
+  panelAction: { color: C.teal, fontSize: 11, fontWeight: "800" },
   hint: { fontSize: 11, color: C.muted, marginTop: 3 },
   filterToggle: { alignSelf: "flex-start", marginBottom: 8, paddingVertical: 6 },
   filterToggleText: { color: C.teal, fontSize: 11, fontWeight: "700" },
@@ -978,6 +1052,16 @@ const styles = StyleSheet.create({
   previewCopy: { flex: 1 },
   donutEmpty: { width: 126, height: 126, borderRadius: 63, borderWidth: 18, borderColor: C.tealSoft, alignItems: "center", justifyContent: "center" },
   donutEmptyHole: { width: 56, height: 56, borderRadius: 28, backgroundColor: C.card },
+  donutChart: { width: 126, height: 126, alignItems: "center", justifyContent: "center" },
+  donutCenter: { position: "absolute", alignItems: "center", maxWidth: 82 },
+  donutMoney: { color: C.ink, fontSize: 13, fontWeight: "800", textAlign: "center" },
+  donutCaption: { color: C.muted, fontSize: 9, marginTop: 2 },
+  spendingLegend: { flex: 1, gap: 7 },
+  legendRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  legendDot: { width: 7, height: 7, borderRadius: 4 },
+  legendLabel: { flex: 1, color: C.muted, fontSize: 11 },
+  legendAmount: { color: C.ink, fontSize: 10, fontWeight: "700" },
+  currencyNote: { color: C.muted, fontSize: 9, marginTop: 2 },
   placeholderBars: { gap: 18 },
   placeholderBudget: { gap: 8 },
   placeholderLine: { height: 8, borderRadius: 4, backgroundColor: "#e9eeea" },
