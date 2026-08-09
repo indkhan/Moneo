@@ -13,6 +13,7 @@ import { useRouter } from "expo-router";
 import { CsvImporter } from "@/components/csv-importer";
 import { useFinanceData } from "@/components/finance-data-provider";
 import { navigationItems } from "@/lib/navigation.mjs";
+import { dashboardHeader } from "@/lib/dashboard-header";
 import {
   hydrationSafeWebWidth,
   isDesktopLayout,
@@ -532,14 +533,10 @@ export function FinanceWorkspace({ page }: { page: Page }) {
   const desktop = isDesktopLayout(width);
   const nav = (route: string) =>
     router.push(`/${route === "index" ? "" : route}` as never);
+  const dashboardHeading = dashboardHeader(new Date(), "en-GB");
 
   const titles: Record<Page, [string, string]> = {
-    index: [
-      "Dashboard",
-      data.transactions.length
-        ? "Calculated only from CSV transactions stored in this browser"
-        : "Import a bank CSV to build your local financial view",
-    ],
+    index: [dashboardHeading.title, dashboardHeading.subtitle],
     transactions: [
       "Transactions",
       data.transactions.length
@@ -636,22 +633,36 @@ export function FinanceWorkspace({ page }: { page: Page }) {
                 AI Workspace
               </Text>
             </Pressable>
-            <View style={styles.localNote}>
-              <Text style={styles.localNoteTitle}>Local-only data</Text>
-              <Text style={styles.hint}>
-                CSV files and transactions remain in this browser.
-              </Text>
+            <View style={styles.safeSpend}>
+              <Text style={styles.safeLabel}>Safe to spend</Text>
+              <Text style={styles.safeUnavailable}>Not calculated</Text>
+              <Text style={styles.hint}>Needs budgets and recurring payments</Text>
+            </View>
+            <View style={[styles.navItem, styles.disabledControl]}>
+              <Text style={styles.navIcon}>⚙</Text>
+              <Text style={styles.navText}>Settings</Text>
             </View>
           </View>
         )}
         <View style={styles.body}>
           <View style={styles.header}>
-            <View style={styles.grow}>
-              <Text style={styles.screenTitle}>{titles[page][0]}</Text>
-              <Text style={styles.screenSubtitle}>{titles[page][1]}</Text>
-            </View>
-            <View style={styles.localBadge}>
-              <Text style={styles.localBadgeText}>LOCAL</Text>
+            <View style={styles.headerInner}>
+              <View style={styles.grow}>
+                <Text style={styles.screenTitle}>{titles[page][0]}</Text>
+                <Text style={styles.screenSubtitle}>{titles[page][1]}</Text>
+              </View>
+              {desktop && (
+                <View style={[styles.search, styles.disabledControl]}>
+                  <Text style={styles.searchText}>⌕  AI not connected</Text>
+                  <Text style={styles.shortcut}>⌘K</Text>
+                </View>
+              )}
+              <View style={[styles.bell, styles.disabledControl]}>
+                <Text style={styles.bellText}>♧</Text>
+              </View>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>ME</Text>
+              </View>
             </View>
           </View>
           <ScrollView
@@ -704,7 +715,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   app: { flex: 1, flexDirection: "row", backgroundColor: C.bg },
   sidebar: {
-    width: 248,
+    width: 240,
     paddingHorizontal: 16,
     paddingVertical: 24,
     borderRightWidth: 1,
@@ -737,7 +748,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 2,
   },
-  navActive: { backgroundColor: C.card },
+  navActive: {
+    backgroundColor: C.card,
+    boxShadow: "0 4px 12px rgba(36, 60, 52, 0.08)",
+    elevation: 2,
+  },
   navIcon: { fontSize: 18, color: C.muted, width: 18, textAlign: "center" },
   navText: { fontSize: 14, fontWeight: "600", color: C.muted },
   navTextActive: { color: C.ink },
@@ -750,36 +765,84 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     marginBottom: 8,
   },
-  localNote: {
+  safeSpend: {
     marginTop: "auto",
-    borderWidth: 1,
-    borderColor: C.line,
     borderRadius: 16,
-    padding: 14,
+    padding: 16,
+    marginBottom: 4,
     backgroundColor: C.card,
+    boxShadow: "0 5px 10px rgba(36, 60, 52, 0.06)",
+    elevation: 1,
   },
-  localNoteTitle: { color: C.ink, fontSize: 12, fontWeight: "800" },
+  safeLabel: { color: C.ink, fontSize: 12, fontWeight: "700" },
+  safeUnavailable: { color: C.ink, fontSize: 18, fontWeight: "800", marginTop: 5 },
+  disabledControl: { opacity: 0.68 },
   body: { flex: 1, minWidth: 0 },
   header: {
-    minHeight: 91,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 24,
-    paddingVertical: 16,
+    height: 91,
+    justifyContent: "center",
     borderBottomWidth: 1,
     borderColor: C.line,
     backgroundColor: C.bg,
   },
-  screenTitle: { fontSize: 22, fontWeight: "800", color: C.ink },
-  screenSubtitle: { fontSize: 13, color: C.muted, marginTop: 3 },
-  localBadge: {
-    backgroundColor: C.tealSoft,
-    borderRadius: 12,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
+  headerInner: {
+    width: "100%",
+    maxWidth: 1180,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 24,
   },
-  localBadgeText: { color: C.teal, fontSize: 10, fontWeight: "800" },
+  screenTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: C.ink,
+    letterSpacing: -0.5,
+  },
+  screenSubtitle: { fontSize: 13, color: C.muted, marginTop: 3 },
+  search: {
+    width: 208,
+    minHeight: 40,
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    backgroundColor: C.card,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  searchText: { color: C.muted, fontSize: 12 },
+  shortcut: {
+    color: C.muted,
+    fontSize: 9,
+    fontWeight: "700",
+    backgroundColor: "#eef1ed",
+    borderRadius: 7,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
+  },
+  bell: {
+    height: 40,
+    width: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: C.line,
+    backgroundColor: C.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bellText: { color: C.muted, fontSize: 16 },
+  avatar: {
+    height: 40,
+    width: 40,
+    borderRadius: 20,
+    backgroundColor: "#d8f4e7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: { color: C.ink, fontSize: 12, fontWeight: "800" },
   grow: { flex: 1, minWidth: 0 },
   content: {
     padding: 32,
@@ -795,6 +858,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.line,
     padding: 24,
+    boxShadow: "0 7px 18px rgba(36, 60, 52, 0.07)",
+    elevation: 2,
   },
   flexPanel: { flex: 1 },
   panelTitle: { marginBottom: 18 },
