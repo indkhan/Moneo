@@ -10,11 +10,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import Svg, { Circle, Defs, LinearGradient, Path, Stop } from "react-native-svg";
 import { CsvImporter } from "@/components/csv-importer";
 import { useFinanceData } from "@/components/finance-data-provider";
 import { navigationItems } from "@/lib/navigation.mjs";
 import { dashboardHeader } from "@/lib/dashboard-header";
 import { dashboardPresentation } from "@/lib/dashboard-layout";
+import { chartPoints } from "@/lib/net-worth-chart";
 import {
   hydrationSafeWebWidth,
   isDesktopLayout,
@@ -23,7 +25,10 @@ import {
   formatMinorMoney,
   recentTransactions,
 } from "@/lib/finance-transactions.mjs";
-import { latestBalanceByAccount } from "@/lib/finance-summary.mjs";
+import {
+  balanceSeriesByCurrency,
+  latestBalanceByAccount,
+} from "@/lib/finance-summary.mjs";
 import {
   categorizeTransaction,
   counterpartyKeyFor,
@@ -362,18 +367,95 @@ function Transactions({ limit }: { limit?: number }) {
   );
 }
 
-function NetWorthPreview() {
+function NetWorth() {
+  const { data } = useFinanceData();
+  const [activeIndex, setActiveIndex] = useState(6);
+  const series = balanceSeriesByCurrency(data.transactions) as {
+    currency: string;
+    currencyMinorUnit: number;
+    points: { date: string; amountMinor: string }[];
+  }[];
+  const primary = series[0];
+  const recent = primary?.points.slice(-7) ?? [];
+  const points = chartPoints(recent.map((point) => ({
+    label: new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })
+      .format(new Date(`${point.date}T00:00:00Z`)),
+    value: Number(BigInt(point.amountMinor)),
+  })));
+  const selectedIndex = Math.min(activeIndex, Math.max(points.length - 1, 0));
+  const selected = recent[selectedIndex];
+  const path = points.map((point, index) => `${index ? "L" : "M"}${point.x} ${point.y}`).join(" ");
+
   return (
     <Panel style={styles.netWorth}>
       <View style={styles.netWorthHero}>
         <Text style={styles.kicker}>NET WORTH</Text>
-        <Text style={styles.unavailableValue}>No balance history</Text>
-        <Text style={styles.heroHint}>Import a CSV with source balances to build this view.</Text>
+        {series.length ? (
+          <>
+            <View style={styles.netWorthValues}>
+              {series.map((currencySeries) => {
+                const latest = currencySeries.points.at(-1);
+                return latest ? (
+                  <Text key={currencySeries.currency} style={styles.netWorthValue}>
+                    {formatMinorMoney(latest.amountMinor, currencySeries.currency, currencySeries.currencyMinorUnit).replace(/^\+/, "")}
+                  </Text>
+                ) : null;
+              })}
+            </View>
+            <Text style={styles.heroHint}>
+              Source balances{series.length > 1 ? " · currencies shown separately" : " · no currency conversion"}
+            </Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.unavailableValue}>No balance history</Text>
+            <Text style={styles.heroHint}>Import a CSV with source balances to build this view.</Text>
+          </>
+        )}
       </View>
-      <View style={styles.chartEmpty}>
-        <View style={styles.chartGuide} />
-        <Text style={styles.emptyText}>A traceable balance trend will appear here.</Text>
-      </View>
+      {primary && points.length ? (
+        <View style={styles.chartWrap}>
+          <View style={styles.lineChart}>
+            <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <Defs>
+                <LinearGradient id="netWorthFill" x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor={C.teal} stopOpacity=".22" />
+                  <Stop offset="1" stopColor={C.teal} stopOpacity="0" />
+                </LinearGradient>
+              </Defs>
+              {points.length > 1 && <Path d={`${path} L100 100 L0 100 Z`} fill="url(#netWorthFill)" />}
+              {points.length > 1 && <Path d={path} fill="none" stroke={C.teal} strokeWidth="1.15" />}
+              <Circle cx={points[selectedIndex].x} cy={points[selectedIndex].y} r="2" fill={C.teal} stroke="#fff" strokeWidth=".8" />
+            </Svg>
+            <View style={styles.chartHitTargets}>
+              {points.map((point, index) => (
+                <Pressable
+                  key={`${point.label}-${index}`}
+                  accessibilityLabel={`Show ${point.label} net worth`}
+                  onHoverIn={() => setActiveIndex(index)}
+                  onPress={() => setActiveIndex(index)}
+                  style={styles.chartHitTarget}
+                />
+              ))}
+            </View>
+          </View>
+          <View style={styles.chartMeta}>
+            <View style={styles.chartLabels}>
+              {points.map((point) => <Text key={point.label} style={styles.chartLabel}>{point.label}</Text>)}
+            </View>
+            {selected && (
+              <Text style={styles.chartSelection}>
+                {selected.date} · {formatMinorMoney(selected.amountMinor, primary.currency, primary.currencyMinorUnit).replace(/^\+/, "")}
+              </Text>
+            )}
+          </View>
+        </View>
+      ) : (
+        <View style={styles.chartEmpty}>
+          <View style={styles.chartGuide} />
+          <Text style={styles.emptyText}>A traceable balance trend will appear here.</Text>
+        </View>
+      )}
     </Panel>
   );
 }
@@ -549,7 +631,7 @@ export function FinanceWorkspace({ page }: { page: Page }) {
     page === "index" ? (
       <View style={[styles.dashboardGrid, !desktop && styles.mobileStack]}>
         <View style={styles.mainColumn}>
-          <NetWorthPreview />
+          <NetWorth />
           <View style={[styles.dashboardSplit, !desktop && styles.mobileStack]}>
             <SpendingPreview />
             <BudgetsPreview />
@@ -879,9 +961,19 @@ const styles = StyleSheet.create({
   netWorthHero: { padding: 24, backgroundColor: "#eaf5ef" },
   kicker: { color: C.muted, fontSize: 11, fontWeight: "800", letterSpacing: 1.4 },
   unavailableValue: { color: C.ink, fontSize: 25, fontWeight: "800", marginTop: 10 },
+  netWorthValues: { flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", gap: 14, marginTop: 8 },
+  netWorthValue: { color: C.ink, fontSize: 35, fontWeight: "800", letterSpacing: -0.8 },
   heroHint: { color: C.muted, fontSize: 12, marginTop: 6 },
   chartEmpty: { minHeight: 168, padding: 24, justifyContent: "center" },
   chartGuide: { height: 2, borderRadius: 2, backgroundColor: C.tealSoft, transform: [{ rotate: "-5deg" }], marginBottom: 20 },
+  chartWrap: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 12 },
+  lineChart: { height: 122, position: "relative", overflow: "hidden" },
+  chartHitTargets: { ...StyleSheet.absoluteFill, flexDirection: "row" },
+  chartHitTarget: { flex: 1 },
+  chartMeta: { gap: 6 },
+  chartLabels: { flexDirection: "row", justifyContent: "space-between" },
+  chartLabel: { color: C.muted, fontSize: 9 },
+  chartSelection: { color: C.teal, fontSize: 10, fontWeight: "700", textAlign: "right" },
   previewBody: { flexDirection: "row", alignItems: "center", gap: 18, flex: 1 },
   previewCopy: { flex: 1 },
   donutEmpty: { width: 126, height: 126, borderRadius: 63, borderWidth: 18, borderColor: C.tealSoft, alignItems: "center", justifyContent: "center" },

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  balanceSeriesByCurrency,
   latestBalanceByAccount,
   summarizeByCurrency,
 } from './finance-summary.mjs';
@@ -50,4 +51,35 @@ test('uses only the latest source-backed balance for each account', () => {
   assert.deepEqual(latestBalanceByAccount(transactions), {
     a: { amountMinor: '9400', currency: 'EUR', currencyMinorUnit: 2, bookingDate: '2026-08-03' },
   });
+});
+
+test('builds source-backed net worth history per currency without conversion', () => {
+  const transactions = [
+    { ...base, id: '1', accountId: 'a', bookingDate: '2026-08-01', amountMinor: '-100', currency: 'EUR', balanceAfterMinor: '9000' },
+    { ...base, id: '2', accountId: 'b', bookingDate: '2026-08-01', amountMinor: '100', currency: 'EUR', balanceAfterMinor: '2000', source: { ...base.source, rowNumber: 3 } },
+    { ...base, id: '3', accountId: 'a', bookingDate: '2026-08-03', amountMinor: '500', currency: 'EUR', balanceAfterMinor: '9500' },
+    { ...base, id: '4', accountId: 'c', bookingDate: '2026-08-02', amountMinor: '100', currency: 'USD', balanceAfterMinor: '4100' },
+  ];
+
+  assert.deepEqual(balanceSeriesByCurrency(transactions), [
+    {
+      currency: 'EUR',
+      currencyMinorUnit: 2,
+      points: [
+        { date: '2026-08-01', amountMinor: '11000' },
+        { date: '2026-08-03', amountMinor: '11500' },
+      ],
+    },
+    {
+      currency: 'USD',
+      currencyMinorUnit: 2,
+      points: [{ date: '2026-08-02', amountMinor: '4100' }],
+    },
+  ]);
+});
+
+test('net worth history excludes non-booked balance snapshots', () => {
+  assert.deepEqual(balanceSeriesByCurrency([
+    { ...base, id: '1', accountId: 'a', bookingDate: '2026-08-01', amountMinor: '-100', currency: 'EUR', balanceAfterMinor: '9000', status: 'pending' },
+  ]), []);
 });

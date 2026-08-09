@@ -53,3 +53,40 @@ export function latestBalanceByAccount(transactions) {
     },
   ]));
 }
+
+export function balanceSeriesByCurrency(transactions) {
+  const groups = new Map();
+  for (const transaction of transactions) {
+    if (transaction.status && transaction.status !== 'booked') continue;
+    if (transaction.balanceAfterMinor === undefined) continue;
+    const group = groups.get(transaction.currency) ?? {
+      currency: transaction.currency,
+      currencyMinorUnit: transaction.currencyMinorUnit,
+      dates: new Map(),
+    };
+    const dateTransactions = group.dates.get(transaction.bookingDate) ?? [];
+    dateTransactions.push(transaction);
+    group.dates.set(transaction.bookingDate, dateTransactions);
+    groups.set(transaction.currency, group);
+  }
+
+  return [...groups.values()]
+    .sort((left, right) => left.currency.localeCompare(right.currency))
+    .map((group) => {
+      const balances = new Map();
+      const points = [...group.dates.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([date, dateTransactions]) => {
+          dateTransactions
+            .sort((left, right) => left.source.rowNumber - right.source.rowNumber)
+            .forEach((transaction) => balances.set(transaction.accountId, BigInt(transaction.balanceAfterMinor)));
+          const amount = [...balances.values()].reduce((sum, balance) => sum + balance, 0n);
+          return { date, amountMinor: amount.toString() };
+        });
+      return {
+        currency: group.currency,
+        currencyMinorUnit: group.currencyMinorUnit,
+        points,
+      };
+    });
+}
