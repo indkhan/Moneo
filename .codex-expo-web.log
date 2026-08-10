@@ -1,0 +1,38 @@
+
+> moneo@1.0.0 web
+> expo start --web --port 8082
+
+Starting project at C:\codebases\Moneo
+Using src/app as the root directory for Expo Router.
+React Compiler enabled
+Starting Metro Bundler
+
+Waiting on http://localhost:8082
+
+An update for expo is available: 57.0.11 → ~57.0.12
+4 other packages may need updating. Run npx expo install --check for details.
+Logs for your project will appear below.
+Web Bundled 1258ms node_modules\expo-router\entry.js (833 modules)
+λ Bundled 1279ms node_modules\expo\node_modules\@expo\cli\node_modules\@expo\router-server\node\render.js (960 modules)
+Web Bundled 294ms node_modules\expo-router\entry.js (721 modules)
+Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+Web Bundled 656ms node_modules\expo-router\entry.js (1 module)
+λ Bundled 823ms node_modules\expo\node_modules\@expo\cli\node_modules\@expo\router-server\node\render.js (1 module)
+Web Bundled 28ms node_modules\expo-router\entry.js (1 module)
+Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+λ Bundled 29ms node_modules\expo\node_modules\@expo\cli\node_modules\@expo\router-server\node\render.js (1 module)
+Web Bundled 481ms node_modules\expo-router\entry.js (1 module)
+Web Bundled 40ms node_modules\expo-router\entry.js (1 module)
+Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.

@@ -1,0 +1,7 @@
+# German transaction-categorization market research
+
+- **Requested:** Broaden the competitor review around German personal-finance products, including Finanzguru, and recommend a Germany-first approach for Moneo.
+- **Done:** Reviewed the documented categorization behavior of Finanzguru, Finanzfluss Copilot, Finanzblick, Outbank, C24, N26, Revolut, Sparkasse, Deutsche Bank, Commerzbank, Consorsbank, StarMoney, Banking4, and MoneyMoney, plus enrichment providers finAPI, wealthAPI, Qwist, Fino, Tink, and Salt Edge. No application code was changed.
+- **Approach:** Compared observable product mechanics rather than unverified AI marketing. The recommendation is a local hybrid: classify transaction roles first, reuse imported bank categories, normalize German payment partners using stable SEPA identifiers, learn only explicit high-confidence personal rules, show evidence, and abstain on ambiguity. Qwist is the best-shaped external candidate for the existing CSV flow; finAPI is a strong Germany-first candidate for a later bank-connected backend, but either must earn adoption in a labelled-data bake-off.
+- **Validation:** Research-only task; tests and TypeScript were not run because no executable code changed.
+- **Remaining risks/follow-up:** Vendors do not publish comparable German accuracy benchmarks or pricing. Validate with anonymized, representative German transactions and measure auto-assignment precision separately from coverage before selecting a provider.

@@ -22,6 +22,7 @@ import { unavailableDashboardCapabilities as capabilityCopy } from "@/lib/dashbo
 import { chartPoints, monthOverMonthTenths } from "@/lib/net-worth-chart";
 import {
   hydrationSafeWebWidth,
+  isCompactAccountsLayout,
   isDesktopLayout,
 } from "@/lib/responsive-layout";
 import {
@@ -81,6 +82,7 @@ function useWindowDimensions() {
       Platform.OS === "web"
         ? hydrationSafeWebWidth(webWidth)
         : dimensions.width,
+    viewportWidth: Platform.OS === "web" ? webWidth : dimensions.width,
   };
 }
 
@@ -772,7 +774,7 @@ function RecurringPreview({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-function Accounts() {
+function Accounts({ compact }: { compact: boolean }) {
   const { data } = useFinanceData();
   const balances = latestBalanceByAccount(data.transactions) as Record<
     string,
@@ -802,23 +804,25 @@ function Accounts() {
           (transaction) => transaction.accountId === account.id,
         ).length;
         return (
-          <View key={account.id} style={styles.accountRow}>
-            <View style={styles.accountMark}>
-              <Text style={styles.accountMarkText}>
-                {account.institution.slice(0, 2).toUpperCase()}
-              </Text>
+          <View key={account.id} style={[styles.accountRow, compact && styles.compactAccountRow]}>
+            <View style={styles.accountIdentity}>
+              <View style={styles.accountMark}>
+                <Text style={styles.accountMarkText}>
+                  {account.institution.slice(0, 2).toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.grow}>
+                <Text style={styles.rowTitle}>{account.displayName}</Text>
+                <Text style={styles.hint}>
+                  {account.institution}
+                  {maskIdentifier(account.identifier)
+                    ? ` · ${maskIdentifier(account.identifier)}`
+                    : ""}
+                  {` · ${count} transactions`}
+                </Text>
+              </View>
             </View>
-            <View style={styles.grow}>
-              <Text style={styles.rowTitle}>{account.displayName}</Text>
-              <Text style={styles.hint}>
-                {account.institution}
-                {maskIdentifier(account.identifier)
-                  ? ` · ${maskIdentifier(account.identifier)}`
-                  : ""}
-                {` · ${count} transactions`}
-              </Text>
-            </View>
-            <View>
+            <View style={compact && styles.compactAccountBalance}>
               {balance ? (
                 <>
                   <Text style={styles.amount}>
@@ -860,8 +864,9 @@ function Deferred({ title, text }: { title: string; text: string }) {
 export function FinanceWorkspace({ page }: { page: Page }) {
   const router = useRouter();
   const { data } = useFinanceData();
-  const { width } = useWindowDimensions();
+  const { width, viewportWidth } = useWindowDimensions();
   const desktop = isDesktopLayout(width);
+  const compactAccounts = isCompactAccountsLayout(viewportWidth);
   const nav = (route: string) =>
     router.push(`/${route === "index" ? "" : route}` as never);
   const dashboardHeading = dashboardHeader(new Date(), "en-GB");
@@ -894,7 +899,7 @@ export function FinanceWorkspace({ page }: { page: Page }) {
         </View>
         <View style={styles.sideColumn}>
           <InsightPreview onOpen={() => nav("ai")} />
-          <Accounts />
+          <Accounts compact={compactAccounts} />
           <RecurringPreview onOpen={() => nav("recurring")} />
         </View>
       </View>
@@ -1357,6 +1362,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: C.line,
   },
+  compactAccountRow: { flexDirection: "column", alignItems: "stretch" },
+  accountIdentity: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10 },
+  compactAccountBalance: { marginLeft: 44 },
   accountMark: {
     width: 34,
     height: 34,
