@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import Svg, { Circle, Defs, LinearGradient, Path, Stop } from "react-native-svg";
+import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { CsvImporter } from "@/components/csv-importer";
 import { useFinanceData } from "@/components/finance-data-provider";
 import { navigationItems } from "@/lib/navigation.mjs";
@@ -18,7 +18,7 @@ import { dashboardHeader } from "@/lib/dashboard-header";
 import { dashboardPresentation } from "@/lib/dashboard-layout";
 import { summarizeMonthlySpending } from "@/lib/dashboard-spending";
 import { unavailableDashboardCapabilities as capabilityCopy } from "@/lib/dashboard-capabilities";
-import { chartPoints } from "@/lib/net-worth-chart";
+import { chartPoints, monthOverMonthTenths } from "@/lib/net-worth-chart";
 import {
   hydrationSafeWebWidth,
   isDesktopLayout,
@@ -378,7 +378,8 @@ function Transactions({ limit, onSeeAll }: { limit?: number; onSeeAll?: () => vo
 
 function NetWorth() {
   const { data } = useFinanceData();
-  const [activeIndex, setActiveIndex] = useState(Number.MAX_SAFE_INTEGER);
+  const { width } = useWindowDimensions();
+  const [activeIndex, setActiveIndex] = useState(1);
   const series = balanceSeriesByCurrency(data.transactions) as {
     currency: string;
     currencyMinorUnit: number;
@@ -387,44 +388,84 @@ function NetWorth() {
   }[];
   const primary = series[0];
   const monthly = primary?.points ?? [];
-  const points = chartPoints(monthly.map((point) => ({
-    label: new Intl.DateTimeFormat("en-GB", { month: "short", year: "2-digit", timeZone: "UTC" })
+  const visibleMonthly = monthly.slice(-6);
+  const points = chartPoints(visibleMonthly.map((point) => ({
+    label: new Intl.DateTimeFormat("en-GB", { month: "short", timeZone: "UTC" })
       .format(new Date(`${point.month}-01T00:00:00Z`)),
     value: Number(BigInt(point.amountMinor)),
   })));
   const selectedIndex = Math.min(activeIndex, Math.max(points.length - 1, 0));
-  const selected = monthly[selectedIndex];
+  const selected = visibleMonthly[selectedIndex];
+  const selectedPoint = points[selectedIndex];
+  const latest = primary?.points.at(-1);
+  const changeTenths = monthOverMonthTenths(monthly);
   const path = points.map((point, index) => `${index ? "L" : "M"}${point.x} ${point.y}`).join(" ");
+  const compact = width < 480;
+  const formatNetWorth = (amountMinor: string, currency: string, currencyMinorUnit: number) => {
+    const formatted = formatMinorMoney(amountMinor, currency, currencyMinorUnit).replace(/^\+/, "");
+    return currency === "EUR" ? `€${formatted.replace(/\s*EUR$/, "")}` : formatted;
+  };
+
+  useEffect(() => {
+    if (points.length) setActiveIndex((index) => Math.min(index, points.length - 1));
+  }, [points.length]);
 
   return (
     <Panel style={styles.netWorth}>
       <View style={styles.netWorthHero}>
-        <Text style={styles.kicker}>NET WORTH</Text>
-        {series.length ? (
-          <>
-            <View style={styles.netWorthValues}>
-              {series.map((currencySeries) => {
-                const latest = currencySeries.points.at(-1);
-                return latest ? (
-                  <Text key={currencySeries.currency} style={styles.netWorthValue}>
-                    {formatMinorMoney(latest.amountMinor, currencySeries.currency, currencySeries.currencyMinorUnit).replace(/^\+/, "")}
+        <Svg style={[StyleSheet.absoluteFill, styles.pointerEventsNone]} width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <Defs>
+            <LinearGradient id="netWorthHeroWash" x1="0" y1="0" x2="1" y2="0">
+              <Stop offset="0" stopColor="#e7f7ef" />
+              <Stop offset=".55" stopColor="#f3f7e9" />
+              <Stop offset="1" stopColor="#edf6fd" />
+            </LinearGradient>
+          </Defs>
+          <Rect width="100" height="100" fill="url(#netWorthHeroWash)" />
+        </Svg>
+        <View style={styles.netWorthHeroContent}>
+          <Text style={styles.kicker}>NET WORTH</Text>
+          {series.length ? (
+            <>
+              <View style={styles.netWorthValueRow}>
+                {latest && (
+                  <Text style={[styles.netWorthValue, compact && styles.netWorthValueCompact]}>
+                    {formatNetWorth(latest.amountMinor, primary.currency, primary.currencyMinorUnit)}
                   </Text>
-                ) : null;
-              })}
-            </View>
-            <Text style={styles.heroHint}>
-              {primary?.basis === "calculated-from-zero"
-                ? "Calculated from complete imported history starting at €0"
-                : "Source-backed monthly balances"}
-              {series.length > 1 ? " · currencies shown separately" : " · no currency conversion"}
-            </Text>
-          </>
-        ) : (
-          <>
-            <Text style={styles.unavailableValue}>No balance history</Text>
-            <Text style={styles.heroHint}>Import complete account history to calculate balances from €0.</Text>
-          </>
-        )}
+                )}
+                {changeTenths !== undefined && (
+                  <Text style={[styles.netWorthDelta, changeTenths < 0 && styles.netWorthDeltaNegative]}>
+                    {changeTenths > 0 ? "+" : ""}{(changeTenths / 10).toFixed(1)}%
+                  </Text>
+                )}
+                {changeTenths !== undefined && <Text style={styles.netWorthComparison}>vs. last month</Text>}
+              </View>
+              {series.length > 1 && (
+                <View style={styles.secondaryNetWorthValues}>
+                  {series.slice(1).map((currencySeries) => {
+                    const secondaryLatest = currencySeries.points.at(-1);
+                    return secondaryLatest ? (
+                      <Text key={currencySeries.currency} style={styles.secondaryNetWorthValue}>
+                        {formatNetWorth(secondaryLatest.amountMinor, currencySeries.currency, currencySeries.currencyMinorUnit)}
+                      </Text>
+                    ) : null;
+                  })}
+                </View>
+              )}
+              <Text style={styles.heroHint}>
+                {primary?.basis === "calculated-from-zero"
+                  ? "Calculated from imported history"
+                  : "Source-backed monthly balances"}
+                {series.length > 1 ? " · currencies shown separately" : " · no currency conversion"}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.unavailableValue}>No balance history</Text>
+              <Text style={styles.heroHint}>Import complete account history to calculate balances from €0.</Text>
+            </>
+          )}
+        </View>
       </View>
       {primary && points.length ? (
         <View style={styles.chartWrap}>
@@ -438,40 +479,49 @@ function NetWorth() {
               </Defs>
               {points.length > 1 && <Path d={`${path} L100 100 L0 100 Z`} fill="url(#netWorthFill)" />}
               {points.length > 1 && <Path d={path} fill="none" stroke={C.teal} strokeWidth="1.15" />}
-              <Circle cx={points[selectedIndex].x} cy={points[selectedIndex].y} r="2" fill={C.teal} stroke="#fff" strokeWidth=".8" />
+              {selectedPoint && (
+                <>
+                  <Line x1={selectedPoint.x} x2={selectedPoint.x} y1="6" y2="100" stroke="#dbe2dd" strokeWidth=".35" />
+                  <Circle cx={selectedPoint.x} cy={selectedPoint.y} r="1.8" fill={C.teal} stroke="#fff" strokeWidth=".8" />
+                </>
+              )}
             </Svg>
             <View style={styles.chartHitTargets}>
               {points.map((point, index) => (
                 <Pressable
                   key={`${point.label}-${index}`}
-                  accessibilityLabel={`Show ${point.label} balance`}
+                  accessibilityLabel={`Show ${new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${visibleMonthly[index].month}-01T00:00:00Z`))} balance, ${formatNetWorth(visibleMonthly[index].amountMinor, primary.currency, primary.currencyMinorUnit)}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: index === selectedIndex }}
                   onHoverIn={() => setActiveIndex(index)}
                   onPress={() => setActiveIndex(index)}
                   style={styles.chartHitTarget}
                 />
               ))}
             </View>
-          </View>
-          <View style={styles.chartMeta}>
-            {selected && (
-              <Text style={styles.chartSelection}>
-                {points[selectedIndex].label} · {formatMinorMoney(selected.amountMinor, primary.currency, primary.currencyMinorUnit).replace(/^\+/, "")}
-              </Text>
+            {selected && selectedPoint && (
+              <View
+                style={[
+                  styles.chartTooltip,
+                  styles.pointerEventsNone,
+                  compact && styles.chartTooltipCompact,
+                  { top: `${Math.max(4, selectedPoint.y - 42)}%` },
+                  selectedPoint.x > 64
+                    ? { right: `${100 - selectedPoint.x}%`, marginRight: 12 }
+                    : { left: `${selectedPoint.x}%`, marginLeft: 12 },
+                ]}
+              >
+                <Text style={styles.tooltipMonth}>{points[selectedIndex].label}</Text>
+                <Text style={[styles.tooltipValue, compact && styles.tooltipValueCompact]}>
+                  Net worth: {formatNetWorth(selected.amountMinor, primary.currency, primary.currencyMinorUnit)}
+                </Text>
+              </View>
             )}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.monthBalances}>
-              {monthly.map((point, index) => (
-                <Pressable
-                  key={point.month}
-                  onPress={() => setActiveIndex(index)}
-                  style={[styles.monthBalance, index === selectedIndex && styles.monthBalanceActive]}
-                >
-                  <Text style={styles.monthBalanceLabel}>{points[index].label}</Text>
-                  <Text style={styles.monthBalanceValue}>
-                    {formatMinorMoney(point.amountMinor, primary.currency, primary.currencyMinorUnit).replace(/^\+/, "")}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+          </View>
+          <View style={styles.chartMonths}>
+            {points.map((point) => (
+              <Text key={point.label} style={styles.chartMonth}>{point.label}</Text>
+            ))}
           </View>
         </View>
       ) : (
@@ -1066,26 +1116,34 @@ const styles = StyleSheet.create({
   sideColumn: { flex: 1, gap: 20, minWidth: 0 },
   dashboardSplit: { flexDirection: "row", gap: 20 },
   dashboardHalfCard: { flex: 1, minHeight: 294 },
-  netWorth: { padding: 0, overflow: "hidden", minHeight: 304 },
-  netWorthHero: { padding: 24, backgroundColor: "#eaf5ef" },
+  netWorth: { padding: 0, overflow: "hidden", minHeight: 360 },
+  netWorthHero: { minHeight: 136, position: "relative", overflow: "hidden" },
+  netWorthHeroContent: { paddingHorizontal: 28, paddingVertical: 23 },
   kicker: { color: C.muted, fontSize: 11, fontWeight: "800", letterSpacing: 1.4 },
   unavailableValue: { color: C.ink, fontSize: 25, fontWeight: "800", marginTop: 10 },
-  netWorthValues: { flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", gap: 14, marginTop: 8 },
-  netWorthValue: { color: C.ink, fontSize: 35, fontWeight: "800", letterSpacing: -0.8 },
-  heroHint: { color: C.muted, fontSize: 12, marginTop: 6 },
+  netWorthValueRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", columnGap: 12, rowGap: 4, marginTop: 7 },
+  netWorthValue: { color: C.ink, fontSize: 40, lineHeight: 45, fontWeight: "800", letterSpacing: -1.1 },
+  netWorthValueCompact: { fontSize: 34, lineHeight: 39, letterSpacing: -0.8 },
+  netWorthDelta: { color: "#356f5b", backgroundColor: "#d9eee2", borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3, fontSize: 12, fontWeight: "800" },
+  netWorthDeltaNegative: { color: C.red, backgroundColor: "#fae6e1" },
+  netWorthComparison: { color: C.muted, fontSize: 12 },
+  secondaryNetWorthValues: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 4 },
+  secondaryNetWorthValue: { color: C.ink, fontSize: 13, fontWeight: "700" },
+  heroHint: { color: C.muted, fontSize: 11, marginTop: 4 },
   chartEmpty: { minHeight: 168, padding: 24, justifyContent: "center" },
   chartGuide: { height: 2, borderRadius: 2, backgroundColor: C.tealSoft, transform: [{ rotate: "-5deg" }], marginBottom: 20 },
-  chartWrap: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 12 },
-  lineChart: { height: 122, position: "relative", overflow: "hidden" },
-  chartHitTargets: { ...StyleSheet.absoluteFill, flexDirection: "row" },
+  chartWrap: { paddingTop: 15 },
+  lineChart: { height: 180, marginHorizontal: 20, position: "relative", overflow: "hidden" },
+  chartHitTargets: { ...StyleSheet.absoluteFill, flexDirection: "row", zIndex: 2 },
   chartHitTarget: { flex: 1 },
-  chartMeta: { gap: 6 },
-  chartSelection: { color: C.teal, fontSize: 10, fontWeight: "700", textAlign: "right" },
-  monthBalances: { gap: 7, paddingTop: 2 },
-  monthBalance: { borderRadius: 10, backgroundColor: "#f5f8f5", paddingHorizontal: 9, paddingVertical: 7 },
-  monthBalanceActive: { backgroundColor: C.tealSoft },
-  monthBalanceLabel: { color: C.muted, fontSize: 9 },
-  monthBalanceValue: { color: C.ink, fontSize: 10, fontWeight: "700", marginTop: 2 },
+  chartTooltip: { position: "absolute", zIndex: 3, width: 168, backgroundColor: C.card, borderWidth: 1, borderColor: C.line, borderRadius: 16, padding: 14, boxShadow: "0 8px 20px rgba(36, 60, 52, 0.10)", elevation: 3 },
+  pointerEventsNone: { pointerEvents: "none" },
+  chartTooltipCompact: { width: 144, padding: 12 },
+  tooltipMonth: { fontSize: 13, color: C.ink, fontWeight: "600" },
+  tooltipValue: { fontSize: 13, color: C.teal, marginTop: 7 },
+  tooltipValueCompact: { fontSize: 11 },
+  chartMonths: { flexDirection: "row", paddingHorizontal: 20, paddingTop: 5, paddingBottom: 17 },
+  chartMonth: { flex: 1, color: C.muted, fontSize: 11, textAlign: "center" },
   previewBody: { flexDirection: "row", alignItems: "center", gap: 18, flex: 1 },
   previewCopy: { flex: 1 },
   donutEmpty: { width: 126, height: 126, borderRadius: 63, borderWidth: 18, borderColor: C.tealSoft, alignItems: "center", justifyContent: "center" },

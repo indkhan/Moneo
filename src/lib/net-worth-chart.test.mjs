@@ -14,7 +14,8 @@ test('maps labelled balances into a bounded rising chart', () => {
   ]);
 });
 
-test('places a single balance safely in the middle of the chart', () => {
+test('handles empty and single-balance charts safely', () => {
+  assert.deepEqual(chartPoints([]), []);
   assert.deepEqual(chartPoints([{ label: '3 Aug', value: 11500 }]), [
     { label: '3 Aug', x: 50, y: 46 },
   ]);
