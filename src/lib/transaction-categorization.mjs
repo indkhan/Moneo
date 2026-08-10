@@ -20,6 +20,33 @@ export const MONEO_CATEGORIES = [
   categories: categories.map(([categoryId, categoryLabel]) => ({ id: categoryId, label: categoryLabel })),
 }));
 
+export function categoryCatalog(rules = []) {
+  const options = MONEO_CATEGORIES.flatMap((group) =>
+    group.categories.map((category) => ({ ...category, custom: false })),
+  );
+  const ids = new Set(options.map(({ id }) => id));
+  for (const rule of rules) {
+    if (!rule.categoryLabel || ids.has(rule.categoryId)) continue;
+    options.push({ id: rule.categoryId, label: rule.categoryLabel.trim(), custom: true });
+    ids.add(rule.categoryId);
+  }
+  return options;
+}
+
+export function searchCategories(catalog, query) {
+  const normalizedQuery = normalizeEvidenceText(query);
+  if (!normalizedQuery) return catalog;
+  return catalog
+    .map((category, index) => {
+      const label = normalizeEvidenceText(category.label);
+      const rank = label === normalizedQuery ? 0 : label.startsWith(normalizedQuery) ? 1 : label.includes(normalizedQuery) ? 2 : 3;
+      return { category, index, rank };
+    })
+    .filter(({ rank }) => rank < 3)
+    .sort((left, right) => left.rank - right.rank || left.index - right.index)
+    .map(({ category }) => category);
+}
+
 const exactCounterparties = [
   { aliases: ['rewe', 'rewe markt'], categoryId: 'food.groceries' },
   { aliases: ['edeka'], categoryId: 'food.groceries' },

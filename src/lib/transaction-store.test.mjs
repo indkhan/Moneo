@@ -200,7 +200,7 @@ test('upgrades version 1 data and adds the category rules store', async () => {
 test('persists category rules and keeps them when imports are deleted', async () => {
   const database = await openMoneoDatabase('moneo-test-rules', new IDBFactory());
   await saveImport(database, samplePayload());
-  const rule = { id: 'rule-1', counterpartyKey: 'coffee', categoryId: 'food.restaurants', createdAt: '2026-08-08T00:00:00Z' };
+  const rule = { id: 'rule-1', counterpartyKey: 'coffee', categoryId: 'custom-coffee', categoryLabel: 'Coffee', createdAt: '2026-08-08T00:00:00Z' };
   await saveCategoryRule(database, rule);
   await deleteImport(database, 'import-one');
 
@@ -230,13 +230,13 @@ test('applies a reusable rule and matching assignments atomically', async () => 
   const second = samplePayload('two');
   second.importRecord.fileHash = 'different-hash';
   await saveImport(database, second);
-  const rule = { id: 'rule-1', counterpartyKey: 'coffee', categoryId: 'food.restaurants', createdAt: '2026-08-08T00:00:00Z' };
+  const rule = { id: 'rule-1', counterpartyKey: 'coffee', categoryId: 'custom-coffee', categoryLabel: 'Coffee', createdAt: '2026-08-08T00:00:00Z' };
 
   await applyCategoryRule(database, rule, ['transaction-one', 'transaction-two']);
 
   const data = await loadFinanceData(database);
   assert.deepEqual(data.categoryRules, [rule]);
-  assert.ok(data.transactions.every(({ category }) => category?.method === 'user-rule' && category.categoryId === 'food.restaurants'));
+  assert.ok(data.transactions.every(({ category }) => category?.method === 'user-rule' && category.categoryId === 'custom-coffee'));
   database.close();
 });
 

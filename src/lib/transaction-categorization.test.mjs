@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  categoryCatalog,
   categorizeTransaction,
   counterpartyKeyFor,
   normalizeEvidenceText,
+  searchCategories,
 } from './transaction-categorization.mjs';
 
 const base = {
@@ -78,4 +80,33 @@ test('counterparty key stays stable across normalized statement variants', () =>
   const first = { ...base, title: 'REWE Markt', recipient: ' REWE\u00a0Markt GmbH ' };
   const second = { ...base, title: 'Card payment REWE', recipient: 'REWE Markt GmbH' };
   assert.equal(counterpartyKeyFor(first), counterpartyKeyFor(second));
+});
+
+test('category catalog adds each persisted custom category once', () => {
+  const rules = [
+    { id: 'rule-1', counterpartyKey: 'fitx', categoryId: 'custom-gym', categoryLabel: 'Gym', createdAt: '2026-08-10T00:00:00Z' },
+    { id: 'rule-2', counterpartyKey: 'mcfit', categoryId: 'custom-gym', categoryLabel: 'Gym', createdAt: '2026-08-10T00:00:00Z' },
+    { id: 'rule-3', counterpartyKey: 'rewe', categoryId: 'food.groceries', createdAt: '2026-08-10T00:00:00Z' },
+  ];
+
+  const catalog = categoryCatalog(rules);
+
+  assert.deepEqual(catalog.filter(({ id }) => id === 'custom-gym'), [
+    { id: 'custom-gym', label: 'Gym', custom: true },
+  ]);
+  assert.ok(catalog.some(({ id, label, custom }) => id === 'food.groceries' && label === 'Groceries' && !custom));
+});
+
+test('category search normalizes names and ranks exact then prefix matches', () => {
+  const catalog = [
+    { id: 'custom-home-gym', label: 'Home Gym', custom: true },
+    { id: 'custom-gym-membership', label: 'Gym Membership', custom: true },
+    { id: 'custom-gym', label: 'Gym', custom: true },
+  ];
+
+  assert.deepEqual(searchCategories(catalog, ' GYM! ').map(({ id }) => id), [
+    'custom-gym',
+    'custom-gym-membership',
+    'custom-home-gym',
+  ]);
 });

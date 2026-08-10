@@ -40,6 +40,7 @@ export type CategoryRule = {
   id: string;
   counterpartyKey: string;
   categoryId: string;
+  categoryLabel?: string;
   createdAt: string;
 };
 
