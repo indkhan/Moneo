@@ -27,66 +27,75 @@ export function summarizeByCurrency(transactions) {
     }));
 }
 
+function bookedInOrder(transactions) {
+  return transactions
+    .filter((transaction) => !transaction.status || transaction.status === 'booked')
+    .toSorted((left, right) => (
+      left.bookingDate.localeCompare(right.bookingDate)
+      || left.source.rowNumber - right.source.rowNumber
+    ));
+}
+
 export function latestBalanceByAccount(transactions) {
   const balances = {};
-  for (const transaction of transactions) {
-    if (transaction.balanceAfterMinor === undefined) continue;
+  for (const transaction of bookedInOrder(transactions)) {
     const current = balances[transaction.accountId];
-    const order = `${transaction.bookingDate}|${String(transaction.source.rowNumber).padStart(10, '0')}`;
-    if (!current || order > current.order) {
-      balances[transaction.accountId] = {
-        amountMinor: transaction.balanceAfterMinor,
-        currency: transaction.currency,
-        currencyMinorUnit: transaction.currencyMinorUnit,
-        bookingDate: transaction.bookingDate,
-        order,
-      };
-    }
+    balances[transaction.accountId] = {
+      amountMinor: transaction.balanceAfterMinor === undefined
+        ? ((current?.amountMinor ?? 0n) + BigInt(transaction.amountMinor))
+        : BigInt(transaction.balanceAfterMinor),
+      currency: transaction.currency,
+      currencyMinorUnit: transaction.currencyMinorUnit,
+      bookingDate: transaction.bookingDate,
+      sourceBacked: current?.sourceBacked || transaction.balanceAfterMinor !== undefined,
+    };
   }
   return Object.fromEntries(Object.entries(balances).map(([accountId, balance]) => [
     accountId,
     {
-      amountMinor: balance.amountMinor,
+      amountMinor: balance.amountMinor.toString(),
       currency: balance.currency,
       currencyMinorUnit: balance.currencyMinorUnit,
       bookingDate: balance.bookingDate,
+      basis: balance.sourceBacked ? 'source-backed' : 'calculated-from-zero',
     },
   ]));
 }
 
 export function balanceSeriesByCurrency(transactions) {
   const groups = new Map();
-  for (const transaction of transactions) {
-    if (transaction.status && transaction.status !== 'booked') continue;
-    if (transaction.balanceAfterMinor === undefined) continue;
+  for (const transaction of bookedInOrder(transactions)) {
     const group = groups.get(transaction.currency) ?? {
       currency: transaction.currency,
       currencyMinorUnit: transaction.currencyMinorUnit,
-      dates: new Map(),
+      balances: new Map(),
+      months: new Map(),
+      sourceBacked: false,
     };
-    const dateTransactions = group.dates.get(transaction.bookingDate) ?? [];
-    dateTransactions.push(transaction);
-    group.dates.set(transaction.bookingDate, dateTransactions);
+    const current = group.balances.get(transaction.accountId) ?? 0n;
+    group.balances.set(
+      transaction.accountId,
+      transaction.balanceAfterMinor === undefined
+        ? current + BigInt(transaction.amountMinor)
+        : BigInt(transaction.balanceAfterMinor),
+    );
+    group.sourceBacked ||= transaction.balanceAfterMinor !== undefined;
+    group.months.set(
+      transaction.bookingDate.slice(0, 7),
+      [...group.balances.values()].reduce((sum, balance) => sum + balance, 0n),
+    );
     groups.set(transaction.currency, group);
   }
 
   return [...groups.values()]
     .sort((left, right) => left.currency.localeCompare(right.currency))
-    .map((group) => {
-      const balances = new Map();
-      const points = [...group.dates.entries()]
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([date, dateTransactions]) => {
-          dateTransactions
-            .sort((left, right) => left.source.rowNumber - right.source.rowNumber)
-            .forEach((transaction) => balances.set(transaction.accountId, BigInt(transaction.balanceAfterMinor)));
-          const amount = [...balances.values()].reduce((sum, balance) => sum + balance, 0n);
-          return { date, amountMinor: amount.toString() };
-        });
-      return {
-        currency: group.currency,
-        currencyMinorUnit: group.currencyMinorUnit,
-        points,
-      };
-    });
+    .map((group) => ({
+      currency: group.currency,
+      currencyMinorUnit: group.currencyMinorUnit,
+      basis: group.sourceBacked ? 'source-backed' : 'calculated-from-zero',
+      points: [...group.months].map(([month, amount]) => ({
+        month,
+        amountMinor: amount.toString(),
+      })),
+    }));
 }

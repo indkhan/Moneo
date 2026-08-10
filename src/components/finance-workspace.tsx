@@ -378,21 +378,22 @@ function Transactions({ limit, onSeeAll }: { limit?: number; onSeeAll?: () => vo
 
 function NetWorth() {
   const { data } = useFinanceData();
-  const [activeIndex, setActiveIndex] = useState(6);
+  const [activeIndex, setActiveIndex] = useState(Number.MAX_SAFE_INTEGER);
   const series = balanceSeriesByCurrency(data.transactions) as {
     currency: string;
     currencyMinorUnit: number;
-    points: { date: string; amountMinor: string }[];
+    basis: "source-backed" | "calculated-from-zero";
+    points: { month: string; amountMinor: string }[];
   }[];
   const primary = series[0];
-  const recent = primary?.points.slice(-7) ?? [];
-  const points = chartPoints(recent.map((point) => ({
-    label: new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })
-      .format(new Date(`${point.date}T00:00:00Z`)),
+  const monthly = primary?.points ?? [];
+  const points = chartPoints(monthly.map((point) => ({
+    label: new Intl.DateTimeFormat("en-GB", { month: "short", year: "2-digit", timeZone: "UTC" })
+      .format(new Date(`${point.month}-01T00:00:00Z`)),
     value: Number(BigInt(point.amountMinor)),
   })));
   const selectedIndex = Math.min(activeIndex, Math.max(points.length - 1, 0));
-  const selected = recent[selectedIndex];
+  const selected = monthly[selectedIndex];
   const path = points.map((point, index) => `${index ? "L" : "M"}${point.x} ${point.y}`).join(" ");
 
   return (
@@ -412,13 +413,16 @@ function NetWorth() {
               })}
             </View>
             <Text style={styles.heroHint}>
-              Source balances{series.length > 1 ? " · currencies shown separately" : " · no currency conversion"}
+              {primary?.basis === "calculated-from-zero"
+                ? "Calculated from complete imported history starting at €0"
+                : "Source-backed monthly balances"}
+              {series.length > 1 ? " · currencies shown separately" : " · no currency conversion"}
             </Text>
           </>
         ) : (
           <>
             <Text style={styles.unavailableValue}>No balance history</Text>
-            <Text style={styles.heroHint}>Import a CSV with source balances to build this view.</Text>
+            <Text style={styles.heroHint}>Import complete account history to calculate balances from €0.</Text>
           </>
         )}
       </View>
@@ -440,7 +444,7 @@ function NetWorth() {
               {points.map((point, index) => (
                 <Pressable
                   key={`${point.label}-${index}`}
-                  accessibilityLabel={`Show ${point.label} net worth`}
+                  accessibilityLabel={`Show ${point.label} balance`}
                   onHoverIn={() => setActiveIndex(index)}
                   onPress={() => setActiveIndex(index)}
                   style={styles.chartHitTarget}
@@ -449,14 +453,25 @@ function NetWorth() {
             </View>
           </View>
           <View style={styles.chartMeta}>
-            <View style={styles.chartLabels}>
-              {points.map((point) => <Text key={point.label} style={styles.chartLabel}>{point.label}</Text>)}
-            </View>
             {selected && (
               <Text style={styles.chartSelection}>
-                {selected.date} · {formatMinorMoney(selected.amountMinor, primary.currency, primary.currencyMinorUnit).replace(/^\+/, "")}
+                {points[selectedIndex].label} · {formatMinorMoney(selected.amountMinor, primary.currency, primary.currencyMinorUnit).replace(/^\+/, "")}
               </Text>
             )}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.monthBalances}>
+              {monthly.map((point, index) => (
+                <Pressable
+                  key={point.month}
+                  onPress={() => setActiveIndex(index)}
+                  style={[styles.monthBalance, index === selectedIndex && styles.monthBalanceActive]}
+                >
+                  <Text style={styles.monthBalanceLabel}>{points[index].label}</Text>
+                  <Text style={styles.monthBalanceValue}>
+                    {formatMinorMoney(point.amountMinor, primary.currency, primary.currencyMinorUnit).replace(/^\+/, "")}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
           </View>
         </View>
       ) : (
@@ -605,6 +620,7 @@ function Accounts() {
       currency: string;
       currencyMinorUnit: number;
       bookingDate: string;
+      basis: "source-backed" | "calculated-from-zero";
     }
   >;
 
@@ -652,12 +668,12 @@ function Accounts() {
                     ).replace(/^\+/, "")}
                   </Text>
                   <Text style={[styles.hint, styles.right]}>
-                    Source balance · {balance.bookingDate}
+                    {balance.basis === "source-backed" ? "Source-backed" : "Calculated from €0"} · {balance.bookingDate}
                   </Text>
                 </>
               ) : (
                 <Text style={[styles.hint, styles.right]}>
-                  Balance not provided by CSV
+                  No booked transactions
                 </Text>
               )}
             </View>
@@ -1064,9 +1080,12 @@ const styles = StyleSheet.create({
   chartHitTargets: { ...StyleSheet.absoluteFill, flexDirection: "row" },
   chartHitTarget: { flex: 1 },
   chartMeta: { gap: 6 },
-  chartLabels: { flexDirection: "row", justifyContent: "space-between" },
-  chartLabel: { color: C.muted, fontSize: 9 },
   chartSelection: { color: C.teal, fontSize: 10, fontWeight: "700", textAlign: "right" },
+  monthBalances: { gap: 7, paddingTop: 2 },
+  monthBalance: { borderRadius: 10, backgroundColor: "#f5f8f5", paddingHorizontal: 9, paddingVertical: 7 },
+  monthBalanceActive: { backgroundColor: C.tealSoft },
+  monthBalanceLabel: { color: C.muted, fontSize: 9 },
+  monthBalanceValue: { color: C.ink, fontSize: 10, fontWeight: "700", marginTop: 2 },
   previewBody: { flexDirection: "row", alignItems: "center", gap: 18, flex: 1 },
   previewCopy: { flex: 1 },
   donutEmpty: { width: 126, height: 126, borderRadius: 63, borderWidth: 18, borderColor: C.tealSoft, alignItems: "center", justifyContent: "center" },
