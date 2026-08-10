@@ -23,7 +23,7 @@ export function chartPoints(values: { label: string; value: number }[]): ChartPo
   const range = max - min || 1;
   return values.map((point, index) => ({
     label: point.label,
-    x: (index / (values.length - 1)) * 100,
+    x: ((index + 0.5) / values.length) * 100,
     y: 74 - ((point.value - min) / range) * 56,
   }));
 }

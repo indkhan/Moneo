@@ -473,19 +473,43 @@ function NetWorth() {
             <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
               <Defs>
                 <LinearGradient id="netWorthFill" x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0" stopColor={C.teal} stopOpacity=".22" />
+                  <Stop offset="0" stopColor={C.teal} stopOpacity=".14" />
                   <Stop offset="1" stopColor={C.teal} stopOpacity="0" />
                 </LinearGradient>
               </Defs>
-              {points.length > 1 && <Path d={`${path} L100 100 L0 100 Z`} fill="url(#netWorthFill)" />}
-              {points.length > 1 && <Path d={path} fill="none" stroke={C.teal} strokeWidth="1.15" />}
+              {points.length > 1 && <Path d={`${path} L${points.at(-1)!.x} 100 L${points[0].x} 100 Z`} fill="url(#netWorthFill)" />}
+              {points.length > 1 && (
+                <Path
+                  d={path}
+                  fill="none"
+                  stroke={C.teal}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
               {selectedPoint && (
-                <>
-                  <Line x1={selectedPoint.x} x2={selectedPoint.x} y1="6" y2="100" stroke="#dbe2dd" strokeWidth=".35" />
-                  <Circle cx={selectedPoint.x} cy={selectedPoint.y} r="1.8" fill={C.teal} stroke="#fff" strokeWidth=".8" />
-                </>
+                <Line
+                  x1={selectedPoint.x}
+                  x2={selectedPoint.x}
+                  y1="6"
+                  y2="100"
+                  stroke="#dbe2dd"
+                  strokeWidth="1"
+                  vectorEffect="non-scaling-stroke"
+                />
               )}
             </Svg>
+            {selectedPoint && (
+              <View
+                style={[
+                  styles.chartPoint,
+                  styles.pointerEventsNone,
+                  { left: `${selectedPoint.x}%`, top: `${selectedPoint.y}%` },
+                ]}
+              />
+            )}
             <View style={styles.chartHitTargets}>
               {points.map((point, index) => (
                 <Pressable
@@ -494,6 +518,7 @@ function NetWorth() {
                   accessibilityRole="button"
                   accessibilityState={{ selected: index === selectedIndex }}
                   onHoverIn={() => setActiveIndex(index)}
+                  onFocus={() => setActiveIndex(index)}
                   onPress={() => setActiveIndex(index)}
                   style={styles.chartHitTarget}
                 />
@@ -1136,6 +1161,7 @@ const styles = StyleSheet.create({
   lineChart: { height: 180, marginHorizontal: 20, position: "relative", overflow: "hidden" },
   chartHitTargets: { ...StyleSheet.absoluteFill, flexDirection: "row", zIndex: 2 },
   chartHitTarget: { flex: 1 },
+  chartPoint: { position: "absolute", zIndex: 1, width: 8, height: 8, borderRadius: 4, backgroundColor: C.teal, borderWidth: 2, borderColor: C.card, transform: [{ translateX: -4 }, { translateY: -4 }] },
   chartTooltip: { position: "absolute", zIndex: 3, width: 168, backgroundColor: C.card, borderWidth: 1, borderColor: C.line, borderRadius: 16, padding: 14, boxShadow: "0 8px 20px rgba(36, 60, 52, 0.10)", elevation: 3 },
   pointerEventsNone: { pointerEvents: "none" },
   chartTooltipCompact: { width: 144, padding: 12 },

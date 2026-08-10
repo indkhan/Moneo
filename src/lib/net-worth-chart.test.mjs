@@ -9,9 +9,20 @@ test('maps labelled balances into a bounded rising chart', () => {
   ]);
 
   assert.deepEqual(points, [
-    { label: '1 Aug', x: 0, y: 74 },
-    { label: '3 Aug', x: 100, y: 18 },
+    { label: '1 Aug', x: 25, y: 74 },
+    { label: '3 Aug', x: 75, y: 18 },
   ]);
+});
+
+test('centres every chart point in its matching month cell', () => {
+  const points = chartPoints(Array.from({ length: 6 }, (_, index) => ({
+    label: `Month ${index + 1}`,
+    value: index,
+  })));
+
+  points.forEach((point, index) => {
+    assert.equal(point.x, ((index + 0.5) / points.length) * 100);
+  });
 });
 
 test('handles empty and single-balance charts safely', () => {
