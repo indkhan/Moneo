@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   useWindowDimensions as useNativeWindowDimensions,
 } from "react-native";
@@ -32,9 +33,11 @@ import {
   latestBalanceByAccount,
 } from "@/lib/finance-summary.mjs";
 import {
+  categoryCatalog,
   categorizeTransaction,
   counterpartyKeyFor,
-  MONEO_CATEGORIES,
+  normalizeEvidenceText,
+  searchCategories,
 } from "@/lib/transaction-categorization.mjs";
 import {
   applyCategoryRule,
@@ -112,15 +115,13 @@ function maskIdentifier(identifier?: string) {
     : identifier;
 }
 
-const categoryGroups = MONEO_CATEGORIES as {
-  id: string;
-  label: string;
-  categories: { id: string; label: string }[];
-}[];
-const categoryOptions = categoryGroups.flatMap((group) => group.categories);
+type CategoryOption = { id: string; label: string; custom: boolean };
 
-function categoryLabel(categoryId?: string) {
-  return categoryOptions.find((category) => category.id === categoryId)?.label ?? "Needs category";
+const builtInCategoryOptions = categoryCatalog() as CategoryOption[];
+const newCategoryId = "__new_category__";
+
+function categoryLabel(categoryId?: string, options = builtInCategoryOptions) {
+  return options.find((category) => category.id === categoryId)?.label ?? "Needs category";
 }
 
 function Transactions({ limit, onSeeAll }: { limit?: number; onSeeAll?: () => void }) {
@@ -129,7 +130,17 @@ function Transactions({ limit, onSeeAll }: { limit?: number; onSeeAll?: () => vo
   const [needsOnly, setNeedsOnly] = useState(false);
   const [editingId, setEditingId] = useState<string>();
   const [chosenCategoryId, setChosenCategoryId] = useState<string>();
+  const [categoryQuery, setCategoryQuery] = useState("");
+  const [ruleRequired, setRuleRequired] = useState(false);
+  const [savingCategory, setSavingCategory] = useState(false);
+  const [categoryError, setCategoryError] = useState<string>();
   const [scope, setScope] = useState<"one" | "all">("one");
+  const availableCategories = categoryCatalog(data.categoryRules) as CategoryOption[];
+  const matchingCategories = searchCategories(availableCategories, categoryQuery) as CategoryOption[];
+  const cleanCategoryName = categoryQuery.trim().replace(/\s+/g, " ");
+  const exactCategory = availableCategories.find(
+    (category) => normalizeEvidenceText(category.label) === normalizeEvidenceText(cleanCategoryName),
+  );
   const unmatchedCount = data.transactions.filter((transaction) => !transaction.category).length;
   const ordered = recentTransactions(
     data.transactions,
@@ -137,39 +148,57 @@ function Transactions({ limit, onSeeAll }: { limit?: number; onSeeAll?: () => vo
   const transactions = (needsOnly ? ordered.filter((transaction) => !transaction.category) : ordered)
     .slice(0, limit ?? ordered.length);
 
-  const beginCategoryChange = (transaction: MoneoTransaction) => {
+  const beginCategoryChange = (transaction: MoneoTransaction, requireRule = false) => {
     const decision = categorizeTransaction(transaction, data.categoryRules);
+    const initialCategoryId = transaction.category?.categoryId ?? (decision.status === "suggested" ? decision.categoryId : undefined);
     setEditingId(transaction.id);
-    setChosenCategoryId(transaction.category?.categoryId ?? (decision.status === "suggested" ? decision.categoryId : undefined));
-    setScope("one");
+    setChosenCategoryId(initialCategoryId);
+    setCategoryQuery(categoryLabel(initialCategoryId, availableCategories) === "Needs category" ? "" : categoryLabel(initialCategoryId, availableCategories));
+    setRuleRequired(requireRule);
+    setScope(requireRule ? "all" : "one");
+    setCategoryError(undefined);
   };
 
   const saveCategory = async (transaction: MoneoTransaction) => {
-    if (!database || !chosenCategoryId) return;
-    if (scope === "all") {
-      const counterpartyKey = counterpartyKeyFor(transaction);
-      const existing = data.categoryRules.find((rule) => rule.counterpartyKey === counterpartyKey);
-      const rule = {
-        id: existing?.id ?? crypto.randomUUID(),
-        counterpartyKey,
-        categoryId: chosenCategoryId,
-        createdAt: existing?.createdAt ?? new Date().toISOString(),
-      };
-      await applyCategoryRule(
-        database,
-        rule,
-        data.transactions.filter((item) => counterpartyKeyFor(item) === counterpartyKey).map((item) => item.id),
-      );
-    } else {
-      await setTransactionCategory(database, transaction.id, {
-        categoryId: chosenCategoryId,
-        method: "manual",
-        classifierVersion: "moneo-category-v1",
-        evidence: ["Chosen by you"],
-      });
+    if (!database || !chosenCategoryId || savingCategory) return;
+    const selectedCategory = chosenCategoryId === newCategoryId
+      ? { id: `custom:${crypto.randomUUID()}`, label: cleanCategoryName, custom: true }
+      : availableCategories.find(({ id }) => id === chosenCategoryId);
+    if (!selectedCategory?.label) return;
+    setSavingCategory(true);
+    setCategoryError(undefined);
+    try {
+      if (scope === "all") {
+        const counterpartyKey = counterpartyKeyFor(transaction);
+        const existing = data.categoryRules.find((rule) => rule.counterpartyKey === counterpartyKey);
+        const rule = {
+          id: existing?.id ?? crypto.randomUUID(),
+          counterpartyKey,
+          categoryId: selectedCategory.id,
+          ...(selectedCategory.custom ? { categoryLabel: selectedCategory.label } : {}),
+          createdAt: existing?.createdAt ?? new Date().toISOString(),
+        };
+        await applyCategoryRule(
+          database,
+          rule,
+          data.transactions.filter((item) => counterpartyKeyFor(item) === counterpartyKey).map((item) => item.id),
+        );
+      } else {
+        await setTransactionCategory(database, transaction.id, {
+          categoryId: selectedCategory.id,
+          method: "manual",
+          classifierVersion: "moneo-category-v1",
+          evidence: ["Chosen by you"],
+        });
+      }
+      await refresh();
+      setEditingId(undefined);
+      setCategoryQuery("");
+    } catch (error) {
+      setCategoryError(error instanceof Error ? error.message : "Category could not be saved");
+    } finally {
+      setSavingCategory(false);
     }
-    await refresh();
-    setEditingId(undefined);
   };
 
   return (
@@ -199,6 +228,9 @@ function Transactions({ limit, onSeeAll }: { limit?: number; onSeeAll?: () => vo
           (item) => item.id === transaction.accountId,
         );
         const selected = selectedId === transaction.id;
+        const matchingTransactionCount = data.transactions.filter(
+          (item) => counterpartyKeyFor(item) === counterpartyKeyFor(transaction),
+        ).length;
         return (
           <View key={transaction.id}>
             <Pressable
@@ -215,13 +247,27 @@ function Transactions({ limit, onSeeAll }: { limit?: number; onSeeAll?: () => vo
               <View style={styles.grow}>
                 <Text style={styles.rowTitle}>{transaction.title}</Text>
                 <View style={styles.categoryLine}>
-                  <Text style={[styles.categoryBadge, !transaction.category && styles.needsBadge]}>
-                    {categoryLabel(transaction.category?.categoryId)}
-                  </Text>
+                  {transaction.category ? (
+                    <Text style={styles.categoryBadge}>
+                      {categoryLabel(transaction.category.categoryId, availableCategories)}
+                    </Text>
+                  ) : (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Categorize ${transaction.title}`}
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        setSelectedId(transaction.id);
+                        beginCategoryChange(transaction, true);
+                      }}
+                    >
+                      <Text style={[styles.categoryBadge, styles.needsBadge]}>Needs category</Text>
+                    </Pressable>
+                  )}
                   {!transaction.category && (() => {
                     const decision = categorizeTransaction(transaction, data.categoryRules);
                     return decision.status === "suggested" ? (
-                      <Text style={styles.suggestion}>Suggested: {categoryLabel(decision.categoryId)}</Text>
+                      <Text style={styles.suggestion}>Suggested: {categoryLabel(decision.categoryId, availableCategories)}</Text>
                     ) : null;
                   })()}
                 </View>
@@ -254,7 +300,7 @@ function Transactions({ limit, onSeeAll }: { limit?: number; onSeeAll?: () => vo
                 <View style={styles.categoryDetailHead}>
                   <View style={styles.grow}>
                     <Text style={styles.detailLabel}>Moneo category</Text>
-                    <Text style={styles.detailValue}>{categoryLabel(transaction.category?.categoryId)}</Text>
+                    <Text style={styles.detailValue}>{categoryLabel(transaction.category?.categoryId, availableCategories)}</Text>
                     {transaction.category && (
                       <Text style={styles.hint}>
                         {transaction.category.method === "built-in" ? "Automatic" : transaction.category.method === "user-rule" ? "Personal rule" : "Manual"}
@@ -268,36 +314,75 @@ function Transactions({ limit, onSeeAll }: { limit?: number; onSeeAll?: () => vo
                 </View>
                 {editingId === transaction.id && (
                   <View style={styles.categoryPicker}>
-                    {categoryGroups.filter((group) => group.categories.length).map((group) => (
-                      <View key={group.id} style={styles.categoryGroup}>
-                        <Text style={styles.detailLabel}>{group.label}</Text>
-                        <View style={styles.categoryChoices}>
-                          {group.categories.map((category) => (
-                            <Pressable
-                              key={category.id}
-                              style={[styles.categoryChoice, chosenCategoryId === category.id && styles.categoryChoiceActive]}
-                              onPress={() => setChosenCategoryId(category.id)}
-                            >
-                              <Text style={styles.categoryChoiceText}>{category.label}</Text>
-                            </Pressable>
-                          ))}
-                        </View>
-                      </View>
-                    ))}
-                    <View style={styles.scopeRow}>
-                      <Pressable style={[styles.scopeChoice, scope === "one" && styles.scopeChoiceActive]} onPress={() => setScope("one")}>
-                        <Text style={styles.categoryChoiceText}>This transaction only</Text>
-                      </Pressable>
-                      <Pressable style={[styles.scopeChoice, scope === "all" && styles.scopeChoiceActive]} onPress={() => setScope("all")}>
-                        <Text style={styles.categoryChoiceText}>All from {transaction.recipient || transaction.sender || transaction.title}</Text>
-                      </Pressable>
+                    <TextInput
+                      accessibilityLabel="Search or create a category"
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                      autoFocus
+                      maxLength={40}
+                      onChangeText={(value) => {
+                        setCategoryQuery(value);
+                        const exact = availableCategories.find(
+                          (category) => normalizeEvidenceText(category.label) === normalizeEvidenceText(value),
+                        );
+                        setChosenCategoryId(exact?.id);
+                      }}
+                      placeholder="Search or create a category"
+                      placeholderTextColor={C.muted}
+                      style={styles.categoryInput}
+                      value={categoryQuery}
+                    />
+                    <View style={styles.categoryChoices}>
+                      {matchingCategories.map((category) => (
+                        <Pressable
+                          key={category.id}
+                          style={[styles.categoryChoice, chosenCategoryId === category.id && styles.categoryChoiceActive]}
+                          onPress={() => {
+                            setChosenCategoryId(category.id);
+                            setCategoryQuery(category.label);
+                          }}
+                        >
+                          <Text style={styles.categoryChoiceText}>{category.label}</Text>
+                        </Pressable>
+                      ))}
+                      {Boolean(cleanCategoryName) && !exactCategory && (
+                        <Pressable
+                          style={[styles.categoryChoice, chosenCategoryId === newCategoryId && styles.categoryChoiceActive]}
+                          onPress={() => {
+                            setChosenCategoryId(newCategoryId);
+                            setRuleRequired(true);
+                            setScope("all");
+                          }}
+                        >
+                          <Text style={styles.categoryChoiceText}>Create “{cleanCategoryName}”</Text>
+                        </Pressable>
+                      )}
                     </View>
+                    {ruleRequired ? (
+                      <Text style={styles.categoryScopeNote}>
+                        Applies to {matchingTransactionCount} existing transaction{matchingTransactionCount === 1 ? "" : "s"} from {transaction.recipient || transaction.sender || transaction.title}, and future matches.
+                      </Text>
+                    ) : (
+                      <View style={styles.scopeRow}>
+                        <Pressable style={[styles.scopeChoice, scope === "one" && styles.scopeChoiceActive]} onPress={() => setScope("one")}>
+                          <Text style={styles.categoryChoiceText}>This transaction only</Text>
+                        </Pressable>
+                        <Pressable style={[styles.scopeChoice, scope === "all" && styles.scopeChoiceActive]} onPress={() => setScope("all")}>
+                          <Text style={styles.categoryChoiceText}>All from {transaction.recipient || transaction.sender || transaction.title}</Text>
+                        </Pressable>
+                      </View>
+                    )}
+                    {categoryError && <Text style={styles.categoryError}>{categoryError}</Text>}
                     <View style={styles.pickerActions}>
-                      <Pressable style={styles.smallButton} onPress={() => setEditingId(undefined)}>
+                      <Pressable style={styles.smallButton} onPress={() => setEditingId(undefined)} disabled={savingCategory}>
                         <Text style={styles.smallButtonText}>Cancel</Text>
                       </Pressable>
-                      <Pressable style={[styles.smallButton, styles.saveButton]} onPress={() => saveCategory(transaction)}>
-                        <Text style={[styles.smallButtonText, styles.saveButtonText]}>Save</Text>
+                      <Pressable
+                        disabled={!chosenCategoryId || savingCategory}
+                        style={[styles.smallButton, styles.saveButton, (!chosenCategoryId || savingCategory) && styles.disabledButton]}
+                        onPress={() => saveCategory(transaction)}
+                      >
+                        <Text style={[styles.smallButtonText, styles.saveButtonText]}>{savingCategory ? "Saving…" : "Save"}</Text>
                       </Pressable>
                     </View>
                   </View>
@@ -563,6 +648,7 @@ const spendingColors = [C.teal, "#58b4c3", "#ddb96e", "#d88776", "#9a86bc", "#80
 
 function Spending() {
   const { data } = useFinanceData();
+  const availableCategories = categoryCatalog(data.categoryRules) as CategoryOption[];
   const latestMonth = recentTransactions(data.transactions)[0]?.bookingDate.slice(0, 7);
   const summaries = latestMonth ? summarizeMonthlySpending(data.transactions, latestMonth) as {
     currency: string;
@@ -617,7 +703,7 @@ function Spending() {
             {summary.categories.slice(0, 5).map((category, index) => (
               <View key={category.categoryId} style={styles.legendRow}>
                 <View style={[styles.legendDot, { backgroundColor: spendingColors[index % spendingColors.length] }]} />
-                <Text style={styles.legendLabel} numberOfLines={1}>{categoryLabel(category.categoryId)}</Text>
+                <Text style={styles.legendLabel} numberOfLines={1}>{categoryLabel(category.categoryId, availableCategories)}</Text>
                 <Text style={styles.legendAmount}>
                   {formatMinorMoney(category.amountMinor, summary.currency, summary.currencyMinorUnit).replace(/^\+/, "")}
                 </Text>
@@ -1236,7 +1322,7 @@ const styles = StyleSheet.create({
   smallButton: { borderWidth: 1, borderColor: C.line, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: C.card },
   smallButtonText: { color: C.ink, fontSize: 10, fontWeight: "700" },
   categoryPicker: { borderTopWidth: 1, borderColor: C.line, paddingTop: 10, gap: 10 },
-  categoryGroup: { gap: 5 },
+  categoryInput: { borderWidth: 1, borderColor: C.line, borderRadius: 10, backgroundColor: C.card, color: C.ink, fontSize: 12, paddingHorizontal: 11, paddingVertical: 9 },
   categoryChoices: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   categoryChoice: { borderWidth: 1, borderColor: C.line, borderRadius: 9, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: C.card },
   categoryChoiceActive: { borderColor: C.teal, backgroundColor: C.tealSoft },
@@ -1244,9 +1330,12 @@ const styles = StyleSheet.create({
   scopeRow: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   scopeChoice: { flexGrow: 1, borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 9, backgroundColor: C.card },
   scopeChoiceActive: { borderColor: C.teal, backgroundColor: C.tealSoft },
+  categoryScopeNote: { color: C.muted, fontSize: 10, lineHeight: 15 },
+  categoryError: { color: C.red, fontSize: 10 },
   pickerActions: { flexDirection: "row", justifyContent: "flex-end", gap: 7 },
   saveButton: { backgroundColor: C.teal, borderColor: C.teal },
   saveButtonText: { color: C.card },
+  disabledButton: { opacity: 0.45 },
   detailGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   detailItem: { minWidth: 150, flex: 1 },
   detailLabel: {

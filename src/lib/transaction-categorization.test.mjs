@@ -110,3 +110,9 @@ test('category search normalizes names and ranks exact then prefix matches', () 
     'custom-home-gym',
   ]);
 });
+
+test('category search keeps a shorter existing name visible in a longer draft', () => {
+  const catalog = [{ id: 'custom-gym', label: 'Gym', custom: true }];
+
+  assert.deepEqual(searchCategories(catalog, 'Gym membership'), catalog);
+});

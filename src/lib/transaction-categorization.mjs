@@ -39,7 +39,7 @@ export function searchCategories(catalog, query) {
   return catalog
     .map((category, index) => {
       const label = normalizeEvidenceText(category.label);
-      const rank = label === normalizedQuery ? 0 : label.startsWith(normalizedQuery) ? 1 : label.includes(normalizedQuery) ? 2 : 3;
+      const rank = label === normalizedQuery ? 0 : label.startsWith(normalizedQuery) ? 1 : label.includes(normalizedQuery) || normalizedQuery.includes(label) ? 2 : 3;
       return { category, index, rank };
     })
     .filter(({ rank }) => rank < 3)
