@@ -13,6 +13,7 @@ Expo/React Native personal-finance prototype for iOS, Android, and web. Uses Exp
 - Helpers cover navigation, responsive layout, CSV parsing/mapping, deduplication, local storage, transaction display, and cash-flow summaries in `src/lib/`.
 - `extra/transaction-categorization-plan.html` and `extra/transaction-categorization-implementation-plan.md` document the delivered v1 category scope and deferred enhancements.
 - `extra/dashboard-reference-implementation-plan.md` defines the commit-by-commit, web-verified restoration of the supplied dashboard composition without restoring mock financial claims.
+- Dashboard net worth shows an exact per-currency headline, real monthly change, and a compact six-month chart with an accessible guide-anchored tooltip.
 
 Run with `npm start`; run helper tests with `npm test`.
 
