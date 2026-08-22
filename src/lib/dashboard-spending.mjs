@@ -3,6 +3,7 @@ export function summarizeMonthlySpending(transactions, month) {
   for (const transaction of transactions) {
     if (!transaction.bookingDate.startsWith(`${month}-`)) continue;
     if (transaction.status && transaction.status !== 'booked') continue;
+    if (transaction.category?.categoryId === 'transfer.internal') continue;
     const amount = BigInt(transaction.amountMinor);
     if (amount >= 0n) continue;
     const summary = currencies.get(transaction.currency) ?? {

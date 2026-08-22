@@ -83,6 +83,36 @@ test('salary employer rules only apply to incoming payments', () => {
   );
 });
 
+test('revolut pocket and top-up movements are internal transfers in both directions', () => {
+  const cases = [
+    { title: 'To pocket EUR Monthly from EUR', amountMinor: '-10000' },
+    { title: 'To pocket EUR Monthly from EUR', amountMinor: '10000' },
+    { title: 'Pocket Withdrawal', amountMinor: '5000' },
+    { title: 'Open banking top-up', amountMinor: '10000' },
+  ];
+  for (const fields of cases) {
+    const result = categorizeTransaction({ ...base, ...fields }, []);
+    assert.equal(result.status, 'assigned', JSON.stringify(fields));
+    assert.equal(result.categoryId, 'transfer.internal', JSON.stringify(fields));
+    assert.equal(result.confidence, 'high', JSON.stringify(fields));
+    assert.equal(result.method, 'built-in', JSON.stringify(fields));
+    assert.match(result.evidence[0], /^Internal transfer: /, JSON.stringify(fields));
+  }
+});
+
+test('person-to-person transfers stay uncategorized', () => {
+  assert.equal(
+    categorizeTransaction({ ...base, title: 'Transfer to MOHAMMED ESAM SALEH HALBOUP', recipient: 'MOHAMMED ESAM SALEH HALBOUP' }, []).status,
+    'unmatched',
+  );
+});
+
+test('a personal rule overrides the internal transfer marker', () => {
+  const transaction = { ...base, title: 'To pocket EUR Monthly from EUR', amountMinor: '-10000' };
+  const rules = [{ id: 'rule-1', counterpartyKey: counterpartyKeyFor(transaction), categoryId: 'gifts.donation', createdAt: '2026-08-08T00:00:00Z' }];
+  assert.equal(categorizeTransaction(transaction, rules).categoryId, 'gifts.donation');
+});
+
 test('incoming salary phrase assigns salary but outgoing salary does not', () => {
   assert.equal(categorizeTransaction({ ...base, amountMinor: '250000', title: 'Gehalt August', transferPurpose: 'Gehalt August' }, []).categoryId, 'income.salary');
   assert.notEqual(categorizeTransaction({ ...base, title: 'Gehalt August', transferPurpose: 'Gehalt August' }, []).status, 'assigned');

@@ -13,6 +13,7 @@ export const MONEO_CATEGORIES = [
   ['education', 'Education', []],
   ['financial', 'Financial', [['financial.bank_fee', 'Bank fee'], ['financial.investments', 'Investments']]],
   ['gifts', 'Gifts', [['gifts.donation', 'Donation']]],
+  ['transfer', 'Transfers', [['transfer.internal', 'Internal transfer']]],
   ['other', 'Other', [['other.uncategorized', 'Needs category']]],
 ].map(([id, label, categories]) => ({
   id,
@@ -131,6 +132,17 @@ function hasPhrase(text, phrase) {
   return new RegExp(`(?:^| )${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?: |$)`, 'u').test(text);
 }
 
+const internalTransferMarkers = ['to pocket', 'pocket withdrawal', 'open banking top up'];
+
+function internalTransferEvidence(transaction) {
+  const text = [transaction.title, transaction.description, transaction.transferPurpose]
+    .map((value) => normalizeEvidenceText(value))
+    .filter(Boolean)
+    .join(' ');
+  const marker = internalTransferMarkers.find((candidate) => hasPhrase(text, candidate));
+  return marker ? `Internal transfer: ${marker}` : undefined;
+}
+
 function matchingRule(rules, key) {
   return rules.find((rule) => rule.counterpartyKey === key);
 }
@@ -171,6 +183,14 @@ export function categorizeTransaction(transaction, userRules = []) {
     return {
       status: 'assigned', categoryId: userRule.categoryId, confidence: 'high', method: 'user-rule',
       evidence: [`Personal rule for ${counterpartyDisplay}`],
+    };
+  }
+
+  const internalTransfer = internalTransferEvidence(transaction);
+  if (internalTransfer) {
+    return {
+      status: 'assigned', categoryId: 'transfer.internal', confidence: 'high', method: 'built-in',
+      evidence: [internalTransfer],
     };
   }
 

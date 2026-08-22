@@ -39,3 +39,19 @@ test('summarizes booked monthly outflow by category and currency', () => {
     },
   ]);
 });
+
+test('internal transfers are excluded from spending totals and category splits', () => {
+  const transactions = [
+    { ...base, id: '1', bookingDate: '2026-08-01', amountMinor: '-10000', currency: 'EUR', title: 'To pocket EUR Monthly from EUR', category: { categoryId: 'transfer.internal' } },
+    { ...base, id: '2', bookingDate: '2026-08-02', amountMinor: '-2369', currency: 'EUR', category: { categoryId: 'food.groceries' } },
+  ];
+
+  assert.deepEqual(summarizeMonthlySpending(transactions, '2026-08'), [
+    {
+      currency: 'EUR',
+      currencyMinorUnit: 2,
+      totalMinor: '2369',
+      categories: [{ categoryId: 'food.groceries', amountMinor: '2369' }],
+    },
+  ]);
+});
