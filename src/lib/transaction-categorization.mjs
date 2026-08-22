@@ -6,12 +6,12 @@ export const MONEO_CATEGORIES = [
   ['utilities', 'Utilities', [['utilities.energy', 'Energy'], ['utilities.internet_phone', 'Internet & phone']]],
   ['food', 'Food', [['food.groceries', 'Groceries'], ['food.restaurants', 'Restaurants']]],
   ['transport', 'Transport', [['transport.public_transit', 'Public transit'], ['transport.fuel', 'Fuel']]],
-  ['shopping', 'Shopping', [['shopping.general', 'General shopping']]],
-  ['health', 'Health', [['health.pharmacy', 'Pharmacy']]],
-  ['leisure', 'Leisure', [['leisure.streaming', 'Streaming']]],
+  ['shopping', 'Shopping', [['shopping.general', 'General shopping'], ['shopping.subscriptions', 'Subscriptions & software']]],
+  ['health', 'Health', [['health.pharmacy', 'Pharmacy'], ['health.insurance', 'Insurance']]],
+  ['leisure', 'Leisure', [['leisure.streaming', 'Streaming'], ['leisure.tickets', 'Tickets']]],
   ['travel', 'Travel', []],
   ['education', 'Education', []],
-  ['financial', 'Financial', [['financial.bank_fee', 'Bank fee']]],
+  ['financial', 'Financial', [['financial.bank_fee', 'Bank fee'], ['financial.investments', 'Investments']]],
   ['gifts', 'Gifts', [['gifts.donation', 'Donation']]],
   ['other', 'Other', [['other.uncategorized', 'Needs category']]],
 ].map(([id, label, categories]) => ({
@@ -51,9 +51,21 @@ const exactCounterparties = [
   { aliases: ['rewe', 'rewe markt'], categoryId: 'food.groceries' },
   { aliases: ['edeka'], categoryId: 'food.groceries' },
   { aliases: ['aldi', 'aldi nord', 'aldi sued', 'aldi süd'], categoryId: 'food.groceries' },
-  { aliases: ['lidl', 'netto', 'kaufland'], categoryId: 'food.groceries' },
-  { aliases: ['deutsche bahn', 'db vertrieb'], categoryId: 'transport.public_transit' },
+  { aliases: ['lidl', 'netto', 'kaufland', 'globus', 'dz markt', 'campusmarkt', 'euroshop', 'woolworth', 'tedi', 'asia market', 'asia markt', 'dallmayr'], categoryId: 'food.groceries' },
+  { aliases: ['burger king', 'mcdonalds', 'mcdonald s', 'kfc', 'subway', 'domino', 'dominos', 'wolt', 'five guys', 'mr phung', 'asiahung', 'trento', 'icoffee', 'barbarossa', 'postillion', 'da ma bistro', 'au sirop derable', 'maison behr', 'restaurant gaststaetten', 'lamm heidelberg', 'cafe unique', 'mensa'], categoryId: 'food.restaurants' },
+  { aliases: ['deutsche bahn', 'db vertrieb', 'flixbus', 'cfl', 'dott scooter', 'ridedott'], categoryId: 'transport.public_transit' },
+  { aliases: ['aral', 'totalenergies'], categoryId: 'transport.fuel' },
+  { aliases: ['vattenfall'], categoryId: 'utilities.energy' },
+  { aliases: ['lebara'], categoryId: 'utilities.internet_phone' },
   { aliases: ['netflix', 'spotify'], categoryId: 'leisure.streaming' },
+  { aliases: ['rossmann', 'dm drogerie', 'temu', 'back market'], categoryId: 'shopping.general' },
+  { aliases: ['anthropic', 'claude', 'windsurf'], categoryId: 'shopping.subscriptions' },
+  { aliases: ['apotheke', 'zava'], categoryId: 'health.pharmacy' },
+  { aliases: ['techniker krankenkasse', 'getsafe'], categoryId: 'health.insurance' },
+  { aliases: ['universität des saarlandes', 'studierendenwerk'], categoryId: 'education' },
+  { aliases: ['scalable capital'], categoryId: 'financial.investments' },
+  { aliases: ['eventix'], categoryId: 'leisure.tickets' },
+  { aliases: ['personalclientcare', '3kb'], direction: 'incoming', categoryId: 'income.salary' },
 ];
 
 const ambiguousCounterparties = [
@@ -132,9 +144,10 @@ function aliasMatchesKey(alias, key) {
   return normalizedAlias.length >= MIN_PARTIAL_ALIAS_LENGTH && hasPhrase(key, normalizedAlias);
 }
 
-function aliasMatch(pack, key) {
+function aliasMatch(pack, key, outgoing) {
   let phraseHit;
   for (const rule of pack) {
+    if ((rule.direction === 'incoming' && outgoing) || (rule.direction === 'outgoing' && !outgoing)) continue;
     for (const alias of rule.aliases) {
       const normalizedAlias = normalizeEvidenceText(alias);
       if (key === normalizedAlias) return { rule, exact: true };
@@ -165,7 +178,7 @@ export function categorizeTransaction(transaction, userRules = []) {
   const allText = evidence.map((item) => item.normalized).join(' ');
   const outgoing = String(transaction.amountMinor).startsWith('-');
   const strong = [];
-  const merchant = aliasMatch(exactCounterparties, key);
+  const merchant = aliasMatch(exactCounterparties, key, outgoing);
   if (merchant) {
     strong.push({
       categoryId: merchant.rule.categoryId,
@@ -198,7 +211,7 @@ export function categorizeTransaction(transaction, userRules = []) {
     };
   }
 
-  const ambiguous = aliasMatch(ambiguousCounterparties, key);
+  const ambiguous = aliasMatch(ambiguousCounterparties, key, outgoing);
   if (ambiguous) {
     return {
       status: 'suggested', categoryId: ambiguous.rule.categoryId, confidence: 'medium',

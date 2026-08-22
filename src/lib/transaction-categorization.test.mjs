@@ -46,6 +46,43 @@ test('phrase matching respects word boundaries inside the counterparty key', () 
   assert.equal(categorizeTransaction({ ...base, title: 'Garnetto market' }, []).status, 'unmatched');
 });
 
+test('real Commerzbank and Revolut merchants map to their categories', () => {
+  const cases = [
+    [{ title: 'VATTENFALL EUROPE SALES Strom Abschlag', recipient: 'VATTENFALL EUROPE SALES' }, 'utilities.energy'],
+    [{ title: 'Lebara Germany Limited', recipient: 'Lebara Germany Limited' }, 'utilities.internet_phone'],
+    [{ title: 'Techniker Krankenkasse Beitraege', recipient: 'Techniker Krankenkasse' }, 'health.insurance'],
+    [{ title: 'Getsafe', recipient: 'Getsafe' }, 'health.insurance'],
+    [{ title: 'Universität des Saarlandes Sport', recipient: 'Universität des Saarlandes Finanz- und Anlagebuchhaltung' }, 'education'],
+    [{ title: 'Studierendenwerk Saarland', recipient: 'Studierendenwerk Saarland' }, 'education'],
+    [{ title: 'Scalable Capital Broker withdrawal', sender: 'Scalable Capital GmbH' }, 'financial.investments'],
+    [{ title: 'Anthropic', recipient: 'Anthropic' }, 'shopping.subscriptions'],
+    [{ title: 'Windsurf', recipient: 'Windsurf' }, 'shopping.subscriptions'],
+    [{ title: 'AUFLADUNG MENSA UNI SAAR-DE', recipient: 'AUFLADUNG MENSA UNI SAAR-DE Saarbr' }, 'food.restaurants'],
+    [{ title: 'www.ridedott.com*Dott scooter ride*AMSTERDAM', recipient: '' }, 'transport.public_transit'],
+    [{ title: 'Flixbus*Munchen', recipient: '' }, 'transport.public_transit'],
+    [{ title: 'Aral', recipient: 'Aral' }, 'transport.fuel'],
+    [{ title: 'Rothenbuehl Apotheke', recipient: 'Rothenbuehl Apotheke' }, 'health.pharmacy'],
+    [{ title: 'Eventix', recipient: 'Eventix' }, 'leisure.tickets'],
+    [{ title: 'dm drogerie', recipient: 'dm drogerie' }, 'shopping.general'],
+  ];
+  for (const [fields, categoryId] of cases) {
+    const result = categorizeTransaction({ ...base, ...fields }, []);
+    assert.equal(result.status, 'assigned', JSON.stringify(fields));
+    assert.equal(result.categoryId, categoryId, JSON.stringify(fields));
+    assert.equal(result.confidence, 'high', JSON.stringify(fields));
+  }
+});
+
+test('salary employer rules only apply to incoming payments', () => {
+  const incoming = categorizeTransaction({ ...base, amountMinor: '1051170', title: 'Lohn + Gehalt Juni 2026', sender: 'PersonalClientCare (PCC) GmbH' }, []);
+  assert.equal(incoming.categoryId, 'income.salary');
+  assert.equal(incoming.evidence.includes('Counterparty match: PersonalClientCare (PCC) GmbH'), true);
+  assert.notEqual(
+    categorizeTransaction({ ...base, amountMinor: '-100', title: 'Transfer to PersonalClientCare', recipient: 'PersonalClientCare (PCC) GmbH' }, []).categoryId,
+    'income.salary',
+  );
+});
+
 test('incoming salary phrase assigns salary but outgoing salary does not', () => {
   assert.equal(categorizeTransaction({ ...base, amountMinor: '250000', title: 'Gehalt August', transferPurpose: 'Gehalt August' }, []).categoryId, 'income.salary');
   assert.notEqual(categorizeTransaction({ ...base, title: 'Gehalt August', transferPurpose: 'Gehalt August' }, []).status, 'assigned');
