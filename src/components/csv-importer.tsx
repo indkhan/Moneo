@@ -15,7 +15,7 @@ import type {
   TransactionDraft,
 } from "@/lib/transaction-types";
 import { normalizeCommerzbankCsv } from "@/lib/csv-import.mjs";
-import { categorizeTransaction } from "@/lib/transaction-categorization.mjs";
+import { CLASSIFIER_VERSION, categorizeTransaction } from "@/lib/transaction-categorization.mjs";
 import { mappingSignature, normalizeMappedCsv } from "@/lib/csv-mapping.mjs";
 import {
   decodeCsvBytes,
@@ -390,7 +390,7 @@ export function CsvImporter() {
               category: {
                 categoryId: decision.categoryId,
                 method: decision.method,
-                classifierVersion: "moneo-category-v1" as const,
+                classifierVersion: CLASSIFIER_VERSION as "moneo-category-v2",
                 evidence: decision.evidence,
               },
             } : {}),

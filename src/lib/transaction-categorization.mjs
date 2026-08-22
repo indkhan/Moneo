@@ -1,4 +1,4 @@
-export const CLASSIFIER_VERSION = 'moneo-category-v1';
+export const CLASSIFIER_VERSION = 'moneo-category-v2';
 
 export const MONEO_CATEGORIES = [
   ['income', 'Income', [['income.salary', 'Salary'], ['income.interest', 'Interest']]],
@@ -48,19 +48,19 @@ export function searchCategories(catalog, query) {
     .map(({ category }) => category);
 }
 
-const exactCounterparties = [
+const counterpartyRules = [
   { aliases: ['rewe', 'rewe markt'], categoryId: 'food.groceries' },
   { aliases: ['edeka'], categoryId: 'food.groceries' },
   { aliases: ['aldi', 'aldi nord', 'aldi sued', 'aldi süd'], categoryId: 'food.groceries' },
   { aliases: ['lidl', 'netto', 'kaufland', 'globus', 'dz markt', 'campusmarkt', 'euroshop', 'woolworth', 'tedi', 'asia market', 'asia markt', 'dallmayr', 'coop', 'bereket', 'frischmarkt'], categoryId: 'food.groceries' },
-  { aliases: ['burger king', 'mcdonalds', 'mcdonald s', 'kfc', 'subway', 'domino', 'dominos', 'wolt', 'five guys', 'mr phung', 'asiahung', 'trento', 'icoffee', 'barbarossa', 'postillion', 'da ma bistro', 'au sirop derable', 'maison behr', 'restaurant gaststaetten', 'lamm heidelberg', 'cafe unique', 'mensa', 'pommes'], categoryId: 'food.restaurants' },
-  { aliases: ['deutsche bahn', 'db vertrieb', 'flixbus', 'cfl', 'dott scooter', 'ridedott'], categoryId: 'transport.public_transit' },
+  { aliases: ['burger king', 'mcdonalds', 'mcdonald s', 'kfc', 'subway', 'domino', 'dominos', 'wolt', 'five guys', 'mr phung', 'asiahung', 'trento eiscafe', 'trento eiscafé', 'icoffee', 'barbarossa', 'postillion', 'da ma bistro', 'au sirop derable', 'maison behr', 'restaurant gaststaetten', 'lamm heidelberg', 'cafe unique', 'mensa uni saar', 'pommes freunde'], categoryId: 'food.restaurants' },
+  { aliases: ['deutsche bahn', 'db vertrieb', 'flixbus', 'cfl mobilites', 'dott scooter', 'ridedott'], categoryId: 'transport.public_transit' },
   { aliases: ['aral', 'totalenergies'], categoryId: 'transport.fuel' },
   { aliases: ['vattenfall'], categoryId: 'utilities.energy' },
   { aliases: ['lebara'], categoryId: 'utilities.internet_phone' },
   { aliases: ['netflix', 'spotify'], categoryId: 'leisure.streaming' },
-  { aliases: ['rossmann', 'dm drogerie', 'temu', 'back market', 'primark', 'blumen', 'blumenladen', 'deutsche post'], categoryId: 'shopping.general' },
-  { aliases: ['anthropic', 'claude', 'windsurf'], categoryId: 'shopping.subscriptions' },
+  { aliases: ['rossmann', 'dm drogerie', 'temu', 'back market', 'primark', 'blumen becht', 'blumenladen ingrid', 'deutsche post'], categoryId: 'shopping.general' },
+  { aliases: ['anthropic', 'windsurf'], categoryId: 'shopping.subscriptions' },
   { aliases: ['apotheke', 'zava'], categoryId: 'health.pharmacy' },
   { aliases: ['techniker krankenkasse', 'getsafe'], categoryId: 'health.insurance' },
   { aliases: ['universität des saarlandes', 'studierendenwerk'], categoryId: 'education' },
@@ -132,15 +132,21 @@ function hasPhrase(text, phrase) {
   return new RegExp(`(?:^| )${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?: |$)`, 'u').test(text);
 }
 
-const internalTransferMarkers = ['to pocket', 'pocket withdrawal', 'open banking top up'];
+const internalTransferMarkers = [
+  { phrase: 'to pocket', transactionType: 'transfer' },
+  { phrase: 'pocket withdrawal', transactionType: 'transfer' },
+  { phrase: 'open banking top up', transactionType: 'topup' },
+];
 
 function internalTransferEvidence(transaction) {
+  const transactionType = normalizeEvidenceText(transaction.transactionType);
   const text = [transaction.title, transaction.description, transaction.transferPurpose]
     .map((value) => normalizeEvidenceText(value))
     .filter(Boolean)
     .join(' ');
-  const marker = internalTransferMarkers.find((candidate) => hasPhrase(text, candidate));
-  return marker ? `Internal transfer: ${marker}` : undefined;
+  const marker = internalTransferMarkers.find(({ phrase, transactionType: expectedType }) =>
+    transactionType === expectedType && hasPhrase(text, phrase));
+  return marker ? `Internal transfer: ${marker.phrase}` : undefined;
 }
 
 function matchingRule(rules, key) {
@@ -148,13 +154,6 @@ function matchingRule(rules, key) {
 }
 
 const MIN_PARTIAL_ALIAS_LENGTH = 4;
-
-function aliasMatchesKey(alias, key) {
-  const normalizedAlias = normalizeEvidenceText(alias);
-  if (!normalizedAlias) return false;
-  if (key === normalizedAlias) return true;
-  return normalizedAlias.length >= MIN_PARTIAL_ALIAS_LENGTH && hasPhrase(key, normalizedAlias);
-}
 
 function aliasMatch(pack, key, outgoing) {
   let phraseHit;
@@ -198,7 +197,7 @@ export function categorizeTransaction(transaction, userRules = []) {
   const allText = evidence.map((item) => item.normalized).join(' ');
   const outgoing = String(transaction.amountMinor).startsWith('-');
   const strong = [];
-  const merchant = aliasMatch(exactCounterparties, key, outgoing);
+  const merchant = aliasMatch(counterpartyRules, key, outgoing);
   if (merchant) {
     strong.push({
       categoryId: merchant.rule.categoryId,

@@ -32,7 +32,7 @@ export type TransactionDraft = {
 export type TransactionCategoryAssignment = {
   categoryId: string;
   method: "built-in" | "user-rule" | "manual";
-  classifierVersion: "moneo-category-v1";
+  classifierVersion: "moneo-category-v1" | "moneo-category-v2";
   evidence: string[];
 };
 

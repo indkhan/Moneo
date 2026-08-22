@@ -8,7 +8,7 @@ import {
 } from "react";
 import { Platform } from "react-native";
 import type { FinanceData } from "@/lib/transaction-types";
-import { categorizeTransaction } from "@/lib/transaction-categorization.mjs";
+import { CLASSIFIER_VERSION, categorizeTransaction } from "@/lib/transaction-categorization.mjs";
 import {
   loadFinanceData,
   openMoneoDatabase,
@@ -66,7 +66,7 @@ export function FinanceDataProvider({ children }: { children: React.ReactNode })
             category: {
               categoryId: decision.categoryId,
               method: decision.method,
-              classifierVersion: "moneo-category-v1" as const,
+              classifierVersion: CLASSIFIER_VERSION as "moneo-category-v2",
               evidence: decision.evidence,
             },
           }] : [];

@@ -35,6 +35,7 @@ import {
 } from "@/lib/finance-summary.mjs";
 import {
   categoryCatalog,
+  CLASSIFIER_VERSION,
   categorizeTransaction,
   counterpartyKeyFor,
   normalizeEvidenceText,
@@ -189,7 +190,7 @@ function Transactions({ limit, onSeeAll }: { limit?: number; onSeeAll?: () => vo
         await setTransactionCategory(database, transaction.id, {
           categoryId: selectedCategory.id,
           method: "manual",
-          classifierVersion: "moneo-category-v1",
+          classifierVersion: CLASSIFIER_VERSION as "moneo-category-v2",
           evidence: ["Chosen by you"],
         });
       }

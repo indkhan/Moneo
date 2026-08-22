@@ -92,10 +92,10 @@ test('salary employer rules only apply to incoming payments', () => {
 
 test('revolut pocket and top-up movements are internal transfers in both directions', () => {
   const cases = [
-    { title: 'To pocket EUR Monthly from EUR', amountMinor: '-10000' },
-    { title: 'To pocket EUR Monthly from EUR', amountMinor: '10000' },
-    { title: 'Pocket Withdrawal', amountMinor: '5000' },
-    { title: 'Open banking top-up', amountMinor: '10000' },
+    { title: 'To pocket EUR Monthly from EUR', transactionType: 'Transfer', amountMinor: '-10000' },
+    { title: 'To pocket EUR Monthly from EUR', transactionType: 'Transfer', amountMinor: '10000' },
+    { title: 'Pocket Withdrawal', transactionType: 'Transfer', amountMinor: '5000' },
+    { title: 'Open banking top-up', transactionType: 'Topup', amountMinor: '10000' },
   ];
   for (const fields of cases) {
     const result = categorizeTransaction({ ...base, ...fields }, []);
@@ -112,10 +112,18 @@ test('person-to-person transfers stay uncategorized', () => {
     categorizeTransaction({ ...base, title: 'Transfer to MOHAMMED ESAM SALEH HALBOUP', recipient: 'MOHAMMED ESAM SALEH HALBOUP' }, []).status,
     'unmatched',
   );
+  assert.equal(
+    categorizeTransaction({ ...base, title: 'Transfer to Claude Martin', recipient: 'Claude Martin', transactionType: 'Transfer' }, []).status,
+    'unmatched',
+  );
+  assert.equal(
+    categorizeTransaction({ ...base, title: 'Open banking top-up dinner', recipient: 'Cafe Example', transactionType: 'Card Payment' }, []).status,
+    'unmatched',
+  );
 });
 
 test('a personal rule overrides the internal transfer marker', () => {
-  const transaction = { ...base, title: 'To pocket EUR Monthly from EUR', amountMinor: '-10000' };
+  const transaction = { ...base, title: 'To pocket EUR Monthly from EUR', transactionType: 'Transfer', amountMinor: '-10000' };
   const rules = [{ id: 'rule-1', counterpartyKey: counterpartyKeyFor(transaction), categoryId: 'gifts.donation', createdAt: '2026-08-08T00:00:00Z' }];
   assert.equal(categorizeTransaction(transaction, rules).categoryId, 'gifts.donation');
 });

@@ -91,7 +91,7 @@ export async function applyCategoryRule(database, rule, matchingTransactionIds) 
   const category = {
     categoryId: rule.categoryId,
     method: 'user-rule',
-    classifierVersion: 'moneo-category-v1',
+    classifierVersion: 'moneo-category-v2',
     evidence: [`Personal rule for ${rule.counterpartyKey}`],
   };
   items.filter(Boolean).forEach((item) => store.put({ ...item, category }));
