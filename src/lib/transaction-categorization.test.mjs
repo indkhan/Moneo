@@ -64,6 +64,13 @@ test('real Commerzbank and Revolut merchants map to their categories', () => {
     [{ title: 'Rothenbuehl Apotheke', recipient: 'Rothenbuehl Apotheke' }, 'health.pharmacy'],
     [{ title: 'Eventix', recipient: 'Eventix' }, 'leisure.tickets'],
     [{ title: 'dm drogerie', recipient: 'dm drogerie' }, 'shopping.general'],
+    [{ title: 'Primark', recipient: 'Primark' }, 'shopping.general'],
+    [{ title: 'Coop', recipient: 'Coop' }, 'food.groceries'],
+    [{ title: 'Bereket Meat Company', recipient: 'Bereket Meat Company' }, 'food.groceries'],
+    [{ title: 'Oezan Frischmarkt', recipient: 'Oezan Frischmarkt' }, 'food.groceries'],
+    [{ title: 'Blumen Becht', recipient: 'Blumen Becht' }, 'shopping.general'],
+    [{ title: 'BLUMENLADEN INGRID HABERSC KOBLENZ', recipient: 'BLUMENLADEN INGRID HABERSC KOBLENZ' }, 'shopping.general'],
+    [{ title: 'Pommes Freunde Saarbrueck', recipient: 'Pommes Freunde Saarbrueck Saarbrue' }, 'food.restaurants'],
   ];
   for (const [fields, categoryId] of cases) {
     const result = categorizeTransaction({ ...base, ...fields }, []);
