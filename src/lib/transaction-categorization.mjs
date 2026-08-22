@@ -123,8 +123,27 @@ function matchingRule(rules, key) {
   return rules.find((rule) => rule.counterpartyKey === key);
 }
 
+const MIN_PARTIAL_ALIAS_LENGTH = 4;
+
+function aliasMatchesKey(alias, key) {
+  const normalizedAlias = normalizeEvidenceText(alias);
+  if (!normalizedAlias) return false;
+  if (key === normalizedAlias) return true;
+  return normalizedAlias.length >= MIN_PARTIAL_ALIAS_LENGTH && hasPhrase(key, normalizedAlias);
+}
+
 function aliasMatch(pack, key) {
-  return pack.find((rule) => rule.aliases.includes(key));
+  let phraseHit;
+  for (const rule of pack) {
+    for (const alias of rule.aliases) {
+      const normalizedAlias = normalizeEvidenceText(alias);
+      if (key === normalizedAlias) return { rule, exact: true };
+      if (!phraseHit && normalizedAlias.length >= MIN_PARTIAL_ALIAS_LENGTH && hasPhrase(key, normalizedAlias)) {
+        phraseHit = { rule, exact: false };
+      }
+    }
+  }
+  return phraseHit;
 }
 
 export function categorizeTransaction(transaction, userRules = []) {
@@ -146,8 +165,13 @@ export function categorizeTransaction(transaction, userRules = []) {
   const allText = evidence.map((item) => item.normalized).join(' ');
   const outgoing = String(transaction.amountMinor).startsWith('-');
   const strong = [];
-  const exact = aliasMatch(exactCounterparties, key);
-  if (exact) strong.push({ categoryId: exact.categoryId, evidence: `Exact counterparty: ${counterpartyDisplay}` });
+  const merchant = aliasMatch(exactCounterparties, key);
+  if (merchant) {
+    strong.push({
+      categoryId: merchant.rule.categoryId,
+      evidence: `${merchant.exact ? 'Exact counterparty' : 'Counterparty match'}: ${counterpartyDisplay}`,
+    });
+  }
 
   const purposeText = evidence.filter((item) => item.source === 'purpose' || item.source.startsWith('raw:')).map((item) => item.normalized).join(' ');
   if (!outgoing && ['gehalt', 'lohn', 'salary', 'payroll'].some((phrase) => hasPhrase(purposeText || allText, phrase))) {
@@ -177,8 +201,8 @@ export function categorizeTransaction(transaction, userRules = []) {
   const ambiguous = aliasMatch(ambiguousCounterparties, key);
   if (ambiguous) {
     return {
-      status: 'suggested', categoryId: ambiguous.categoryId, confidence: 'medium',
-      evidence: [`Ambiguous counterparty: ${counterpartyDisplay}`],
+      status: 'suggested', categoryId: ambiguous.rule.categoryId, confidence: 'medium',
+      evidence: [`${ambiguous.exact ? 'Ambiguous counterparty' : 'Ambiguous counterparty match'}: ${counterpartyDisplay}`],
     };
   }
   if (bank) {

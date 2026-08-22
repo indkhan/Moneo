@@ -32,6 +32,20 @@ test('Amazon merchant alone is only a medium suggestion', () => {
   });
 });
 
+test('Commerzbank card payment counterparty matches by contained merchant phrase', () => {
+  assert.deepEqual(
+    categorizeTransaction({ ...base, title: 'NETTO MARKEN-DISCOU/AM MARKT 1/SAAR Kartenzahlung', recipient: 'NETTO MARKEN-DISCOU AM MARKT 1 SAAR' }, []),
+    {
+      status: 'assigned', categoryId: 'food.groceries', confidence: 'high', method: 'built-in',
+      evidence: ['Counterparty match: NETTO MARKEN-DISCOU AM MARKT 1 SAAR'],
+    },
+  );
+});
+
+test('phrase matching respects word boundaries inside the counterparty key', () => {
+  assert.equal(categorizeTransaction({ ...base, title: 'Garnetto market' }, []).status, 'unmatched');
+});
+
 test('incoming salary phrase assigns salary but outgoing salary does not', () => {
   assert.equal(categorizeTransaction({ ...base, amountMinor: '250000', title: 'Gehalt August', transferPurpose: 'Gehalt August' }, []).categoryId, 'income.salary');
   assert.notEqual(categorizeTransaction({ ...base, title: 'Gehalt August', transferPurpose: 'Gehalt August' }, []).status, 'assigned');
