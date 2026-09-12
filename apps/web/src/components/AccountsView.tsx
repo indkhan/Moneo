@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardDescription, CardTitle, EmptyState, Skeleton } from "@moneo/ui";
 import { useMemo, useState } from "react";
 import { createClient, type Account } from "../generated/client";
+import { NewAccountForm } from "./NewAccountForm";
 import { RecordBalanceForm } from "./RecordBalanceForm";
 
 /**
@@ -126,10 +127,16 @@ export function AccountsView() {
   const client = useMemo(() => createClient(), []);
   const queryClient = useQueryClient();
   const [recordingId, setRecordingId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const query = useQuery({
     queryKey: ["accounts"],
     queryFn: () => client.listAccounts(),
   });
+  const refresh = () => {
+    setRecordingId(null);
+    setCreating(false);
+    void queryClient.invalidateQueries({ queryKey: ["accounts"] });
+  };
 
   if (query.isPending) {
     return (
@@ -155,19 +162,30 @@ export function AccountsView() {
     );
   }
   return (
-    <AccountsList
-      accounts={query.data.items}
-      onRecord={(accountId) => {
-        setRecordingId(accountId);
-      }}
-      recordingId={recordingId}
-      onRecorded={() => {
-        setRecordingId(null);
-        void queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      }}
-      onCancelRecord={() => {
-        setRecordingId(null);
-      }}
-    />
+    <div style={{ display: "grid", gap: 12 }}>
+      <div>
+        <button
+          type="button"
+          onClick={() => {
+            setCreating((open) => !open);
+            setRecordingId(null);
+          }}
+        >
+          New account
+        </button>
+      </div>
+      {creating ? <NewAccountForm onCreated={refresh} onCancel={refresh} /> : null}
+      <AccountsList
+        accounts={query.data.items}
+        onRecord={(accountId) => {
+          setRecordingId(accountId);
+        }}
+        recordingId={recordingId}
+        onRecorded={refresh}
+        onCancelRecord={() => {
+          setRecordingId(null);
+        }}
+      />
+    </div>
   );
 }

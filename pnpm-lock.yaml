@@ -183,6 +183,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@moneo/finance':
+        specifier: workspace:*
+        version: link:../finance
       '@moneo/shared':
         specifier: workspace:*
         version: link:../shared

@@ -1,5 +1,9 @@
 import { executeRecordBalance } from "@moneo/db/balance-commands";
 import { executeResolveMatch } from "@moneo/db/import-matching";
+import {
+  executeCreateManualAccount,
+  executeCreateManualTransaction,
+} from "@moneo/db/manual-commands";
 import { withWorkspaceTransaction } from "@moneo/db/tenancy";
 import { CommandError } from "@moneo/finance";
 import { DomainError, fromCommandError, problemResponse } from "@moneo/shared/problem";
@@ -29,6 +33,31 @@ const signedMinorOrNullSchema = z
 export const resolveMatchInputSchema = z.object({
   candidateId: z.uuid("candidate id must be a UUID"),
   decision: z.enum(["link", "distinct"]),
+});
+
+const currencyCodeSchema = z.string().regex(/^[A-Za-z]{3}$/, "must be an ISO 4217 code");
+
+export const createManualAccountInputSchema = z.object({
+  name: z.string().min(1, "name is required").max(120),
+  currencyCode: currencyCodeSchema,
+  accountType: z
+    .enum(["CHECKING", "SAVINGS", "CASH", "CREDIT", "INVESTMENT", "WALLET", "OTHER"])
+    .optional(),
+  institutionName: z.string().max(120).nullable().optional(),
+  isSpendable: z.boolean().optional(),
+  includeInNetWorth: z.boolean().optional(),
+});
+
+export const createManualTransactionInputSchema = z.object({
+  accountId: z.uuid("account id must be a UUID"),
+  effectiveDate: isoDateSchema,
+  description: z.string().min(1, "description is required").max(500),
+  amountMinor: z
+    .string()
+    .regex(/^(0|[1-9][0-9]*)$/, "must be non-negative integer-string minor units"),
+  currencyCode: currencyCodeSchema,
+  direction: z.enum(["credit", "debit"]),
+  note: z.string().max(2000).nullable().optional(),
 });
 
 export const recordBalanceInputSchema = z.object({
@@ -84,11 +113,7 @@ export function createDrizzleCommandRegistry(): Map<string, CommandRegistration>
           },
           // Validated against recordBalanceInputSchema by the dispatcher.
           input as Parameters<typeof executeRecordBalance>[2],
-        ).then((outcome) => ({
-          operationId: outcome.operationId,
-          replayed: outcome.replayed,
-          result: outcome.result as unknown as Record<string, unknown>,
-        })),
+        ).then(toExecution),
       ),
   };
   const resolveMatch: CommandRegistration = {
@@ -107,17 +132,69 @@ export function createDrizzleCommandRegistry(): Map<string, CommandRegistration>
           },
           // Validated against resolveMatchInputSchema by the dispatcher.
           input as Parameters<typeof executeResolveMatch>[2],
-        ).then((outcome) => ({
-          operationId: outcome.operationId,
-          replayed: outcome.replayed,
-          result: outcome.result as unknown as Record<string, unknown>,
-        })),
+        ).then(toExecution),
       ),
   };
   return new Map<string, CommandRegistration>([
     ["accounts.recordBalance", recordBalance],
     ["matches.resolve", resolveMatch],
+    [
+      "accounts.createManual",
+      {
+        inputSchema: createManualAccountInputSchema,
+        run: ({ workspaceId, actorUserId, metadata, input }) =>
+          withWorkspaceTransaction(workspaceId, (tx) =>
+            executeCreateManualAccount(
+              tx,
+              {
+                workspaceId,
+                actorUserId,
+                idempotencyKey: metadata.idempotencyKey,
+                ...(metadata.expectedVersion !== undefined
+                  ? { expectedVersion: Number(metadata.expectedVersion) }
+                  : {}),
+              },
+              // Validated against createManualAccountInputSchema by the dispatcher.
+              input as Parameters<typeof executeCreateManualAccount>[2],
+            ).then(toExecution),
+          ),
+      },
+    ],
+    [
+      "transactions.createManual",
+      {
+        inputSchema: createManualTransactionInputSchema,
+        run: ({ workspaceId, actorUserId, metadata, input }) =>
+          withWorkspaceTransaction(workspaceId, (tx) =>
+            executeCreateManualTransaction(
+              tx,
+              {
+                workspaceId,
+                actorUserId,
+                idempotencyKey: metadata.idempotencyKey,
+                ...(metadata.expectedVersion !== undefined
+                  ? { expectedVersion: Number(metadata.expectedVersion) }
+                  : {}),
+              },
+              // Validated against createManualTransactionInputSchema by the dispatcher.
+              input as Parameters<typeof executeCreateManualTransaction>[2],
+            ).then(toExecution),
+          ),
+      },
+    ],
   ]);
+}
+
+function toExecution(outcome: {
+  operationId: string;
+  replayed: boolean;
+  result: unknown;
+}): CommandExecution {
+  return {
+    operationId: outcome.operationId,
+    replayed: outcome.replayed,
+    result: outcome.result as Record<string, unknown>,
+  };
 }
 
 function validationProblem(error: z.ZodError): Response {

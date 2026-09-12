@@ -1,6 +1,8 @@
 import { CommandError } from "@moneo/finance";
 import { describe, expect, it } from "vitest";
 import {
+  createManualAccountInputSchema,
+  createManualTransactionInputSchema,
   handleExecuteCommand,
   recordBalanceInputSchema,
   type CommandRegistration,
@@ -174,6 +176,41 @@ describe("recordBalanceInputSchema", () => {
     ).toBe(true);
     expect(
       recordBalanceInputSchema.safeParse({ accountId: "x", currentAmountMinor: "1.5" }).success,
+    ).toBe(false);
+  });
+});
+
+describe("manual command input schemas", () => {
+  it("accepts a cash wallet and a cash purchase", () => {
+    expect(
+      createManualAccountInputSchema.safeParse({ name: "Cash wallet", currencyCode: "EUR" })
+        .success,
+    ).toBe(true);
+    expect(
+      createManualTransactionInputSchema.safeParse({
+        accountId: "22222222-2222-7222-8222-222222222222",
+        effectiveDate: "2026-08-16",
+        description: "Cash coffee",
+        amountMinor: "1500",
+        currencyCode: "EUR",
+        direction: "debit",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects blank names, float amounts, and bad directions", () => {
+    expect(
+      createManualAccountInputSchema.safeParse({ name: "", currencyCode: "EUR" }).success,
+    ).toBe(false);
+    expect(
+      createManualTransactionInputSchema.safeParse({
+        accountId: "22222222-2222-7222-8222-222222222222",
+        effectiveDate: "16.08.2026",
+        description: "x",
+        amountMinor: "15.00",
+        currencyCode: "EUR",
+        direction: "OUTFLOW",
+      }).success,
     ).toBe(false);
   });
 });

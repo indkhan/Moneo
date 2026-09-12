@@ -35,6 +35,8 @@ export const INVALIDATION_MAP: Record<string, readonly string[]> = {
   "job.submitted": ["jobs"],
   "command.succeeded": ["commands"],
   "account.balanceRecorded": ["accounts"],
+  "account.created": ["accounts"],
+  "transaction.created": ["transactions"],
   "match.resolved": ["transactions"],
 };
 

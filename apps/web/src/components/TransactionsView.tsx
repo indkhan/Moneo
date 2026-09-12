@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { formatMoney } from "@moneo/shared/money";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createColumnHelper,
   flexRender,
@@ -18,6 +18,7 @@ import {
   type Transaction,
   type TransactionSort,
 } from "../generated/client";
+import { ManualTransactionForm } from "./ManualTransactionForm";
 import { TransactionDetailDrawer } from "./TransactionDetailDrawer";
 
 /**
@@ -164,10 +165,12 @@ export function TransactionsTable({
 
 export function TransactionsView() {
   const client = useMemo(() => createClient(), []);
+  const queryClient = useQueryClient();
   const [filters, setFilters] = useState<TransactionFilters>(EMPTY_FILTERS);
   // Overlay selection only: the list and its filters stay mounted behind
   // the drawer, so opening a row never loses list position or filters.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [recording, setRecording] = useState(false);
   const debouncedQ = useDebounced(filters.q, 300);
   const active = useMemo(() => ({ ...filters, q: debouncedQ }), [filters, debouncedQ]);
 
@@ -232,6 +235,28 @@ export function TransactionsView() {
       <h1 id="transactions-heading" style={{ margin: 0, fontSize: 24 }}>
         Transactions
       </h1>
+      <div>
+        <button
+          type="button"
+          onClick={() => {
+            setRecording((open) => !open);
+          }}
+        >
+          Record cash transaction
+        </button>
+      </div>
+      {recording ? (
+        <ManualTransactionForm
+          accounts={accountsQuery.data?.items ?? []}
+          onRecorded={() => {
+            setRecording(false);
+            void queryClient.invalidateQueries({ queryKey: ["transactions"] });
+          }}
+          onCancel={() => {
+            setRecording(false);
+          }}
+        />
+      ) : null}
       <form
         aria-label="Transaction filters"
         onSubmit={(event) => {

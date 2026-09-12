@@ -66,6 +66,10 @@
       "types": "./dist/import-matching.d.ts",
       "default": "./dist/import-matching.js"
     },
+    "./manual-commands": {
+      "types": "./dist/manual-commands.d.ts",
+      "default": "./dist/manual-commands.js"
+    },
     "./transaction-queries": {
       "types": "./dist/transaction-queries.d.ts",
       "default": "./dist/transaction-queries.js"
