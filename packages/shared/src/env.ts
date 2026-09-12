@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const envSchema = z.object({
   APP_ENV: z.enum(["development", "test", "staging", "production"]).default("development"),
@@ -38,11 +40,22 @@ const envSchema = z.object({
 
 export type AppEnv = z.infer<typeof envSchema>;
 
+const localEnvFile = fileURLToPath(new URL("../../../.env", import.meta.url));
+
+function loadLocalEnv(): void {
+  if (existsSync(localEnvFile)) {
+    process.loadEnvFile(localEnvFile);
+  }
+}
+
 /**
  * Parse and validate process.env once at service boot.
  * Throws a descriptive error when required configuration is missing.
  */
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
+  if (source === process.env) {
+    loadLocalEnv();
+  }
   const parsed = envSchema.safeParse(source);
   if (!parsed.success) {
     throw new Error(`Invalid environment configuration: ${parsed.error.message}`);

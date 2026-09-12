@@ -1,6 +1,7 @@
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
+import { fileURLToPath } from "node:url";
 import { loadEnv } from "@moneo/shared/env";
 
 /**
@@ -15,7 +16,7 @@ export async function runMigrations(): Promise<void> {
   await client.connect();
   try {
     const db = drizzle(client);
-    await migrate(db, { migrationsFolder: new URL("../drizzle", import.meta.url).pathname });
+    await migrate(db, { migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)) });
   } finally {
     await client.end();
   }
