@@ -57,6 +57,13 @@
       "when": 1789232000000,
       "tag": "0007_source_ingestion",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789233000000,
+      "tag": "0008_canonical_accounts",
+      "breakpoints": true
     }
   ]
 }

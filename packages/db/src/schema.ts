@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   check,
   index,
   integer,
@@ -561,3 +562,128 @@ export const sourceTransactionObservations = pgTable(
 
 export type SourceTransactionObservation = typeof sourceTransactionObservations.$inferSelect;
 export type NewSourceTransactionObservation = typeof sourceTransactionObservations.$inferInsert;
+
+/**
+ * Epoch 4, Issue 4.1 — canonical account model.
+ *
+ * User-facing accounts derived from source observations (via
+ * `account_source_links`; Issue 4.3 canonicalization) WITHOUT deleting the
+ * raw source rows. `account_balance_snapshots` are insert-only: the newest
+ * `observed_at` row wins (Issue 4.10 supersedes, never updates). NULL
+ * amounts mean unknown, never zero.
+ *
+ * Ordinary product use archives (`archived_at`); hard deletes only happen
+ * through workspace removal. `version` columns arrive in Epoch 5 (Issue 5.2);
+ * until then concurrency rides on command idempotency + snapshot supersede.
+ */
+export type AccountType =
+  | "CHECKING"
+  | "SAVINGS"
+  | "CASH"
+  | "CREDIT"
+  | "INVESTMENT"
+  | "WALLET"
+  | "OTHER";
+
+export const accounts = pgTable(
+  "accounts",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    institutionName: text("institution_name"),
+    accountType: text("account_type").notNull().default("OTHER"),
+    currencyCode: text("currency_code").notNull().default("EUR"),
+    isSpendable: boolean("is_spendable").notNull().default(true),
+    includeInNetWorth: boolean("include_in_net_worth").notNull().default(true),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (t) => [
+    check(
+      "accounts_type_check",
+      sql`${t.accountType} in ('CHECKING', 'SAVINGS', 'CASH', 'CREDIT', 'INVESTMENT', 'WALLET', 'OTHER')`,
+    ),
+    index("accounts_workspace_created_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
+export type Account = typeof accounts.$inferSelect;
+export type NewAccount = typeof accounts.$inferInsert;
+
+export type AccountSourceLinkRelationship = "PRIMARY" | "MERGED" | "OTHER";
+
+export const accountSourceLinks = pgTable(
+  "account_source_links",
+  {
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    sourceAccountId: uuid("source_account_id")
+      .notNull()
+      .references(() => sourceAccounts.id, { onDelete: "cascade" }),
+    relationship: text("relationship").notNull().default("PRIMARY"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.sourceAccountId] }),
+    check(
+      "account_source_links_relationship_check",
+      sql`${t.relationship} in ('PRIMARY', 'MERGED', 'OTHER')`,
+    ),
+    index("account_source_links_source_idx").on(t.sourceAccountId),
+  ],
+);
+
+export type AccountSourceLink = typeof accountSourceLinks.$inferSelect;
+export type NewAccountSourceLink = typeof accountSourceLinks.$inferInsert;
+
+export type BalanceSnapshotSource = "statement" | "manual" | "imported" | "other";
+
+export const accountBalanceSnapshots = pgTable(
+  "account_balance_snapshots",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+    /** NULL = unknown, never zero (Issue 4.10). */
+    currentAmountMinor: bigint("current_amount_minor", { mode: "number" }),
+    availableAmountMinor: bigint("available_amount_minor", { mode: "number" }),
+    creditLimitMinor: bigint("credit_limit_minor", { mode: "number" }),
+    currencyCode: text("currency_code").notNull(),
+    source: text("source").notNull().default("manual"),
+    sourceImportId: uuid("source_import_id").references(() => imports.id, {
+      onDelete: "set null",
+    }),
+    freshness: text("freshness"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      "account_balance_snapshots_source_check",
+      sql`${t.source} in ('statement', 'manual', 'imported', 'other')`,
+    ),
+    index("account_balance_snapshots_account_observed_idx").on(t.accountId, t.observedAt),
+    index("account_balance_snapshots_workspace_created_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
+export type AccountBalanceSnapshot = typeof accountBalanceSnapshots.$inferSelect;
+export type NewAccountBalanceSnapshot = typeof accountBalanceSnapshots.$inferInsert;
