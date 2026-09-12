@@ -25,6 +25,9 @@ const envSchema = z.object({
   AUTH0_CUSTOM_DOMAIN: z.string().min(1).optional(),
   /** Seals the browser session cookie. Required by auth routes; generate with `openssl rand -hex 32`. */
   SESSION_SECRET: z.string().min(1).optional(),
+  // --- Epoch 4, Issue 4.6/4.7: HMAC secret for opaque transaction cursors ---
+  /** Signs keyset pagination cursors. Defaults to SESSION_SECRET when unset; one must be set in server environments. */
+  SEARCH_CURSOR_SECRET: z.string().min(1).optional(),
   // --- Epoch 1, Issue 1.8: provider-backed strong authentication ---
   /** Management API credentials for live MFA verification. Default to the base pair when unset. */
   AUTH0_MANAGEMENT_CLIENT_ID: z.string().min(1).optional(),

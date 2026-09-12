@@ -115,6 +115,82 @@ export interface JobPage {
   nextCursor: string | null;
 }
 
+export type AccountType =
+  | "CHECKING"
+  | "SAVINGS"
+  | "CASH"
+  | "CREDIT"
+  | "INVESTMENT"
+  | "WALLET"
+  | "OTHER";
+
+export interface AccountBalance {
+  /** Decimal-string minor units; null means unknown, never zero. */
+  currentAmountMinor: string | null;
+  availableAmountMinor: string | null;
+  currencyCode: string;
+  observedAt: string;
+  source: string;
+}
+
+export interface Account {
+  id: string;
+  name: string;
+  institutionName: string | null;
+  accountType: AccountType;
+  currencyCode: string;
+  isSpendable: boolean;
+  includeInNetWorth: boolean;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Latest known snapshot; null means the balance is unknown, never zero. */
+  balance: AccountBalance | null;
+}
+
+export interface AccountList {
+  items: Account[];
+}
+
+export type TransactionStatus = "PENDING" | "POSTED" | "VOIDED";
+export type TransactionDirection = "credit" | "debit";
+
+export interface Transaction {
+  id: string;
+  accountId: string;
+  status: TransactionStatus;
+  direction: TransactionDirection;
+  /** Non-negative integer minor units as a decimal string — never a JSON number. */
+  amountMinor: string;
+  currencyCode: string;
+  effectiveDate: string;
+  description: string;
+  note: string | null;
+  excludedFromAnalytics: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TransactionPage {
+  items: Transaction[];
+  nextCursor: string | null;
+}
+
+export type TransactionSort = "newest" | "oldest";
+
+export interface TransactionSearchParams {
+  cursor?: string;
+  limit?: number;
+  accountIds?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  directions?: string;
+  amountMin?: string;
+  amountMax?: string;
+  q?: string;
+  sort?: TransactionSort;
+}
+
 export interface UploadInitiate {
   fileName: string;
   contentLength: number;
@@ -218,7 +294,7 @@ async function request<T>(fetchFn: FetchFn, baseUrl: string, path: string, init?
   return body as T;
 }
 
-const query = (params: Record<string, string | number | undefined>): string => {
+const query = (params: object): string => {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) {
@@ -265,6 +341,12 @@ export function createClient(options: { baseUrl?: string; fetchFn?: FetchFn } = 
       ),
     previewImport: (body: { importId: string; fileName: string; previewRows?: number }): Promise<ImportPreview> =>
       request(fetchFn, baseUrl, "/imports/preview", { method: "POST", body: JSON.stringify(body) }),
+    listAccounts: (params: { includeArchived?: boolean } = {}): Promise<AccountList> =>
+      request(fetchFn, baseUrl, \`/accounts\${query(params)}\`),
+    getAccount: (id: string): Promise<Account> =>
+      request(fetchFn, baseUrl, \`/accounts/\${encodeURIComponent(id)}\`),
+    searchTransactions: (params: TransactionSearchParams = {}): Promise<TransactionPage> =>
+      request(fetchFn, baseUrl, \`/transactions/search\${query(params)}\`),
   };
 }
 

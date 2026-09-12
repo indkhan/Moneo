@@ -50,6 +50,14 @@
       "types": "./dist/statement-imports.d.ts",
       "default": "./dist/statement-imports.js"
     },
+    "./account-queries": {
+      "types": "./dist/account-queries.d.ts",
+      "default": "./dist/account-queries.js"
+    },
+    "./transaction-queries": {
+      "types": "./dist/transaction-queries.d.ts",
+      "default": "./dist/transaction-queries.js"
+    },
     "./sessions": {
       "types": "./dist/sessions.d.ts",
       "default": "./dist/sessions.js"

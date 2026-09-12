@@ -192,6 +192,116 @@
         }
       }
     },
+    "/accounts": {
+      "get": {
+        "operationId": "listAccounts",
+        "summary": "List canonical accounts with their latest known balance",
+        "parameters": [
+          {
+            "name": "includeArchived",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": false }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace accounts in stable creation order",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AccountList" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" }
+        }
+      }
+    },
+    "/accounts/{id}": {
+      "get": {
+        "operationId": "getAccount",
+        "summary": "One canonical account with its latest known balance",
+        "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+        "responses": {
+          "200": {
+            "description": "Account detail",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Account" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/transactions/search": {
+      "get": {
+        "operationId": "searchTransactions",
+        "summary": "Search canonical transactions (keyset cursor page)",
+        "parameters": [
+          { "$ref": "#/components/parameters/Cursor" },
+          { "$ref": "#/components/parameters/PageLimit" },
+          {
+            "name": "accountIds",
+            "in": "query",
+            "required": false,
+            "description": "Comma-separated account UUIDs",
+            "schema": { "type": "string", "maxLength": 4000 }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+          },
+          {
+            "name": "directions",
+            "in": "query",
+            "required": false,
+            "description": "Comma-separated credit/debit list",
+            "schema": { "type": "string", "maxLength": 64 }
+          },
+          {
+            "name": "amountMin",
+            "in": "query",
+            "required": false,
+            "schema": { "$ref": "#/components/schemas/NonNegativeMinorString" }
+          },
+          {
+            "name": "amountMax",
+            "in": "query",
+            "required": false,
+            "schema": { "$ref": "#/components/schemas/NonNegativeMinorString" }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Case-insensitive substring over the description",
+            "schema": { "type": "string", "maxLength": 200 }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["newest", "oldest"], "default": "newest" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A cursor page of canonical transactions",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TransactionPage" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" }
+        }
+      }
+    },
     "/imports/initiate": {
       "post": {
         "operationId": "initiateUpload",
@@ -309,6 +419,12 @@
   },
   "components": {
     "parameters": {
+      "AccountId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      },
       "Cursor": {
         "name": "cursor",
         "in": "query",
@@ -333,6 +449,11 @@
         "type": "string",
         "pattern": "^-?[0-9]+$",
         "description": "Integer minor units as a decimal string (never a JSON number, never a float)."
+      },
+      "NonNegativeMinorString": {
+        "type": "string",
+        "pattern": "^(0|[1-9][0-9]*)$",
+        "description": "Non-negative integer minor units as a decimal string (search bounds, never a float)."
       },
       "VersionString": {
         "type": "string",
@@ -537,6 +658,107 @@
           "error": { "type": ["object", "null"] },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AccountBalance": {
+        "type": "object",
+        "required": [
+          "currentAmountMinor",
+          "availableAmountMinor",
+          "currencyCode",
+          "observedAt",
+          "source"
+        ],
+        "properties": {
+          "currentAmountMinor": {
+            "type": ["string", "null"],
+            "description": "Decimal-string minor units; null means unknown, never zero."
+          },
+          "availableAmountMinor": {
+            "type": ["string", "null"],
+            "description": "Decimal-string minor units; null means unknown, never zero."
+          },
+          "currencyCode": { "type": "string" },
+          "observedAt": { "type": "string", "format": "date-time" },
+          "source": { "type": "string" }
+        }
+      },
+      "Account": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "accountType",
+          "currencyCode",
+          "isSpendable",
+          "includeInNetWorth",
+          "createdAt",
+          "updatedAt",
+          "balance"
+        ],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "institutionName": { "type": ["string", "null"] },
+          "accountType": {
+            "type": "string",
+            "enum": ["CHECKING", "SAVINGS", "CASH", "CREDIT", "INVESTMENT", "WALLET", "OTHER"]
+          },
+          "currencyCode": { "type": "string" },
+          "isSpendable": { "type": "boolean" },
+          "includeInNetWorth": { "type": "boolean" },
+          "archivedAt": { "type": ["string", "null"], "format": "date-time" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "balance": {
+            "description": "Latest known snapshot; null means the balance is unknown, never zero.",
+            "oneOf": [{ "$ref": "#/components/schemas/AccountBalance" }, { "type": "null" }]
+          }
+        }
+      },
+      "AccountList": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Account" } }
+        }
+      },
+      "Transaction": {
+        "type": "object",
+        "required": [
+          "id",
+          "accountId",
+          "status",
+          "direction",
+          "amountMinor",
+          "currencyCode",
+          "effectiveDate",
+          "description",
+          "excludedFromAnalytics",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "accountId": { "type": "string", "format": "uuid" },
+          "status": { "type": "string", "enum": ["PENDING", "POSTED", "VOIDED"] },
+          "direction": { "type": "string", "enum": ["credit", "debit"] },
+          "amountMinor": { "$ref": "#/components/schemas/NonNegativeMinorString" },
+          "currencyCode": { "type": "string" },
+          "effectiveDate": { "type": "string", "format": "date" },
+          "description": { "type": "string" },
+          "note": { "type": ["string", "null"] },
+          "excludedFromAnalytics": { "type": "boolean" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TransactionPage": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Transaction" } },
+          "nextCursor": { "type": ["string", "null"] }
         }
       }
     },

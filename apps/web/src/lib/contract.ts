@@ -40,6 +40,37 @@ export const jobSubmitSchema = z.object({
 
 export const jobIdSchema = z.uuid("job id must be a UUID");
 
+export const accountIdSchema = z.uuid("account id must be a UUID");
+
+export const accountListQuerySchema = z.object({
+  includeArchived: z.coerce.boolean().optional(),
+});
+
+const isoDateSchema = z.string().regex(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/, "must be a YYYY-MM-DD date");
+
+const minorBoundSchema = z
+  .string()
+  .regex(/^(0|[1-9][0-9]*)$/, "must be non-negative integer-string minor units");
+
+/**
+ * Issue 4.7 — transaction search boundary. Shape-only: comma-separated
+ * lists stay strings here; value validation (UUIDs, directions, ranges)
+ * lives in the domain search (Issue 4.6), the single source of truth, and
+ * surfaces as the same VALIDATION_FAILED problem.
+ */
+export const transactionSearchQuerySchema = z.object({
+  cursor: z.string().max(2048).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  accountIds: z.string().max(4000).optional(),
+  dateFrom: isoDateSchema.optional(),
+  dateTo: isoDateSchema.optional(),
+  directions: z.string().max(64).optional(),
+  amountMin: minorBoundSchema.optional(),
+  amountMax: minorBoundSchema.optional(),
+  q: z.string().max(200).optional(),
+  sort: z.enum(["newest", "oldest"]).default("newest"),
+});
+
 export type ParseSuccess<T> = { ok: true; data: T };
 export type ParseFailure = { ok: false; error: DomainError };
 export type ParseOutcome<T> = ParseSuccess<T> | ParseFailure;

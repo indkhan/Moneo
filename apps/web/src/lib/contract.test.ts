@@ -47,6 +47,9 @@ describe("api contract", () => {
       "/jobs/{id}/retry",
       "/jobs/{id}/stop",
       "/commands/{commandName}",
+      "/accounts",
+      "/accounts/{id}",
+      "/transactions/search",
       "/imports/initiate",
       "/imports/bytes",
       "/imports/preview",
@@ -54,6 +57,38 @@ describe("api contract", () => {
     ]) {
       expect(Object.keys(contract.paths)).toContain(path);
     }
+  });
+
+  it("declares the money screens on cursor pages and decimal-string amounts", () => {
+    const search = (
+      contract.paths["/transactions/search"] as {
+        get: { parameters: { name: string }[] };
+      }
+    ).get;
+    const names = search.parameters.map((p) => ("$ref" in p ? p.$ref : p.name));
+    expect(names).toContain("#/components/parameters/Cursor");
+    expect(names).toContain("#/components/parameters/PageLimit");
+
+    const transaction = contract.components.schemas["Transaction"] as {
+      properties: { amountMinor: unknown; direction: { enum: string[] } };
+    };
+    expect(transaction.properties.amountMinor).toEqual({
+      $ref: "#/components/schemas/NonNegativeMinorString",
+    });
+    expect(transaction.properties.direction.enum).toEqual(["credit", "debit"]);
+    const bound = contract.components.schemas["NonNegativeMinorString"] as {
+      type: string;
+      pattern: string;
+    };
+    expect(bound.type).toBe("string");
+    expect("1550").toMatch(new RegExp(bound.pattern));
+    expect("12.50").not.toMatch(new RegExp(bound.pattern));
+    expect("-5").not.toMatch(new RegExp(bound.pattern));
+
+    const account = contract.components.schemas["Account"] as {
+      required: string[];
+    };
+    expect(account.required).toContain("balance");
   });
 
   it("declares every problem code on the shared error schema", () => {
