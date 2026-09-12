@@ -1,3 +1,4 @@
+import { executeUndo } from "@moneo/db/undo-commands";
 import { executeRecordBalance } from "@moneo/db/balance-commands";
 import {
   executeAddTags,
@@ -107,6 +108,11 @@ export const excludeFromAnalyticsInputSchema = z.object({
   excluded: z.boolean(),
 });
 
+/** Issue 5.4 — undo takes the operation id returned by an undoable command. */
+export const undoInputSchema = z.object({
+  operationId: z.string().min(1, "operation id is required").max(500),
+});
+
 export const recordBalanceInputSchema = z.object({
   accountId: z.uuid("account id must be a UUID"),
   observedAt: z.string().min(1, "observedAt is required"),
@@ -126,12 +132,16 @@ export interface CommandMetadata {
 export interface CommandExecution {
   operationId: string;
   replayed: boolean;
+  /** True when the client may offer Undo for this outcome (Issue 5.4). */
+  undoAvailable: boolean;
   result: Record<string, unknown>;
 }
 
 export interface CommandRegistration {
   /** Validated by the dispatcher BEFORE run — run receives trusted input. */
   inputSchema: z.ZodType;
+  /** Whether successful outcomes support `operations.undo`. Defaults to false. */
+  undoAvailable?: boolean;
   run(args: {
     workspaceId: string;
     actorUserId: string | null;
@@ -154,9 +164,11 @@ function correctionRegistration(
     ctx: CommandContext,
     input: unknown,
   ) => Promise<CommandOutcome<unknown>>,
+  undoAvailable = false,
 ): CommandRegistration {
   return {
     inputSchema,
+    undoAvailable,
     run: ({ workspaceId, actorUserId, metadata, input }) =>
       withWorkspaceTransaction(workspaceId, (tx) =>
         execute(
@@ -170,7 +182,7 @@ function correctionRegistration(
               : {}),
           },
           input,
-        ).then(toExecution),
+        ).then((outcome) => toExecution(outcome, undoAvailable)),
       ),
   };
 }
@@ -220,61 +232,89 @@ export function createDrizzleCommandRegistry(): Map<string, CommandRegistration>
     ["matches.resolve", resolveMatch],
     [
       "transactions.setCategory",
-      correctionRegistration(setCategoryInputSchema, (db, ctx, input) =>
-        executeSetCategory(
-          db,
-          ctx,
-          input as Parameters<typeof executeSetCategory>[2],
-        ),
+      correctionRegistration(
+        setCategoryInputSchema,
+        (db, ctx, input) =>
+          executeSetCategory(
+            db,
+            ctx,
+            input as Parameters<typeof executeSetCategory>[2],
+          ),
+        true,
       ),
     ],
     [
       "transactions.setCounterparty",
-      correctionRegistration(setCounterpartyInputSchema, (db, ctx, input) =>
-        executeSetCounterparty(
-          db,
-          ctx,
-          input as Parameters<typeof executeSetCounterparty>[2],
-        ),
+      correctionRegistration(
+        setCounterpartyInputSchema,
+        (db, ctx, input) =>
+          executeSetCounterparty(
+            db,
+            ctx,
+            input as Parameters<typeof executeSetCounterparty>[2],
+          ),
+        true,
       ),
     ],
     [
       "transactions.addTags",
-      correctionRegistration(addTagsInputSchema, (db, ctx, input) =>
-        executeAddTags(
-          db,
-          ctx,
-          input as Parameters<typeof executeAddTags>[2],
-        ),
+      correctionRegistration(
+        addTagsInputSchema,
+        (db, ctx, input) =>
+          executeAddTags(
+            db,
+            ctx,
+            input as Parameters<typeof executeAddTags>[2],
+          ),
+        true,
       ),
     ],
     [
       "transactions.removeTags",
-      correctionRegistration(removeTagsInputSchema, (db, ctx, input) =>
-        executeRemoveTags(
-          db,
-          ctx,
-          input as Parameters<typeof executeRemoveTags>[2],
-        ),
+      correctionRegistration(
+        removeTagsInputSchema,
+        (db, ctx, input) =>
+          executeRemoveTags(
+            db,
+            ctx,
+            input as Parameters<typeof executeRemoveTags>[2],
+          ),
+        true,
       ),
     ],
     [
       "transactions.setNote",
-      correctionRegistration(setNoteInputSchema, (db, ctx, input) =>
-        executeSetNote(
-          db,
-          ctx,
-          input as Parameters<typeof executeSetNote>[2],
-        ),
+      correctionRegistration(
+        setNoteInputSchema,
+        (db, ctx, input) =>
+          executeSetNote(
+            db,
+            ctx,
+            input as Parameters<typeof executeSetNote>[2],
+          ),
+        true,
       ),
     ],
     [
       "transactions.excludeFromAnalytics",
-      correctionRegistration(excludeFromAnalyticsInputSchema, (db, ctx, input) =>
-        executeExcludeFromAnalytics(
+      correctionRegistration(
+        excludeFromAnalyticsInputSchema,
+        (db, ctx, input) =>
+          executeExcludeFromAnalytics(
+            db,
+            ctx,
+            input as Parameters<typeof executeExcludeFromAnalytics>[2],
+          ),
+        true,
+      ),
+    ],
+    [
+      "operations.undo",
+      correctionRegistration(undoInputSchema, (db, ctx, input) =>
+        executeUndo(
           db,
           ctx,
-          input as Parameters<typeof executeExcludeFromAnalytics>[2],
+          input as Parameters<typeof executeUndo>[2],
         ),
       ),
     ],
@@ -325,14 +365,18 @@ export function createDrizzleCommandRegistry(): Map<string, CommandRegistration>
   ]);
 }
 
-function toExecution(outcome: {
-  operationId: string;
-  replayed: boolean;
-  result: unknown;
-}): CommandExecution {
+function toExecution(
+  outcome: {
+    operationId: string;
+    replayed: boolean;
+    result: unknown;
+  },
+  undoAvailable = false,
+): CommandExecution {
   return {
     operationId: outcome.operationId,
     replayed: outcome.replayed,
+    undoAvailable,
     result: outcome.result as Record<string, unknown>,
   };
 }

@@ -102,6 +102,10 @@ function createData(db: MemoryDb): CorrectionData {
       }
       return Promise.resolve();
     },
+    replaceTagLinks: (_ws, txnId, tagIds) => {
+      db.links.set(txnId, new Set(tagIds));
+      return Promise.resolve();
+    },
     applyCorrection: (_ws, txnId, patch, loadedVersion) => {
       const txn = db.transactions.get(txnId);
       if (!txn || txn.version !== loadedVersion) {

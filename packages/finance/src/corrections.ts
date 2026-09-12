@@ -58,6 +58,8 @@ export interface CorrectionData {
   listTransactionTagNames(workspaceId: string, transactionId: string): Promise<string[]>;
   addTagLinks(workspaceId: string, transactionId: string, tagIds: string[]): Promise<void>;
   removeTagLinks(workspaceId: string, transactionId: string, tagIds: string[]): Promise<void>;
+  /** Replace the full tag set (undo restores the recorded set verbatim). */
+  replaceTagLinks(workspaceId: string, transactionId: string, tagIds: string[]): Promise<void>;
   /**
    * Guarded write: applies `patch` and bumps version IFF the row still sits
    * at `loadedVersion`. Returns the new version, or null when another writer

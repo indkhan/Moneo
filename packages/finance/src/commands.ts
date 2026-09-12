@@ -15,7 +15,11 @@
  */
 
 export type CommandErrorCode =
-  "FORBIDDEN" | "VERSION_CONFLICT" | "IDEMPOTENCY_KEY_REUSED" | "INVARIANT_VIOLATION";
+  | "FORBIDDEN"
+  | "VERSION_CONFLICT"
+  | "IDEMPOTENCY_KEY_REUSED"
+  | "INVARIANT_VIOLATION"
+  | "UNDO_CONFLICT";
 
 export class CommandError extends Error {
   readonly code: CommandErrorCode;

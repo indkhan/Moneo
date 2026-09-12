@@ -19,7 +19,7 @@ import {
  * the finance executor's codes land on the right domain errors.
  */
 describe("problem-details errors", () => {
-  it("declares exactly the ten required codes", () => {
+  it("declares exactly the eleven required codes", () => {
     expect([...PROBLEM_CODES].sort()).toEqual(
       [
         "VALIDATION_FAILED",
@@ -27,6 +27,7 @@ describe("problem-details errors", () => {
         "FORBIDDEN",
         "VERSION_CONFLICT",
         "IDEMPOTENCY_KEY_REUSED",
+        "UNDO_CONFLICT",
         "RATE_LIMITED",
         "JOB_REQUIRED",
         "UNKNOWN_OUTCOME",
@@ -44,6 +45,7 @@ describe("problem-details errors", () => {
     expect(statusOf("FORBIDDEN")).toBe(403);
     expect(statusOf("VERSION_CONFLICT")).toBe(409);
     expect(statusOf("IDEMPOTENCY_KEY_REUSED")).toBe(409);
+    expect(statusOf("UNDO_CONFLICT")).toBe(409);
     expect(statusOf("RATE_LIMITED")).toBe(429);
     expect(statusOf("JOB_REQUIRED")).toBe(202);
     expect(statusOf("UNKNOWN_OUTCOME")).toBe(500);
@@ -68,6 +70,7 @@ describe("problem-details errors", () => {
       "FORBIDDEN",
       "VERSION_CONFLICT",
       "IDEMPOTENCY_KEY_REUSED",
+      "UNDO_CONFLICT",
       "INVARIANT_VIOLATION",
     ] as const) {
       expect(retryable(code)).toBe(false);
@@ -94,7 +97,7 @@ describe("problem-details errors", () => {
     });
     // Every code has a distinct kebab-case type URI.
     const types = new Set(PROBLEM_CODES.map(problemTypeFor));
-    expect(types.size).toBe(10);
+    expect(types.size).toBe(11);
     for (const type of types) {
       expect(type.startsWith("https://moneo.app/problems/")).toBe(true);
     }
@@ -190,6 +193,13 @@ describe("problem-details errors", () => {
       fromCommandError({ code: "IDEMPOTENCY_KEY_REUSED", message: "reused" }, "c").status,
     ).toBe(409);
     expect(fromCommandError({ code: "INVARIANT_VIOLATION", message: "bad" }, "c").status).toBe(422);
+    const undo = fromCommandError(
+      { code: "UNDO_CONFLICT", message: "moved", details: { currentVersion: 6 } },
+      "c",
+    );
+    expect(undo.code).toBe("UNDO_CONFLICT");
+    expect(undo.status).toBe(409);
+    expect(undo.retryable).toBe(false);
     // A future executor code must not crash the mapper: it degrades to
     // UNKNOWN_OUTCOME, which is safe to replay with the same key.
     const unmapped = fromCommandError({ code: "SOMETHING_NEW", message: "?" }, "c");

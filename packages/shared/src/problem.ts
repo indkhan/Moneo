@@ -15,6 +15,7 @@ export const PROBLEM_CODES = [
   "FORBIDDEN",
   "VERSION_CONFLICT",
   "IDEMPOTENCY_KEY_REUSED",
+  "UNDO_CONFLICT",
   "RATE_LIMITED",
   "JOB_REQUIRED",
   "UNKNOWN_OUTCOME",
@@ -30,6 +31,9 @@ const STATUS_OF: Record<ProblemCode, number> = {
   FORBIDDEN: 403,
   VERSION_CONFLICT: 409,
   IDEMPOTENCY_KEY_REUSED: 409,
+  // A newer change moved the object after the undone operation: the undo is
+  // refused rather than overwriting newer work (Issue 5.4).
+  UNDO_CONFLICT: 409,
   RATE_LIMITED: 429,
   // The request is valid but needs background execution: accepted, poll the job.
   JOB_REQUIRED: 202,
@@ -46,6 +50,7 @@ const TITLE_OF: Record<ProblemCode, string> = {
   FORBIDDEN: "Forbidden",
   VERSION_CONFLICT: "Version conflict",
   IDEMPOTENCY_KEY_REUSED: "Idempotency key already used",
+  UNDO_CONFLICT: "Undo conflict",
   RATE_LIMITED: "Rate limit exceeded",
   JOB_REQUIRED: "Background job required",
   UNKNOWN_OUTCOME: "Unknown outcome",
@@ -59,6 +64,7 @@ const RETRYABLE_OF: Record<ProblemCode, boolean> = {
   FORBIDDEN: false,
   VERSION_CONFLICT: false,
   IDEMPOTENCY_KEY_REUSED: false,
+  UNDO_CONFLICT: false,
   RATE_LIMITED: true,
   JOB_REQUIRED: true,
   UNKNOWN_OUTCOME: true,
@@ -163,9 +169,10 @@ export function toInternalProblem(
 }
 
 /**
- * Map the finance command executor's typed errors (Issue 2.2) onto domain
- * errors. The executor only throws the four codes in the map; anything else
- * becomes UNKNOWN_OUTCOME (the mutation may have committed).
+ * Map the finance command executor's typed errors (Issue 2.2, extended by
+ * Issue 5.4 with UNDO_CONFLICT) onto domain errors. The executor only throws
+ * the codes in the map; anything else becomes UNKNOWN_OUTCOME (the mutation
+ * may have committed).
  */
 export function fromCommandError(
   error: { code: string; message: string; details?: Record<string, unknown> },
@@ -182,6 +189,12 @@ export function fromCommandError(
       });
     case "IDEMPOTENCY_KEY_REUSED":
       return new DomainError("IDEMPOTENCY_KEY_REUSED", {
+        detail: error.message,
+        details: error.details,
+        correlationId,
+      });
+    case "UNDO_CONFLICT":
+      return new DomainError("UNDO_CONFLICT", {
         detail: error.message,
         details: error.details,
         correlationId,

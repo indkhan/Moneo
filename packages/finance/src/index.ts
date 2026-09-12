@@ -7,6 +7,7 @@
  */
 export * from "./commands.js";
 export * from "./corrections.js";
+export * from "./undo.js";
 export * from "./versions.js";
 export * from "./balances.js";
 export * from "./canonicalize.js";

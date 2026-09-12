@@ -42,7 +42,7 @@ function body(overrides: Record<string, unknown> = {}) {
 
 function registration(
   run: CommandRegistration["run"] = () =>
-    Promise.resolve({ operationId: "op-1", replayed: false, result: {} }),
+    Promise.resolve({ operationId: "op-1", replayed: false, undoAvailable: false, result: {} }),
 ): CommandRegistration {
   return { inputSchema: recordBalanceInputSchema, run };
 }
@@ -128,13 +128,23 @@ describe("handleExecuteCommand", () => {
           "accounts.recordBalance",
           registration((args) => {
             seen.push(args);
-            return Promise.resolve({ operationId: "op-1", replayed: true, result: { ok: true } });
+            return Promise.resolve({
+              operationId: "op-1",
+              replayed: true,
+              undoAvailable: false,
+              result: { ok: true },
+            });
           }),
         ],
       ]),
     });
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ operationId: "op-1", replayed: true, result: { ok: true } });
+    expect(await ok.json()).toEqual({
+      operationId: "op-1",
+      replayed: true,
+      undoAvailable: false,
+      result: { ok: true },
+    });
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({
       workspaceId: WID,
@@ -148,6 +158,7 @@ describe("handleExecuteCommand", () => {
       ["FORBIDDEN", 403],
       ["VERSION_CONFLICT", 409],
       ["IDEMPOTENCY_KEY_REUSED", 409],
+      ["UNDO_CONFLICT", 409],
       ["INVARIANT_VIOLATION", 422],
     ] as const) {
       const mapped = await handleExecuteCommand("accounts.recordBalance", body(), {
@@ -238,6 +249,27 @@ describe("correction command input schemas", () => {
     ]) {
       expect(registry.has(name)).toBe(true);
     }
+  });
+
+  it("marks corrections undoable and undo itself not", () => {
+    const registry = createDrizzleCommandRegistry();
+    for (const name of [
+      "transactions.setCategory",
+      "transactions.setCounterparty",
+      "transactions.addTags",
+      "transactions.removeTags",
+      "transactions.setNote",
+      "transactions.excludeFromAnalytics",
+    ]) {
+      expect(registry.get(name)?.undoAvailable).toBe(true);
+    }
+    const undo = registry.get("operations.undo");
+    expect(undo).toBeDefined();
+    expect(undo?.undoAvailable ?? false).toBe(false);
+    expect(undo?.inputSchema.safeParse({ operationId: "ws:transactions.setNote:k" }).success).toBe(
+      true,
+    );
+    expect(undo?.inputSchema.safeParse({ operationId: "" }).success).toBe(false);
   });
 });
 

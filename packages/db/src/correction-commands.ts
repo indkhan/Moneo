@@ -45,7 +45,8 @@ import {
  * so ownership is enforced here instead.
  */
 
-function dataOver(db: CommandStoreDb): CorrectionData {
+/** Shared workspace-scoped reads/writes behind every correction command (Issue 5.4 reuses it for undo). */
+export function correctionDataOver(db: CommandStoreDb): CorrectionData {
   return {
     async findTransaction(workspaceId, transactionId) {
       const rows = await db
@@ -158,6 +159,22 @@ function dataOver(db: CommandStoreDb): CorrectionData {
           ),
         );
     },
+    async replaceTagLinks(workspaceId, transactionId, tagIds) {
+      await db
+        .delete(transactionTags)
+        .where(
+          and(
+            eq(transactionTags.workspaceId, workspaceId),
+            eq(transactionTags.transactionId, transactionId),
+          ),
+        );
+      for (const tagId of tagIds) {
+        await db
+          .insert(transactionTags)
+          .values({ workspaceId, transactionId, tagId })
+          .onConflictDoNothing();
+      }
+    },
     async applyCorrection(workspaceId, transactionId, patch: CorrectionPatch, loadedVersion) {
       const set: Partial<typeof transactions.$inferInsert> & { updatedAt: Date } = {
         version: loadedVersion + 1,
@@ -198,7 +215,7 @@ export async function executeSetCategory(
   input: SetCategoryInput,
 ): Promise<CommandOutcome<SetCategoryResult>> {
   return executeCommand(
-    createSetCategoryCommand(dataOver(db)),
+    createSetCategoryCommand(correctionDataOver(db)),
     ctx,
     input,
     createDrizzleCommandStore(db),
@@ -211,7 +228,7 @@ export async function executeSetCounterparty(
   input: SetCounterpartyInput,
 ): Promise<CommandOutcome<SetCounterpartyResult>> {
   return executeCommand(
-    createSetCounterpartyCommand(dataOver(db)),
+    createSetCounterpartyCommand(correctionDataOver(db)),
     ctx,
     input,
     createDrizzleCommandStore(db),
@@ -224,7 +241,7 @@ export async function executeAddTags(
   input: AddTagsInput,
 ): Promise<CommandOutcome<TagsResult>> {
   return executeCommand(
-    createAddTagsCommand(dataOver(db)),
+    createAddTagsCommand(correctionDataOver(db)),
     ctx,
     input,
     createDrizzleCommandStore(db),
@@ -237,7 +254,7 @@ export async function executeRemoveTags(
   input: RemoveTagsInput,
 ): Promise<CommandOutcome<TagsResult>> {
   return executeCommand(
-    createRemoveTagsCommand(dataOver(db)),
+    createRemoveTagsCommand(correctionDataOver(db)),
     ctx,
     input,
     createDrizzleCommandStore(db),
@@ -250,7 +267,7 @@ export async function executeSetNote(
   input: SetNoteInput,
 ): Promise<CommandOutcome<SetNoteResult>> {
   return executeCommand(
-    createSetNoteCommand(dataOver(db)),
+    createSetNoteCommand(correctionDataOver(db)),
     ctx,
     input,
     createDrizzleCommandStore(db),
@@ -263,7 +280,7 @@ export async function executeExcludeFromAnalytics(
   input: ExcludeFromAnalyticsInput,
 ): Promise<CommandOutcome<ExcludeFromAnalyticsResult>> {
   return executeCommand(
-    createExcludeFromAnalyticsCommand(dataOver(db)),
+    createExcludeFromAnalyticsCommand(correctionDataOver(db)),
     ctx,
     input,
     createDrizzleCommandStore(db),

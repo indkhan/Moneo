@@ -3,6 +3,7 @@ export * from "./account-queries.js";
 export * from "./balance-commands.js";
 export * from "./command-store.js";
 export * from "./correction-commands.js";
+export * from "./undo-commands.js";
 export * from "./fx-valuations.js";
 export * from "./import-matching.js";
 export * from "./manual-commands.js";

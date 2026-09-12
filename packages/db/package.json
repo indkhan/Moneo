@@ -66,6 +66,10 @@
       "types": "./dist/correction-commands.d.ts",
       "default": "./dist/correction-commands.js"
     },
+    "./undo-commands": {
+      "types": "./dist/undo-commands.d.ts",
+      "default": "./dist/undo-commands.js"
+    },
     "./import-matching": {
       "types": "./dist/import-matching.d.ts",
       "default": "./dist/import-matching.js"
