@@ -16,6 +16,15 @@ const envSchema = z.object({
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().min(1).default("http://localhost:4318"),
   OTEL_SERVICE_NAME: z.string().min(1).default("moneo"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+  // --- Epoch 1 auth (optional until the Auth0 EU tenant is wired up) ---
+  APP_BASE_URL: z.string().min(1).default("http://localhost:3000"),
+  AUTH0_DOMAIN: z.string().min(1).optional(),
+  AUTH0_CLIENT_ID: z.string().min(1).optional(),
+  AUTH0_CLIENT_SECRET: z.string().min(1).optional(),
+  /** Public login hostname (e.g. login.moneo.example); canonical EU domain stays the token issuer. */
+  AUTH0_CUSTOM_DOMAIN: z.string().min(1).optional(),
+  /** Seals the browser session cookie. Required by auth routes; generate with `openssl rand -hex 32`. */
+  SESSION_SECRET: z.string().min(1).optional(),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
