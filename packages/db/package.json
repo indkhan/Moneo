@@ -42,6 +42,10 @@
       "types": "./dist/workspaces.d.ts",
       "default": "./dist/workspaces.js"
     },
+    "./sessions": {
+      "types": "./dist/sessions.d.ts",
+      "default": "./dist/sessions.js"
+    },
     "./version": {
       "types": "./dist/version.d.ts",
       "default": "./dist/version.js"

@@ -1,4 +1,10 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 
 /**
  * Epoch 1, Issue 1.3 — sealed browser session.
@@ -50,6 +56,11 @@ function b64urlEncode(buf: Buffer): string {
 
 function b64urlDecode(s: string): Buffer {
   return Buffer.from(s, "base64url");
+}
+
+/** Fresh server-side session id (the `sid` sealed into the cookie). */
+export function newSessionId(): string {
+  return randomBytes(16).toString("hex");
 }
 
 /** Seal a JSON payload. Format: `v1.<iv>.<ciphertext>.<tag>` (all base64url). */
@@ -113,7 +124,7 @@ export function buildSessionPayload(input: {
   const ttl = input.ttlSeconds ?? SESSION_TTL_SECONDS;
   const payload: SessionPayload = {
     sub: input.sub,
-    sid: typeof input.sid === "string" && input.sid.length > 0 ? input.sid : randomBytes(16).toString("hex"),
+    sid: typeof input.sid === "string" && input.sid.length > 0 ? input.sid : newSessionId(),
     iat: now,
     exp: now + ttl,
   };
@@ -146,7 +157,11 @@ export function assertNoTokenMaterial(sealed: string, secret: string): void {
 }
 
 /** Null unless the sealed payload is a live session (authentic + unexpired). */
-export function readSession(sealed: string | undefined, secret: string, nowSeconds?: number): SessionPayload | null {
+export function readSession(
+  sealed: string | undefined,
+  secret: string,
+  nowSeconds?: number,
+): SessionPayload | null {
   if (!sealed) {
     return null;
   }
@@ -189,7 +204,11 @@ export function readOAuthState(
     return null;
   }
   const payload: unknown = unseal(sealed, secret);
-  if (!isRecord(payload) || typeof payload.state !== "string" || typeof payload.verifier !== "string") {
+  if (
+    !isRecord(payload) ||
+    typeof payload.state !== "string" ||
+    typeof payload.verifier !== "string"
+  ) {
     return null;
   }
   const now = nowSeconds ?? Math.floor(Date.now() / 1000);

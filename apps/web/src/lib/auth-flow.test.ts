@@ -1,12 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { type AuthConfig } from "./auth-config";
-import {
-  buildLoginRedirect,
-  buildLogoutRedirect,
-  completeLogin,
-  cookieValue,
-} from "./auth-flow";
+import { buildLoginRedirect, buildLogoutRedirect, completeLogin } from "./auth-flow";
 import { readOAuthState, readSession, seal } from "./session";
 
 const CONFIG: AuthConfig = {
@@ -26,7 +21,10 @@ function fixedRandom() {
 
 describe("buildLoginRedirect", () => {
   it("targets the custom login host with code + PKCE-S256 parameters", () => {
-    const { url, stateSealed } = buildLoginRedirect(CONFIG, { nowSeconds: NOW, random: fixedRandom() });
+    const { url, stateSealed } = buildLoginRedirect(CONFIG, {
+      nowSeconds: NOW,
+      random: fixedRandom(),
+    });
     const parsed = new URL(url);
     expect(parsed.origin).toBe("https://login.moneo.example");
     expect(parsed.pathname).toBe("/authorize");
@@ -48,7 +46,10 @@ describe("buildLoginRedirect", () => {
   });
 
   it("falls back to the canonical EU host when no custom domain is set", () => {
-    const { url } = buildLoginRedirect({ ...CONFIG, loginHost: CONFIG.issuer }, { random: fixedRandom() });
+    const { url } = buildLoginRedirect(
+      { ...CONFIG, loginHost: CONFIG.issuer },
+      { random: fixedRandom() },
+    );
     expect(new URL(url).origin).toBe("https://moneo.eu.auth0.com");
   });
 
@@ -64,18 +65,23 @@ describe("completeLogin", () => {
 
   function loginSetup(state = "csrf-state-123") {
     const stateCookie = seal({ state, verifier, exp: NOW + 600 }, CONFIG.sessionSecret);
-    const exchange = vi.fn(() => Promise.resolve({
-      access_token: "server-only-access",
-      token_type: "Bearer",
-      expires_in: 86_400,
-      id_token: "server-only-id-token",
-      refresh_token: "server-only-refresh",
-    }));
-    const fetchProfile = vi.fn(() => Promise.resolve({ sub: "auth0|abc", email: "a@x.com", name: "A" }));
+    const exchange = vi.fn(() =>
+      Promise.resolve({
+        access_token: "server-only-access",
+        token_type: "Bearer",
+        expires_in: 86_400,
+        id_token: "server-only-id-token",
+        refresh_token: "server-only-refresh",
+      }),
+    );
+    const fetchProfile = vi.fn(() =>
+      Promise.resolve({ sub: "auth0|abc", email: "a@x.com", name: "A" }),
+    );
     return { state, stateCookie, exchange, fetchProfile };
   }
 
-  it("seals only profile claims and redirects home on success", async () => {    const { state, stateCookie, exchange, fetchProfile } = loginSetup();
+  it("seals only profile claims and redirects home on success", async () => {
+    const { state, stateCookie, exchange, fetchProfile } = loginSetup();
     const result = await completeLogin({
       config: CONFIG,
       queryState: state,
@@ -86,7 +92,11 @@ describe("completeLogin", () => {
       fetchProfile,
     });
     expect(result).toMatchObject({ ok: true, redirectTo: "/home" });
-    expect(exchange).toHaveBeenCalledWith("auth-code", verifier, "http://localhost:3000/api/auth/callback");
+    expect(exchange).toHaveBeenCalledWith(
+      "auth-code",
+      verifier,
+      "http://localhost:3000/api/auth/callback",
+    );
     expect(fetchProfile).toHaveBeenCalledWith("server-only-access");
 
     const session = readSession(
@@ -100,7 +110,10 @@ describe("completeLogin", () => {
   });
 
   it.each([
-    ["missing state cookie", { cookie: null as string | null | undefined, query: "csrf-state-123", code: "c" }],
+    [
+      "missing state cookie",
+      { cookie: null as string | null | undefined, query: "csrf-state-123", code: "c" },
+    ],
     ["tampered state cookie", { cookie: "v1.x.y.z", query: "csrf-state-123", code: "c" }],
     ["state mismatch (login CSRF)", { cookie: "valid", query: "forged-state", code: "c" }],
     ["missing state query", { cookie: "valid", query: null, code: "c" }],
@@ -151,9 +164,18 @@ describe("completeLogin", () => {
       exchange: throwing.exchange,
       fetchProfile: setup.fetchProfile,
     });
-    expect(failed).toMatchObject({ ok: false, error: "exchange_failed", redirectTo: "/?auth_error=exchange_failed" });
+    expect(failed).toMatchObject({
+      ok: false,
+      error: "exchange_failed",
+      redirectTo: "/?auth_error=exchange_failed",
+    });
 
-    const emptyToken = { ...setup, exchange: vi.fn(() => Promise.resolve({ access_token: "", token_type: "Bearer", expires_in: 1 })) };
+    const emptyToken = {
+      ...setup,
+      exchange: vi.fn(() =>
+        Promise.resolve({ access_token: "", token_type: "Bearer", expires_in: 1 }),
+      ),
+    };
     const empty = await completeLogin({
       config: CONFIG,
       queryState: setup.state,
@@ -200,13 +222,20 @@ describe("completeLogin provisioning hook (Issue 1.4)", () => {
   function setup(state = "csrf-state-123") {
     const stateCookie = seal({ state, verifier, exp: NOW + 600 }, CONFIG.sessionSecret);
     const exchange = vi.fn(() =>
-      Promise.resolve({ access_token: "server-only-access", token_type: "Bearer", expires_in: 86_400 }),
+      Promise.resolve({
+        access_token: "server-only-access",
+        token_type: "Bearer",
+        expires_in: 86_400,
+      }),
     );
     const fetchProfile = vi.fn(() => Promise.resolve({ sub: "auth0|abc", email: "a@x.com" }));
     return { state, stateCookie, exchange, fetchProfile };
   }
 
-  function loginInput(s: ReturnType<typeof setup>, provision?: (profile: { sub: string }) => Promise<{ uid: string; wid: string } | null>) {
+  function loginInput(
+    s: ReturnType<typeof setup>,
+    provision?: (profile: { sub: string }) => Promise<{ uid: string; wid: string } | null>,
+  ) {
     return {
       config: CONFIG,
       queryState: s.state,
@@ -242,7 +271,10 @@ describe("completeLogin provisioning hook (Issue 1.4)", () => {
       () => Promise.resolve({ uid: "user-1", wid: 42 }),
     ]) {
       const result = await completeLogin(
-        loginInput(s, provision as (profile: { sub: string }) => Promise<{ uid: string; wid: string } | null>),
+        loginInput(
+          s,
+          provision as (profile: { sub: string }) => Promise<{ uid: string; wid: string } | null>,
+        ),
       );
       expect(result).toMatchObject({ ok: false, error: "provisioning_failed" });
       if (!result.ok) {
@@ -266,6 +298,98 @@ describe("completeLogin provisioning hook (Issue 1.4)", () => {
   });
 });
 
+describe("completeLogin session registration (Issue 1.7)", () => {
+  const verifier = "verifier-abc";
+
+  function setup() {
+    const stateCookie = seal(
+      { state: "csrf-state-123", verifier, exp: NOW + 600 },
+      CONFIG.sessionSecret,
+    );
+    const exchange = vi.fn(() =>
+      Promise.resolve({
+        access_token: "server-only-access",
+        token_type: "Bearer",
+        expires_in: 86_400,
+      }),
+    );
+    const fetchProfile = vi.fn(() => Promise.resolve({ sub: "auth0|abc" }));
+    const provision = vi.fn(() => Promise.resolve({ uid: "user-1", wid: "ws-1" }));
+    return { stateCookie, exchange, fetchProfile, provision };
+  }
+
+  function input(s: ReturnType<typeof setup>, extra: Record<string, unknown> = {}) {
+    return {
+      config: CONFIG,
+      queryState: "csrf-state-123",
+      queryCode: "auth-code",
+      stateCookie: s.stateCookie,
+      nowSeconds: NOW,
+      exchange: s.exchange,
+      fetchProfile: s.fetchProfile,
+      provision: s.provision,
+      ...extra,
+    };
+  }
+
+  it("registers the login with the sealed sid and returns the ids", async () => {
+    const s = setup();
+    const registerSession = vi.fn(
+      (args: { sid: string; uid: string; wid: string; userAgent: string | null }) =>
+        Promise.resolve(args),
+    );
+    const result = await completeLogin(input(s, { userAgent: "TestBrowser/9", registerSession }));
+    expect(result.ok).toBe(true);
+    expect(s.provision).toHaveBeenCalledOnce();
+    expect(registerSession).toHaveBeenCalledOnce();
+    const args = registerSession.mock.calls[0]?.[0];
+    expect(args).toMatchObject({ uid: "user-1", wid: "ws-1", userAgent: "TestBrowser/9" });
+    expect(typeof args?.sid).toBe("string");
+    const ok = result as {
+      ok: true;
+      sid: string;
+      uid: string | null;
+      wid: string | null;
+      sessionSealed: string;
+    };
+    expect(ok.sid).toBe(args?.sid);
+    expect(ok.uid).toBe("user-1");
+    expect(ok.wid).toBe("ws-1");
+    // The sealed cookie carries the same sid the registry holds.
+    expect(readSession(ok.sessionSealed, CONFIG.sessionSecret, NOW)?.sid).toBe(args?.sid);
+  });
+
+  it("fails closed when registration rejects", async () => {
+    const s = setup();
+    const result = await completeLogin(
+      input(s, { registerSession: () => Promise.reject(new Error("registry down")) }),
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      error: "session_failed",
+      redirectTo: "/?auth_error=session_failed",
+    });
+  });
+
+  it("skips registration when no provision ran (no uid/wid to register)", async () => {
+    const s = setup();
+    const registerSession = vi.fn(() => Promise.resolve(undefined));
+    const { provision: _provision, ...withoutProvision } = input(s);
+    const result = await completeLogin({ ...withoutProvision, registerSession });
+    expect(result.ok).toBe(true);
+    expect(registerSession).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ uid: null, wid: null });
+  });
+
+  it("forwards a null user agent instead of dropping registration", async () => {
+    const s = setup();
+    const registerSession = vi.fn(() => Promise.resolve(undefined));
+    const result = await completeLogin(input(s, { userAgent: null, registerSession }));
+    expect(result.ok).toBe(true);
+    expect(registerSession).toHaveBeenCalledWith(expect.objectContaining({ userAgent: null }));
+  });
+});
+
 describe("buildLogoutRedirect", () => {
   it("ends the IdP session on the EU host and clears both cookies", () => {
     const { url, clearCookie, clearStateCookie } = buildLogoutRedirect(CONFIG);
@@ -276,15 +400,5 @@ describe("buildLogoutRedirect", () => {
     expect(parsed.searchParams.get("returnTo")).toBe("http://localhost:3000");
     expect(clearCookie).toContain("Max-Age=0");
     expect(clearStateCookie).toContain("Max-Age=0");
-  });
-});
-
-describe("cookieValue", () => {
-  it("parses the named cookie out of a header", () => {
-    expect(cookieValue("a=1; __Host-moneo_session=sealed; b=2", "__Host-moneo_session")).toBe("sealed");
-    expect(cookieValue(null, "__Host-moneo_session")).toBeUndefined();
-    expect(cookieValue("", "__Host-moneo_session")).toBeUndefined();
-    expect(cookieValue("a=1", "__Host-moneo_session")).toBeUndefined();
-    expect(cookieValue("novalue; a=1", "a")).toBe("1");
   });
 });

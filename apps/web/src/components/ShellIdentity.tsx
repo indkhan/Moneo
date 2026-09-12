@@ -1,4 +1,5 @@
 import { getShellIdentity, identityLabel } from "@/lib/shell-identity";
+import { SignOutButton } from "./SignOutButton";
 
 /**
  * Issue 1.5 — topbar identity cluster (server component).
@@ -23,7 +24,7 @@ export async function ShellIdentity() {
       <span aria-label="Current workspace" style={{ opacity: 0.8 }}>
         {workspace ? workspace.name : "Setting up…"}
       </span>
-      <a href="/api/auth/logout">Log out</a>
+      <SignOutButton />
     </div>
   );
 }

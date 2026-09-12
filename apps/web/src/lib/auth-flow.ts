@@ -9,6 +9,7 @@ import {
   OAUTH_STATE_TTL_SECONDS,
   assertNoTokenMaterial,
   buildSessionPayload,
+  newSessionId,
   oauthStateClearCookie,
   readOAuthState,
   seal,
@@ -51,7 +52,10 @@ export function buildLoginRedirect(
   });
   return {
     url: `${authorizationEndpoint(config)}?${params.toString()}`,
-    stateSealed: seal({ state, verifier, exp: now + OAUTH_STATE_TTL_SECONDS }, config.sessionSecret),
+    stateSealed: seal(
+      { state, verifier, exp: now + OAUTH_STATE_TTL_SECONDS },
+      config.sessionSecret,
+    ),
   };
 }
 
@@ -70,11 +74,27 @@ export interface UserProfile {
   name?: unknown;
 }
 
+/** Sentinel distinguishing a failed registration from a hook resolving nullish. */
+const SESSION_REGISTRATION_FAILED = Symbol("session-registration-failed");
+
 export type LoginResult =
-  | { ok: true; sessionSealed: string; redirectTo: string }
+  | {
+      ok: true;
+      sessionSealed: string;
+      sid: string;
+      uid: string | null;
+      wid: string | null;
+      redirectTo: string;
+    }
   | {
       ok: false;
-      error: "invalid_state" | "invalid_request" | "exchange_failed" | "profile_failed" | "provisioning_failed";
+      error:
+        | "invalid_state"
+        | "invalid_request"
+        | "exchange_failed"
+        | "profile_failed"
+        | "provisioning_failed"
+        | "session_failed";
       redirectTo: string;
     };
 
@@ -103,7 +123,10 @@ function isProvisionedIds(value: unknown): value is { uid: string; wid: string }
   }
   const ids = value as { uid?: unknown; wid?: unknown };
   return (
-    typeof ids.uid === "string" && ids.uid.length > 0 && typeof ids.wid === "string" && ids.wid.length > 0
+    typeof ids.uid === "string" &&
+    ids.uid.length > 0 &&
+    typeof ids.wid === "string" &&
+    ids.wid.length > 0
   );
 }
 
@@ -117,10 +140,19 @@ export async function completeLogin(input: {
   queryCode: string | null;
   stateCookie: string | undefined;
   nowSeconds?: number;
+  /** Forwarded to session registration for audit context. */
+  userAgent?: string | null;
   exchange: (code: string, verifier: string, redirectUri: string) => Promise<CodeExchange>;
   fetchProfile: (accessToken: string) => Promise<UserProfile>;
   /** Issue 1.4: resolve (or create) the user/workspace for this subject. */
   provision?: (profile: UserProfile) => Promise<{ uid: string; wid: string } | null>;
+  /** Issue 1.7: persist the login server-side so it can be revoked. */
+  registerSession?: (args: {
+    sid: string;
+    uid: string;
+    wid: string;
+    userAgent: string | null;
+  }) => Promise<unknown>;
 }): Promise<LoginResult> {
   const { config } = input;
   const now = input.nowSeconds ?? Math.floor(Date.now() / 1000);
@@ -162,12 +194,36 @@ export async function completeLogin(input: {
     provisioned = settled;
   }
 
+  // The sid is minted before sealing so login can be registered server-side
+  // (Issue 1.7) under the same id the cookie carries.
+  const sid = newSessionId();
+  if (input.registerSession && provisioned) {
+    const registered: unknown = await input
+      .registerSession({
+        sid,
+        uid: provisioned.uid,
+        wid: provisioned.wid,
+        userAgent: input.userAgent ?? null,
+      })
+      .catch(() => SESSION_REGISTRATION_FAILED);
+    if (registered === SESSION_REGISTRATION_FAILED) {
+      return fail("session_failed");
+    }
+  }
+
   const sessionSealed = seal(
-    buildSessionPayload({ ...profile, ...provisioned, nowSeconds: now }),
+    buildSessionPayload({ ...profile, ...provisioned, sid, nowSeconds: now }),
     config.sessionSecret,
   );
   assertNoTokenMaterial(sessionSealed, config.sessionSecret);
-  return { ok: true, sessionSealed, redirectTo: "/home" };
+  return {
+    ok: true,
+    sessionSealed,
+    sid,
+    uid: provisioned?.uid ?? null,
+    wid: provisioned?.wid ?? null,
+    redirectTo: "/home",
+  };
 }
 
 export interface LogoutRedirect {
@@ -190,18 +246,4 @@ export function buildLogoutRedirect(config: AuthConfig): LogoutRedirect {
 }
 
 /** Minimal cookie parser for server routes (single header value, no deps). */
-export function cookieValue(header: string | null, name: string): string | undefined {
-  if (!header) {
-    return undefined;
-  }
-  for (const part of header.split(";")) {
-    const idx = part.indexOf("=");
-    if (idx === -1) {
-      continue;
-    }
-    if (part.slice(0, idx).trim() === name) {
-      return decodeURIComponent(part.slice(idx + 1).trim());
-    }
-  }
-  return undefined;
-}
+export { cookieValue } from "./cookies";

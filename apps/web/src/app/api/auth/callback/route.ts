@@ -1,5 +1,6 @@
 import { getDb } from "@moneo/db/client";
 import { provisionUserOnLogin } from "@moneo/db/provisioning";
+import { registerSession } from "@moneo/db/sessions";
 import { loadEnv } from "@moneo/shared/env";
 import { NextResponse, type NextRequest } from "next/server";
 import { loadAuthConfig, tokenEndpoint, userinfoEndpoint } from "@/lib/auth-config";
@@ -22,7 +23,12 @@ export async function GET(request: NextRequest) {
     queryState: url.searchParams.get("state"),
     queryCode: url.searchParams.get("code"),
     stateCookie: request.cookies.get(OAUTH_STATE_COOKIE)?.value,
-    exchange: async (code: string, verifier: string, redirectUri: string): Promise<CodeExchange> => {
+    userAgent: request.headers.get("user-agent"),
+    exchange: async (
+      code: string,
+      verifier: string,
+      redirectUri: string,
+    ): Promise<CodeExchange> => {
       const res = await fetch(tokenEndpoint(config), {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -57,6 +63,15 @@ export async function GET(request: NextRequest) {
         displayName: typeof profile.name === "string" ? profile.name : undefined,
       });
       return { uid: provisioned.userId, wid: provisioned.workspaceId };
+    },
+    // Issue 1.7: persist the login so Settings can list and revoke it.
+    registerSession: async ({ sid, uid, wid, userAgent }) => {
+      await registerSession(getDb(), {
+        sessionId: sid,
+        userId: uid,
+        workspaceId: wid,
+        userAgent: userAgent ?? undefined,
+      });
     },
   });
 

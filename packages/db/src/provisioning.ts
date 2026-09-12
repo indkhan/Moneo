@@ -67,12 +67,20 @@ export async function provisionUserOnLogin(
   input: ProvisioningInput,
 ): Promise<ProvisioningResult> {
   const authSubject = input.authSubject;
-  if (typeof authSubject !== "string" || authSubject.length === 0 || authSubject.length > MAX_LENGTHS.authSubject) {
+  if (
+    typeof authSubject !== "string" ||
+    authSubject.length === 0 ||
+    authSubject.length > MAX_LENGTHS.authSubject
+  ) {
     throw new Error("Invalid authSubject: must be 1-256 characters");
   }
   const email = checkLength(input.email, MAX_LENGTHS.email, "email");
   const displayName = checkLength(input.displayName, MAX_LENGTHS.displayName, "displayName");
-  const workspaceName = checkLength(input.workspaceName, MAX_LENGTHS.workspaceName, "workspaceName");
+  const workspaceName = checkLength(
+    input.workspaceName,
+    MAX_LENGTHS.workspaceName,
+    "workspaceName",
+  );
   const userId = assertUuid(input.userId ?? uuidv7(), "userId");
   const workspaceId = assertUuid(input.workspaceId ?? uuidv7(), "workspaceId");
 

@@ -55,3 +55,13 @@ test("app hydrates and navigates with script-src self (no CSP-broken boot)", asy
   await expect(page).toHaveURL("/settings");
   expect(violations).toEqual([]);
 });
+
+test("settings shows identity and session controls in logged-out state", async ({ page }) => {
+  await page.goto("/settings");
+  await expect(page.locator("#settings-heading")).toBeVisible();
+  await expect(page.getByText("Privacy & Security")).toBeVisible();
+  // Logged out: sign-in prompt, login link, and no session controls.
+  await expect(page.getByText("You are not signed in")).toBeVisible();
+  await expect(page.locator("#shell-login-mount")).toBeVisible();
+  await expect(page.getByText("Sign out other sessions")).toHaveCount(0);
+});

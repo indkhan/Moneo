@@ -24,7 +24,9 @@ export async function findWorkspaceShell(
   workspaceId: string,
 ): Promise<WorkspaceShell | null> {
   const id = assertUuid(workspaceId, "workspaceId");
-  const raw: unknown = await db.execute(sql`SELECT id, name FROM workspaces WHERE id = ${id} LIMIT 1`);
+  const raw: unknown = await db.execute(
+    sql`SELECT id, name FROM workspaces WHERE id = ${id} LIMIT 1`,
+  );
   const rows: unknown = isRecord(raw) && Array.isArray(raw.rows) ? raw.rows : raw;
   if (!Array.isArray(rows) || rows.length === 0) {
     return null;
