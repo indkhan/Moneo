@@ -14,7 +14,7 @@ import { TENANT_SETTING } from "./tenancy.js";
 import { uuidv7 } from "./uuid.js";
 
 /**
- * Issue 4.6 — cursor-based transaction search.
+ * Issue 4.6 â€” cursor-based transaction search.
  *
  * Proves against the REAL migrated schema: full pagination over a
  * same-date-heavy dataset is complete, ordered, and duplicate-free; every
@@ -52,7 +52,7 @@ describe("cursor-based transaction search (issue 4.6)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Search A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Search B" }).returning()).id;

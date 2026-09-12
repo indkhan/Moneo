@@ -8,7 +8,7 @@ import { TENANT_SETTING, withWorkspaceTransaction, type TenantConnection } from 
 import { uuidv7 } from "./uuid.js";
 
 /**
- * Issue 1.2 — RLS and runtime DB roles.
+ * Issue 1.2 â€” RLS and runtime DB roles.
  *
  * Applies the REAL shipped chain (0000-0012) to PGlite and proves the
  * five mandatory behaviours: A cannot read B, A cannot update B, wrong
@@ -59,7 +59,7 @@ describe("workspace RLS and runtime roles (migrations 0000-0002)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
 
     userA = one(await db.insert(users).values({ authSubject: "auth0|tenant-a" }).returning()).id;
@@ -206,7 +206,7 @@ describe("workspace RLS and runtime roles (migrations 0000-0002)", () => {
         q("INSERT INTO workspace_members VALUES ($1, $2, 'MEMBER', now())", [wsA, userA]),
         /new row violates row-level security policy/,
       );
-      // A context-free UPDATE matches zero rows instead of erroring — also deny-by-default.
+      // A context-free UPDATE matches zero rows instead of erroring â€” also deny-by-default.
       const renamed = await qRaw("UPDATE workspaces SET name = 'x' WHERE id = $1", [wsA]);
       expect(renamed.affectedRows ?? renamed.rowCount).toBe(0);
     });
@@ -239,7 +239,7 @@ describe("workspace RLS and runtime roles (migrations 0000-0002)", () => {
       const ids = (await q<{ id: string }>("SELECT id FROM users ORDER BY id")).map((r) => r.id);
       expect(ids).toContain(userA);
       expect(ids).toContain(userB);
-      // …but B's *workspace* is still invisible.
+      // â€¦but B's *workspace* is still invisible.
       expect(await count("workspaces")).toBe("1");
     });
     // Tidy up so other tests keep a pristine A/B split.

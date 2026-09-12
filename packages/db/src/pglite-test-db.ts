@@ -12,7 +12,7 @@ import { PGlite } from "@electric-sql/pglite";
  * ALTERs a table it touches). The `upto` escape hatch stays for tests that
  * must prove a historical prefix in isolation.
  */
-export async function createMigratedDb(upto = "0001_identity_workspace"): Promise<PGlite> {
+export async function createMigratedDb(upto?: string): Promise<PGlite> {
   const db = new PGlite();
   const dir = new URL("../drizzle", import.meta.url);
   const files = readdirSync(dir)
@@ -21,9 +21,10 @@ export async function createMigratedDb(upto = "0001_identity_workspace"): Promis
   if (files.length === 0) {
     throw new Error("No migration SQL files found under drizzle/");
   }
+  const target = upto ?? files.at(-1)!.replace(/\.sql$/, "");
   for (const file of files) {
     const tag = file.replace(/\.sql$/, "");
-    if (tag.localeCompare(upto) > 0) {
+    if (tag.localeCompare(target) > 0) {
       break;
     }
     const sql = readFileSync(new URL(`../drizzle/${file}`, import.meta.url), "utf8");

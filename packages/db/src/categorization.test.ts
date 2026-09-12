@@ -20,9 +20,9 @@ import { TENANT_SETTING } from "./tenancy.js";
 import { uuidv7 } from "./uuid.js";
 
 /**
- * Issue 5.1 — categorization schema (migration 0014).
+ * Issue 5.1 â€” categorization schema (migration 0014).
  *
- * Applies the REAL shipped chain (0000–0014) to PGlite and proves, in order:
+ * Applies the REAL shipped chain (0000â€“0014) to PGlite and proves, in order:
  *   1. all six tables exist and the global taxonomy seeds idempotently;
  *   2. names are unique per workspace but reusable across workspaces;
  *   3. kind allowlists reject garbage on categories and system rows;
@@ -94,7 +94,7 @@ describe("categorization schema (migration 0014)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0014_categorization");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     await seedSystemCategories(db);
     wsA = one(await db.insert(workspaces).values({ name: "Categories A" }).returning()).id;

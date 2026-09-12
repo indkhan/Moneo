@@ -17,7 +17,7 @@ import { createMigratedDb, one } from "./pglite-test-db.js";
  * requested limit. Deterministic ordering with shared dates is what makes
  * the Money screens safe on real imports.
  */
-describe("epoch 4 acceptance — large.fixture browsing", () => {
+describe("epoch 4 acceptance â€” large.fixture browsing", () => {
   let pg!: PGlite;
   let ws!: string;
   let acct!: string;
@@ -25,7 +25,7 @@ describe("epoch 4 acceptance — large.fixture browsing", () => {
   const codec = createSearchCursorCodec("epoch-4-acceptance-secret");
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0013_import_matching");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     ws = one(await db.insert(workspaces).values({ name: "Epoch 4" }).returning()).id;
     acct = one(

@@ -9,7 +9,7 @@ import { TENANT_SETTING } from "./tenancy.js";
 import { uuidv7 } from "./uuid.js";
 
 /**
- * Issue 4.5 — account query services.
+ * Issue 4.5 â€” account query services.
  *
  * Proves against the REAL migrated schema: listing is workspace-scoped and
  * stable-ordered with archived hidden by default; get returns the row or
@@ -38,7 +38,7 @@ describe("account query services (issue 4.5)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Queries A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Queries B" }).returning()).id;
@@ -150,7 +150,7 @@ describe("account query services (issue 4.5)", () => {
       currencyCode: "EUR",
       source: "manual",
     });
-    // Unknown is absent — the caller renders "unknown", never zero.
+    // Unknown is absent â€” the caller renders "unknown", never zero.
     expect(balances.has(unknown.id)).toBe(false);
     expect(await getAccountBalances(db, wsA, [])).toEqual(new Map());
   });

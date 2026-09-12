@@ -8,10 +8,10 @@ import { provisionUserOnLogin, type ProvisioningResult } from "./provisioning.js
 import { isUuidV7, uuidv7 } from "./uuid.js";
 
 /**
- * Issue 1.4 — first-login provisioning.
+ * Issue 1.4 â€” first-login provisioning.
  *
  * Runs the REAL `provision_user_on_login` function (migration 0003) as the
- * `moneo_app` runtime role and proves: subject→user→workspace→OWNER,
+ * `moneo_app` runtime role and proves: subjectâ†’userâ†’workspaceâ†’OWNER,
  * idempotency, oldest-membership defaulting, profile refresh, audit trail,
  * least-privilege execution, and input validation that never reaches the DB.
  */
@@ -42,7 +42,7 @@ describe("first-login provisioning (migration 0003)", () => {
   };
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     owner = drizzlePglite(pg, { schema });
   });
 
@@ -200,7 +200,7 @@ describe("first-login provisioning (migration 0003)", () => {
     expect(canExec.rows[0]?.ok).toBe(true);
 
     // PUBLIC execute is revoked: the ACL names owner + moneo_app, with no
-    // empty-grantee (`{=X/…}`) public entry.
+    // empty-grantee (`{=X/â€¦}`) public entry.
     const acl = (await owner.execute(
       sql`SELECT proacl::text AS acl FROM pg_proc WHERE proname = 'provision_user_on_login'`,
     )) as unknown as { rows: Array<{ acl: string | null }> };

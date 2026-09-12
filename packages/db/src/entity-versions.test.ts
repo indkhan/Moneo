@@ -8,9 +8,9 @@ import { createMigratedDb, expectDbError, one } from "./pglite-test-db.js";
 import { uuidv7 } from "./uuid.js";
 
 /**
- * Issue 5.2 — optimistic entity versions (migration 0015).
+ * Issue 5.2 â€” optimistic entity versions (migration 0015).
  *
- * Applies the REAL shipped chain (0000–0015) to PGlite and proves:
+ * Applies the REAL shipped chain (0000â€“0015) to PGlite and proves:
  *   1. new rows on all four mutable tables default to version 1;
  *   2. versions below 1 are rejected by the check constraints;
  *   3. the compare-and-swap pattern Issues 5.3/5.4 rely on works: a second
@@ -23,7 +23,7 @@ describe("optimistic entity versions (migration 0015)", () => {
   let ws!: string;
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0015_entity_versions");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     ws = one(await db.insert(workspaces).values({ name: "Versions" }).returning()).id;
   });
@@ -136,7 +136,7 @@ describe("optimistic entity versions (migration 0015)", () => {
     const tabAVersion = txn.version;
     const tabBVersion = txn.version;
 
-    // Tab A writes first: guarded bump 1 → 2 touches exactly one row.
+    // Tab A writes first: guarded bump 1 â†’ 2 touches exactly one row.
     const tabAWrites = await db
       .update(transactions)
       .set({ note: "tab A", version: tabAVersion + 1, updatedAt: new Date() })

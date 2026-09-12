@@ -16,9 +16,9 @@ import { createMigratedDb, expectDbError, one, tableNames } from "./pglite-test-
 import { TENANT_SETTING } from "./tenancy.js";
 
 /**
- * Issue 4.9 — FX and valuation service (migration 0010).
+ * Issue 4.9 â€” FX and valuation service (migration 0010).
  *
- * Applies the REAL shipped chain (0000–0010) to PGlite and proves the
+ * Applies the REAL shipped chain (0000â€“0010) to PGlite and proves the
  * acceptance, in order:
  *   1. mixed EUR/JPY/BHD presets value into EUR with independently
  *      computed totals (identity + inverted seed legs, never a float);
@@ -82,7 +82,7 @@ describe("fx valuation service (migration 0010)", () => {
   let staleTxn!: string;
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "FX A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "FX B" }).returning()).id;
@@ -182,7 +182,7 @@ describe("fx valuation service (migration 0010)", () => {
       convertedAmountMinor: 10000,
       calculationVersion: "v1",
     });
-    // JPY 1500 at the inverted August anchor: 1500/177 = 8.4745… → €8.47.
+    // JPY 1500 at the inverted August anchor: 1500/177 = 8.4745â€¦ â†’ â‚¬8.47.
     expect(byTxn.get(jpyTxn)).toMatchObject({
       rateDate: "2026-08-01",
       rateSource: "seed",
@@ -258,7 +258,7 @@ describe("fx valuation service (migration 0010)", () => {
         .where(eq(transactionValuations.transactionId, gbpTxn)),
     );
     expect(row.rateSource).toBe("manual");
-    // 500 minor GBP × 1.17 = £5.00 → €5.85 = 585 minor.
+    // 500 minor GBP Ã— 1.17 = Â£5.00 â†’ â‚¬5.85 = 585 minor.
     expect(row.convertedAmountMinor).toBe(585);
   });
 

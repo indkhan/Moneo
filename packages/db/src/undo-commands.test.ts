@@ -17,7 +17,7 @@ import { createMigratedDb, one } from "./pglite-test-db.js";
 import { uuidv7 } from "./uuid.js";
 
 /**
- * Issue 5.4 — `operations.undo` over Drizzle (migrations 0014–0015).
+ * Issue 5.4 â€” `operations.undo` over Drizzle (migrations 0014â€“0015).
  *
  * Proves end to end: undo compensates the recorded correction and lands
  * its own audit + outbox rows; a retried undo converges; undo after a
@@ -31,7 +31,7 @@ describe("operations.undo command (issue 5.4)", () => {
   let wsB!: string;
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0015_entity_versions");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Undo A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Undo B" }).returning()).id;

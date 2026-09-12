@@ -8,9 +8,9 @@ import { isUuidV7, uuidv7 } from "./uuid.js";
 import { TENANT_SETTING } from "./tenancy.js";
 
 /**
- * Issue 2.1 — Command/Audit/Outbox schema.
+ * Issue 2.1 â€” Command/Audit/Outbox schema.
  *
- * Applies the REAL shipped chain (0000–0005) to PGlite and proves, in order:
+ * Applies the REAL shipped chain (0000â€“0005) to PGlite and proves, in order:
  *   1. the three tables exist with the expected columns/defaults;
  *   2. (workspace_id, command_name, idempotency_key) is truly unique, scoped
  *      per command AND per workspace (the idempotency claim of Issue 2.2);
@@ -60,7 +60,7 @@ describe("command/audit/outbox schema (migration 0005)", () => {
     one(await q<{ n: string }>(`SELECT count(*)::text AS n FROM ${table} ${where}`, params)).n;
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     userA = one(await db.insert(users).values({ authSubject: "auth0|cmd-a" }).returning()).id;
     await db.insert(users).values({ authSubject: "auth0|cmd-b" });
@@ -428,7 +428,7 @@ describe("command/audit/outbox schema (migration 0005)", () => {
     );
     await asApp(wsA, async () => {
       // No UPDATE/DELETE policy on audit_events: statements succeed but match
-      // zero rows — deny by default, history can never be rewritten.
+      // zero rows â€” deny by default, history can never be rewritten.
       const rewritten = await qRaw(`UPDATE audit_events SET action = 'rewritten' WHERE id = $1`, [
         row.id,
       ]);

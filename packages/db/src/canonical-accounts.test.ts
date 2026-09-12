@@ -17,9 +17,9 @@ import { TENANT_SETTING } from "./tenancy.js";
 import { isUuidV7, uuidv7 } from "./uuid.js";
 
 /**
- * Issue 4.1 — canonical account model (migration 0008).
+ * Issue 4.1 â€” canonical account model (migration 0008).
  *
- * Applies the REAL shipped chain (0000–0008) to PGlite and proves, in order:
+ * Applies the REAL shipped chain (0000â€“0008) to PGlite and proves, in order:
  *   1. all three tables exist with UUIDv7 defaults and sane initial state;
  *   2. type/relationship/source allowlists reject garbage;
  *   3. link PK (account_id, source_account_id) permits many-to-one merges
@@ -90,7 +90,7 @@ describe("canonical account model (migration 0008)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Accounts A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Accounts B" }).returning()).id;

@@ -7,7 +7,7 @@ import { createMigratedDb, expectDbError, one, tableNames } from "./pglite-test-
 import { isUuidV7, uuidv7 } from "./uuid.js";
 
 /**
- * Issue 1.1 — Identity/Workspace schema.
+ * Issue 1.1 â€” Identity/Workspace schema.
  *
  * Runs the real shipped migrations (0000 + 0001) against PGlite and proves:
  * table shape, UUIDv7 defaults, uniqueness, role allowlist, FK guards and
@@ -19,7 +19,7 @@ describe("identity/workspace schema (migrations 0000-0001)", () => {
   const db = () => drizzle(pg, { schema: { users, workspaces, workspaceMembers, securityAuditEvents } });
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
   });
 
   afterAll(async () => {

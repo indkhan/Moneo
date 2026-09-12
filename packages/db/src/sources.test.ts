@@ -16,9 +16,9 @@ import { isUuidV7, uuidv7 } from "./uuid.js";
 import { TENANT_SETTING } from "./tenancy.js";
 
 /**
- * Issue 3.1 — source ingestion schema.
+ * Issue 3.1 â€” source ingestion schema.
  *
- * Applies the REAL shipped chain (0000–0007) to PGlite and proves, in order:
+ * Applies the REAL shipped chain (0000â€“0007) to PGlite and proves, in order:
  *   1. all five tables exist with UUIDv7 defaults and sane initial state;
  *   2. status/type allowlists reject garbage on every table that has one;
  *   3. imports UNIQUE(workspace_id, idempotency_key) scopes re-submit claims
@@ -95,7 +95,7 @@ describe("source ingestion schema (migration 0007)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Sources A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Sources B" }).returning()).id;

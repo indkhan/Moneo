@@ -18,7 +18,7 @@ import { createMigratedDb, one } from "./pglite-test-db.js";
 import { uuidv7 } from "./uuid.js";
 
 /**
- * Issue 4.10 — `accounts.recordBalance` over Drizzle (migration 0012).
+ * Issue 4.10 â€” `accounts.recordBalance` over Drizzle (migration 0012).
  *
  * Proves end to end: recording supersedes by insert (history preserved);
  * an identical retry converges onto one row; same key with different input
@@ -33,7 +33,7 @@ describe("accounts.recordBalance command (issue 4.10)", () => {
   let acctA!: string;
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Balances A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Balances B" }).returning()).id;

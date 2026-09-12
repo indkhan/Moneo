@@ -8,11 +8,11 @@ import { isUuidV7, uuidv7 } from "./uuid.js";
 import { TENANT_SETTING } from "./tenancy.js";
 
 /**
- * Issue 2.4 — durable job and schedule schema.
+ * Issue 2.4 â€” durable job and schedule schema.
  *
- * Applies the REAL shipped chain (0000–0006) to PGlite and proves:
+ * Applies the REAL shipped chain (0000â€“0006) to PGlite and proves:
  * table shape + defaults, status allowlists, orphan rejection, cascade
- * job→attempts and workspace→everything, idempotent enqueue via
+ * jobâ†’attempts and workspaceâ†’everything, idempotent enqueue via
  * (workspace_id, type, dedupe_key) with NULL keys exempt, the pickup index
  * the worker will claim through, attempt numbering uniqueness, the global
  * (RLS-free) schedule registry, and tenant isolation for jobs/attempts.
@@ -54,7 +54,7 @@ describe("durable job and schedule schema (migration 0006)", () => {
     one(await q<{ n: string }>(`SELECT count(*)::text AS n FROM ${table} ${where}`, params)).n;
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Jobs A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Jobs B" }).returning()).id;
@@ -141,7 +141,7 @@ describe("durable job and schedule schema (migration 0006)", () => {
     const job = one(
       await db.insert(backgroundJobs).values({ workspaceId: wsA, type: "wsmatch" }).returning(),
     );
-    // Same-workspace attempt linkage inserts cleanly (attempt↔job same-tenant
+    // Same-workspace attempt linkage inserts cleanly (attemptâ†”job same-tenant
     // binding is written by the executor from a single workspace context in
     // Issue 2.6; RLS below proves it can never be read cross-workspace).
     await db

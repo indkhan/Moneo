@@ -8,7 +8,7 @@ import { createMigratedDb, one } from "./pglite-test-db.js";
 import { TENANT_SETTING } from "./tenancy.js";
 
 /**
- * Issue 3.8 — prior-import reads for duplicate-file warnings.
+ * Issue 3.8 â€” prior-import reads for duplicate-file warnings.
  *
  * Against the REAL migration chain: lists newest-first with file hashes
  * intact, honors the limit cap, excludes other workspaces, and stays
@@ -22,7 +22,7 @@ describe("prior import file history", () => {
   let srcA!: string;
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Hist A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Hist B" }).returning()).id;

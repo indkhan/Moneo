@@ -16,9 +16,9 @@ import { createMigratedDb, one } from "./pglite-test-db.js";
 import { uuidv7 } from "./uuid.js";
 
 /**
- * Issue 4.12 — manual commands over Drizzle (full chain).
+ * Issue 4.12 â€” manual commands over Drizzle (full chain).
  *
- * Proves the acceptance: a cash wallet plus a €15 purchase records through
+ * Proves the acceptance: a cash wallet plus a â‚¬15 purchase records through
  * audited commands; retrying yields one transaction; unauthorized account
  * selection fails closed; future rows move the projection while older rows
  * stay history-only; balances read back consistently; and manual rows never
@@ -30,7 +30,7 @@ describe("manual accounts and cash transactions (issue 4.12)", () => {
   let wsB!: string;
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0013_import_matching");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Manual A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Manual B" }).returning()).id;
@@ -46,7 +46,7 @@ describe("manual accounts and cash transactions (issue 4.12)", () => {
     idempotencyKey: key,
   });
 
-  it("creates a cash wallet and records a €15 purchase", async () => {
+  it("creates a cash wallet and records a â‚¬15 purchase", async () => {
     const db = drizzlePglite(pg, { schema });
     const wallet = await executeCreateManualAccount(db, ctxFor(wsA, `m-${uuidv7()}`), {
       name: "Cash wallet",

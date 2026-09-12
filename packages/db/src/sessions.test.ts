@@ -13,7 +13,7 @@ import {
 import { isUuidV7, uuidv7 } from "./uuid.js";
 
 /**
- * Issue 1.7 — server-side session registry.
+ * Issue 1.7 â€” server-side session registry.
  *
  * Runs the REAL migration-0004 functions as `moneo_app` and proves: login
  * registration (members only), per-user listing isolation, single + others
@@ -38,7 +38,7 @@ describe("session registry (migration 0004)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const owner = drizzlePglite(pg, { schema });
     const a = await provisionUserOnLogin(owner, { authSubject: "auth0|session-a" });
     const b = await provisionUserOnLogin(owner, { authSubject: "auth0|session-b" });
@@ -126,7 +126,7 @@ describe("session registry (migration 0004)", () => {
     expect(revoked).toBeGreaterThanOrEqual(1);
     expect(await asApp((db) => listUserSessions(db, userA))).toHaveLength(0);
 
-    // Revoked rows persist for audit — invisible to the app, present for ops.
+    // Revoked rows persist for audit â€” invisible to the app, present for ops.
     const kept = await pg.query("SELECT count(*)::text AS n FROM sessions WHERE user_id = $1", [
       userA,
     ]);
@@ -143,7 +143,7 @@ describe("session registry (migration 0004)", () => {
     } finally {
       await pg.exec("RESET ROLE");
     }
-    // …while the function path still sees it.
+    // â€¦while the function path still sees it.
     expect((await asApp((db) => listUserSessions(db, userA))).map((s) => s.id)).toContain(sid);
   });
 

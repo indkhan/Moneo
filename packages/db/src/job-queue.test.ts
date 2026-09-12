@@ -8,11 +8,11 @@ import { createMigratedDb, one } from "./pglite-test-db.js";
 import { TENANT_SETTING } from "./tenancy.js";
 
 /**
- * Issue 3.7 — durable job submission storage for the HTTP API.
+ * Issue 3.7 â€” durable job submission storage for the HTTP API.
  *
  * Against the REAL migration chain: inserts default to queued/0-attempts,
  * dedupe keys make double submits return the original row (same workspace
- * AND type required — anything else inserts fresh), unknown ids read back
+ * AND type required â€” anything else inserts fresh), unknown ids read back
  * null, and the app role reads only its own workspace's jobs through RLS.
  */
 
@@ -22,7 +22,7 @@ describe("background job queue storage", () => {
   let wsB!: string;
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Queue A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Queue B" }).returning()).id;

@@ -25,13 +25,13 @@ import { createMigratedDb, one } from "./pglite-test-db.js";
 import { uuidv7 } from "./uuid.js";
 
 /**
- * Issue 5.3 — correction commands over Drizzle (migrations 0014–0015).
+ * Issue 5.3 â€” correction commands over Drizzle (migrations 0014â€“0015).
  *
  * Proves end to end: each command bumps the version exactly once, persists
  * the correction, and lands audit + outbox rows with the effect; retries
  * converge on the stored result; foreign ids fail closed; and the Epoch 5
  * two-tab acceptance holds through the real executors (stale
- * expectedVersion → VERSION_CONFLICT, no silent overwrite).
+ * expectedVersion â†’ VERSION_CONFLICT, no silent overwrite).
  */
 describe("transaction correction commands (issue 5.3)", () => {
   let pg!: PGlite;
@@ -39,7 +39,7 @@ describe("transaction correction commands (issue 5.3)", () => {
   let wsB!: string;
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0015_entity_versions");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Corrections A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Corrections B" }).returning()).id;

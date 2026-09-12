@@ -25,10 +25,10 @@ import { TENANT_SETTING } from "./tenancy.js";
 import { uuidv7 } from "./uuid.js";
 
 /**
- * Issue 4.11 — Drizzle match stores over migration 0013.
+ * Issue 4.11 â€” Drizzle match stores over migration 0013.
  *
  * Proves against the REAL migrated schema: the domain decision flow runs
- * unchanged on Drizzle (accept → pending → trusted-merge → retry-match);
+ * unchanged on Drizzle (accept â†’ pending â†’ trusted-merge â†’ retry-match);
  * `matches.resolve` links and keeps-distinct with audit + outbox rows;
  * pending lists carry both sides for review; no fuzzy uniqueness exists on
  * transactions; checks reject bad rule/confidence/status values; and RLS
@@ -122,7 +122,7 @@ describe("drizzle import matching (migration 0013)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0013_import_matching");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Match A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Match B" }).returning()).id;

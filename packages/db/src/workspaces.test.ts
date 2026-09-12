@@ -8,7 +8,7 @@ import { createMigratedDb, one } from "./pglite-test-db.js";
 import { findWorkspaceShell } from "./workspaces.js";
 
 /**
- * Issue 1.5 — shell workspace lookup.
+ * Issue 1.5 â€” shell workspace lookup.
  *
  * `findWorkspaceShell` is the single query the shell topbar and settings
  * identity card run (inside `withWorkspaceTransaction`). These tests prove
@@ -36,7 +36,7 @@ describe("findWorkspaceShell", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     const user = one(await db.insert(users).values({ authSubject: "auth0|shell-user" }).returning());
     wsId = one(await db.insert(workspaces).values({ name: "Shell workspace", createdByUserId: user.id }).returning()).id;

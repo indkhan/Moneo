@@ -16,9 +16,9 @@ import { TENANT_SETTING } from "./tenancy.js";
 import { isUuidV7, uuidv7 } from "./uuid.js";
 
 /**
- * Issue 4.2 — canonical transaction model (migration 0009).
+ * Issue 4.2 â€” canonical transaction model (migration 0009).
  *
- * Applies the REAL shipped chain (0000–0009) to PGlite and proves, in order:
+ * Applies the REAL shipped chain (0000â€“0009) to PGlite and proves, in order:
  *   1. both tables exist with UUIDv7 defaults and sane initial state;
  *   2. amount/direction/status checks reject zero, negative, signed-float
  *      style, and unknown values;
@@ -94,7 +94,7 @@ describe("canonical transaction model (migration 0009)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Transactions A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Transactions B" }).returning()).id;

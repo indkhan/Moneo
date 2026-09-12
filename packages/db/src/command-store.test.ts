@@ -13,7 +13,7 @@ import { createDrizzleCommandStore } from "./command-store.js";
 import { createMigratedDb, one } from "./pglite-test-db.js";
 
 /**
- * Issue 4.10 — Drizzle command store over the Issue 2.1 tables.
+ * Issue 4.10 â€” Drizzle command store over the Issue 2.1 tables.
  *
  * Proves with a trivial counter command: first execution mutates once and
  * persists audit + outbox atomically; replay returns the stored result
@@ -60,7 +60,7 @@ describe("drizzle command store (issue 4.10)", () => {
   let ws!: string;
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     ws = one(await db.insert(workspaces).values({ name: "Commands" }).returning()).id;
   });
