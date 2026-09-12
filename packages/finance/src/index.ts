@@ -1,6 +1,10 @@
 /**
- * @moneo/finance — canonical finance domain (Epoch 0 placeholder).
- * Real domain commands land in later epochs; this package owns the
- * boundary so web/worker/ai never duplicate finance logic.
+ * @moneo/finance — canonical finance domain.
+ *
+ * Issue 2.2 owns the reusable command lifecycle (`./commands.js`); every
+ * domain command in later epochs is a `CommandDefinition` run through
+ * `executeCommand`, so web/worker/ai never duplicate mutation logic.
  */
+export * from "./commands.js";
+
 export const FINANCE_PACKAGE = "@moneo/finance";
