@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   check,
   index,
   integer,
@@ -8,6 +9,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 import { uuidv7 } from "./uuid.js";
@@ -118,3 +120,129 @@ export const securityAuditEvents = pgTable(
 
 export type SecurityAuditEvent = typeof securityAuditEvents.$inferSelect;
 export type NewSecurityAuditEvent = typeof securityAuditEvents.$inferInsert;
+
+/**
+ * Epoch 2, Issue 2.1 — reliable-mutation infrastructure.
+ *
+ * - `command_operations`: one row per typed domain command attempt. The
+ *   UNIQUE(workspace_id, command_name, idempotency_key) constraint IS the
+ *   idempotency claim: the first insert wins, a replay hits the conflict and
+ *   re-reads the stored result instead of re-mutating. RLS pins every
+ *   app-role read/write to the current workspace, so a key in workspace A
+ *   can never collide with workspace B.
+ * - `audit_events`: immutable domain audit trail (finance history UI reads
+ *   this in Epoch 5). Rows are insert-only by convention; no UPDATE policy is
+ *   granted to the app role.
+ * - `outbox_events`: transactional outbox. Command handlers insert rows in
+ *   the SAME database transaction as the business mutation, so an event can
+ *   never exist without its effect (and vice versa). The dispatcher
+ *   (Issue 2.5) claims rows with FOR UPDATE SKIP LOCKED and publishes each
+ *   to BullMQ under the deterministic job id `outbox:{eventId}`.
+ */
+export const commandOperations = pgTable(
+  "command_operations",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    /** Typed command name, e.g. `transactions.setCategory`. */
+    commandName: text("command_name").notNull(),
+    /** Client-supplied key, scoped per command: same key + same command = replay. */
+    idempotencyKey: text("idempotency_key").notNull(),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    /** Optimistic-concurrency guard supplied by the caller, if any. */
+    expectedVersion: bigint("expected_version", { mode: "number" }),
+    /** Entity version after the mutation, if the command is versioned. */
+    resultingVersion: bigint("resulting_version", { mode: "number" }),
+    status: text("status").notNull().default("succeeded"),
+    /** Stored command result returned verbatim on idempotent replay. */
+    result: jsonb("result").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("command_operations_workspace_command_key_uniq").on(
+      t.workspaceId,
+      t.commandName,
+      t.idempotencyKey,
+    ),
+    check(
+      "command_operations_status_check",
+      sql`${t.status} in ('claimed', 'succeeded', 'failed')`,
+    ),
+    index("command_operations_workspace_created_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
+export type CommandOperation = typeof commandOperations.$inferSelect;
+export type NewCommandOperation = typeof commandOperations.$inferInsert;
+
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    commandOperationId: uuid("command_operation_id").references(() => commandOperations.id, {
+      onDelete: "set null",
+    }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    /** What changed, e.g. `transaction`. */
+    entityType: text("entity_type").notNull(),
+    /** Opaque entity id within the workspace. */
+    entityId: text("entity_id").notNull(),
+    /** What happened, e.g. `transactions.setCategory`. */
+    action: text("action").notNull(),
+    oldValue: jsonb("old_value").$type<Record<string, unknown> | null>(),
+    newValue: jsonb("new_value").$type<Record<string, unknown> | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("audit_events_workspace_entity_idx").on(t.workspaceId, t.entityType, t.entityId),
+    index("audit_events_workspace_created_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
+export type AuditEvent = typeof auditEvents.$inferSelect;
+export type NewAuditEvent = typeof auditEvents.$inferInsert;
+
+export type OutboxStatus = "pending" | "claimed" | "published" | "failed";
+
+export const outboxEvents = pgTable(
+  "outbox_events",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    aggregateType: text("aggregate_type").notNull(),
+    aggregateId: text("aggregate_id").notNull(),
+    eventType: text("event_type").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    status: text("status").notNull().default("pending"),
+    /** Dispatcher attempt counter (Issue 2.5). */
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      "outbox_events_status_check",
+      sql`${t.status} in ('pending', 'claimed', 'published', 'failed')`,
+    ),
+    index("outbox_events_dispatch_idx").on(t.status, t.nextAttemptAt, t.createdAt),
+    index("outbox_events_workspace_created_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
+export type OutboxEvent = typeof outboxEvents.$inferSelect;
+export type NewOutboxEvent = typeof outboxEvents.$inferInsert;
