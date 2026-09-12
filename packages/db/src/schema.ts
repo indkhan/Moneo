@@ -246,3 +246,115 @@ export const outboxEvents = pgTable(
 
 export type OutboxEvent = typeof outboxEvents.$inferSelect;
 export type NewOutboxEvent = typeof outboxEvents.$inferInsert;
+
+/**
+ * Epoch 2, Issue 2.4 — durable job truth.
+ *
+ * PostgreSQL holds job STATE; BullMQ/Redis is only execution transport
+ * (Issue 2.5/2.6). At-least-once delivery is assumed, so every business step
+ * a job performs must be idempotent and every state change is recorded in
+ * `background_job_attempts` for the Epoch 2 acceptance trail.
+ *
+ * - `background_jobs`: one row per unit of background work. `dedupe_key` is
+ *   optional: when set, UNIQUE(workspace_id, type, dedupe_key) makes enqueue
+ *   idempotent (retried HTTP submissions create one job, not N).
+ * - `background_job_attempts`: one row per execution try, including crashes
+ *   (a `started` row with a stale heartbeat is how Issue 2.6 detects them).
+ * - `scheduled_tasks`: global cron registry (no workspace: schedules run
+ *   across workspaces, like `currencies` it carries no RLS policy).
+ */
+export const backgroundJobs = pgTable(
+  "background_jobs",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    status: text("status").notNull().default("queued"),
+    /** Optional caller key making enqueue idempotent per (workspace, type). */
+    dedupeKey: text("dedupe_key"),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    result: jsonb("result").$type<Record<string, unknown> | null>(),
+    error: jsonb("error").$type<Record<string, unknown> | null>(),
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(5),
+    /** Not eligible for pickup before this timestamp (delays + backoff). */
+    runAfter: timestamp("run_after", { withTimezone: true }).notNull().defaultNow(),
+    /** Worker currently holding the job, if any (crash detection via staleness). */
+    lockedBy: text("locked_by"),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
+    /** UI progress (Issue 2.8): free-form stage + 0–100 percent. */
+    progressStage: text("progress_stage"),
+    progressPercent: integer("progress_percent"),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      "background_jobs_status_check",
+      sql`${t.status} in ('queued', 'running', 'succeeded', 'failed', 'cancelled')`,
+    ),
+    unique("background_jobs_workspace_type_dedupe_uniq").on(
+      t.workspaceId,
+      t.type,
+      t.dedupeKey,
+    ),
+    index("background_jobs_pickup_idx").on(t.status, t.runAfter, t.createdAt),
+    index("background_jobs_workspace_created_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
+export type BackgroundJob = typeof backgroundJobs.$inferSelect;
+export type NewBackgroundJob = typeof backgroundJobs.$inferInsert;
+
+export const backgroundJobAttempts = pgTable(
+  "background_job_attempts",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => backgroundJobs.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    attemptNumber: integer("attempt_number").notNull(),
+    status: text("status").notNull().default("started"),
+    error: jsonb("error").$type<Record<string, unknown> | null>(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    check(
+      "background_job_attempts_status_check",
+      sql`${t.status} in ('started', 'succeeded', 'failed')`,
+    ),
+    unique("background_job_attempts_job_number_uniq").on(t.jobId, t.attemptNumber),
+    index("background_job_attempts_job_idx").on(t.jobId, t.attemptNumber),
+  ],
+);
+
+export type BackgroundJobAttempt = typeof backgroundJobAttempts.$inferSelect;
+export type NewBackgroundJobAttempt = typeof backgroundJobAttempts.$inferInsert;
+
+export const scheduledTasks = pgTable("scheduled_tasks", {
+  /** Stable task name, e.g. `outbox.dispatch`. One row per schedule. */
+  name: text("name").primaryKey(),
+  /** Cron expression (minute granularity is enough for Epoch 2). */
+  schedule: text("schedule").notNull(),
+  enabled: integer("enabled").notNull().default(1),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+  nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+});
+
+export type ScheduledTask = typeof scheduledTasks.$inferSelect;
+export type NewScheduledTask = typeof scheduledTasks.$inferInsert;

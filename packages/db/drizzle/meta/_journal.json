@@ -43,6 +43,13 @@
       "when": 1789224000000,
       "tag": "0005_command_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789228000000,
+      "tag": "0006_durable_jobs",
+      "breakpoints": true
     }
   ]
 }
