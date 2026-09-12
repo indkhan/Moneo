@@ -82,6 +82,10 @@
       "types": "./dist/sessions.d.ts",
       "default": "./dist/sessions.js"
     },
+    "./system-categories": {
+      "types": "./dist/system-categories.d.ts",
+      "default": "./dist/system-categories.js"
+    },
     "./version": {
       "types": "./dist/version.d.ts",
       "default": "./dist/version.js"

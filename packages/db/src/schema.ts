@@ -933,3 +933,172 @@ export const importMatchCandidates = pgTable(
 
 export type ImportMatchCandidate = typeof importMatchCandidates.$inferSelect;
 export type NewImportMatchCandidate = typeof importMatchCandidates.$inferInsert;
+
+/**
+ * Epoch 5, Issue 5.1 — categorization schema.
+ *
+ * Correction targets for Issues 5.3/5.4: workspace categories (optionally
+ * rooted in the global `system_categories` taxonomy), merchant
+ * counterparties (one row per normalized merchant name per workspace),
+ * free-form tags, and transaction relations (reserved for transfer linking
+ * in Epoch 8; Epoch 5 only writes RELATED notes). Uniqueness is always
+ * per-workspace: two tenants may each own "Groceries" or "lidl".
+ *
+ * `systemCategories` is global reference data like `currencies`: no
+ * workspace column, no RLS policy, readable by the app role. Everything
+ * else follows the tenant pattern (`workspace_id`, RLS isolation).
+ */
+export type SystemCategoryKind = "expense" | "income" | "transfer";
+
+export const systemCategories = pgTable(
+  "system_categories",
+  {
+    code: text("code").primaryKey(),
+    name: text("name").notNull(),
+    kind: text("kind").notNull().default("expense"),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (t) => [check("system_categories_kind_check", sql`${t.kind} in ('expense', 'income', 'transfer')`)],
+);
+
+export type SystemCategory = typeof systemCategories.$inferSelect;
+export type NewSystemCategory = typeof systemCategories.$inferInsert;
+
+export type CategoryKind = "expense" | "income" | "transfer";
+
+export const categories = pgTable(
+  "categories",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    kind: text("kind").notNull().default("expense"),
+    systemCategoryCode: text("system_category_code").references(() => systemCategories.code, {
+      onDelete: "set null",
+    }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("categories_workspace_name_uniq").on(t.workspaceId, t.name),
+    check("categories_kind_check", sql`${t.kind} in ('expense', 'income', 'transfer')`),
+    index("categories_workspace_created_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
+export type Category = typeof categories.$inferSelect;
+export type NewCategory = typeof categories.$inferInsert;
+
+export const counterparties = pgTable(
+  "counterparties",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    /** Lowercase-trimmed merchant key; the app normalizes before writing. */
+    normalizedName: text("normalized_name").notNull(),
+    /** Human display label, e.g. `Lidl`. */
+    displayName: text("display_name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("counterparties_workspace_normalized_uniq").on(t.workspaceId, t.normalizedName),
+    index("counterparties_workspace_created_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
+export type Counterparty = typeof counterparties.$inferSelect;
+export type NewCounterparty = typeof counterparties.$inferInsert;
+
+export const tags = pgTable(
+  "tags",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("tags_workspace_name_uniq").on(t.workspaceId, t.name),
+    index("tags_workspace_created_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
+export type Tag = typeof tags.$inferSelect;
+export type NewTag = typeof tags.$inferInsert;
+
+export const transactionTags = pgTable(
+  "transaction_tags",
+  {
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    transactionId: uuid("transaction_id")
+      .notNull()
+      .references(() => transactions.id, { onDelete: "cascade" }),
+    tagId: uuid("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.transactionId, t.tagId] }),
+    index("transaction_tags_tag_idx").on(t.tagId),
+    index("transaction_tags_transaction_idx").on(t.transactionId),
+  ],
+);
+
+export type TransactionTag = typeof transactionTags.$inferSelect;
+export type NewTransactionTag = typeof transactionTags.$inferInsert;
+
+export type TransactionRelationType = "TRANSFER" | "RELATED" | "DUPLICATE";
+
+export const transactionRelations = pgTable(
+  "transaction_relations",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    fromTransactionId: uuid("from_transaction_id")
+      .notNull()
+      .references(() => transactions.id, { onDelete: "cascade" }),
+    toTransactionId: uuid("to_transaction_id")
+      .notNull()
+      .references(() => transactions.id, { onDelete: "cascade" }),
+    relationType: text("relation_type").notNull().default("RELATED"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("transaction_relations_pair_type_uniq").on(
+      t.fromTransactionId,
+      t.toTransactionId,
+      t.relationType,
+    ),
+    check(
+      "transaction_relations_type_check",
+      sql`${t.relationType} in ('TRANSFER', 'RELATED', 'DUPLICATE')`,
+    ),
+    check("transaction_relations_no_self_check", sql`${t.fromTransactionId} <> ${t.toTransactionId}`),
+    index("transaction_relations_from_idx").on(t.fromTransactionId),
+    index("transaction_relations_to_idx").on(t.toTransactionId),
+  ],
+);
+
+export type TransactionRelation = typeof transactionRelations.$inferSelect;
+export type NewTransactionRelation = typeof transactionRelations.$inferInsert;

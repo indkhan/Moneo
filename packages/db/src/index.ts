@@ -15,6 +15,7 @@ export * from "./migrate-lib.js";
 export * from "./provisioning.js";
 export * from "./seed-lib.js";
 export * from "./sessions.js";
+export * from "./system-categories.js";
 export * from "./tenancy.js";
 export * from "./uuid.js";
 export * from "./version.js";
