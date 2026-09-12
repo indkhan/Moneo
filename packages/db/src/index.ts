@@ -10,6 +10,7 @@ export * from "./fx-valuations.js";
 export * from "./import-matching.js";
 export * from "./manual-commands.js";
 export * from "./transaction-detail.js";
+export * from "./transaction-views.js";
 export * from "./transaction-queries.js";
 export * from "./currencies.js";
 export * from "./client.js";

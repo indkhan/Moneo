@@ -94,6 +94,10 @@
       "types": "./dist/transaction-detail.d.ts",
       "default": "./dist/transaction-detail.js"
     },
+    "./transaction-views": {
+      "types": "./dist/transaction-views.d.ts",
+      "default": "./dist/transaction-views.js"
+    },
     "./sessions": {
       "types": "./dist/sessions.d.ts",
       "default": "./dist/sessions.js"
