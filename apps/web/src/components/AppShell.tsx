@@ -3,6 +3,7 @@ import { SideNav } from "./SideNav";
 import { JobIndicator } from "./JobIndicator";
 import { NotificationMount } from "./NotificationMount";
 import { AiPanel } from "./AiPanel";
+import { ShellIdentity } from "./ShellIdentity";
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -30,7 +31,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         }}
       >
         <JobIndicator />
-        <NotificationMount />
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <ShellIdentity />
+          <NotificationMount />
+        </div>
       </header>
       <main style={{ gridArea: "main", padding: 24, minWidth: 0 }}>{children}</main>
       <div

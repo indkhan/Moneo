@@ -7,3 +7,4 @@ export * from "./seed-lib.js";
 export * from "./tenancy.js";
 export * from "./uuid.js";
 export * from "./version.js";
+export * from "./workspaces.js";

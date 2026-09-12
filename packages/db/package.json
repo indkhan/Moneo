@@ -38,6 +38,10 @@
       "types": "./dist/uuid.d.ts",
       "default": "./dist/uuid.js"
     },
+    "./workspaces": {
+      "types": "./dist/workspaces.d.ts",
+      "default": "./dist/workspaces.js"
+    },
     "./version": {
       "types": "./dist/version.d.ts",
       "default": "./dist/version.js"
