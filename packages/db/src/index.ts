@@ -1,6 +1,7 @@
 export * from "./schema.js";
 export * from "./currencies.js";
 export * from "./client.js";
+export * from "./job-queue.js";
 export * from "./migrate-lib.js";
 export * from "./provisioning.js";
 export * from "./seed-lib.js";

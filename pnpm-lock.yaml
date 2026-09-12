@@ -38,6 +38,9 @@ importers:
       '@moneo/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@moneo/finance':
+        specifier: workspace:*
+        version: link:../../packages/finance
       '@moneo/shared':
         specifier: workspace:*
         version: link:../../packages/shared

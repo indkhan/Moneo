@@ -213,6 +213,76 @@
         }
       }
     },
+    "/imports/bytes": {
+      "post": {
+        "operationId": "putImportBytes",
+        "summary": "Upload statement bytes to quarantine storage",
+        "parameters": [
+          {
+            "name": "importId",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "fileName",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "minLength": 1, "maxLength": 256 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": { "schema": { "type": "string", "format": "binary" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stored bytes with size and digest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["importId", "objectKey", "bytes", "sha256"],
+                  "properties": {
+                    "importId": { "type": "string", "format": "uuid" },
+                    "objectKey": { "type": "string" },
+                    "bytes": { "type": "integer", "minimum": 1 },
+                    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" }
+        }
+      }
+    },
+    "/imports/preview": {
+      "post": {
+        "operationId": "previewImport",
+        "summary": "Parse quarantined bytes and detect the column mapping",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ImportPreviewRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Headers, sample rows, and detected mapping",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ImportPreview" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/imports/complete": {
       "post": {
         "operationId": "completeUpload",
@@ -341,6 +411,64 @@
           "type": { "type": "string", "minLength": 1, "maxLength": 120 },
           "payload": { "type": "object" },
           "dedupeKey": { "type": "string", "minLength": 1, "maxLength": 128 }
+        }
+      },
+      "ImportPreviewRequest": {
+        "type": "object",
+        "required": ["importId", "fileName"],
+        "properties": {
+          "importId": { "type": "string", "format": "uuid" },
+          "fileName": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "previewRows": { "type": "integer", "minimum": 1, "maximum": 20 }
+        }
+      },
+      "ImportPreview": {
+        "type": "object",
+        "required": [
+          "importId",
+          "dataSourceId",
+          "fileName",
+          "kind",
+          "headers",
+          "preview",
+          "totalRows",
+          "mapping",
+          "suggestedAccount"
+        ],
+        "properties": {
+          "importId": { "type": "string", "format": "uuid" },
+          "dataSourceId": { "type": "string", "format": "uuid" },
+          "fileName": { "type": "string" },
+          "kind": { "type": "string", "enum": ["csv", "xlsx"] },
+          "delimiter": { "type": ["string", "null"] },
+          "headers": { "type": "array", "items": { "type": "string" } },
+          "preview": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["rowNumber", "cells"],
+              "properties": {
+                "rowNumber": { "type": "integer", "minimum": 1 },
+                "cells": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
+          "totalRows": { "type": "integer", "minimum": 0 },
+          "parseErrors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["rowNumber", "message"],
+              "properties": {
+                "rowNumber": { "type": "integer", "minimum": 1 },
+                "message": { "type": "string" }
+              }
+            }
+          },
+          "mapping": { "type": "object" },
+          "confidence": { "type": "object" },
+          "unmapped": { "type": "array", "items": { "type": "integer" } },
+          "suggestedAccount": { "type": "string" }
         }
       },
       "UploadInitiate": {

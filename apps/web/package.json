@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@moneo/db": "workspace:*",
+    "@moneo/finance": "workspace:*",
     "@moneo/shared": "workspace:*",
     "@moneo/ui": "workspace:*",
     "@opentelemetry/api": "^1.9.0",

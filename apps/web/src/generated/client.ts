@@ -1,7 +1,7 @@
 /**
  * GENERATED — do not edit by hand.
  * Source: apps/web/openapi/openapi.json (info.version=v1)
- * contractSha: fefeebe8962fd415cac7e36137e6ec09a0bcccce47ba18d48a7e2be0ea55676a
+ * contractSha: d517ec13501f00bb8c23aa08e3cee0423d793db8048501f73c53ed246dd670da
  * Regenerate: pnpm --filter @moneo/web gen:client
  * Every browser DTO comes from here; later API issues extend the contract first.
  */
@@ -108,7 +108,35 @@ export interface UploadCompleted {
   sha256: string;
 }
 
-export const CONTRACT_SHA = "fefeebe8962fd415cac7e36137e6ec09a0bcccce47ba18d48a7e2be0ea55676a";
+export interface ImportBytesResult {
+  importId: string;
+  objectKey: string;
+  bytes: number;
+  sha256: string;
+}
+
+export interface ImportPreviewRow {
+  rowNumber: number;
+  cells: string[];
+}
+
+export interface ImportPreview {
+  importId: string;
+  dataSourceId: string;
+  fileName: string;
+  kind: "csv" | "xlsx";
+  delimiter: string | null;
+  headers: string[];
+  preview: ImportPreviewRow[];
+  totalRows: number;
+  parseErrors: { rowNumber: number; message: string }[];
+  mapping: Record<string, number | null>;
+  confidence: Record<string, string>;
+  unmapped: number[];
+  suggestedAccount: string;
+}
+
+export const CONTRACT_SHA = "d517ec13501f00bb8c23aa08e3cee0423d793db8048501f73c53ed246dd670da";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -184,6 +212,16 @@ export function createClient(options: { baseUrl?: string; fetchFn?: FetchFn } = 
       request(fetchFn, baseUrl, "/imports/initiate", { method: "POST", body: JSON.stringify(body) }),
     completeUpload: (body: UploadComplete): Promise<UploadCompleted> =>
       request(fetchFn, baseUrl, "/imports/complete", { method: "POST", body: JSON.stringify(body) }),
+    putImportBytes: (importId: string, fileName: string, bytes: Uint8Array): Promise<ImportBytesResult> =>
+      request(
+        fetchFn,
+        baseUrl,
+        `/imports/bytes?importId=${encodeURIComponent(importId)}&fileName=${encodeURIComponent(fileName)}`,
+        // Uint8Array is a valid fetch body; the cast bridges DOM lib versions.
+        { method: "POST", body: bytes as unknown as BodyInit, headers: { "content-type": "application/octet-stream" } },
+      ),
+    previewImport: (body: { importId: string; fileName: string; previewRows?: number }): Promise<ImportPreview> =>
+      request(fetchFn, baseUrl, "/imports/preview", { method: "POST", body: JSON.stringify(body) }),
   };
 }
 

@@ -42,6 +42,10 @@
       "types": "./dist/workspaces.d.ts",
       "default": "./dist/workspaces.js"
     },
+    "./job-queue": {
+      "types": "./dist/job-queue.d.ts",
+      "default": "./dist/job-queue.js"
+    },
     "./sessions": {
       "types": "./dist/sessions.d.ts",
       "default": "./dist/sessions.js"
