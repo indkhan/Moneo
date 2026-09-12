@@ -52,12 +52,11 @@ function hasRetryClass(value: unknown): value is { retryClass: RetryClass } {
     return false;
   }
   const candidate = (value as { retryClass?: unknown }).retryClass;
-  return (
-    typeof candidate === "string" && (RETRY_CLASSES as readonly string[]).includes(candidate)
-  );
+  return typeof candidate === "string" && (RETRY_CLASSES as readonly string[]).includes(candidate);
 }
 
-const TRANSIENT_HINT = /timed? ?out|econn|eai_again|socket hang up|temporar|unavailable|try again|429|50[23]|rate.?limit|overloaded/i;
+const TRANSIENT_HINT =
+  /timed? ?out|econn|eai_again|socket hang up|temporar|unavailable|try again|429|50[23]|rate.?limit|overloaded/i;
 const INPUT_HINT = /validation|invalid|invariant|bad input|zod|schema|parse/i;
 const POLICY_HINT = /forbidden|unauthorized|policy|cancelled|not permitted/i;
 
@@ -175,13 +174,7 @@ export function createRetryDecider(
     attemptsMade: number,
     maxAttempts: number,
   ): { retry: boolean; runAfter?: Date } => {
-    const plan = planRetry(
-      error,
-      attemptsMade,
-      { ...policy, maxAttempts },
-      new Date(),
-      rand,
-    );
+    const plan = planRetry(error, attemptsMade, { ...policy, maxAttempts }, new Date(), rand);
     return plan.retry ? { retry: true, runAfter: plan.runAfter } : { retry: false };
   };
 }

@@ -154,11 +154,13 @@ describe("durable job execution lifecycle", () => {
 
   it("skips cancelled jobs before creating an attempt", async () => {
     const store = memoryJobStore([job("j1", { status: "cancelled" })]);
-    const handlers = new Map<string, JobHandler>([
-      ["report.build", () => Promise.resolve({})],
-    ]);
+    const handlers = new Map<string, JobHandler>([["report.build", () => Promise.resolve({})]]);
     const outcome = await runDurableJob(store, handlers, noRetry, "j1", "worker-a");
-    expect(outcome).toEqual({ status: "skipped", reason: "cancelled-before-start", attemptNumber: null });
+    expect(outcome).toEqual({
+      status: "skipped",
+      reason: "cancelled-before-start",
+      attemptNumber: null,
+    });
     expect(store.calls).toEqual([]);
   });
 
@@ -171,10 +173,7 @@ describe("durable job execution lifecycle", () => {
   it("records retryable failures and requeues with an incremented attempt", async () => {
     const store = memoryJobStore([job("j1")]);
     const handlers = new Map<string, JobHandler>([
-      [
-        "report.build",
-        () => Promise.reject(new Error("transient blip")),
-      ],
+      ["report.build", () => Promise.reject(new Error("transient blip"))],
     ]);
     const retryOnce: DecideRetry = (_error, attemptsMade, max) => ({
       retry: attemptsMade < max,

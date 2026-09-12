@@ -308,12 +308,7 @@ describe("command executor lifecycle", () => {
         audit: { entityType: "ping", entityId: "p", action: "ping" },
       }),
     };
-    const outcome = await executeCommand(
-      def,
-      { ...baseCtx, expectedVersion: 99 },
-      {},
-      store,
-    );
+    const outcome = await executeCommand(def, { ...baseCtx, expectedVersion: 99 }, {}, store);
     expect(outcome.result).toEqual({ ok: true });
   });
 

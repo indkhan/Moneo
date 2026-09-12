@@ -84,9 +84,10 @@ describe("job ui helpers", () => {
       canStop: true,
       canRetry: false,
     });
-    expect(
-      toJobView(job({ status: "failed", attempts: 1, errorMessage: "boom" })),
-    ).toMatchObject({ canStop: false, canRetry: true });
+    expect(toJobView(job({ status: "failed", attempts: 1, errorMessage: "boom" }))).toMatchObject({
+      canStop: false,
+      canRetry: true,
+    });
     expect(toJobView(job({ status: "cancelled" }))).toMatchObject({
       canStop: false,
       canRetry: false,

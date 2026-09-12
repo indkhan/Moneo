@@ -39,10 +39,20 @@ export interface JobStore {
   createAttempt(jobId: string, attemptNumber: number): Promise<void>;
   markRunning(jobId: string, workerId: string, attemptNumber: number): Promise<void>;
   heartbeat(jobId: string, attemptNumber: number): Promise<void>;
-  finishAttempt(jobId: string, attemptNumber: number, status: AttemptStatus, error: Record<string, unknown> | null): Promise<void>;
+  finishAttempt(
+    jobId: string,
+    attemptNumber: number,
+    status: AttemptStatus,
+    error: Record<string, unknown> | null,
+  ): Promise<void>;
   markSucceeded(jobId: string, result: Record<string, unknown>): Promise<void>;
   /** Requeue after a retryable failure; eligible again at `runAfter`. */
-  markRetryable(jobId: string, attempts: number, runAfter: Date, error: Record<string, unknown>): Promise<void>;
+  markRetryable(
+    jobId: string,
+    attempts: number,
+    runAfter: Date,
+    error: Record<string, unknown>,
+  ): Promise<void>;
   markFailed(jobId: string, attempts: number, error: Record<string, unknown>): Promise<void>;
   markCancelled(jobId: string, attempts: number): Promise<void>;
 }
@@ -75,13 +85,21 @@ export interface RetryDecision {
   runAfter?: Date;
 }
 
-export type DecideRetry = (error: unknown, attemptsMade: number, maxAttempts: number) => RetryDecision;
+export type DecideRetry = (
+  error: unknown,
+  attemptsMade: number,
+  maxAttempts: number,
+) => RetryDecision;
 
 export type RunOutcome =
   | { status: "succeeded"; attemptNumber: number }
   | { status: "failed"; attemptNumber: number; retried: boolean }
   | { status: "cancelled"; attemptNumber: number | null }
-  | { status: "skipped"; reason: "not-found" | "terminal" | "cancelled-before-start"; attemptNumber: null };
+  | {
+      status: "skipped";
+      reason: "not-found" | "terminal" | "cancelled-before-start";
+      attemptNumber: null;
+    };
 
 const TERMINAL: readonly JobStatus[] = ["succeeded", "failed", "cancelled"];
 

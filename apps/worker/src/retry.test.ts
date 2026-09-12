@@ -28,7 +28,13 @@ import { runDurableJob, type DurableJob, type JobStore } from "./job-lifecycle.j
 describe("retry classification", () => {
   it("declares exactly the five required classes", () => {
     expect([...RETRY_CLASSES].sort()).toEqual(
-      ["TRANSIENT", "PERMANENT_INPUT", "PERMANENT_POLICY", "UNKNOWN_EXTERNAL_OUTCOME", "BUG_INVARIANT"].sort(),
+      [
+        "TRANSIENT",
+        "PERMANENT_INPUT",
+        "PERMANENT_POLICY",
+        "UNKNOWN_EXTERNAL_OUTCOME",
+        "BUG_INVARIANT",
+      ].sort(),
     );
   });
 
@@ -234,13 +240,7 @@ describe("retry classification", () => {
         },
       ],
     ]);
-    const outcome = await runDurableJob(
-      store,
-      handlers,
-      createRetryDecider(),
-      "j1",
-      "worker-a",
-    );
+    const outcome = await runDurableJob(store, handlers, createRetryDecider(), "j1", "worker-a");
     expect(outcome).toEqual({ status: "failed", attemptNumber: 1, retried: false });
     expect(runs).toBe(1);
   });

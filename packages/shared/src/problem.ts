@@ -95,7 +95,8 @@ export class DomainError extends Error {
     this.errors = options.errors;
     this.details = options.details ?? {};
     this.correlationId =
-      options.correlationId ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      options.correlationId ??
+      `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   }
 }
 
@@ -141,7 +142,10 @@ export interface UnknownErrorProblem {
  * Last-resort mapping: never leak stack traces or driver messages to the
  * client. The original error is returned for server-side logging.
  */
-export function toInternalProblem(error: unknown, correlationId?: string): ProblemDetails & {
+export function toInternalProblem(
+  error: unknown,
+  correlationId?: string,
+): ProblemDetails & {
   logged: unknown;
 } {
   const id =

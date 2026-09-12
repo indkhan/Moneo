@@ -2,13 +2,7 @@ import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import * as schema from "./schema.js";
-import {
-  auditEvents,
-  commandOperations,
-  outboxEvents,
-  users,
-  workspaces,
-} from "./schema.js";
+import { auditEvents, commandOperations, outboxEvents, users, workspaces } from "./schema.js";
 import { createMigratedDb, expectDbError, one, tableNames } from "./pglite-test-db.js";
 import { isUuidV7, uuidv7 } from "./uuid.js";
 import { TENANT_SETTING } from "./tenancy.js";
@@ -36,7 +30,9 @@ describe("command/audit/outbox schema (migration 0005)", () => {
 
   async function q<T>(sqlText: string, params: unknown[] = []): Promise<T[]> {
     const result =
-      params.length > 0 ? await pg.query<T>(sqlText, params as never[]) : await pg.query<T>(sqlText);
+      params.length > 0
+        ? await pg.query<T>(sqlText, params as never[])
+        : await pg.query<T>(sqlText);
     return result.rows;
   }
 
@@ -374,9 +370,7 @@ describe("command/audit/outbox schema (migration 0005)", () => {
     await asApp(wsA, async () => {
       // B-only markers are invisible from A, even though A legitimately sees
       // its own rows created by earlier tests in this file.
-      expect(
-        await count("command_operations", "WHERE idempotency_key = $1", [keyB]),
-      ).toBe("0");
+      expect(await count("command_operations", "WHERE idempotency_key = $1", [keyB])).toBe("0");
       expect(await count("audit_events", "WHERE entity_id = 'hidden'")).toBe("0");
       expect(await count("outbox_events", "WHERE aggregate_id = 'hidden'")).toBe("0");
       expect(Number(await count("command_operations"))).toBeGreaterThan(0);
@@ -399,13 +393,19 @@ describe("command/audit/outbox schema (migration 0005)", () => {
   it("RLS: cross-workspace writes are rejected", async () => {
     await asApp(wsA, async () => {
       await expectDbError(
-        q(`INSERT INTO outbox_events (workspace_id, aggregate_type, aggregate_id, event_type)
-            VALUES ($1, 't', 'e', 't.e')`, [wsB]),
+        q(
+          `INSERT INTO outbox_events (workspace_id, aggregate_type, aggregate_id, event_type)
+            VALUES ($1, 't', 'e', 't.e')`,
+          [wsB],
+        ),
         /new row violates row-level security policy for table "outbox_events"/,
       );
       await expectDbError(
-        q(`INSERT INTO command_operations (workspace_id, command_name, idempotency_key)
-            VALUES ($1, 'forged.cmd', $2)`, [wsB, `k-${uuidv7()}`]),
+        q(
+          `INSERT INTO command_operations (workspace_id, command_name, idempotency_key)
+            VALUES ($1, 'forged.cmd', $2)`,
+          [wsB, `k-${uuidv7()}`],
+        ),
         /new row violates row-level security policy for table "command_operations"/,
       );
     });
@@ -416,7 +416,12 @@ describe("command/audit/outbox schema (migration 0005)", () => {
     const row = one(
       await db
         .insert(auditEvents)
-        .values({ workspaceId: wsA, entityType: "t", entityId: `immutable-${uuidv7()}`, action: "a" })
+        .values({
+          workspaceId: wsA,
+          entityType: "t",
+          entityId: `immutable-${uuidv7()}`,
+          action: "a",
+        })
         .returning(),
     );
     await asApp(wsA, async () => {

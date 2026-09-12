@@ -54,7 +54,11 @@ const limitsSchema = z.object({
   uploadMaxBytes: z.number().int().positive().default(LIMITS.uploadMaxBytes),
   uploadMaxRows: z.number().int().positive().default(LIMITS.uploadMaxRows),
   workerConcurrency: z.number().int().positive().default(LIMITS.workerConcurrency),
-  maxRunningJobsPerWorkspace: z.number().int().positive().default(LIMITS.maxRunningJobsPerWorkspace),
+  maxRunningJobsPerWorkspace: z
+    .number()
+    .int()
+    .positive()
+    .default(LIMITS.maxRunningJobsPerWorkspace),
   maxRunningJobsGlobal: z.number().int().positive().default(LIMITS.maxRunningJobsGlobal),
   limiterFailurePolicy: z.enum(["open-reads", "closed"]).default("open-reads"),
 });
@@ -95,7 +99,10 @@ export function loadLimits(env: Record<string, string | undefined> = {}): Limits
 
 export type LimitAction = "mutation" | "job-submit" | "read";
 
-const WINDOW_OF: Record<LimitAction, (limits: LimitsConfig) => { perMinute: number; burst: number }> = {
+const WINDOW_OF: Record<
+  LimitAction,
+  (limits: LimitsConfig) => { perMinute: number; burst: number }
+> = {
   mutation: (l) => ({ perMinute: l.mutationsPerMinute, burst: l.mutationBurst }),
   "job-submit": (l) => ({ perMinute: l.jobSubmitsPerMinute, burst: l.jobSubmitBurst }),
   read: (l) => ({ perMinute: l.readsPerMinute, burst: l.readBurst }),

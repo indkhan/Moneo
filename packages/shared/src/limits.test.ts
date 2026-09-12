@@ -112,9 +112,7 @@ describe("rate limiter", () => {
     for (let i = 0; i < 3; i += 1) {
       await requireLimit(store, tiny, "mutation", "ws-a", i);
     }
-    const error = await requireLimit(store, tiny, "mutation", "ws-a", 99).catch(
-      (e: unknown) => e,
-    );
+    const error = await requireLimit(store, tiny, "mutation", "ws-a", 99).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(DomainError);
     expect((error as DomainError).code).toBe("RATE_LIMITED");
     expect((error as DomainError).status).toBe(429);

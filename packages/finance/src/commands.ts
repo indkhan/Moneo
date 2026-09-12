@@ -15,10 +15,7 @@
  */
 
 export type CommandErrorCode =
-  | "FORBIDDEN"
-  | "VERSION_CONFLICT"
-  | "IDEMPOTENCY_KEY_REUSED"
-  | "INVARIANT_VIOLATION";
+  "FORBIDDEN" | "VERSION_CONFLICT" | "IDEMPOTENCY_KEY_REUSED" | "INVARIANT_VIOLATION";
 
 export class CommandError extends Error {
   readonly code: CommandErrorCode;
@@ -117,11 +114,7 @@ export interface CommandStore {
       outbox: CommandOutboxRecord[];
     },
   ): Promise<string>;
-  commitFailure(
-    workspaceId: string,
-    commandName: string,
-    idempotencyKey: string,
-  ): Promise<void>;
+  commitFailure(workspaceId: string, commandName: string, idempotencyKey: string): Promise<void>;
 }
 
 export interface CommandOutcome<Result> {
@@ -159,82 +152,88 @@ export async function executeCommand<State, Input, Result>(
 
   const inputHash = hashInput(input);
 
-  return store.withClaim(ctx.workspaceId, def.name, ctx.idempotencyKey, inputHash, async (existing) => {
-    // Step 2 — claim idempotency.
-    if (existing?.status === "succeeded") {
-      if (existing.inputHash !== inputHash) {
-        // Same key, different payload: almost certainly a client bug that
-        // would silently do the wrong thing — reject loudly (Issue 2.3 code).
-        throw new CommandError(
-          "IDEMPOTENCY_KEY_REUSED",
-          `idempotency key "${ctx.idempotencyKey}" was already used for ${def.name} with different input`,
-          { commandName: def.name },
-        );
-      }
-      return {
-        result: (existing.result ?? {}) as Result,
-        resultingVersion: existing.resultingVersion,
-        operationId: `${ctx.workspaceId}:${def.name}:${ctx.idempotencyKey}`,
-        replayed: true,
-      };
-    }
-
-    try {
-      // Step 3 — load state.
-      const state = await def.loadState(ctx, input);
-
-      // Step 4 — check expected version (optimistic concurrency).
-      const current = def.currentVersionOf(state);
-      if (
-        ctx.expectedVersion !== undefined &&
-        ctx.expectedVersion !== null &&
-        current !== undefined &&
-        current !== null &&
-        ctx.expectedVersion !== current
-      ) {
-        throw new CommandError(
-          "VERSION_CONFLICT",
-          `stale version: expected ${ctx.expectedVersion}, current ${current}`,
-          { expectedVersion: ctx.expectedVersion, currentVersion: current },
-        );
+  return store.withClaim(
+    ctx.workspaceId,
+    def.name,
+    ctx.idempotencyKey,
+    inputHash,
+    async (existing) => {
+      // Step 2 — claim idempotency.
+      if (existing?.status === "succeeded") {
+        if (existing.inputHash !== inputHash) {
+          // Same key, different payload: almost certainly a client bug that
+          // would silently do the wrong thing — reject loudly (Issue 2.3 code).
+          throw new CommandError(
+            "IDEMPOTENCY_KEY_REUSED",
+            `idempotency key "${ctx.idempotencyKey}" was already used for ${def.name} with different input`,
+            { commandName: def.name },
+          );
+        }
+        return {
+          result: (existing.result ?? {}) as Result,
+          resultingVersion: existing.resultingVersion,
+          operationId: `${ctx.workspaceId}:${def.name}:${ctx.idempotencyKey}`,
+          replayed: true,
+        };
       }
 
-      // Step 5 — validate invariant.
-      await def.checkInvariant?.(state, input);
+      try {
+        // Step 3 — load state.
+        const state = await def.loadState(ctx, input);
 
-      // Steps 6 + 7 — mutate + increment version (the definition returns the
-      // post-mutation version; the executor never invents one).
-      const mutation = await def.mutate(state, input);
+        // Step 4 — check expected version (optimistic concurrency).
+        const current = def.currentVersionOf(state);
+        if (
+          ctx.expectedVersion !== undefined &&
+          ctx.expectedVersion !== null &&
+          current !== undefined &&
+          current !== null &&
+          ctx.expectedVersion !== current
+        ) {
+          throw new CommandError(
+            "VERSION_CONFLICT",
+            `stale version: expected ${ctx.expectedVersion}, current ${current}`,
+            { expectedVersion: ctx.expectedVersion, currentVersion: current },
+          );
+        }
 
-      // Steps 8 + 9 + 10 — audit + outbox + store command result, atomically.
-      // The result is stored verbatim so replays return exactly what the
-      // first execution returned (the Drizzle store JSON-encodes it; scalar
-      // results are wrapped there with an explicit marker).
-      const operationId = await store.commitSuccess(
-        ctx.workspaceId,
-        def.name,
-        ctx.idempotencyKey,
-        {
-          actorUserId: ctx.actorUserId,
-          resultingVersion: mutation.resultingVersion,
+        // Step 5 — validate invariant.
+        await def.checkInvariant?.(state, input);
+
+        // Steps 6 + 7 — mutate + increment version (the definition returns the
+        // post-mutation version; the executor never invents one).
+        const mutation = await def.mutate(state, input);
+
+        // Steps 8 + 9 + 10 — audit + outbox + store command result, atomically.
+        // The result is stored verbatim so replays return exactly what the
+        // first execution returned (the Drizzle store JSON-encodes it; scalar
+        // results are wrapped there with an explicit marker).
+        const operationId = await store.commitSuccess(
+          ctx.workspaceId,
+          def.name,
+          ctx.idempotencyKey,
+          {
+            actorUserId: ctx.actorUserId,
+            resultingVersion: mutation.resultingVersion,
+            result: mutation.result,
+            audit: { ...mutation.audit, commandOperationId: "" },
+            outbox: mutation.outbox ?? [],
+          },
+        );
+
+        // Step 11 — commit happens inside the store; reaching here means commit.
+        return {
           result: mutation.result,
-          audit: { ...mutation.audit, commandOperationId: "" },
-          outbox: mutation.outbox ?? [],
-        },
-      );
-
-      // Step 11 — commit happens inside the store; reaching here means commit.
-      return {
-        result: mutation.result,
-        resultingVersion: mutation.resultingVersion,
-        operationId,
-        replayed: false,
-      };
-    } catch (error) {
-      await store.commitFailure(ctx.workspaceId, def.name, ctx.idempotencyKey);
-      throw error;
-    }
-  });
+          resultingVersion: mutation.resultingVersion,
+          operationId,
+          replayed: false,
+        };
+      } catch (error) {
+        await store.commitFailure(ctx.workspaceId, def.name, ctx.idempotencyKey);
+        throw error;
+      }
+    },
+  );
 }
 
 /** Operation id format, shared with the Drizzle store (Epoch 4+) and tests. */

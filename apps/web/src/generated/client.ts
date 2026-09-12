@@ -1,7 +1,7 @@
 /**
  * GENERATED — do not edit by hand.
  * Source: apps/web/openapi/openapi.json (info.version=v1)
- * contractSha: 85c2deff8cfef9f5a6516b095fe6d4f6e9ee0add22d890c8f1b0fcfe62c083b0
+ * contractSha: ea1ef3ea7e640e9e92c5f930d1505db40ff9b9223d12fcf09e899ad8c98682a0
  * Regenerate: pnpm --filter @moneo/web gen:client
  * Every browser DTO comes from here; later API issues extend the contract first.
  */
@@ -78,7 +78,7 @@ export interface JobPage {
   nextCursor: string | null;
 }
 
-export const CONTRACT_SHA = "85c2deff8cfef9f5a6516b095fe6d4f6e9ee0add22d890c8f1b0fcfe62c083b0";
+export const CONTRACT_SHA = "ea1ef3ea7e640e9e92c5f930d1505db40ff9b9223d12fcf09e899ad8c98682a0";
 
 export class ApiError extends Error {
   readonly status: number;

@@ -54,10 +54,22 @@ describe("problem-details errors", () => {
   it("marks only transient failures retryable", () => {
     const retryable = (code: (typeof PROBLEM_CODES)[number]) =>
       new DomainError(code, { correlationId: "test" }).retryable;
-    for (const code of ["RATE_LIMITED", "JOB_REQUIRED", "UNKNOWN_OUTCOME", "DEPENDENCY_UNAVAILABLE"] as const) {
+    for (const code of [
+      "RATE_LIMITED",
+      "JOB_REQUIRED",
+      "UNKNOWN_OUTCOME",
+      "DEPENDENCY_UNAVAILABLE",
+    ] as const) {
       expect(retryable(code)).toBe(true);
     }
-    for (const code of ["VALIDATION_FAILED", "NOT_FOUND", "FORBIDDEN", "VERSION_CONFLICT", "IDEMPOTENCY_KEY_REUSED", "INVARIANT_VIOLATION"] as const) {
+    for (const code of [
+      "VALIDATION_FAILED",
+      "NOT_FOUND",
+      "FORBIDDEN",
+      "VERSION_CONFLICT",
+      "IDEMPOTENCY_KEY_REUSED",
+      "INVARIANT_VIOLATION",
+    ] as const) {
       expect(retryable(code)).toBe(false);
     }
   });
@@ -153,8 +165,9 @@ describe("problem-details errors", () => {
   });
 
   it("never leaks internals for unknown errors, but keeps them for logs", () => {
-    const cause = new Error("column \"secret\" does not exist");
-    (cause as Error & { stack?: string }).stack = "Error: column \"secret\" does not exist\n at db.ts:1:1";
+    const cause = new Error('column "secret" does not exist');
+    (cause as Error & { stack?: string }).stack =
+      'Error: column "secret" does not exist\n at db.ts:1:1';
     const problem = toInternalProblem(cause, "corr-9");
     expect(problem.status).toBe(500);
     expect(problem.code).toBe("INTERNAL_ERROR");
@@ -176,9 +189,7 @@ describe("problem-details errors", () => {
     expect(
       fromCommandError({ code: "IDEMPOTENCY_KEY_REUSED", message: "reused" }, "c").status,
     ).toBe(409);
-    expect(
-      fromCommandError({ code: "INVARIANT_VIOLATION", message: "bad" }, "c").status,
-    ).toBe(422);
+    expect(fromCommandError({ code: "INVARIANT_VIOLATION", message: "bad" }, "c").status).toBe(422);
     // A future executor code must not crash the mapper: it degrades to
     // UNKNOWN_OUTCOME, which is safe to replay with the same key.
     const unmapped = fromCommandError({ code: "SOMETHING_NEW", message: "?" }, "c");

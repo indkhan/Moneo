@@ -72,7 +72,10 @@
                   "type": "object",
                   "required": ["items"],
                   "properties": {
-                    "items": { "type": "array", "items": { "$ref": "#/components/schemas/JobStatus" } },
+                    "items": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/JobStatus" }
+                    },
                     "nextCursor": { "type": ["string", "null"] }
                   }
                 }
@@ -319,31 +322,59 @@
     "responses": {
       "ValidationFailed": {
         "description": "Malformed request (see `errors` for fields)",
-        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemDetails" } } }
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+          }
+        }
       },
       "NotFound": {
         "description": "Unknown job, command, or entity",
-        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemDetails" } } }
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+          }
+        }
       },
       "Forbidden": {
         "description": "Caller may not perform this action",
-        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemDetails" } } }
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+          }
+        }
       },
       "Conflict": {
         "description": "Version conflict or idempotency-key reuse",
-        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemDetails" } } }
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+          }
+        }
       },
       "IdempotencyConflict": {
         "description": "Same dedupe key submitted with a different payload",
-        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemDetails" } } }
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+          }
+        }
       },
       "InvariantViolation": {
         "description": "Input is well-formed but violates a domain invariant",
-        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemDetails" } } }
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+          }
+        }
       },
       "RateLimited": {
         "description": "Too many requests (honour `Retry-After`)",
-        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemDetails" } } }
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+          }
+        }
       }
     }
   }

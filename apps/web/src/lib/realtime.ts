@@ -76,13 +76,7 @@ export class EventApplier {
 }
 
 export type ConnectionStatus =
-  | "connecting"
-  | "live"
-  | "stale"
-  | "reconnecting"
-  | "polling"
-  | "unauthorized"
-  | "closed";
+  "connecting" | "live" | "stale" | "reconnecting" | "polling" | "unauthorized" | "closed";
 
 export interface SseTransport {
   subscribe(handlers: {
@@ -312,10 +306,7 @@ function isUnauthorized(error: unknown): boolean {
  * `data: {...}` frames and ignores heartbeats/comments. Used as
  * `RealtimeOptions.sse` in production; tests inject fakes.
  */
-export function createFetchSseTransport(
-  url: string,
-  fetchFn: typeof fetch = fetch,
-): SseTransport {
+export function createFetchSseTransport(url: string, fetchFn: typeof fetch = fetch): SseTransport {
   return {
     subscribe(handlers) {
       let cancelled = false;

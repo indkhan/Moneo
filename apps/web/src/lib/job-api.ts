@@ -18,10 +18,8 @@ export function toUiJob(status: JobStatus): UiJob {
     progressPercent: status.progressPercent,
     attempts: status.attempts,
     maxAttempts: status.maxAttempts,
-  errorMessage:
-    status.error && typeof status.error["message"] === "string"
-      ? status.error["message"]
-      : null,
+    errorMessage:
+      status.error && typeof status.error["message"] === "string" ? status.error["message"] : null,
   };
 }
 
@@ -34,7 +32,10 @@ export function createJobApi(fetchFn?: FetchFn) {
   const client = createClient(fetchFn ? { fetchFn } : {});
   return {
     async fetchJobs(cursor?: string, limit?: number): Promise<JobListResult> {
-      const page = await client.listJobs({ ...(cursor ? { cursor } : {}), ...(limit ? { limit } : {}) });
+      const page = await client.listJobs({
+        ...(cursor ? { cursor } : {}),
+        ...(limit ? { limit } : {}),
+      });
       return { jobs: page.items.map(toUiJob), nextCursor: page.nextCursor };
     },
     async retryJob(id: string): Promise<UiJob> {

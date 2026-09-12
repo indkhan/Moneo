@@ -2,12 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { DomainError } from "@moneo/shared/problem";
-import {
-  ApiError,
-  CONTRACT_SHA,
-  createClient,
-  type JobStatus,
-} from "../generated/client";
+import { ApiError, CONTRACT_SHA, createClient, type JobStatus } from "../generated/client";
 import {
   commandRequestSchema,
   cursorQuerySchema,
@@ -44,7 +39,15 @@ const sha256 = (text: string): string => createHash("sha256").update(text, "utf8
 describe("api contract", () => {
   it("is OpenAPI 3.1 with the required paths", () => {
     expect(contract.openapi).toBe("3.1.0");
-    for (const path of ["/health", "/version", "/jobs", "/jobs/{id}", "/jobs/{id}/retry", "/jobs/{id}/stop", "/commands/{commandName}"]) {
+    for (const path of [
+      "/health",
+      "/version",
+      "/jobs",
+      "/jobs/{id}",
+      "/jobs/{id}/retry",
+      "/jobs/{id}/stop",
+      "/commands/{commandName}",
+    ]) {
       expect(Object.keys(contract.paths)).toContain(path);
     }
   });
@@ -75,7 +78,10 @@ describe("api contract", () => {
     expect("^-?[0-9]+$").toBe(money.pattern);
     expect("12.50").not.toMatch(new RegExp(money.pattern));
     expect("1250").toMatch(new RegExp(money.pattern));
-    const version = contract.components.schemas["VersionString"] as { type: string; pattern: string };
+    const version = contract.components.schemas["VersionString"] as {
+      type: string;
+      pattern: string;
+    };
     expect(version.type).toBe("string");
     expect("7").toMatch(new RegExp(version.pattern));
     expect("v7").not.toMatch(new RegExp(version.pattern));
@@ -101,10 +107,7 @@ describe("api contract", () => {
 describe("generated client drift", () => {
   it("embeds the current contract sha (regenerate, never hand-edit)", () => {
     expect(CONTRACT_SHA).toBe(sha256(contractText));
-    const clientSource = readFileSync(
-      new URL("../generated/client.ts", import.meta.url),
-      "utf8",
-    );
+    const clientSource = readFileSync(new URL("../generated/client.ts", import.meta.url), "utf8");
     expect(clientSource).toContain("GENERATED — do not edit by hand");
     expect(clientSource).toContain(`contractSha: ${sha256(contractText)}`);
   });
@@ -186,12 +189,13 @@ describe("generated client", () => {
       correlationId: "c",
     };
     const client = createClient({
-      fetchFn: ((() => Promise.resolve({
+      fetchFn: (() =>
+        Promise.resolve({
           ok: false,
           status: 409,
           headers: new Headers({ "content-type": "application/problem+json" }),
           json: () => Promise.resolve(problem),
-        })) as unknown) as typeof fetch,
+        })) as unknown as typeof fetch,
     });
     const error = await client.getJob(wireJob.id).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
@@ -201,12 +205,13 @@ describe("generated client", () => {
 
   it("degrades non-problem failures to INTERNAL_ERROR without losing the status", async () => {
     const client = createClient({
-      fetchFn: ((() => Promise.resolve({
+      fetchFn: (() =>
+        Promise.resolve({
           ok: false,
           status: 502,
           headers: new Headers({ "content-type": "text/plain" }),
           json: () => Promise.resolve(null),
-        })) as unknown) as typeof fetch,
+        })) as unknown as typeof fetch,
     });
     const error = await client.listJobs().catch((e: unknown) => e);
     expect((error as ApiError).problem.code).toBe("INTERNAL_ERROR");
@@ -251,7 +256,9 @@ describe("server boundary validation", () => {
   it("requires a job type and a UUID job id", () => {
     expect(parseOrProblem(jobSubmitSchema, { type: "" }).ok).toBe(false);
     expect(parseOrProblem(jobSubmitSchema, {}).ok).toBe(false);
-    expect(parseOrProblem(jobSubmitSchema, { type: "import.process", dedupeKey: "u-1" }).ok).toBe(true);
+    expect(parseOrProblem(jobSubmitSchema, { type: "import.process", dedupeKey: "u-1" }).ok).toBe(
+      true,
+    );
     expect(parseOrProblem(jobIdSchema, wireJob.id).ok).toBe(true);
     expect(parseOrProblem(jobIdSchema, "not-a-uuid").ok).toBe(false);
   });
@@ -284,9 +291,7 @@ describe("browser job integration", () => {
   });
 
   it("fetches job pages through the generated client", async () => {
-    const api = createJobApi(
-      stubFetch(() => ({ items: [wireJob], nextCursor: "cursor-2" })),
-    );
+    const api = createJobApi(stubFetch(() => ({ items: [wireJob], nextCursor: "cursor-2" })));
     const result = await api.fetchJobs(undefined, 25);
     expect(result.jobs).toHaveLength(1);
     expect(result.jobs[0]).toMatchObject({ id: wireJob.id, status: "running" });

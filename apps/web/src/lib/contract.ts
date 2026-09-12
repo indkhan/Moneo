@@ -13,7 +13,9 @@ import { DomainError } from "@moneo/shared/problem";
 
 export const versionStringSchema = z.string().regex(/^[0-9]+$/, "must be a decimal version string");
 
-export const moneyStringSchema = z.string().regex(/^-?[0-9]+$/, "must be decimal-string minor units");
+export const moneyStringSchema = z
+  .string()
+  .regex(/^-?[0-9]+$/, "must be decimal-string minor units");
 
 export const commandMetadataSchema = z.object({
   idempotencyKey: z.string().min(1, "idempotencyKey is required").max(128),

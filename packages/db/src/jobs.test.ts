@@ -2,12 +2,7 @@ import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import * as schema from "./schema.js";
-import {
-  backgroundJobAttempts,
-  backgroundJobs,
-  scheduledTasks,
-  workspaces,
-} from "./schema.js";
+import { backgroundJobAttempts, backgroundJobs, scheduledTasks, workspaces } from "./schema.js";
 import { createMigratedDb, expectDbError, one, tableNames } from "./pglite-test-db.js";
 import { isUuidV7, uuidv7 } from "./uuid.js";
 import { TENANT_SETTING } from "./tenancy.js";
@@ -30,7 +25,9 @@ describe("durable job and schedule schema (migration 0006)", () => {
 
   async function q<T>(sqlText: string, params: unknown[] = []): Promise<T[]> {
     const result =
-      params.length > 0 ? await pg.query<T>(sqlText, params as never[]) : await pg.query<T>(sqlText);
+      params.length > 0
+        ? await pg.query<T>(sqlText, params as never[])
+        : await pg.query<T>(sqlText);
     return result.rows;
   }
 
@@ -117,7 +114,10 @@ describe("durable job and schedule schema (migration 0006)", () => {
     }
     for (const status of ["started", "succeeded", "failed"] as const) {
       const j = one(
-        await db.insert(backgroundJobs).values({ workspaceId: wsA, type: `a.${status}` }).returning(),
+        await db
+          .insert(backgroundJobs)
+          .values({ workspaceId: wsA, type: `a.${status}` })
+          .returning(),
       );
       await db
         .insert(backgroundJobAttempts)
@@ -235,7 +235,10 @@ describe("durable job and schedule schema (migration 0006)", () => {
       /duplicate key value violates unique constraint|already exists/i,
     );
     const stored = one(
-      await db.insert(scheduledTasks).values({ name: "jobs.sweep", schedule: "*/5 * * * *" }).returning(),
+      await db
+        .insert(scheduledTasks)
+        .values({ name: "jobs.sweep", schedule: "*/5 * * * *" })
+        .returning(),
     );
     expect(stored.enabled).toBe(1);
     expect(stored.payload).toEqual({});
@@ -248,8 +251,11 @@ describe("durable job and schedule schema (migration 0006)", () => {
       );
     });
     expect(
-      one(await q<{ enabled: number }>(`SELECT enabled FROM scheduled_tasks WHERE name = 'jobs.sweep'`))
-        .enabled,
+      one(
+        await q<{ enabled: number }>(
+          `SELECT enabled FROM scheduled_tasks WHERE name = 'jobs.sweep'`,
+        ),
+      ).enabled,
     ).toBe(1);
   });
 
@@ -274,8 +280,11 @@ describe("durable job and schedule schema (migration 0006)", () => {
       expect(renamed.affectedRows ?? renamed.rowCount).toBe(0);
       // Forging an attempt bound to B's workspace from A's context is denied.
       await expectDbError(
-        q(`INSERT INTO background_job_attempts (job_id, workspace_id, attempt_number)
-            VALUES ($1, $2, 2)`, [jobB.id, wsB]),
+        q(
+          `INSERT INTO background_job_attempts (job_id, workspace_id, attempt_number)
+            VALUES ($1, $2, 2)`,
+          [jobB.id, wsB],
+        ),
         /new row violates row-level security policy for table "background_job_attempts"/,
       );
     });

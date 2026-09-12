@@ -50,7 +50,14 @@ describe("job status ui", () => {
     const html = renderToStaticMarkup(
       h(JobDrawer, {
         jobs: [
-          job({ id: "s", type: "report.build", status: "succeeded", progressStage: null, progressPercent: null, attempts: 1 }),
+          job({
+            id: "s",
+            type: "report.build",
+            status: "succeeded",
+            progressStage: null,
+            progressPercent: null,
+            attempts: 1,
+          }),
           job({ id: "r", type: "import.process", status: "running", attempts: 1 }),
         ],
         onClose: noop,

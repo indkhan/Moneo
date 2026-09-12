@@ -13,6 +13,7 @@
  * config that reads the same contract — the generated path and drift check
  * stay unchanged.
  */
+/* global process: readonly */
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -197,4 +198,4 @@ const contractText = readFileSync(CONTRACT_PATH, "utf8");
 const output = generate(contractText);
 mkdirSync(dirname(OUT_PATH), { recursive: true });
 writeFileSync(OUT_PATH, output);
-console.log(`generated ${OUT_PATH}`);
+process.stdout.write(`generated ${OUT_PATH}\n`);

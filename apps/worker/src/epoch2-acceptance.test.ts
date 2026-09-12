@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  createMemoryCommandStore,
-  executeCommand,
-  type CommandDefinition,
-} from "@moneo/finance";
+import { createMemoryCommandStore, executeCommand, type CommandDefinition } from "@moneo/finance";
 import { dispatchOutboxBatch, type OutboxEventRow } from "./outbox.js";
 import { runDurableJob, type DurableJob, type JobHandler, type JobStore } from "./job-lifecycle.js";
 import { createRetryDecider } from "./retry.js";
@@ -166,7 +162,10 @@ describe("epoch 2 acceptance", () => {
         },
       ],
     ]);
-    const decide = createRetryDecider({ maxAttempts: 3, baseDelayMs: 1_000, maxDelayMs: 60_000 }, () => 0);
+    const decide = createRetryDecider(
+      { maxAttempts: 3, baseDelayMs: 1_000, maxDelayMs: 60_000 },
+      () => 0,
+    );
 
     // 2. Outbox publish duplicated: the dispatcher delivers the same event twice.
     const claimOnce = (rows: OutboxEventRow[]) => ({

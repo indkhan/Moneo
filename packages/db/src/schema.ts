@@ -113,9 +113,7 @@ export const securityAuditEvents = pgTable(
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [
-    index("security_audit_events_workspace_created_idx").on(t.workspaceId, t.createdAt),
-  ],
+  (t) => [index("security_audit_events_workspace_created_idx").on(t.workspaceId, t.createdAt)],
 );
 
 export type SecurityAuditEvent = typeof securityAuditEvents.$inferSelect;
@@ -300,11 +298,7 @@ export const backgroundJobs = pgTable(
       "background_jobs_status_check",
       sql`${t.status} in ('queued', 'running', 'succeeded', 'failed', 'cancelled')`,
     ),
-    unique("background_jobs_workspace_type_dedupe_uniq").on(
-      t.workspaceId,
-      t.type,
-      t.dedupeKey,
-    ),
+    unique("background_jobs_workspace_type_dedupe_uniq").on(t.workspaceId, t.type, t.dedupeKey),
     index("background_jobs_pickup_idx").on(t.status, t.runAfter, t.createdAt),
     index("background_jobs_workspace_created_idx").on(t.workspaceId, t.createdAt),
   ],

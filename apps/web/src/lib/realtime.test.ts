@@ -336,8 +336,10 @@ describe("fetch sse transport", () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(encoder.encode(': heartbeat\n\n'));
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(widgetEvent(2, "w1", "e2"))}\n\n`));
+        controller.enqueue(encoder.encode(": heartbeat\n\n"));
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify(widgetEvent(2, "w1", "e2"))}\n\n`),
+        );
       },
     });
     const fetchFn = vi.fn((url: string, init?: RequestInit) => {
@@ -348,10 +350,7 @@ describe("fetch sse transport", () => {
         body: stream,
       });
     });
-    const transport = createFetchSseTransport(
-      "/api/v1/events",
-      fetchFn as unknown as typeof fetch,
-    );
+    const transport = createFetchSseTransport("/api/v1/events", fetchFn as unknown as typeof fetch);
     const events: DomainEvent[] = [];
     let opened = false;
     const unsubscribe = transport.subscribe({
@@ -372,13 +371,8 @@ describe("fetch sse transport", () => {
   });
 
   it("reports unauthorized instead of hanging", async () => {
-    const fetchFn = vi.fn(() =>
-      Promise.resolve({ ok: false, status: 401, body: null }),
-    );
-    const transport = createFetchSseTransport(
-      "/api/v1/events",
-      fetchFn as unknown as typeof fetch,
-    );
+    const fetchFn = vi.fn(() => Promise.resolve({ ok: false, status: 401, body: null }));
+    const transport = createFetchSseTransport("/api/v1/events", fetchFn as unknown as typeof fetch);
     const errors: unknown[] = [];
     transport.subscribe({
       onOpen: () => {},
