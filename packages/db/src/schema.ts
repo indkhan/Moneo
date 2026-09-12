@@ -7,6 +7,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -70,6 +71,8 @@ export const workspaces = pgTable("workspaces", {
   name: text("name").notNull(),
   /** Provisioning actor. Nullable: set once the creator's user row exists. */
   createdByUserId: uuid("created_by_user_id").references(() => users.id),
+  /** Valuation target for aggregates/forecasts (Issue 4.9). Native rows never change with it. */
+  baseCurrency: text("base_currency").notNull().default("EUR"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -578,13 +581,7 @@ export type NewSourceTransactionObservation = typeof sourceTransactionObservatio
  * until then concurrency rides on command idempotency + snapshot supersede.
  */
 export type AccountType =
-  | "CHECKING"
-  | "SAVINGS"
-  | "CASH"
-  | "CREDIT"
-  | "INVESTMENT"
-  | "WALLET"
-  | "OTHER";
+  "CHECKING" | "SAVINGS" | "CASH" | "CREDIT" | "INVESTMENT" | "WALLET" | "OTHER";
 
 export const accounts = pgTable(
   "accounts",
@@ -738,10 +735,7 @@ export const transactions = pgTable(
   (t) => [
     check("transactions_amount_check", sql`${t.amountMinor} > 0`),
     check("transactions_direction_check", sql`${t.direction} in ('credit', 'debit')`),
-    check(
-      "transactions_status_check",
-      sql`${t.status} in ('PENDING', 'POSTED', 'VOIDED')`,
-    ),
+    check("transactions_status_check", sql`${t.status} in ('PENDING', 'POSTED', 'VOIDED')`),
     index("transactions_workspace_date_idx").on(t.workspaceId, t.effectiveDate),
     index("transactions_account_date_idx").on(t.accountId, t.effectiveDate),
   ],
@@ -751,10 +745,7 @@ export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
 
 export type TransactionSourceLinkRelationship =
-  | "PRIMARY"
-  | "PENDING_PREDECESSOR"
-  | "MERGED"
-  | "OTHER";
+  "PRIMARY" | "PENDING_PREDECESSOR" | "MERGED" | "OTHER";
 
 export const transactionSourceLinks = pgTable(
   "transaction_source_links",
@@ -783,3 +774,93 @@ export const transactionSourceLinks = pgTable(
 
 export type TransactionSourceLink = typeof transactionSourceLinks.$inferSelect;
 export type NewTransactionSourceLink = typeof transactionSourceLinks.$inferInsert;
+
+/**
+ * Epoch 4, Issue 4.9 — historical FX and transaction valuation.
+ *
+ * `fxRates` is the versioned rate cache (seed anchors + explicit manual
+ * dated rates); `transactionValuations` are rebuildable projections of
+ * native amounts into a target currency. Native rows are never rewritten:
+ * a base-currency change only schedules rebuilds. Missing rates are absent
+ * rows — aggregates report incomplete coverage, never zero.
+ */
+export type FxRateSource = "seed" | "manual";
+
+export const fxRates = pgTable(
+  "fx_rates",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    baseCurrencyCode: text("base_currency_code").notNull(),
+    quoteCurrencyCode: text("quote_currency_code").notNull(),
+    rateDate: date("rate_date").notNull(),
+    /** Target major per one source major, exact decimal string. */
+    rate: numeric("rate", { precision: 30, scale: 15 }).notNull(),
+    source: text("source").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("fx_rates_pair_check", sql`${t.baseCurrencyCode} <> ${t.quoteCurrencyCode}`),
+    check("fx_rates_rate_check", sql`${t.rate} > 0`),
+    check("fx_rates_source_check", sql`${t.source} in ('seed', 'manual')`),
+    unique("fx_rates_pair_date_source_uniq").on(
+      t.workspaceId,
+      t.baseCurrencyCode,
+      t.quoteCurrencyCode,
+      t.rateDate,
+      t.source,
+    ),
+    index("fx_rates_workspace_pair_date_idx").on(
+      t.workspaceId,
+      t.baseCurrencyCode,
+      t.quoteCurrencyCode,
+      t.rateDate,
+    ),
+  ],
+);
+
+export type FxRate = typeof fxRates.$inferSelect;
+export type NewFxRate = typeof fxRates.$inferInsert;
+
+export const transactionValuations = pgTable(
+  "transaction_valuations",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    transactionId: uuid("transaction_id")
+      .notNull()
+      .references(() => transactions.id, { onDelete: "cascade" }),
+    targetCurrencyCode: text("target_currency_code").notNull(),
+    rate: numeric("rate", { precision: 30, scale: 15 }).notNull(),
+    rateDate: date("rate_date").notNull(),
+    rateSource: text("rate_source").notNull(),
+    convertedAmountMinor: bigint("converted_amount_minor", { mode: "number" }).notNull(),
+    calculationVersion: text("calculation_version").notNull().default("v1"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("transaction_valuations_pair_date_source_version_uniq").on(
+      t.transactionId,
+      t.targetCurrencyCode,
+      t.rateDate,
+      t.rateSource,
+      t.calculationVersion,
+    ),
+    index("transaction_valuations_transaction_target_idx").on(
+      t.transactionId,
+      t.targetCurrencyCode,
+    ),
+    index("transaction_valuations_workspace_created_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
+export type TransactionValuation = typeof transactionValuations.$inferSelect;
+export type NewTransactionValuation = typeof transactionValuations.$inferInsert;

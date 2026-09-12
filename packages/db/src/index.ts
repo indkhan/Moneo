@@ -1,5 +1,6 @@
 export * from "./schema.js";
 export * from "./account-queries.js";
+export * from "./fx-valuations.js";
 export * from "./transaction-detail.js";
 export * from "./transaction-queries.js";
 export * from "./currencies.js";
