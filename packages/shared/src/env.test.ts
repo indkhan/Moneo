@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { loadEnv } from "./env.js";
+import { findWorkspaceEnvFile, loadEnv } from "./env.js";
 
 describe("loadEnv", () => {
   const localEnvFile = resolve(import.meta.dirname, "../../..", ".env");
@@ -12,5 +12,9 @@ describe("loadEnv", () => {
 
     expect(databaseUrl).toBeTruthy();
     expect(loadEnv().DATABASE_URL).toBe(databaseUrl);
+  });
+
+  it.skipIf(!existsSync(localEnvFile))("finds the repository environment from the Next.js app directory", () => {
+    expect(findWorkspaceEnvFile(resolve(process.cwd(), "apps", "web"))).toBe(localEnvFile);
   });
 });

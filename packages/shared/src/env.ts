@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 
 const envSchema = z.object({
   APP_ENV: z.enum(["development", "test", "staging", "production"]).default("development"),
@@ -42,10 +42,25 @@ const envSchema = z.object({
 
 export type AppEnv = z.infer<typeof envSchema>;
 
-const localEnvFile = fileURLToPath(new URL("../../../.env", import.meta.url));
+/** Find the closest workspace `.env`, including when bundled by Next.js. */
+export function findWorkspaceEnvFile(cwd = process.cwd()): string | undefined {
+  let directory = resolve(cwd);
+  while (true) {
+    const candidate = resolve(directory, ".env");
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+    const parent = dirname(directory);
+    if (parent === directory) {
+      return undefined;
+    }
+    directory = parent;
+  }
+}
 
 function loadLocalEnv(): void {
-  if (existsSync(localEnvFile)) {
+  const localEnvFile = findWorkspaceEnvFile();
+  if (localEnvFile) {
     process.loadEnvFile(localEnvFile);
   }
 }
