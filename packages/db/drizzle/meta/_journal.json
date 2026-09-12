@@ -50,6 +50,13 @@
       "when": 1789228000000,
       "tag": "0006_durable_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789232000000,
+      "tag": "0007_source_ingestion",
+      "breakpoints": true
     }
   ]
 }

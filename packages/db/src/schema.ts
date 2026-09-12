@@ -352,3 +352,212 @@ export const scheduledTasks = pgTable("scheduled_tasks", {
 
 export type ScheduledTask = typeof scheduledTasks.$inferSelect;
 export type NewScheduledTask = typeof scheduledTasks.$inferInsert;
+
+/**
+ * Epoch 3, Issue 3.1 — source ingestion layer.
+ *
+ * Raw observations are preserved: file bytes live in quarantine storage
+ * (Issue 3.2), parsed rows land here, and canonical finance state (Epoch 4)
+ * is derived WITHOUT deleting these rows.
+ *
+ * Tenancy follows the Epoch 1/2 pattern: every table carries `workspace_id`,
+ * every FK to a tenant row is scoped by RLS to `app.current_workspace`, and
+ * the app role never bypasses RLS.
+ *
+ * Uniqueness notes (PostgreSQL NULL semantics do the work, no partial-index
+ * syntax needed): UNIQUE(a, b) with nullable b permits unlimited NULL b rows
+ * while rejecting duplicate non-null keys. That is exactly what the
+ * architecture wants — a stable external id is unique when the source
+ * provides one, and fuzzy CSV rows without one are never blocked (two
+ * legitimate identical purchases stay distinct; see Issue 4.11).
+ */
+export const dataSources = pgTable(
+  "data_sources",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    /** Ingestion origin kind: `csv_file`, `xlsx_file`, or `manual`. */
+    type: text("type").notNull(),
+    /** Human provider label, e.g. `Revolut CSV`. Null for manual sources. */
+    provider: text("provider"),
+    /** User-visible name, e.g. `Revolut CSV`. */
+    name: text("name").notNull(),
+    status: text("status").notNull().default("active"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (t) => [
+    check("data_sources_status_check", sql`${t.status} in ('active', 'archived', 'disconnected')`),
+    index("data_sources_workspace_status_idx").on(t.workspaceId, t.status),
+    index("data_sources_workspace_created_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
+export type DataSource = typeof dataSources.$inferSelect;
+export type NewDataSource = typeof dataSources.$inferInsert;
+
+export const imports = pgTable(
+  "imports",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    dataSourceId: uuid("data_source_id")
+      .notNull()
+      .references(() => dataSources.id, { onDelete: "cascade" }),
+    /** Caller key making re-submits idempotent per workspace (Issue 3.6). */
+    idempotencyKey: text("idempotency_key").notNull(),
+    fileName: text("file_name"),
+    /** SHA-256 of the raw bytes. Warning signal only, never a unique key. */
+    fileSha256: text("file_sha256"),
+    /** Private quarantine object key. Never a public URL (Issue 3.2). */
+    objectStorageKey: text("object_storage_key"),
+    parserVersion: text("parser_version").notNull().default("v1"),
+    status: text("status").notNull().default("pending"),
+    rowCount: integer("row_count"),
+    newCount: integer("new_count"),
+    duplicateCount: integer("duplicate_count"),
+    reviewCount: integer("review_count"),
+    errorCount: integer("error_count"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("imports_workspace_idempotency_uniq").on(t.workspaceId, t.idempotencyKey),
+    check(
+      "imports_status_check",
+      sql`${t.status} in ('pending', 'running', 'succeeded', 'failed', 'cancelled')`,
+    ),
+    index("imports_workspace_created_idx").on(t.workspaceId, t.createdAt),
+    index("imports_data_source_idx").on(t.dataSourceId),
+  ],
+);
+
+export type StatementImport = typeof imports.$inferSelect;
+export type NewStatementImport = typeof imports.$inferInsert;
+
+export const sourceAccounts = pgTable(
+  "source_accounts",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    dataSourceId: uuid("data_source_id")
+      .notNull()
+      .references(() => dataSources.id, { onDelete: "cascade" }),
+    /** Stable source key when the origin guarantees one; else null (no fuzzy unique). */
+    externalId: text("external_id"),
+    stableSourceKey: text("stable_source_key"),
+    displayName: text("display_name"),
+    officialName: text("official_name"),
+    currencyCode: text("currency_code"),
+    rawType: text("raw_type"),
+    rawSubtype: text("raw_subtype"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    removedAt: timestamp("removed_at", { withTimezone: true }),
+  },
+  (t) => [
+    // NULL-exempt by PG semantics: many keyless CSV accounts coexist, but a
+    // repeated stable external id collides loudly.
+    unique("source_accounts_source_external_uniq").on(t.dataSourceId, t.externalId),
+    unique("source_accounts_source_stable_uniq").on(t.dataSourceId, t.stableSourceKey),
+    index("source_accounts_workspace_created_idx").on(t.workspaceId, t.firstSeenAt),
+    index("source_accounts_data_source_idx").on(t.dataSourceId),
+  ],
+);
+
+export type SourceAccount = typeof sourceAccounts.$inferSelect;
+export type NewSourceAccount = typeof sourceAccounts.$inferInsert;
+
+export const sourceTransactions = pgTable(
+  "source_transactions",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    dataSourceId: uuid("data_source_id")
+      .notNull()
+      .references(() => dataSources.id, { onDelete: "cascade" }),
+    sourceAccountId: uuid("source_account_id").references(() => sourceAccounts.id, {
+      onDelete: "set null",
+    }),
+    /** Stable source key when guaranteed; else null. Never a fuzzy unique. */
+    externalId: text("external_id"),
+    stableSourceKey: text("stable_source_key"),
+    currentStatus: text("current_status").notNull().default("observed"),
+    /** Logical link for pending/matched pairs (Issue 4.11 resolves these). */
+    pendingSourceTransactionId: uuid("pending_source_transaction_id"),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    removedAt: timestamp("removed_at", { withTimezone: true }),
+    /** Newest observation id (app-maintained, no FK to avoid a DDL cycle). */
+    latestObservationId: uuid("latest_observation_id"),
+  },
+  (t) => [
+    unique("source_transactions_source_external_uniq").on(t.dataSourceId, t.externalId),
+    unique("source_transactions_source_stable_uniq").on(t.dataSourceId, t.stableSourceKey),
+    check(
+      "source_transactions_status_check",
+      sql`${t.currentStatus} in ('observed', 'pending_review', 'matched', 'removed')`,
+    ),
+    index("source_transactions_workspace_created_idx").on(t.workspaceId, t.firstSeenAt),
+    index("source_transactions_account_idx").on(t.sourceAccountId),
+    index("source_transactions_data_source_idx").on(t.dataSourceId),
+  ],
+);
+
+export type SourceTransaction = typeof sourceTransactions.$inferSelect;
+export type NewSourceTransaction = typeof sourceTransactions.$inferInsert;
+
+export const sourceTransactionObservations = pgTable(
+  "source_transaction_observations",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    sourceTransactionId: uuid("source_transaction_id")
+      .notNull()
+      .references(() => sourceTransactions.id, { onDelete: "cascade" }),
+    importId: uuid("import_id").references(() => imports.id, { onDelete: "set null" }),
+    rowNumber: integer("row_number"),
+    observationType: text("observation_type").notNull().default("file_row"),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+    /** SHA-256 over the canonicalized raw row (dedupe hint, not identity). */
+    rawHash: text("raw_hash").notNull(),
+    /** Exact source payload as parsed (never normalized away). */
+    rawPayload: jsonb("raw_payload").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (t) => [
+    // One observation per (import, row). NULL import/row rows (manual notes)
+    // are exempt by PG NULL semantics.
+    unique("source_observations_import_row_uniq").on(t.importId, t.rowNumber),
+    check("source_observations_type_check", sql`${t.observationType} in ('file_row', 'manual')`),
+    index("source_observations_transaction_observed_idx").on(t.sourceTransactionId, t.observedAt),
+    index("source_observations_import_row_idx").on(t.importId, t.rowNumber),
+  ],
+);
+
+export type SourceTransactionObservation = typeof sourceTransactionObservations.$inferSelect;
+export type NewSourceTransactionObservation = typeof sourceTransactionObservations.$inferInsert;
