@@ -1,5 +1,13 @@
 import type { ColumnMapping, DetectedMapping, MappingConfidence } from "@moneo/finance";
-import { detectColumnMapping, parseCsvBytes, parseXlsxBytes } from "@moneo/finance";
+import {
+  checkDuplicateFile,
+  detectColumnMapping,
+  parseCsvBytes,
+  parseXlsxBytes,
+  type PriorImportFile,
+} from "@moneo/finance";
+import { listPriorImports } from "@moneo/db/statement-imports";
+import { withWorkspaceTransaction } from "@moneo/db/tenancy";
 import type { ObjectStore } from "@moneo/shared/uploads";
 import { buildQuarantineKey, extensionOf, sha256Hex } from "@moneo/shared/uploads";
 import { DomainError, problemResponse } from "@moneo/shared/problem";
@@ -32,10 +40,17 @@ export interface PreviewRow {
   cells: string[];
 }
 
+export interface DuplicateWarning {
+  isRepeat: true;
+  message: string;
+}
+
 export interface PreviewResponse {
   importId: string;
   /** Provisional statement source id (see `provisionalSourceId`). */
   dataSourceId: string;
+  /** Repeat-file advisory, or null when these bytes are new here. */
+  duplicate: DuplicateWarning | null;
   fileName: string;
   kind: "csv" | "xlsx";
   delimiter: string | null;
@@ -71,10 +86,26 @@ export function provisionalSourceId(workspaceId: string, kind: "csv" | "xlsx"): 
   return `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-8${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
 }
 
+/** Prior file history for the duplicate check (injected in tests). */
+export type ListPriorFiles = (workspaceId: string) => Promise<PriorImportFile[]>;
+
+export function createDbPriorFiles(): ListPriorFiles {
+  return (workspaceId) =>
+    withWorkspaceTransaction(workspaceId, async (tx) => {
+      const rows = await listPriorImports(tx, workspaceId);
+      return rows.map((row) => ({
+        importId: row.id,
+        fileName: row.fileName,
+        fileSha256: row.fileSha256,
+        createdAt: row.createdAt.toISOString(),
+      }));
+    });
+}
+
 /** Parse quarantined bytes and detect the column mapping. */
 export async function handlePreview(
   body: unknown,
-  ctx: { workspaceId: string | undefined; store?: ObjectStore },
+  ctx: { workspaceId: string | undefined; store?: ObjectStore; listPrior?: ListPriorFiles },
 ): Promise<Response> {
   if (!ctx.workspaceId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -112,6 +143,15 @@ export async function handlePreview(
   }
   try {
     const limit = parsed.data.previewRows ?? 5;
+    const digest = sha256Hex(bytes);
+    const listPrior = ctx.listPrior ?? createDbPriorFiles();
+    const prior = (await listPrior(workspaceId)).filter(
+      (item) => item.importId !== parsed.data.importId,
+    );
+    const repeat = checkDuplicateFile(prior, digest, parsed.data.fileName);
+    const duplicate: DuplicateWarning | null = repeat
+      ? { isRepeat: true, message: repeat.message }
+      : null;
     const build = (
       table: {
         headers: string[];
@@ -124,6 +164,7 @@ export async function handlePreview(
       return {
         importId: parsed.data.importId,
         dataSourceId: provisionalSourceId(workspaceId, extension),
+        duplicate,
         fileName: parsed.data.fileName,
         kind: extension,
         delimiter,

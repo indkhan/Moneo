@@ -157,9 +157,15 @@ export interface ImportPreviewRow {
   cells: string[];
 }
 
+export interface ImportPreviewDuplicate {
+  isRepeat: true;
+  message: string;
+}
+
 export interface ImportPreview {
   importId: string;
   dataSourceId: string;
+  duplicate: ImportPreviewDuplicate | null;
   fileName: string;
   kind: "csv" | "xlsx";
   delimiter: string | null;

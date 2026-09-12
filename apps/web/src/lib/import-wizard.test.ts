@@ -67,6 +67,7 @@ function previewed(): ImportWizardState {
       parseErrors: [],
       suggestedAccount: "statement",
       dataSourceId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      duplicate: null,
     },
     MAPPING,
   );

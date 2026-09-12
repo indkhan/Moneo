@@ -46,6 +46,10 @@
       "types": "./dist/job-queue.d.ts",
       "default": "./dist/job-queue.js"
     },
+    "./statement-imports": {
+      "types": "./dist/statement-imports.d.ts",
+      "default": "./dist/statement-imports.js"
+    },
     "./sessions": {
       "types": "./dist/sessions.d.ts",
       "default": "./dist/sessions.js"

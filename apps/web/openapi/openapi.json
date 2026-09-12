@@ -438,6 +438,14 @@
         "properties": {
           "importId": { "type": "string", "format": "uuid" },
           "dataSourceId": { "type": "string", "format": "uuid" },
+          "duplicate": {
+            "type": ["object", "null"],
+            "required": ["isRepeat", "message"],
+            "properties": {
+              "isRepeat": { "type": "boolean", "const": true },
+              "message": { "type": "string" }
+            }
+          },
           "fileName": { "type": "string" },
           "kind": { "type": "string", "enum": ["csv", "xlsx"] },
           "delimiter": { "type": ["string", "null"] },

@@ -54,6 +54,8 @@ export interface WizardPreview {
   suggestedAccount: string;
   /** Provisional statement source id from the preview response (submit payload). */
   dataSourceId: string;
+  /** Repeat-file advisory from the duplicate check (never blocks Continue). */
+  duplicate: { isRepeat: true; message: string } | null;
 }
 
 export type WizardMapping = Record<

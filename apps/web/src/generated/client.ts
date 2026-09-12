@@ -1,7 +1,7 @@
 /**
  * GENERATED — do not edit by hand.
  * Source: apps/web/openapi/openapi.json (info.version=v1)
- * contractSha: d517ec13501f00bb8c23aa08e3cee0423d793db8048501f73c53ed246dd670da
+ * contractSha: 594062daef505bf2efc1ec5967209f9b36321e439b3838b5972f3883549fe96a
  * Regenerate: pnpm --filter @moneo/web gen:client
  * Every browser DTO comes from here; later API issues extend the contract first.
  */
@@ -120,9 +120,15 @@ export interface ImportPreviewRow {
   cells: string[];
 }
 
+export interface ImportPreviewDuplicate {
+  isRepeat: true;
+  message: string;
+}
+
 export interface ImportPreview {
   importId: string;
   dataSourceId: string;
+  duplicate: ImportPreviewDuplicate | null;
   fileName: string;
   kind: "csv" | "xlsx";
   delimiter: string | null;
@@ -136,7 +142,7 @@ export interface ImportPreview {
   suggestedAccount: string;
 }
 
-export const CONTRACT_SHA = "d517ec13501f00bb8c23aa08e3cee0423d793db8048501f73c53ed246dd670da";
+export const CONTRACT_SHA = "594062daef505bf2efc1ec5967209f9b36321e439b3838b5972f3883549fe96a";
 
 export class ApiError extends Error {
   readonly status: number;

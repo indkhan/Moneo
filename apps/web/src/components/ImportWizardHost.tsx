@@ -147,6 +147,7 @@ export function ImportWizardHost({ client }: { client?: MoneoClient }) {
                 parseErrors: preview.parseErrors,
                 suggestedAccount: preview.suggestedAccount,
                 dataSourceId: preview.dataSourceId,
+                duplicate: preview.duplicate,
               },
               preview.mapping as WizardMapping,
             ),

@@ -54,6 +54,7 @@ function previewed(): ImportWizardState {
       parseErrors: [],
       suggestedAccount: "statement",
       dataSourceId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      duplicate: null,
     },
     mapping: {
       date: 0,
@@ -94,6 +95,21 @@ describe("import wizard ui", () => {
     // Header-only preview cannot continue.
     const empty = render({ ...previewed(), preview: { ...previewed().preview!, headers: [] } });
     expect(empty).toContain("disabled");
+  });
+
+  it("preview step shows the repeat warning as a non-blocking status", () => {
+    const state = previewed();
+    const html = render({
+      ...state,
+      preview: {
+        ...state.preview!,
+        duplicate: { isRepeat: true, message: "This exact file was already imported once." },
+      },
+    });
+    expect(html).toContain('role="status"');
+    expect(html).toContain("Already imported: This exact file was already imported once.");
+    // Advisory only: Continue stays enabled.
+    expect(html).not.toContain("disabled");
   });
 
   it("preview step announces malformed rows as an alert", () => {

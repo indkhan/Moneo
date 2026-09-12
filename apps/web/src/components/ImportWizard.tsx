@@ -113,6 +113,11 @@ export function ImportWizard({
       {state.step === "preview" && state.preview ? (
         <div style={{ display: "grid", gap: 8 }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>Preview of {state.file?.fileName}</h2>
+          {state.preview.duplicate ? (
+            <p role="status" style={{ margin: 0 }}>
+              {`Already imported: ${state.preview.duplicate.message}`}
+            </p>
+          ) : null}
           <p style={{ margin: 0, fontSize: 13 }}>
             {`${state.preview.totalRows} data rows. Showing the first ${state.preview.preview.length}.`}
           </p>
