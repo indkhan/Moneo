@@ -10,6 +10,7 @@ export * from "./corrections.js";
 export * from "./undo.js";
 export * from "./versions.js";
 export * from "./balances.js";
+export * from "./grounded-tools.js";
 export * from "./canonicalize.js";
 export * from "./csv.js";
 export * from "./duplicate-files.js";
