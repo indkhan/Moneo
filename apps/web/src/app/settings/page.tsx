@@ -2,9 +2,12 @@ import { getDb } from "@moneo/db/client";
 import { listUserSessions } from "@moneo/db/sessions";
 import { Card, CardDescription, CardTitle } from "@moneo/ui";
 import { SessionSecurity } from "@/components/SessionSecurity";
+import { StrongAuthSection } from "@/components/StrongAuthSection";
 import { getSession } from "@/lib/auth-session";
 import { getShellIdentity, identityLabel } from "@/lib/shell-identity";
 import type { SessionListItem } from "@/lib/sessions-client";
+import type { StrongAuthStatusBody } from "@/lib/strong-auth-client";
+import { providerFromEnv, resolveStrongAuthStatus } from "@/lib/strong-auth";
 
 export default async function SettingsPage() {
   const { user, workspace } = await getShellIdentity();
@@ -21,6 +24,31 @@ export default async function SettingsPage() {
       lastSeenAt: s.lastSeenAt.toISOString(),
       current: rawSession !== null && s.id === rawSession.sid,
     }));
+  }
+
+  let initialStrongAuth: StrongAuthStatusBody = {
+    state: "signed-out",
+    method: null,
+    factors: [],
+    passkeysOffered: true,
+  };
+  if (user?.id) {
+    try {
+      const status = await resolveStrongAuthStatus(providerFromEnv());
+      initialStrongAuth = {
+        state: status.state,
+        method: status.method,
+        factors: status.factors.map((f) => ({
+          id: f.id,
+          kind: f.kind,
+          providerType: f.providerType,
+          confirmed: f.confirmed,
+        })),
+        passkeysOffered: status.passkeysOffered,
+      };
+    } catch {
+      initialStrongAuth = { state: "degraded", method: null, factors: [], passkeysOffered: true };
+    }
   }
 
   return (
@@ -56,6 +84,17 @@ export default async function SettingsPage() {
         ) : (
           <CardDescription>
             Sign in to review and revoke your sessions. <a href="/api/auth/login">Log in</a>
+          </CardDescription>
+        )}
+      </Card>
+      <Card>
+        <CardTitle>Strong authentication</CardTitle>
+        {user ? (
+          <StrongAuthSection initialStatus={initialStrongAuth} />
+        ) : (
+          <CardDescription>
+            Passkeys or an authenticator app unlock finance access after you sign in.{" "}
+            <a href="/api/auth/login">Log in</a>
           </CardDescription>
         )}
       </Card>

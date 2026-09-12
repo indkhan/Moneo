@@ -65,3 +65,10 @@ test("settings shows identity and session controls in logged-out state", async (
   await expect(page.locator("#shell-login-mount")).toBeVisible();
   await expect(page.getByText("Sign out other sessions")).toHaveCount(0);
 });
+
+test("settings shows the strong-auth setup prompt when logged out", async ({ page }) => {
+  await page.goto("/settings");
+  await expect(page.getByText("Strong authentication")).toBeVisible();
+  await expect(page.getByText(/unlock finance access after you sign in/)).toBeVisible();
+  await expect(page.getByText("Set up a passkey")).toHaveCount(0);
+});

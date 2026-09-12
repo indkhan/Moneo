@@ -25,6 +25,12 @@ const envSchema = z.object({
   AUTH0_CUSTOM_DOMAIN: z.string().min(1).optional(),
   /** Seals the browser session cookie. Required by auth routes; generate with `openssl rand -hex 32`. */
   SESSION_SECRET: z.string().min(1).optional(),
+  // --- Epoch 1, Issue 1.8: provider-backed strong authentication ---
+  /** Management API credentials for live MFA verification. Default to the base pair when unset. */
+  AUTH0_MANAGEMENT_CLIENT_ID: z.string().min(1).optional(),
+  AUTH0_MANAGEMENT_CLIENT_SECRET: z.string().min(1).optional(),
+  /** Passkey enrollment offered when anything but an explicit opt-out. */
+  AUTH0_PASSKEYS_ENABLED: z.string().min(1).optional(),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
