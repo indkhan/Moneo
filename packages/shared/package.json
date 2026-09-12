@@ -32,6 +32,10 @@
     "./currencies": {
       "types": "./dist/currencies.d.ts",
       "default": "./dist/currencies.js"
+    },
+    "./problem": {
+      "types": "./dist/problem.d.ts",
+      "default": "./dist/problem.js"
     }
   },
   "scripts": {
