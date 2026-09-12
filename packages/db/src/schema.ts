@@ -1138,3 +1138,131 @@ export const transactionRelations = pgTable(
 
 export type TransactionRelation = typeof transactionRelations.$inferSelect;
 export type NewTransactionRelation = typeof transactionRelations.$inferInsert;
+
+/** Epoch 6 — durable, tenant-scoped AI conversations and operational traces. */
+export const conversations = pgTable(
+  "conversations",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    title: text("title").notNull().default("New conversation"),
+    pinned: boolean("pinned").notNull().default(false),
+    context: jsonb("context").$type<Record<string, unknown>>().notNull().default({}),
+    aiPolicyVersion: integer("ai_policy_version").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("conversations_workspace_updated_idx").on(t.workspaceId, t.updatedAt)],
+);
+export type Conversation = typeof conversations.$inferSelect;
+
+export const messages = pgTable(
+  "messages",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+    aiPolicyVersion: integer("ai_policy_version").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("messages_role_check", sql`${t.role} in ('user', 'assistant', 'tool')`),
+    index("messages_conversation_created_idx").on(t.conversationId, t.createdAt),
+  ],
+);
+export type Message = typeof messages.$inferSelect;
+
+export const aiCapabilities = pgTable("ai_capabilities", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  key: text("key").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const aiCapabilityVersions = pgTable(
+  "ai_capability_versions",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    capabilityId: uuid("capability_id").notNull().references(() => aiCapabilities.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    configuration: jsonb("configuration").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("ai_capability_versions_capability_version_uniq").on(t.capabilityId, t.version)],
+);
+
+export const workspaceAiConfig = pgTable("workspace_ai_config", {
+  workspaceId: uuid("workspace_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
+  mode: text("mode").notNull().default("included"),
+  credentialCiphertext: text("credential_ciphertext"),
+  credentialVersion: integer("credential_version").notNull().default(1),
+  aiPolicyVersion: integer("ai_policy_version").notNull().default(1),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [check("workspace_ai_config_mode_check", sql`${t.mode} in ('included', 'custom')`)]);
+
+export const workspaceAiCapabilityOverrides = pgTable(
+  "workspace_ai_capability_overrides",
+  {
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    capabilityId: uuid("capability_id").notNull().references(() => aiCapabilities.id, { onDelete: "cascade" }),
+    configuration: jsonb("configuration").$type<Record<string, unknown>>().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.workspaceId, t.capabilityId] })],
+);
+
+export const aiRuns = pgTable(
+  "ai_runs",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id").references(() => conversations.id, { onDelete: "set null" }),
+    capabilityVersionId: uuid("capability_version_id").references(() => aiCapabilityVersions.id),
+    status: text("status").notNull().default("queued"),
+    aiPolicyVersion: integer("ai_policy_version").notNull(),
+    budget: jsonb("budget").$type<Record<string, unknown>>().notNull(),
+    error: jsonb("error").$type<Record<string, unknown>>(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("ai_runs_status_check", sql`${t.status} in ('queued', 'running', 'succeeded', 'failed', 'cancelled')`),
+    index("ai_runs_workspace_created_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
+export const aiModelCalls = pgTable("ai_model_calls", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  runId: uuid("run_id").notNull().references(() => aiRuns.id, { onDelete: "cascade" }),
+  requestedModel: text("requested_model").notNull(),
+  resolvedModel: text("resolved_model"),
+  resolvedProvider: text("resolved_provider"),
+  inputTokens: integer("input_tokens"), outputTokens: integer("output_tokens"), cachedTokens: integer("cached_tokens"),
+  costMicros: bigint("cost_micros", { mode: "number" }), latencyMs: integer("latency_ms"), finishReason: text("finish_reason"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const aiToolCalls = pgTable("ai_tool_calls", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  runId: uuid("run_id").notNull().references(() => aiRuns.id, { onDelete: "cascade" }),
+  toolName: text("tool_name").notNull(), input: jsonb("input").$type<Record<string, unknown>>().notNull(),
+  output: jsonb("output").$type<Record<string, unknown>>(), status: text("status").notNull().default("queued"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [check("ai_tool_calls_status_check", sql`${t.status} in ('queued', 'running', 'succeeded', 'failed', 'cancelled')`)]);
+
+/** Account exclusions are evaluated before any AI data read or aggregate. */
+export const workspaceAiAccessPolicies = pgTable(
+  "workspace_ai_access_policies",
+  {
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+    aiAccess: boolean("ai_access").notNull().default(true),
+    policyVersion: integer("policy_version").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.workspaceId, t.accountId] })],
+);

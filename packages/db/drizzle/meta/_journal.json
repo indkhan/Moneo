@@ -127,6 +127,13 @@
       "when": 1789242000000,
       "tag": "0017_transaction_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789243000000,
+      "tag": "0018_ai_persistence",
+      "breakpoints": true
     }
   ]
 }
