@@ -1,4 +1,5 @@
 export * from "./schema.js";
+export * from "./account-queries.js";
 export * from "./currencies.js";
 export * from "./client.js";
 export * from "./job-queue.js";
