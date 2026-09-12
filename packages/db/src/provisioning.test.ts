@@ -42,7 +42,7 @@ describe("first-login provisioning (migration 0003)", () => {
   };
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0003_user_provisioning");
+    pg = await createMigratedDb("0012_command_input_hash");
     owner = drizzlePglite(pg, { schema });
   });
 

@@ -155,6 +155,8 @@ export const commandOperations = pgTable(
     commandName: text("command_name").notNull(),
     /** Client-supplied key, scoped per command: same key + same command = replay. */
     idempotencyKey: text("idempotency_key").notNull(),
+    /** Stable hash of the command input (Issue 4.10): same key + different input is rejected. */
+    inputHash: text("input_hash").notNull().default(""),
     actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
     /** Optimistic-concurrency guard supplied by the caller, if any. */
     expectedVersion: bigint("expected_version", { mode: "number" }),
@@ -669,6 +671,12 @@ export const accountBalanceSnapshots = pgTable(
     sourceImportId: uuid("source_import_id").references(() => imports.id, {
       onDelete: "set null",
     }),
+    /**
+     * First date NOT included in the snapshot (Issue 4.10): the snapshot
+     * covers effective_date < cutoff_date, roll-forward applies >= cutoff.
+     * NULL = unknown inclusion → reconciliation unresolved, never guessed.
+     */
+    cutoffDate: date("cutoff_date"),
     freshness: text("freshness"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -679,6 +687,7 @@ export const accountBalanceSnapshots = pgTable(
       sql`${t.source} in ('statement', 'manual', 'imported', 'other')`,
     ),
     index("account_balance_snapshots_account_observed_idx").on(t.accountId, t.observedAt),
+    index("account_balance_snapshots_account_cutoff_idx").on(t.accountId, t.cutoffDate),
     index("account_balance_snapshots_workspace_created_idx").on(t.workspaceId, t.createdAt),
   ],
 );

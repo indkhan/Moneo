@@ -19,21 +19,25 @@ describe("identity/workspace schema (migrations 0000-0001)", () => {
   const db = () => drizzle(pg, { schema: { users, workspaces, workspaceMembers, securityAuditEvents } });
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0001_identity_workspace");
+    pg = await createMigratedDb("0012_command_input_hash");
   });
 
   afterAll(async () => {
     await pg.close();
   });
 
-  it("creates exactly the expected tables", async () => {
-    expect(await tableNames(pg)).toEqual([
+  it("creates the identity tables", async () => {
+    const tables = await tableNames(pg);
+    // Containment, not equality: later epochs add tables to the same chain.
+    for (const t of [
       "currencies",
       "security_audit_events",
       "users",
       "workspace_members",
       "workspaces",
-    ]);
+    ]) {
+      expect(tables).toContain(t);
+    }
   });
 
   it("stores a user row with an application-generated UUIDv7 id and timestamps", async () => {

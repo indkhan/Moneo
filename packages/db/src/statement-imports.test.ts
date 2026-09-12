@@ -22,7 +22,7 @@ describe("prior import file history", () => {
   let srcA!: string;
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0007_source_ingestion");
+    pg = await createMigratedDb("0012_command_input_hash");
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Hist A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Hist B" }).returning()).id;

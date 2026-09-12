@@ -232,6 +232,43 @@
         }
       }
     },
+    "/accounts/{id}/balance-preview": {
+      "get": {
+        "operationId": "previewBalance",
+        "summary": "Project a proposed balance snapshot over later transactions",
+        "parameters": [
+          { "$ref": "#/components/parameters/AccountId" },
+          {
+            "name": "currentAmountMinor",
+            "in": "query",
+            "required": true,
+            "schema": { "$ref": "#/components/schemas/MoneyString" }
+          },
+          {
+            "name": "currencyCode",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^[A-Za-z]{3}$" }
+          },
+          {
+            "name": "cutoffDate",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Projection or honest unresolved reason; never a mutation",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/BalancePreview" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/transactions/{id}": {
       "get": {
         "operationId": "getTransaction",
@@ -717,6 +754,7 @@
           "includeInNetWorth",
           "createdAt",
           "updatedAt",
+          "balanceState",
           "balance"
         ],
         "properties": {
@@ -733,6 +771,11 @@
           "archivedAt": { "type": ["string", "null"], "format": "date-time" },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" },
+          "balanceState": {
+            "type": "string",
+            "enum": ["unknown", "ok", "unreconciled", "conflict"],
+            "description": "Coverage state for aggregate gates; unknown/conflict/unreconciled are never zero."
+          },
           "balance": {
             "description": "Latest known snapshot; null means the balance is unknown, never zero.",
             "oneOf": [{ "$ref": "#/components/schemas/AccountBalance" }, { "type": "null" }]
@@ -744,6 +787,31 @@
         "required": ["items"],
         "properties": {
           "items": { "type": "array", "items": { "$ref": "#/components/schemas/Account" } }
+        }
+      },
+      "BalancePreview": {
+        "type": "object",
+        "required": [
+          "applicableCount",
+          "skippedCrossCurrency",
+          "projectedCurrentMinor",
+          "unresolved",
+          "reason",
+          "truncated"
+        ],
+        "properties": {
+          "applicableCount": { "type": "integer", "minimum": 0 },
+          "skippedCrossCurrency": { "type": "integer", "minimum": 0 },
+          "projectedCurrentMinor": {
+            "type": ["string", "null"],
+            "description": "Decimal-string minor units; null when unresolved."
+          },
+          "unresolved": { "type": "boolean" },
+          "reason": {
+            "type": ["string", "null"],
+            "enum": ["no-cutoff", "no-snapshot-amount", "mixed-currency", "truncated", null]
+          },
+          "truncated": { "type": "boolean" }
         }
       },
       "Transaction": {

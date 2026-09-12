@@ -4,8 +4,10 @@ import {
   listAccounts,
   type BalanceView,
 } from "@moneo/db/account-queries";
+import { getBalanceStates } from "@moneo/db/balance-commands";
 import type { Account as DbAccount } from "@moneo/db/schema";
 import { withWorkspaceTransaction } from "@moneo/db/tenancy";
+import type { BalanceState } from "@moneo/finance";
 import { DomainError, problemResponse } from "@moneo/shared/problem";
 import { NextResponse } from "next/server";
 import type { Account as AccountDto } from "../generated/client";
@@ -25,6 +27,7 @@ export interface MoneyAccountStore {
   list(workspaceId: string, options: { includeArchived?: boolean }): Promise<DbAccount[]>;
   get(workspaceId: string, accountId: string): Promise<DbAccount | null>;
   balances(workspaceId: string, accountIds: string[]): Promise<Map<string, BalanceView>>;
+  states(workspaceId: string, accountIds: string[]): Promise<Map<string, BalanceState>>;
 }
 
 export function createDrizzleMoneyAccountStore(): MoneyAccountStore {
@@ -37,10 +40,16 @@ export function createDrizzleMoneyAccountStore(): MoneyAccountStore {
       withWorkspaceTransaction(workspaceId, (tx) =>
         getAccountBalances(tx, workspaceId, accountIds),
       ),
+    states: (workspaceId, accountIds) =>
+      withWorkspaceTransaction(workspaceId, (tx) => getBalanceStates(tx, workspaceId, accountIds)),
   };
 }
 
-export function toAccountDto(account: DbAccount, balance: BalanceView | null): AccountDto {
+export function toAccountDto(
+  account: DbAccount,
+  balance: BalanceView | null,
+  state: BalanceState = "unknown",
+): AccountDto {
   return {
     id: account.id,
     name: account.name,
@@ -52,6 +61,7 @@ export function toAccountDto(account: DbAccount, balance: BalanceView | null): A
     archivedAt: account.archivedAt?.toISOString() ?? null,
     createdAt: account.createdAt.toISOString(),
     updatedAt: account.updatedAt.toISOString(),
+    balanceState: state,
     balance: balance
       ? {
           currentAmountMinor: balance.currentAmountMinor,
@@ -94,7 +104,15 @@ export async function handleListAccounts(
     ctx.workspaceId,
     rows.map((a) => a.id),
   );
-  return NextResponse.json({ items: rows.map((a) => toAccountDto(a, balances.get(a.id) ?? null)) });
+  const states = await ctx.accounts.states(
+    ctx.workspaceId,
+    rows.map((a) => a.id),
+  );
+  return NextResponse.json({
+    items: rows.map((a) =>
+      toAccountDto(a, balances.get(a.id) ?? null, states.get(a.id) ?? "unknown"),
+    ),
+  });
 }
 
 /** GET /api/v1/accounts/{id} — one account; foreign ids answer 404. */
@@ -114,5 +132,8 @@ export async function handleGetAccount(
     return problemResponse(new DomainError("NOT_FOUND", { detail: "Account not found." }));
   }
   const balances = await ctx.accounts.balances(ctx.workspaceId, [account.id]);
-  return NextResponse.json(toAccountDto(account, balances.get(account.id) ?? null));
+  const states = await ctx.accounts.states(ctx.workspaceId, [account.id]);
+  return NextResponse.json(
+    toAccountDto(account, balances.get(account.id) ?? null, states.get(account.id) ?? "unknown"),
+  );
 }

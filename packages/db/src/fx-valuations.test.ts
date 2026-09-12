@@ -82,7 +82,7 @@ describe("fx valuation service (migration 0010)", () => {
   let staleTxn!: string;
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0010_fx_valuation");
+    pg = await createMigratedDb("0012_command_input_hash");
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "FX A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "FX B" }).returning()).id;

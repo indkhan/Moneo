@@ -49,6 +49,7 @@ describe("api contract", () => {
       "/commands/{commandName}",
       "/accounts",
       "/accounts/{id}",
+      "/accounts/{id}/balance-preview",
       "/transactions/{id}",
       "/transactions/search",
       "/imports/initiate",
@@ -90,6 +91,12 @@ describe("api contract", () => {
       required: string[];
     };
     expect(account.required).toContain("balance");
+    expect(account.required).toContain("balanceState");
+
+    const preview = contract.components.schemas["BalancePreview"] as {
+      required: string[];
+    };
+    expect(preview.required).toContain("projectedCurrentMinor");
   });
 
   it("declares every problem code on the shared error schema", () => {

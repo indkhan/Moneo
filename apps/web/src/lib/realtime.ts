@@ -34,6 +34,7 @@ export const INVALIDATION_MAP: Record<string, readonly string[]> = {
   "job.statusChanged": ["jobs", "job-detail"],
   "job.submitted": ["jobs"],
   "command.succeeded": ["commands"],
+  "account.balanceRecorded": ["accounts"],
 };
 
 export function invalidationKeysFor(eventType: string): readonly string[] {

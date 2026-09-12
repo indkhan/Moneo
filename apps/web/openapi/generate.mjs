@@ -144,8 +144,20 @@ export interface Account {
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Coverage state for aggregate gates; never zero. */
+  balanceState: "unknown" | "ok" | "unreconciled" | "conflict";
   /** Latest known snapshot; null means the balance is unknown, never zero. */
   balance: AccountBalance | null;
+}
+
+export interface BalancePreview {
+  applicableCount: number;
+  skippedCrossCurrency: number;
+  /** Decimal-string minor units; null when unresolved. */
+  projectedCurrentMinor: string | null;
+  unresolved: boolean;
+  reason: "no-cutoff" | "no-snapshot-amount" | "mixed-currency" | "truncated" | null;
+  truncated: boolean;
 }
 
 export interface AccountList {
@@ -361,6 +373,11 @@ export function createClient(options: { baseUrl?: string; fetchFn?: FetchFn } = 
       request(fetchFn, baseUrl, \`/accounts\${query(params)}\`),
     getAccount: (id: string): Promise<Account> =>
       request(fetchFn, baseUrl, \`/accounts/\${encodeURIComponent(id)}\`),
+    previewBalance: (
+      id: string,
+      params: { currentAmountMinor: string; currencyCode: string; cutoffDate?: string },
+    ): Promise<BalancePreview> =>
+      request(fetchFn, baseUrl, \`/accounts/\${encodeURIComponent(id)}/balance-preview\${query(params)}\`),
     searchTransactions: (params: TransactionSearchParams = {}): Promise<TransactionPage> =>
       request(fetchFn, baseUrl, \`/transactions/search\${query(params)}\`),
     getTransaction: (id: string): Promise<TransactionDetail> =>

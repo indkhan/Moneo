@@ -90,7 +90,7 @@ describe("canonical account model (migration 0008)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0008_canonical_accounts");
+    pg = await createMigratedDb("0012_command_input_hash");
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Accounts A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Accounts B" }).returning()).id;

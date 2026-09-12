@@ -54,7 +54,7 @@ describe("durable job and schedule schema (migration 0006)", () => {
     one(await q<{ n: string }>(`SELECT count(*)::text AS n FROM ${table} ${where}`, params)).n;
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0006_durable_jobs");
+    pg = await createMigratedDb("0012_command_input_hash");
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Jobs A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Jobs B" }).returning()).id;

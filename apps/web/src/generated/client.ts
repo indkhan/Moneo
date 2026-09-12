@@ -1,7 +1,7 @@
 /**
  * GENERATED — do not edit by hand.
  * Source: apps/web/openapi/openapi.json (info.version=v1)
- * contractSha: 182aef0db5a09abf4ad0af1474c20cbfd127d816a47dfd172fe251ff2444266c
+ * contractSha: 889161f49939275514be4b8925c693fdf89d72f84393727ad7249d13dbb996f7
  * Regenerate: pnpm --filter @moneo/web gen:client
  * Every browser DTO comes from here; later API issues extend the contract first.
  */
@@ -107,8 +107,20 @@ export interface Account {
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Coverage state for aggregate gates; never zero. */
+  balanceState: "unknown" | "ok" | "unreconciled" | "conflict";
   /** Latest known snapshot; null means the balance is unknown, never zero. */
   balance: AccountBalance | null;
+}
+
+export interface BalancePreview {
+  applicableCount: number;
+  skippedCrossCurrency: number;
+  /** Decimal-string minor units; null when unresolved. */
+  projectedCurrentMinor: string | null;
+  unresolved: boolean;
+  reason: "no-cutoff" | "no-snapshot-amount" | "mixed-currency" | "truncated" | null;
+  truncated: boolean;
 }
 
 export interface AccountList {
@@ -234,7 +246,7 @@ export interface ImportPreview {
   suggestedAccount: string;
 }
 
-export const CONTRACT_SHA = "182aef0db5a09abf4ad0af1474c20cbfd127d816a47dfd172fe251ff2444266c";
+export const CONTRACT_SHA = "889161f49939275514be4b8925c693fdf89d72f84393727ad7249d13dbb996f7";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -324,6 +336,11 @@ export function createClient(options: { baseUrl?: string; fetchFn?: FetchFn } = 
       request(fetchFn, baseUrl, `/accounts${query(params)}`),
     getAccount: (id: string): Promise<Account> =>
       request(fetchFn, baseUrl, `/accounts/${encodeURIComponent(id)}`),
+    previewBalance: (
+      id: string,
+      params: { currentAmountMinor: string; currencyCode: string; cutoffDate?: string },
+    ): Promise<BalancePreview> =>
+      request(fetchFn, baseUrl, `/accounts/${encodeURIComponent(id)}/balance-preview${query(params)}`),
     searchTransactions: (params: TransactionSearchParams = {}): Promise<TransactionPage> =>
       request(fetchFn, baseUrl, `/transactions/search${query(params)}`),
     getTransaction: (id: string): Promise<TransactionDetail> =>

@@ -6,8 +6,11 @@ import { PGlite } from "@electric-sql/pglite";
  * isolated in-memory PGlite (real PostgreSQL semantics: FKs, unique, checks,
  * RLS, roles) so tests exercise the exact SQL that runs in staging/prod.
  *
- * `upto` selects the newest migration tag to apply, letting Issue 1.1 tests
- * stop before RLS/roles while Issue 1.2 tests apply the full chain.
+ * `upto` selects the newest migration tag to apply. Convention: chain tests
+ * run to the LATEST migration, because drizzle inserts use the current
+ * schema (a test pinned to an old tag breaks as soon as a later migration
+ * ALTERs a table it touches). The `upto` escape hatch stays for tests that
+ * must prove a historical prefix in isolation.
  */
 export async function createMigratedDb(upto = "0001_identity_workspace"): Promise<PGlite> {
   const db = new PGlite();

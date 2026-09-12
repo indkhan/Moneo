@@ -60,7 +60,7 @@ describe("command/audit/outbox schema (migration 0005)", () => {
     one(await q<{ n: string }>(`SELECT count(*)::text AS n FROM ${table} ${where}`, params)).n;
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0005_command_outbox");
+    pg = await createMigratedDb("0012_command_input_hash");
     const db = drizzlePglite(pg, { schema });
     userA = one(await db.insert(users).values({ authSubject: "auth0|cmd-a" }).returning()).id;
     await db.insert(users).values({ authSubject: "auth0|cmd-b" });
@@ -86,6 +86,7 @@ describe("command/audit/outbox schema (migration 0005)", () => {
           [table],
         )
       ).map((r) => r.column_name);
+    // input_hash arrives via a later ALTER (Issue 4.10), so it sorts last.
     expect(await cols("command_operations")).toEqual([
       "id",
       "workspace_id",
@@ -98,6 +99,7 @@ describe("command/audit/outbox schema (migration 0005)", () => {
       "result",
       "created_at",
       "updated_at",
+      "input_hash",
     ]);
     expect(await cols("audit_events")).toEqual([
       "id",

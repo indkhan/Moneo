@@ -36,7 +36,7 @@ describe("findWorkspaceShell", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0003_user_provisioning");
+    pg = await createMigratedDb("0012_command_input_hash");
     const db = drizzlePglite(pg, { schema });
     const user = one(await db.insert(users).values({ authSubject: "auth0|shell-user" }).returning());
     wsId = one(await db.insert(workspaces).values({ name: "Shell workspace", createdByUserId: user.id }).returning()).id;

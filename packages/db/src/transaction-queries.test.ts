@@ -52,7 +52,7 @@ describe("cursor-based transaction search (issue 4.6)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0009_canonical_transactions");
+    pg = await createMigratedDb("0012_command_input_hash");
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Search A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Search B" }).returning()).id;

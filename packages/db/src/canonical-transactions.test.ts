@@ -94,7 +94,7 @@ describe("canonical transaction model (migration 0009)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0009_canonical_transactions");
+    pg = await createMigratedDb("0012_command_input_hash");
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Transactions A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Transactions B" }).returning()).id;

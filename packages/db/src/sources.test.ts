@@ -95,7 +95,7 @@ describe("source ingestion schema (migration 0007)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0007_source_ingestion");
+    pg = await createMigratedDb("0012_command_input_hash");
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Sources A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Sources B" }).returning()).id;

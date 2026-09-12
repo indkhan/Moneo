@@ -26,6 +26,7 @@ function account(overrides: Partial<Account> = {}): Account {
     archivedAt: null,
     createdAt: "2026-08-01T00:00:00.000Z",
     updatedAt: "2026-08-02T00:00:00.000Z",
+    balanceState: "ok",
     balance: {
       currentAmountMinor: "12500",
       availableAmountMinor: null,
@@ -72,6 +73,20 @@ describe("AccountsList", () => {
   it("renders the empty state with no accounts", () => {
     const html = renderToStaticMarkup(h(AccountsList, { accounts: [] }));
     expect(html).toContain("No accounts yet");
+  });
+
+  it("badges non-ok coverage states and stays quiet when ok", () => {
+    const unknown = renderToStaticMarkup(
+      h(AccountsList, { accounts: [account({ balance: null, balanceState: "unknown" })] }),
+    );
+    expect(unknown).toContain("Unknown balance");
+    const conflict = renderToStaticMarkup(
+      h(AccountsList, { accounts: [account({ balanceState: "conflict" })] }),
+    );
+    expect(conflict).toContain("Conflict — record a new balance");
+    const ok = renderToStaticMarkup(h(AccountsList, { accounts: [account()] }));
+    expect(ok).not.toContain("Unknown balance");
+    expect(ok).not.toContain("Needs review");
   });
 });
 

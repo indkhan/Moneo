@@ -10,7 +10,7 @@ import { uuidv7 } from "./uuid.js";
 /**
  * Issue 1.2 — RLS and runtime DB roles.
  *
- * Applies the REAL shipped chain (0000 + 0001 + 0002) to PGlite and proves the
+ * Applies the REAL shipped chain (0000-0012) to PGlite and proves the
  * five mandatory behaviours: A cannot read B, A cannot update B, wrong
  * workspace FK rejected, missing tenant context fails safely, and the app
  * role cannot bypass RLS. Plus: the users-table scoping rule, the owner-role
@@ -59,7 +59,7 @@ describe("workspace RLS and runtime roles (migrations 0000-0002)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0002_workspace_rls");
+    pg = await createMigratedDb("0012_command_input_hash");
     const db = drizzlePglite(pg, { schema });
 
     userA = one(await db.insert(users).values({ authSubject: "auth0|tenant-a" }).returning()).id;
@@ -107,13 +107,17 @@ describe("workspace RLS and runtime roles (migrations 0000-0002)", () => {
     const policies = await q<{ tablename: string; policyname: string }>(
       "SELECT tablename, policyname FROM pg_policies WHERE schemaname = 'public' ORDER BY tablename, policyname",
     );
-    expect(policies.map((r) => `${r.tablename}.${r.policyname}`)).toEqual([
-      "security_audit_events.security_audit_events_isolation",
-      "users.users_insert_provisioning",
-      "users.users_select_scoped",
-      "workspace_members.workspace_members_isolation",
-      "workspaces.workspaces_isolation",
-    ]);
+    // Origin policies from Issue 1.2; later epochs add their own tables and
+    // policies (each epoch's test asserts those). Containment, not equality.
+    expect(policies.map((r) => `${r.tablename}.${r.policyname}`)).toEqual(
+      expect.arrayContaining([
+        "security_audit_events.security_audit_events_isolation",
+        "users.users_insert_provisioning",
+        "users.users_select_scoped",
+        "workspace_members.workspace_members_isolation",
+        "workspaces.workspaces_isolation",
+      ]),
+    );
   });
 
   it("A cannot read B: every tenant table is filtered to the caller's workspace", async () => {

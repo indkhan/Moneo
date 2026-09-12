@@ -38,7 +38,7 @@ describe("session registry (migration 0004)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0004_session_registry");
+    pg = await createMigratedDb("0012_command_input_hash");
     const owner = drizzlePglite(pg, { schema });
     const a = await provisionUserOnLogin(owner, { authSubject: "auth0|session-a" });
     const b = await provisionUserOnLogin(owner, { authSubject: "auth0|session-b" });

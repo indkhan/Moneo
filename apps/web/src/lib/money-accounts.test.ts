@@ -40,6 +40,7 @@ function store(overrides: Partial<MoneyAccountStore> = {}): MoneyAccountStore {
     list: () => Promise.resolve([]),
     get: () => Promise.resolve(null),
     balances: () => Promise.resolve(new Map()),
+    states: () => Promise.resolve(new Map()),
     ...overrides,
   };
 }
@@ -91,10 +92,15 @@ describe("handleListAccounts", () => {
     expect(res.status).toBe(200);
     expect(seen).toEqual([{ options: {} }]);
     const body = (await res.json()) as {
-      items: { id: string; balance: { currentAmountMinor: string | null } | null }[];
+      items: {
+        id: string;
+        balanceState: string;
+        balance: { currentAmountMinor: string | null } | null;
+      }[];
     };
     expect(body.items).toHaveLength(2);
     expect(body.items[0]?.balance?.currentAmountMinor).toBe("12500");
+    expect(body.items[0]?.balanceState).toBe("unknown");
     // No snapshot: unknown, never zero.
     expect(body.items[1]?.balance).toBeNull();
   });
