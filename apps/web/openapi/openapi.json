@@ -286,6 +286,31 @@
         }
       }
     },
+    "/matches/pending": {
+      "get": {
+        "operationId": "listPendingMatches",
+        "summary": "Staged review rows for one import",
+        "parameters": [
+          {
+            "name": "importId",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending candidates with both sides for review",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MatchCandidateList" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" }
+        }
+      }
+    },
     "/transactions/search": {
       "get": {
         "operationId": "searchTransactions",
@@ -892,6 +917,46 @@
             }
           }
         ]
+      },
+      "MatchCandidate": {
+        "type": "object",
+        "required": [
+          "id",
+          "importId",
+          "sourceTransactionId",
+          "candidateTransactionId",
+          "matchRule",
+          "candidateDescription",
+          "stagedDescription",
+          "createdAt"
+        ],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "importId": { "type": "string", "format": "uuid" },
+          "sourceTransactionId": { "type": "string", "format": "uuid" },
+          "candidateTransactionId": { "type": "string", "format": "uuid" },
+          "matchRule": {
+            "type": "string",
+            "enum": ["trusted-external-id", "fuzzy-date-amount-description"]
+          },
+          "candidateDate": { "type": "string" },
+          "candidateDescription": { "type": "string" },
+          "candidateAmountMinor": { "type": "string" },
+          "candidateCurrency": { "type": "string" },
+          "stagedDescription": { "type": "string" },
+          "stagedDate": { "type": "string" },
+          "stagedAmountMinor": { "type": "string" },
+          "stagedCurrency": { "type": "string" },
+          "stagedDirection": { "type": "string", "enum": ["credit", "debit"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "MatchCandidateList": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/MatchCandidate" } }
+        }
       }
     },
     "responses": {

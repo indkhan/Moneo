@@ -204,6 +204,28 @@ export interface TransactionDetail extends Transaction {
   sources: TransactionSource[];
 }
 
+export interface MatchCandidate {
+  id: string;
+  importId: string;
+  sourceTransactionId: string;
+  candidateTransactionId: string;
+  matchRule: "trusted-external-id" | "fuzzy-date-amount-description";
+  candidateDate: string;
+  candidateDescription: string;
+  candidateAmountMinor: string;
+  candidateCurrency: string;
+  stagedDescription: string;
+  stagedDate: string;
+  stagedAmountMinor: string;
+  stagedCurrency: string;
+  stagedDirection: "credit" | "debit";
+  createdAt: string;
+}
+
+export interface MatchCandidateList {
+  items: MatchCandidate[];
+}
+
 export type TransactionSort = "newest" | "oldest";
 
 export interface TransactionSearchParams {
@@ -382,6 +404,8 @@ export function createClient(options: { baseUrl?: string; fetchFn?: FetchFn } = 
       request(fetchFn, baseUrl, \`/transactions/search\${query(params)}\`),
     getTransaction: (id: string): Promise<TransactionDetail> =>
       request(fetchFn, baseUrl, \`/transactions/\${encodeURIComponent(id)}\`),
+    listPendingMatches: (importId: string): Promise<MatchCandidateList> =>
+      request(fetchFn, baseUrl, \`/matches/pending?importId=\${encodeURIComponent(importId)}\`),
   };
 }
 

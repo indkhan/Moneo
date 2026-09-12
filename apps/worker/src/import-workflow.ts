@@ -73,11 +73,48 @@ export interface ImportJobInput {
 
 export interface ImportSummary {
   rowCount: number;
+  /** Accepted as new canonical transactions (or new source rows without the hook). */
   newCount: number;
+  /** Retried source rows plus trusted-matched rows (no new canonical effect). */
   duplicateCount: number;
+  /** Staged for user review (Issue 4.11): outside canonical totals until resolved. */
   reviewCount: number;
   errorCount: number;
   sourceAccountId: string;
+}
+
+/**
+ * Issue 4.11 — optional canonicalize/match hook for the upsert loop.
+ *
+ * Runs per mapped row AFTER the source observation is recorded, so raw
+ * history always lands even when matching is unavailable. Returns the
+ * canonical disposition: the workflow maps accepted→new, matched→duplicate,
+ * pending→review. Throws DomainError for rejected rows (counted, never
+ * retried). Absent (all Epoch 3 tests, legacy behavior): every new source
+ * row counts as new, retries as duplicate.
+ */
+export interface CanonicalizeHook {
+  canonicalize(input: {
+    workspaceId: string;
+    dataSourceId: string;
+    importId: string;
+    sourceAccountId: string;
+    sourceTransactionId: string;
+    sourceAccountLabel: string;
+    row: {
+      rowNumber: number;
+      date: string;
+      description: string;
+      amountMinor: string;
+      currency: string;
+      direction: "credit" | "debit";
+      account: string | null;
+    };
+  }): Promise<{ disposition: "accepted" | "matched" | "pending" }>;
+}
+
+export interface ImportHooks {
+  canonicalize?: CanonicalizeHook;
 }
 
 export interface ImportStore {
@@ -323,6 +360,7 @@ export async function runImportWorkflow(
   store: ImportStore,
   input: ImportJobInput,
   ctx: WorkflowContext,
+  hooks: ImportHooks = {},
 ): Promise<ImportSummary> {
   const batchSize = input.batchSize ?? 500;
   const fail = async (message: string): Promise<never> => {
@@ -380,9 +418,13 @@ export async function runImportWorkflow(
   });
 
   // — SOURCE_TRANSACTION_UPSERT (batched) —————————————————————————
+  // With the Issue 4.11 hook, each row additionally resolves to accepted /
+  // matched / pending AFTER its observation lands; without it the legacy
+  // source counts apply unchanged.
   await store.setImportStage(input.importId, "SOURCE_TRANSACTION_UPSERT");
   let newCount = 0;
   let duplicateCount = 0;
+  let reviewCount = 0;
   let errorCount = parsed.errors.length;
   const totalBatches = Math.max(1, Math.ceil(parsed.rows.length / batchSize));
   for (let batch = 0; batch < totalBatches; batch += 1) {
@@ -408,10 +450,12 @@ export async function runImportWorkflow(
         sourceAccountId: account.id,
         stableKey,
       });
-      if (txn.created) {
-        newCount += 1;
-      } else {
-        duplicateCount += 1;
+      if (hooks.canonicalize === undefined) {
+        if (txn.created) {
+          newCount += 1;
+        } else {
+          duplicateCount += 1;
+        }
       }
       await store.recordObservation({
         workspaceId: input.workspaceId,
@@ -424,6 +468,32 @@ export async function runImportWorkflow(
         ),
         rawPayload: { cells: slice.find((r) => r.rowNumber === item.rowNumber)?.cells ?? [] },
       });
+      if (hooks.canonicalize !== undefined) {
+        try {
+          const decided = await hooks.canonicalize.canonicalize({
+            workspaceId: input.workspaceId,
+            dataSourceId: input.dataSourceId,
+            importId: input.importId,
+            sourceAccountId: account.id,
+            sourceTransactionId: txn.id,
+            sourceAccountLabel: label,
+            row: item,
+          });
+          if (decided.disposition === "accepted") {
+            newCount += 1;
+          } else if (decided.disposition === "matched") {
+            duplicateCount += 1;
+          } else {
+            reviewCount += 1;
+          }
+        } catch (error) {
+          if (error instanceof DomainError) {
+            errorCount += 1;
+            continue;
+          }
+          throw error;
+        }
+      }
     }
     await store.setImportStage(input.importId, "SOURCE_TRANSACTION_UPSERT", {
       progressPercent: Math.floor(((batch + 1) / totalBatches) * 100),
@@ -440,7 +510,7 @@ export async function runImportWorkflow(
     rowCount: parsed.rows.length + parsed.errors.length,
     newCount,
     duplicateCount,
-    reviewCount: 0,
+    reviewCount,
     errorCount,
     sourceAccountId: account.id,
   };
@@ -449,10 +519,10 @@ export async function runImportWorkflow(
 }
 
 /** Adapter from untyped BullMQ payloads to the typed workflow. */
-export function createImportHandler(store: ImportStore): JobHandler {
+export function createImportHandler(store: ImportStore, hooks: ImportHooks = {}): JobHandler {
   return async (payload: Record<string, unknown>, ctx: HandlerContext) => {
     const input = parseImportInput(payload);
-    const summary = await runImportWorkflow(store, input, ctx);
+    const summary = await runImportWorkflow(store, input, ctx, hooks);
     // Spread into a fresh record: the durable lifecycle stores job results
     // as JSON, and the spread type carries the known summary fields with it.
     return { ...summary };
@@ -460,6 +530,9 @@ export function createImportHandler(store: ImportStore): JobHandler {
 }
 
 /** Handler map entry for `runDurableJob` (Issue 2.6 lifecycle). */
-export function createImportHandlers(store: ImportStore): Map<string, JobHandler> {
-  return new Map([[IMPORT_JOB_TYPE, createImportHandler(store)]]);
+export function createImportHandlers(
+  store: ImportStore,
+  hooks: ImportHooks = {},
+): Map<string, JobHandler> {
+  return new Map([[IMPORT_JOB_TYPE, createImportHandler(store, hooks)]]);
 }

@@ -1,4 +1,5 @@
 import { executeRecordBalance } from "@moneo/db/balance-commands";
+import { executeResolveMatch } from "@moneo/db/import-matching";
 import { withWorkspaceTransaction } from "@moneo/db/tenancy";
 import { CommandError } from "@moneo/finance";
 import { DomainError, fromCommandError, problemResponse } from "@moneo/shared/problem";
@@ -24,6 +25,11 @@ const signedMinorOrNullSchema = z
   .string()
   .regex(/^-?(0|[1-9][0-9]*)$/, "must be signed integer-string minor units")
   .nullable();
+
+export const resolveMatchInputSchema = z.object({
+  candidateId: z.uuid("candidate id must be a UUID"),
+  decision: z.enum(["link", "distinct"]),
+});
 
 export const recordBalanceInputSchema = z.object({
   accountId: z.uuid("account id must be a UUID"),
@@ -62,33 +68,55 @@ export type CommandHandler = CommandRegistration["run"];
 
 /** Registry of audited domain commands. Additive: later issues add entries. */
 export function createDrizzleCommandRegistry(): Map<string, CommandRegistration> {
+  const recordBalance: CommandRegistration = {
+    inputSchema: recordBalanceInputSchema,
+    run: ({ workspaceId, actorUserId, metadata, input }) =>
+      withWorkspaceTransaction(workspaceId, (tx) =>
+        executeRecordBalance(
+          tx,
+          {
+            workspaceId,
+            actorUserId,
+            idempotencyKey: metadata.idempotencyKey,
+            ...(metadata.expectedVersion !== undefined
+              ? { expectedVersion: Number(metadata.expectedVersion) }
+              : {}),
+          },
+          // Validated against recordBalanceInputSchema by the dispatcher.
+          input as Parameters<typeof executeRecordBalance>[2],
+        ).then((outcome) => ({
+          operationId: outcome.operationId,
+          replayed: outcome.replayed,
+          result: outcome.result as unknown as Record<string, unknown>,
+        })),
+      ),
+  };
+  const resolveMatch: CommandRegistration = {
+    inputSchema: resolveMatchInputSchema,
+    run: ({ workspaceId, actorUserId, metadata, input }) =>
+      withWorkspaceTransaction(workspaceId, (tx) =>
+        executeResolveMatch(
+          tx,
+          {
+            workspaceId,
+            actorUserId,
+            idempotencyKey: metadata.idempotencyKey,
+            ...(metadata.expectedVersion !== undefined
+              ? { expectedVersion: Number(metadata.expectedVersion) }
+              : {}),
+          },
+          // Validated against resolveMatchInputSchema by the dispatcher.
+          input as Parameters<typeof executeResolveMatch>[2],
+        ).then((outcome) => ({
+          operationId: outcome.operationId,
+          replayed: outcome.replayed,
+          result: outcome.result as unknown as Record<string, unknown>,
+        })),
+      ),
+  };
   return new Map<string, CommandRegistration>([
-    [
-      "accounts.recordBalance",
-      {
-        inputSchema: recordBalanceInputSchema,
-        run: ({ workspaceId, actorUserId, metadata, input }) =>
-          withWorkspaceTransaction(workspaceId, (tx) =>
-            executeRecordBalance(
-              tx,
-              {
-                workspaceId,
-                actorUserId,
-                idempotencyKey: metadata.idempotencyKey,
-                ...(metadata.expectedVersion !== undefined
-                  ? { expectedVersion: Number(metadata.expectedVersion) }
-                  : {}),
-              },
-              // Validated against recordBalanceInputSchema by the dispatcher.
-              input as Parameters<typeof executeRecordBalance>[2],
-            ).then((outcome) => ({
-              operationId: outcome.operationId,
-              replayed: outcome.replayed,
-              result: outcome.result as unknown as Record<string, unknown>,
-            })),
-          ),
-      },
-    ],
+    ["accounts.recordBalance", recordBalance],
+    ["matches.resolve", resolveMatch],
   ]);
 }
 

@@ -873,3 +873,63 @@ export const transactionValuations = pgTable(
 
 export type TransactionValuation = typeof transactionValuations.$inferSelect;
 export type NewTransactionValuation = typeof transactionValuations.$inferInsert;
+
+/**
+ * Epoch 4, Issue 4.11 — staged match decisions for overlapping imports.
+ *
+ * Trusted external-identity hits auto-link (confidence `auto`); fuzzy
+ * near-matches stage as `pending` OUTSIDE canonical totals until
+ * `matches.resolve` links (MERGED) or keeps distinct (new canonical).
+ * Pair-unique, never a fuzzy-field unique on transactions themselves.
+ */
+export type MatchRule = "trusted-external-id" | "fuzzy-date-amount-description";
+export type MatchConfidence = "auto" | "review";
+export type MatchStatus = "pending" | "linked" | "distinct";
+
+export const importMatchCandidates = pgTable(
+  "import_match_candidates",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    importId: uuid("import_id")
+      .notNull()
+      .references(() => imports.id, { onDelete: "cascade" }),
+    dataSourceId: uuid("data_source_id")
+      .notNull()
+      .references(() => dataSources.id, { onDelete: "cascade" }),
+    sourceTransactionId: uuid("source_transaction_id")
+      .notNull()
+      .references(() => sourceTransactions.id, { onDelete: "cascade" }),
+    candidateTransactionId: uuid("candidate_transaction_id")
+      .notNull()
+      .references(() => transactions.id, { onDelete: "cascade" }),
+    matchRule: text("match_rule").notNull(),
+    matchVersion: text("match_version").notNull().default("v1"),
+    confidence: text("confidence").notNull().default("review"),
+    status: text("status").notNull().default("pending"),
+    detail: jsonb("detail").$type<Record<string, unknown>>().notNull().default({}),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("import_match_candidates_pair_uniq").on(t.sourceTransactionId, t.candidateTransactionId),
+    check(
+      "import_match_candidates_rule_check",
+      sql`${t.matchRule} in ('trusted-external-id', 'fuzzy-date-amount-description')`,
+    ),
+    check("import_match_candidates_confidence_check", sql`${t.confidence} in ('auto', 'review')`),
+    check(
+      "import_match_candidates_status_check",
+      sql`${t.status} in ('pending', 'linked', 'distinct')`,
+    ),
+    index("import_match_candidates_import_status_idx").on(t.importId, t.status),
+    index("import_match_candidates_workspace_created_idx").on(t.workspaceId, t.createdAt),
+  ],
+);
+
+export type ImportMatchCandidate = typeof importMatchCandidates.$inferSelect;
+export type NewImportMatchCandidate = typeof importMatchCandidates.$inferInsert;

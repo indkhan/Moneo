@@ -10,6 +10,7 @@ import {
   type ImportWizardState,
   type WizardMapping,
 } from "../lib/import-wizard";
+import { MatchReviewPanel } from "./MatchReviewPanel";
 
 /**
  * Issue 3.7 — financial statement import wizard.
@@ -283,6 +284,7 @@ export function ImportWizard({
               Start a new import
             </button>
           </div>
+          {state.file?.importId ? <MatchReviewPanel importId={state.file.importId} /> : null}
         </div>
       ) : null}
     </section>

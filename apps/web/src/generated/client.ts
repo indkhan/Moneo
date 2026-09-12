@@ -1,7 +1,7 @@
 /**
  * GENERATED — do not edit by hand.
  * Source: apps/web/openapi/openapi.json (info.version=v1)
- * contractSha: 889161f49939275514be4b8925c693fdf89d72f84393727ad7249d13dbb996f7
+ * contractSha: b3d97769e945efabafae1cf17266bccfc65253dafcbfca10a8efce6d68ce75f5
  * Regenerate: pnpm --filter @moneo/web gen:client
  * Every browser DTO comes from here; later API issues extend the contract first.
  */
@@ -167,6 +167,28 @@ export interface TransactionDetail extends Transaction {
   sources: TransactionSource[];
 }
 
+export interface MatchCandidate {
+  id: string;
+  importId: string;
+  sourceTransactionId: string;
+  candidateTransactionId: string;
+  matchRule: "trusted-external-id" | "fuzzy-date-amount-description";
+  candidateDate: string;
+  candidateDescription: string;
+  candidateAmountMinor: string;
+  candidateCurrency: string;
+  stagedDescription: string;
+  stagedDate: string;
+  stagedAmountMinor: string;
+  stagedCurrency: string;
+  stagedDirection: "credit" | "debit";
+  createdAt: string;
+}
+
+export interface MatchCandidateList {
+  items: MatchCandidate[];
+}
+
 export type TransactionSort = "newest" | "oldest";
 
 export interface TransactionSearchParams {
@@ -246,7 +268,7 @@ export interface ImportPreview {
   suggestedAccount: string;
 }
 
-export const CONTRACT_SHA = "889161f49939275514be4b8925c693fdf89d72f84393727ad7249d13dbb996f7";
+export const CONTRACT_SHA = "b3d97769e945efabafae1cf17266bccfc65253dafcbfca10a8efce6d68ce75f5";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -345,6 +367,8 @@ export function createClient(options: { baseUrl?: string; fetchFn?: FetchFn } = 
       request(fetchFn, baseUrl, `/transactions/search${query(params)}`),
     getTransaction: (id: string): Promise<TransactionDetail> =>
       request(fetchFn, baseUrl, `/transactions/${encodeURIComponent(id)}`),
+    listPendingMatches: (importId: string): Promise<MatchCandidateList> =>
+      request(fetchFn, baseUrl, `/matches/pending?importId=${encodeURIComponent(importId)}`),
   };
 }
 

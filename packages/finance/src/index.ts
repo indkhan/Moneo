@@ -12,6 +12,7 @@ export * from "./csv.js";
 export * from "./duplicate-files.js";
 export * from "./fx.js";
 export * from "./mapping.js";
+export * from "./matching.js";
 export * from "./xlsx.js";
 
 export const FINANCE_PACKAGE = "@moneo/finance";
