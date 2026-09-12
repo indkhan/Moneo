@@ -58,6 +58,10 @@
       "types": "./dist/transaction-queries.d.ts",
       "default": "./dist/transaction-queries.js"
     },
+    "./transaction-detail": {
+      "types": "./dist/transaction-detail.d.ts",
+      "default": "./dist/transaction-detail.js"
+    },
     "./sessions": {
       "types": "./dist/sessions.d.ts",
       "default": "./dist/sessions.js"

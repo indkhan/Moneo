@@ -125,6 +125,20 @@ describe("TransactionsTable", () => {
     expect(html).toContain("height:440px");
     expect(html).toContain("height:880px");
   });
+
+  it("adds a View control per row only when selection is wired", () => {
+    const rows = [{ ...transaction(), accountName: "Everyday checking" }];
+    const plain = renderToStaticMarkup(h(TransactionsTable, { rows }));
+    expect(plain).not.toContain("View");
+    const selectable = renderToStaticMarkup(
+      h(TransactionsTable, {
+        rows,
+        onSelect: () => undefined,
+      }),
+    );
+    expect(selectable).toContain("Details");
+    expect(selectable).toContain('aria-label="View COFFEE BAR"');
+  });
 });
 
 describe("formatTransactionAmount", () => {

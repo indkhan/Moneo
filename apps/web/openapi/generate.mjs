@@ -176,6 +176,22 @@ export interface TransactionPage {
   nextCursor: string | null;
 }
 
+export interface TransactionSource {
+  sourceTransactionId: string;
+  relationship: "PRIMARY" | "PENDING_PREDECESSOR" | "MERGED" | "OTHER";
+  dataSourceId: string;
+  dataSourceName: string;
+  importId: string | null;
+  fileName: string | null;
+  observedAt: string;
+  rawPayload: Record<string, unknown>;
+}
+
+export interface TransactionDetail extends Transaction {
+  accountName: string;
+  sources: TransactionSource[];
+}
+
 export type TransactionSort = "newest" | "oldest";
 
 export interface TransactionSearchParams {
@@ -347,6 +363,8 @@ export function createClient(options: { baseUrl?: string; fetchFn?: FetchFn } = 
       request(fetchFn, baseUrl, \`/accounts/\${encodeURIComponent(id)}\`),
     searchTransactions: (params: TransactionSearchParams = {}): Promise<TransactionPage> =>
       request(fetchFn, baseUrl, \`/transactions/search\${query(params)}\`),
+    getTransaction: (id: string): Promise<TransactionDetail> =>
+      request(fetchFn, baseUrl, \`/transactions/\${encodeURIComponent(id)}\`),
   };
 }
 

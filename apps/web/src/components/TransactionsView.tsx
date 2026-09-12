@@ -18,6 +18,7 @@ import {
   type Transaction,
   type TransactionSort,
 } from "../generated/client";
+import { TransactionDetailDrawer } from "./TransactionDetailDrawer";
 
 /**
  * Issue 4.7 — Money → Transactions.
@@ -80,12 +81,43 @@ export function TransactionsTable({
   rows,
   padTop,
   padBottom,
+  onSelect,
 }: {
   rows: (Transaction & { accountName: string })[];
   padTop?: number;
   padBottom?: number;
+  /** When set, each row gains a View control that reports its transaction id. */
+  onSelect?: (transactionId: string) => void;
 }) {
-  const table = useReactTable({ data: rows, columns, getCoreRowModel: getCoreRowModel() });
+  const tableColumns = React.useMemo(
+    () =>
+      onSelect
+        ? [
+            ...columns,
+            columnHelper.display({
+              id: "details",
+              header: "Details",
+              cell: (info) => (
+                <button
+                  type="button"
+                  aria-label={`View ${info.row.original.description}`}
+                  onClick={() => {
+                    onSelect(info.row.original.id);
+                  }}
+                >
+                  View
+                </button>
+              ),
+            }),
+          ]
+        : columns,
+    [onSelect],
+  );
+  const table = useReactTable({
+    data: rows,
+    columns: tableColumns,
+    getCoreRowModel: getCoreRowModel(),
+  });
   const columnCount = table.getAllColumns().length;
   const tableRows = table.getRowModel().rows;
   return (
@@ -133,6 +165,9 @@ export function TransactionsTable({
 export function TransactionsView() {
   const client = useMemo(() => createClient(), []);
   const [filters, setFilters] = useState<TransactionFilters>(EMPTY_FILTERS);
+  // Overlay selection only: the list and its filters stay mounted behind
+  // the drawer, so opening a row never loses list position or filters.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const debouncedQ = useDebounced(filters.q, 300);
   const active = useMemo(() => ({ ...filters, q: debouncedQ }), [filters, debouncedQ]);
 
@@ -295,8 +330,21 @@ export function TransactionsView() {
             {search.hasNextPage ? " (more available)" : ""}
           </p>
           <div ref={parentRef} style={{ height: 480, overflow: "auto" }}>
-            <TransactionsTable rows={visible} padTop={padTop} padBottom={padBottom} />
+            <TransactionsTable
+              rows={visible}
+              padTop={padTop}
+              padBottom={padBottom}
+              onSelect={setSelectedId}
+            />
           </div>
+          {selectedId ? (
+            <TransactionDetailDrawer
+              transactionId={selectedId}
+              onClose={() => {
+                setSelectedId(null);
+              }}
+            />
+          ) : null}
           {search.hasNextPage ? (
             <button
               type="button"

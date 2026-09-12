@@ -42,6 +42,8 @@ export const jobIdSchema = z.uuid("job id must be a UUID");
 
 export const accountIdSchema = z.uuid("account id must be a UUID");
 
+export const transactionIdSchema = z.uuid("transaction id must be a UUID");
+
 export const accountListQuerySchema = z.object({
   includeArchived: z.coerce.boolean().optional(),
 });

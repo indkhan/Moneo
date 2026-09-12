@@ -232,6 +232,23 @@
         }
       }
     },
+    "/transactions/{id}": {
+      "get": {
+        "operationId": "getTransaction",
+        "summary": "One canonical transaction with source provenance",
+        "parameters": [{ "$ref": "#/components/parameters/TransactionId" }],
+        "responses": {
+          "200": {
+            "description": "Transaction detail with original source observations",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TransactionDetail" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/transactions/search": {
       "get": {
         "operationId": "searchTransactions",
@@ -420,6 +437,12 @@
   "components": {
     "parameters": {
       "AccountId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "TransactionId": {
         "name": "id",
         "in": "path",
         "required": true,
@@ -760,6 +783,47 @@
           "items": { "type": "array", "items": { "$ref": "#/components/schemas/Transaction" } },
           "nextCursor": { "type": ["string", "null"] }
         }
+      },
+      "TransactionSource": {
+        "type": "object",
+        "required": [
+          "sourceTransactionId",
+          "relationship",
+          "dataSourceId",
+          "dataSourceName",
+          "observedAt",
+          "rawPayload"
+        ],
+        "properties": {
+          "sourceTransactionId": { "type": "string", "format": "uuid" },
+          "relationship": {
+            "type": "string",
+            "enum": ["PRIMARY", "PENDING_PREDECESSOR", "MERGED", "OTHER"]
+          },
+          "dataSourceId": { "type": "string", "format": "uuid" },
+          "dataSourceName": { "type": "string" },
+          "importId": { "type": ["string", "null"], "format": "uuid" },
+          "fileName": { "type": ["string", "null"] },
+          "observedAt": { "type": "string", "format": "date-time" },
+          "rawPayload": { "type": "object" }
+        }
+      },
+      "TransactionDetail": {
+        "type": "object",
+        "required": ["accountName", "sources"],
+        "allOf": [
+          { "$ref": "#/components/schemas/Transaction" },
+          {
+            "type": "object",
+            "properties": {
+              "accountName": { "type": "string" },
+              "sources": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/TransactionSource" }
+              }
+            }
+          }
+        ]
       }
     },
     "responses": {

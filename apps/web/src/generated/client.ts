@@ -1,7 +1,7 @@
 /**
  * GENERATED — do not edit by hand.
  * Source: apps/web/openapi/openapi.json (info.version=v1)
- * contractSha: f059a6add0b20c36344e196a596ecf3047b2e9e6f2cbbddcede805fa4a16e8f8
+ * contractSha: 182aef0db5a09abf4ad0af1474c20cbfd127d816a47dfd172fe251ff2444266c
  * Regenerate: pnpm --filter @moneo/web gen:client
  * Every browser DTO comes from here; later API issues extend the contract first.
  */
@@ -139,6 +139,22 @@ export interface TransactionPage {
   nextCursor: string | null;
 }
 
+export interface TransactionSource {
+  sourceTransactionId: string;
+  relationship: "PRIMARY" | "PENDING_PREDECESSOR" | "MERGED" | "OTHER";
+  dataSourceId: string;
+  dataSourceName: string;
+  importId: string | null;
+  fileName: string | null;
+  observedAt: string;
+  rawPayload: Record<string, unknown>;
+}
+
+export interface TransactionDetail extends Transaction {
+  accountName: string;
+  sources: TransactionSource[];
+}
+
 export type TransactionSort = "newest" | "oldest";
 
 export interface TransactionSearchParams {
@@ -218,7 +234,7 @@ export interface ImportPreview {
   suggestedAccount: string;
 }
 
-export const CONTRACT_SHA = "f059a6add0b20c36344e196a596ecf3047b2e9e6f2cbbddcede805fa4a16e8f8";
+export const CONTRACT_SHA = "182aef0db5a09abf4ad0af1474c20cbfd127d816a47dfd172fe251ff2444266c";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -310,6 +326,8 @@ export function createClient(options: { baseUrl?: string; fetchFn?: FetchFn } = 
       request(fetchFn, baseUrl, `/accounts/${encodeURIComponent(id)}`),
     searchTransactions: (params: TransactionSearchParams = {}): Promise<TransactionPage> =>
       request(fetchFn, baseUrl, `/transactions/search${query(params)}`),
+    getTransaction: (id: string): Promise<TransactionDetail> =>
+      request(fetchFn, baseUrl, `/transactions/${encodeURIComponent(id)}`),
   };
 }
 

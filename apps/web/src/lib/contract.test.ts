@@ -49,6 +49,7 @@ describe("api contract", () => {
       "/commands/{commandName}",
       "/accounts",
       "/accounts/{id}",
+      "/transactions/{id}",
       "/transactions/search",
       "/imports/initiate",
       "/imports/bytes",
