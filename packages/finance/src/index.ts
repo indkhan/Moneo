@@ -7,6 +7,7 @@
  */
 export * from "./commands.js";
 export * from "./csv.js";
+export * from "./mapping.js";
 export * from "./xlsx.js";
 
 export const FINANCE_PACKAGE = "@moneo/finance";
