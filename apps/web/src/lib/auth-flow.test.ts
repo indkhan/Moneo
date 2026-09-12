@@ -75,8 +75,7 @@ describe("completeLogin", () => {
     return { state, stateCookie, exchange, fetchProfile };
   }
 
-  it("seals only profile claims and redirects home on success", async () => {
-    const { state, stateCookie, exchange, fetchProfile } = loginSetup();
+  it("seals only profile claims and redirects home on success", async () => {    const { state, stateCookie, exchange, fetchProfile } = loginSetup();
     const result = await completeLogin({
       config: CONFIG,
       queryState: state,
@@ -192,6 +191,78 @@ describe("completeLogin", () => {
       fetchProfile: noSub.fetchProfile,
     });
     expect(empty).toMatchObject({ ok: false, error: "profile_failed" });
+  });
+});
+
+describe("completeLogin provisioning hook (Issue 1.4)", () => {
+  const verifier = "verifier-abc";
+
+  function setup(state = "csrf-state-123") {
+    const stateCookie = seal({ state, verifier, exp: NOW + 600 }, CONFIG.sessionSecret);
+    const exchange = vi.fn(() =>
+      Promise.resolve({ access_token: "server-only-access", token_type: "Bearer", expires_in: 86_400 }),
+    );
+    const fetchProfile = vi.fn(() => Promise.resolve({ sub: "auth0|abc", email: "a@x.com" }));
+    return { state, stateCookie, exchange, fetchProfile };
+  }
+
+  function loginInput(s: ReturnType<typeof setup>, provision?: (profile: { sub: string }) => Promise<{ uid: string; wid: string } | null>) {
+    return {
+      config: CONFIG,
+      queryState: s.state,
+      queryCode: "auth-code",
+      stateCookie: s.stateCookie,
+      nowSeconds: NOW,
+      exchange: s.exchange,
+      fetchProfile: s.fetchProfile,
+      ...(provision ? { provision } : {}),
+    };
+  }
+
+  it("attaches uid/wid to the session when provisioning succeeds", async () => {
+    const s = setup();
+    const provision = vi.fn(() => Promise.resolve({ uid: "user-1", wid: "ws-1" }));
+    const result = await completeLogin(loginInput(s, provision));
+    expect(result.ok).toBe(true);
+    expect(provision).toHaveBeenCalledWith({ sub: "auth0|abc", email: "a@x.com" });
+    const session = readSession(
+      (result as { ok: true; sessionSealed: string }).sessionSealed,
+      CONFIG.sessionSecret,
+      NOW,
+    );
+    expect(session).toMatchObject({ sub: "auth0|abc", uid: "user-1", wid: "ws-1" });
+  });
+
+  it("fails closed when provisioning returns null, throws or yields bad ids", async () => {
+    const s = setup();
+    for (const provision of [
+      () => Promise.resolve(null),
+      () => Promise.reject(new Error("db down")),
+      () => Promise.resolve({ uid: "", wid: "ws-1" }),
+      () => Promise.resolve({ uid: "user-1", wid: 42 }),
+    ]) {
+      const result = await completeLogin(
+        loginInput(s, provision as (profile: { sub: string }) => Promise<{ uid: string; wid: string } | null>),
+      );
+      expect(result).toMatchObject({ ok: false, error: "provisioning_failed" });
+      if (!result.ok) {
+        expect(result.redirectTo).toBe("/?auth_error=provisioning_failed");
+      }
+    }
+  });
+
+  it("mints sessions without uid/wid when no provision hook is wired", async () => {
+    const s = setup();
+    const result = await completeLogin(loginInput(s));
+    expect(result.ok).toBe(true);
+    const session = readSession(
+      (result as { ok: true; sessionSealed: string }).sessionSealed,
+      CONFIG.sessionSecret,
+      NOW,
+    );
+    expect(session).toMatchObject({ sub: "auth0|abc" });
+    expect(session).not.toHaveProperty("uid");
+    expect(session).not.toHaveProperty("wid");
   });
 });
 

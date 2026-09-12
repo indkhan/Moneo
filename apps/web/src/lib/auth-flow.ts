@@ -72,7 +72,11 @@ export interface UserProfile {
 
 export type LoginResult =
   | { ok: true; sessionSealed: string; redirectTo: string }
-  | { ok: false; error: "invalid_state" | "invalid_request" | "exchange_failed" | "profile_failed"; redirectTo: string };
+  | {
+      ok: false;
+      error: "invalid_state" | "invalid_request" | "exchange_failed" | "profile_failed" | "provisioning_failed";
+      redirectTo: string;
+    };
 
 /** Runtime shape check: a lying stub or broken provider must fail closed, not throw later. */
 function isLiveTokenResponse(value: unknown): value is CodeExchange {
@@ -92,6 +96,17 @@ function isLiveProfile(value: unknown): value is UserProfile {
   return typeof sub === "string" && sub.length > 0;
 }
 
+/** Runtime shape check for the provisioning result (Issue 1.4). */
+function isProvisionedIds(value: unknown): value is { uid: string; wid: string } {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const ids = value as { uid?: unknown; wid?: unknown };
+  return (
+    typeof ids.uid === "string" && ids.uid.length > 0 && typeof ids.wid === "string" && ids.wid.length > 0
+  );
+}
+
 /**
  * Complete the Authorization Code + PKCE flow. Tokens stay server-side: only
  * `{ sub, email, name, sid, iat, exp }` is sealed into the browser cookie.
@@ -104,6 +119,8 @@ export async function completeLogin(input: {
   nowSeconds?: number;
   exchange: (code: string, verifier: string, redirectUri: string) => Promise<CodeExchange>;
   fetchProfile: (accessToken: string) => Promise<UserProfile>;
+  /** Issue 1.4: resolve (or create) the user/workspace for this subject. */
+  provision?: (profile: UserProfile) => Promise<{ uid: string; wid: string } | null>;
 }): Promise<LoginResult> {
   const { config } = input;
   const now = input.nowSeconds ?? Math.floor(Date.now() / 1000);
@@ -136,7 +153,19 @@ export async function completeLogin(input: {
     return fail("profile_failed");
   }
 
-  const sessionSealed = seal(buildSessionPayload({ ...profile, nowSeconds: now }), config.sessionSecret);
+  let provisioned: { uid: string; wid: string } | null = null;
+  if (input.provision) {
+    const settled: unknown = await input.provision(profile).catch((): null => null);
+    if (!isProvisionedIds(settled)) {
+      return fail("provisioning_failed");
+    }
+    provisioned = settled;
+  }
+
+  const sessionSealed = seal(
+    buildSessionPayload({ ...profile, ...provisioned, nowSeconds: now }),
+    config.sessionSecret,
+  );
   assertNoTokenMaterial(sessionSealed, config.sessionSecret);
   return { ok: true, sessionSealed, redirectTo: "/home" };
 }

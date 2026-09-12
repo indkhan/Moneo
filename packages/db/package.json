@@ -22,6 +22,22 @@
       "types": "./dist/currencies.d.ts",
       "default": "./dist/currencies.js"
     },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./provisioning": {
+      "types": "./dist/provisioning.d.ts",
+      "default": "./dist/provisioning.js"
+    },
+    "./tenancy": {
+      "types": "./dist/tenancy.d.ts",
+      "default": "./dist/tenancy.js"
+    },
+    "./uuid": {
+      "types": "./dist/uuid.d.ts",
+      "default": "./dist/uuid.js"
+    },
     "./version": {
       "types": "./dist/version.d.ts",
       "default": "./dist/version.js"

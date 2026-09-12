@@ -1,3 +1,5 @@
+import { getDb } from "@moneo/db/client";
+import { provisionUserOnLogin } from "@moneo/db/provisioning";
 import { loadEnv } from "@moneo/shared/env";
 import { NextResponse, type NextRequest } from "next/server";
 import { loadAuthConfig, tokenEndpoint, userinfoEndpoint } from "@/lib/auth-config";
@@ -46,6 +48,15 @@ export async function GET(request: NextRequest) {
         throw new Error(`Userinfo fetch failed with status ${res.status}`);
       }
       return (await res.json()) as UserProfile;
+    },
+    // Issue 1.4: first successful login provisions user + default workspace.
+    provision: async (profile: UserProfile) => {
+      const provisioned = await provisionUserOnLogin(getDb(), {
+        authSubject: profile.sub,
+        email: typeof profile.email === "string" ? profile.email : undefined,
+        displayName: typeof profile.name === "string" ? profile.name : undefined,
+      });
+      return { uid: provisioned.userId, wid: provisioned.workspaceId };
     },
   });
 

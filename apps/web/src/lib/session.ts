@@ -24,6 +24,10 @@ export interface SessionPayload {
   sub: string;
   email?: string;
   name?: string;
+  /** Moneo user id from first-login provisioning (Issue 1.4). */
+  uid?: string;
+  /** Active workspace id from first-login provisioning (Issue 1.4). */
+  wid?: string;
   /** Server-side session id (used by Issue 1.7 revocation). */
   sid: string;
   iat: number;
@@ -96,6 +100,8 @@ export function buildSessionPayload(input: {
   sub: string;
   email?: unknown;
   name?: unknown;
+  uid?: unknown;
+  wid?: unknown;
   sid?: string;
   nowSeconds?: number;
   ttlSeconds?: number;
@@ -116,6 +122,12 @@ export function buildSessionPayload(input: {
   }
   if (typeof input.name === "string" && input.name.length > 0) {
     payload.name = input.name;
+  }
+  if (typeof input.uid === "string" && input.uid.length > 0) {
+    payload.uid = input.uid;
+  }
+  if (typeof input.wid === "string" && input.wid.length > 0) {
+    payload.wid = input.wid;
   }
   return payload;
 }
@@ -157,6 +169,12 @@ export function readSession(sealed: string | undefined, secret: string, nowSecon
   }
   if (typeof payload.name === "string") {
     session.name = payload.name;
+  }
+  if (typeof payload.uid === "string") {
+    session.uid = payload.uid;
+  }
+  if (typeof payload.wid === "string") {
+    session.wid = payload.wid;
   }
   return session;
 }

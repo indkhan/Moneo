@@ -80,6 +80,19 @@ describe("buildSessionPayload", () => {
     expect("email" in payload).toBe(false);
     expect("name" in payload).toBe(false);
   });
+  it("carries uid/wid from provisioning through seal and read", () => {
+    const payload = buildSessionPayload({ sub: "auth0|abc", uid: "user-1", wid: "ws-1", nowSeconds: 1_000 });
+    expect(payload.uid).toBe("user-1");
+    expect(payload.wid).toBe("ws-1");
+    const sealed = seal(payload, SECRET);
+    expect(readSession(sealed, SECRET, 1_500)).toMatchObject({ uid: "user-1", wid: "ws-1" });
+  });
+
+  it("drops non-string uid/wid instead of sealing them", () => {
+    const payload = buildSessionPayload({ sub: "auth0|abc", uid: 42, wid: null });
+    expect("uid" in payload).toBe(false);
+    expect("wid" in payload).toBe(false);
+  });
 });
 
 describe("token-material guard", () => {
