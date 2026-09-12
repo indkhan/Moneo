@@ -6,5 +6,6 @@
  * `executeCommand`, so web/worker/ai never duplicate mutation logic.
  */
 export * from "./commands.js";
+export * from "./csv.js";
 
 export const FINANCE_PACKAGE = "@moneo/finance";
