@@ -600,6 +600,8 @@ export const accounts = pgTable(
     currencyCode: text("currency_code").notNull().default("EUR"),
     isSpendable: boolean("is_spendable").notNull().default(true),
     includeInNetWorth: boolean("include_in_net_worth").notNull().default(true),
+    /** Optimistic-concurrency counter (Issue 5.2): starts at 1, +1 per command. */
+    version: bigint("version", { mode: "number" }).notNull().default(1),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -737,6 +739,8 @@ export const transactions = pgTable(
     description: text("description").notNull(),
     note: text("note"),
     excludedFromAnalytics: boolean("excluded_from_analytics").notNull().default(false),
+    /** Optimistic-concurrency counter (Issue 5.2): starts at 1, +1 per command. */
+    version: bigint("version", { mode: "number" }).notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
@@ -980,6 +984,8 @@ export const categories = pgTable(
     systemCategoryCode: text("system_category_code").references(() => systemCategories.code, {
       onDelete: "set null",
     }),
+    /** Optimistic-concurrency counter (Issue 5.2): starts at 1, +1 per command. */
+    version: bigint("version", { mode: "number" }).notNull().default(1),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1007,6 +1013,8 @@ export const counterparties = pgTable(
     normalizedName: text("normalized_name").notNull(),
     /** Human display label, e.g. `Lidl`. */
     displayName: text("display_name").notNull(),
+    /** Optimistic-concurrency counter (Issue 5.2): starts at 1, +1 per command. */
+    version: bigint("version", { mode: "number" }).notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
