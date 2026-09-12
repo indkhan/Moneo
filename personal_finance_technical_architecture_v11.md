@@ -4,6 +4,8 @@
 **Companion:** `ai_native_personal_finance_product_spec_v7.md`  
 **Current focus:** PostgreSQL canonical financial data model
 
+**Execution authority (2026-09-12):** [IMPLEMENTATION-EPOCHS.md](IMPLEMENTATION-EPOCHS.md) is the sole team backlog, dependency schedule and release-gate authority. This document owns technical contracts. Sections 490–534 retain supporting implementation design detail and stable references; their epoch ordering/checklists do not independently authorize scope or completion. The explicit contracts in §§535–539 refine earlier conceptual descriptions where necessary. Product behavior remains owned by the product specification.
+
 ---
 
 # 1. Locked Architecture Decisions
@@ -15161,6 +15163,8 @@ Lock the following:
 
 # 490. MVP Implementation Strategy
 
+**Supporting reference only:** implement against the issue scopes, dependency table, coverage map and exit gates in [IMPLEMENTATION-EPOCHS.md](IMPLEMENTATION-EPOCHS.md). The following historical epoch notes explain intended designs; do not maintain a second issue list here. When a note conflicts with the current execution order, the implementation plan wins on scheduling, while technical invariants elsewhere in this architecture remain mandatory.
+
 The implementation roadmap follows a **walking-skeleton + vertical-slice** strategy.
 
 Do not build:
@@ -17781,11 +17785,56 @@ The architecture phase is considered complete enough for implementation when:
 
 Further design should happen just-in-time at issue level rather than expanding the architecture indefinitely.
 
-The next artifact should therefore be:
+The execution artifact is [IMPLEMENTATION-EPOCHS.md](IMPLEMENTATION-EPOCHS.md). Its issue-readiness checklist must pass before assignment; architectural coverage alone is not proof that an issue is ready or implemented.
 
-```text
-IMPLEMENTATION-EPOCHS.md
-```
+---
 
-derived from this architecture, with issue-level tasks for Epoch 0 onward.
+# 535. Historical FX Valuation Contract
 
+Implements product §14 and refines §§11 and 265. Native `amount_minor`, direction and currency remain canonical; converted amounts are rebuildable projections. A conversion uses the source and target currency exponents and an exact decimal rate expressed as target major units per source major unit. Round once at the target minor-unit boundary using decimal round-half-even; retain the rate and calculation version so the result can be reproduced. Do not sum currencies before valuation or use binary floating point for authoritative conversions.
+
+Each valuation identifies transaction, target currency, effective transaction date, actual rate date, rate source and calculation version. Rate data is immutable/versioned; a provider correction creates a new calculation version. Where a provider publishes no rate on the requested date, use its latest prior published rate only under a documented maximum-age policy, retaining both requested and actual rate dates. Do not use future rates. The issue must choose and verify the initial source, coverage and maximum-age limit before coding. Unsupported or older rates are unavailable; an explicitly entered dated rate is a separate, audited source. Identity conversion requires no external rate.
+
+Aggregate queries return completeness metadata, coverage/count of unvalued contributing rows and provenance. Missing values are never treated as zero. A partial subtotal may be displayed only with an explicit incomplete label; AI must not claim it is the full total. A base-currency change invalidates affected analytics/forecasts and schedules valuation rebuilds without rewriting native transactions. Old evidence remains reproducible against its recorded version, subject to current authorization. Future forecasts follow §265 and expose their distinct reference/scenario FX assumption.
+
+# 536. Balance Capture and Manual Finance Contract
+
+Implements product §15 and refines §§8 and 233. Balance snapshots must distinguish current/booked and available balances, with currency, as-of timestamp/date precision, origin, source cutoff or inclusion semantics, and reconciliation status. Null/unknown is not zero. A transaction-only statement cannot establish its account's balance without an independent trustworthy snapshot.
+
+Provide typed commands for `accounts.recordBalance`, `accounts.createManual` and `transactions.createManual`. They use the shared authorization, exact-money, idempotency, audit, optimistic-concurrency and outbox contracts. Manual records carry user/command provenance; do not manufacture a raw bank observation. Snapshot corrections supersede earlier snapshots rather than erasing their audit trail.
+
+A manual balance entry explicitly states the balance and as-of date/time, and the UI previews which later posted transactions can be applied. Roll forward only transactions demonstrably outside the snapshot's inclusion cutoff. Where same-day ordering or source semantics are unknown, mark reconciliation unresolved instead of guessing. A manual transaction older than or included in the snapshot changes history but is not applied a second time to the current balance. Later applicable transactions change the projection once. Manual transaction undo follows the same rules.
+
+Account displays show balance source, as-of and reconciliation state. Missing required balances or FX coverage prevent an actionable Available-to-Spend result; show what needs to be supplied. Stale but usable balances retain a visible age/confidence warning and snapshot metadata under §233. Partial net-worth/forecast results must identify coverage rather than presenting missing accounts as zero. Required spendable accounts must all have usable balance inputs before a complete cash forecast is published.
+
+# 537. Overlapping Statement Matching Contract
+
+Implements product §6.2 without weakening §9's prohibition on fuzzy uniqueness. Distinguish retry identity, duplicate file detection, source identity, and cross-import economic-event matching. They solve different problems.
+
+1. Within one import, `(workspace_id, import_id, row_number)` identifies a replayed observation. A new import retains its own observations even when it overlaps an earlier file.
+2. A trustworthy source external ID, scoped to workspace/source/account as appropriate, can identify an existing source transaction. Record the matching rule/version.
+3. Without trustworthy IDs, normalized date/amount/currency/description can generate candidates, but never prove identity alone. A supported importer may automatically link only when its documented statement semantics and occurrence alignment disambiguate the match. Preserve multiplicity; one accepted purchase cannot absorb arbitrarily many identical new rows.
+4. Ambiguous candidates remain durably staged and visible outside accepted canonical totals until resolved. The user can link a row to an existing transaction or keep it distinct. Store that decision through an idempotent, version-checked domain command with audit and source links. E4 provides minimal resolution UI; E7 reuses it in Review.
+5. Linking observations preserves accepted canonical corrections. Reimporting or retrying a decision does not duplicate the business effect. A mistaken decision is reversed through an audited compensation that preserves source history and triggers affected projections.
+
+The matching ticket must specify its supported importer rules and fixtures before coding; an unspecified format defaults to review for ambiguity. Import summaries reconcile all row dispositions: accepted new, matched existing, pending review and rejected. Pending/rejected rows explicitly reduce data completeness. Do not advertise complete totals while economically ambiguous rows remain unresolved.
+
+# 538. AI Data-Access Policy Contract
+
+Implements product §81.9. AI exclusion is separate from `excluded_from_analytics`, spendability and net-worth inclusion. Account-level exclusion propagates to transactions, balances and derived values for that account. Asset/liability exclusions propagate to valuations and derived results. Default financial inclusion does not override AI exclusion.
+
+Store a workspace-owned policy keyed by object type and tenant-safe object identity, with an `ai_access` decision, audit/version metadata and a monotonically increasing workspace policy version. Validate target ownership using typed domain commands and tenant-safe references; do not accept unchecked polymorphic IDs. Ordinary finance pages continue using their financial policies. All AI capabilities and generated-artifact Finance SDK queries use the AI policy in addition to their tool/manifest scope. A scope grants a maximum capability, never an exception to exclusion.
+
+Apply eligibility before aggregation, forecasting inputs, evidence resolution, retrieval, prompt construction or provider transmission. Ordinary full-workspace analytics caches/snapshots cannot be reused for AI when they include excluded objects. AI-derived outputs record policy version and eligible-input provenance; cache keys include the policy version. Results calculated on a subset identify limited coverage and cannot be represented as a full-workspace total. If a requested calculation needs excluded inputs and cannot be safely recomputed on eligible inputs, return an unavailable result rather than a fabricated substitute. Denied direct lookups use the normal non-disclosing authorization response.
+
+On policy change, invalidate affected AI contexts, derived caches and artifact data; cancel/restart affected queued or running work with fresh authorized inputs. Revalidate policy immediately before each tool/evidence read and provider dispatch, and reject stale results at publication. Serialize policy updates and provider-dispatch authorization per workspace so their ordering is defined. Cancellation cannot recall an already dispatched request. Resuming a conversation must rebuild eligible context and omit affected earlier tool results/summaries; treat content without sufficient provenance as ineligible. Stored historical outputs that may contain now-excluded data must not be fed back into models or artifacts. Ordinary owner-visible historical records follow retention/access policy and are clearly historical.
+
+Test with excluded data whose amounts/descriptions are unique sentinel values: direct queries, aggregates, evidence, recommendations, Deep Analysis, cached chat context and generated artifacts must not expose them. Test changes during execution and attempted scope escalation in Custom AI. Clearly inform users that a new exclusion controls subsequent access and cannot recall data already sent to a provider.
+
+# 539. Custom AI Configuration Contract
+
+Implements product §§81.5–81.9 and uses §§373–374 for encryption. Included mode uses product-managed routing and read-only prompts. Custom mode supports the documented provider/model allowlist, per-capability mappings and editable/restorable prompts; safety rules, data policy, tool scope, budgets and validation remain product-controlled.
+
+Provider secrets are written only to authenticated, fresh-authenticated server endpoints and stored with envelope encryption. Return only masked metadata, status and credential identifier. Rotation/revocation is versioned and audited; resolve the current active credential just before dispatch rather than embedding a decrypted key in job payloads. Decrypt only inside trusted execution. Credential test calls are bounded and must not include finance data. Reject arbitrary provider URLs to prevent SSRF; models and endpoints must satisfy the capability/privacy contract.
+
+Persist configuration/prompt versions used by each run for reproducibility without storing credentials in run context. Queued runs revalidate current access, credential status and budgets. Do not silently fall back between Included and Custom credentials or billing modes. An unavailable provider produces a recoverable, explicit error. Settings expose mode, connection status, model mapping, prompt restore, actual usage and data exclusions; missing provider cost metadata is shown as unavailable rather than zero.

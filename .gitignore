@@ -1,0 +1,14 @@
+node_modules/
+.next/
+dist/
+build/
+out/
+coverage/
+storybook-static/
+*.tsbuildinfo
+.env
+.env*.local
+!.env.example
+.drizzle/
+test-results/
+playwright-report/

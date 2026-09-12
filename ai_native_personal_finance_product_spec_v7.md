@@ -6,6 +6,8 @@
 **Current scope:** Serious SaaS-quality product, without focusing on monetization yet  
 **Primary platform:** Desktop web first
 
+**Team handoff (2026-09-12):** This document owns product behavior and V1 scope. [IMPLEMENTATION-EPOCHS.md](IMPLEMENTATION-EPOCHS.md) owns issue assignments, dependencies, acceptance gates and the V1 coverage map; [technical architecture](personal_finance_technical_architecture_v11.md) owns implementation contracts. Existing section numbers remain stable. The following clarifications are acceptance requirements, not completed functionality.
+
 ---
 
 # 1. Product Vision
@@ -389,6 +391,8 @@ Example:
 
 The system should detect duplicates and only import genuinely new transactions.
 
+File identity alone is insufficient. Preserve legitimate identical purchases and all source observations. Where statement data cannot distinguish an overlap from a new purchase, show the unresolved rows and let the user link to an existing transaction or keep them distinct. Until resolved, exclude staged candidates from accepted totals and label the import/data coverage incomplete. The summary distinguishes new, matched, pending-review and rejected rows. Reimport and resolution retries must not duplicate effects or erase prior user corrections.
+
 ---
 
 ## 6.3 Transfer detection
@@ -721,6 +725,8 @@ The user chooses a base currency.
 
 The dashboard generally presents totals in base currency while preserving original values at transaction level.
 
+Conversions expose rate source/date and use the historical-rate policy defined in architecture §535. Missing conversion data must be visible: show an explicitly partial subtotal or unavailable result rather than silently treating a foreign amount as zero. Changing base currency rebuilds converted views without changing native transactions.
+
 ---
 
 # 15. Manual Accounts and Cash
@@ -742,6 +748,8 @@ Example:
 AI may create the manual transaction through application tools.
 
 Manual tracking exists from V1 but should not dominate the primary UX.
+
+A transaction-only import may not include a trustworthy account balance. Offer statement-balance capture where available and manual balance entry with an as-of date otherwise. Show balance provenance/freshness and reconciliation state. Unknown balances are not zero or the sum of imported transactions; required missing/unreconciled balances prevent an actionable Available-to-Spend result. Manual entries must clearly distinguish transactions already included in a recorded balance from later transactions so balances are not changed twice.
 
 ---
 
@@ -3738,6 +3746,8 @@ V1 should support exporting at least:
 
 The product should avoid locking users into proprietary data structures without an export path.
 
+For V1, Backup / restore means documented operator-managed recovery plus user data export. A self-service workspace restore/import-of-backup UI is deferred; do not present an operator disaster-recovery procedure as a working user feature.
+
 ## 81.3 Financial Rules
 
 Financial Rules are managed as explicit first-class objects.
@@ -3922,6 +3932,8 @@ Examples:
 > Track this asset for net worth but do not expose it to AI tools.
 
 These exclusions should be respected by AI, Deep Analysis, recommendations, and artifact generation where relevant.
+
+Exclusion also applies to generated-artifact data queries and to derived aggregates, evidence and cached conversation context. An excluded object can remain in ordinary net-worth/finance views. AI results based on an eligible subset must state that coverage; they cannot claim to represent the whole workspace. Changing an exclusion invalidates affected AI context and stops/restarts affected work before further disclosure. Previously transmitted provider data cannot be recalled; explain this when changing the setting. This is separate from excluding a transaction from ordinary analytics or an account from spendable cash.
 
 ## 81.10 Privacy & Security
 
@@ -4307,7 +4319,7 @@ Background Jobs
 Evidence Deep-Linking
 ```
 
-The next design phase should move away from feature ideation and into implementation planning.
+Implementation planning is maintained in [IMPLEMENTATION-EPOCHS.md](IMPLEMENTATION-EPOCHS.md). Its V1 coverage map assigns the locked surfaces in this document to issues and acceptance gates. The list below identifies design disciplines, not a second execution backlog.
 
 Recommended next topics:
 

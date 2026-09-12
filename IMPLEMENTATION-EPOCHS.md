@@ -5,6 +5,8 @@
 **Product source of truth:** `ai_native_personal_finance_product_spec_v7.md`  
 **Purpose:** Turn the approved product and technical architecture into a sequential implementation plan that can be executed by engineers or coding agents with minimal ambiguity.
 
+**Handoff revision:** 2026-09-12. This document owns issue scope, execution order, dependencies, and release gates. The product document owns user-visible requirements; the architecture owns technical invariants and contracts. Architecture sections 490–534 are supporting design notes, not a second backlog. Resolve conflicting requirements in the owning document and update the coverage map here before dependent implementation.
+
 ---
 
 # 0. How to Use This Document
@@ -21,6 +23,10 @@ An engineer or coding agent should:
 6. Run the epoch-level manual/computer-use acceptance test before calling the epoch complete.
 
 Do **not** implement later epochs early just because it seems convenient.
+
+Explicit issue dependencies override numeric order. Issue IDs remain stable when work moves earlier. Each issue must be expanded using section 6 before assignment: name an owner, cite exact product/architecture sections, specify inputs/outputs and error cases, and identify executable acceptance checks. A heading, table list, or suggested commit message alone is not a team-ready ticket. The engineering lead owns this readiness check; implementation owners supply evidence and a second reviewer signs off the epoch gate. No named staff assignments or delivery estimates are implied by this document.
+
+Use synthetic data until the E18 privacy, E19 recovery, and E20 security gates pass. Early deployability means synthetic-data staging; permission to process real user financial data is a separate release gate.
 
 The intended progression is:
 
@@ -589,6 +595,49 @@ ci: add build quality and security pipeline
 
 ---
 
+## Issue 0.9 — Exact Money Foundation
+
+### Scope
+
+Implement once in `@moneo/shared` (single canonical copy). Issue 4.4 becomes
+an integration check, not a second implementation:
+
+```text
+localized amount parser
+minor-unit conversion
+currency exponent
+currency formatter
+safe integer checks
+exact JSON serialization
+```
+
+### Rules
+
+```text
+No authoritative floating-point money.
+Negative input maps to explicit direction (credit/debit), never a signed amount.
+Overflow beyond the safe integer range is rejected, never clamped or rounded.
+Minor units serialize as decimal strings in JSON, never numbers.
+```
+
+### Tests
+
+Verify before import code uses monetary values:
+
+```text
+EUR/JPY/BHD round-trips
+localized separators
+negative input mapped to explicit direction
+overflow rejection
+exact JSON serialization round-trip
+```
+
+### Commit
+
+```text
+feat(shared): add exact money foundation
+```
+
 ## Epoch 0 Computer-Use Acceptance
 
 Tester can:
@@ -800,6 +849,14 @@ feat(settings): add initial session security controls
 
 ---
 
+## Issue 1.8 — Strong Authentication Enrollment and Recovery
+
+**Depends on:** 1.3–1.7. **References:** architecture §§420–427, 474; product §81.10.
+
+Implement passkey enrollment where the configured authentication domain supports it, with password + TOTP and recovery codes as the supported fallback. Use provider-backed enrollment/recovery, not a custom authentication system. A new user may navigate the empty shell during setup; importing financial data and accessing an active finance workspace require the server to verify strong-auth enrollment. Show enrollment status, recovery guidance, and a resumable setup flow. Provider unavailability must not silently downgrade the requirement.
+
+**Acceptance:** fresh user cannot bypass setup via a direct import/API request; supported enrollment unlocks finance access; recovery and factor replacement require the provider's protected flow; expired/revoked sessions fail; unsupported passkey setup offers the TOTP fallback. Use synthetic identities to verify both paths. E18 adds fresh-auth checks for sensitive actions; enrollment alone is not step-up authentication.
+
 ## Epoch 1 Acceptance
 
 1. Create User A and B.
@@ -995,6 +1052,30 @@ feat(web): add durable job status ui
 ```
 
 ---
+
+## Issue 2.9 — API Contracts and Generated Client Bootstrap
+
+**Depends on:** 2.2–2.3. **References:** architecture §§285–286, 336, 498.
+
+Establish OpenAPI 3.1 contracts for `/api/v1`, RFC 9457 errors, decimal-string money/version fields, cursor envelopes, command metadata, and job submission/status. Generate the Orval client into a marked generated directory; consume it from the shell/job UI. Validate requests at the server boundary. Define a reproducible generation command and CI drift check; do not hand-maintain duplicate browser DTOs.
+
+**Acceptance:** a fresh clone generates identical output; CI detects an uncommitted contract/client mismatch; malformed requests produce documented errors; browser integration uses the generated client. Every subsequent API issue extends this contract before consumers are implemented.
+
+## Issue 2.10 — Change Propagation and Realtime Recovery
+
+**Depends on:** 2.2, 2.5–2.9. **References:** product §2.4; architecture §§287, 298–305.
+
+Define typed domain events, a shared query-invalidation map, authenticated SSE/polling fallback, reconnect/resync behavior, and version/cutoff metadata for derived results. Add each feature's recomputation consumer in the epoch that introduces it. Outbox publication must survive process failure; duplicate events must not duplicate effects. A UI must show stale/recomputing state until the authoritative query returns, never invent a recalculated financial total.
+
+**Acceptance:** use a synthetic versioned entity to prove a command in one tab refreshes the other before finance tables exist; disconnect/reconnect recovers missed changes through authoritative refetch; duplicate/out-of-order events do not regress versions. E5 replaces the synthetic path with real transaction corrections; E10, E11, E12 and E14 extend it through their derived surfaces.
+
+## Issue 2.11 — Resource Limits and Configuration
+
+**Depends on:** 1.2, 2.3–2.6. **References:** architecture §§184–185, 377–378.
+
+Define validated configuration for API/mutation rates, upload sizes/rows, worker concurrency and per-workspace quotas. Document initial numeric limits and failure policy in the ticket before coding. Add AI token/cost limits in E6 and artifact CPU/memory limits in E13. Rate-limit state must not evict durable queue transport data; follow the architecture's separate limiter policy.
+
+**Acceptance:** two workspaces cannot exhaust each other's reserved execution capacity; excess work receives a structured bounded response; limiter failure follows the documented fail policy; quota rejection does not create a half-committed command/job.
 
 ## Epoch 2 Acceptance
 
@@ -1274,7 +1355,7 @@ feat(finance): canonicalize imported financial data
 
 ## Issue 4.4 — Exact Money Utilities
 
-Implement shared:
+Integrate and verify the shared utilities implemented in Issue 0.9; do not implement a second copy:
 
 ```text
 localized amount parser
@@ -1389,6 +1470,38 @@ feat(web): add transaction detail drawer
 ```
 
 ---
+
+## Issue 4.9 — Historical FX and Transaction Valuation
+
+**Depends on:** 0.4, 0.9, 2.9, 4.2–4.3. **References:** product §14; architecture §§11, 265, 535.
+
+Implement `transaction_valuations`, workspace base-currency settings, historical rate ingestion/cache, exact conversion, provenance, and rebuildable valuation versions. Before implementation, record the chosen historical-rate source and supported currency/date coverage; verify its terms and operational limits. Do not silently substitute today's rate for an unavailable historical rate. Support an explicit user-supplied dated rate with provenance. Use the technical contract in §535 for rounding, missing-rate results and base-currency changes.
+
+**Acceptance:** mixed EUR/JPY/BHD fixture produces independently calculated totals; native amounts survive base-currency changes unchanged; unavailable rates produce an incomplete result rather than a false total; retries do not duplicate valuations; AI evidence exposes rate date/source and calculation version. E6 analytics is blocked until this passes.
+
+## Issue 4.10 — Balance Acquisition and Reconciliation
+
+**Depends on:** 0.9, 2.2, 4.1, 4.3. **References:** architecture §§8, 233, 536.
+
+Import trustworthy statement balances with their as-of/source cutoff and current/available meaning when present. For transaction-only files, offer an explicit manual current balance and as-of date; persist it as an audited snapshot. Implement `accounts.recordBalance` with idempotency/version checks, source provenance, and a reconciliation preview. Define whether transactions are already included before rolling a snapshot forward. Missing balance is unknown, not zero or the sum of imported history.
+
+**Acceptance:** identical transaction histories with different opening balances produce different correct current balances; reimport/retry does not double-apply transactions; conflicting snapshots require resolution; absent/unreconciled balances mark aggregate/forecast coverage incomplete. E10 cannot display an actionable Available-to-Spend number for incomplete required balance coverage.
+
+## Issue 4.11 — Overlapping Import Matching and Resolution
+
+**Depends on:** 3.6, 3.8, 4.2–4.3. **References:** product §6.2; architecture §§9–10, 537.
+
+Implement trusted external-identity matching and conservative matching for overlapping CSV/XLSX imports. File hashes remain only a duplicate-file signal. Persist match decisions/provenance and unresolved candidates. Ambiguous candidates remain staged outside accepted canonical totals until the user chooses link-to-existing or keep-as-distinct through typed audited commands; E7 exposes the same resolution in Review. The import summary must distinguish accepted, matched, pending-review and rejected rows.
+
+**Acceptance:** August followed by August–September adds only confidently new rows; retrying either import has one effect; two legitimate identical purchases remain distinct; ambiguous matches are visible and resolvable; linking preserves prior canonical corrections and both source observations. No fuzzy-field uniqueness constraint may discard a row.
+
+## Issue 4.12 — Manual Accounts and Cash Transactions
+
+**Depends on:** 2.2, 2.9, 4.1–4.4, 4.10. **References:** product §§15, 70.1, 78.5; architecture §536.
+
+Implement `accounts.createManual` and `transactions.createManual` with exact money, account ownership, date/direction validation, idempotency, audit and version handling. Provide account/transaction entry UI and an explicit balance-effect contract: a transaction already included in a recorded balance must not be applied again. Preserve manual provenance without fabricating an imported observation. E5 adds correction/undo integration; E9.7 exposes these commands to AI only on explicit user intent.
+
+**Acceptance:** create a cash wallet and a €15 purchase; retry yields one transaction; unauthorized account selection fails; future/older transactions respect snapshot cutoff rules; balances and analytics update consistently.
 
 ## Epoch 4 Acceptance
 
@@ -1516,6 +1629,14 @@ feat(web): add finance audit history ui
 ```
 
 ---
+
+## Issue 5.7 — Complete Transaction Workspace
+
+**Depends on:** 2.9–2.10, 4.6–4.8, 5.3–5.5. **References:** product §§78.2–78.4; architecture §§69–70, 307–311.
+
+Add bulk category/tag commands using the architecture's frozen-selection contract, including explicit IDs and all-matching-query selection. Persist saved views and configurable column state; extend filters for category, tags, merchant and review status as their domains become available. Provide preview/count, progress, conflict results and safe undo where applicable. E6.11 adds natural-language conversion into this same typed filter contract.
+
+**Acceptance:** saved views survive reload; bulk operations never touch another workspace or rows added after selection; retry applies once; stale rows return explicit conflicts without silently overwriting them; keyboard selection and column controls work. Test selection larger than the loaded page.
 
 ## Epoch 5 Acceptance
 
@@ -1757,6 +1878,30 @@ test(ai): add financial assistant eval suite
 
 ---
 
+## Issue 6.10 — AI Data-Access Exclusions
+
+**Depends on:** 1.2, 2.2, 2.9, 4.9–4.12. **Must precede:** 6.4–6.8. **References:** product §81.9; architecture §538.
+
+Implement account and asset/liability AI-access policy, policy versioning, settings controls and server-side enforcement. Assets/liabilities adopt the contract in E16. Apply exclusions before deriving aggregates, evidence, prompts or cached context; the same policy governs all AI capabilities and generated-artifact Finance SDK reads. Product scopes cannot be widened by prompts or Custom AI. Retain excluded objects in ordinary finance/net-worth views according to their separate finance settings.
+
+**Acceptance:** an excluded account cannot influence an AI aggregate, tool result, evidence lookup or resumed conversation context; a direct object-ID probe fails without revealing content; changing policy invalidates cached/queued context and stops affected runs before further disclosure. Repeat these tests in E12/E14/E16. Explain that previously transmitted provider data cannot be recalled by a new exclusion.
+
+## Issue 6.11 — Persistent AI Panel and Global Command Search
+
+**Depends on:** 5.7, 6.4–6.10. **References:** product §§56, 82.1–82.2; architecture §§322–323.
+
+Wire the existing panel mount to the same durable conversations/runs as AI Chat. Preserve the active thread across navigation and provide visible, removable/pinned page/object context. Add a keyboard-accessible command palette for authorized objects, navigation and supported actions. Natural-language transaction filtering produces a validated, visible typed filter; it does not create a second agent or bypass server search. Add new object types as later epochs deliver them.
+
+**Acceptance:** navigation preserves a running conversation; changing/removing context changes the next request; hidden/excluded objects never enter context; palette search is tenant-safe; natural-language and equivalent manual filters return the same rows; focus returns correctly on close.
+
+## Issue 6.12 — Included/Custom AI Configuration and Credentials
+
+**Depends on:** 1.8, 6.1–6.3, 6.6, 6.10. **References:** product §§81.5–81.9; architecture §§373–374, 539.
+
+Implement Settings → AI modes, supported provider credential connect/test/rotate/revoke, per-capability model mapping, prompt viewing/editing/restoration, usage and data-access pages. Use server-side envelope encryption and an explicit endpoint/model allowlist. Included prompts are read-only; Custom prompts cannot change scopes, exclusions, budgets or other product safeguards. Implement the fresh-auth helper needed for credential changes now; E18.1 reuses it. Resolve the initial supported provider/model matrix and privacy policy in the ticket before integration.
+
+**Acceptance:** no secret appears in browser responses, logs, model context or stored plaintext; revocation prevents subsequent calls; queued runs recheck credential/policy status; unsupported endpoints/models fail safely; prompt restoration works; usage shows actual resolved provider/model and cost when available; provider failures never silently use a different credential/billing mode. Cover both Included and Custom paths in the E6 eval harness.
+
 ## Epoch 6 Acceptance
 
 Ask:
@@ -1860,6 +2005,20 @@ Resolved
 ```text
 feat(web): add financial review inbox
 ```
+
+---
+
+## Issue 7.6 — Merchant Detail and Category Management
+
+**Depends on:** 5.1–5.7, 7.2–7.5. **References:** product §§12, 78.9–78.11.
+
+Build merchant detail with associated transactions, trends, recurring links and contextual AI; add custom category/tag create/rename/archive management and inspectable learned normalization rules. Reuse typed correction commands and E2.10 propagation. **Acceptance:** changing a merchant/category updates lists and analytics without modifying raw observations; archived categories retain historical meaning; drill-down and AI context obey authorization; ambiguous duplicate resolution reuses 4.11 rather than creating another matcher.
+
+## Issue 7.7 — AI-Assisted Import Mapping and History
+
+**Depends on:** 3.5–3.7, 4.11, 6.6, 6.10. **References:** product §§5–8, 70.1, 82.4.
+
+Add AI-assisted format/account/column detection using bounded untrusted previews, schema-validated mapping proposals and the existing manual correction flow. Users confirm the preview before canonical import. Existing-account AI exclusions apply to source previews; for an unknown destination, obtain the user's destination/data-access choice before sending source content. Add import history, row disposition summaries, original-source access and resume/retry navigation. **Acceptance:** injected cells cannot trigger tools or writes; unsupported layouts recover via manual mapping; preview errors are caught before import; completed/failed/cancelled imports remain inspectable; overlapping imports use 4.11 semantics.
 
 ---
 
@@ -2115,6 +2274,8 @@ feat(web): add goals rules and financial model ui
 
 Allow selected canonical planning tools only for explicit user intent.
 
+Use the commands delivered by 9.8. Also expose 4.12 manual account/transaction commands under this same explicit-intent policy; a request for analysis alone never authorizes creating a cash transaction. Command implementation precedes its AI adapter regardless of preserved issue numbering.
+
 Example allowed:
 
 ```text
@@ -2134,6 +2295,14 @@ must not silently mutate a rule.
 ```text
 feat(ai): gate canonical planning writes by explicit intent
 ```
+
+---
+
+## Issue 9.8 — Planning Commands and Model Lifecycle
+
+**Depends on:** 9.1–9.5, 2.10. **References:** product §§18–20, 24, 79.1–79.3, 79.8–79.11. Implement commands before the 9.6 UI and 9.7 AI adapters.
+
+Complete goal create/update/archive, virtual allocation add/update/remove and contribution-plan commands, plus rule/assumption create/update/disable/supersede. Expose inspectable sources/confidence and resolution of conflicting assumptions. E9.5 resolves absent spending plans as an explicit empty optional input until E15, not a missing-table read. Wire UI and explicit-intent AI adapters through the same commands. **Acceptance:** allocations do not move money or double-count reserves; stale writes conflict; user-confirmed assumptions outrank inference; each mutation invalidates derived model state; account rules and AI preferences remain distinct.
 
 ---
 
@@ -2441,6 +2610,14 @@ feat(web): add explicit dashboard customize mode
 
 ---
 
+## Issue 11.6 — Complete Dashboard and Recommendation Interactions
+
+**Depends on:** 6.11, 10.8, 11.1–11.5. **References:** product §§51–55, 77.1–77.12.
+
+Add multiple dashboards/default selection, dashboard-wide period, trusted widget add/configure/duplicate/move/remove, metric evidence drill-down and recommendation see-all/dismiss/material-change behavior. Dashboard AI edits use typed versioned commands and undo; asking about a dashboard does not implicitly change it. Add the empty/running-first-analysis presentation now; E12 populates it. E14 supplies artifact entries in the same add/menu flows. **Acceptance:** two-tab layout edits conflict safely; period changes reach applicable widgets; refresh preserves layouts/dismissals; recommendations reappear only under documented material-change rules; Home's AI entry uses the persistent thread. Record the changed condition/reason for resurfacing a dismissed recommendation.
+
+---
+
 # EPOCH 12 — Deep Analysis
 
 ## Objective
@@ -2589,6 +2766,12 @@ feat(web): add deep analysis experience
 ```
 
 ---
+
+## Issue 12.8 — First-Use Analysis and Durable Activity History
+
+**Depends on:** 7.7, 11.6, 12.1–12.7. **References:** product §§5, 31–34, 64, 80.3, 80.7.
+
+Connect the first successful usable import to an idempotent initial-analysis trigger behind the onboarding flag. Imports with unresolved required inputs show actionable setup/review rather than fabricate complete analysis. Persist saved analysis sessions and a searchable/filterable AI activity view with run status, supported tool summaries, evidence, actual model/cost metadata and Stop/retry. No hidden chain-of-thought is stored. **Acceptance:** duplicate import completion emits one initial run; Home stays useful during analysis; refresh/reconnect restores progress; cancellation persists; invalidated/excluded inputs cannot leak through historical context; an analysis failure leaves imported finance data usable.
 
 ## Epoch 12 Acceptance
 
@@ -2894,6 +3077,16 @@ feat(web): pin live artifacts to dashboard
 
 ---
 
+## Issue 14.8 — Artifact Lifecycle Completion
+
+**Depends on:** 13.1–13.7, 14.1–14.7, 6.10, 2.10. **References:** product §§38–50, 70.6, 82.5.
+
+Implement live-data invalidation, versioned persistent state, conversational edits, embedded AI through bounded host-mediated capabilities, and multiple artifact outputs from an analysis when justified. Provide starter templates through the same validation pipeline. Add PDF/image export from the trusted render output with a visible data cutoff and no executable/private credentials in the exported file. Exports obey current data access and do not grant public backend access. Canonical write requests, if exposed by an artifact, require a host-visible explicit action and the normal typed command policy; generated code cannot grant itself a write scope. E17 owns scheduled AI interpretation refresh.
+
+**Acceptance:** state survives reopen without crossing versions/workspaces; source changes refresh eligible data; exclusion changes invalidate displayed/cached artifact data; embedded AI obeys quotas/Stop; code/AI edits produce immutable validated versions and safe revert; exported PDF/image matches the visible snapshot; artifact permission escalation is rejected.
+
+---
+
 # EPOCH 15 — Spending Plans + Conflicts
 
 ## Issue 15.1 — Spending Plan Persistence
@@ -3152,11 +3345,21 @@ feat(web): add notification center and proactivity settings
 
 ---
 
+## Issue 17.6 — Scheduled Artifact Refresh and Summary Workflows
+
+**Depends on:** 12.8, 14.8, 17.1–17.5. **References:** product §§30, 49, 81.4, 82.3.
+
+Expose enable/disable/frequency controls for supported scheduled artifact interpretation and weekly summaries. Ordinary live data refresh remains independent of AI scheduling. Each due run rechecks access policy, credentials, quotas and cancellation; schedules persist in PostgreSQL with explicit timezone/DST/missed-run semantics. **Acceptance:** duplicate scheduler ticks create one business run; disabled schedules stay disabled after restart; a missed-run fixture follows its policy; exclusions/revoked credentials prevent disclosure; users can disable non-critical categories and navigate notifications to the relevant object.
+
+---
+
 # EPOCH 18 — Export, Deletion, Security UX
 
 ## Issue 18.1 — Step-Up Authentication
 
 Implement reusable server-side fresh-auth requirement.
+
+Reuse and extend the helper delivered in 6.12; do not create a second fresh-auth implementation. Cover export, deletion, credential/security changes and the architecture's sensitive actions. Strong-factor enrollment in 1.8 does not replace checking authentication freshness.
 
 ### Commit
 
@@ -3239,6 +3442,16 @@ artifact permissions
 ```text
 feat(web): complete privacy and security settings
 ```
+
+---
+
+## Issue 18.6 — Settings and Safe Maintenance Completion
+
+**Depends on:** 4.9, 6.12, 7.6–7.7, 9.8, 11.6, 14.8, 17.5, 18.1–18.5. **References:** product §§81.1–81.13.
+
+Complete General (name, locale/timezone, formatting, week start, default dashboard/horizon), Data & Imports, Appearance and supported Advanced settings. Link existing rules, AI configuration/preferences, notification, security and export controls rather than duplicating services. Include light/dark/system and comfortable/compact density. Offer authorized, audited maintenance jobs for rebuilding derived analytics/re-running categorization while preserving user corrections. Optional examples such as raw-ID display or grid-size customization are not new release blockers unless selected in the ticket.
+
+**Acceptance:** settings persist across sessions; changing base currency follows 4.9; timezone/date rendering remains consistent; rebuild/reclassification retries preserve canonical corrections and audit; exports contain the documented manifest and supported domains; deletion cancels schedules and prevents later regeneration. Do not expose a user restore button backed only by an operator disaster-recovery procedure: V1 provides export and operator-managed recovery; workspace self-service restore is deferred explicitly in the product clarification.
 
 ---
 
@@ -3762,6 +3975,8 @@ external penetration test
 
 # 11. Dependency Graph
 
+The diagram is a high-level progression only. The dependency table in section 17 and explicit issue prerequisites are authoritative; do not interpret every vertical arrow as a requirement to finish unrelated product breadth first.
+
 ```text
 E0 Foundation
  ↓
@@ -3807,6 +4022,8 @@ E21 Closed Beta
 # 12. Safe Parallelization
 
 After Epoch 6, engineering can fan out when contracts are stable:
+
+Apply section 17: planning schemas/UI may proceed in parallel, but the complete model/forecast waits for accepted recurring/transfer contracts. Artifact sandbox work can begin after E2 as a synthetic-data security spike; Finance SDK integration waits for E10. No stream can close its epoch without its required inputs and exit checks.
 
 ```text
 Stream A:
@@ -3928,3 +4145,104 @@ evidence
 ```
 
 —not for the largest possible amount of code per epoch.
+
+---
+
+# 17. Authoritative Dependencies and Epoch Exit Gates
+
+An epoch is complete only when its issues, relevant global Definition of Done, and the row below pass with recorded evidence. These gates supplement the earlier manual checks. Implement commands/contracts before their UI adapters even if a preserved issue ID appears later. Parallel work may use agreed synthetic fixtures; it cannot claim integration completion against mocks.
+
+| Epoch | Prerequisites to close | Required executable/manual exit evidence |
+|---|---|---|
+| E0 | None; 0.9 precedes import money parsing | Fresh-clone install/build/migrations succeed; exact-money fixtures pass; web/worker deploy to synthetic staging; trace and version endpoint verified. |
+| E1 | E0 | Two-user tenant isolation; server-enforced strong-auth setup and recovery; CSRF rejection and session revocation pass. |
+| E2 | E1 | Generated contract/client drift check; duplicate command/outbox delivery and worker crash produce one business effect; cross-tab reconnect and quota failure tests pass. |
+| E3 | E2, 0.9 | CSV/XLSX preview/manual mapping, malicious-file bounds, cancellation and retry fixtures pass; raw observations survive retries without silent row loss. |
+| E4 | E3; 4.9–4.12 before finance consumers | Mixed-currency/missing-rate, balance cutoff, overlap/multiplicity and manual-cash fixtures pass; incomplete data is visibly incomplete; large-list pagination is deterministic. |
+| E5 | E4; commands before drawer/bulk adapters | Stale single/bulk writes reject safely; frozen selection excludes later rows; undo preserves newer edits; saved views and corrections survive reload. |
+| E6 | E5; 6.10 before all AI finance reads; 6.12 before Custom mode | Gold answers match deterministic values/evidence; prompt injection/excluded sentinels never leak; Stop/reconnect, panel/palette and Included/Custom settings work; secret/log checks pass. |
+| E7 | E6 | Mapping proposals can be corrected; injected cells cannot act; review resolutions preserve multiplicity; merchant/category edits propagate; import history reconciles dispositions. |
+| E8 | E7 | Matched transfers do not become income/spend and conserve eligible cash; recurring detection handles missed/changed payments; events can be corrected with evidence and undo. |
+| E9 | E8 for resolved model; schemas may start after E6 | Goal/allocation/rule/assumption commands and UI pass conflict/undo tests; user-confirmed inputs win; virtual allocations do not move or double-count cash; absent spending plans resolve explicitly empty. |
+| E10 | E9, 4.9–4.10, 2.10 | Reproducible forecast, FX/balance completeness, safety-floor and transfer fixtures pass; rolling-origin baseline comparison and interval coverage are recorded; scenario deltas do not mutate base state. |
+| E11 | E10 | Home metrics reconcile to evidence; multiple dashboards/period/widget controls persist; layout conflicts/undo and recommendation dismiss/resurface tests pass; first-analysis placeholder works. |
+| E12 | E11, 7.7, 6.10 | Duplicate initial-import trigger creates one analysis; fan-out crash/retry and cancellation recover; numeric evidence checks pass; excluded data stays excluded; saved analysis/activity reconnects. |
+| E13 | E2 for isolated spike; E10 and 6.10 for Finance SDK completion | Supported-browser escape/quota suite passes, including CPU/memory/tool floods; revoked/excluded data access fails; no generated code gains browser/network authority. |
+| E14 | E12, E13 | Generate/edit/revert/pin/live-refresh and state persistence pass; embedded AI obeys policy; PDF/image exports match the authorized snapshot; hostile generated code fails the pipeline. |
+| E15 | E10, E11 | Exactly one active plan version; behavior-vs-plan comparison and each conflict type have fixtures; activating a plan updates the model/forecast without double-counting spending. |
+| E16 | E4, E9–E10, 6.10 | Holdings/asset/debt entry and valuation reconcile net worth; investment cash is not spendable by default; asset exclusions pass the AI sentinel suite. |
+| E17 | E12, E14 | Concurrent ticks, timezone/DST, missed runs and cancellation pass; disabled categories stay silent; scheduled AI revalidates policy/credentials; notification links resolve authorized objects. |
+| E18 | E15–E17 and existing credential fresh-auth helper | All required settings persist; export manifest reconciles domain counts; expiry/auth checks pass; deletion cancels work/purges storage; tombstones prevent resurrection. |
+| E19 | E18 | Restore to isolation succeeds including object references/tombstones; measured restore time and recovery point meet architecture §393 targets; alert delivery and incident runbooks exercised. |
+| E20 | E19 | Tenant/parser/artifact/prompt-injection suites pass; no unresolved exploitable critical/high findings; privacy/data-flow review completed; independent-review decision recorded under architecture §521. |
+| E21 | E20 and every required coverage-map row | Full fresh-user journey, manual/multi-currency/overlap paths and both AI modes pass; export/delete/restore drill evidence exists; all release blockers below are clear. |
+
+For E10 backtesting, specify dataset eligibility, baseline and numeric calibration tolerances in Issue 10.9 before implementation; measure on held-out rolling-origin windows, not training data. A deterministic fallback with visible low confidence is required when data is insufficient. Quantile ordering alone is not forecast validation.
+
+For release: zero known cross-tenant accesses, wrong-money results on deterministic fixtures, duplicate business effects, secret/excluded-data disclosures, sandbox escapes or failed deletion/restore checks. The versioned core AI gold suite must have zero unsupported material numeric claims; report its size and coverage rather than treating a small suite as a production guarantee. Beta production rates are monitored separately with an owner and intervention thresholds agreed before admission. A failed gate is not waived by a successful happy-path demo.
+
+# 18. V1 Requirement Coverage and Team Ownership
+
+Each row maps a product section to accountable implementation issues and the epoch that verifies it. Section ranges cover all subsections in that range. The ticket owner must copy the actual requirement bullets, including cross-references, into its acceptance checklist; a map row alone is not evidence of implementation. Product examples labelled optional/suggested remain optional unless the ticket explicitly selects them. Add any newly accepted requirement here in the same change as the product edit.
+
+| Product requirement | Owning issue(s) | Integration gate |
+|---|---|---|
+| §§5–8, 70.1: first use, file ingestion, raw data, import history | 3.1–3.8, 4.11, 7.7, 12.8 | E12 |
+| §§6.3, 21: transfers and recurring | 8.1–8.4, 8.6 | E8 |
+| §§9–12, 16–17, 70.2: transaction model, classification, categories/tags, review/audit/undo | 4.2–4.8, 5.1–5.7, 7.1–7.6 | E7 |
+| §§13, 18–20: events, financial memory/rules/model | 8.5–8.6, 9.2–9.8 | E9 |
+| §§14–15: multi-currency, balances and manual/cash entry | 0.9, 4.9–4.12 | E4 |
+| §§22–26, 70.4: forecast, metrics, goals, plans, scenarios | 9.1–9.8, 10.1–10.9, 15.1–15.5 | E15 |
+| §§27–30: recommendations/tone/actionability/notifications | 9.4, 11.1–11.2, 11.6, 17.1–17.6 | E17 |
+| §§31–34, 62–65, 70.3: analysis, saved sessions, capabilities, activity/Stop | 6.1–6.12, 12.1–12.8 | E12 |
+| §§35–48, 70.6: artifact decision/build/runtime/edit/state/templates/embedded AI | 13.1–13.7, 14.1–14.8 | E14 |
+| §§49–50: scheduled artifact AI and PDF/image export | 14.8, 17.6 | E17 |
+| §§51–55, 70.5: dashboard system and multiple dashboards | 11.3–11.6, 14.7 | E14 |
+| §§56–57: global search and contextual object pages | 4.7–4.8, 6.11, 7.6, 8.6, 9.6, 10.8, 16.5 | E16 |
+| §§61, 70.7: Included/Custom modes and prompt controls | 6.12 | E6 |
+| §§66–69: privacy/cloud/desktop and financial account types | 0.1–0.9, 1.1–1.8, 4.1, 16.1–16.5, 18.1–20.8 | E20 |
+| §77.1–77.5: Home metrics, period, customize/add, dashboard selection | 11.3–11.6 | E11 |
+| §77.6–77.12: first-analysis Home, recommendations, AI edits/entry, menus, summaries/hierarchy | 11.6, 12.8, 14.7 | E14 |
+| §78.1–78.5: Money overview/table/saved views/detail/accounts | 4.7–4.12, 5.7, 6.11 | E6 |
+| §78.6: recurring detail/actions | 8.3–8.6 | E8 |
+| §78.7–78.8: investments/assets/debt | 16.1–16.5 | E16 |
+| §78.9–78.12: Review, merchants, Money AI and UX principles | 7.1–7.6, 6.11, 8.6 | E8 |
+| §79.1–79.3: Plan overview/goals/allocations | 9.1, 9.6, 9.8 | E9 |
+| §79.4–79.5: spending plans/planned-vs-actual | 15.1–15.5 | E15 |
+| §79.6–79.7: scenarios/forecast | 10.1–10.9 | E10 |
+| §79.8–79.11: model/conflicts/AI/UX | 9.5–9.8, 10.8, 15.4–15.5 | E15 |
+| §80.1–80.2: chat and inline tool activity | 6.8, 6.11 | E6 |
+| §80.3: Deep Analysis area | 12.1–12.8 | E12 |
+| §80.4–80.5: library and in-chat artifact creation | 14.2–14.8 | E14 |
+| §80.6–80.9: evidence/activity/configuration placement/UX | 6.7–6.12, 12.8 | E12 |
+| §81.1–81.2: General and Data & Imports | 4.9–4.10, 7.7, 18.2, 18.6 | E18 |
+| §81.3–81.4: financial rules and notifications | 9.2, 9.6, 9.8, 17.5–17.6 | E17 |
+| §81.5–81.8: AI modes/models/prompts/usage | 6.12 | E6 |
+| §81.9: AI data access | 6.10, 12.8, 14.8, 16.3–16.5 | E16 |
+| §81.10: privacy/security | 1.7–1.8, 6.12, 18.1–18.5 | E18 |
+| §81.11–81.12: Appearance and supported Advanced controls | 18.6 | E18 |
+| §81.13: AI preferences versus financial rules | 9.4, 9.6, 18.6 | E18 |
+| §82.1–82.2: persistent panel and command palette | 6.11 | E6 |
+| §82.3: notification center | 17.4–17.6 | E17 |
+| §82.4: import workflow | 3.1–3.8, 4.10–4.11, 7.7 | E7 |
+| §82.5: artifact editor | 14.6–14.8 | E14 |
+| §82.6: shared background jobs | 2.4–2.8, 2.10–2.11 | E2 |
+| §82.7–82.8: evidence links and shared interaction principles | 2.9–2.10, 6.7, all UI issues' global DoD | E21 |
+
+Navigation sections 3–4 and 58–60 are verified through the corresponding locked surface rows above. Product §§71–76 retain scope boundaries and cross-surface example journeys; verify the required journeys in E21 without promoting explicitly later/optional examples into V1. Every locked subsection in §§77–82 is assigned above.
+
+# 19. Issue Readiness and Handoff Checklist
+
+Before assigning any issue, its owner and reviewer must record:
+
+1. Product requirement bullets and exact architecture sections, linked to a coverage-map row.
+2. Prerequisite issues and their passing evidence; any temporary synthetic contract and the later integration gate.
+3. Exact domain/API/tool inputs, outputs, error codes, authorization and idempotency/version behavior. Specify decimal/string/date semantics where applicable.
+4. Schema/migration/index/tenant-policy changes and data backfill/rollback or forward-recovery strategy. No speculative tables for later features.
+5. Supported cases, non-goals, resource limits, failure/retry/cancellation and data-completeness behavior.
+6. Small, named acceptance fixtures and expected results, integration path, accessibility checks and operational signals. Numeric thresholds must be chosen before implementation, not after seeing results.
+7. Files/packages expected to change after inspecting the implemented repo, named owner/reviewer and an estimate made by the team. Do not invent concrete file paths before the foundation exists.
+
+Then implement one issue in small deployable changes. Record actual checks, outcomes and limitations against the issue; update the coverage map when scope changes. Do not describe this planning document as a completed implementation or claim that a feature is verified because its task exists.
+
+The first team assignment is E0: expand 0.1–0.9 into tickets, select/pin compatible runtime/dependency versions and verify external service capabilities against current official documentation. Provider selection, rate coverage, authentication-domain support and hosting limits are implementation-time verification gates, not facts certified by this document review.

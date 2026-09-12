@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "noEmit": true
+  },
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/ui" },
+    { "path": "./packages/db" },
+    { "path": "./packages/finance" },
+    { "path": "./packages/forecast" },
+    { "path": "./packages/ai" },
+    { "path": "./packages/artifacts" },
+    { "path": "./apps/worker" },
+    { "path": "./apps/web" }
+  ],
+  "include": []
+}

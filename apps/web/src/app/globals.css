@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+:root {
+  --moneo-bg: #0f141b;
+  --moneo-surface: #171e28;
+  --moneo-border: #2a3442;
+  --moneo-text: #e8edf3;
+  --moneo-muted: #9aa7b8;
+  --moneo-accent: #4f8cff;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--moneo-bg);
+  color: var(--moneo-text);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--moneo-accent);
+  outline-offset: 2px;
+}
