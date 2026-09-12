@@ -25,9 +25,15 @@ function detail(overrides: Partial<TransactionDetail> = {}): TransactionDetail {
     description: "COFFEE BAR",
     note: null,
     excludedFromAnalytics: false,
+    version: "3",
     createdAt: "2026-08-15T10:00:00.000Z",
     updatedAt: "2026-08-15T10:00:00.000Z",
     accountName: "Everyday checking",
+    categoryId: null,
+    categoryName: null,
+    counterpartyId: null,
+    counterpartyName: null,
+    tags: [],
     sources: [
       {
         sourceTransactionId: "55555555-5555-7555-8555-555555555555",

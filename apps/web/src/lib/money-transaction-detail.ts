@@ -35,6 +35,11 @@ export function toTransactionDetailDto(detail: DbTransactionDetail): Transaction
   return {
     ...toTransactionDto(detail.transaction),
     accountName: detail.accountName,
+    categoryId: detail.category?.id ?? null,
+    categoryName: detail.category?.name ?? null,
+    counterpartyId: detail.counterparty?.id ?? null,
+    counterpartyName: detail.counterparty?.displayName ?? null,
+    tags: detail.tags,
     sources: detail.sources.map((source) => ({
       sourceTransactionId: source.sourceTransactionId,
       relationship: source.relationship as TransactionDetailDto["sources"][number]["relationship"],

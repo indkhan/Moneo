@@ -1,15 +1,20 @@
+import { eq } from "drizzle-orm";
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import * as schema from "./schema.js";
 import {
   accounts,
+  categories,
+  counterparties,
   dataSources,
   imports,
   sourceTransactionObservations,
   sourceTransactions,
+  tags,
   transactionSourceLinks,
   transactions,
+  transactionTags,
   workspaces,
 } from "./schema.js";
 import { getTransactionDetail } from "./transaction-detail.js";
@@ -18,7 +23,7 @@ import { TENANT_SETTING } from "./tenancy.js";
 import { uuidv7 } from "./uuid.js";
 
 /**
- * Issue 4.8 — transaction detail query.
+ * Issue 4.8 â€” transaction detail query.
  *
  * Proves against the REAL migrated schema: canonical fields resolve with
  * the account name; every source link carries its observations oldest-first
@@ -47,7 +52,7 @@ describe("transaction detail query (issue 4.8)", () => {
   }
 
   beforeAll(async () => {
-    pg = await createMigratedDb("0012_command_input_hash");
+    pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
     wsA = one(await db.insert(workspaces).values({ name: "Detail A" }).returning()).id;
     wsB = one(await db.insert(workspaces).values({ name: "Detail B" }).returning()).id;
@@ -164,6 +169,50 @@ describe("transaction detail query (issue 4.8)", () => {
     const detail = await getTransactionDetail(db, wsA, manual.id);
     expect(detail?.sources).toEqual([]);
     expect(await getTransactionDetail(db, wsA, uuidv7())).toBeNull();
+  });
+
+  it("resolves live correction state and empty defaults", async () => {
+    const db = drizzlePglite(pg, { schema });
+    const tag = uuidv7();
+    const { txn } = await seedFullChain(wsA, tag);
+
+    const plain = await getTransactionDetail(db, wsA, txn.id);
+    expect(plain?.category).toBeNull();
+    expect(plain?.counterparty).toBeNull();
+    expect(plain?.tags).toEqual([]);
+
+    const category = one(
+      await db
+        .insert(categories)
+        .values({ workspaceId: wsA, name: `Groceries ${tag}` })
+        .returning(),
+    );
+    const counterparty = one(
+      await db
+        .insert(counterparties)
+        .values({
+          workspaceId: wsA,
+          normalizedName: `lidl-${tag}`,
+          displayName: "Lidl",
+        })
+        .returning(),
+    );
+    const food = one(
+      await db.insert(tags).values({ workspaceId: wsA, name: `food-${tag}` }).returning(),
+    );
+    await db
+      .update(transactions)
+      .set({ categoryId: category.id, counterpartyId: counterparty.id, note: "Weekly shop" })
+      .where(eq(transactions.id, txn.id));
+    await db
+      .insert(transactionTags)
+      .values({ workspaceId: wsA, transactionId: txn.id, tagId: food.id });
+
+    const corrected = await getTransactionDetail(db, wsA, txn.id);
+    expect(corrected?.category).toEqual({ id: category.id, name: `Groceries ${tag}` });
+    expect(corrected?.counterparty).toEqual({ id: counterparty.id, displayName: "Lidl" });
+    expect(corrected?.tags).toEqual([`food-${tag}`]);
+    expect(corrected?.transaction.note).toBe("Weekly shop");
   });
 
   it("never resolves a foreign workspace row, including under the app role", async () => {

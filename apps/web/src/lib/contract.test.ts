@@ -50,6 +50,7 @@ describe("api contract", () => {
       "/accounts",
       "/accounts/{id}",
       "/accounts/{id}/balance-preview",
+      "/categories",
       "/matches/pending",
       "/transactions/{id}",
       "/transactions/search",
@@ -111,6 +112,7 @@ describe("api contract", () => {
         "FORBIDDEN",
         "VERSION_CONFLICT",
         "IDEMPOTENCY_KEY_REUSED",
+        "UNDO_CONFLICT",
         "RATE_LIMITED",
         "JOB_REQUIRED",
         "UNKNOWN_OUTCOME",
@@ -149,6 +151,36 @@ describe("api contract", () => {
     };
     expect(meta.required).toContain("idempotencyKey");
     expect(meta.properties["expectedVersion"]).toBeDefined();
+  });
+
+  it("exposes versions, undo availability, and correction fields", () => {
+    const transaction = contract.components.schemas["Transaction"] as {
+      required: string[];
+      properties: { version: unknown };
+    };
+    expect(transaction.required).toContain("version");
+    expect(transaction.properties.version).toEqual({
+      $ref: "#/components/schemas/VersionString",
+    });
+    const result = contract.components.schemas["CommandResult"] as {
+      required: string[];
+      properties: Record<string, unknown>;
+    };
+    expect(result.required).toContain("undoAvailable");
+    expect(result.properties["undoAvailable"]).toBeDefined();
+    const detail = contract.components.schemas["TransactionDetail"] as {
+      required: string[];
+      allOf: { properties: Record<string, unknown> }[];
+    };
+    expect(detail.required).toContain("tags");
+    const extension = detail.allOf[1]?.properties ?? {};
+    for (const field of ["categoryId", "categoryName", "counterpartyId", "counterpartyName", "tags"]) {
+      expect(extension[field]).toBeDefined();
+    }
+    const category = contract.components.schemas["Category"] as {
+      required: string[];
+    };
+    expect(category.required).toEqual(expect.arrayContaining(["id", "name", "kind"]));
   });
 });
 

@@ -47,6 +47,9 @@ function detail(overrides: Partial<DbTransactionDetail> = {}): DbTransactionDeta
   return {
     transaction: transaction(),
     accountName: "Everyday checking",
+    category: null,
+    counterparty: null,
+    tags: [],
     sources: [
       {
         sourceTransactionId: "55555555-5555-7555-8555-555555555555",
@@ -115,5 +118,24 @@ describe("toTransactionDetailDto", () => {
     expect(dto.sources).toEqual([]);
     expect(dto.accountName).toBe("Everyday checking");
     expect(dto.sources).toHaveLength(0);
+  });
+
+  it("maps live correction state with decimal-string versions", () => {
+    const dto = toTransactionDetailDto(
+      detail({
+        category: { id: "44444444-4444-7444-8444-444444444444", name: "Groceries" },
+        counterparty: { id: "55555555-5555-7555-8555-555555555555", displayName: "Lidl" },
+        tags: ["food"],
+      }),
+    );
+    expect(dto.version).toBe("1");
+    expect(dto.categoryId).toBe("44444444-4444-7444-8444-444444444444");
+    expect(dto.categoryName).toBe("Groceries");
+    expect(dto.counterpartyName).toBe("Lidl");
+    expect(dto.tags).toEqual(["food"]);
+    const cleared = toTransactionDetailDto(detail());
+    expect(cleared.categoryId).toBeNull();
+    expect(cleared.counterpartyId).toBeNull();
+    expect(cleared.tags).toEqual([]);
   });
 });

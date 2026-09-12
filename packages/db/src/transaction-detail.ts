@@ -4,18 +4,24 @@ import type { PgliteDatabase } from "drizzle-orm/pglite";
 import type { Db } from "./client.js";
 import {
   accounts,
+  categories,
+  counterparties,
   dataSources,
   imports,
   sourceTransactionObservations,
   sourceTransactions,
+  tags,
   transactionSourceLinks,
   transactions,
+  transactionTags,
   type Transaction,
 } from "./schema.js";
 import type * as schema from "./schema.js";
 
 /**
  * Issue 4.8 — transaction detail query (canonical fields + provenance).
+ * Issue 5.5 extends it with the live correction state (category,
+ * counterparty, tags) the drawer edits.
  *
  * One tenant-scoped read joining the canonical row to its source history:
  * every `PRIMARY`/`PENDING_PREDECESSOR`/`MERGED` link, each linked source
@@ -43,6 +49,10 @@ export interface DetailSource {
 export interface TransactionDetail {
   transaction: Transaction;
   accountName: string;
+  /** Live correction state for the drawer (Issue 5.5); nulls mean unset. */
+  category: { id: string; name: string } | null;
+  counterparty: { id: string; displayName: string } | null;
+  tags: string[];
   sources: DetailSource[];
 }
 
@@ -67,6 +77,49 @@ export async function getTransactionDetail(
     .limit(1);
   const accountName = accountRows[0]?.name ?? "Unknown account";
 
+  const categoryRows =
+    transaction.categoryId === null
+      ? []
+      : await db
+          .select({ id: categories.id, name: categories.name })
+          .from(categories)
+          .where(
+            and(
+              eq(categories.workspaceId, workspaceId),
+              eq(categories.id, transaction.categoryId),
+            ),
+          )
+          .limit(1);
+  const counterpartyRows =
+    transaction.counterpartyId === null
+      ? []
+      : await db
+          .select({ id: counterparties.id, displayName: counterparties.displayName })
+          .from(counterparties)
+          .where(
+            and(
+              eq(counterparties.workspaceId, workspaceId),
+              eq(counterparties.id, transaction.counterpartyId),
+            ),
+          )
+          .limit(1);
+  const tagRows = await db
+    .select({ name: tags.name })
+    .from(transactionTags)
+    .innerJoin(tags, eq(transactionTags.tagId, tags.id))
+    .where(
+      and(
+        eq(transactionTags.workspaceId, workspaceId),
+        eq(transactionTags.transactionId, transactionId),
+      ),
+    )
+    .orderBy(asc(tags.name));
+  const correction = {
+    category: categoryRows[0] ?? null,
+    counterparty: counterpartyRows[0] ?? null,
+    tags: tagRows.map((r) => r.name),
+  };
+
   const links = await db
     .select()
     .from(transactionSourceLinks)
@@ -81,7 +134,7 @@ export async function getTransactionDetail(
       asc(transactionSourceLinks.sourceTransactionId),
     );
   if (links.length === 0) {
-    return { transaction, accountName, sources: [] };
+    return { transaction, accountName, ...correction, sources: [] };
   }
 
   const sourceIds = [...new Set(links.map((l) => l.sourceTransactionId))];
@@ -168,5 +221,5 @@ export async function getTransactionDetail(
       });
     }
   }
-  return { transaction, accountName, sources };
+  return { transaction, accountName, ...correction, sources };
 }

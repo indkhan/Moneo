@@ -1,7 +1,7 @@
 /**
  * GENERATED — do not edit by hand.
  * Source: apps/web/openapi/openapi.json (info.version=v1)
- * contractSha: b3d97769e945efabafae1cf17266bccfc65253dafcbfca10a8efce6d68ce75f5
+ * contractSha: e8a4c00beb4b224033219502b0cc6f08eb46ba686c65fd605973fa97ec1c4a8b
  * Regenerate: pnpm --filter @moneo/web gen:client
  * Every browser DTO comes from here; later API issues extend the contract first.
  */
@@ -12,6 +12,7 @@ export type ProblemCode =
   | "FORBIDDEN"
   | "VERSION_CONFLICT"
   | "IDEMPOTENCY_KEY_REUSED"
+  | "UNDO_CONFLICT"
   | "RATE_LIMITED"
   | "JOB_REQUIRED"
   | "UNKNOWN_OUTCOME"
@@ -49,6 +50,8 @@ export interface CommandRequest {
 export interface CommandResult {
   operationId: string;
   replayed: boolean;
+  /** True when the client may offer Undo via operations.undo for this outcome. */
+  undoAvailable: boolean;
   result: Record<string, unknown>;
 }
 
@@ -142,8 +145,24 @@ export interface Transaction {
   description: string;
   note: string | null;
   excludedFromAnalytics: boolean;
+  /** Optimistic-concurrency version as a decimal string (Issue 5.2). */
+  version: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export type CategoryKind = "expense" | "income" | "transfer";
+
+export interface Category {
+  id: string;
+  name: string;
+  kind: CategoryKind;
+  systemCategoryCode: string | null;
+  archivedAt: string | null;
+}
+
+export interface CategoryList {
+  items: Category[];
 }
 
 export interface TransactionPage {
@@ -164,6 +183,11 @@ export interface TransactionSource {
 
 export interface TransactionDetail extends Transaction {
   accountName: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  counterpartyId: string | null;
+  counterpartyName: string | null;
+  tags: string[];
   sources: TransactionSource[];
 }
 
@@ -268,7 +292,7 @@ export interface ImportPreview {
   suggestedAccount: string;
 }
 
-export const CONTRACT_SHA = "b3d97769e945efabafae1cf17266bccfc65253dafcbfca10a8efce6d68ce75f5";
+export const CONTRACT_SHA = "e8a4c00beb4b224033219502b0cc6f08eb46ba686c65fd605973fa97ec1c4a8b";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -367,6 +391,8 @@ export function createClient(options: { baseUrl?: string; fetchFn?: FetchFn } = 
       request(fetchFn, baseUrl, `/transactions/search${query(params)}`),
     getTransaction: (id: string): Promise<TransactionDetail> =>
       request(fetchFn, baseUrl, `/transactions/${encodeURIComponent(id)}`),
+    listCategories: (params: { includeArchived?: boolean } = {}): Promise<CategoryList> =>
+      request(fetchFn, baseUrl, `/categories${query(params)}`),
     listPendingMatches: (importId: string): Promise<MatchCandidateList> =>
       request(fetchFn, baseUrl, `/matches/pending?importId=${encodeURIComponent(importId)}`),
   };

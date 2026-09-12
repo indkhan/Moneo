@@ -49,6 +49,7 @@ export type ProblemCode =
   | "FORBIDDEN"
   | "VERSION_CONFLICT"
   | "IDEMPOTENCY_KEY_REUSED"
+  | "UNDO_CONFLICT"
   | "RATE_LIMITED"
   | "JOB_REQUIRED"
   | "UNKNOWN_OUTCOME"
@@ -86,6 +87,8 @@ export interface CommandRequest {
 export interface CommandResult {
   operationId: string;
   replayed: boolean;
+  /** True when the client may offer Undo via operations.undo for this outcome. */
+  undoAvailable: boolean;
   result: Record<string, unknown>;
 }
 
@@ -179,8 +182,24 @@ export interface Transaction {
   description: string;
   note: string | null;
   excludedFromAnalytics: boolean;
+  /** Optimistic-concurrency version as a decimal string (Issue 5.2). */
+  version: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export type CategoryKind = "expense" | "income" | "transfer";
+
+export interface Category {
+  id: string;
+  name: string;
+  kind: CategoryKind;
+  systemCategoryCode: string | null;
+  archivedAt: string | null;
+}
+
+export interface CategoryList {
+  items: Category[];
 }
 
 export interface TransactionPage {
@@ -201,6 +220,11 @@ export interface TransactionSource {
 
 export interface TransactionDetail extends Transaction {
   accountName: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  counterpartyId: string | null;
+  counterpartyName: string | null;
+  tags: string[];
   sources: TransactionSource[];
 }
 
@@ -404,6 +428,8 @@ export function createClient(options: { baseUrl?: string; fetchFn?: FetchFn } = 
       request(fetchFn, baseUrl, \`/transactions/search\${query(params)}\`),
     getTransaction: (id: string): Promise<TransactionDetail> =>
       request(fetchFn, baseUrl, \`/transactions/\${encodeURIComponent(id)}\`),
+    listCategories: (params: { includeArchived?: boolean } = {}): Promise<CategoryList> =>
+      request(fetchFn, baseUrl, \`/categories\${query(params)}\`),
     listPendingMatches: (importId: string): Promise<MatchCandidateList> =>
       request(fetchFn, baseUrl, \`/matches/pending?importId=\${encodeURIComponent(importId)}\`),
   };

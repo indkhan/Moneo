@@ -102,6 +102,7 @@ export function toTransactionDto(row: TransactionSearchPage["items"][number]): T
     description: row.description,
     note: row.note,
     excludedFromAnalytics: row.excludedFromAnalytics,
+    version: String(row.version),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

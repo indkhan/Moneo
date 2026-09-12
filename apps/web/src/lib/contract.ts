@@ -48,6 +48,10 @@ export const accountListQuerySchema = z.object({
   includeArchived: z.coerce.boolean().optional(),
 });
 
+export const categoryListQuerySchema = z.object({
+  includeArchived: z.coerce.boolean().optional(),
+});
+
 const isoDateSchema = z.string().regex(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/, "must be a YYYY-MM-DD date");
 
 const minorBoundSchema = z

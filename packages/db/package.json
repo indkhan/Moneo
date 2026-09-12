@@ -58,6 +58,10 @@
       "types": "./dist/balance-commands.d.ts",
       "default": "./dist/balance-commands.js"
     },
+    "./category-queries": {
+      "types": "./dist/category-queries.d.ts",
+      "default": "./dist/category-queries.js"
+    },
     "./command-store": {
       "types": "./dist/command-store.d.ts",
       "default": "./dist/command-store.js"

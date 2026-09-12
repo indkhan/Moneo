@@ -286,6 +286,29 @@
         }
       }
     },
+    "/categories": {
+      "get": {
+        "operationId": "listCategories",
+        "summary": "List workspace categories for correction controls",
+        "parameters": [
+          {
+            "name": "includeArchived",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": false }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace categories in name order",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/CategoryList" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" }
+        }
+      }
+    },
     "/matches/pending": {
       "get": {
         "operationId": "listPendingMatches",
@@ -561,6 +584,7 @@
               "FORBIDDEN",
               "VERSION_CONFLICT",
               "IDEMPOTENCY_KEY_REUSED",
+              "UNDO_CONFLICT",
               "RATE_LIMITED",
               "JOB_REQUIRED",
               "UNKNOWN_OUTCOME",
@@ -603,10 +627,14 @@
       },
       "CommandResult": {
         "type": "object",
-        "required": ["operationId", "replayed", "result"],
+        "required": ["operationId", "replayed", "undoAvailable", "result"],
         "properties": {
           "operationId": { "type": "string" },
           "replayed": { "type": "boolean" },
+          "undoAvailable": {
+            "type": "boolean",
+            "description": "True when the client may offer Undo via operations.undo for this outcome."
+          },
           "result": { "type": "object" }
         }
       },
@@ -851,6 +879,7 @@
           "effectiveDate",
           "description",
           "excludedFromAnalytics",
+          "version",
           "createdAt",
           "updatedAt"
         ],
@@ -865,6 +894,7 @@
           "description": { "type": "string" },
           "note": { "type": ["string", "null"] },
           "excludedFromAnalytics": { "type": "boolean" },
+          "version": { "$ref": "#/components/schemas/VersionString" },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
         }
@@ -903,13 +933,18 @@
       },
       "TransactionDetail": {
         "type": "object",
-        "required": ["accountName", "sources"],
+        "required": ["accountName", "sources", "tags"],
         "allOf": [
           { "$ref": "#/components/schemas/Transaction" },
           {
             "type": "object",
             "properties": {
               "accountName": { "type": "string" },
+              "categoryId": { "type": ["string", "null"], "format": "uuid" },
+              "categoryName": { "type": ["string", "null"] },
+              "counterpartyId": { "type": ["string", "null"], "format": "uuid" },
+              "counterpartyName": { "type": ["string", "null"] },
+              "tags": { "type": "array", "items": { "type": "string" } },
               "sources": {
                 "type": "array",
                 "items": { "$ref": "#/components/schemas/TransactionSource" }
@@ -917,6 +952,24 @@
             }
           }
         ]
+      },
+      "Category": {
+        "type": "object",
+        "required": ["id", "name", "kind"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "kind": { "type": "string", "enum": ["expense", "income", "transfer"] },
+          "systemCategoryCode": { "type": ["string", "null"] },
+          "archivedAt": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "CategoryList": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Category" } }
+        }
       },
       "MatchCandidate": {
         "type": "object",
