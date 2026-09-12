@@ -191,6 +191,50 @@
           "429": { "$ref": "#/components/responses/RateLimited" }
         }
       }
+    },
+    "/imports/initiate": {
+      "post": {
+        "operationId": "initiateUpload",
+        "summary": "Validate a statement declaration and reserve a private quarantine key",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/UploadInitiate" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reserved quarantine key (internal, never a public URL)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/UploadInitiated" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" }
+        }
+      }
+    },
+    "/imports/complete": {
+      "post": {
+        "operationId": "completeUpload",
+        "summary": "Verify quarantined bytes and store their metadata",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/UploadComplete" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stored upload metadata",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/UploadCompleted" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
     }
   },
   "components": {
@@ -297,6 +341,47 @@
           "type": { "type": "string", "minLength": 1, "maxLength": 120 },
           "payload": { "type": "object" },
           "dedupeKey": { "type": "string", "minLength": 1, "maxLength": 128 }
+        }
+      },
+      "UploadInitiate": {
+        "type": "object",
+        "required": ["fileName", "contentLength"],
+        "properties": {
+          "fileName": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "contentLength": { "type": "integer", "minimum": 1, "maximum": 10485760 }
+        }
+      },
+      "UploadInitiated": {
+        "type": "object",
+        "required": ["importId", "objectKey", "mime", "maxBytes"],
+        "properties": {
+          "importId": { "type": "string", "format": "uuid" },
+          "objectKey": { "type": "string" },
+          "mime": { "type": "string" },
+          "maxBytes": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "UploadComplete": {
+        "type": "object",
+        "required": ["importId", "objectKey", "fileName"],
+        "properties": {
+          "importId": { "type": "string", "format": "uuid" },
+          "objectKey": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "fileName": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "expectedSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      },
+      "UploadCompleted": {
+        "type": "object",
+        "required": ["workspaceId", "importId", "objectKey", "fileName", "mime", "bytes", "sha256"],
+        "properties": {
+          "workspaceId": { "type": "string", "format": "uuid" },
+          "importId": { "type": "string", "format": "uuid" },
+          "objectKey": { "type": "string" },
+          "fileName": { "type": "string" },
+          "mime": { "type": "string" },
+          "bytes": { "type": "integer", "minimum": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
         }
       },
       "JobStatus": {

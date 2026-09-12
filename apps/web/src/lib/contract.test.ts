@@ -47,6 +47,8 @@ describe("api contract", () => {
       "/jobs/{id}/retry",
       "/jobs/{id}/stop",
       "/commands/{commandName}",
+      "/imports/initiate",
+      "/imports/complete",
     ]) {
       expect(Object.keys(contract.paths)).toContain(path);
     }

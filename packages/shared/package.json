@@ -40,6 +40,10 @@
     "./limits": {
       "types": "./dist/limits.d.ts",
       "default": "./dist/limits.js"
+    },
+    "./uploads": {
+      "types": "./dist/uploads.d.ts",
+      "default": "./dist/uploads.js"
     }
   },
   "scripts": {

@@ -115,6 +115,36 @@ export interface JobPage {
   nextCursor: string | null;
 }
 
+export interface UploadInitiate {
+  fileName: string;
+  contentLength: number;
+}
+
+export interface UploadInitiated {
+  importId: string;
+  /** Internal quarantine key — never a public URL. */
+  objectKey: string;
+  mime: string;
+  maxBytes: number;
+}
+
+export interface UploadComplete {
+  importId: string;
+  objectKey: string;
+  fileName: string;
+  expectedSha256?: string;
+}
+
+export interface UploadCompleted {
+  workspaceId: string;
+  importId: string;
+  objectKey: string;
+  fileName: string;
+  mime: string;
+  bytes: number;
+  sha256: string;
+}
+
 export const CONTRACT_SHA = "${sha}";
 
 export class ApiError extends Error {
@@ -187,6 +217,10 @@ export function createClient(options: { baseUrl?: string; fetchFn?: FetchFn } = 
         method: "POST",
         body: JSON.stringify(body),
       }),
+    initiateUpload: (body: UploadInitiate): Promise<UploadInitiated> =>
+      request(fetchFn, baseUrl, "/imports/initiate", { method: "POST", body: JSON.stringify(body) }),
+    completeUpload: (body: UploadComplete): Promise<UploadCompleted> =>
+      request(fetchFn, baseUrl, "/imports/complete", { method: "POST", body: JSON.stringify(body) }),
   };
 }
 
