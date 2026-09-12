@@ -8,6 +8,13 @@
       "when": 1757720000000,
       "tag": "0000_init_currencies",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789206937562,
+      "tag": "0001_identity_workspace",
+      "breakpoints": true
     }
   ]
 }
