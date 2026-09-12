@@ -1,0 +1,350 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Moneo API",
+    "version": "v1",
+    "description": "Moneo v1 API. Money travels as decimal strings (integer minor units, never floats); entity versions travel as decimal strings. Failures use RFC 9457 problem details with a stable machine-readable `code`."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Service health",
+        "responses": {
+          "200": {
+            "description": "Health status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "service"],
+                  "properties": {
+                    "status": { "type": "string", "const": "ok" },
+                    "service": { "type": "string", "const": "web" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/version": {
+      "get": {
+        "operationId": "getVersion",
+        "summary": "Release version",
+        "responses": {
+          "200": {
+            "description": "Release coordinates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["gitSha", "releaseId", "schemaVersion", "environment"],
+                  "properties": {
+                    "gitSha": { "type": "string" },
+                    "releaseId": { "type": "string" },
+                    "schemaVersion": { "type": "string" },
+                    "environment": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs": {
+      "get": {
+        "operationId": "listJobs",
+        "summary": "List durable jobs (cursor page)",
+        "parameters": [
+          { "$ref": "#/components/parameters/Cursor" },
+          { "$ref": "#/components/parameters/PageLimit" }
+        ],
+        "responses": {
+          "200": {
+            "description": "A cursor page of jobs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["items"],
+                  "properties": {
+                    "items": { "type": "array", "items": { "$ref": "#/components/schemas/JobStatus" } },
+                    "nextCursor": { "type": ["string", "null"] }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" }
+        }
+      },
+      "post": {
+        "operationId": "submitJob",
+        "summary": "Submit a durable job",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/JobSubmit" } }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Job accepted",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/JobStatus" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" },
+          "409": { "$ref": "#/components/responses/IdempotencyConflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/jobs/{id}": {
+      "get": {
+        "operationId": "getJob",
+        "summary": "Durable job status",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": {
+          "200": {
+            "description": "Job status",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/JobStatus" } }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/jobs/{id}/retry": {
+      "post": {
+        "operationId": "retryJob",
+        "summary": "Retry a failed job with budget left",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": {
+          "202": {
+            "description": "Retry accepted",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/JobStatus" } }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/InvariantViolation" }
+        }
+      }
+    },
+    "/jobs/{id}/stop": {
+      "post": {
+        "operationId": "stopJob",
+        "summary": "Request cancellation of a live job",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": {
+          "202": {
+            "description": "Stop accepted",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/JobStatus" } }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/commands/{commandName}": {
+      "post": {
+        "operationId": "executeCommand",
+        "summary": "Run a typed domain command idempotently",
+        "parameters": [
+          {
+            "name": "commandName",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "minLength": 1, "maxLength": 120 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CommandRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Command result (replayed results return the identical body)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/CommandResult" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationFailed" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/InvariantViolation" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "Cursor": {
+        "name": "cursor",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string", "maxLength": 2048 }
+      },
+      "PageLimit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }
+      },
+      "JobId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      }
+    },
+    "schemas": {
+      "MoneyString": {
+        "type": "string",
+        "pattern": "^-?[0-9]+$",
+        "description": "Integer minor units as a decimal string (never a JSON number, never a float)."
+      },
+      "VersionString": {
+        "type": "string",
+        "pattern": "^[0-9]+$",
+        "description": "Optimistic-concurrency version as a decimal string."
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "required": ["type", "title", "status", "detail", "code", "retryable", "correlationId"],
+        "properties": {
+          "type": { "type": "string", "format": "uri" },
+          "title": { "type": "string" },
+          "status": { "type": "integer" },
+          "detail": { "type": "string" },
+          "code": {
+            "type": "string",
+            "enum": [
+              "VALIDATION_FAILED",
+              "NOT_FOUND",
+              "FORBIDDEN",
+              "VERSION_CONFLICT",
+              "IDEMPOTENCY_KEY_REUSED",
+              "RATE_LIMITED",
+              "JOB_REQUIRED",
+              "UNKNOWN_OUTCOME",
+              "INVARIANT_VIOLATION",
+              "DEPENDENCY_UNAVAILABLE",
+              "INTERNAL_ERROR"
+            ]
+          },
+          "retryable": { "type": "boolean" },
+          "correlationId": { "type": "string" },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["field", "message"],
+              "properties": {
+                "field": { "type": "string" },
+                "message": { "type": "string" }
+              }
+            }
+          },
+          "instance": { "type": "string" }
+        }
+      },
+      "CommandMetadata": {
+        "type": "object",
+        "required": ["idempotencyKey"],
+        "properties": {
+          "idempotencyKey": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "expectedVersion": { "$ref": "#/components/schemas/VersionString" }
+        }
+      },
+      "CommandRequest": {
+        "type": "object",
+        "required": ["metadata", "input"],
+        "properties": {
+          "metadata": { "$ref": "#/components/schemas/CommandMetadata" },
+          "input": { "type": "object" }
+        }
+      },
+      "CommandResult": {
+        "type": "object",
+        "required": ["operationId", "replayed", "result"],
+        "properties": {
+          "operationId": { "type": "string" },
+          "replayed": { "type": "boolean" },
+          "result": { "type": "object" }
+        }
+      },
+      "JobSubmit": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "payload": { "type": "object" },
+          "dedupeKey": { "type": "string", "minLength": 1, "maxLength": 128 }
+        }
+      },
+      "JobStatus": {
+        "type": "object",
+        "required": ["id", "type", "status", "attempts", "maxAttempts", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "type": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["queued", "running", "succeeded", "failed", "cancelled"]
+          },
+          "progressStage": { "type": ["string", "null"] },
+          "progressPercent": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+          "attempts": { "type": "integer", "minimum": 0 },
+          "maxAttempts": { "type": "integer", "minimum": 1 },
+          "error": { "type": ["object", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "responses": {
+      "ValidationFailed": {
+        "description": "Malformed request (see `errors` for fields)",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemDetails" } } }
+      },
+      "NotFound": {
+        "description": "Unknown job, command, or entity",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemDetails" } } }
+      },
+      "Forbidden": {
+        "description": "Caller may not perform this action",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemDetails" } } }
+      },
+      "Conflict": {
+        "description": "Version conflict or idempotency-key reuse",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemDetails" } } }
+      },
+      "IdempotencyConflict": {
+        "description": "Same dedupe key submitted with a different payload",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemDetails" } } }
+      },
+      "InvariantViolation": {
+        "description": "Input is well-formed but violates a domain invariant",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemDetails" } } }
+      },
+      "RateLimited": {
+        "description": "Too many requests (honour `Retry-After`)",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemDetails" } } }
+      }
+    }
+  }
+}

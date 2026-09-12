@@ -11,6 +11,7 @@ export default tseslint.config(
       "**/build/**",
       "**/coverage/**",
       "**/*.generated.*",
+      "**/src/generated/**",
       "**/next-env.d.ts",
       "packages/db/drizzle/**",
     ],
