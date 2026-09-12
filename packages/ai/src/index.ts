@@ -3,3 +3,4 @@
  */
 export const AI_PACKAGE = "@moneo/ai";
 export * from "./model-gateway.js";
+export * from "./financial-assistant.js";
