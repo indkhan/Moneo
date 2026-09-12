@@ -1,5 +1,6 @@
 export * from "./schema.js";
 export * from "./account-queries.js";
+export * from "./audit-history.js";
 export * from "./balance-commands.js";
 export * from "./category-queries.js";
 export * from "./command-store.js";

@@ -128,6 +128,8 @@ export function createDrizzleCommandStore(db: CommandStoreDb): CommandStore {
         entityType: commit.audit.entityType,
         entityId: commit.audit.entityId,
         action: commit.audit.action,
+        reason: commit.audit.reason ?? null,
+        relatedAiRunId: commit.audit.relatedAiRunId ?? null,
         oldValue: commit.audit.oldValue ?? null,
         newValue: commit.audit.newValue ?? null,
       });

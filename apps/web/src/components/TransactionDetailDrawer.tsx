@@ -146,6 +146,25 @@ function TransactionCorrections({
   );
 }
 
+function TransactionAuditHistory({ transactionId }: { transactionId: string }) {
+  const history = useQuery({
+    queryKey: ["transaction", transactionId, "audit"],
+    queryFn: async () => {
+      const response = await fetch(`/api/v1/transactions/${encodeURIComponent(transactionId)}/audit`);
+      if (!response.ok) throw new Error("Could not load history.");
+      return response.json() as Promise<{ items: { id: string; action: string; actor: string; reason: string | null; oldValue: Record<string, unknown> | null; newValue: Record<string, unknown> | null; createdAt: string }[] }>;
+    },
+  });
+  if (history.isPending) return <p>Loading history…</p>;
+  if (history.isError) return <p role="alert">Could not load history.</p>;
+  return (
+    <section aria-label="Audit history">
+      <h3 style={{ margin: "0 0 8px", fontSize: 14 }}>History</h3>
+      {history.data.items.length === 0 ? <p>No changes yet.</p> : <ul>{history.data.items.map((item) => <li key={item.id}><strong>{item.action}</strong> by {item.actor} · {new Date(item.createdAt).toLocaleString()}<br />{item.reason ?? "No reason provided"}<details><summary>View change</summary><pre>{JSON.stringify({ from: item.oldValue, to: item.newValue }, null, 2)}</pre></details></li>)}</ul>}
+    </section>
+  );
+}
+
 export function TransactionDetailDrawer({
   transactionId,
   onClose,
@@ -189,6 +208,7 @@ export function TransactionDetailDrawer({
         <>
           <TransactionDetailContent detail={query.data} />
           <TransactionCorrections detail={query.data} client={client} onChanged={() => void query.refetch()} />
+          <TransactionAuditHistory transactionId={query.data.id} />
         </>
       )}
     </Dialog>

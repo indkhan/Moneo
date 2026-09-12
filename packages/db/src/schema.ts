@@ -204,6 +204,10 @@ export const auditEvents = pgTable(
     entityId: text("entity_id").notNull(),
     /** What happened, e.g. `transactions.setCategory`. */
     action: text("action").notNull(),
+    /** Optional human or automation explanation; never required for legacy events. */
+    reason: text("reason"),
+    /** Opaque run reference until Epoch 6 owns the AI-run foreign key. */
+    relatedAiRunId: text("related_ai_run_id"),
     oldValue: jsonb("old_value").$type<Record<string, unknown> | null>(),
     newValue: jsonb("new_value").$type<Record<string, unknown> | null>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

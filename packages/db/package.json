@@ -54,6 +54,10 @@
       "types": "./dist/account-queries.d.ts",
       "default": "./dist/account-queries.js"
     },
+    "./audit-history": {
+      "types": "./dist/audit-history.d.ts",
+      "default": "./dist/audit-history.js"
+    },
     "./balance-commands": {
       "types": "./dist/balance-commands.d.ts",
       "default": "./dist/balance-commands.js"

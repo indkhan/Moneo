@@ -46,6 +46,8 @@ export interface CommandAuditRecord {
   entityType: string;
   entityId: string;
   action: string;
+  reason?: string | null;
+  relatedAiRunId?: string | null;
   oldValue?: Record<string, unknown> | null;
   newValue?: Record<string, unknown> | null;
 }
