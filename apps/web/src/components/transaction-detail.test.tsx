@@ -57,6 +57,10 @@ describe("TransactionDetailContent", () => {
     expect(html).toContain("2026-08-15");
     expect(html).toContain("Everyday checking");
     expect(html).toContain("-15.50 EUR");
+    expect(html).toContain("Category");
+    expect(html).toContain("Merchant");
+    expect(html).toContain("Tags");
+    expect(html).toContain("Included in analytics");
   });
 
   it("shows provenance with the verbatim original behind View original", () => {

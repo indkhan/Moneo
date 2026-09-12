@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Dialog } from "@moneo/ui";
 import { Skeleton } from "@moneo/ui";
 import { createClient, type TransactionDetail } from "../generated/client";
@@ -37,6 +37,14 @@ export function TransactionDetailContent({ detail }: { detail: TransactionDetail
         <dd style={{ margin: 0 }}>{formatTransactionAmount(detail)}</dd>
         <dt>Status</dt>
         <dd style={{ margin: 0 }}>{detail.status}</dd>
+        <dt>Category</dt>
+        <dd style={{ margin: 0 }}>{detail.categoryName ?? "Uncategorized"}</dd>
+        <dt>Merchant</dt>
+        <dd style={{ margin: 0 }}>{detail.counterpartyName ?? "Not set"}</dd>
+        <dt>Tags</dt>
+        <dd style={{ margin: 0 }}>{detail.tags.length ? detail.tags.join(", ") : "None"}</dd>
+        <dt>Analytics</dt>
+        <dd style={{ margin: 0 }}>{detail.excludedFromAnalytics ? "Excluded from analytics" : "Included in analytics"}</dd>
       </dl>
       <section aria-label="Source and import">
         <h3 style={{ margin: "0 0 8px", fontSize: 14 }}>Source & import</h3>
@@ -62,6 +70,79 @@ export function TransactionDetailContent({ detail }: { detail: TransactionDetail
         )}
       </section>
     </div>
+  );
+}
+
+function TransactionCorrections({
+  detail,
+  client,
+  onChanged,
+}: {
+  detail: TransactionDetail;
+  client: ReturnType<typeof createClient>;
+  onChanged: () => void;
+}) {
+  const categories = useQuery({ queryKey: ["categories"], queryFn: () => client.listCategories() });
+  const [merchant, setMerchant] = useState(detail.counterpartyName ?? "");
+  const [tags, setTags] = useState(detail.tags.join(", "));
+  const [note, setNote] = useState(detail.note ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [undo, setUndo] = useState<string | null>(null);
+
+  async function run(name: string, input: Record<string, unknown>) {
+    setError(null);
+    try {
+      const result = await client.executeCommand(name, {
+        metadata: { idempotencyKey: crypto.randomUUID(), expectedVersion: detail.version },
+        input: { transactionId: detail.id, ...input },
+      });
+      setUndo(result.undoAvailable ? result.operationId : null);
+      onChanged();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not save this correction.");
+    }
+  }
+
+  return (
+    <section aria-label="Transaction corrections" style={{ display: "grid", gap: 8 }}>
+      <h3 style={{ margin: 0, fontSize: 14 }}>Corrections</h3>
+      <label>
+        Category{" "}
+        <select
+          value={detail.categoryId ?? ""}
+          disabled={categories.isPending}
+          onChange={(event) => void run("transactions.setCategory", { categoryId: event.target.value || null })}
+        >
+          <option value="">Uncategorized</option>
+          {(categories.data?.items ?? []).map((category) => (
+            <option key={category.id} value={category.id}>{category.name}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Merchant{" "}
+        <input value={merchant} onChange={(event) => setMerchant(event.target.value)} />
+      </label>
+      <button type="button" onClick={() => void run("transactions.setCounterparty", { counterpartyName: merchant || null })}>Save merchant</button>
+      <label>
+        Tags{" "}
+        <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="Food, travel" />
+      </label>
+      <button type="button" onClick={() => void run("transactions.addTags", { tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean) })}>Add tags</button>
+      {detail.tags.map((tag) => (
+        <button key={tag} type="button" onClick={() => void run("transactions.removeTags", { tags: [tag] })}>Remove {tag}</button>
+      ))}
+      <label>
+        Note{" "}
+        <input value={note} onChange={(event) => setNote(event.target.value)} />
+      </label>
+      <button type="button" onClick={() => void run("transactions.setNote", { note: note || null })}>Save note</button>
+      <label>
+        <input type="checkbox" checked={detail.excludedFromAnalytics} onChange={(event) => void run("transactions.excludeFromAnalytics", { excluded: event.target.checked })} /> Exclude from analytics
+      </label>
+      {undo ? <button type="button" onClick={() => void run("operations.undo", { operationId: undo })}>Undo last change</button> : null}
+      {error ? <p role="alert" style={{ margin: 0 }}>{error}</p> : null}
+    </section>
   );
 }
 
@@ -105,7 +186,10 @@ export function TransactionDetailDrawer({
           </button>
         </div>
       ) : (
-        <TransactionDetailContent detail={query.data} />
+        <>
+          <TransactionDetailContent detail={query.data} />
+          <TransactionCorrections detail={query.data} client={client} onChanged={() => void query.refetch()} />
+        </>
       )}
     </Dialog>
   );
