@@ -14,7 +14,6 @@ const CONFIG: AuthConfig = {
   clientId: "client-123",
   clientSecret: "secret-abc",
   baseUrl: "http://localhost:3000",
-  sessionSecret: "test-session-secret",
 };
 
 const CREDENTIALS = { clientId: "client-123", clientSecret: "secret-abc" };

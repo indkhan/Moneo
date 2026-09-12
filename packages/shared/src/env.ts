@@ -23,9 +23,11 @@ const envSchema = z.object({
   AUTH0_DOMAIN: z.string().min(1).optional(),
   AUTH0_CLIENT_ID: z.string().min(1).optional(),
   AUTH0_CLIENT_SECRET: z.string().min(1).optional(),
+  /** Encrypts Auth0 SDK's server-side session cookie. */
+  AUTH0_SECRET: z.string().min(1).optional(),
   /** Public login hostname (e.g. login.moneo.example); canonical EU domain stays the token issuer. */
   AUTH0_CUSTOM_DOMAIN: z.string().min(1).optional(),
-  /** Seals the browser session cookie. Required by auth routes; generate with `openssl rand -hex 32`. */
+  /** Legacy fallback for transaction-search cursor signing. */
   SESSION_SECRET: z.string().min(1).optional(),
   // --- Epoch 4, Issue 4.6/4.7: HMAC secret for opaque transaction cursors ---
   /** Signs keyset pagination cursors. Defaults to SESSION_SECRET when unset; one must be set in server environments. */

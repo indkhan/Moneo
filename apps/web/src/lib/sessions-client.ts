@@ -134,21 +134,10 @@ export function revokeOtherSessions(
   return postRevocation(fetchImpl, csrfToken, { allOthers: true }, "Sign out others");
 }
 
-/** Full sign-out: revoke server-side, then follow the federated logout URL. */
-export async function signOut(
+/** Revoke every Moneo session before the official SDK ends the Auth0 session. */
+export function revokeAllSessions(
   fetchImpl: FetchImpl,
   csrfToken: string | undefined,
-): Promise<{ federatedLogoutUrl: string }> {
-  const response = await fetchImpl("/api/auth/logout", {
-    method: "POST",
-    headers: csrfToken ? { [CSRF_HEADER]: csrfToken } : undefined,
-  });
-  if (!response.ok) {
-    throw new SessionApiError(response.status, "Sign out failed");
-  }
-  const body = await parseJson(response, "Sign out");
-  if (typeof body.federatedLogoutUrl !== "string") {
-    throw new SessionApiError(response.status, "Sign out returned an unexpected shape");
-  }
-  return { federatedLogoutUrl: body.federatedLogoutUrl };
+): Promise<{ revoked: number }> {
+  return postRevocation(fetchImpl, csrfToken, { all: true }, "Sign out");
 }

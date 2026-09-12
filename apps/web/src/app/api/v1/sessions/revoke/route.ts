@@ -7,7 +7,8 @@ import { getSession } from "@/lib/auth-session";
  * POST /api/v1/sessions/revoke — sign out sessions (Issue 1.7).
  *
  * Body: `{ "sessionId": "<sid>" }` revokes exactly that owned session,
- * `{ "allOthers": true }` revokes everything except the caller's own.
+ * `{ "allOthers": true }` revokes everything except the caller's own;
+ * `{ "all": true }` revokes the whole Moneo session registry before SDK logout.
  * A mutation, so the edge middleware's CSRF gate applies.
  */
 export async function POST(request: NextRequest) {
@@ -24,8 +25,16 @@ export async function POST(request: NextRequest) {
   if (typeof body !== "object" || body === null) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }
-  const { sessionId, allOthers } = body as { sessionId?: unknown; allOthers?: unknown };
+  const { sessionId, allOthers, all } = body as {
+    sessionId?: unknown;
+    allOthers?: unknown;
+    all?: unknown;
+  };
   try {
+    if (all === true) {
+      const revoked = await revokeUserSessions(getDb(), session.uid, null);
+      return NextResponse.json({ revoked });
+    }
     if (allOthers === true) {
       const revoked = await revokeUserSessions(getDb(), session.uid, session.sid);
       return NextResponse.json({ revoked });

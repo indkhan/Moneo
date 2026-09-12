@@ -16,6 +16,7 @@
     "gen:client:check": "node openapi/generate.mjs && git diff --exit-code -- src/generated/client.ts"
   },
   "dependencies": {
+    "@auth0/nextjs-auth0": "^4.29.0",
     "@moneo/db": "workspace:*",
     "@moneo/finance": "workspace:*",
     "@moneo/shared": "workspace:*",

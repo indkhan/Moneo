@@ -1,11 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
+vi.mock("./auth-session", () => ({
+  getSession: () => Promise.reject(mockedSessionError ?? new Error("No session")),
+}));
 import {
   getShellIdentity,
   identityLabel,
   resolveShellIdentity,
   type ShellUser,
 } from "./shell-identity";
-import type { SessionPayload } from "./session";
+import type { SessionPayload } from "./auth-session";
+
+let mockedSessionError: Error | null = null;
 
 function session(overrides: Partial<SessionPayload> = {}): SessionPayload {
   return {
@@ -86,15 +91,14 @@ describe("identityLabel", () => {
 });
 
 describe("getShellIdentity wiring", () => {
-  it("renders logged-out (instead of crashing) when auth is unconfigured", async () => {
-    const savedDomain = process.env.AUTH0_DOMAIN;
-    delete process.env.AUTH0_DOMAIN;
+  it("renders logged-out when the Auth0 session cannot be read", async () => {
+    mockedSessionError = new Error("Auth0 is not configured");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
       await expect(getShellIdentity()).resolves.toEqual({ user: null, workspace: null });
     } finally {
-      if (savedDomain !== undefined) {
-        process.env.AUTH0_DOMAIN = savedDomain;
-      }
+      mockedSessionError = null;
+      warn.mockRestore();
     }
   });
 });

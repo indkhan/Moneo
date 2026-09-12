@@ -1,8 +1,7 @@
 import { withWorkspaceTransaction } from "@moneo/db/tenancy";
 import { findWorkspaceShell, type WorkspaceShell } from "@moneo/db/workspaces";
-import { AuthConfigError } from "./auth-config";
 import { getSession } from "./auth-session";
-import type { SessionPayload } from "./session";
+import type { SessionPayload } from "./auth-session";
 
 /**
  * Issue 1.5 — authenticated shell identity.
@@ -61,12 +60,10 @@ export async function getShellIdentity(): Promise<ShellIdentity> {
   try {
     session = await getSession();
   } catch (error) {
-    // Auth not configured (local shell, static build, fresh clone): nobody
-    // is logged in, and the shell still renders. Anything else propagates.
-    if (error instanceof AuthConfigError) {
-      return { user: null, workspace: null };
-    }
-    throw error;
+    // The SDK can be unavailable during a static build or an unconfigured
+    // local shell. The surrounding page remains usable as signed out.
+    console.warn(`Shell session lookup failed: ${(error as Error).message}`);
+    return { user: null, workspace: null };
   }
   return resolveShellIdentity(session, (workspaceId: string) =>
     withWorkspaceTransaction<WorkspaceShell | null>(workspaceId, (tx) => findWorkspaceShell(tx, workspaceId)),

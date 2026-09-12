@@ -1,16 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildSessionPayload, seal } from "./session";
-import type { SessionPayload } from "./session";
+import type { SessionPayload } from "./auth-session";
 import { decideStrongAuth, primaryFactor, requireStrongAuth, StrongAuthError } from "./strong-auth";
 import { MfaProviderError, type AuthFactor, type MfaProvider } from "./mfa-provider";
 
-// Transport stubs for the gate: real sealed cookies, fake registry.
-// Mock factories run before imports, so the cookie name is inlined here.
-vi.mock("next/headers", () => ({
-  cookies: () => ({
-    get: (name: string) =>
-      name === "__Host-moneo_session" && mockedCookie ? { value: mockedCookie } : undefined,
-  }),
+// The official SDK owns cookie cryptography. Stub its session boundary and
+// keep the registry/provider checks real.
+vi.mock("./auth-session", () => ({
+  getSession: () => Promise.resolve(mockedSession),
 }));
 vi.mock("@moneo/db/client", () => ({ getDb: () => ({}) }));
 vi.mock("@moneo/db/sessions", () => ({
@@ -19,7 +15,7 @@ vi.mock("@moneo/db/sessions", () => ({
 
 // Mutable stub state, reset per test. The mock factories above read these
 // bindings lazily at call time (names contain "mock" as vitest requires).
-let mockedCookie: string | undefined;
+let mockedSession: SessionPayload | null;
 let mockedRegistry: Array<{ id: string }>;
 
 function session(): SessionPayload {
@@ -112,33 +108,13 @@ describe("decideStrongAuth", () => {
 });
 
 describe("requireStrongAuth gate (mocked cookie + registry)", () => {
-  // Real sealed cookies, stubbed transport: proves the gate end to end.
-  const SECRET = "gate-test-secret-0123456789abcdef";
-  // Sessions must be live against the REAL clock (readSession uses Date.now).
-  const liveCookie = (sub = "auth0|abc", sid = "sid-live") =>
-    seal(
-      buildSessionPayload({
-        sub,
-        sid,
-        uid: "user-1",
-        wid: "ws-1",
-        nowSeconds: Math.floor(Date.now() / 1000),
-      }),
-      SECRET,
-    );
-
   beforeEach(() => {
-    vi.stubEnv("AUTH0_DOMAIN", "moneo.eu.auth0.com");
-    vi.stubEnv("AUTH0_CLIENT_ID", "client-123");
-    vi.stubEnv("AUTH0_CLIENT_SECRET", "secret-abc");
-    vi.stubEnv("SESSION_SECRET", SECRET);
     mockedRegistry = [];
-    mockedCookie = liveCookie();
+    mockedSession = { ...session(), sid: "sid-live" };
   });
 
   afterEach(() => {
-    vi.unstubAllEnvs();
-    mockedCookie = undefined;
+    mockedSession = null;
     mockedRegistry = [];
   });
 
@@ -165,23 +141,20 @@ describe("requireStrongAuth gate (mocked cookie + registry)", () => {
     await expect(requireStrongAuth(provider)).rejects.toMatchObject({ code: "SIGNED_OUT" });
   });
 
-  it("denies expired cookies (SIGNED_OUT)", async () => {
-    mockedCookie = seal(
-      buildSessionPayload({ sub: "auth0|abc", sid: "sid-live", nowSeconds: 100 }),
-      SECRET,
-    );
+  it("denies missing SDK sessions (SIGNED_OUT)", async () => {
+    mockedSession = null;
     mockedRegistry = [{ id: "sid-live" }];
     const provider = syntheticProvider({ "auth0|abc": [factor("passkey")] });
     await expect(requireStrongAuth(provider)).rejects.toMatchObject({ code: "SIGNED_OUT" });
   });
 
   it("denies missing sessions and degraded providers without unlocking", async () => {
-    mockedCookie = undefined;
+    mockedSession = null;
     await expect(requireStrongAuth(syntheticProvider({}))).rejects.toMatchObject({
       code: "SIGNED_OUT",
     });
 
-    mockedCookie = liveCookie();
+    mockedSession = { ...session(), sid: "sid-live" };
     mockedRegistry = [{ id: "sid-live" }];
     const outage = syntheticProvider({ "auth0|abc": new MfaProviderError("UNAVAILABLE", "down") });
     await expect(requireStrongAuth(outage)).rejects.toMatchObject({ code: "DEGRADED" });

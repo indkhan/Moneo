@@ -12,7 +12,7 @@ import {
   type AuthFactor,
   type MfaProvider,
 } from "./mfa-provider";
-import type { SessionPayload } from "./session";
+import type { SessionPayload } from "./auth-session";
 
 /**
  * Issue 1.8 — strong-authentication enrollment gate.
@@ -60,7 +60,7 @@ export function decideStrongAuth(
     return { state: "signed-out", method: null, factors: [], passkeysOffered };
   }
   if (!sessionActive) {
-    // Expired cookies never reach here (readSession); this is revocation.
+    // Expired SDK sessions never reach here; this is registry revocation.
     return { state: "signed-out", method: null, factors: [], passkeysOffered };
   }
   if (providerFailed || factors === null) {

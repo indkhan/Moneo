@@ -73,7 +73,7 @@ export default async function SettingsPage() {
           </dl>
         ) : (
           <CardDescription>
-            You are not signed in. <a href="/api/auth/login">Log in</a> to connect your workspace.
+            You are not signed in. <a href="/auth/login">Log in</a> to connect your workspace.
           </CardDescription>
         )}
       </Card>
@@ -83,7 +83,7 @@ export default async function SettingsPage() {
           <SessionSecurity initialSessions={initialSessions} />
         ) : (
           <CardDescription>
-            Sign in to review and revoke your sessions. <a href="/api/auth/login">Log in</a>
+            Sign in to review and revoke your sessions. <a href="/auth/login">Log in</a>
           </CardDescription>
         )}
       </Card>
@@ -94,7 +94,7 @@ export default async function SettingsPage() {
         ) : (
           <CardDescription>
             Passkeys or an authenticator app unlock finance access after you sign in.{" "}
-            <a href="/api/auth/login">Log in</a>
+            <a href="/auth/login">Log in</a>
           </CardDescription>
         )}
       </Card>

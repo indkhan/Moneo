@@ -1,13 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   AuthConfigError,
-  authorizationEndpoint,
-  callbackUrl,
-  federatedLogoutEndpoint,
   isEuAuth0Domain,
   loadAuthConfig,
-  tokenEndpoint,
-  userinfoEndpoint,
   type AuthConfig,
 } from "./auth-config";
 import { loadEnv } from "@moneo/shared/env";
@@ -18,14 +13,13 @@ function baseEnv(overrides: Record<string, string | undefined> = {}) {
     AUTH0_DOMAIN: "moneo.eu.auth0.com",
     AUTH0_CLIENT_ID: "client-123",
     AUTH0_CLIENT_SECRET: "secret-abc",
-    SESSION_SECRET: "test-session-secret",
     APP_BASE_URL: "http://localhost:3000/",
     ...overrides,
   });
 }
 
 describe("EU tenant domain guard", () => {
-  it.each(["moneo.eu.auth0.com", "login.eu.auth0.com", "a-b.c123.eu.auth0.com"])(
+  it.each(["moneo.eu.auth0.com", "login.eu.auth0.com", "a-b.c123.eu.auth0.com", "moneo.eu-2.auth0.com"])(
     "accepts EU tenant %s",
     (domain) => {
       expect(isEuAuth0Domain(domain)).toBe(true);
@@ -52,25 +46,16 @@ describe("EU tenant domain guard", () => {
 });
 
 describe("loadAuthConfig", () => {
-  it("builds endpoints on the canonical EU issuer by default", () => {
+  it("builds an SDK configuration on the canonical EU issuer by default", () => {
     const config = loadAuthConfig(baseEnv());
     expect(config.issuer).toBe("https://moneo.eu.auth0.com");
     expect(config.loginHost).toBe("https://moneo.eu.auth0.com");
-    expect(tokenEndpoint(config)).toBe("https://moneo.eu.auth0.com/oauth/token");
-    expect(userinfoEndpoint(config)).toBe("https://moneo.eu.auth0.com/userinfo");
-    expect(authorizationEndpoint(config)).toBe("https://moneo.eu.auth0.com/authorize");
-    expect(federatedLogoutEndpoint(config)).toBe("https://moneo.eu.auth0.com/v2/logout");
-    expect(callbackUrl(config)).toBe("http://localhost:3000/api/auth/callback");
   });
 
   it("supports a custom login domain while keeping the EU issuer canonical", () => {
     const config = loadAuthConfig(baseEnv({ AUTH0_CUSTOM_DOMAIN: "login.moneo.example" }));
     expect(config.issuer).toBe("https://moneo.eu.auth0.com");
     expect(config.loginHost).toBe("https://login.moneo.example");
-    expect(authorizationEndpoint(config)).toBe("https://login.moneo.example/authorize");
-    // Token/profile traffic never follows the branding domain.
-    expect(tokenEndpoint(config)).toBe("https://moneo.eu.auth0.com/oauth/token");
-    expect(userinfoEndpoint(config)).toBe("https://moneo.eu.auth0.com/userinfo");
   });
 
   it("rejects non-EU, missing and smuggled domains without leaking secrets", () => {
@@ -86,10 +71,9 @@ describe("loadAuthConfig", () => {
     }
   });
 
-  it("requires client id, client secret and session secret", () => {
+  it("requires client id and client secret", () => {
     expect(() => loadAuthConfig(baseEnv({ AUTH0_CLIENT_ID: undefined }))).toThrow(AuthConfigError);
     expect(() => loadAuthConfig(baseEnv({ AUTH0_CLIENT_SECRET: undefined }))).toThrow(AuthConfigError);
-    expect(() => loadAuthConfig(baseEnv({ SESSION_SECRET: undefined }))).toThrow(AuthConfigError);
   });
 
   it("rejects a malformed custom domain", () => {
@@ -111,18 +95,9 @@ describe("endpoint helpers", () => {
     clientId: "client-123",
     clientSecret: "secret-abc",
     baseUrl: "http://localhost:3000",
-    sessionSecret: "test-session-secret",
   };
 
-  it("keeps every auth URL on https EU hosts", () => {
-    for (const url of [
-      authorizationEndpoint(config),
-      tokenEndpoint(config),
-      userinfoEndpoint(config),
-      federatedLogoutEndpoint(config),
-    ]) {
-      expect(url.startsWith("https://")).toBe(true);
-      expect(url).toContain(".eu.auth0.com");
-    }
+  it("keeps the canonical issuer on the EU tenant", () => {
+    expect(config.issuer).toBe("https://moneo.eu.auth0.com");
   });
 });

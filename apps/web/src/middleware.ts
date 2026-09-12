@@ -8,6 +8,7 @@ import {
   issueCsrfToken,
 } from "./lib/csrf";
 import { applySecurityHeaders } from "./lib/security-headers";
+import { auth0 } from "./lib/auth0";
 
 /**
  * Issue 1.6 — edge middleware.
@@ -29,11 +30,16 @@ function appOrigin(request: NextRequest): string {
   return request.nextUrl.origin;
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const isProduction = process.env.APP_ENV === "production";
+  const response = await auth0.middleware(request);
+
+  if (request.nextUrl.pathname.startsWith("/auth/")) {
+    applySecurityHeaders(response.headers, { isProduction });
+    return response;
+  }
 
   if (!isMutationMethod(request.method)) {
-    const response = NextResponse.next();
     applySecurityHeaders(response.headers, { isProduction });
     if (!request.cookies.has(CSRF_COOKIE)) {
       response.headers.append("Set-Cookie", csrfSetCookie(issueCsrfToken()));
@@ -58,7 +64,6 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  const response = NextResponse.next();
   applySecurityHeaders(response.headers, { isProduction });
   return response;
 }

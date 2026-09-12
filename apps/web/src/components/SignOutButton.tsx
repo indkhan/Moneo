@@ -1,31 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { readCsrfToken, signOut } from "@/lib/sessions-client";
+import { readCsrfToken, revokeAllSessions } from "@/lib/sessions-client";
 
-/** Issue 1.7 — topbar sign-out: POSTs (CSRF-guarded) then leaves the IdP session too. */
+/** Revoke Moneo sessions, then let the official SDK end the Auth0 session. */
 export function SignOutButton() {
-  const [pending, setPending] = useState(false);
-
   async function onClick() {
-    if (pending) {
-      return;
-    }
-    setPending(true);
     try {
-      const { federatedLogoutUrl } = await signOut(
-        globalThis.fetch,
-        readCsrfToken(document.cookie),
-      );
-      window.location.assign(federatedLogoutUrl);
-    } catch {
-      setPending(false);
+      await revokeAllSessions(globalThis.fetch, readCsrfToken(document.cookie));
+    } finally {
+      window.location.assign("/auth/logout");
     }
   }
 
-  return (
-    <button type="button" onClick={() => void onClick()} disabled={pending}>
-      {pending ? "Signing out…" : "Log out"}
-    </button>
-  );
+  return <button type="button" onClick={() => void onClick()}>Log out</button>;
 }

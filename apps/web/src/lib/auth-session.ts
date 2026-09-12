@@ -1,16 +1,41 @@
-import { loadEnv } from "@moneo/shared/env";
-import { cookies } from "next/headers";
-import { loadAuthConfig, type AuthConfig } from "./auth-config";
-import { SESSION_COOKIE, readSession, type SessionPayload } from "./session";
+import { auth0 } from "./auth0";
+import { getDb } from "@moneo/db/client";
+import { provisionUserOnLogin } from "@moneo/db/provisioning";
+import { registerSession } from "@moneo/db/sessions";
 
-/** Server-component helper: the current sealed browser session, or null. */
-export async function getSession(nowSeconds?: number): Promise<SessionPayload | null> {
-  const config = loadAuthConfig(loadEnv());
-  const store = await cookies();
-  return readSession(store.get(SESSION_COOKIE)?.value, config.sessionSecret, nowSeconds);
+export interface SessionPayload {
+  sub: string;
+  email?: string;
+  name?: string;
+  uid?: string;
+  wid?: string;
+  sid: string;
+  iat: number;
+  exp: number;
 }
 
-/** Validated auth config for server routes/components. Throws AuthConfigError when unset. */
-export function requireAuthConfig(): AuthConfig {
-  return loadAuthConfig(loadEnv());
+/** Server-component helper: the current sealed browser session, or null. */
+export async function getSession(_nowSeconds?: number): Promise<SessionPayload | null> {
+  const session = await auth0.getSession();
+  if (!session) return null;
+  const provisioned = await provisionUserOnLogin(getDb(), {
+    authSubject: session.user.sub,
+    email: session.user.email,
+    displayName: session.user.name,
+  });
+  await registerSession(getDb(), {
+    sessionId: session.internal.sid,
+    userId: provisioned.userId,
+    workspaceId: provisioned.workspaceId,
+  });
+  return {
+    sub: session.user.sub,
+    ...(typeof session.user.email === "string" ? { email: session.user.email } : {}),
+    ...(typeof session.user.name === "string" ? { name: session.user.name } : {}),
+    uid: provisioned.userId,
+    wid: provisioned.workspaceId,
+    sid: session.internal.sid,
+    iat: session.internal.createdAt,
+    exp: session.internal.sessionExpiresAt ?? Number.MAX_SAFE_INTEGER,
+  };
 }

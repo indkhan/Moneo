@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   listSessions,
   readCsrfToken,
+  revokeAllSessions,
   revokeOtherSessions,
   revokeSession,
   SessionApiError,
-  signOut,
 } from "./sessions-client";
 
 interface StubRoute {
@@ -145,36 +145,21 @@ describe("revokeSession / revokeOtherSessions", () => {
 });
 
 describe("signOut", () => {
-  it("POSTs logout with CSRF and returns the federated URL", async () => {
-    const fetchImpl = stubFetch({
-      status: 200,
-      body: { loggedOut: true, federatedLogoutUrl: "https://moneo.eu.auth0.com/v2/logout?x=1" },
-    });
-    await expect(signOut(fetchImpl, "csrf-token")).resolves.toEqual({
-      federatedLogoutUrl: "https://moneo.eu.auth0.com/v2/logout?x=1",
-    });
-    expect(fetchImpl).toHaveBeenCalledWith("/api/auth/logout", {
+  it("revokes all Moneo sessions before SDK logout", async () => {
+    const fetchImpl = stubFetch({ status: 200, body: { revoked: 2 } });
+    await expect(revokeAllSessions(fetchImpl, "csrf-token")).resolves.toEqual({ revoked: 2 });
+    expect(fetchImpl).toHaveBeenCalledWith("/api/v1/sessions/revoke", {
       method: "POST",
-      headers: { "x-csrf-token": "csrf-token" },
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf-token" },
+      body: JSON.stringify({ all: true }),
     });
   });
 
-  it("works without a CSRF token value (server decides) and throws on failure", async () => {
-    const fetchImpl = stubFetch({
-      status: 200,
-      body: { loggedOut: true, federatedLogoutUrl: "https://x/" },
-    });
-    await expect(signOut(fetchImpl, undefined)).resolves.toMatchObject({
-      federatedLogoutUrl: "https://x/",
-    });
-    expect(fetchImpl).toHaveBeenCalledWith("/api/auth/logout", {
-      method: "POST",
-      headers: undefined,
-    });
-    await expect(signOut(stubFetch({ status: 500, body: {} }), "t")).rejects.toThrow(
+  it("throws on failed or malformed revocation responses", async () => {
+    await expect(revokeAllSessions(stubFetch({ status: 500, body: {} }), "t")).rejects.toThrow(
       /Sign out failed/,
     );
-    await expect(signOut(stubFetch({ status: 200, body: {} }), "t")).rejects.toThrow(
+    await expect(revokeAllSessions(stubFetch({ status: 200, body: {} }), "t")).rejects.toThrow(
       /unexpected shape/,
     );
   });

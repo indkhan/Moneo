@@ -10,7 +10,7 @@ export async function ShellIdentity() {
 
   if (!user) {
     return (
-      <a id="shell-login-mount" href="/api/auth/login">
+      <a id="shell-login-mount" href="/auth/login">
         Log in
       </a>
     );

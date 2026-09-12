@@ -4,7 +4,8 @@ import type { AppEnv } from "@moneo/shared/env";
  * Epoch 1, Issue 1.3 — Auth0 EU tenant configuration.
  *
  * Data-residency rule: the canonical issuer MUST be an EU tenant,
- * `https://<tenant>.eu.auth0.com/`. A custom login domain is supported for
+ * `https://<tenant>.eu.auth0.com/` or `https://<tenant>.eu-2.auth0.com/`.
+ * A custom login domain is supported for
  * branding, but tokens are always validated against the canonical EU issuer,
  * so a misconfigured custom domain can never move authentication or profile
  * data to another region.
@@ -17,7 +18,6 @@ export interface AuthConfig {
   clientId: string;
   clientSecret: string;
   baseUrl: string;
-  sessionSecret: string;
 }
 
 /** True only for `<tenant>.eu.auth0.com` (exact suffix, https implied by construction). */
@@ -26,7 +26,7 @@ export function isEuAuth0Domain(domain: string): boolean {
     return false;
   }
   const lower = domain.toLowerCase();
-  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.eu\.auth0\.com$/.test(lower)) {
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.eu(?:-2)?\.auth0\.com$/.test(lower)) {
     return false;
   }
   // Reject the bare regional suffix with no tenant label.
@@ -45,7 +45,7 @@ export class AuthConfigError extends Error {
  * Zod dump or secret-bearing message) when auth is misconfigured.
  */
 export function loadAuthConfig(env: AppEnv): AuthConfig {
-  const { AUTH0_DOMAIN, AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET, AUTH0_CUSTOM_DOMAIN, APP_BASE_URL, SESSION_SECRET } =
+  const { AUTH0_DOMAIN, AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET, AUTH0_CUSTOM_DOMAIN, APP_BASE_URL } =
     env;
   if (!AUTH0_DOMAIN || !isEuAuth0Domain(AUTH0_DOMAIN)) {
     throw new AuthConfigError(
@@ -58,9 +58,6 @@ export function loadAuthConfig(env: AppEnv): AuthConfig {
   if (!AUTH0_CLIENT_SECRET) {
     throw new AuthConfigError("AUTH0_CLIENT_SECRET is required for the server-side code exchange");
   }
-  if (!SESSION_SECRET) {
-    throw new AuthConfigError("SESSION_SECRET is required to seal the browser session cookie");
-  }
   if (AUTH0_CUSTOM_DOMAIN && !/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(AUTH0_CUSTOM_DOMAIN)) {
     throw new AuthConfigError("AUTH0_CUSTOM_DOMAIN must be a plain hostname");
   }
@@ -72,26 +69,5 @@ export function loadAuthConfig(env: AppEnv): AuthConfig {
     clientId: AUTH0_CLIENT_ID,
     clientSecret: AUTH0_CLIENT_SECRET,
     baseUrl: APP_BASE_URL.replace(/\/$/, ""),
-    sessionSecret: SESSION_SECRET,
   };
-}
-
-export function authorizationEndpoint(config: AuthConfig): string {
-  return `${config.loginHost}/authorize`;
-}
-
-export function tokenEndpoint(config: AuthConfig): string {
-  return `${config.issuer}/oauth/token`;
-}
-
-export function userinfoEndpoint(config: AuthConfig): string {
-  return `${config.issuer}/userinfo`;
-}
-
-export function federatedLogoutEndpoint(config: AuthConfig): string {
-  return `${config.loginHost}/v2/logout`;
-}
-
-export function callbackUrl(config: AuthConfig): string {
-  return `${config.baseUrl}/api/auth/callback`;
 }
