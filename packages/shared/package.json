@@ -36,6 +36,10 @@
     "./problem": {
       "types": "./dist/problem.d.ts",
       "default": "./dist/problem.js"
+    },
+    "./limits": {
+      "types": "./dist/limits.d.ts",
+      "default": "./dist/limits.js"
     }
   },
   "scripts": {
