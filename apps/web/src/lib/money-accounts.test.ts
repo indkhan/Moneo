@@ -27,6 +27,7 @@ function account(overrides: Partial<DbAccount> = {}): DbAccount {
     currencyCode: "EUR",
     isSpendable: true,
     includeInNetWorth: true,
+    version: 1,
     metadata: {},
     createdAt: new Date("2026-08-01T00:00:00Z"),
     updatedAt: new Date("2026-08-02T00:00:00Z"),

@@ -35,6 +35,7 @@ function transaction(overrides: Partial<Transaction> = {}): Transaction {
     description: "COFFEE BAR",
     note: null,
     excludedFromAnalytics: false,
+    version: 1,
     createdAt: new Date("2026-08-15T10:00:00Z"),
     updatedAt: new Date("2026-08-15T10:00:00Z"),
     archivedAt: null,

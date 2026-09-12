@@ -1,11 +1,19 @@
 import { executeRecordBalance } from "@moneo/db/balance-commands";
+import {
+  executeAddTags,
+  executeExcludeFromAnalytics,
+  executeRemoveTags,
+  executeSetCategory,
+  executeSetCounterparty,
+  executeSetNote,
+} from "@moneo/db/correction-commands";
 import { executeResolveMatch } from "@moneo/db/import-matching";
 import {
   executeCreateManualAccount,
   executeCreateManualTransaction,
 } from "@moneo/db/manual-commands";
 import { withWorkspaceTransaction } from "@moneo/db/tenancy";
-import { CommandError } from "@moneo/finance";
+import { CommandError, type CommandContext, type CommandOutcome } from "@moneo/finance";
 import { DomainError, fromCommandError, problemResponse } from "@moneo/shared/problem";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -60,6 +68,45 @@ export const createManualTransactionInputSchema = z.object({
   note: z.string().max(2000).nullable().optional(),
 });
 
+/**
+ * Issue 5.3 — correction command inputs. Boundaries mirror the pure domain
+ * rules in `@moneo/finance` corrections: malformed payloads fail zod here
+ * (VALIDATION_FAILED) before any command runs; semantic checks (ownership,
+ * archived categories, stale versions) stay in the domain layer.
+ */
+export const setCategoryInputSchema = z.object({
+  transactionId: z.uuid("transaction id must be a UUID"),
+  categoryId: z.uuid("category id must be a UUID").nullable(),
+});
+
+export const setCounterpartyInputSchema = z.object({
+  transactionId: z.uuid("transaction id must be a UUID"),
+  counterpartyId: z.uuid("counterparty id must be a UUID").nullable().optional(),
+  counterpartyName: z.string().max(120).nullable().optional(),
+});
+
+const tagListSchema = z.array(z.string().min(1).max(40)).min(1).max(20);
+
+export const addTagsInputSchema = z.object({
+  transactionId: z.uuid("transaction id must be a UUID"),
+  tags: tagListSchema,
+});
+
+export const removeTagsInputSchema = z.object({
+  transactionId: z.uuid("transaction id must be a UUID"),
+  tags: tagListSchema,
+});
+
+export const setNoteInputSchema = z.object({
+  transactionId: z.uuid("transaction id must be a UUID"),
+  note: z.string().max(2000).nullable(),
+});
+
+export const excludeFromAnalyticsInputSchema = z.object({
+  transactionId: z.uuid("transaction id must be a UUID"),
+  excluded: z.boolean(),
+});
+
 export const recordBalanceInputSchema = z.object({
   accountId: z.uuid("account id must be a UUID"),
   observedAt: z.string().min(1, "observedAt is required"),
@@ -94,6 +141,39 @@ export interface CommandRegistration {
 }
 
 export type CommandHandler = CommandRegistration["run"];
+
+/**
+ * Wrap one Drizzle correction executor as a registry entry. The dispatcher
+ * validates `input` against the zod schema first; `run` only forwards the
+ * trusted payload into `withWorkspaceTransaction` like every other command.
+ */
+function correctionRegistration(
+  inputSchema: z.ZodType,
+  execute: (
+    db: Parameters<typeof executeSetCategory>[0],
+    ctx: CommandContext,
+    input: unknown,
+  ) => Promise<CommandOutcome<unknown>>,
+): CommandRegistration {
+  return {
+    inputSchema,
+    run: ({ workspaceId, actorUserId, metadata, input }) =>
+      withWorkspaceTransaction(workspaceId, (tx) =>
+        execute(
+          tx,
+          {
+            workspaceId,
+            actorUserId,
+            idempotencyKey: metadata.idempotencyKey,
+            ...(metadata.expectedVersion !== undefined
+              ? { expectedVersion: Number(metadata.expectedVersion) }
+              : {}),
+          },
+          input,
+        ).then(toExecution),
+      ),
+  };
+}
 
 /** Registry of audited domain commands. Additive: later issues add entries. */
 export function createDrizzleCommandRegistry(): Map<string, CommandRegistration> {
@@ -138,6 +218,66 @@ export function createDrizzleCommandRegistry(): Map<string, CommandRegistration>
   return new Map<string, CommandRegistration>([
     ["accounts.recordBalance", recordBalance],
     ["matches.resolve", resolveMatch],
+    [
+      "transactions.setCategory",
+      correctionRegistration(setCategoryInputSchema, (db, ctx, input) =>
+        executeSetCategory(
+          db,
+          ctx,
+          input as Parameters<typeof executeSetCategory>[2],
+        ),
+      ),
+    ],
+    [
+      "transactions.setCounterparty",
+      correctionRegistration(setCounterpartyInputSchema, (db, ctx, input) =>
+        executeSetCounterparty(
+          db,
+          ctx,
+          input as Parameters<typeof executeSetCounterparty>[2],
+        ),
+      ),
+    ],
+    [
+      "transactions.addTags",
+      correctionRegistration(addTagsInputSchema, (db, ctx, input) =>
+        executeAddTags(
+          db,
+          ctx,
+          input as Parameters<typeof executeAddTags>[2],
+        ),
+      ),
+    ],
+    [
+      "transactions.removeTags",
+      correctionRegistration(removeTagsInputSchema, (db, ctx, input) =>
+        executeRemoveTags(
+          db,
+          ctx,
+          input as Parameters<typeof executeRemoveTags>[2],
+        ),
+      ),
+    ],
+    [
+      "transactions.setNote",
+      correctionRegistration(setNoteInputSchema, (db, ctx, input) =>
+        executeSetNote(
+          db,
+          ctx,
+          input as Parameters<typeof executeSetNote>[2],
+        ),
+      ),
+    ],
+    [
+      "transactions.excludeFromAnalytics",
+      correctionRegistration(excludeFromAnalyticsInputSchema, (db, ctx, input) =>
+        executeExcludeFromAnalytics(
+          db,
+          ctx,
+          input as Parameters<typeof executeExcludeFromAnalytics>[2],
+        ),
+      ),
+    ],
     [
       "accounts.createManual",
       {

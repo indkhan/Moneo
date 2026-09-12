@@ -6,6 +6,7 @@
  * `executeCommand`, so web/worker/ai never duplicate mutation logic.
  */
 export * from "./commands.js";
+export * from "./corrections.js";
 export * from "./versions.js";
 export * from "./balances.js";
 export * from "./canonicalize.js";

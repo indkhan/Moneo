@@ -62,6 +62,10 @@
       "types": "./dist/command-store.d.ts",
       "default": "./dist/command-store.js"
     },
+    "./correction-commands": {
+      "types": "./dist/correction-commands.d.ts",
+      "default": "./dist/correction-commands.js"
+    },
     "./import-matching": {
       "types": "./dist/import-matching.d.ts",
       "default": "./dist/import-matching.js"
