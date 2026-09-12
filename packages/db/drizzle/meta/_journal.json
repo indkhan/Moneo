@@ -120,6 +120,13 @@
       "when": 1789241000000,
       "tag": "0016_audit_history",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789242000000,
+      "tag": "0017_transaction_workspace",
+      "breakpoints": true
     }
   ]
 }

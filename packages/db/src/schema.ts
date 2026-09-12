@@ -221,6 +221,30 @@ export const auditEvents = pgTable(
 export type AuditEvent = typeof auditEvents.$inferSelect;
 export type NewAuditEvent = typeof auditEvents.$inferInsert;
 
+/** Epoch 5 — server-persisted transaction filters and table layout. */
+export const savedTransactionViews = pgTable(
+  "saved_transaction_views",
+  {
+    id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    definition: jsonb("definition").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("saved_transaction_views_workspace_name_uniq").on(t.workspaceId, t.name)],
+);
+
+/** Resolved once; bulk jobs must never re-evaluate a moving filter. */
+export const frozenTransactionSelections = pgTable("frozen_transaction_selections", {
+  id: uuid("id").primaryKey().$defaultFn(() => uuidv7()),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  queryDefinition: jsonb("query_definition").$type<Record<string, unknown>>().notNull(),
+  transactionIds: jsonb("transaction_ids").$type<string[]>().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type OutboxStatus = "pending" | "claimed" | "published" | "failed";
 
 export const outboxEvents = pgTable(
