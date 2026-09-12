@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -687,3 +688,98 @@ export const accountBalanceSnapshots = pgTable(
 
 export type AccountBalanceSnapshot = typeof accountBalanceSnapshots.$inferSelect;
 export type NewAccountBalanceSnapshot = typeof accountBalanceSnapshots.$inferInsert;
+
+/**
+ * Epoch 4, Issue 4.2 — canonical transaction model.
+ *
+ * Accepted user-facing understanding derived from source observations via
+ * `transaction_source_links` (Issue 4.3). Money is exact: `amountMinor` is a
+ * non-negative integer minor unit, `direction` carries the sign. The
+ * canonical keyset is `(effective_date DESC, id DESC)` — deterministic even
+ * when many transactions share one date (Issue 4.6).
+ *
+ * `counterpartyId` / `categoryId` are FK-less UUIDs until Epoch 5 owns those
+ * domains. `version` arrives with Issue 5.2.
+ */
+export type TransactionDirection = "credit" | "debit";
+export type TransactionStatus = "PENDING" | "POSTED" | "VOIDED";
+
+export const transactions = pgTable(
+  "transactions",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    /** No cascade: an account with history cannot be deleted, only archived. */
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accounts.id),
+    status: text("status").notNull().default("POSTED"),
+    direction: text("direction").notNull(),
+    /** Non-negative integer minor units; the sign lives on `direction`. */
+    amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+    currencyCode: text("currency_code").notNull(),
+    effectiveDate: date("effective_date").notNull(),
+    authorizedAt: timestamp("authorized_at", { withTimezone: true }),
+    postedAt: timestamp("posted_at", { withTimezone: true }),
+    /** FK-less until Epoch 5 owns counterparties/categories. */
+    counterpartyId: uuid("counterparty_id"),
+    categoryId: uuid("category_id"),
+    description: text("description").notNull(),
+    note: text("note"),
+    excludedFromAnalytics: boolean("excluded_from_analytics").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (t) => [
+    check("transactions_amount_check", sql`${t.amountMinor} > 0`),
+    check("transactions_direction_check", sql`${t.direction} in ('credit', 'debit')`),
+    check(
+      "transactions_status_check",
+      sql`${t.status} in ('PENDING', 'POSTED', 'VOIDED')`,
+    ),
+    index("transactions_workspace_date_idx").on(t.workspaceId, t.effectiveDate),
+    index("transactions_account_date_idx").on(t.accountId, t.effectiveDate),
+  ],
+);
+
+export type Transaction = typeof transactions.$inferSelect;
+export type NewTransaction = typeof transactions.$inferInsert;
+
+export type TransactionSourceLinkRelationship =
+  | "PRIMARY"
+  | "PENDING_PREDECESSOR"
+  | "MERGED"
+  | "OTHER";
+
+export const transactionSourceLinks = pgTable(
+  "transaction_source_links",
+  {
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    transactionId: uuid("transaction_id")
+      .notNull()
+      .references(() => transactions.id, { onDelete: "cascade" }),
+    sourceTransactionId: uuid("source_transaction_id")
+      .notNull()
+      .references(() => sourceTransactions.id, { onDelete: "cascade" }),
+    relationship: text("relationship").notNull().default("PRIMARY"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.transactionId, t.sourceTransactionId] }),
+    check(
+      "transaction_source_links_relationship_check",
+      sql`${t.relationship} in ('PRIMARY', 'PENDING_PREDECESSOR', 'MERGED', 'OTHER')`,
+    ),
+    index("transaction_source_links_source_idx").on(t.sourceTransactionId),
+  ],
+);
+
+export type TransactionSourceLink = typeof transactionSourceLinks.$inferSelect;
+export type NewTransactionSourceLink = typeof transactionSourceLinks.$inferInsert;

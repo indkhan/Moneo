@@ -64,6 +64,13 @@
       "when": 1789233000000,
       "tag": "0008_canonical_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789234000000,
+      "tag": "0009_canonical_transactions",
+      "breakpoints": true
     }
   ]
 }
