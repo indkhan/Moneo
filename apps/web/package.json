@@ -17,6 +17,8 @@
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.29.0",
+    "@aws-sdk/client-kms": "^3.1131.0",
+    "@moneo/ai": "workspace:*",
     "@moneo/db": "workspace:*",
     "@moneo/finance": "workspace:*",
     "@moneo/shared": "workspace:*",

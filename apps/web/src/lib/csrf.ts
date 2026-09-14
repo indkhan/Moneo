@@ -55,7 +55,10 @@ export function tokensMatch(a: string, b: string): boolean {
 export type CsrfFailure = "missing_cookie" | "missing_header" | "mismatch";
 
 /** Double-submit check. Returns null when the pair is valid. */
-export function validateCsrfToken(cookieToken: string | undefined, headerToken: string | null): CsrfFailure | null {
+export function validateCsrfToken(
+  cookieToken: string | undefined,
+  headerToken: string | null,
+): CsrfFailure | null {
   if (!cookieToken) {
     return "missing_cookie";
   }

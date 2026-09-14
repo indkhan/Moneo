@@ -26,6 +26,8 @@ export interface MoneyTransactionStore {
     input: {
       /** Raw comma-separated account UUIDs (split + validated downstream). */
       accountIds?: string;
+      categoryIds?: string;
+      tagNames?: string;
       dateFrom?: string;
       dateTo?: string;
       /** Raw comma-separated credit/debit list. */
@@ -70,6 +72,8 @@ export function createDrizzleMoneyTransactionStore(secret: string): MoneyTransac
             ...(split(input.accountIds) !== undefined
               ? { accountIds: split(input.accountIds) }
               : {}),
+            ...(input.categoryIds !== undefined ? { categoryIds: split(input.categoryIds) } : {}),
+            ...(input.tagNames !== undefined ? { tagNames: split(input.tagNames) } : {}),
             ...(input.dateFrom !== undefined ? { dateFrom: input.dateFrom } : {}),
             ...(input.dateTo !== undefined ? { dateTo: input.dateTo } : {}),
             ...(split(input.directions) !== undefined
@@ -132,6 +136,8 @@ export async function handleSearchTransactions(
   try {
     const page = await ctx.transactions.search(ctx.workspaceId, {
       ...(parsed.data.accountIds !== undefined ? { accountIds: parsed.data.accountIds } : {}),
+      ...(parsed.data.categoryIds !== undefined ? { categoryIds: parsed.data.categoryIds } : {}),
+      ...(parsed.data.tagNames !== undefined ? { tagNames: parsed.data.tagNames } : {}),
       ...(parsed.data.dateFrom !== undefined ? { dateFrom: parsed.data.dateFrom } : {}),
       ...(parsed.data.dateTo !== undefined ? { dateTo: parsed.data.dateTo } : {}),
       ...(parsed.data.directions !== undefined ? { directions: parsed.data.directions } : {}),

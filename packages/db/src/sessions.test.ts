@@ -119,6 +119,18 @@ describe("session registry (migration 0004)", () => {
     expect(remaining.map((s) => s.id)).not.toContain(drop);
   });
 
+  it("never reactivates a revoked session id", async () => {
+    const sid = uuidv7();
+    await asApp((db) => registerSession(db, { sessionId: sid, userId: userA, workspaceId: wsA }));
+    expect(await asApp((db) => revokeSingleSession(db, userA, sid))).toBe(1);
+
+    await asApp((db) => registerSession(db, { sessionId: sid, userId: userA, workspaceId: wsA }));
+
+    expect(
+      (await asApp((db) => listUserSessions(db, userA))).map((session) => session.id),
+    ).not.toContain(sid);
+  });
+
   it("revokes everything when no session is kept (full sign-out)", async () => {
     const sid = uuidv7();
     await asApp((db) => registerSession(db, { sessionId: sid, userId: userA, workspaceId: wsA }));

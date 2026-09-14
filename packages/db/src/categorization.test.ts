@@ -166,24 +166,23 @@ describe("categorization schema (migration 0014)", () => {
   it("rejects unknown kinds, repeated tags, and self-relations", async () => {
     const db = drizzlePglite(pg, { schema });
     await expectDbError(
-      db
-        .insert(categories)
-        .values({ workspaceId: wsA, name: `Bad ${uuidv7()}`, kind: "lottery" }),
+      db.insert(categories).values({ workspaceId: wsA, name: `Bad ${uuidv7()}`, kind: "lottery" }),
       /categories_kind_check/,
     );
 
     const account = await seedAccount(wsA);
     const txn = await seedTransaction(wsA, account.id, `tagged-${uuidv7()}`);
     const tag = one(
-      await db.insert(tags).values({ workspaceId: wsA, name: `tag-${uuidv7()}` }).returning(),
+      await db
+        .insert(tags)
+        .values({ workspaceId: wsA, name: `tag-${uuidv7()}` })
+        .returning(),
     );
     await db
       .insert(transactionTags)
       .values({ workspaceId: wsA, transactionId: txn.id, tagId: tag.id });
     await expectDbError(
-      db
-        .insert(transactionTags)
-        .values({ workspaceId: wsA, transactionId: txn.id, tagId: tag.id }),
+      db.insert(transactionTags).values({ workspaceId: wsA, transactionId: txn.id, tagId: tag.id }),
       /duplicate key|unique/i,
     );
 
@@ -210,7 +209,10 @@ describe("categorization schema (migration 0014)", () => {
   it("cascades tenant rows on workspace removal but keeps system rows", async () => {
     const db = drizzlePglite(pg, { schema });
     const doomed = one(
-      await db.insert(workspaces).values({ name: `Doomed ${uuidv7()}` }).returning(),
+      await db
+        .insert(workspaces)
+        .values({ name: `Doomed ${uuidv7()}` })
+        .returning(),
     );
     const category = one(
       await db
@@ -219,13 +221,11 @@ describe("categorization schema (migration 0014)", () => {
         .returning(),
     );
     expect(category.workspaceId).toBe(doomed.id);
-    await db
-      .insert(counterparties)
-      .values({
-        workspaceId: doomed.id,
-        normalizedName: `doom-${uuidv7()}`,
-        displayName: "Doom",
-      });
+    await db.insert(counterparties).values({
+      workspaceId: doomed.id,
+      normalizedName: `doom-${uuidv7()}`,
+      displayName: "Doom",
+    });
     await db.insert(tags).values({ workspaceId: doomed.id, name: `doom-${uuidv7()}` });
     await db.delete(workspaces).where(eq(workspaces.id, doomed.id));
     expect(await count("categories", "WHERE workspace_id = $1", [doomed.id])).toBe("0");

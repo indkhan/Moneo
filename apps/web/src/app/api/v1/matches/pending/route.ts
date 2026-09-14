@@ -1,4 +1,4 @@
-import { getSession } from "@/lib/auth-session";
+import { financeRoute } from "@/lib/finance-api";
 import { createDrizzleMatchReviewStore, handleListPendingMatches } from "@/lib/match-review";
 
 /**
@@ -6,9 +6,10 @@ import { createDrizzleMatchReviewStore, handleListPendingMatches } from "@/lib/m
  * import. Read-only; decisions go through `matches.resolve`.
  */
 export async function GET(request: Request) {
-  const session = await getSession();
-  return handleListPendingMatches(new URL(request.url).search, {
-    workspaceId: session?.wid,
-    review: createDrizzleMatchReviewStore(),
-  });
+  return financeRoute((session) =>
+    handleListPendingMatches(new URL(request.url).search, {
+      workspaceId: session.wid,
+      review: createDrizzleMatchReviewStore(),
+    }),
+  );
 }

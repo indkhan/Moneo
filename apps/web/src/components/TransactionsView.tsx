@@ -10,7 +10,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { EmptyState, Skeleton } from "@moneo/ui";
+import { Button, EmptyState, Skeleton } from "@moneo/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createClient,
@@ -37,12 +37,27 @@ const ROW_HEIGHT = 44;
 
 export interface TransactionFilters {
   q: string;
+  categoryId: string;
+  tagNames: string;
   direction: "" | "credit" | "debit";
   accountId: string;
+  dateFrom: string;
+  dateTo: string;
   sort: TransactionSort;
 }
 
-const EMPTY_FILTERS: TransactionFilters = { q: "", direction: "", accountId: "", sort: "newest" };
+const EMPTY_FILTERS: TransactionFilters = {
+  q: "",
+  categoryId: "",
+  tagNames: "",
+  direction: "",
+  accountId: "",
+  dateFrom: "",
+  dateTo: "",
+  sort: "newest",
+};
+const ALL_COLUMNS = ["date", "description", "account", "direction", "amount"] as const;
+type TransactionColumn = (typeof ALL_COLUMNS)[number];
 
 function useDebounced(value: string, delayMs: number): string {
   const [current, setCurrent] = useState(value);
@@ -67,11 +82,12 @@ export function formatTransactionAmount(row: Transaction): string {
 const columnHelper = createColumnHelper<Transaction & { accountName: string }>();
 
 const columns = [
-  columnHelper.accessor("effectiveDate", { header: "Date" }),
-  columnHelper.accessor("description", { header: "Description" }),
-  columnHelper.accessor("accountName", { header: "Account" }),
-  columnHelper.accessor("direction", { header: "Direction" }),
+  columnHelper.accessor("effectiveDate", { id: "date", header: "Date" }),
+  columnHelper.accessor("description", { id: "description", header: "Description" }),
+  columnHelper.accessor("accountName", { id: "account", header: "Account" }),
+  columnHelper.accessor("direction", { id: "direction", header: "Direction" }),
   columnHelper.accessor("amountMinor", {
+    id: "amount",
     header: "Amount",
     cell: (info) => formatTransactionAmount(info.row.original),
   }),
@@ -83,36 +99,66 @@ export function TransactionsTable({
   padTop,
   padBottom,
   onSelect,
+  selectedIds,
+  onToggle,
+  visibleColumns = ALL_COLUMNS,
 }: {
   rows: (Transaction & { accountName: string })[];
   padTop?: number;
   padBottom?: number;
   /** When set, each row gains a View control that reports its transaction id. */
   onSelect?: (transactionId: string) => void;
+  selectedIds?: ReadonlySet<string>;
+  onToggle?: (transactionId: string) => void;
+  visibleColumns?: readonly TransactionColumn[];
 }) {
   const tableColumns = React.useMemo(
     () =>
-      onSelect
+      onSelect || onToggle
         ? [
-            ...columns,
-            columnHelper.display({
-              id: "details",
-              header: "Details",
-              cell: (info) => (
-                <button
-                  type="button"
-                  aria-label={`View ${info.row.original.description}`}
-                  onClick={() => {
-                    onSelect(info.row.original.id);
-                  }}
-                >
-                  View
-                </button>
-              ),
-            }),
+            ...(onToggle
+              ? [
+                  columnHelper.display({
+                    id: "select",
+                    header: "Select",
+                    cell: (info) => (
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${info.row.original.description}`}
+                        checked={selectedIds?.has(info.row.original.id) ?? false}
+                        onChange={() => {
+                          onToggle(info.row.original.id);
+                        }}
+                      />
+                    ),
+                  }),
+                ]
+              : []),
+            ...columns.filter((column) => visibleColumns.includes(column.id as TransactionColumn)),
+            ...(onSelect
+              ? [
+                  columnHelper.display({
+                    id: "details",
+                    header: "Details",
+                    cell: (info) => (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        type="button"
+                        aria-label={`View ${info.row.original.description}`}
+                        onClick={() => {
+                          onSelect(info.row.original.id);
+                        }}
+                      >
+                        View
+                      </Button>
+                    ),
+                  }),
+                ]
+              : []),
           ]
         : columns,
-    [onSelect],
+    [onSelect, onToggle, selectedIds, visibleColumns],
   );
   const table = useReactTable({
     data: rows,
@@ -163,13 +209,37 @@ export function TransactionsTable({
   );
 }
 
-export function TransactionsView() {
+export function TransactionsView({
+  initialQ = "",
+  initialDateFrom = "",
+  initialDateTo = "",
+  initialSelectedId = null,
+}: {
+  initialQ?: string;
+  initialDateFrom?: string;
+  initialDateTo?: string;
+  initialSelectedId?: string | null;
+}) {
   const client = useMemo(() => createClient(), []);
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState<TransactionFilters>(EMPTY_FILTERS);
+  const [filters, setFilters] = useState<TransactionFilters>({
+    ...EMPTY_FILTERS,
+    q: initialQ,
+    dateFrom: initialDateFrom,
+    dateTo: initialDateTo,
+  });
   // Overlay selection only: the list and its filters stay mounted behind
   // the drawer, so opening a row never loses list position or filters.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkWorking, setBulkWorking] = useState(false);
+  const [bulkTags, setBulkTags] = useState("");
+  const [bulkCategoryId, setBulkCategoryId] = useState("");
+  const [visibleColumns, setVisibleColumns] = useState<TransactionColumn[]>([...ALL_COLUMNS]);
+  const [viewName, setViewName] = useState("");
+  const [savedViewId, setSavedViewId] = useState("");
+  const [frozenSelectionId, setFrozenSelectionId] = useState<string | null>(null);
+  const [bulkMessage, setBulkMessage] = useState("");
   const [recording, setRecording] = useState(false);
   const debouncedQ = useDebounced(filters.q, 300);
   const active = useMemo(() => ({ ...filters, q: debouncedQ }), [filters, debouncedQ]);
@@ -177,6 +247,14 @@ export function TransactionsView() {
   const accountsQuery = useQuery({
     queryKey: ["accounts"],
     queryFn: () => client.listAccounts(),
+  });
+  const categoriesQuery = useQuery({
+    queryKey: ["categories"],
+    queryFn: () => client.listCategories(),
+  });
+  const viewsQuery = useQuery({
+    queryKey: ["transaction-views"],
+    queryFn: () => client.listTransactionViews(),
   });
   const accountsById = useMemo(() => {
     const map = new Map<string, string>();
@@ -192,8 +270,12 @@ export function TransactionsView() {
     queryFn: ({ pageParam }) =>
       client.searchTransactions({
         ...(active.q ? { q: active.q } : {}),
+        ...(active.categoryId ? { categoryIds: active.categoryId } : {}),
+        ...(active.tagNames ? { tagNames: active.tagNames } : {}),
         ...(active.direction ? { directions: active.direction } : {}),
         ...(active.accountId ? { accountIds: active.accountId } : {}),
+        ...(active.dateFrom ? { dateFrom: active.dateFrom } : {}),
+        ...(active.dateTo ? { dateTo: active.dateTo } : {}),
         sort: active.sort,
         limit: PAGE_SIZE,
         ...(pageParam ? { cursor: pageParam } : {}),
@@ -228,22 +310,136 @@ export function TransactionsView() {
       ? virtualizer.getTotalSize() - (virtualItems[virtualItems.length - 1]?.end ?? 0)
       : 0;
 
-  const hasFilters = active.q !== "" || active.direction !== "" || active.accountId !== "";
+  const hasFilters =
+    filters.categoryId !== "" ||
+    filters.tagNames !== "" ||
+    active.q !== "" ||
+    active.direction !== "" ||
+    active.accountId !== "" ||
+    active.dateFrom !== "" ||
+    active.dateTo !== "";
+
+  async function runBulk(
+    command:
+      | "transactions.excludeFromAnalyticsBulk"
+      | "transactions.setCategoryBulk"
+      | "transactions.addTagsBulk",
+    input: Record<string, unknown>,
+  ) {
+    if (selectedIds.size === 0 && !frozenSelectionId) return;
+    setBulkWorking(true);
+    try {
+      const selection = frozenSelectionId
+        ? { id: frozenSelectionId, count: 0 }
+        : await client.createFrozenTransactionSelection({ ids: [...selectedIds] });
+      const outcome = await client.executeCommand(command, {
+        metadata: { idempotencyKey: crypto.randomUUID() },
+        input: { selectionId: selection.id, ...input },
+      });
+      setSelectedIds(new Set());
+      setFrozenSelectionId(null);
+      const result = outcome.result as {
+        applied: number;
+        replayed: number;
+        conflicts: string[];
+        missing: string[];
+      };
+      setBulkMessage(
+        `${result.applied} updated; ${result.replayed} already applied; ${result.conflicts.length} stale rows skipped; ${result.missing.length} unavailable rows skipped.`,
+      );
+      await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    } catch {
+      setBulkMessage("Bulk update could not be completed.");
+    } finally {
+      setBulkWorking(false);
+    }
+  }
+
+  async function selectAllMatching() {
+    setBulkWorking(true);
+    try {
+      const selection = await client.createFrozenTransactionSelection({
+        filter: {
+          ...(active.categoryId ? { categoryIds: [active.categoryId] } : {}),
+          ...(active.tagNames
+            ? {
+                tagNames: active.tagNames
+                  .split(",")
+                  .map((t) => t.trim())
+                  .filter(Boolean),
+              }
+            : {}),
+          ...(active.q ? { q: active.q } : {}),
+          ...(active.accountId ? { accountIds: [active.accountId] } : {}),
+          ...(active.direction ? { directions: [active.direction] } : {}),
+          ...(active.dateFrom ? { dateFrom: active.dateFrom } : {}),
+          ...(active.dateTo ? { dateTo: active.dateTo } : {}),
+        },
+      });
+      setFrozenSelectionId(selection.id);
+      setSelectedIds(new Set());
+      setBulkMessage(`${selection.count} matching rows frozen.`);
+    } catch {
+      setBulkMessage("Could not select matching transactions. Try again.");
+    } finally {
+      setBulkWorking(false);
+    }
+  }
+
+  async function saveView() {
+    if (!viewName.trim()) return;
+    try {
+      await client.createTransactionView({
+        name: viewName.trim(),
+        definition: {
+          filters: {
+            ...(filters.categoryId ? { categoryIds: [filters.categoryId] } : {}),
+            ...(filters.tagNames
+              ? {
+                  tagNames: filters.tagNames
+                    .split(",")
+                    .map((t) => t.trim())
+                    .filter(Boolean),
+                }
+              : {}),
+            q: filters.q,
+            ...(filters.accountId ? { accountIds: [filters.accountId] } : {}),
+            ...(filters.direction ? { directions: [filters.direction] } : {}),
+            ...(filters.dateFrom ? { dateFrom: filters.dateFrom } : {}),
+            ...(filters.dateTo ? { dateTo: filters.dateTo } : {}),
+          },
+          sort: filters.sort,
+          visibleColumns,
+        },
+      });
+      setViewName("");
+      await queryClient.invalidateQueries({ queryKey: ["transaction-views"] });
+      setBulkMessage("View saved.");
+    } catch {
+      setBulkMessage("Could not save this view. Try again.");
+    }
+  }
 
   return (
-    <section aria-labelledby="transactions-heading" style={{ display: "grid", gap: 12 }}>
+    <section
+      className="finance-controls"
+      aria-labelledby="transactions-heading"
+      style={{ display: "grid", gap: 12 }}
+    >
       <h1 id="transactions-heading" style={{ margin: 0, fontSize: 24 }}>
         Transactions
       </h1>
       <div>
-        <button
+        <Button
+          variant="secondary"
+          size="sm"
           type="button"
           onClick={() => {
             setRecording((open) => !open);
           }}
         >
           Record cash transaction
-        </button>
+        </Button>
       </div>
       {recording ? (
         <ManualTransactionForm
@@ -308,6 +504,26 @@ export function TransactionsView() {
           </select>
         </label>
         <label>
+          From{" "}
+          <input
+            type="date"
+            value={filters.dateFrom}
+            onChange={(event) => {
+              setFilters({ ...filters, dateFrom: event.target.value });
+            }}
+          />
+        </label>
+        <label>
+          To{" "}
+          <input
+            type="date"
+            value={filters.dateTo}
+            onChange={(event) => {
+              setFilters({ ...filters, dateTo: event.target.value });
+            }}
+          />
+        </label>
+        <label>
           Sort{" "}
           <select
             value={filters.sort}
@@ -319,7 +535,199 @@ export function TransactionsView() {
             <option value="oldest">Oldest first</option>
           </select>
         </label>
+        <label>
+          Category filter
+          <select
+            value={filters.categoryId}
+            onChange={(e) => {
+              setFilters({ ...filters, categoryId: e.target.value });
+            }}
+          >
+            <option value="">All categories</option>
+            {(categoriesQuery.data?.items ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Tags filter
+          <input
+            value={filters.tagNames}
+            onChange={(e) => {
+              setFilters({ ...filters, tagNames: e.target.value });
+            }}
+            placeholder="Comma-separated exact tag names"
+          />
+        </label>
       </form>
+
+      <fieldset>
+        <legend>Columns</legend>
+        {ALL_COLUMNS.map((column) => (
+          <label key={column}>
+            <input
+              type="checkbox"
+              checked={visibleColumns.includes(column)}
+              disabled={visibleColumns.length === 1 && visibleColumns.includes(column)}
+              onChange={() => {
+                setVisibleColumns((current) =>
+                  current.includes(column)
+                    ? current.filter((item) => item !== column)
+                    : [...current, column],
+                );
+              }}
+            />{" "}
+            {column}
+          </label>
+        ))}
+      </fieldset>
+      <label>
+        Save view{" "}
+        <input
+          value={viewName}
+          onChange={(event) => {
+            setViewName(event.target.value);
+          }}
+        />
+      </label>
+      <Button
+        variant="secondary"
+        size="sm"
+        type="button"
+        onClick={() => void saveView()}
+        disabled={!viewName.trim()}
+      >
+        Save view
+      </Button>
+      <label>
+        Saved views{" "}
+        <select
+          value={savedViewId}
+          onChange={(event) => {
+            const id = event.target.value;
+            setSavedViewId(id);
+            const view = viewsQuery.data?.items.find((item) => item.id === id);
+            if (view) {
+              setFilters((current) => ({
+                ...current,
+                q: view.definition.filters.q ?? "",
+                categoryId: view.definition.filters.categoryIds?.[0] ?? "",
+                tagNames: view.definition.filters.tagNames?.join(", ") ?? "",
+                accountId: view.definition.filters.accountIds?.[0] ?? "",
+                direction: view.definition.filters.directions?.[0] ?? "",
+                dateFrom: view.definition.filters.dateFrom ?? "",
+                dateTo: view.definition.filters.dateTo ?? "",
+                sort: view.definition.sort,
+              }));
+              setVisibleColumns(view.definition.visibleColumns);
+            }
+          }}
+        >
+          <option value="">Choose a view</option>
+          {(viewsQuery.data?.items ?? []).map((view) => (
+            <option key={view.id} value={view.id}>
+              {view.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {rows.length > 0 ? (
+        <Button
+          variant="secondary"
+          size="sm"
+          type="button"
+          disabled={bulkWorking}
+          onClick={() => void selectAllMatching()}
+        >
+          Select all matching results
+        </Button>
+      ) : null}
+      {selectedIds.size > 0 || frozenSelectionId ? (
+        <div aria-live="polite">
+          {frozenSelectionId ? "All matching rows selected" : `${selectedIds.size} selected`}
+          <Button
+            variant="secondary"
+            size="sm"
+            type="button"
+            disabled={bulkWorking}
+            onClick={() => {
+              setSelectedIds(new Set());
+              setFrozenSelectionId(null);
+              setBulkMessage("");
+            }}
+          >
+            Clear selection
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            type="button"
+            disabled={bulkWorking}
+            onClick={() =>
+              void runBulk("transactions.excludeFromAnalyticsBulk", { excluded: true })
+            }
+          >
+            {bulkWorking ? "Working…" : "Exclude selected from analytics"}
+          </Button>
+          <label>
+            Tags{" "}
+            <input
+              value={bulkTags}
+              onChange={(event) => {
+                setBulkTags(event.target.value);
+              }}
+              placeholder="Food, travel"
+            />
+          </label>
+          <Button
+            variant="secondary"
+            size="sm"
+            type="button"
+            disabled={bulkWorking || !bulkTags.trim()}
+            onClick={() =>
+              void runBulk("transactions.addTagsBulk", {
+                tags: bulkTags
+                  .split(",")
+                  .map((tag) => tag.trim())
+                  .filter(Boolean),
+              })
+            }
+          >
+            Add tags
+          </Button>
+          <label>
+            Category{" "}
+            <select
+              value={bulkCategoryId}
+              onChange={(event) => {
+                setBulkCategoryId(event.target.value);
+              }}
+            >
+              <option value="">Uncategorized</option>
+              {(categoriesQuery.data?.items ?? []).map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button
+            variant="secondary"
+            size="sm"
+            type="button"
+            disabled={bulkWorking}
+            onClick={() =>
+              void runBulk("transactions.setCategoryBulk", { categoryId: bulkCategoryId || null })
+            }
+          >
+            Set category
+          </Button>
+        </div>
+      ) : null}
+      {bulkMessage ? <p role="status">{bulkMessage}</p> : null}
 
       {search.isPending ? (
         <div aria-label="Loading transactions" style={{ display: "grid", gap: 8 }}>
@@ -330,14 +738,16 @@ export function TransactionsView() {
       ) : search.isError ? (
         <div role="alert">
           <p>Could not load transactions.</p>
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             type="button"
             onClick={() => {
               void search.refetch();
             }}
           >
             Retry
-          </button>
+          </Button>
         </div>
       ) : rows.length === 0 ? (
         <EmptyState
@@ -360,18 +770,33 @@ export function TransactionsView() {
               padTop={padTop}
               padBottom={padBottom}
               onSelect={setSelectedId}
+              selectedIds={selectedIds}
+              onToggle={(transactionId) => {
+                setSelectedIds((current) => {
+                  const next = new Set(current);
+                  if (next.has(transactionId)) next.delete(transactionId);
+                  else next.add(transactionId);
+                  return next;
+                });
+              }}
+              visibleColumns={visibleColumns}
             />
           </div>
           {selectedId ? (
             <TransactionDetailDrawer
               transactionId={selectedId}
               onClose={() => {
+                const url = new URL(window.location.href);
+                url.searchParams.delete("transactionId");
+                window.history.replaceState(null, "", `${url.pathname}${url.search}`);
                 setSelectedId(null);
               }}
             />
           ) : null}
           {search.hasNextPage ? (
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               type="button"
               disabled={search.isFetchingNextPage}
               onClick={() => {
@@ -379,7 +804,7 @@ export function TransactionsView() {
               }}
             >
               {search.isFetchingNextPage ? "Loading more…" : "Load more"}
-            </button>
+            </Button>
           ) : null}
         </>
       )}

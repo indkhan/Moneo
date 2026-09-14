@@ -49,7 +49,9 @@ describe("workspace RLS and runtime roles (migrations 0000-0002)", () => {
    */
   async function q<T>(sqlText: string, params: unknown[] = []): Promise<T[]> {
     const result =
-      params.length > 0 ? await pg.query<T>(sqlText, params as never[]) : await pg.query<T>(sqlText);
+      params.length > 0
+        ? await pg.query<T>(sqlText, params as never[])
+        : await pg.query<T>(sqlText);
     return result.rows;
   }
 
@@ -163,7 +165,9 @@ describe("workspace RLS and runtime roles (migrations 0000-0002)", () => {
     });
 
     // Owner view: B is byte-for-byte untouched.
-    const name = one(await q<{ name: string }>("SELECT name FROM workspaces WHERE id = $1", [wsB])).name;
+    const name = one(
+      await q<{ name: string }>("SELECT name FROM workspaces WHERE id = $1", [wsB]),
+    ).name;
     expect(name).toBe("Workspace B");
     const role = one(
       await q<{ role: string }>(
@@ -210,7 +214,9 @@ describe("workspace RLS and runtime roles (migrations 0000-0002)", () => {
       const renamed = await qRaw("UPDATE workspaces SET name = 'x' WHERE id = $1", [wsA]);
       expect(renamed.affectedRows ?? renamed.rowCount).toBe(0);
     });
-    const name = one(await q<{ name: string }>("SELECT name FROM workspaces WHERE id = $1", [wsA])).name;
+    const name = one(
+      await q<{ name: string }>("SELECT name FROM workspaces WHERE id = $1", [wsA]),
+    ).name;
     expect(name).toBe("Workspace A");
   });
 
@@ -243,7 +249,10 @@ describe("workspace RLS and runtime roles (migrations 0000-0002)", () => {
       expect(await count("workspaces")).toBe("1");
     });
     // Tidy up so other tests keep a pristine A/B split.
-    await qRaw("DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2", [wsA, userB]);
+    await qRaw("DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2", [
+      wsA,
+      userB,
+    ]);
   });
 
   it("migration/owner role still sees everything (releases and ops path intact)", async () => {
@@ -299,9 +308,10 @@ describe("workspace RLS and runtime roles (migrations 0000-0002)", () => {
     expect(lingering === null || lingering === "").toBe(true);
 
     const stored = one(
-      await q<{ event_type: string }>("SELECT event_type FROM security_audit_events WHERE id = $1", [
-        eventId,
-      ]),
+      await q<{ event_type: string }>(
+        "SELECT event_type FROM security_audit_events WHERE id = $1",
+        [eventId],
+      ),
     );
     expect(stored.event_type).toBe("session.revoked");
   });

@@ -9,6 +9,7 @@ import {
   executeSetNote,
 } from "@moneo/db/correction-commands";
 import { executeResolveMatch } from "@moneo/db/import-matching";
+import { executeFrozenBulk } from "@moneo/db/transaction-bulk";
 import {
   executeCreateManualAccount,
   executeCreateManualTransaction,
@@ -105,6 +106,15 @@ export const setNoteInputSchema = z.object({
 
 export const excludeFromAnalyticsInputSchema = z.object({
   transactionId: z.uuid("transaction id must be a UUID"),
+  excluded: z.boolean(),
+});
+
+const frozenBulkBaseSchema = z.object({ selectionId: z.uuid("selection id must be a UUID") });
+export const setCategoryBulkInputSchema = frozenBulkBaseSchema.extend({
+  categoryId: z.uuid("category id must be a UUID").nullable(),
+});
+export const addTagsBulkInputSchema = frozenBulkBaseSchema.extend({ tags: tagListSchema });
+export const excludeFromAnalyticsBulkInputSchema = frozenBulkBaseSchema.extend({
   excluded: z.boolean(),
 });
 
@@ -235,11 +245,7 @@ export function createDrizzleCommandRegistry(): Map<string, CommandRegistration>
       correctionRegistration(
         setCategoryInputSchema,
         (db, ctx, input) =>
-          executeSetCategory(
-            db,
-            ctx,
-            input as Parameters<typeof executeSetCategory>[2],
-          ),
+          executeSetCategory(db, ctx, input as Parameters<typeof executeSetCategory>[2]),
         true,
       ),
     ],
@@ -248,11 +254,7 @@ export function createDrizzleCommandRegistry(): Map<string, CommandRegistration>
       correctionRegistration(
         setCounterpartyInputSchema,
         (db, ctx, input) =>
-          executeSetCounterparty(
-            db,
-            ctx,
-            input as Parameters<typeof executeSetCounterparty>[2],
-          ),
+          executeSetCounterparty(db, ctx, input as Parameters<typeof executeSetCounterparty>[2]),
         true,
       ),
     ],
@@ -260,12 +262,7 @@ export function createDrizzleCommandRegistry(): Map<string, CommandRegistration>
       "transactions.addTags",
       correctionRegistration(
         addTagsInputSchema,
-        (db, ctx, input) =>
-          executeAddTags(
-            db,
-            ctx,
-            input as Parameters<typeof executeAddTags>[2],
-          ),
+        (db, ctx, input) => executeAddTags(db, ctx, input as Parameters<typeof executeAddTags>[2]),
         true,
       ),
     ],
@@ -274,11 +271,7 @@ export function createDrizzleCommandRegistry(): Map<string, CommandRegistration>
       correctionRegistration(
         removeTagsInputSchema,
         (db, ctx, input) =>
-          executeRemoveTags(
-            db,
-            ctx,
-            input as Parameters<typeof executeRemoveTags>[2],
-          ),
+          executeRemoveTags(db, ctx, input as Parameters<typeof executeRemoveTags>[2]),
         true,
       ),
     ],
@@ -286,12 +279,7 @@ export function createDrizzleCommandRegistry(): Map<string, CommandRegistration>
       "transactions.setNote",
       correctionRegistration(
         setNoteInputSchema,
-        (db, ctx, input) =>
-          executeSetNote(
-            db,
-            ctx,
-            input as Parameters<typeof executeSetNote>[2],
-          ),
+        (db, ctx, input) => executeSetNote(db, ctx, input as Parameters<typeof executeSetNote>[2]),
         true,
       ),
     ],
@@ -309,13 +297,72 @@ export function createDrizzleCommandRegistry(): Map<string, CommandRegistration>
       ),
     ],
     [
+      "transactions.setCategoryBulk",
+      {
+        inputSchema: setCategoryBulkInputSchema,
+        run: ({ workspaceId, actorUserId, metadata, input }) =>
+          withWorkspaceTransaction(workspaceId, (tx) =>
+            executeFrozenBulk(tx, {
+              workspaceId,
+              actorUserId,
+              idempotencyKey: metadata.idempotencyKey,
+              command: "setCategory",
+              ...(input as z.infer<typeof setCategoryBulkInputSchema>),
+            }).then((result) => ({
+              operationId: `${workspaceId}:transactions.setCategoryBulk:${metadata.idempotencyKey}`,
+              replayed: result.applied === 0 && result.replayed > 0,
+              undoAvailable: false,
+              result: result as unknown as Record<string, unknown>,
+            })),
+          ),
+      },
+    ],
+    [
+      "transactions.addTagsBulk",
+      {
+        inputSchema: addTagsBulkInputSchema,
+        run: ({ workspaceId, actorUserId, metadata, input }) =>
+          withWorkspaceTransaction(workspaceId, (tx) =>
+            executeFrozenBulk(tx, {
+              workspaceId,
+              actorUserId,
+              idempotencyKey: metadata.idempotencyKey,
+              command: "addTags",
+              ...(input as z.infer<typeof addTagsBulkInputSchema>),
+            }).then((result) => ({
+              operationId: `${workspaceId}:transactions.addTagsBulk:${metadata.idempotencyKey}`,
+              replayed: result.applied === 0 && result.replayed > 0,
+              undoAvailable: false,
+              result: result as unknown as Record<string, unknown>,
+            })),
+          ),
+      },
+    ],
+    [
+      "transactions.excludeFromAnalyticsBulk",
+      {
+        inputSchema: excludeFromAnalyticsBulkInputSchema,
+        run: ({ workspaceId, actorUserId, metadata, input }) =>
+          withWorkspaceTransaction(workspaceId, (tx) =>
+            executeFrozenBulk(tx, {
+              workspaceId,
+              actorUserId,
+              idempotencyKey: metadata.idempotencyKey,
+              command: "excludeFromAnalytics",
+              ...(input as z.infer<typeof excludeFromAnalyticsBulkInputSchema>),
+            }).then((result) => ({
+              operationId: `${workspaceId}:transactions.excludeFromAnalyticsBulk:${metadata.idempotencyKey}`,
+              replayed: result.applied === 0 && result.replayed > 0,
+              undoAvailable: false,
+              result: result as unknown as Record<string, unknown>,
+            })),
+          ),
+      },
+    ],
+    [
       "operations.undo",
       correctionRegistration(undoInputSchema, (db, ctx, input) =>
-        executeUndo(
-          db,
-          ctx,
-          input as Parameters<typeof executeUndo>[2],
-        ),
+        executeUndo(db, ctx, input as Parameters<typeof executeUndo>[2]),
       ),
     ],
     [

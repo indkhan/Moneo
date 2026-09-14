@@ -32,4 +32,14 @@ describe("env", () => {
     expect(env.APP_ENV).toBe("development");
     expect(env.REDIS_URL).toContain("redis://");
   });
+
+  it("keeps a dedicated outbox dispatcher database URL", () => {
+    const outboxUrl = "postgres://dispatcher:secret@localhost:5432/moneo";
+    expect(loadEnv({ OUTBOX_DATABASE_URL: outboxUrl }).OUTBOX_DATABASE_URL).toBe(outboxUrl);
+  });
+
+  it("keeps the explicit AI credential KMS key identifier", () => {
+    const keyId = "alias/finance-staging-user-credentials";
+    expect(loadEnv({ AI_CREDENTIAL_KMS_KEY_ID: keyId }).AI_CREDENTIAL_KMS_KEY_ID).toBe(keyId);
+  });
 });

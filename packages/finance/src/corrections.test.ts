@@ -146,7 +146,11 @@ describe("transaction correction commands", () => {
       { transactionId: "txn-1", categoryId: "cat-1" },
       store,
     );
-    expect(outcome.result).toMatchObject({ transactionId: "txn-1", version: 2, categoryId: "cat-1" });
+    expect(outcome.result).toMatchObject({
+      transactionId: "txn-1",
+      version: 2,
+      categoryId: "cat-1",
+    });
     expect(outcome.replayed).toBe(false);
     expect(db.transactions.get("txn-1")).toMatchObject({ categoryId: "cat-1", version: 2 });
     const audits = store.audit();
@@ -163,7 +167,12 @@ describe("transaction correction commands", () => {
     const db = seedDb();
     const store = createMemoryCommandStore();
     const def = createSetNoteCommand(createData(db));
-    const first = await executeCommand(def, ctx("k-note"), { transactionId: "txn-1", note: "hi" }, store);
+    const first = await executeCommand(
+      def,
+      ctx("k-note"),
+      { transactionId: "txn-1", note: "hi" },
+      store,
+    );
     const second = await executeCommand(
       def,
       ctx("k-note"),

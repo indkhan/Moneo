@@ -1,5 +1,5 @@
 import { loadEnv } from "@moneo/shared/env";
-import { getSession } from "@/lib/auth-session";
+import { financeRoute } from "@/lib/finance-api";
 import { createDrizzleBalancePreviewStore, handlePreviewBalance } from "@/lib/balance-preview";
 import { searchCursorSecret } from "@/lib/money-transactions";
 
@@ -8,10 +8,11 @@ import { searchCursorSecret } from "@/lib/money-transactions";
  * over later transactions. Read-only; answers what recording WOULD do.
  */
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
-  const session = await getSession();
-  const { id } = await context.params;
-  return handlePreviewBalance(id, new URL(request.url).search, {
-    workspaceId: session?.wid,
-    preview: createDrizzleBalancePreviewStore(searchCursorSecret(loadEnv())),
+  return financeRoute(async (session) => {
+    const { id } = await context.params;
+    return handlePreviewBalance(id, new URL(request.url).search, {
+      workspaceId: session.wid,
+      preview: createDrizzleBalancePreviewStore(searchCursorSecret(loadEnv())),
+    });
   });
 }

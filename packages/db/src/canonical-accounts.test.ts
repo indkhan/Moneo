@@ -204,9 +204,7 @@ describe("canonical account model (migration 0008)", () => {
       sourceAccountId: second.account.id,
       relationship: "MERGED",
     });
-    expect(
-      await count("account_source_links", "WHERE account_id = $1", [account.id]),
-    ).toBe("2");
+    expect(await count("account_source_links", "WHERE account_id = $1", [account.id])).toBe("2");
     await expectDbError(
       db.insert(accountSourceLinks).values({
         workspaceId: wsA,
@@ -248,9 +246,9 @@ describe("canonical account model (migration 0008)", () => {
         .returning(),
     );
     expect(newer.id).not.toBe(unknown.id);
-    expect(
-      await count("account_balance_snapshots", "WHERE account_id = $1", [account.id]),
-    ).toBe("2");
+    expect(await count("account_balance_snapshots", "WHERE account_id = $1", [account.id])).toBe(
+      "2",
+    );
     const latest = one(
       await db
         .select()
@@ -367,9 +365,7 @@ describe("canonical account model (migration 0008)", () => {
         .returning(),
     );
     await db.update(accounts).set({ archivedAt: new Date() }).where(eq(accounts.id, account.id));
-    const reread = one(
-      await db.select().from(accounts).where(eq(accounts.id, account.id)),
-    );
+    const reread = one(await db.select().from(accounts).where(eq(accounts.id, account.id)));
     expect(reread.archivedAt).toBeInstanceOf(Date);
   });
 

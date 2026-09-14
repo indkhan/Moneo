@@ -45,6 +45,8 @@ export default tseslint.config(
     files: ["**/*.test.ts", "**/*.test.tsx", "**/tests/**"],
     rules: {
       "@typescript-eslint/no-non-null-assertion": "off",
+      // Async test doubles deliberately implement Promise APIs without I/O.
+      "@typescript-eslint/require-await": "off",
     },
   },
   // Non-compiled config/story files: parse without type information.
@@ -53,6 +55,8 @@ export default tseslint.config(
       "**/*.mjs",
       "**/*.cjs",
       "**/drizzle.config.ts",
+      "**/vitest.config.ts",
+      "**/scripts/**/*.ts",
       "packages/ui/.storybook/**",
       "apps/web/e2e/**",
     ],

@@ -3,6 +3,7 @@ import { listUserSessions } from "@moneo/db/sessions";
 import { Card, CardDescription, CardTitle } from "@moneo/ui";
 import { SessionSecurity } from "@/components/SessionSecurity";
 import { StrongAuthSection } from "@/components/StrongAuthSection";
+import { AiSettings } from "@/components/AiSettings";
 import { getSession } from "@/lib/auth-session";
 import { getShellIdentity, identityLabel } from "@/lib/shell-identity";
 import type { SessionListItem } from "@/lib/sessions-client";
@@ -56,6 +57,7 @@ export default async function SettingsPage() {
       <h1 id="settings-heading" style={{ margin: 0, fontSize: 24 }}>
         Settings
       </h1>
+      <AiSettings />
       <Card>
         <CardTitle>Identity</CardTitle>
         {user ? (

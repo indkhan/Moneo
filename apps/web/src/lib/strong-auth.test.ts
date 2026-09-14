@@ -53,6 +53,10 @@ describe("primaryFactor", () => {
     expect(primaryFactor([factor("recovery-code"), factor("totp")])?.kind).toBe("totp");
     expect(primaryFactor([factor("passkey")])?.kind).toBe("passkey");
   });
+
+  it.each(["sms", "email", "guardian"] as const)("does not treat %s as a strong factor", (kind) => {
+    expect(primaryFactor([factor(kind)])).toBeNull();
+  });
 });
 
 describe("decideStrongAuth", () => {

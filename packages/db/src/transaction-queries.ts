@@ -1,5 +1,19 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { and, asc, desc, eq, gt, gte, ilike, inArray, lt, lte, or, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  ilike,
+  inArray,
+  lt,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 import { DomainError } from "@moneo/shared/problem";
@@ -27,14 +41,13 @@ import { assertUuid } from "./uuid.js";
  * it onto the documented problem shape (Issue 2.3 codes).
  */
 
-export type TransactionQueryDb =
-  | Db
-  | PgliteDatabase<typeof schema>
-  | NodePgDatabase<typeof schema>;
+export type TransactionQueryDb = Db | PgliteDatabase<typeof schema> | NodePgDatabase<typeof schema>;
 
 export type TransactionSort = "newest" | "oldest";
 
 export interface TransactionSearchInput {
+  categoryIds?: string[];
+  tagNames?: string[];
   accountIds?: string[];
   dateFrom?: string;
   dateTo?: string;
@@ -173,6 +186,14 @@ export async function searchTransactions(
   const limit = Math.max(1, Math.min(input.limit ?? 25, 100));
 
   const conditions: SQL[] = [eq(transactions.workspaceId, workspaceId)];
+  if (input.categoryIds?.length) {
+    input.categoryIds.forEach((id) => checkUuid(id, "categoryId"));
+    conditions.push(inArray(transactions.categoryId, input.categoryIds));
+  }
+  for (const name of input.tagNames ?? [])
+    conditions.push(
+      sql`exists (select 1 from transaction_tags tt join tags tag on tag.id=tt.tag_id and tag.workspace_id=tt.workspace_id where tt.workspace_id=${workspaceId} and tt.transaction_id=${transactions.id} and tag.name=${name})`,
+    );
 
   if (input.accountIds !== undefined) {
     if (input.accountIds.length === 0) {

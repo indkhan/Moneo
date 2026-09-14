@@ -174,16 +174,18 @@ describe("cursor-based transaction search (issue 4.6)", () => {
   });
 
   it("narrows with every supported filter", async () => {
-    expect((await search({ accountIds: [acctA1], limit: 100 })).items.every((t) =>
-      [acctA1].includes(t.accountId),
-    )).toBe(true);
+    expect(
+      (await search({ accountIds: [acctA1], limit: 100 })).items.every((t) =>
+        [acctA1].includes(t.accountId),
+      ),
+    ).toBe(true);
     expect((await search({ accountIds: [], limit: 100 })).items).toEqual([]);
 
     const august = await search({ dateFrom: "2026-08-01", dateTo: "2026-08-31", limit: 100 });
     expect(august.items).toHaveLength(31);
-    expect(august.items.every((t) => t.effectiveDate >= "2026-08-01" && t.effectiveDate <= "2026-08-31")).toBe(
-      true,
-    );
+    expect(
+      august.items.every((t) => t.effectiveDate >= "2026-08-01" && t.effectiveDate <= "2026-08-31"),
+    ).toBe(true);
 
     const credits = await search({ directions: ["credit"], limit: 100 });
     expect(credits.items.length).toBeGreaterThan(0);
@@ -223,9 +225,9 @@ describe("cursor-based transaction search (issue 4.6)", () => {
       d: "2026-08-15",
       i: uuidv7(),
     });
-    await expect(
-      searchTransactions(db, wsA, { limit: 5, cursor: foreign }, codec),
-    ).rejects.toThrow(/wrong workspace/);
+    await expect(searchTransactions(db, wsA, { limit: 5, cursor: foreign }, codec)).rejects.toThrow(
+      /wrong workspace/,
+    );
 
     // Same cursor under the other sort is rejected, never misordered.
     await expect(search({ limit: 5, cursor, sort: "oldest" })).rejects.toThrow(/sort changed/);

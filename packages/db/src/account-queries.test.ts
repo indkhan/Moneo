@@ -74,7 +74,9 @@ describe("account query services (issue 4.5)", () => {
         })
         .returning(),
     );
-    await db.insert(accounts).values({ workspaceId: wsB, name: `Other ${tag}`, currencyCode: "EUR" });
+    await db
+      .insert(accounts)
+      .values({ workspaceId: wsB, name: `Other ${tag}`, currencyCode: "EUR" });
 
     const visible = await listAccounts(db, wsA);
     const names = visible.map((a) => a.name);

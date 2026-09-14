@@ -2,6 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { LIMITS, loadLimits, type LimitsConfig } from "./limits.js";
 import { DomainError } from "./problem.js";
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 
 /**
  * Issue 3.2 — private statement upload flow.
@@ -187,6 +193,67 @@ export function createMemoryObjectStore(): ObjectStore & { keys(): string[]; cle
       return Promise.resolve(found ? found.length : null);
     },
   };
+}
+
+type S3Sender = { send(command: object): Promise<unknown> };
+
+/** Private MinIO/S3 adapter shared by web and worker processes. */
+export function createS3ObjectStore(options: { bucket: string; client: S3Sender }): ObjectStore {
+  const head = async (key: string): Promise<{ ContentLength?: number } | null> => {
+    assertPrivateKey(key);
+    try {
+      return (await options.client.send(
+        new HeadObjectCommand({ Bucket: options.bucket, Key: key }),
+      )) as { ContentLength?: number };
+    } catch (error) {
+      const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata
+        ?.httpStatusCode;
+      if (status === 404 || (error as { name?: string }).name === "NotFound") return null;
+      throw error;
+    }
+  };
+  return {
+    async put(key, bytes) {
+      assertPrivateKey(key);
+      await options.client.send(
+        new PutObjectCommand({ Bucket: options.bucket, Key: key, Body: bytes }),
+      );
+    },
+    async get(key) {
+      assertPrivateKey(key);
+      try {
+        const result = (await options.client.send(
+          new GetObjectCommand({ Bucket: options.bucket, Key: key }),
+        )) as { Body?: { transformToByteArray(): Promise<Uint8Array> } };
+        return result.Body ? new Uint8Array(await result.Body.transformToByteArray()) : null;
+      } catch (error) {
+        const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata
+          ?.httpStatusCode;
+        if (status === 404 || (error as { name?: string }).name === "NoSuchKey") return null;
+        throw error;
+      }
+    },
+    exists: (key) => head(key).then(Boolean),
+    sizeOf: (key) => head(key).then((result) => result?.ContentLength ?? null),
+  };
+}
+
+export function createConfiguredS3ObjectStore(config: {
+  endpoint: string;
+  region: string;
+  bucket: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+}): ObjectStore {
+  return createS3ObjectStore({
+    bucket: config.bucket,
+    client: new S3Client({
+      endpoint: config.endpoint,
+      region: config.region,
+      forcePathStyle: true,
+      credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
+    }),
+  });
 }
 
 export interface CompleteUploadInput {

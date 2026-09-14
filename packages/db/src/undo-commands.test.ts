@@ -96,11 +96,9 @@ describe("operations.undo command (issue 5.4)", () => {
       { transactionId: txn.id, categoryId: category.id },
     );
 
-    const undone = await executeUndo(
-      db,
-      ctxFor(wsA, `undo-${uuidv7()}`),
-      { operationId: done.operationId },
-    );
+    const undone = await executeUndo(db, ctxFor(wsA, `undo-${uuidv7()}`), {
+      operationId: done.operationId,
+    });
     expect(undone.result).toMatchObject({
       undoneOperationId: done.operationId,
       transactionId: txn.id,
@@ -217,11 +215,9 @@ describe("operations.undo command (issue 5.4)", () => {
       { ...ctxFor(wsA, `a-${uuidv7()}`), expectedVersion: 1 },
       { transactionId: txnA.id, categoryId: catA.id },
     );
-    const undoneA = await executeUndo(
-      db,
-      ctxFor(wsA, `u-${uuidv7()}`),
-      { operationId: doneA.operationId },
-    );
+    const undoneA = await executeUndo(db, ctxFor(wsA, `u-${uuidv7()}`), {
+      operationId: doneA.operationId,
+    });
     // Undoing the compensating command itself is rejected, not chained.
     await expect(
       executeUndo(db, ctxFor(wsA, `u-${uuidv7()}`), { operationId: undoneA.operationId }),
@@ -237,11 +233,9 @@ describe("operations.undo command (issue 5.4)", () => {
       { transactionId: txn.id, tags: ["food", "germany"] },
     );
     expect(added.result.tags).toEqual(["food", "germany"]);
-    const undone = await executeUndo(
-      db,
-      ctxFor(wsA, `undo-${uuidv7()}`),
-      { operationId: added.operationId },
-    );
+    const undone = await executeUndo(db, ctxFor(wsA, `undo-${uuidv7()}`), {
+      operationId: added.operationId,
+    });
     expect(undone.result.version).toBe(3);
     expect((await readTransaction(wsA, txn.id)).version).toBe(3);
   });

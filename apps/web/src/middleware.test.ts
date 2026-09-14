@@ -28,7 +28,9 @@ describe("middleware", () => {
 
   it("rejects unsafe API requests without a valid same-origin CSRF pair", async () => {
     expect((await middleware(post("/api/v1/health"))).status).toBe(403);
-    expect((await middleware(post("/api/v1/health", "token", "https://evil.com"))).status).toBe(403);
+    expect((await middleware(post("/api/v1/health", "token", "https://evil.com"))).status).toBe(
+      403,
+    );
     expect((await middleware(post("/api/v1/health", "token", BASE))).status).not.toBe(403);
   });
 

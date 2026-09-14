@@ -26,7 +26,11 @@ export function isEuAuth0Domain(domain: string): boolean {
     return false;
   }
   const lower = domain.toLowerCase();
-  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.eu(?:-2)?\.auth0\.com$/.test(lower)) {
+  if (
+    !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.eu(?:-2)?\.auth0\.com$/.test(
+      lower,
+    )
+  ) {
     return false;
   }
   // Reject the bare regional suffix with no tenant label.

@@ -31,3 +31,22 @@ a {
   outline: 2px solid var(--moneo-accent);
   outline-offset: 2px;
 }
+
+.finance-controls :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  border: 1px solid var(--moneo-border);
+  background: var(--moneo-surface);
+  color: var(--moneo-text);
+  border-radius: 6px;
+  padding: 6px 8px;
+  max-width: 100%;
+  color-scheme: dark;
+}
+.finance-controls :where(button:disabled, input:disabled, select:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.finance-controls fieldset label {
+  display: inline-flex;
+  gap: 6px;
+  margin-right: 12px;
+}

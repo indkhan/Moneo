@@ -12,6 +12,8 @@ export interface SessionPayload {
   sid: string;
   iat: number;
   exp: number;
+  /** OIDC auth_time: when the provider last authenticated the user. */
+  authTime?: number;
 }
 
 /** Server-component helper: the current sealed browser session, or null. */
@@ -37,5 +39,8 @@ export async function getSession(_nowSeconds?: number): Promise<SessionPayload |
     sid: session.internal.sid,
     iat: session.internal.createdAt,
     exp: session.internal.sessionExpiresAt ?? Number.MAX_SAFE_INTEGER,
+    ...(typeof (session.user as unknown as { auth_time?: unknown }).auth_time === "number"
+      ? { authTime: (session.user as unknown as { auth_time: number }).auth_time }
+      : {}),
   };
 }

@@ -26,7 +26,7 @@ import type { SessionPayload } from "./auth-session";
  * checks for sensitive actions on top of this gate.
  */
 
-export type StrongAuthMethod = "passkey" | "totp" | "guardian" | "sms" | "email";
+export type StrongAuthMethod = "passkey" | "totp";
 
 export interface StrongAuthStatus {
   state: "enrolled" | "not-enrolled" | "degraded" | "signed-out";
@@ -36,13 +36,7 @@ export interface StrongAuthStatus {
   passkeysOffered: boolean;
 }
 
-const PRIMARY_METHODS: ReadonlySet<AuthFactor["kind"]> = new Set([
-  "passkey",
-  "totp",
-  "guardian",
-  "sms",
-  "email",
-]);
+const PRIMARY_METHODS: ReadonlySet<AuthFactor["kind"]> = new Set(["passkey", "totp"]);
 
 /** Recovery codes alone never enroll: they accompany a primary factor. */
 export function primaryFactor(factors: AuthFactor[]): AuthFactor | null {

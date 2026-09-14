@@ -198,7 +198,10 @@ describe("transaction detail query (issue 4.8)", () => {
         .returning(),
     );
     const food = one(
-      await db.insert(tags).values({ workspaceId: wsA, name: `food-${tag}` }).returning(),
+      await db
+        .insert(tags)
+        .values({ workspaceId: wsA, name: `food-${tag}` })
+        .returning(),
     );
     await db
       .update(transactions)

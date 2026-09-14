@@ -12,5 +12,9 @@ export function SignOutButton() {
     }
   }
 
-  return <button type="button" onClick={() => void onClick()}>Log out</button>;
+  return (
+    <button type="button" onClick={() => void onClick()}>
+      Log out
+    </button>
+  );
 }

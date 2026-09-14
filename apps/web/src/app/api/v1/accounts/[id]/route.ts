@@ -1,4 +1,4 @@
-import { getSession } from "@/lib/auth-session";
+import { financeRoute } from "@/lib/finance-api";
 import { createDrizzleMoneyAccountStore, handleGetAccount } from "@/lib/money-accounts";
 
 /**
@@ -6,10 +6,11 @@ import { createDrizzleMoneyAccountStore, handleGetAccount } from "@/lib/money-ac
  * a cross-workspace row.
  */
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
-  const session = await getSession();
-  const { id } = await context.params;
-  return handleGetAccount(id, {
-    workspaceId: session?.wid,
-    accounts: createDrizzleMoneyAccountStore(),
+  return financeRoute(async (session) => {
+    const { id } = await context.params;
+    return handleGetAccount(id, {
+      workspaceId: session.wid,
+      accounts: createDrizzleMoneyAccountStore(),
+    });
   });
 }

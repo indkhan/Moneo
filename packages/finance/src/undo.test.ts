@@ -86,7 +86,8 @@ function createData(db: MemoryDb): UndoData {
     findCategory: (_ws, id) =>
       Promise.resolve(db.categories.has(id) ? { id, archivedAt: null } : null),
     findCounterparty: () => Promise.resolve(null),
-    findOrCreateCounterpartyByName: (_ws, normalized) => Promise.resolve({ id: `cp-${normalized}` }),
+    findOrCreateCounterpartyByName: (_ws, normalized) =>
+      Promise.resolve({ id: `cp-${normalized}` }),
     findOrCreateTag: (_ws, name) => {
       const id = `tag-${name}`;
       if (!db.tags.has(id)) {
@@ -224,11 +225,18 @@ describe("compensating undo", () => {
     const store = createMemoryCommandStore();
     const data = createData(db);
     const def = createUndoCommand(data);
-    expect(await codeOf(executeCommand(def, ctx("u-x1"), { operationId: "ws-1:zzz:nope" }, store))).toBe(
-      "FORBIDDEN",
-    );
     expect(
-      await codeOf(executeCommand(def, ctx("u-x2"), { operationId: "ws-2:transactions.setCategory:k-1" }, store)),
+      await codeOf(executeCommand(def, ctx("u-x1"), { operationId: "ws-1:zzz:nope" }, store)),
+    ).toBe("FORBIDDEN");
+    expect(
+      await codeOf(
+        executeCommand(
+          def,
+          ctx("u-x2"),
+          { operationId: "ws-2:transactions.setCategory:k-1" },
+          store,
+        ),
+      ),
     ).toBe("FORBIDDEN");
     expect(
       await codeOf(
@@ -236,7 +244,9 @@ describe("compensating undo", () => {
       ),
     ).toBe("INVARIANT_VIOLATION");
     expect(
-      await codeOf(executeCommand(def, ctx("u-x4"), { operationId: "ws-1:operations.undo:k-8" }, store)),
+      await codeOf(
+        executeCommand(def, ctx("u-x4"), { operationId: "ws-1:operations.undo:k-8" }, store),
+      ),
     ).toBe("FORBIDDEN");
   });
 
@@ -352,7 +362,12 @@ describe("compensating undo", () => {
     });
     expect(
       await codeOf(
-        executeCommand(createUndoCommand(data), ctx("undo2"), { operationId: "ws-1:operations.undo:undo" }, store),
+        executeCommand(
+          createUndoCommand(data),
+          ctx("undo2"),
+          { operationId: "ws-1:operations.undo:undo" },
+          store,
+        ),
       ),
     ).toBe("FORBIDDEN");
   });

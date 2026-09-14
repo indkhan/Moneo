@@ -1,4 +1,4 @@
-import { getSession } from "@/lib/auth-session";
+import { financeRoute } from "@/lib/finance-api";
 import { createDrizzleCategoryStore, handleListCategories } from "@/lib/categories";
 
 /**
@@ -6,9 +6,10 @@ import { createDrizzleCategoryStore, handleListCategories } from "@/lib/categori
  * transaction correction controls (Issue 5.5).
  */
 export async function GET(request: Request) {
-  const session = await getSession();
-  return handleListCategories(new URL(request.url).search, {
-    workspaceId: session?.wid,
-    categories: createDrizzleCategoryStore(),
-  });
+  return financeRoute((session) =>
+    handleListCategories(new URL(request.url).search, {
+      workspaceId: session.wid,
+      categories: createDrizzleCategoryStore(),
+    }),
+  );
 }

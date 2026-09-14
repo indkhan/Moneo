@@ -100,33 +100,29 @@ describe("transaction correction commands (issue 5.3)", () => {
         .returning(),
     );
 
-    const cat = await executeSetCategory(
-      db,
-      ctxFor(wsA, `cat-${uuidv7()}`, 1),
-      { transactionId: txn.id, categoryId: category.id },
-    );
+    const cat = await executeSetCategory(db, ctxFor(wsA, `cat-${uuidv7()}`, 1), {
+      transactionId: txn.id,
+      categoryId: category.id,
+    });
     expect(cat.result).toMatchObject({ transactionId: txn.id, version: 2 });
 
-    const cp = await executeSetCounterparty(
-      db,
-      ctxFor(wsA, `cp-${uuidv7()}`, 2),
-      { transactionId: txn.id, counterpartyName: "Lidl" },
-    );
+    const cp = await executeSetCounterparty(db, ctxFor(wsA, `cp-${uuidv7()}`, 2), {
+      transactionId: txn.id,
+      counterpartyName: "Lidl",
+    });
     expect(cp.result.version).toBe(3);
     expect(typeof cp.result.counterpartyId).toBe("string");
 
-    const note = await executeSetNote(
-      db,
-      ctxFor(wsA, `note-${uuidv7()}`, 3),
-      { transactionId: txn.id, note: "Weekly shop" },
-    );
+    const note = await executeSetNote(db, ctxFor(wsA, `note-${uuidv7()}`, 3), {
+      transactionId: txn.id,
+      note: "Weekly shop",
+    });
     expect(note.result).toMatchObject({ version: 4, note: "Weekly shop" });
 
-    const excl = await executeExcludeFromAnalytics(
-      db,
-      ctxFor(wsA, `excl-${uuidv7()}`, 4),
-      { transactionId: txn.id, excluded: true },
-    );
+    const excl = await executeExcludeFromAnalytics(db, ctxFor(wsA, `excl-${uuidv7()}`, 4), {
+      transactionId: txn.id,
+      excluded: true,
+    });
     expect(excl.result).toMatchObject({ version: 5, excluded: true });
 
     const current = await readTransaction(wsA, txn.id);
@@ -170,24 +166,19 @@ describe("transaction correction commands (issue 5.3)", () => {
   it("adds and removes tags end to end", async () => {
     const db = drizzlePglite(pg, { schema });
     const txn = await seedTransaction(wsA);
-    const added = await executeAddTags(
-      db,
-      ctxFor(wsA, `add-${uuidv7()}`, 1),
-      { transactionId: txn.id, tags: ["Food", "germany"] },
-    );
+    const added = await executeAddTags(db, ctxFor(wsA, `add-${uuidv7()}`, 1), {
+      transactionId: txn.id,
+      tags: ["Food", "germany"],
+    });
     expect(added.result).toMatchObject({ version: 2, tags: ["Food", "germany"] });
     expect(
-      await db
-        .select()
-        .from(transactionTags)
-        .where(eq(transactionTags.transactionId, txn.id)),
+      await db.select().from(transactionTags).where(eq(transactionTags.transactionId, txn.id)),
     ).toHaveLength(2);
 
-    const removed = await executeRemoveTags(
-      db,
-      ctxFor(wsA, `rm-${uuidv7()}`, 2),
-      { transactionId: txn.id, tags: ["Food"] },
-    );
+    const removed = await executeRemoveTags(db, ctxFor(wsA, `rm-${uuidv7()}`, 2), {
+      transactionId: txn.id,
+      tags: ["Food"],
+    });
     expect(removed.result).toMatchObject({ version: 3, tags: ["germany"] });
     // Tag rows survive (shared vocabulary); only the link is removed.
     expect(await db.select().from(tags)).not.toHaveLength(0);
@@ -197,16 +188,14 @@ describe("transaction correction commands (issue 5.3)", () => {
     const db = drizzlePglite(pg, { schema });
     const txn = await seedTransaction(wsA);
     const key = `retry-${uuidv7()}`;
-    const first = await executeSetNote(
-      db,
-      ctxFor(wsA, key, 1),
-      { transactionId: txn.id, note: "once" },
-    );
-    const replay = await executeSetNote(
-      db,
-      ctxFor(wsA, key, 1),
-      { transactionId: txn.id, note: "once" },
-    );
+    const first = await executeSetNote(db, ctxFor(wsA, key, 1), {
+      transactionId: txn.id,
+      note: "once",
+    });
+    const replay = await executeSetNote(db, ctxFor(wsA, key, 1), {
+      transactionId: txn.id,
+      note: "once",
+    });
     expect(replay.replayed).toBe(true);
     expect(replay.result).toEqual(first.result);
     expect((await readTransaction(wsA, txn.id)).version).toBe(2);
@@ -227,11 +216,10 @@ describe("transaction correction commands (issue 5.3)", () => {
       executeSetNote(db, ctxFor(wsA, `x-${uuidv7()}`), { transactionId: txnB.id, note: "hijack" }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(
-      executeSetCategory(
-        db,
-        ctxFor(wsA, `x-${uuidv7()}`),
-        { transactionId: txnA.id, categoryId: catB.id },
-      ),
+      executeSetCategory(db, ctxFor(wsA, `x-${uuidv7()}`), {
+        transactionId: txnA.id,
+        categoryId: catB.id,
+      }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(
       executeAddTags(db, ctxFor(wsA, `x-${uuidv7()}`), { transactionId: txnB.id, tags: ["evil"] }),
@@ -257,18 +245,16 @@ describe("transaction correction commands (issue 5.3)", () => {
         .returning(),
     );
     // Both tabs read version 1. Tab A wins.
-    await executeSetCategory(
-      db,
-      ctxFor(wsA, `taba-${uuidv7()}`, 1),
-      { transactionId: txn.id, categoryId: catA.id },
-    );
+    await executeSetCategory(db, ctxFor(wsA, `taba-${uuidv7()}`, 1), {
+      transactionId: txn.id,
+      categoryId: catA.id,
+    });
     // Tab B submits its stale version: conflict, no silent overwrite.
     await expect(
-      executeSetCategory(
-        db,
-        ctxFor(wsA, `tabb-${uuidv7()}`, 1),
-        { transactionId: txn.id, categoryId: catB.id },
-      ),
+      executeSetCategory(db, ctxFor(wsA, `tabb-${uuidv7()}`, 1), {
+        transactionId: txn.id,
+        categoryId: catB.id,
+      }),
     ).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
     const current = await readTransaction(wsA, txn.id);
     expect(current.categoryId).toBe(catA.id);

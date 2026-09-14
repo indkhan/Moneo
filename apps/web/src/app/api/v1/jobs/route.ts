@@ -1,4 +1,4 @@
-import { getSession } from "@/lib/auth-session";
+import { financeRoute } from "@/lib/finance-api";
 import { createDrizzleJobSubmissionStore, handleSubmitJob } from "@/lib/jobs-submit";
 
 /**
@@ -6,10 +6,11 @@ import { createDrizzleJobSubmissionStore, handleSubmitJob } from "@/lib/jobs-sub
  * Idempotent per dedupe key: retried submits return the original row.
  */
 export async function POST(request: Request) {
-  const session = await getSession();
-  const body: unknown = await request.json().catch(() => null);
-  return handleSubmitJob(body, {
-    workspaceId: session?.wid,
-    jobs: createDrizzleJobSubmissionStore(),
+  return financeRoute(async (session) => {
+    const body: unknown = await request.json().catch(() => null);
+    return handleSubmitJob(body, {
+      workspaceId: session.wid,
+      jobs: createDrizzleJobSubmissionStore(),
+    });
   });
 }

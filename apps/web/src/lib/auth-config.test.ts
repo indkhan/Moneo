@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  AuthConfigError,
-  isEuAuth0Domain,
-  loadAuthConfig,
-  type AuthConfig,
-} from "./auth-config";
+import { AuthConfigError, isEuAuth0Domain, loadAuthConfig, type AuthConfig } from "./auth-config";
 import { loadEnv } from "@moneo/shared/env";
 
 function baseEnv(overrides: Record<string, string | undefined> = {}) {
@@ -19,12 +14,14 @@ function baseEnv(overrides: Record<string, string | undefined> = {}) {
 }
 
 describe("EU tenant domain guard", () => {
-  it.each(["moneo.eu.auth0.com", "login.eu.auth0.com", "a-b.c123.eu.auth0.com", "moneo.eu-2.auth0.com"])(
-    "accepts EU tenant %s",
-    (domain) => {
-      expect(isEuAuth0Domain(domain)).toBe(true);
-    },
-  );
+  it.each([
+    "moneo.eu.auth0.com",
+    "login.eu.auth0.com",
+    "a-b.c123.eu.auth0.com",
+    "moneo.eu-2.auth0.com",
+  ])("accepts EU tenant %s", (domain) => {
+    expect(isEuAuth0Domain(domain)).toBe(true);
+  });
 
   it.each([
     ["moneo.us.auth0.com", "non-EU region"],
@@ -73,13 +70,15 @@ describe("loadAuthConfig", () => {
 
   it("requires client id and client secret", () => {
     expect(() => loadAuthConfig(baseEnv({ AUTH0_CLIENT_ID: undefined }))).toThrow(AuthConfigError);
-    expect(() => loadAuthConfig(baseEnv({ AUTH0_CLIENT_SECRET: undefined }))).toThrow(AuthConfigError);
+    expect(() => loadAuthConfig(baseEnv({ AUTH0_CLIENT_SECRET: undefined }))).toThrow(
+      AuthConfigError,
+    );
   });
 
   it("rejects a malformed custom domain", () => {
-    expect(() => loadAuthConfig(baseEnv({ AUTH0_CUSTOM_DOMAIN: "https://login.moneo.example/x" }))).toThrow(
-      AuthConfigError,
-    );
+    expect(() =>
+      loadAuthConfig(baseEnv({ AUTH0_CUSTOM_DOMAIN: "https://login.moneo.example/x" })),
+    ).toThrow(AuthConfigError);
   });
 
   it("lowercases the issuer so mixed-case env cannot fork the token audience", () => {

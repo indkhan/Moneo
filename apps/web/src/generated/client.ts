@@ -1,10 +1,19 @@
 /**
  * GENERATED — do not edit by hand.
  * Source: apps/web/openapi/openapi.json (info.version=v1)
- * contractSha: e8a4c00beb4b224033219502b0cc6f08eb46ba686c65fd605973fa97ec1c4a8b
+ * contractSha: 59fa5a364f428174c5ce371ec6a79be0bd9d6803057b1cae9fd33197edc7f5dd
  * Regenerate: pnpm --filter @moneo/web gen:client
  * Every browser DTO comes from here; later API issues extend the contract first.
  */
+
+export type AiConversation = { id: string; title: string; updatedAt: string; };
+export type AiEvidence = { id: string; label: string; href: string; };
+export type AiToolActivity = { name: string; status: "running" | "succeeded" | "failed" | "cancelled"; };
+export type AiChatMessage = { id: string; role: "user" | "assistant" | "tool"; content: string; evidence?: Array<AiEvidence>; toolActivity?: Array<AiToolActivity>; };
+export type AiChatRequest = { conversationId?: string; message: string; context?: { pathname: string; label?: string; }; };
+export type AiChatEvent = { type: "conversation"; conversationId: string; runId?: string; } | { type: "text"; text: string; } | { type: "tool"; name: string; status: "running" | "succeeded" | "failed" | "cancelled"; } | { type: "evidence"; evidence: AiEvidence; } | { type: "done"; runId: string; } | { type: "error"; message: string; };
+export type AiSettingsUpdate = { mode?: "included" | "custom"; model?: string; prompt?: string; restorePrompt?: boolean; excludedAccountIds?: Array<string>; expectedVersion: number; };
+export type AiCredentialRequest = { action: "connect" | "test" | "revoke"; apiKey?: string; expectedVersion: number; };
 
 export type ProblemCode =
   | "VALIDATION_FAILED"
@@ -170,6 +179,15 @@ export interface TransactionPage {
   nextCursor: string | null;
 }
 
+export type TransactionColumn = "date" | "description" | "account" | "direction" | "amount";
+export interface TransactionViewFilters { q?: string; accountIds?: string[]; tagNames?: string[]; directions?: ("credit" | "debit")[]; dateFrom?: string; dateTo?: string; categoryIds?: string[]; counterpartyIds?: string[]; excludedFromAnalytics?: boolean; }
+export interface TransactionViewDefinition { filters: TransactionViewFilters; sort: TransactionSort; visibleColumns: TransactionColumn[]; }
+export interface SavedTransactionView { id: string; name: string; definition: TransactionViewDefinition; createdAt: string; updatedAt: string; }
+export interface SavedTransactionViewList { items: SavedTransactionView[]; }
+export interface CreateSavedTransactionView { name: string; definition: TransactionViewDefinition; }
+export interface CreateFrozenTransactionSelection { ids?: string[]; filter?: Record<string, unknown>; }
+export interface FrozenTransactionSelection { id: string; count: number; expiresAt: string; }
+
 export interface TransactionSource {
   sourceTransactionId: string;
   relationship: "PRIMARY" | "PENDING_PREDECESSOR" | "MERGED" | "OTHER";
@@ -219,6 +237,8 @@ export interface TransactionSearchParams {
   cursor?: string;
   limit?: number;
   accountIds?: string;
+  categoryIds?: string;
+  tagNames?: string;
   dateFrom?: string;
   dateTo?: string;
   directions?: string;
@@ -292,7 +312,7 @@ export interface ImportPreview {
   suggestedAccount: string;
 }
 
-export const CONTRACT_SHA = "e8a4c00beb4b224033219502b0cc6f08eb46ba686c65fd605973fa97ec1c4a8b";
+export const CONTRACT_SHA = "59fa5a364f428174c5ce371ec6a79be0bd9d6803057b1cae9fd33197edc7f5dd";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -391,6 +411,12 @@ export function createClient(options: { baseUrl?: string; fetchFn?: FetchFn } = 
       request(fetchFn, baseUrl, `/transactions/search${query(params)}`),
     getTransaction: (id: string): Promise<TransactionDetail> =>
       request(fetchFn, baseUrl, `/transactions/${encodeURIComponent(id)}`),
+    listTransactionViews: (): Promise<SavedTransactionViewList> =>
+      request(fetchFn, baseUrl, "/transaction-views"),
+    createTransactionView: (body: CreateSavedTransactionView): Promise<SavedTransactionView> =>
+      request(fetchFn, baseUrl, "/transaction-views", { method: "POST", body: JSON.stringify(body) }),
+    createFrozenTransactionSelection: (body: CreateFrozenTransactionSelection): Promise<FrozenTransactionSelection> =>
+      request(fetchFn, baseUrl, "/transactions/selections", { method: "POST", body: JSON.stringify(body) }),
     listCategories: (params: { includeArchived?: boolean } = {}): Promise<CategoryList> =>
       request(fetchFn, baseUrl, `/categories${query(params)}`),
     listPendingMatches: (importId: string): Promise<MatchCandidateList> =>

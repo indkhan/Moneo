@@ -1,4 +1,4 @@
-import { getSession } from "@/lib/auth-session";
+import { financeRoute } from "@/lib/finance-api";
 import { createDrizzleJobSubmissionStore, handleGetJob } from "@/lib/jobs-submit";
 
 /**
@@ -6,10 +6,11 @@ import { createDrizzleJobSubmissionStore, handleGetJob } from "@/lib/jobs-submit
  * polls this; rows are tenant-scoped, so foreign ids answer 404.
  */
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
-  const session = await getSession();
-  const { id } = await context.params;
-  return handleGetJob(id, {
-    workspaceId: session?.wid,
-    jobs: createDrizzleJobSubmissionStore(),
+  return financeRoute(async (session) => {
+    const { id } = await context.params;
+    return handleGetJob(id, {
+      workspaceId: session.wid,
+      jobs: createDrizzleJobSubmissionStore(),
+    });
   });
 }

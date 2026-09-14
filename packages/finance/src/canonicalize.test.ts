@@ -144,7 +144,10 @@ describe("canonicalizeRow", () => {
         return store.createAccount(args);
       },
     };
-    await canonicalizeRow(creating, input({ row: row({ account: null }), sourceAccountLabel: null }));
+    await canonicalizeRow(
+      creating,
+      input({ row: row({ account: null }), sourceAccountLabel: null }),
+    );
     expect(seen[0]?.name).toBe("Imported account");
   });
 

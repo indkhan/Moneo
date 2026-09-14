@@ -5,7 +5,7 @@
  * ONE database transaction. This dispatcher is the only path those rows take
  * to BullMQ: it claims a batch with `FOR UPDATE SKIP LOCKED` (concurrent
  * dispatchers never block each other, they just take different rows) and
- * publishes each event under the deterministic job id `outbox:{eventId}`.
+ * publishes each event under the deterministic job id `outbox-{eventId}`.
  *
  * Safety properties:
  * - Duplicate publish is safe: the BullMQ job id is the event id, so a retry
@@ -62,7 +62,9 @@ export interface DispatchOutcome {
 
 /** Deterministic BullMQ job id: one outbox row maps to exactly one queue job. */
 export function outboxJobId(eventId: string): string {
-  return `outbox:${eventId}`;
+  // BullMQ rejects custom job ids containing `:`. UUID event ids make this
+  // separator unambiguous while remaining accepted by the transport.
+  return `outbox-${eventId}`;
 }
 
 /**

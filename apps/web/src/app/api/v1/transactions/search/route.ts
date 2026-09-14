@@ -1,5 +1,5 @@
 import { loadEnv } from "@moneo/shared/env";
-import { getSession } from "@/lib/auth-session";
+import { financeRoute } from "@/lib/finance-api";
 import {
   createDrizzleMoneyTransactionStore,
   handleSearchTransactions,
@@ -12,9 +12,10 @@ import {
  * OFFSET and never re-sorts rows locally.
  */
 export async function GET(request: Request) {
-  const session = await getSession();
-  return handleSearchTransactions(new URL(request.url).search, {
-    workspaceId: session?.wid,
-    transactions: createDrizzleMoneyTransactionStore(searchCursorSecret(loadEnv())),
-  });
+  return financeRoute((session) =>
+    handleSearchTransactions(new URL(request.url).search, {
+      workspaceId: session.wid,
+      transactions: createDrizzleMoneyTransactionStore(searchCursorSecret(loadEnv())),
+    }),
+  );
 }

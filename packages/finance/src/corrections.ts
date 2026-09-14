@@ -45,10 +45,7 @@ export interface CorrectionData {
     workspaceId: string,
     categoryId: string,
   ): Promise<{ id: string; archivedAt: Date | null } | null>;
-  findCounterparty(
-    workspaceId: string,
-    counterpartyId: string,
-  ): Promise<{ id: string } | null>;
+  findCounterparty(workspaceId: string, counterpartyId: string): Promise<{ id: string } | null>;
   findOrCreateCounterpartyByName(
     workspaceId: string,
     normalizedName: string,
@@ -134,9 +131,7 @@ export interface SetCategoryResult extends CorrectionResult {
 }
 
 /** `transactions.setCategory`: point a transaction at an owned, live category. */
-export function createSetCategoryCommand(
-  data: CorrectionData,
-): CommandDefinition<
+export function createSetCategoryCommand(data: CorrectionData): CommandDefinition<
   {
     workspaceId: string;
     transaction: CorrectionTarget | null;
@@ -221,9 +216,7 @@ export interface SetCounterpartyResult extends CorrectionResult {
 }
 
 /** `transactions.setCounterparty`: re-point (or clear) the merchant, creating it by name when needed. */
-export function createSetCounterpartyCommand(
-  data: CorrectionData,
-): CommandDefinition<
+export function createSetCounterpartyCommand(data: CorrectionData): CommandDefinition<
   {
     workspaceId: string;
     transaction: CorrectionTarget | null;
@@ -241,10 +234,7 @@ export function createSetCounterpartyCommand(
       const byId = input.counterpartyId !== null && input.counterpartyId !== undefined;
       const counterparty =
         transaction && byId && !named
-          ? await data.findCounterparty(
-              ctx.workspaceId,
-              input.counterpartyId as string,
-            )
+          ? await data.findCounterparty(ctx.workspaceId, input.counterpartyId as string)
           : null;
       return { workspaceId: ctx.workspaceId, transaction, counterparty };
     },
@@ -374,7 +364,13 @@ export function createAddTagsCommand(
       }
       await data.addTagLinks(state.workspaceId, transaction.id, ids);
       const after = await data.listTransactionTagNames(state.workspaceId, transaction.id);
-      const version = await guardedApply(data, state.workspaceId, transaction.id, transaction.version, {});
+      const version = await guardedApply(
+        data,
+        state.workspaceId,
+        transaction.id,
+        transaction.version,
+        {},
+      );
       const mutation: CommandMutation<TagsResult> = {
         resultingVersion: version,
         result: { transactionId: transaction.id, version, tags: after },
@@ -451,7 +447,13 @@ export function createRemoveTagsCommand(
         await data.removeTagLinks(state.workspaceId, transaction.id, ids);
       }
       const after = await data.listTransactionTagNames(state.workspaceId, transaction.id);
-      const version = await guardedApply(data, state.workspaceId, transaction.id, transaction.version, {});
+      const version = await guardedApply(
+        data,
+        state.workspaceId,
+        transaction.id,
+        transaction.version,
+        {},
+      );
       const mutation: CommandMutation<TagsResult> = {
         resultingVersion: version,
         result: { transactionId: transaction.id, version, tags: after },
@@ -523,9 +525,15 @@ export function createSetNoteCommand(
         throw missingTransaction();
       }
       const note = input.note ?? null;
-      const version = await guardedApply(data, state.workspaceId, transaction.id, transaction.version, {
-        note,
-      });
+      const version = await guardedApply(
+        data,
+        state.workspaceId,
+        transaction.id,
+        transaction.version,
+        {
+          note,
+        },
+      );
       const mutation: CommandMutation<SetNoteResult> = {
         resultingVersion: version,
         result: { transactionId: transaction.id, version, note },

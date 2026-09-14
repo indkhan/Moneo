@@ -1,6 +1,12 @@
 import { UPLOAD_MAX_BYTES } from "@moneo/shared/uploads";
 import type { ObjectStore } from "@moneo/shared/uploads";
-import { completeUpload, createMemoryObjectStore, initiateUpload } from "@moneo/shared/uploads";
+import {
+  completeUpload,
+  createConfiguredS3ObjectStore,
+  createMemoryObjectStore,
+  initiateUpload,
+} from "@moneo/shared/uploads";
+import { loadEnv } from "@moneo/shared/env";
 import { DomainError, problemResponse } from "@moneo/shared/problem";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -44,7 +50,17 @@ let store: ObjectStore | undefined;
 /** Process-local quarantine store (see module doc for the S3 swap plan). */
 export function getUploadStore(): ObjectStore {
   if (!store) {
-    store = createMemoryObjectStore();
+    const env = loadEnv();
+    store =
+      env.APP_ENV === "test" || process.env.VITEST
+        ? createMemoryObjectStore()
+        : createConfiguredS3ObjectStore({
+            endpoint: env.S3_ENDPOINT,
+            region: env.S3_REGION,
+            bucket: env.S3_BUCKET,
+            accessKeyId: env.S3_ACCESS_KEY,
+            secretAccessKey: env.S3_SECRET_KEY,
+          });
   }
   return store;
 }

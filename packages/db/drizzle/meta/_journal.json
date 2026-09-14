@@ -134,6 +134,48 @@
       "when": 1789243000000,
       "tag": "0018_ai_persistence",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789244000000,
+      "tag": "0019_ai_runtime",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789246000000,
+      "tag": "0020_tenant_job_attempt_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789247000000,
+      "tag": "0021_outbox_claim_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789248000000,
+      "tag": "0022_frozen_selection_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789249000000,
+      "tag": "0023_outbox_dispatch_functions",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789250000000,
+      "tag": "0024_default_workspace_categories",
+      "breakpoints": true
     }
   ]
 }

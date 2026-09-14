@@ -47,7 +47,15 @@ describe("handleListCategories", () => {
   });
 
   it("lists categories with DTO mapping", async () => {
-    const categories = store([category(), category({ id: "55555555-5555-7555-8555-555555555555", name: "Salary", kind: "income", systemCategoryCode: "income-salary" })]);
+    const categories = store([
+      category(),
+      category({
+        id: "55555555-5555-7555-8555-555555555555",
+        name: "Salary",
+        kind: "income",
+        systemCategoryCode: "income-salary",
+      }),
+    ]);
     const res = await handleListCategories("", { workspaceId: WID, categories });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {

@@ -28,6 +28,12 @@ export async function listEntityAudit(
     })
     .from(auditEvents)
     .leftJoin(users, eq(auditEvents.actorUserId, users.id))
-    .where(and(eq(auditEvents.workspaceId, workspaceId), eq(auditEvents.entityType, entityType), eq(auditEvents.entityId, entityId)))
+    .where(
+      and(
+        eq(auditEvents.workspaceId, workspaceId),
+        eq(auditEvents.entityType, entityType),
+        eq(auditEvents.entityId, entityId),
+      ),
+    )
     .orderBy(asc(auditEvents.createdAt), asc(auditEvents.id));
 }

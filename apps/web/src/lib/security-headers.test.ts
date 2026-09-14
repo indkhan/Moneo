@@ -29,6 +29,14 @@ describe("contentSecurityPolicy", () => {
 });
 
 describe("buildSecurityHeaders", () => {
+  it("allows Next development evaluation only in explicit development mode", () => {
+    expect(
+      buildSecurityHeaders({ isProduction: false, isDevelopment: true })["Content-Security-Policy"],
+    ).toContain("'unsafe-eval'");
+    expect(
+      buildSecurityHeaders({ isProduction: true, isDevelopment: true })["Content-Security-Policy"],
+    ).not.toContain("'unsafe-eval'");
+  });
   it("sets the full baseline on every response", () => {
     const headers = buildSecurityHeaders({ isProduction: false });
     expect(headers["X-Content-Type-Options"]).toBe("nosniff");
@@ -38,7 +46,9 @@ describe("buildSecurityHeaders", () => {
   });
 
   it("sends HSTS in production only — never pin localhost", () => {
-    expect(buildSecurityHeaders({ isProduction: false })["Strict-Transport-Security"]).toBeUndefined();
+    expect(
+      buildSecurityHeaders({ isProduction: false })["Strict-Transport-Security"],
+    ).toBeUndefined();
     const prod = buildSecurityHeaders({ isProduction: true });
     expect(prod["Strict-Transport-Security"]).toBe(strictTransportSecurity());
     expect(prod["Strict-Transport-Security"]).toContain("max-age=63072000");

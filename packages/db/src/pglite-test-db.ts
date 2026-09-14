@@ -21,7 +21,8 @@ export async function createMigratedDb(upto?: string): Promise<PGlite> {
   if (files.length === 0) {
     throw new Error("No migration SQL files found under drizzle/");
   }
-  const target = upto ?? files.at(-1)!.replace(/\.sql$/, "");
+  const target = upto ?? files[files.length - 1]?.replace(/\.sql$/, "");
+  if (!target) throw new Error("No migration target found");
   for (const file of files) {
     const tag = file.replace(/\.sql$/, "");
     if (tag.localeCompare(target) > 0) {

@@ -47,7 +47,11 @@ describe("withWorkspaceTransaction", () => {
     expect(result).toEqual({ via: conn });
     expect(checkout).toHaveBeenCalledOnce();
     expect(wrap).toHaveBeenCalledWith(conn);
-    expect(conn.statements).toEqual(["BEGIN", `SET LOCAL app.current_workspace = '${id}'`, "COMMIT"]);
+    expect(conn.statements).toEqual([
+      "BEGIN",
+      `SET LOCAL app.current_workspace = '${id}'`,
+      "COMMIT",
+    ]);
     expect(conn.released).toBe(true);
   });
 
@@ -65,11 +69,10 @@ describe("withWorkspaceTransaction", () => {
     const conn = scriptedConn();
     const boom = new Error("domain invariant violated");
     await expect(
-      withWorkspaceTransaction(
-        uuidv7(),
-        () => Promise.reject(boom),
-        { checkout: () => Promise.resolve(conn), wrap: (c) => c },
-      ),
+      withWorkspaceTransaction(uuidv7(), () => Promise.reject(boom), {
+        checkout: () => Promise.resolve(conn),
+        wrap: (c) => c,
+      }),
     ).rejects.toBe(boom);
     expect(conn.statements).toEqual([
       expect.stringMatching(/^BEGIN$/),
@@ -106,8 +109,9 @@ describe("withWorkspaceTransaction", () => {
   it("validates the workspace id before checking out a connection", async () => {
     const checkout = vi.fn(() => Promise.resolve(scriptedConn()));
     const wrap = vi.fn((c: TenantConnection) => c);
-    await expect(withWorkspaceTransaction("not-a-uuid", () => Promise.resolve(1), { checkout, wrap }))
-      .rejects.toThrow("Invalid workspaceId: not a UUID");
+    await expect(
+      withWorkspaceTransaction("not-a-uuid", () => Promise.resolve(1), { checkout, wrap }),
+    ).rejects.toThrow("Invalid workspaceId: not a UUID");
     expect(checkout).not.toHaveBeenCalled();
     expect(wrap).not.toHaveBeenCalled();
   });

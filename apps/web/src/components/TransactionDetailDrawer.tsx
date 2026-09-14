@@ -44,7 +44,9 @@ export function TransactionDetailContent({ detail }: { detail: TransactionDetail
         <dt>Tags</dt>
         <dd style={{ margin: 0 }}>{detail.tags.length ? detail.tags.join(", ") : "None"}</dd>
         <dt>Analytics</dt>
-        <dd style={{ margin: 0 }}>{detail.excludedFromAnalytics ? "Excluded from analytics" : "Included in analytics"}</dd>
+        <dd style={{ margin: 0 }}>
+          {detail.excludedFromAnalytics ? "Excluded from analytics" : "Included in analytics"}
+        </dd>
       </dl>
       <section aria-label="Source and import">
         <h3 style={{ margin: "0 0 8px", fontSize: 14 }}>Source & import</h3>
@@ -111,37 +113,102 @@ function TransactionCorrections({
         <select
           value={detail.categoryId ?? ""}
           disabled={categories.isPending}
-          onChange={(event) => void run("transactions.setCategory", { categoryId: event.target.value || null })}
+          onChange={(event) =>
+            void run("transactions.setCategory", { categoryId: event.target.value || null })
+          }
         >
           <option value="">Uncategorized</option>
           {(categories.data?.items ?? []).map((category) => (
-            <option key={category.id} value={category.id}>{category.name}</option>
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
           ))}
         </select>
       </label>
       <label>
         Merchant{" "}
-        <input value={merchant} onChange={(event) => setMerchant(event.target.value)} />
+        <input
+          value={merchant}
+          onChange={(event) => {
+            setMerchant(event.target.value);
+          }}
+        />
       </label>
-      <button type="button" onClick={() => void run("transactions.setCounterparty", { counterpartyName: merchant || null })}>Save merchant</button>
+      <button
+        type="button"
+        onClick={() =>
+          void run("transactions.setCounterparty", { counterpartyName: merchant || null })
+        }
+      >
+        Save merchant
+      </button>
       <label>
         Tags{" "}
-        <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="Food, travel" />
+        <input
+          value={tags}
+          onChange={(event) => {
+            setTags(event.target.value);
+          }}
+          placeholder="Food, travel"
+        />
       </label>
-      <button type="button" onClick={() => void run("transactions.addTags", { tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean) })}>Add tags</button>
+      <button
+        type="button"
+        onClick={() =>
+          void run("transactions.addTags", {
+            tags: tags
+              .split(",")
+              .map((tag) => tag.trim())
+              .filter(Boolean),
+          })
+        }
+      >
+        Add tags
+      </button>
       {detail.tags.map((tag) => (
-        <button key={tag} type="button" onClick={() => void run("transactions.removeTags", { tags: [tag] })}>Remove {tag}</button>
+        <button
+          key={tag}
+          type="button"
+          onClick={() => void run("transactions.removeTags", { tags: [tag] })}
+        >
+          Remove {tag}
+        </button>
       ))}
       <label>
         Note{" "}
-        <input value={note} onChange={(event) => setNote(event.target.value)} />
+        <input
+          value={note}
+          onChange={(event) => {
+            setNote(event.target.value);
+          }}
+        />
       </label>
-      <button type="button" onClick={() => void run("transactions.setNote", { note: note || null })}>Save note</button>
+      <button
+        type="button"
+        onClick={() => void run("transactions.setNote", { note: note || null })}
+      >
+        Save note
+      </button>
       <label>
-        <input type="checkbox" checked={detail.excludedFromAnalytics} onChange={(event) => void run("transactions.excludeFromAnalytics", { excluded: event.target.checked })} /> Exclude from analytics
+        <input
+          type="checkbox"
+          checked={detail.excludedFromAnalytics}
+          onChange={(event) =>
+            void run("transactions.excludeFromAnalytics", { excluded: event.target.checked })
+          }
+        />{" "}
+        Exclude from analytics
       </label>
-      {undo ? <button type="button" onClick={() => void run("operations.undo", { operationId: undo })}>Undo last change</button> : null}
-      {error ? <p role="alert" style={{ margin: 0 }}>{error}</p> : null}
+      {undo ? (
+        <button type="button" onClick={() => void run("operations.undo", { operationId: undo })}>
+          Undo last change
+        </button>
+      ) : null}
+      {error ? (
+        <p role="alert" style={{ margin: 0 }}>
+          {error}
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -150,9 +217,21 @@ function TransactionAuditHistory({ transactionId }: { transactionId: string }) {
   const history = useQuery({
     queryKey: ["transaction", transactionId, "audit"],
     queryFn: async () => {
-      const response = await fetch(`/api/v1/transactions/${encodeURIComponent(transactionId)}/audit`);
+      const response = await fetch(
+        `/api/v1/transactions/${encodeURIComponent(transactionId)}/audit`,
+      );
       if (!response.ok) throw new Error("Could not load history.");
-      return response.json() as Promise<{ items: { id: string; action: string; actor: string; reason: string | null; oldValue: Record<string, unknown> | null; newValue: Record<string, unknown> | null; createdAt: string }[] }>;
+      return response.json() as Promise<{
+        items: {
+          id: string;
+          action: string;
+          actor: string;
+          reason: string | null;
+          oldValue: Record<string, unknown> | null;
+          newValue: Record<string, unknown> | null;
+          createdAt: string;
+        }[];
+      }>;
     },
   });
   if (history.isPending) return <p>Loading history…</p>;
@@ -160,7 +239,24 @@ function TransactionAuditHistory({ transactionId }: { transactionId: string }) {
   return (
     <section aria-label="Audit history">
       <h3 style={{ margin: "0 0 8px", fontSize: 14 }}>History</h3>
-      {history.data.items.length === 0 ? <p>No changes yet.</p> : <ul>{history.data.items.map((item) => <li key={item.id}><strong>{item.action}</strong> by {item.actor} · {new Date(item.createdAt).toLocaleString()}<br />{item.reason ?? "No reason provided"}<details><summary>View change</summary><pre>{JSON.stringify({ from: item.oldValue, to: item.newValue }, null, 2)}</pre></details></li>)}</ul>}
+      {history.data.items.length === 0 ? (
+        <p>No changes yet.</p>
+      ) : (
+        <ul>
+          {history.data.items.map((item) => (
+            <li key={item.id}>
+              <strong>{item.action}</strong> by {item.actor} ·{" "}
+              {new Date(item.createdAt).toLocaleString()}
+              <br />
+              {item.reason ?? "No reason provided"}
+              <details>
+                <summary>View change</summary>
+                <pre>{JSON.stringify({ from: item.oldValue, to: item.newValue }, null, 2)}</pre>
+              </details>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
@@ -207,7 +303,11 @@ export function TransactionDetailDrawer({
       ) : (
         <>
           <TransactionDetailContent detail={query.data} />
-          <TransactionCorrections detail={query.data} client={client} onChanged={() => void query.refetch()} />
+          <TransactionCorrections
+            detail={query.data}
+            client={client}
+            onChanged={() => void query.refetch()}
+          />
           <TransactionAuditHistory transactionId={query.data.id} />
         </>
       )}

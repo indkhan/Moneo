@@ -32,15 +32,16 @@ function appOrigin(request: NextRequest): string {
 
 export async function middleware(request: NextRequest) {
   const isProduction = process.env.APP_ENV === "production";
+  const isDevelopment = process.env.NODE_ENV === "development";
   const response = await auth0.middleware(request);
 
   if (request.nextUrl.pathname.startsWith("/auth/")) {
-    applySecurityHeaders(response.headers, { isProduction });
+    applySecurityHeaders(response.headers, { isProduction, isDevelopment });
     return response;
   }
 
   if (!isMutationMethod(request.method)) {
-    applySecurityHeaders(response.headers, { isProduction });
+    applySecurityHeaders(response.headers, { isProduction, isDevelopment });
     if (!request.cookies.has(CSRF_COOKIE)) {
       response.headers.append("Set-Cookie", csrfSetCookie(issueCsrfToken()));
     }
@@ -58,13 +59,16 @@ export async function middleware(request: NextRequest) {
       appOrigin: appOrigin(request),
     });
     if (!verdict.allowed) {
-      const denied = NextResponse.json({ error: "forbidden", reason: verdict.reason }, { status: 403 });
-      applySecurityHeaders(denied.headers, { isProduction });
+      const denied = NextResponse.json(
+        { error: "forbidden", reason: verdict.reason },
+        { status: 403 },
+      );
+      applySecurityHeaders(denied.headers, { isProduction, isDevelopment });
       return denied;
     }
   }
 
-  applySecurityHeaders(response.headers, { isProduction });
+  applySecurityHeaders(response.headers, { isProduction, isDevelopment });
   return response;
 }
 

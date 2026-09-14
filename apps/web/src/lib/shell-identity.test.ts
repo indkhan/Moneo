@@ -56,7 +56,10 @@ describe("resolveShellIdentity", () => {
   });
 
   it("shows the user with a pending workspace when the lookup finds nothing", async () => {
-    const identity = await resolveShellIdentity(session(), vi.fn(() => Promise.resolve(null)));
+    const identity = await resolveShellIdentity(
+      session(),
+      vi.fn(() => Promise.resolve(null)),
+    );
     expect(identity.user?.sub).toBe("auth0|abc");
     expect(identity.workspace).toBeNull();
   });

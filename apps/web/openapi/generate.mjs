@@ -27,6 +27,24 @@ export function contractSha(contractText) {
   return createHash("sha256").update(contractText, "utf8").digest("hex");
 }
 
+function schemaType(schema) {
+  if (schema.$ref) return schema.$ref.split("/").at(-1);
+  if (schema.const !== undefined) return JSON.stringify(schema.const);
+  if (schema.enum) return schema.enum.map((value) => JSON.stringify(value)).join(" | ");
+  if (schema.oneOf) return schema.oneOf.map(schemaType).join(" | ");
+  if (schema.type === "array") return `Array<${schemaType(schema.items)}>`;
+  if (schema.type === "object")
+    return `{ ${Object.entries(schema.properties ?? {})
+      .map(
+        ([key, value]) =>
+          `${key}${(schema.required ?? []).includes(key) ? "" : "?"}: ${schemaType(value)};`,
+      )
+      .join(" ")} }`;
+  if (schema.type === "integer" || schema.type === "number") return "number";
+  if (["string", "boolean", "null"].includes(schema.type)) return schema.type;
+  return "unknown";
+}
+
 export function generate(contractText) {
   const contract = JSON.parse(contractText);
   if (contract.openapi !== "3.1.0") {
@@ -34,6 +52,10 @@ export function generate(contractText) {
   }
   const sha = contractSha(contractText);
   const infoVersion = contract.info?.version ?? "v1";
+  const aiTypes = Object.entries(contract.components.schemas)
+    .filter(([name]) => name.startsWith("Ai"))
+    .map(([name, schema]) => `export type ${name} = ${schemaType(schema)};`)
+    .join("\n");
 
   return `/**
  * GENERATED — do not edit by hand.
@@ -42,6 +64,8 @@ export function generate(contractText) {
  * Regenerate: pnpm --filter @moneo/web gen:client
  * Every browser DTO comes from here; later API issues extend the contract first.
  */
+
+${aiTypes}
 
 export type ProblemCode =
   | "VALIDATION_FAILED"
@@ -207,6 +231,15 @@ export interface TransactionPage {
   nextCursor: string | null;
 }
 
+export type TransactionColumn = "date" | "description" | "account" | "direction" | "amount";
+export interface TransactionViewFilters { q?: string; accountIds?: string[]; tagNames?: string[]; directions?: ("credit" | "debit")[]; dateFrom?: string; dateTo?: string; categoryIds?: string[]; counterpartyIds?: string[]; excludedFromAnalytics?: boolean; }
+export interface TransactionViewDefinition { filters: TransactionViewFilters; sort: TransactionSort; visibleColumns: TransactionColumn[]; }
+export interface SavedTransactionView { id: string; name: string; definition: TransactionViewDefinition; createdAt: string; updatedAt: string; }
+export interface SavedTransactionViewList { items: SavedTransactionView[]; }
+export interface CreateSavedTransactionView { name: string; definition: TransactionViewDefinition; }
+export interface CreateFrozenTransactionSelection { ids?: string[]; filter?: Record<string, unknown>; }
+export interface FrozenTransactionSelection { id: string; count: number; expiresAt: string; }
+
 export interface TransactionSource {
   sourceTransactionId: string;
   relationship: "PRIMARY" | "PENDING_PREDECESSOR" | "MERGED" | "OTHER";
@@ -256,6 +289,8 @@ export interface TransactionSearchParams {
   cursor?: string;
   limit?: number;
   accountIds?: string;
+  categoryIds?: string;
+  tagNames?: string;
   dateFrom?: string;
   dateTo?: string;
   directions?: string;
@@ -428,6 +463,12 @@ export function createClient(options: { baseUrl?: string; fetchFn?: FetchFn } = 
       request(fetchFn, baseUrl, \`/transactions/search\${query(params)}\`),
     getTransaction: (id: string): Promise<TransactionDetail> =>
       request(fetchFn, baseUrl, \`/transactions/\${encodeURIComponent(id)}\`),
+    listTransactionViews: (): Promise<SavedTransactionViewList> =>
+      request(fetchFn, baseUrl, "/transaction-views"),
+    createTransactionView: (body: CreateSavedTransactionView): Promise<SavedTransactionView> =>
+      request(fetchFn, baseUrl, "/transaction-views", { method: "POST", body: JSON.stringify(body) }),
+    createFrozenTransactionSelection: (body: CreateFrozenTransactionSelection): Promise<FrozenTransactionSelection> =>
+      request(fetchFn, baseUrl, "/transactions/selections", { method: "POST", body: JSON.stringify(body) }),
     listCategories: (params: { includeArchived?: boolean } = {}): Promise<CategoryList> =>
       request(fetchFn, baseUrl, \`/categories\${query(params)}\`),
     listPendingMatches: (importId: string): Promise<MatchCandidateList> =>

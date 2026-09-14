@@ -37,3 +37,20 @@ export async function findWorkspaceShell(
   }
   return { id: row.id, name: row.name };
 }
+
+/** Whether the authenticated member is an owner of the current workspace. */
+export async function isWorkspaceOwner(
+  db: ProvisionExecutor,
+  workspaceId: string,
+  userId: string,
+): Promise<boolean> {
+  const workspace = assertUuid(workspaceId, "workspaceId");
+  const user = assertUuid(userId, "userId");
+  const raw: unknown = await db.execute(sql`
+    SELECT role FROM workspace_members
+    WHERE workspace_id = ${workspace} AND user_id = ${user}
+    LIMIT 1
+  `);
+  const rows: unknown = isRecord(raw) && Array.isArray(raw.rows) ? raw.rows : raw;
+  return Array.isArray(rows) && isRecord(rows[0]) && rows[0].role === "OWNER";
+}

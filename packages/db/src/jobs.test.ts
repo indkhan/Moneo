@@ -149,6 +149,23 @@ describe("durable job and schedule schema (migration 0006)", () => {
       .values({ jobId: job.id, workspaceId: wsA, attemptNumber: 1 });
   });
 
+  it("rejects an attempt whose job belongs to a different workspace", async () => {
+    const db = drizzlePglite(pg, { schema });
+    const job = one(
+      await db
+        .insert(backgroundJobs)
+        .values({ workspaceId: wsA, type: "tenant-bound" })
+        .returning(),
+    );
+
+    await expectDbError(
+      db
+        .insert(backgroundJobAttempts)
+        .values({ jobId: job.id, workspaceId: wsB, attemptNumber: 1 }),
+      /violates foreign key constraint/,
+    );
+  });
+
   it("cascades job deletion to attempts and workspace deletion to everything", async () => {
     const db = drizzlePglite(pg, { schema });
     const job = one(

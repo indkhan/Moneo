@@ -5,6 +5,7 @@ import {
   buildQuarantineKey,
   completeUpload,
   createMemoryObjectStore,
+  createS3ObjectStore,
   extensionOf,
   initiateUpload,
   mimeForExtension,
@@ -14,6 +15,33 @@ import {
   UPLOAD_MAX_BYTES,
   type ObjectStore,
 } from "./uploads.js";
+
+it("adapts private object operations to S3 without producing public URLs", async () => {
+  const sent: { constructor: { name: string }; input: Record<string, unknown> }[] = [];
+  const client = {
+    send: (command: { constructor: { name: string }; input: Record<string, unknown> }) => {
+      sent.push(command);
+      if (command.constructor.name === "GetObjectCommand")
+        return Promise.resolve({
+          Body: { transformToByteArray: () => Promise.resolve(Uint8Array.of(1, 2)) },
+        });
+      if (command.constructor.name === "HeadObjectCommand")
+        return Promise.resolve({ ContentLength: 2 });
+      return Promise.resolve({});
+    },
+  };
+  const store = createS3ObjectStore({ bucket: "private", client });
+  await store.put("quarantine/a", Uint8Array.of(1, 2));
+  expect(await store.get("quarantine/a")).toEqual(Uint8Array.of(1, 2));
+  expect(await store.exists("quarantine/a")).toBe(true);
+  expect(await store.sizeOf("quarantine/a")).toBe(2);
+  expect(sent.map((call) => call.constructor.name)).toEqual([
+    "PutObjectCommand",
+    "GetObjectCommand",
+    "HeadObjectCommand",
+    "HeadObjectCommand",
+  ]);
+});
 
 /**
  * Issue 3.2 — private statement upload flow.

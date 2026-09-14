@@ -112,6 +112,8 @@ describe("command/audit/outbox schema (migration 0005)", () => {
       "old_value",
       "new_value",
       "created_at",
+      "reason",
+      "related_ai_run_id",
     ]);
     expect(await cols("outbox_events")).toEqual([
       "id",
@@ -125,6 +127,8 @@ describe("command/audit/outbox schema (migration 0005)", () => {
       "next_attempt_at",
       "published_at",
       "created_at",
+      "claimed_at",
+      "last_error",
     ]);
 
     // Server-side DEFAULT safety net mirrors the app uuidv7().

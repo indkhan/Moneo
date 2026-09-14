@@ -82,10 +82,7 @@ describe("optimistic entity versions (migration 0015)", () => {
       db.insert(categories).values({ workspaceId: ws, name: `Bad ${uuidv7()}`, version: 0 }),
       /categories_version_check/,
     );
-    await expectDbError(
-      qInsertTransactionWithVersion(db, 0),
-      /transactions_version_check/,
-    );
+    await expectDbError(qInsertTransactionWithVersion(db, 0), /transactions_version_check/);
   });
 
   async function qInsertTransactionWithVersion(

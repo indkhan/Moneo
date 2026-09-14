@@ -98,8 +98,7 @@ export async function getAccountBalances(
     if (!result.has(row.accountId)) {
       result.set(row.accountId, {
         accountId: row.accountId,
-        currentAmountMinor:
-          row.currentAmountMinor === null ? null : String(row.currentAmountMinor),
+        currentAmountMinor: row.currentAmountMinor === null ? null : String(row.currentAmountMinor),
         availableAmountMinor:
           row.availableAmountMinor === null ? null : String(row.availableAmountMinor),
         currencyCode: row.currencyCode,

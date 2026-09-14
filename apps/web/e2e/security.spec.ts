@@ -52,7 +52,8 @@ test("app hydrates and navigates with script-src self (no CSP-broken boot)", asy
   await page.goto("/home");
   await expect(page.locator("nav[aria-label='Primary']")).toBeVisible();
   await page.locator("nav[aria-label='Primary'] a[href='/settings']").click();
-  await expect(page).toHaveURL("/settings");
+  // Next dev compiles the destination on demand; keep this bounded under parallel CI load.
+  await expect(page).toHaveURL("/settings", { timeout: 15000 });
   expect(violations).toEqual([]);
 });
 

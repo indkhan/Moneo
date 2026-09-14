@@ -16,7 +16,8 @@ import { isUuidV7, uuidv7 } from "./uuid.js";
 describe("identity/workspace schema (migrations 0000-0001)", () => {
   let pg!: PGlite;
   // drizzle client bound per test run for typed inserts.
-  const db = () => drizzle(pg, { schema: { users, workspaces, workspaceMembers, securityAuditEvents } });
+  const db = () =>
+    drizzle(pg, { schema: { users, workspaces, workspaceMembers, securityAuditEvents } });
 
   beforeAll(async () => {
     pg = await createMigratedDb();
@@ -42,10 +43,12 @@ describe("identity/workspace schema (migrations 0000-0001)", () => {
 
   it("stores a user row with an application-generated UUIDv7 id and timestamps", async () => {
     const id = uuidv7();
-    const row = one(await db()
-      .insert(users)
-      .values({ id, authSubject: "auth0|user-a", email: "a@example.com", displayName: "User A" })
-      .returning());
+    const row = one(
+      await db()
+        .insert(users)
+        .values({ id, authSubject: "auth0|user-a", email: "a@example.com", displayName: "User A" })
+        .returning(),
+    );
     expect(row.id).toBe(id);
     expect(isUuidV7(row.id)).toBe(true);
     expect(row.createdAt).toBeInstanceOf(Date);
@@ -53,10 +56,9 @@ describe("identity/workspace schema (migrations 0000-0001)", () => {
   });
 
   it("auto-generates a UUIDv7 id when the caller omits it", async () => {
-    const row = one(await db()
-      .insert(users)
-      .values({ authSubject: "auth0|auto-id" })
-      .returning({ id: users.id }));
+    const row = one(
+      await db().insert(users).values({ authSubject: "auth0|auto-id" }).returning({ id: users.id }),
+    );
     expect(isUuidV7(row.id)).toBe(true);
   });
 
@@ -71,15 +73,19 @@ describe("identity/workspace schema (migrations 0000-0001)", () => {
   it("creates a workspace with an OWNER membership for the provisioning user", async () => {
     const t = db();
     const user = one(await t.insert(users).values({ authSubject: "auth0|owner" }).returning());
-    const workspace = one(await t
-      .insert(workspaces)
-      .values({ name: "Owner's workspace", createdByUserId: user.id })
-      .returning());
+    const workspace = one(
+      await t
+        .insert(workspaces)
+        .values({ name: "Owner's workspace", createdByUserId: user.id })
+        .returning(),
+    );
     expect(isUuidV7(workspace.id)).toBe(true);
-    const member = one(await t
-      .insert(workspaceMembers)
-      .values({ workspaceId: workspace.id, userId: user.id, role: "OWNER" })
-      .returning());
+    const member = one(
+      await t
+        .insert(workspaceMembers)
+        .values({ workspaceId: workspace.id, userId: user.id, role: "OWNER" })
+        .returning(),
+    );
     expect(member).toMatchObject({ workspaceId: workspace.id, userId: user.id, role: "OWNER" });
   });
 
@@ -88,29 +94,36 @@ describe("identity/workspace schema (migrations 0000-0001)", () => {
     const user = one(await t.insert(users).values({ authSubject: "auth0|role-check" }).returning());
     const workspace = one(await t.insert(workspaces).values({ name: "Roles ws" }).returning());
 
-    const member = one(await t
-      .insert(workspaceMembers)
-      .values({ workspaceId: workspace.id, userId: user.id })
-      .returning());
+    const member = one(
+      await t
+        .insert(workspaceMembers)
+        .values({ workspaceId: workspace.id, userId: user.id })
+        .returning(),
+    );
     expect(member.role).toBe("MEMBER");
 
     await expectDbError(
-      t.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: "ADMIN" }),
+      t
+        .insert(workspaceMembers)
+        .values({ workspaceId: workspace.id, userId: user.id, role: "ADMIN" }),
       /violates check constraint "workspace_members_role_check"/,
     );
-    const secondUser = one(await t
-      .insert(users)
-      .values({ authSubject: "auth0|role-check-2" })
-      .returning());
+    const secondUser = one(
+      await t.insert(users).values({ authSubject: "auth0|role-check-2" }).returning(),
+    );
     await expectDbError(
-      t.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: secondUser.id, role: "owner" }),
+      t
+        .insert(workspaceMembers)
+        .values({ workspaceId: workspace.id, userId: secondUser.id, role: "owner" }),
       /violates check constraint "workspace_members_role_check"/,
     );
   });
 
   it("rejects a duplicate (workspace_id, user_id) membership", async () => {
     const t = db();
-    const user = one(await t.insert(users).values({ authSubject: "auth0|dupe-member" }).returning());
+    const user = one(
+      await t.insert(users).values({ authSubject: "auth0|dupe-member" }).returning(),
+    );
     const workspace = one(await t.insert(workspaces).values({ name: "Dupe ws" }).returning());
     await t.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id });
     await expectDbError(
@@ -143,22 +156,26 @@ describe("identity/workspace schema (migrations 0000-0001)", () => {
     const t = db();
     const user = one(await t.insert(users).values({ authSubject: "auth0|audit" }).returning());
     const workspace = one(await t.insert(workspaces).values({ name: "Audit ws" }).returning());
-    const event = one(await t
-      .insert(securityAuditEvents)
-      .values({ workspaceId: workspace.id, userId: user.id, eventType: "user.provisioned" })
-      .returning());
+    const event = one(
+      await t
+        .insert(securityAuditEvents)
+        .values({ workspaceId: workspace.id, userId: user.id, eventType: "user.provisioned" })
+        .returning(),
+    );
     expect(isUuidV7(event.id)).toBe(true);
     expect(event.metadata).toEqual({});
     expect(event.createdAt).toBeInstanceOf(Date);
 
-    const rich = one(await t
-      .insert(securityAuditEvents)
-      .values({
-        workspaceId: workspace.id,
-        eventType: "session.revoked",
-        metadata: { sessionId: uuidv7(), reason: "user-initiated" },
-      })
-      .returning());
+    const rich = one(
+      await t
+        .insert(securityAuditEvents)
+        .values({
+          workspaceId: workspace.id,
+          eventType: "session.revoked",
+          metadata: { sessionId: uuidv7(), reason: "user-initiated" },
+        })
+        .returning(),
+    );
     const richMeta = rich.metadata as { sessionId?: unknown; reason?: unknown };
     expect(richMeta.reason).toBe("user-initiated");
     expect(typeof richMeta.sessionId).toBe("string");
@@ -176,10 +193,12 @@ describe("identity/workspace schema (migrations 0000-0001)", () => {
   });
 
   it("allows global (workspace-less) security events for pre-workspace activity", async () => {
-    const event = one(await db()
-      .insert(securityAuditEvents)
-      .values({ eventType: "login.failed", metadata: { subject: "auth0|unknown" } })
-      .returning());
+    const event = one(
+      await db()
+        .insert(securityAuditEvents)
+        .values({ eventType: "login.failed", metadata: { subject: "auth0|unknown" } })
+        .returning(),
+    );
     expect(event.workspaceId).toBeNull();
     expect(event.userId).toBeNull();
   });
@@ -188,7 +207,9 @@ describe("identity/workspace schema (migrations 0000-0001)", () => {
     const t = db();
     const user = one(await t.insert(users).values({ authSubject: "auth0|cascade" }).returning());
     const workspace = one(await t.insert(workspaces).values({ name: "Doomed ws" }).returning());
-    await t.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: "OWNER" });
+    await t
+      .insert(workspaceMembers)
+      .values({ workspaceId: workspace.id, userId: user.id, role: "OWNER" });
     await t
       .insert(securityAuditEvents)
       .values({ workspaceId: workspace.id, userId: user.id, eventType: "user.provisioned" });
@@ -198,7 +219,9 @@ describe("identity/workspace schema (migrations 0000-0001)", () => {
     expect(await t.select().from(workspaceMembers)).not.toContainEqual(
       expect.objectContaining({ workspaceId: workspace.id }),
     );
-    const audits = await pg.query("SELECT * FROM security_audit_events WHERE workspace_id = $1", [workspace.id]);
+    const audits = await pg.query("SELECT * FROM security_audit_events WHERE workspace_id = $1", [
+      workspace.id,
+    ]);
     expect(audits.rows).toHaveLength(0);
     const survivors = await pg.query("SELECT id FROM users WHERE id = $1", [user.id]);
     expect(survivors.rows).toHaveLength(1);
@@ -209,18 +232,21 @@ describe("identity/workspace schema (migrations 0000-0001)", () => {
     const user = one(await t.insert(users).values({ authSubject: "auth0|leaving" }).returning());
     const workspace = one(await t.insert(workspaces).values({ name: "Staying ws" }).returning());
     await t.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id });
-    const event = one(await t
-      .insert(securityAuditEvents)
-      .values({ workspaceId: workspace.id, userId: user.id, eventType: "session.revoked" })
-      .returning());
+    const event = one(
+      await t
+        .insert(securityAuditEvents)
+        .values({ workspaceId: workspace.id, userId: user.id, eventType: "session.revoked" })
+        .returning(),
+    );
 
     await t.delete(users).where(sql`${users.id} = ${user.id}`);
 
     const members = await pg.query("SELECT * FROM workspace_members WHERE user_id = $1", [user.id]);
     expect(members.rows).toHaveLength(0);
-    const kept = await pg.query<{ user_id: string | null }>("SELECT user_id FROM security_audit_events WHERE id = $1", [
-      event.id,
-    ]);
+    const kept = await pg.query<{ user_id: string | null }>(
+      "SELECT user_id FROM security_audit_events WHERE id = $1",
+      [event.id],
+    );
     expect(one(kept.rows).user_id).toBeNull();
   });
 });

@@ -34,7 +34,10 @@ describe("first-login provisioning (migration 0003)", () => {
   const count = async (table: string, where = "", params: unknown[] = []) => {
     const r =
       params.length > 0
-        ? await pg.query<{ n: string }>(`SELECT count(*)::text AS n FROM ${table} ${where}`, params as never[])
+        ? await pg.query<{ n: string }>(
+            `SELECT count(*)::text AS n FROM ${table} ${where}`,
+            params as never[],
+          )
         : await pg.query<{ n: string }>(`SELECT count(*)::text AS n FROM ${table} ${where}`);
     const n = r.rows[0]?.n;
     if (n === undefined) throw new Error("count returned no rows");
@@ -69,9 +72,15 @@ describe("first-login provisioning (migration 0003)", () => {
 
     const members = await rows("workspace_members");
     expect(members.rows).toHaveLength(1);
-    expect(members.rows[0]).toMatchObject({ workspace_id: workspaceId, user_id: userId, role: "OWNER" });
+    expect(members.rows[0]).toMatchObject({
+      workspace_id: workspaceId,
+      user_id: userId,
+      role: "OWNER",
+    });
 
-    const ws = (await owner.execute(sql`SELECT name, created_by_user_id FROM workspaces WHERE id = ${workspaceId}`)) as unknown as {
+    const ws = (await owner.execute(
+      sql`SELECT name, created_by_user_id FROM workspaces WHERE id = ${workspaceId}`,
+    )) as unknown as {
       rows: Array<{ name: string; created_by_user_id: string }>;
     };
     expect(ws.rows[0]).toMatchObject({ name: "My workspace", created_by_user_id: userId });
@@ -104,12 +113,20 @@ describe("first-login provisioning (migration 0003)", () => {
 
     // Third login with yet more fresh candidate ids: still one workspace.
     const third = await asApp((db) =>
-      provisionUserOnLogin(db, { authSubject: "auth0|repeat", userId: uuidv7(), workspaceId: uuidv7() }),
+      provisionUserOnLogin(db, {
+        authSubject: "auth0|repeat",
+        userId: uuidv7(),
+        workspaceId: uuidv7(),
+      }),
     );
     expect(third.workspaceId).toBe(first.workspaceId);
-    expect(await count("workspaces", "WHERE id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)", [
-      first.userId,
-    ])).toBe("1");
+    expect(
+      await count(
+        "workspaces",
+        "WHERE id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)",
+        [first.userId],
+      ),
+    ).toBe("1");
   });
 
   it("refreshes the profile on return visits without blanking kept fields", async () => {
@@ -123,7 +140,9 @@ describe("first-login provisioning (migration 0003)", () => {
     await asApp((db) =>
       provisionUserOnLogin(db, { authSubject: "auth0|profile", email: "new@example.com" }),
     );
-    const user = (await owner.execute(sql`SELECT email, display_name FROM users WHERE id = ${first.userId}`)) as unknown as {
+    const user = (await owner.execute(
+      sql`SELECT email, display_name FROM users WHERE id = ${first.userId}`,
+    )) as unknown as {
       rows: Array<{ email: string; display_name: string }>;
     };
     expect(user.rows[0]).toEqual({ email: "new@example.com", display_name: "Old Name" });
@@ -140,7 +159,9 @@ describe("first-login provisioning (migration 0003)", () => {
     const result = await asApp((db) =>
       provisionUserOnLogin(db, { authSubject: "auth0|named", workspaceName: "Family budget" }),
     );
-    const ws = (await owner.execute(sql`SELECT name FROM workspaces WHERE id = ${result.workspaceId}`)) as unknown as {
+    const ws = (await owner.execute(
+      sql`SELECT name FROM workspaces WHERE id = ${result.workspaceId}`,
+    )) as unknown as {
       rows: Array<{ name: string }>;
     };
     expect(ws.rows[0]?.name).toBe("Family budget");
@@ -150,9 +171,7 @@ describe("first-login provisioning (migration 0003)", () => {
     const first = await asApp((db) => provisionUserOnLogin(db, { authSubject: "auth0|multi-ws" }));
     // Owner adds a newer second workspace for the same user.
     const secondWs = uuidv7();
-    await owner.execute(
-      sql`INSERT INTO workspaces (id, name) VALUES (${secondWs}, 'Second')`,
-    );
+    await owner.execute(sql`INSERT INTO workspaces (id, name) VALUES (${secondWs}, 'Second')`);
     await owner.execute(
       sql`INSERT INTO workspace_members (workspace_id, user_id, role, created_at)
           VALUES (${secondWs}, ${first.userId}, 'MEMBER', now() + interval '1 day')`,
@@ -188,7 +207,10 @@ describe("first-login provisioning (migration 0003)", () => {
     }
   });
 
-  it("runs least-privilege: DEFINER-owned, fixed search_path, EXECUTE for app only", async () => {    const fn = (await owner.execute(sql`SELECT prosecdef, proconfig FROM pg_proc WHERE proname = 'provision_user_on_login'`)) as unknown as {
+  it("runs least-privilege: DEFINER-owned, fixed search_path, EXECUTE for app only", async () => {
+    const fn = (await owner.execute(
+      sql`SELECT prosecdef, proconfig FROM pg_proc WHERE proname = 'provision_user_on_login'`,
+    )) as unknown as {
       rows: Array<{ prosecdef: boolean; proconfig: string[] | null }>;
     };
     expect(fn.rows[0]?.prosecdef).toBe(true);
@@ -210,7 +232,9 @@ describe("first-login provisioning (migration 0003)", () => {
   });
 
   it("defaults server-side ids to UUIDv7 (time-ordered safety net)", async () => {
-    const generated = (await owner.execute(sql`SELECT uuid_generate_v7() AS a, uuid_generate_v7() AS b`)) as unknown as {
+    const generated = (await owner.execute(
+      sql`SELECT uuid_generate_v7() AS a, uuid_generate_v7() AS b`,
+    )) as unknown as {
       rows: Array<{ a: string; b: string }>;
     };
     const pair = generated.rows[0];
@@ -220,7 +244,9 @@ describe("first-login provisioning (migration 0003)", () => {
     expect(pair?.a).not.toBe(pair?.b);
 
     // The audit row the provision function writes omits id and still lands time-ordered.
-    const result = await asApp((db) => provisionUserOnLogin(db, { authSubject: "auth0|db-default-id" }));
+    const result = await asApp((db) =>
+      provisionUserOnLogin(db, { authSubject: "auth0|db-default-id" }),
+    );
     const audits = (await owner.execute(
       sql`SELECT id FROM security_audit_events WHERE user_id = ${result.userId}`,
     )) as unknown as { rows: Array<{ id: string }> };
@@ -262,10 +288,10 @@ describe("first-login provisioning (migration 0003)", () => {
 
   it("rejects hostile ids and empty subjects at the SQL layer too", async () => {
     await asApp(async () => {
-      const res = await pg.query("SELECT * FROM provision_user_on_login('', NULL, NULL, NULL, $1, $2)", [
-        uuidv7(),
-        uuidv7(),
-      ] as never[]);
+      const res = await pg.query(
+        "SELECT * FROM provision_user_on_login('', NULL, NULL, NULL, $1, $2)",
+        [uuidv7(), uuidv7()] as never[],
+      );
       expect(res.rows).toHaveLength(0);
     }).then(
       () => {
@@ -279,11 +305,15 @@ describe("first-login provisioning (migration 0003)", () => {
 
   it("surfaces malformed function results instead of half-provisioned sessions", async () => {
     const empty = { execute: vi.fn(() => Promise.resolve({ rows: [] })) };
-    await expect(provisionUserOnLogin(empty, { authSubject: "auth0|x" })).rejects.toThrow(/unexpected shape/);
+    await expect(provisionUserOnLogin(empty, { authSubject: "auth0|x" })).rejects.toThrow(
+      /unexpected shape/,
+    );
     const wrong = {
       execute: vi.fn(() => Promise.resolve({ rows: [{ user_id: 42 }] })),
     };
-    await expect(provisionUserOnLogin(wrong, { authSubject: "auth0|x" })).rejects.toThrow(/unexpected shape/);
+    await expect(provisionUserOnLogin(wrong, { authSubject: "auth0|x" })).rejects.toThrow(
+      /unexpected shape/,
+    );
   });
 
   it("returns typed ids for the session layer", async () => {

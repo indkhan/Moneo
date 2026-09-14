@@ -209,9 +209,7 @@ export async function canonicalizeRow(
   let accountCreated = false;
   if (accountId === null) {
     const label =
-      input.row.account?.trim() ||
-      input.sourceAccountLabel?.trim() ||
-      "Imported account";
+      input.row.account?.trim() || input.sourceAccountLabel?.trim() || "Imported account";
     const created = await store.createAccount({
       workspaceId,
       name: label,

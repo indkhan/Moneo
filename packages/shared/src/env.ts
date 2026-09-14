@@ -9,6 +9,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: z.string().min(1).default("postgres://moneo:moneo@localhost:5432/moneo"),
   DATABASE_MIGRATION_URL: z.string().min(1).optional(),
+  OUTBOX_DATABASE_URL: z.string().min(1).optional(),
   REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
   S3_ENDPOINT: z.string().min(1).default("http://localhost:9000"),
   S3_REGION: z.string().min(1).default("eu-west-1"),
@@ -38,6 +39,15 @@ const envSchema = z.object({
   AUTH0_MANAGEMENT_CLIENT_SECRET: z.string().min(1).optional(),
   /** Passkey enrollment offered when anything but an explicit opt-out. */
   AUTH0_PASSKEYS_ENABLED: z.string().min(1).optional(),
+  /** Local-only 32-byte base64 KEK for envelope-encrypted AI credentials. */
+  AI_CREDENTIAL_ENCRYPTION_KEY: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+  AI_CREDENTIAL_KMS_KEY_ID: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).optional(),
+  ),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
@@ -45,7 +55,7 @@ export type AppEnv = z.infer<typeof envSchema>;
 /** Find the closest workspace `.env`, including when bundled by Next.js. */
 export function findWorkspaceEnvFile(cwd = process.cwd()): string | undefined {
   let directory = resolve(cwd);
-  while (true) {
+  for (;;) {
     const candidate = resolve(directory, ".env");
     if (existsSync(candidate)) {
       return candidate;

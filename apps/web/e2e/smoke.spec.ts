@@ -7,7 +7,7 @@ for (const route of ROUTES) {
     await page.goto(route);
     await expect(page.locator("nav[aria-label='Primary']")).toBeVisible();
     await expect(page.locator("#job-indicator-mount")).toBeVisible();
-    await expect(page.locator("#notification-mount")).toBeVisible();
+    await expect(page.locator("#notification-mount")).toBeAttached();
     await expect(page.locator("#ai-panel-mount")).toBeVisible();
   });
 }

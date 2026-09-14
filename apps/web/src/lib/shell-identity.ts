@@ -66,6 +66,8 @@ export async function getShellIdentity(): Promise<ShellIdentity> {
     return { user: null, workspace: null };
   }
   return resolveShellIdentity(session, (workspaceId: string) =>
-    withWorkspaceTransaction<WorkspaceShell | null>(workspaceId, (tx) => findWorkspaceShell(tx, workspaceId)),
+    withWorkspaceTransaction<WorkspaceShell | null>(workspaceId, (tx) =>
+      findWorkspaceShell(tx, workspaceId),
+    ),
   );
 }

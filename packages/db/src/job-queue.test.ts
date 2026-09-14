@@ -2,7 +2,7 @@ import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import * as schema from "./schema.js";
-import { workspaces } from "./schema.js";
+import { outboxEvents, workspaces } from "./schema.js";
 import { findBackgroundJob, insertBackgroundJob } from "./job-queue.js";
 import { createMigratedDb, one } from "./pglite-test-db.js";
 import { TENANT_SETTING } from "./tenancy.js";
@@ -44,6 +44,34 @@ describe("background job queue storage", () => {
     expect(job.attempts).toBe(0);
     expect(job.maxAttempts).toBe(5);
     expect(job.payload).toEqual({ importId: "i-1" });
+  });
+
+  it("writes exactly one job.ready outbox event for a newly-created job", async () => {
+    const db = drizzlePglite(pg, { schema });
+    const first = await insertBackgroundJob(db, {
+      workspaceId: wsA,
+      type: "import.process",
+      dedupeKey: "outbox-once",
+      payload: { importId: "i-outbox" },
+    });
+    const second = await insertBackgroundJob(db, {
+      workspaceId: wsA,
+      type: "import.process",
+      dedupeKey: "outbox-once",
+    });
+    const events = await db.select().from(outboxEvents);
+    const ready = events.filter(
+      (event) => event.eventType === "job.ready" && event.aggregateId === first.job.id,
+    );
+
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(false);
+    expect(ready).toHaveLength(1);
+    expect(ready[0]).toMatchObject({
+      workspaceId: wsA,
+      aggregateType: "background_job",
+      payload: { backgroundJobId: first.job.id },
+    });
   });
 
   it("returns the original row for a repeated dedupe key", async () => {

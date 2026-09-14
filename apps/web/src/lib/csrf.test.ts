@@ -110,12 +110,16 @@ describe("guardMutation", () => {
   });
 
   it("rejects a missing CSRF pair", () => {
-    expect(mutation({ cookieToken: undefined, headerToken: null, origin: null, secFetchSite: null })).toEqual({
+    expect(
+      mutation({ cookieToken: undefined, headerToken: null, origin: null, secFetchSite: null }),
+    ).toEqual({
       allowed: false,
       reason: "csrf_missing_cookie",
     });
     const token = issueCsrfToken();
-    expect(mutation({ cookieToken: token, headerToken: null, origin: null, secFetchSite: null })).toEqual({
+    expect(
+      mutation({ cookieToken: token, headerToken: null, origin: null, secFetchSite: null }),
+    ).toEqual({
       allowed: false,
       reason: "csrf_missing_header",
     });
@@ -123,7 +127,9 @@ describe("guardMutation", () => {
 
   it("rejects an invalid Origin write even with a valid CSRF pair", () => {
     const token = issueCsrfToken();
-    expect(mutation({ cookieToken: token, headerToken: token, origin: "https://evil.com" })).toEqual({
+    expect(
+      mutation({ cookieToken: token, headerToken: token, origin: "https://evil.com" }),
+    ).toEqual({
       allowed: false,
       reason: "origin_mismatch",
     });
@@ -132,14 +138,25 @@ describe("guardMutation", () => {
   it("rejects cross-site Fetch Metadata even with a valid CSRF pair", () => {
     const token = issueCsrfToken();
     expect(
-      mutation({ cookieToken: token, headerToken: token, origin: null, secFetchSite: "cross-site" }),
+      mutation({
+        cookieToken: token,
+        headerToken: token,
+        origin: null,
+        secFetchSite: "cross-site",
+      }),
     ).toEqual({ allowed: false, reason: "fetch_metadata_cross_site" });
   });
 
   it("allows non-browser clients carrying the token but no metadata headers", () => {
     const token = issueCsrfToken();
     expect(
-      mutation({ cookieToken: token, headerToken: token, origin: null, referer: null, secFetchSite: null }),
+      mutation({
+        cookieToken: token,
+        headerToken: token,
+        origin: null,
+        referer: null,
+        secFetchSite: null,
+      }),
     ).toEqual({ allowed: true });
   });
 

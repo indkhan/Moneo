@@ -5,7 +5,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import * as schema from "./schema.js";
 import { users, workspaces } from "./schema.js";
 import { createMigratedDb, one } from "./pglite-test-db.js";
-import { findWorkspaceShell } from "./workspaces.js";
+import { findWorkspaceShell, isWorkspaceOwner } from "./workspaces.js";
 
 /**
  * Issue 1.5 â€” shell workspace lookup.
@@ -18,9 +18,13 @@ import { findWorkspaceShell } from "./workspaces.js";
 describe("findWorkspaceShell", () => {
   let pg!: PGlite;
   let wsId!: string;
+  let userId!: string;
 
   /** Run `fn` as the runtime role with an optional tenant context. */
-  async function asApp<T>(workspaceId: string | null, fn: (db: ReturnType<typeof drizzlePglite>) => Promise<T>): Promise<T> {
+  async function asApp<T>(
+    workspaceId: string | null,
+    fn: (db: ReturnType<typeof drizzlePglite>) => Promise<T>,
+  ): Promise<T> {
     await pg.exec("SET ROLE moneo_app");
     try {
       if (workspaceId === null) {
@@ -38,9 +42,19 @@ describe("findWorkspaceShell", () => {
   beforeAll(async () => {
     pg = await createMigratedDb();
     const db = drizzlePglite(pg, { schema });
-    const user = one(await db.insert(users).values({ authSubject: "auth0|shell-user" }).returning());
-    wsId = one(await db.insert(workspaces).values({ name: "Shell workspace", createdByUserId: user.id }).returning()).id;
-    await db.execute(sql`INSERT INTO workspace_members VALUES (${wsId}, ${user.id}, 'OWNER', now())`);
+    const user = one(
+      await db.insert(users).values({ authSubject: "auth0|shell-user" }).returning(),
+    );
+    userId = user.id;
+    wsId = one(
+      await db
+        .insert(workspaces)
+        .values({ name: "Shell workspace", createdByUserId: user.id })
+        .returning(),
+    ).id;
+    await db.execute(
+      sql`INSERT INTO workspace_members VALUES (${wsId}, ${user.id}, 'OWNER', now())`,
+    );
   });
 
   afterAll(async () => {
@@ -63,6 +77,13 @@ describe("findWorkspaceShell", () => {
   it("returns null without tenant context instead of leaking the row", async () => {
     await asApp(null, async (db) => {
       expect(await findWorkspaceShell(db, wsId)).toBeNull();
+    });
+  });
+
+  it("recognizes only an OWNER in the current workspace as an AI manager", async () => {
+    await asApp(wsId, async (db) => {
+      expect(await isWorkspaceOwner(db, wsId, userId)).toBe(true);
+      expect(await isWorkspaceOwner(db, wsId, "99999999-9999-7999-8999-999999999999")).toBe(false);
     });
   });
 

@@ -24,13 +24,7 @@ import {
   type TagsResult,
 } from "@moneo/finance";
 import { createDrizzleCommandStore, type CommandStoreDb } from "./command-store.js";
-import {
-  categories,
-  counterparties,
-  tags,
-  transactions,
-  transactionTags,
-} from "./schema.js";
+import { categories, counterparties, tags, transactions, transactionTags } from "./schema.js";
 
 /**
  * Issue 5.3 — Drizzle wiring for transaction correction commands.
@@ -76,10 +70,7 @@ export function correctionDataOver(db: CommandStoreDb): CorrectionData {
         .select({ id: counterparties.id })
         .from(counterparties)
         .where(
-          and(
-            eq(counterparties.workspaceId, workspaceId),
-            eq(counterparties.id, counterpartyId),
-          ),
+          and(eq(counterparties.workspaceId, workspaceId), eq(counterparties.id, counterpartyId)),
         )
         .limit(1);
       return rows[0] ?? null;

@@ -1,4 +1,5 @@
-import { Card, CardDescription, CardTitle, EmptyState } from "@moneo/ui";
+import { Card, CardDescription, CardTitle } from "@moneo/ui";
+import Link from "next/link";
 
 export default function HomePage() {
   return (
@@ -9,13 +10,23 @@ export default function HomePage() {
       <Card>
         <CardTitle>Welcome to Moneo</CardTitle>
         <CardDescription>
-          Your finance workspace shell. Real dashboard content arrives in Epoch 11.
+          Bring your accounts and transactions together, then ask questions about your finances.
         </CardDescription>
         <div style={{ marginTop: 12 }}>
-          <EmptyState
-            title="Nothing to show yet"
-            description="Connect accounts and import statements in later epochs."
-          />
+          <ul>
+            <li>
+              <Link href="/money/import">Import a CSV or Excel statement</Link>
+            </li>
+            <li>
+              <Link href="/money/accounts">Manage accounts and balances</Link>
+            </li>
+            <li>
+              <Link href="/money/transactions">Review and correct transactions</Link>
+            </li>
+            <li>
+              <Link href="/ai">Ask the finance assistant</Link>
+            </li>
+          </ul>
         </div>
       </Card>
     </section>

@@ -105,7 +105,8 @@ describe("outbox dispatcher", () => {
   });
 
   it("derives deterministic BullMQ job ids from event ids", () => {
-    expect(outboxJobId("evt-1")).toBe("outbox:evt-1");
+    expect(outboxJobId("evt-1")).toBe("outbox-evt-1");
+    expect(outboxJobId("evt-1")).not.toContain(":");
     expect(outboxJobId("evt-1")).toBe(outboxJobId("evt-1"));
     expect(outboxJobId("evt-1")).not.toBe(outboxJobId("evt-2"));
   });
@@ -128,8 +129,8 @@ describe("outbox dispatcher", () => {
     const outcome = await dispatchOutboxBatch(store, transport, 25);
 
     expect(outcome).toEqual({ claimed: 2, published: 2, failed: 0 });
-    expect(transport.publishCalls).toEqual(["outbox:e1", "outbox:e2"]);
-    expect([...transport.jobs.keys()]).toEqual(["outbox:e1", "outbox:e2"]);
+    expect(transport.publishCalls).toEqual(["outbox-e1", "outbox-e2"]);
+    expect([...transport.jobs.keys()]).toEqual(["outbox-e1", "outbox-e2"]);
     expect(store.published).toEqual(["e1", "e2"]);
   });
 
@@ -141,7 +142,7 @@ describe("outbox dispatcher", () => {
     await transport.publish(outboxJobId("e1"), data);
 
     expect(transport.jobs.size).toBe(1);
-    expect(transport.jobs.get("outbox:e1")).toEqual(data);
+    expect(transport.jobs.get("outbox-e1")).toEqual(data);
   });
 
   it("crash between publish and mark-published recovers to one business effect", async () => {
@@ -157,7 +158,7 @@ describe("outbox dispatcher", () => {
     await expect(dispatchOutboxBatch(crashingMark, transport, 25)).rejects.toThrow(
       "process crashed",
     );
-    expect(transport.jobs.has("outbox:e1")).toBe(true);
+    expect(transport.jobs.has("outbox-e1")).toBe(true);
     expect(doomed.published).toEqual([]);
 
     // …tick 2 (replacement dispatcher): the row is still claimable, the
@@ -176,23 +177,23 @@ describe("outbox dispatcher", () => {
     for (const jobId of transport.publishCalls) {
       consumer(jobId);
     }
-    consumer("outbox:e1"); // the duplicated delivery
-    expect(effects).toEqual(["outbox:e1"]);
+    consumer("outbox-e1"); // the duplicated delivery
+    expect(effects).toEqual(["outbox-e1"]);
     expect(redelivered.published).toEqual(["e1"]);
   });
 
   it("a poison event is recorded without blocking the rest of the batch", async () => {
     const store = memoryStore([row("bad"), row("good")]);
     const transport = memoryTransport();
-    transport.failOn = new Set(["outbox:bad"]);
+    transport.failOn = new Set(["outbox-bad"]);
 
     const outcome = await dispatchOutboxBatch(store, transport, 25);
 
     expect(outcome).toEqual({ claimed: 2, published: 1, failed: 1 });
     expect(store.published).toEqual(["good"]);
-    expect(store.errors.get("bad")).toBe("transport down for outbox:bad");
-    expect(transport.jobs.has("outbox:good")).toBe(true);
-    expect(transport.jobs.has("outbox:bad")).toBe(false);
+    expect(store.errors.get("bad")).toBe("transport down for outbox-bad");
+    expect(transport.jobs.has("outbox-good")).toBe(true);
+    expect(transport.jobs.has("outbox-bad")).toBe(false);
   });
 
   it("claims at most the requested limit per tick", async () => {

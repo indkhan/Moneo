@@ -68,6 +68,8 @@ export const transactionSearchQuerySchema = z.object({
   cursor: z.string().max(2048).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
   accountIds: z.string().max(4000).optional(),
+  categoryIds: z.string().max(4000).optional(),
+  tagNames: z.string().max(2000).optional(),
   dateFrom: isoDateSchema.optional(),
   dateTo: isoDateSchema.optional(),
   directions: z.string().max(64).optional(),
@@ -75,6 +77,32 @@ export const transactionSearchQuerySchema = z.object({
   amountMax: minorBoundSchema.optional(),
   q: z.string().max(200).optional(),
   sort: z.enum(["newest", "oldest"]).default("newest"),
+});
+
+/** Persisted table state is a typed contract, never an arbitrary JSON blob. */
+export const transactionViewDefinitionSchema = z.object({
+  filters: z
+    .object({
+      q: z.string().max(200).optional(),
+      accountIds: z.array(z.uuid()).max(100).optional(),
+      directions: z
+        .array(z.enum(["credit", "debit"]))
+        .max(2)
+        .optional(),
+      dateFrom: isoDateSchema.optional(),
+      dateTo: isoDateSchema.optional(),
+      categoryIds: z.array(z.uuid()).max(100).optional(),
+      tagNames: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
+      counterpartyIds: z.array(z.uuid()).max(100).optional(),
+      excludedFromAnalytics: z.boolean().optional(),
+    })
+    .default({}),
+  sort: z.enum(["newest", "oldest"]).default("newest"),
+  visibleColumns: z
+    .array(z.enum(["date", "description", "account", "direction", "amount"]))
+    .min(1)
+    .max(5)
+    .default(["date", "description", "account", "direction", "amount"]),
 });
 
 export type ParseSuccess<T> = { ok: true; data: T };

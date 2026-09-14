@@ -175,7 +175,7 @@ describe("epoch 2 acceptance", () => {
     });
     await dispatchOutboxBatch(claimOnce([{ ...outboxRow }]), transport, 25);
     await dispatchOutboxBatch(claimOnce([{ ...outboxRow }]), transport, 25);
-    expect([...queueJobs.keys()]).toEqual(["outbox:evt-1"]);
+    expect([...queueJobs.keys()]).toEqual(["outbox-evt-1"]);
 
     // 3. Worker crashes mid-execution: transient failure is recorded + requeued.
     const crashed = await runDurableJob(jobStore, handlers, decide, "job-1", "worker-a");

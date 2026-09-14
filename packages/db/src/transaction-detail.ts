@@ -84,10 +84,7 @@ export async function getTransactionDetail(
           .select({ id: categories.id, name: categories.name })
           .from(categories)
           .where(
-            and(
-              eq(categories.workspaceId, workspaceId),
-              eq(categories.id, transaction.categoryId),
-            ),
+            and(eq(categories.workspaceId, workspaceId), eq(categories.id, transaction.categoryId)),
           )
           .limit(1);
   const counterpartyRows =

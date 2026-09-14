@@ -1,4 +1,4 @@
-import { getSession } from "@/lib/auth-session";
+import { financeRoute } from "@/lib/finance-api";
 import { handlePutBytes } from "@/lib/imports-bytes";
 import { getUploadStore } from "@/lib/imports-upload";
 
@@ -9,12 +9,13 @@ import { getUploadStore } from "@/lib/imports-upload";
  * `/imports/complete`.
  */
 export async function POST(request: Request) {
-  const session = await getSession();
-  const url = new URL(request.url);
-  const body = new Uint8Array(await request.arrayBuffer());
-  return handlePutBytes(
-    { importId: url.searchParams.get("importId"), fileName: url.searchParams.get("fileName") },
-    body,
-    { workspaceId: session?.wid, store: getUploadStore() },
-  );
+  return financeRoute(async (session) => {
+    const url = new URL(request.url);
+    const body = new Uint8Array(await request.arrayBuffer());
+    return handlePutBytes(
+      { importId: url.searchParams.get("importId"), fileName: url.searchParams.get("fileName") },
+      body,
+      { workspaceId: session.wid, store: getUploadStore() },
+    );
+  });
 }

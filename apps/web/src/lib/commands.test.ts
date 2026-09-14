@@ -202,12 +202,12 @@ describe("correction command input schemas", () => {
   const catId = "33333333-3333-7333-8333-333333333333";
 
   it("accepts correction payloads and null clears", () => {
-    expect(setCategoryInputSchema.safeParse({ transactionId: txnId, categoryId: catId }).success).toBe(
-      true,
-    );
-    expect(setCategoryInputSchema.safeParse({ transactionId: txnId, categoryId: null }).success).toBe(
-      true,
-    );
+    expect(
+      setCategoryInputSchema.safeParse({ transactionId: txnId, categoryId: catId }).success,
+    ).toBe(true);
+    expect(
+      setCategoryInputSchema.safeParse({ transactionId: txnId, categoryId: null }).success,
+    ).toBe(true);
     expect(
       setCounterpartyInputSchema.safeParse({ transactionId: txnId, counterpartyName: "Lidl" })
         .success,
@@ -222,16 +222,16 @@ describe("correction command input schemas", () => {
   });
 
   it("rejects bad ids, empty tag lists, and oversized values", () => {
-    expect(setCategoryInputSchema.safeParse({ transactionId: "x", categoryId: catId }).success).toBe(
-      false,
-    );
+    expect(
+      setCategoryInputSchema.safeParse({ transactionId: "x", categoryId: catId }).success,
+    ).toBe(false);
     expect(addTagsInputSchema.safeParse({ transactionId: txnId, tags: [] }).success).toBe(false);
     expect(
       addTagsInputSchema.safeParse({ transactionId: txnId, tags: ["x".repeat(41)] }).success,
     ).toBe(false);
-    expect(setNoteInputSchema.safeParse({ transactionId: txnId, note: "x".repeat(2001) }).success).toBe(
-      false,
-    );
+    expect(
+      setNoteInputSchema.safeParse({ transactionId: txnId, note: "x".repeat(2001) }).success,
+    ).toBe(false);
     expect(
       excludeFromAnalyticsInputSchema.safeParse({ transactionId: txnId, excluded: "yes" }).success,
     ).toBe(false);
@@ -246,6 +246,9 @@ describe("correction command input schemas", () => {
       "transactions.removeTags",
       "transactions.setNote",
       "transactions.excludeFromAnalytics",
+      "transactions.setCategoryBulk",
+      "transactions.addTagsBulk",
+      "transactions.excludeFromAnalyticsBulk",
     ]) {
       expect(registry.has(name)).toBe(true);
     }

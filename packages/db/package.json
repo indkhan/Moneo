@@ -98,6 +98,14 @@
       "types": "./dist/transaction-views.d.ts",
       "default": "./dist/transaction-views.js"
     },
+    "./transaction-workspace": {
+      "types": "./dist/transaction-workspace.d.ts",
+      "default": "./dist/transaction-workspace.js"
+    },
+    "./transaction-bulk": {
+      "types": "./dist/transaction-bulk.d.ts",
+      "default": "./dist/transaction-bulk.js"
+    },
     "./sessions": {
       "types": "./dist/sessions.d.ts",
       "default": "./dist/sessions.js"

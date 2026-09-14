@@ -278,9 +278,9 @@ describe("canonical transaction model (migration 0009)", () => {
     expect(doomedTxn.id).toBeDefined();
     await db.delete(workspaces).where(eq(workspaces.id, doomedWs));
     expect(await count("transactions", "WHERE workspace_id = $1", [doomedWs])).toBe("0");
-    expect(
-      await count("transaction_source_links", "WHERE workspace_id = $1", [doomedWs]),
-    ).toBe("0");
+    expect(await count("transaction_source_links", "WHERE workspace_id = $1", [doomedWs])).toBe(
+      "0",
+    );
     expect(await count("accounts", "WHERE workspace_id = $1", [doomedWs])).toBe("0");
   });
 
@@ -293,9 +293,7 @@ describe("canonical transaction model (migration 0009)", () => {
     const byName = new Map(rows.map((r) => [r.indexname, r.indexdef]));
     expect(byName.has("transactions_workspace_date_idx")).toBe(true);
     expect(byName.has("transactions_account_date_idx")).toBe(true);
-    expect(byName.get("transactions_workspace_date_idx")).toMatch(
-      /workspace_id.*effective_date/,
-    );
+    expect(byName.get("transactions_workspace_date_idx")).toMatch(/workspace_id.*effective_date/);
     expect(byName.get("transactions_account_date_idx")).toMatch(/account_id.*effective_date/);
   });
 

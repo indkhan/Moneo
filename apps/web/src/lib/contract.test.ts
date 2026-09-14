@@ -174,7 +174,13 @@ describe("api contract", () => {
     };
     expect(detail.required).toContain("tags");
     const extension = detail.allOf[1]?.properties ?? {};
-    for (const field of ["categoryId", "categoryName", "counterpartyId", "counterpartyName", "tags"]) {
+    for (const field of [
+      "categoryId",
+      "categoryName",
+      "counterpartyId",
+      "counterpartyName",
+      "tags",
+    ]) {
       expect(extension[field]).toBeDefined();
     }
     const category = contract.components.schemas["Category"] as {

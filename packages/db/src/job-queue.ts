@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 import type { Db } from "./client.js";
-import { backgroundJobs, type BackgroundJob } from "./schema.js";
+import { backgroundJobs, outboxEvents, type BackgroundJob } from "./schema.js";
 import type * as schema from "./schema.js";
 
 /**
@@ -68,6 +68,16 @@ export async function insertBackgroundJob(
     if (!job) {
       throw new Error("Job insert returned no row.");
     }
+    // The caller has opened the workspace transaction. Persist the transport
+    // handoff beside the durable job before it commits, so a crash can never
+    // leave a resumable job stranded without a dispatcher-visible event.
+    await db.insert(outboxEvents).values({
+      workspaceId: input.workspaceId,
+      aggregateType: "background_job",
+      aggregateId: job.id,
+      eventType: "job.ready",
+      payload: { backgroundJobId: job.id },
+    });
     return { job, created: true };
   } catch (error) {
     // Lost a concurrent double-submit race: the loser's UNIQUE conflict

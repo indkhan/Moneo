@@ -1,4 +1,4 @@
-import { getSession } from "@/lib/auth-session";
+import { financeRoute } from "@/lib/finance-api";
 import { getUploadStore, handleCompleteUpload } from "@/lib/imports-upload";
 
 /**
@@ -7,10 +7,11 @@ import { getUploadStore, handleCompleteUpload } from "@/lib/imports-upload";
  * picks the completed import up from here.
  */
 export async function POST(request: Request) {
-  const session = await getSession();
-  const body: unknown = await request.json().catch(() => null);
-  return handleCompleteUpload(body, {
-    workspaceId: session?.wid,
-    store: getUploadStore(),
+  return financeRoute(async (session) => {
+    const body: unknown = await request.json().catch(() => null);
+    return handleCompleteUpload(body, {
+      workspaceId: session.wid,
+      store: getUploadStore(),
+    });
   });
 }

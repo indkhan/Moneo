@@ -80,7 +80,10 @@ function stringOrNull(value: unknown): string | null {
 }
 
 /** Translate a recorded audit `oldValue` back into a corrective write. */
-export function compensationFor(action: string, oldValue: Record<string, unknown> | null): Compensation {
+export function compensationFor(
+  action: string,
+  oldValue: Record<string, unknown> | null,
+): Compensation {
   const old = oldValue ?? {};
   switch (action) {
     case "transactions.setCategory":
@@ -106,10 +109,7 @@ export function compensationFor(action: string, oldValue: Record<string, unknown
       return { patch: {}, restoreTags: [...tags] };
     }
     default:
-      throw new CommandError(
-        "INVARIANT_VIOLATION",
-        `Operation ${action} is not undoable.`,
-      );
+      throw new CommandError("INVARIANT_VIOLATION", `Operation ${action} is not undoable.`);
   }
 }
 
@@ -139,9 +139,7 @@ export function parseOperationId(operationId: unknown): {
 }
 
 /** `operations.undo`: compensate one undoable correction, version-checked. */
-export function createUndoCommand(
-  data: UndoData,
-): CommandDefinition<
+export function createUndoCommand(data: UndoData): CommandDefinition<
   {
     workspaceId: string;
     operationId: string;
@@ -167,9 +165,7 @@ export function createUndoCommand(
           : await data.findOperation(ctx.workspaceId, parsed.commandName, parsed.idempotencyKey);
       const transactionId = operation ? operation.entityId : null;
       const transaction =
-        transactionId === null
-          ? null
-          : await data.findTransaction(ctx.workspaceId, transactionId);
+        transactionId === null ? null : await data.findTransaction(ctx.workspaceId, transactionId);
       return {
         workspaceId: ctx.workspaceId,
         operationId: input.operationId,
@@ -186,7 +182,10 @@ export function createUndoCommand(
         throw new CommandError("FORBIDDEN", "Operation not found in this workspace.");
       }
       if (operation.entityType !== "transaction") {
-        throw new CommandError("INVARIANT_VIOLATION", "Only transaction corrections can be undone.");
+        throw new CommandError(
+          "INVARIANT_VIOLATION",
+          "Only transaction corrections can be undone.",
+        );
       }
       if (!state.transaction) {
         throw new CommandError("FORBIDDEN", "Operation not found in this workspace.");
@@ -239,10 +238,7 @@ export function createUndoCommand(
           { currentVersion: transaction.version },
         );
       }
-      const after =
-        compensation.restoreTags !== null
-          ? compensation.restoreTags
-          : undefined;
+      const after = compensation.restoreTags !== null ? compensation.restoreTags : undefined;
       const mutation: CommandMutation<UndoResult> = {
         resultingVersion: applied.version,
         result: {

@@ -12,19 +12,19 @@
  * - X-Content-Type-Options, Referrer-Policy (same-origin: finance data must
  *   not leak via referrers), Permissions-Policy (sensors off by default).
  */
-export function contentSecurityPolicy(): string {
+export function contentSecurityPolicy(isDevelopment = false): string {
   return [
     "default-src 'self'",
     "base-uri 'self'",
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
-    "script-src 'self' 'unsafe-inline'",
+    `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self' data:",
     "connect-src 'self'",
-    "upgrade-insecure-requests",
+    ...(isDevelopment ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");
 }
 
@@ -33,18 +33,29 @@ export function strictTransportSecurity(): string {
 }
 
 export function permissionsPolicy(): string {
-  return ["camera=()", "microphone=()", "geolocation=()", "payment=()", "usb=()", "bluetooth=()"].join(", ");
+  return [
+    "camera=()",
+    "microphone=()",
+    "geolocation=()",
+    "payment=()",
+    "usb=()",
+    "bluetooth=()",
+  ].join(", ");
 }
 
 export interface SecurityHeaderOptions {
   /** Set HSTS only for production deployments. */
   isProduction: boolean;
+  /** Next's development bundle requires eval; production must never enable it. */
+  isDevelopment?: boolean;
 }
 
 /** Header name → value for every response. HSTS included in production only. */
 export function buildSecurityHeaders(options: SecurityHeaderOptions): Record<string, string> {
   const headers: Record<string, string> = {
-    "Content-Security-Policy": contentSecurityPolicy(),
+    "Content-Security-Policy": contentSecurityPolicy(
+      options.isDevelopment === true && !options.isProduction,
+    ),
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "same-origin",
     "Permissions-Policy": permissionsPolicy(),

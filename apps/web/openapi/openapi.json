@@ -5,7 +5,11 @@
     "version": "v1",
     "description": "Moneo v1 API. Money travels as decimal strings (integer minor units, never floats); entity versions travel as decimal strings. Failures use RFC 9457 problem details with a stable machine-readable `code`."
   },
-  "servers": [{ "url": "/api/v1" }],
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ],
   "paths": {
     "/health": {
       "get": {
@@ -20,8 +24,14 @@
                   "type": "object",
                   "required": ["status", "service"],
                   "properties": {
-                    "status": { "type": "string", "const": "ok" },
-                    "service": { "type": "string", "const": "web" }
+                    "status": {
+                      "type": "string",
+                      "const": "ok"
+                    },
+                    "service": {
+                      "type": "string",
+                      "const": "web"
+                    }
                   }
                 }
               }
@@ -43,10 +53,18 @@
                   "type": "object",
                   "required": ["gitSha", "releaseId", "schemaVersion", "environment"],
                   "properties": {
-                    "gitSha": { "type": "string" },
-                    "releaseId": { "type": "string" },
-                    "schemaVersion": { "type": "string" },
-                    "environment": { "type": "string" }
+                    "gitSha": {
+                      "type": "string"
+                    },
+                    "releaseId": {
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "type": "string"
+                    },
+                    "environment": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -60,8 +78,12 @@
         "operationId": "listJobs",
         "summary": "List durable jobs (cursor page)",
         "parameters": [
-          { "$ref": "#/components/parameters/Cursor" },
-          { "$ref": "#/components/parameters/PageLimit" }
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          }
         ],
         "responses": {
           "200": {
@@ -74,15 +96,21 @@
                   "properties": {
                     "items": {
                       "type": "array",
-                      "items": { "$ref": "#/components/schemas/JobStatus" }
+                      "items": {
+                        "$ref": "#/components/schemas/JobStatus"
+                      }
                     },
-                    "nextCursor": { "type": ["string", "null"] }
+                    "nextCursor": {
+                      "type": ["string", "null"]
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationFailed" }
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
         }
       },
       "post": {
@@ -91,19 +119,33 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/JobSubmit" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobSubmit"
+              }
+            }
           }
         },
         "responses": {
           "202": {
             "description": "Job accepted",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/JobStatus" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatus"
+                }
+              }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationFailed" },
-          "409": { "$ref": "#/components/responses/IdempotencyConflict" },
-          "429": { "$ref": "#/components/responses/RateLimited" }
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "409": {
+            "$ref": "#/components/responses/IdempotencyConflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
@@ -111,15 +153,25 @@
       "get": {
         "operationId": "getJob",
         "summary": "Durable job status",
-        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/JobId"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Job status",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/JobStatus" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatus"
+                }
+              }
             }
           },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
@@ -127,17 +179,31 @@
       "post": {
         "operationId": "retryJob",
         "summary": "Retry a failed job with budget left",
-        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/JobId"
+          }
+        ],
         "responses": {
           "202": {
             "description": "Retry accepted",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/JobStatus" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatus"
+                }
+              }
             }
           },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "409": { "$ref": "#/components/responses/Conflict" },
-          "422": { "$ref": "#/components/responses/InvariantViolation" }
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvariantViolation"
+          }
         }
       }
     },
@@ -145,16 +211,28 @@
       "post": {
         "operationId": "stopJob",
         "summary": "Request cancellation of a live job",
-        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/JobId"
+          }
+        ],
         "responses": {
           "202": {
             "description": "Stop accepted",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/JobStatus" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatus"
+                }
+              }
             }
           },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "409": { "$ref": "#/components/responses/Conflict" }
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
         }
       }
     },
@@ -167,28 +245,52 @@
             "name": "commandName",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "minLength": 1, "maxLength": 120 }
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
           }
         ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/CommandRequest" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommandRequest"
+              }
+            }
           }
         },
         "responses": {
           "200": {
             "description": "Command result (replayed results return the identical body)",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/CommandResult" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResult"
+                }
+              }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationFailed" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "409": { "$ref": "#/components/responses/Conflict" },
-          "422": { "$ref": "#/components/responses/InvariantViolation" },
-          "429": { "$ref": "#/components/responses/RateLimited" }
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvariantViolation"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
@@ -201,17 +303,26 @@
             "name": "includeArchived",
             "in": "query",
             "required": false,
-            "schema": { "type": "boolean", "default": false }
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "Workspace accounts in stable creation order",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/AccountList" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountList"
+                }
+              }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationFailed" }
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
         }
       }
     },
@@ -219,16 +330,28 @@
       "get": {
         "operationId": "getAccount",
         "summary": "One canonical account with its latest known balance",
-        "parameters": [{ "$ref": "#/components/parameters/AccountId" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AccountId"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Account detail",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/Account" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationFailed" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
@@ -237,35 +360,53 @@
         "operationId": "previewBalance",
         "summary": "Project a proposed balance snapshot over later transactions",
         "parameters": [
-          { "$ref": "#/components/parameters/AccountId" },
+          {
+            "$ref": "#/components/parameters/AccountId"
+          },
           {
             "name": "currentAmountMinor",
             "in": "query",
             "required": true,
-            "schema": { "$ref": "#/components/schemas/MoneyString" }
+            "schema": {
+              "$ref": "#/components/schemas/MoneyString"
+            }
           },
           {
             "name": "currencyCode",
             "in": "query",
             "required": true,
-            "schema": { "type": "string", "pattern": "^[A-Za-z]{3}$" }
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z]{3}$"
+            }
           },
           {
             "name": "cutoffDate",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "Projection or honest unresolved reason; never a mutation",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/BalancePreview" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BalancePreview"
+                }
+              }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationFailed" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
@@ -273,16 +414,28 @@
       "get": {
         "operationId": "getTransaction",
         "summary": "One canonical transaction with source provenance",
-        "parameters": [{ "$ref": "#/components/parameters/TransactionId" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TransactionId"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Transaction detail with original source observations",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/TransactionDetail" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionDetail"
+                }
+              }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationFailed" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
@@ -295,17 +448,26 @@
             "name": "includeArchived",
             "in": "query",
             "required": false,
-            "schema": { "type": "boolean", "default": false }
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "Workspace categories in name order",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/CategoryList" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryList"
+                }
+              }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationFailed" }
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
         }
       }
     },
@@ -318,7 +480,10 @@
             "name": "importId",
             "in": "query",
             "required": true,
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -326,11 +491,15 @@
             "description": "Pending candidates with both sides for review",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/MatchCandidateList" }
+                "schema": {
+                  "$ref": "#/components/schemas/MatchCandidateList"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationFailed" }
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
         }
       }
     },
@@ -339,68 +508,197 @@
         "operationId": "searchTransactions",
         "summary": "Search canonical transactions (keyset cursor page)",
         "parameters": [
-          { "$ref": "#/components/parameters/Cursor" },
-          { "$ref": "#/components/parameters/PageLimit" },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
           {
             "name": "accountIds",
             "in": "query",
             "required": false,
             "description": "Comma-separated account UUIDs",
-            "schema": { "type": "string", "maxLength": 4000 }
+            "schema": {
+              "type": "string",
+              "maxLength": 4000
+            }
           },
           {
             "name": "dateFrom",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
           },
           {
             "name": "dateTo",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
           },
           {
             "name": "directions",
             "in": "query",
             "required": false,
             "description": "Comma-separated credit/debit list",
-            "schema": { "type": "string", "maxLength": 64 }
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
           },
           {
             "name": "amountMin",
             "in": "query",
             "required": false,
-            "schema": { "$ref": "#/components/schemas/NonNegativeMinorString" }
+            "schema": {
+              "$ref": "#/components/schemas/NonNegativeMinorString"
+            }
           },
           {
             "name": "amountMax",
             "in": "query",
             "required": false,
-            "schema": { "$ref": "#/components/schemas/NonNegativeMinorString" }
+            "schema": {
+              "$ref": "#/components/schemas/NonNegativeMinorString"
+            }
           },
           {
             "name": "q",
             "in": "query",
             "required": false,
             "description": "Case-insensitive substring over the description",
-            "schema": { "type": "string", "maxLength": 200 }
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
           },
           {
             "name": "sort",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "enum": ["newest", "oldest"], "default": "newest" }
+            "schema": {
+              "type": "string",
+              "enum": ["newest", "oldest"],
+              "default": "newest"
+            }
+          },
+          {
+            "name": "categoryIds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated categoryIds"
+          },
+          {
+            "name": "tagNames",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated tagNames"
           }
         ],
         "responses": {
           "200": {
             "description": "A cursor page of canonical transactions",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/TransactionPage" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionPage"
+                }
+              }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationFailed" }
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/transaction-views": {
+      "get": {
+        "operationId": "listTransactionViews",
+        "summary": "List persisted transaction workspace views",
+        "responses": {
+          "200": {
+            "description": "Saved views",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedTransactionViewList"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createTransactionView",
+        "summary": "Persist typed filters, sort, and visible columns",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSavedTransactionView"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Saved view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedTransactionView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/transactions/selections": {
+      "post": {
+        "operationId": "createFrozenTransactionSelection",
+        "summary": "Resolve and freeze transaction IDs for a bulk command",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFrozenTransactionSelection"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Frozen selection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrozenTransactionSelection"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
         }
       }
     },
@@ -411,17 +709,27 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/UploadInitiate" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadInitiate"
+              }
+            }
           }
         },
         "responses": {
           "200": {
             "description": "Reserved quarantine key (internal, never a public URL)",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/UploadInitiated" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadInitiated"
+                }
+              }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationFailed" }
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
         }
       }
     },
@@ -434,19 +742,31 @@
             "name": "importId",
             "in": "query",
             "required": true,
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           {
             "name": "fileName",
             "in": "query",
             "required": true,
-            "schema": { "type": "string", "minLength": 1, "maxLength": 256 }
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
           }
         ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/octet-stream": { "schema": { "type": "string", "format": "binary" } }
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
           }
         },
         "responses": {
@@ -458,16 +778,29 @@
                   "type": "object",
                   "required": ["importId", "objectKey", "bytes", "sha256"],
                   "properties": {
-                    "importId": { "type": "string", "format": "uuid" },
-                    "objectKey": { "type": "string" },
-                    "bytes": { "type": "integer", "minimum": 1 },
-                    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+                    "importId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "objectKey": {
+                      "type": "string"
+                    },
+                    "bytes": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationFailed" }
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
         }
       }
     },
@@ -479,7 +812,9 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/ImportPreviewRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/ImportPreviewRequest"
+              }
             }
           }
         },
@@ -487,11 +822,19 @@
           "200": {
             "description": "Headers, sample rows, and detected mapping",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/ImportPreview" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationFailed" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
@@ -502,19 +845,359 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/UploadComplete" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadComplete"
+              }
+            }
           }
         },
         "responses": {
           "200": {
             "description": "Stored upload metadata",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/UploadCompleted" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadCompleted"
+                }
+              }
             }
           },
-          "400": { "$ref": "#/components/responses/ValidationFailed" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "400": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/ai/chat": {
+      "post": {
+        "operationId": "sendAiChat",
+        "summary": "Run the read-only grounded Financial Assistant",
+        "description": "Requires an active workspace session and provider-verified strong authentication. Mutations also require same-origin CSRF protection. Settings/credential mutations require workspace ownership; credentials additionally require recent authentication.",
+        "responses": {
+          "200": {
+            "description": "Newline-delimited, schema-validated chat events. Client abort cancels the run. A done event is required for completion.",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiChatEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Signed out or revoked session"
+          },
+          "403": {
+            "description": "Access, enrollment, ownership or CSRF denied"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiChatRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai/conversations": {
+      "get": {
+        "operationId": "listAiConversations",
+        "summary": "List durable workspace conversations",
+        "description": "Requires an active workspace session and provider-verified strong authentication. Mutations also require same-origin CSRF protection. Settings/credential mutations require workspace ownership; credentials additionally require recent authentication.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversations": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AiConversation"
+                      }
+                    }
+                  },
+                  "required": ["conversations"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Signed out or revoked session"
+          },
+          "403": {
+            "description": "Access, enrollment, ownership or CSRF denied"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAiConversation",
+        "summary": "Create a conversation",
+        "description": "Requires an active workspace session and provider-verified strong authentication. Mutations also require same-origin CSRF protection. Settings/credential mutations require workspace ownership; credentials additionally require recent authentication.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation": {
+                      "$ref": "#/components/schemas/AiConversation"
+                    }
+                  },
+                  "required": ["conversation"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Signed out or revoked session"
+          },
+          "403": {
+            "description": "Access, enrollment, ownership or CSRF denied"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai/conversations/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getAiConversation",
+        "summary": "Read authorized, policy-scoped AI records",
+        "description": "Requires an active workspace session and provider-verified strong authentication. Mutations also require same-origin CSRF protection. Settings/credential mutations require workspace ownership; credentials additionally require recent authentication.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation": {
+                      "$ref": "#/components/schemas/AiConversation"
+                    },
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AiChatMessage"
+                      }
+                    }
+                  },
+                  "required": ["conversation", "messages"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Signed out or revoked session"
+          },
+          "403": {
+            "description": "Access, enrollment, ownership or CSRF denied"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
+    "/ai/evidence/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getAiEvidence",
+        "summary": "Read authorized, policy-scoped AI records",
+        "description": "Requires an active workspace session and provider-verified strong authentication. Mutations also require same-origin CSRF protection. Settings/credential mutations require workspace ownership; credentials additionally require recent authentication.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Signed out or revoked session"
+          },
+          "403": {
+            "description": "Access, enrollment, ownership or CSRF denied"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
+    "/ai/settings": {
+      "get": {
+        "operationId": "getAiSettings",
+        "summary": "Read AI configuration, masked credential status, access policy and resolved usage",
+        "description": "Requires an active workspace session and provider-verified strong authentication. Mutations also require same-origin CSRF protection. Settings/credential mutations require workspace ownership; credentials additionally require recent authentication.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Signed out or revoked session"
+          },
+          "403": {
+            "description": "Access, enrollment, ownership or CSRF denied"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateAiSettings",
+        "summary": "Versioned AI configuration and access-policy update",
+        "description": "Requires an active workspace session and provider-verified strong authentication. Mutations also require same-origin CSRF protection. Settings/credential mutations require workspace ownership; credentials additionally require recent authentication.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Signed out or revoked session"
+          },
+          "403": {
+            "description": "Access, enrollment, ownership or CSRF denied"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiSettingsUpdate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai/credentials": {
+      "post": {
+        "operationId": "manageAiCredential",
+        "summary": "Connect, test, rotate or revoke encrypted OpenRouter credentials",
+        "description": "Requires an active workspace session and provider-verified strong authentication. Mutations also require same-origin CSRF protection. Settings/credential mutations require workspace ownership; credentials additionally require recent authentication.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connected": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["connected"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Signed out or revoked session"
+          },
+          "403": {
+            "description": "Access, enrollment, ownership or CSRF denied"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiCredentialRequest"
+              }
+            }
+          }
         }
       }
     }
@@ -525,31 +1208,48 @@
         "name": "id",
         "in": "path",
         "required": true,
-        "schema": { "type": "string", "format": "uuid" }
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
       },
       "TransactionId": {
         "name": "id",
         "in": "path",
         "required": true,
-        "schema": { "type": "string", "format": "uuid" }
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
       },
       "Cursor": {
         "name": "cursor",
         "in": "query",
         "required": false,
-        "schema": { "type": "string", "maxLength": 2048 }
+        "schema": {
+          "type": "string",
+          "maxLength": 2048
+        }
       },
       "PageLimit": {
         "name": "limit",
         "in": "query",
         "required": false,
-        "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 25
+        }
       },
       "JobId": {
         "name": "id",
         "in": "path",
         "required": true,
-        "schema": { "type": "string", "format": "uuid" }
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
       }
     },
     "schemas": {
@@ -572,10 +1272,19 @@
         "type": "object",
         "required": ["type", "title", "status", "detail", "code", "retryable", "correlationId"],
         "properties": {
-          "type": { "type": "string", "format": "uri" },
-          "title": { "type": "string" },
-          "status": { "type": "integer" },
-          "detail": { "type": "string" },
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
           "code": {
             "type": "string",
             "enum": [
@@ -593,67 +1302,114 @@
               "INTERNAL_ERROR"
             ]
           },
-          "retryable": { "type": "boolean" },
-          "correlationId": { "type": "string" },
+          "retryable": {
+            "type": "boolean"
+          },
+          "correlationId": {
+            "type": "string"
+          },
           "errors": {
             "type": "array",
             "items": {
               "type": "object",
               "required": ["field", "message"],
               "properties": {
-                "field": { "type": "string" },
-                "message": { "type": "string" }
+                "field": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
               }
             }
           },
-          "instance": { "type": "string" }
+          "instance": {
+            "type": "string"
+          }
         }
       },
       "CommandMetadata": {
         "type": "object",
         "required": ["idempotencyKey"],
         "properties": {
-          "idempotencyKey": { "type": "string", "minLength": 1, "maxLength": 128 },
-          "expectedVersion": { "$ref": "#/components/schemas/VersionString" }
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "expectedVersion": {
+            "$ref": "#/components/schemas/VersionString"
+          }
         }
       },
       "CommandRequest": {
         "type": "object",
         "required": ["metadata", "input"],
         "properties": {
-          "metadata": { "$ref": "#/components/schemas/CommandMetadata" },
-          "input": { "type": "object" }
+          "metadata": {
+            "$ref": "#/components/schemas/CommandMetadata"
+          },
+          "input": {
+            "type": "object"
+          }
         }
       },
       "CommandResult": {
         "type": "object",
         "required": ["operationId", "replayed", "undoAvailable", "result"],
         "properties": {
-          "operationId": { "type": "string" },
-          "replayed": { "type": "boolean" },
+          "operationId": {
+            "type": "string"
+          },
+          "replayed": {
+            "type": "boolean"
+          },
           "undoAvailable": {
             "type": "boolean",
             "description": "True when the client may offer Undo via operations.undo for this outcome."
           },
-          "result": { "type": "object" }
+          "result": {
+            "type": "object"
+          }
         }
       },
       "JobSubmit": {
         "type": "object",
         "required": ["type"],
         "properties": {
-          "type": { "type": "string", "minLength": 1, "maxLength": 120 },
-          "payload": { "type": "object" },
-          "dedupeKey": { "type": "string", "minLength": 1, "maxLength": 128 }
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "payload": {
+            "type": "object"
+          },
+          "dedupeKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
         }
       },
       "ImportPreviewRequest": {
         "type": "object",
         "required": ["importId", "fileName"],
         "properties": {
-          "importId": { "type": "string", "format": "uuid" },
-          "fileName": { "type": "string", "minLength": 1, "maxLength": 256 },
-          "previewRows": { "type": "integer", "minimum": 1, "maximum": 20 }
+          "importId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fileName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "previewRows": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          }
         }
       },
       "ImportPreview": {
@@ -670,107 +1426,232 @@
           "suggestedAccount"
         ],
         "properties": {
-          "importId": { "type": "string", "format": "uuid" },
-          "dataSourceId": { "type": "string", "format": "uuid" },
+          "importId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "dataSourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "duplicate": {
             "type": ["object", "null"],
             "required": ["isRepeat", "message"],
             "properties": {
-              "isRepeat": { "type": "boolean", "const": true },
-              "message": { "type": "string" }
+              "isRepeat": {
+                "type": "boolean",
+                "const": true
+              },
+              "message": {
+                "type": "string"
+              }
             }
           },
-          "fileName": { "type": "string" },
-          "kind": { "type": "string", "enum": ["csv", "xlsx"] },
-          "delimiter": { "type": ["string", "null"] },
-          "headers": { "type": "array", "items": { "type": "string" } },
+          "fileName": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["csv", "xlsx"]
+          },
+          "delimiter": {
+            "type": ["string", "null"]
+          },
+          "headers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "preview": {
             "type": "array",
             "items": {
               "type": "object",
               "required": ["rowNumber", "cells"],
               "properties": {
-                "rowNumber": { "type": "integer", "minimum": 1 },
-                "cells": { "type": "array", "items": { "type": "string" } }
+                "rowNumber": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "cells": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
               }
             }
           },
-          "totalRows": { "type": "integer", "minimum": 0 },
+          "totalRows": {
+            "type": "integer",
+            "minimum": 0
+          },
           "parseErrors": {
             "type": "array",
             "items": {
               "type": "object",
               "required": ["rowNumber", "message"],
               "properties": {
-                "rowNumber": { "type": "integer", "minimum": 1 },
-                "message": { "type": "string" }
+                "rowNumber": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "message": {
+                  "type": "string"
+                }
               }
             }
           },
-          "mapping": { "type": "object" },
-          "confidence": { "type": "object" },
-          "unmapped": { "type": "array", "items": { "type": "integer" } },
-          "suggestedAccount": { "type": "string" }
+          "mapping": {
+            "type": "object"
+          },
+          "confidence": {
+            "type": "object"
+          },
+          "unmapped": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "suggestedAccount": {
+            "type": "string"
+          }
         }
       },
       "UploadInitiate": {
         "type": "object",
         "required": ["fileName", "contentLength"],
         "properties": {
-          "fileName": { "type": "string", "minLength": 1, "maxLength": 256 },
-          "contentLength": { "type": "integer", "minimum": 1, "maximum": 10485760 }
+          "fileName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "contentLength": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10485760
+          }
         }
       },
       "UploadInitiated": {
         "type": "object",
         "required": ["importId", "objectKey", "mime", "maxBytes"],
         "properties": {
-          "importId": { "type": "string", "format": "uuid" },
-          "objectKey": { "type": "string" },
-          "mime": { "type": "string" },
-          "maxBytes": { "type": "integer", "minimum": 1 }
+          "importId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "objectKey": {
+            "type": "string"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 1
+          }
         }
       },
       "UploadComplete": {
         "type": "object",
         "required": ["importId", "objectKey", "fileName"],
         "properties": {
-          "importId": { "type": "string", "format": "uuid" },
-          "objectKey": { "type": "string", "minLength": 1, "maxLength": 512 },
-          "fileName": { "type": "string", "minLength": 1, "maxLength": 256 },
-          "expectedSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          "importId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "objectKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "fileName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "expectedSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
         }
       },
       "UploadCompleted": {
         "type": "object",
         "required": ["workspaceId", "importId", "objectKey", "fileName", "mime", "bytes", "sha256"],
         "properties": {
-          "workspaceId": { "type": "string", "format": "uuid" },
-          "importId": { "type": "string", "format": "uuid" },
-          "objectKey": { "type": "string" },
-          "fileName": { "type": "string" },
-          "mime": { "type": "string" },
-          "bytes": { "type": "integer", "minimum": 1 },
-          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "importId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "objectKey": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
         }
       },
       "JobStatus": {
         "type": "object",
         "required": ["id", "type", "status", "attempts", "maxAttempts", "createdAt", "updatedAt"],
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "type": { "type": "string" },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string"
+          },
           "status": {
             "type": "string",
             "enum": ["queued", "running", "succeeded", "failed", "cancelled"]
           },
-          "progressStage": { "type": ["string", "null"] },
-          "progressPercent": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
-          "attempts": { "type": "integer", "minimum": 0 },
-          "maxAttempts": { "type": "integer", "minimum": 1 },
-          "error": { "type": ["object", "null"] },
-          "createdAt": { "type": "string", "format": "date-time" },
-          "updatedAt": { "type": "string", "format": "date-time" }
+          "progressStage": {
+            "type": ["string", "null"]
+          },
+          "progressPercent": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "attempts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maxAttempts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "error": {
+            "type": ["object", "null"]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "AccountBalance": {
@@ -791,9 +1672,16 @@
             "type": ["string", "null"],
             "description": "Decimal-string minor units; null means unknown, never zero."
           },
-          "currencyCode": { "type": "string" },
-          "observedAt": { "type": "string", "format": "date-time" },
-          "source": { "type": "string" }
+          "currencyCode": {
+            "type": "string"
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source": {
+            "type": "string"
+          }
         }
       },
       "Account": {
@@ -811,19 +1699,41 @@
           "balance"
         ],
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "name": { "type": "string" },
-          "institutionName": { "type": ["string", "null"] },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "institutionName": {
+            "type": ["string", "null"]
+          },
           "accountType": {
             "type": "string",
             "enum": ["CHECKING", "SAVINGS", "CASH", "CREDIT", "INVESTMENT", "WALLET", "OTHER"]
           },
-          "currencyCode": { "type": "string" },
-          "isSpendable": { "type": "boolean" },
-          "includeInNetWorth": { "type": "boolean" },
-          "archivedAt": { "type": ["string", "null"], "format": "date-time" },
-          "createdAt": { "type": "string", "format": "date-time" },
-          "updatedAt": { "type": "string", "format": "date-time" },
+          "currencyCode": {
+            "type": "string"
+          },
+          "isSpendable": {
+            "type": "boolean"
+          },
+          "includeInNetWorth": {
+            "type": "boolean"
+          },
+          "archivedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
           "balanceState": {
             "type": "string",
             "enum": ["unknown", "ok", "unreconciled", "conflict"],
@@ -831,7 +1741,14 @@
           },
           "balance": {
             "description": "Latest known snapshot; null means the balance is unknown, never zero.",
-            "oneOf": [{ "$ref": "#/components/schemas/AccountBalance" }, { "type": "null" }]
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountBalance"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -839,7 +1756,12 @@
         "type": "object",
         "required": ["items"],
         "properties": {
-          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Account" } }
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Account"
+            }
+          }
         }
       },
       "BalancePreview": {
@@ -853,18 +1775,28 @@
           "truncated"
         ],
         "properties": {
-          "applicableCount": { "type": "integer", "minimum": 0 },
-          "skippedCrossCurrency": { "type": "integer", "minimum": 0 },
+          "applicableCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "skippedCrossCurrency": {
+            "type": "integer",
+            "minimum": 0
+          },
           "projectedCurrentMinor": {
             "type": ["string", "null"],
             "description": "Decimal-string minor units; null when unresolved."
           },
-          "unresolved": { "type": "boolean" },
+          "unresolved": {
+            "type": "boolean"
+          },
           "reason": {
             "type": ["string", "null"],
             "enum": ["no-cutoff", "no-snapshot-amount", "mixed-currency", "truncated", null]
           },
-          "truncated": { "type": "boolean" }
+          "truncated": {
+            "type": "boolean"
+          }
         }
       },
       "Transaction": {
@@ -884,28 +1816,189 @@
           "updatedAt"
         ],
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "accountId": { "type": "string", "format": "uuid" },
-          "status": { "type": "string", "enum": ["PENDING", "POSTED", "VOIDED"] },
-          "direction": { "type": "string", "enum": ["credit", "debit"] },
-          "amountMinor": { "$ref": "#/components/schemas/NonNegativeMinorString" },
-          "currencyCode": { "type": "string" },
-          "effectiveDate": { "type": "string", "format": "date" },
-          "description": { "type": "string" },
-          "note": { "type": ["string", "null"] },
-          "excludedFromAnalytics": { "type": "boolean" },
-          "version": { "$ref": "#/components/schemas/VersionString" },
-          "createdAt": { "type": "string", "format": "date-time" },
-          "updatedAt": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["PENDING", "POSTED", "VOIDED"]
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["credit", "debit"]
+          },
+          "amountMinor": {
+            "$ref": "#/components/schemas/NonNegativeMinorString"
+          },
+          "currencyCode": {
+            "type": "string"
+          },
+          "effectiveDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "description": {
+            "type": "string"
+          },
+          "note": {
+            "type": ["string", "null"]
+          },
+          "excludedFromAnalytics": {
+            "type": "boolean"
+          },
+          "version": {
+            "$ref": "#/components/schemas/VersionString"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "TransactionPage": {
         "type": "object",
         "required": ["items"],
         "properties": {
-          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Transaction" } },
-          "nextCursor": { "type": ["string", "null"] }
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Transaction"
+            }
+          },
+          "nextCursor": {
+            "type": ["string", "null"]
+          }
         }
+      },
+      "TransactionViewDefinition": {
+        "type": "object",
+        "required": ["filters", "sort", "visibleColumns"],
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/TransactionViewFilters"
+          },
+          "sort": {
+            "type": "string",
+            "enum": ["newest", "oldest"]
+          },
+          "visibleColumns": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": ["date", "description", "account", "direction", "amount"]
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "SavedTransactionView": {
+        "type": "object",
+        "required": ["id", "name", "definition", "createdAt", "updatedAt"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "definition": {
+            "$ref": "#/components/schemas/TransactionViewDefinition"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SavedTransactionViewList": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavedTransactionView"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateSavedTransactionView": {
+        "type": "object",
+        "required": ["name", "definition"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "definition": {
+            "$ref": "#/components/schemas/TransactionViewDefinition"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateFrozenTransactionSelection": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10000,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "filter": {
+            "$ref": "#/components/schemas/TransactionViewFilters"
+          }
+        },
+        "anyOf": [
+          {
+            "required": ["ids"]
+          },
+          {
+            "required": ["filter"]
+          }
+        ],
+        "additionalProperties": false
+      },
+      "FrozenTransactionSelection": {
+        "type": "object",
+        "required": ["id", "count", "expiresAt"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
       },
       "TransactionSource": {
         "type": "object",
@@ -918,36 +2011,75 @@
           "rawPayload"
         ],
         "properties": {
-          "sourceTransactionId": { "type": "string", "format": "uuid" },
+          "sourceTransactionId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "relationship": {
             "type": "string",
             "enum": ["PRIMARY", "PENDING_PREDECESSOR", "MERGED", "OTHER"]
           },
-          "dataSourceId": { "type": "string", "format": "uuid" },
-          "dataSourceName": { "type": "string" },
-          "importId": { "type": ["string", "null"], "format": "uuid" },
-          "fileName": { "type": ["string", "null"] },
-          "observedAt": { "type": "string", "format": "date-time" },
-          "rawPayload": { "type": "object" }
+          "dataSourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "dataSourceName": {
+            "type": "string"
+          },
+          "importId": {
+            "type": ["string", "null"],
+            "format": "uuid"
+          },
+          "fileName": {
+            "type": ["string", "null"]
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "rawPayload": {
+            "type": "object"
+          }
         }
       },
       "TransactionDetail": {
         "type": "object",
         "required": ["accountName", "sources", "tags"],
         "allOf": [
-          { "$ref": "#/components/schemas/Transaction" },
+          {
+            "$ref": "#/components/schemas/Transaction"
+          },
           {
             "type": "object",
             "properties": {
-              "accountName": { "type": "string" },
-              "categoryId": { "type": ["string", "null"], "format": "uuid" },
-              "categoryName": { "type": ["string", "null"] },
-              "counterpartyId": { "type": ["string", "null"], "format": "uuid" },
-              "counterpartyName": { "type": ["string", "null"] },
-              "tags": { "type": "array", "items": { "type": "string" } },
+              "accountName": {
+                "type": "string"
+              },
+              "categoryId": {
+                "type": ["string", "null"],
+                "format": "uuid"
+              },
+              "categoryName": {
+                "type": ["string", "null"]
+              },
+              "counterpartyId": {
+                "type": ["string", "null"],
+                "format": "uuid"
+              },
+              "counterpartyName": {
+                "type": ["string", "null"]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
               "sources": {
                 "type": "array",
-                "items": { "$ref": "#/components/schemas/TransactionSource" }
+                "items": {
+                  "$ref": "#/components/schemas/TransactionSource"
+                }
               }
             }
           }
@@ -957,18 +2089,36 @@
         "type": "object",
         "required": ["id", "name", "kind"],
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "name": { "type": "string" },
-          "kind": { "type": "string", "enum": ["expense", "income", "transfer"] },
-          "systemCategoryCode": { "type": ["string", "null"] },
-          "archivedAt": { "type": ["string", "null"], "format": "date-time" }
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["expense", "income", "transfer"]
+          },
+          "systemCategoryCode": {
+            "type": ["string", "null"]
+          },
+          "archivedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          }
         }
       },
       "CategoryList": {
         "type": "object",
         "required": ["items"],
         "properties": {
-          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Category" } }
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Category"
+            }
+          }
         }
       },
       "MatchCandidate": {
@@ -984,31 +2134,380 @@
           "createdAt"
         ],
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "importId": { "type": "string", "format": "uuid" },
-          "sourceTransactionId": { "type": "string", "format": "uuid" },
-          "candidateTransactionId": { "type": "string", "format": "uuid" },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "importId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceTransactionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "candidateTransactionId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "matchRule": {
             "type": "string",
             "enum": ["trusted-external-id", "fuzzy-date-amount-description"]
           },
-          "candidateDate": { "type": "string" },
-          "candidateDescription": { "type": "string" },
-          "candidateAmountMinor": { "type": "string" },
-          "candidateCurrency": { "type": "string" },
-          "stagedDescription": { "type": "string" },
-          "stagedDate": { "type": "string" },
-          "stagedAmountMinor": { "type": "string" },
-          "stagedCurrency": { "type": "string" },
-          "stagedDirection": { "type": "string", "enum": ["credit", "debit"] },
-          "createdAt": { "type": "string", "format": "date-time" }
+          "candidateDate": {
+            "type": "string"
+          },
+          "candidateDescription": {
+            "type": "string"
+          },
+          "candidateAmountMinor": {
+            "type": "string"
+          },
+          "candidateCurrency": {
+            "type": "string"
+          },
+          "stagedDescription": {
+            "type": "string"
+          },
+          "stagedDate": {
+            "type": "string"
+          },
+          "stagedAmountMinor": {
+            "type": "string"
+          },
+          "stagedCurrency": {
+            "type": "string"
+          },
+          "stagedDirection": {
+            "type": "string",
+            "enum": ["credit", "debit"]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "MatchCandidateList": {
         "type": "object",
         "required": ["items"],
         "properties": {
-          "items": { "type": "array", "items": { "$ref": "#/components/schemas/MatchCandidate" } }
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MatchCandidate"
+            }
+          }
+        }
+      },
+      "AiConversation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["id", "title", "updatedAt"],
+        "additionalProperties": false
+      },
+      "AiEvidence": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "type": "string"
+          },
+          "href": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "label", "href"],
+        "additionalProperties": false
+      },
+      "AiToolActivity": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "succeeded", "failed", "cancelled"]
+          }
+        },
+        "required": ["name", "status"],
+        "additionalProperties": false
+      },
+      "AiChatMessage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["user", "assistant", "tool"]
+          },
+          "content": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AiEvidence"
+            }
+          },
+          "toolActivity": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AiToolActivity"
+            }
+          }
+        },
+        "required": ["id", "role", "content"],
+        "additionalProperties": false
+      },
+      "AiChatRequest": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "context": {
+            "type": "object",
+            "properties": {
+              "pathname": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": ["pathname"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["message"],
+        "additionalProperties": false
+      },
+      "AiChatEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "conversation"
+              },
+              "conversationId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": ["type", "conversationId"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "text"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "text"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "tool"
+              },
+              "name": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["running", "succeeded", "failed", "cancelled"]
+              }
+            },
+            "required": ["type", "name", "status"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "evidence"
+              },
+              "evidence": {
+                "$ref": "#/components/schemas/AiEvidence"
+              }
+            },
+            "required": ["type", "evidence"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "done"
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": ["type", "runId"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "error"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "message"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "AiSettingsUpdate": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "enum": ["included", "custom"]
+          },
+          "model": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "restorePrompt": {
+            "type": "boolean"
+          },
+          "excludedAccountIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": ["expectedVersion"],
+        "additionalProperties": false
+      },
+      "AiCredentialRequest": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "enum": ["connect", "test", "revoke"]
+          },
+          "apiKey": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": ["action", "expectedVersion"],
+        "additionalProperties": false
+      },
+      "TransactionViewFilters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "q": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "accountIds": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "categoryIds": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "counterpartyIds": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "directions": {
+            "type": "array",
+            "maxItems": 2,
+            "items": {
+              "type": "string",
+              "enum": ["credit", "debit"]
+            }
+          },
+          "dateFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "dateTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "excludedFromAnalytics": {
+            "type": "boolean"
+          },
+          "tagNames": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
         }
       }
     },
@@ -1017,7 +2516,9 @@
         "description": "Malformed request (see `errors` for fields)",
         "content": {
           "application/problem+json": {
-            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
           }
         }
       },
@@ -1025,7 +2526,9 @@
         "description": "Unknown job, command, or entity",
         "content": {
           "application/problem+json": {
-            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
           }
         }
       },
@@ -1033,7 +2536,9 @@
         "description": "Caller may not perform this action",
         "content": {
           "application/problem+json": {
-            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
           }
         }
       },
@@ -1041,7 +2546,9 @@
         "description": "Version conflict or idempotency-key reuse",
         "content": {
           "application/problem+json": {
-            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
           }
         }
       },
@@ -1049,7 +2556,9 @@
         "description": "Same dedupe key submitted with a different payload",
         "content": {
           "application/problem+json": {
-            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
           }
         }
       },
@@ -1057,7 +2566,9 @@
         "description": "Input is well-formed but violates a domain invariant",
         "content": {
           "application/problem+json": {
-            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
           }
         }
       },
@@ -1065,7 +2576,9 @@
         "description": "Too many requests (honour `Retry-After`)",
         "content": {
           "application/problem+json": {
-            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
           }
         }
       }

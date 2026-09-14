@@ -2,50 +2,57 @@ import type { ReactNode } from "react";
 import { SideNav } from "./SideNav";
 import { JobIndicator } from "./JobIndicator";
 import { NotificationMount } from "./NotificationMount";
+import { ChatProvider } from "./ChatWorkspace";
 import { AiPanel } from "./AiPanel";
 import { ShellIdentity } from "./ShellIdentity";
+import { CommandPalette } from "./CommandPalette";
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "232px minmax(0, 1fr) 320px",
-        gridTemplateRows: "48px minmax(0, 1fr)",
-        gridTemplateAreas: `"nav topbar topbar" "nav main ai"`,
-        minHeight: "100vh",
-      }}
-    >
-      <div style={{ gridArea: "nav", borderRight: "1px solid var(--moneo-border, #2a3442)" }}>
-        <div style={{ padding: "16px 12px 0", fontWeight: 800, fontSize: 18 }}>Moneo</div>
-        <SideNav />
-      </div>
-      <header
-        style={{
-          gridArea: "topbar",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 16px",
-          borderBottom: "1px solid var(--moneo-border, #2a3442)",
-        }}
-      >
-        <JobIndicator />
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <ShellIdentity />
-          <NotificationMount />
-        </div>
-      </header>
-      <main style={{ gridArea: "main", padding: 24, minWidth: 0 }}>{children}</main>
+    <ChatProvider>
       <div
         style={{
-          gridArea: "ai",
-          borderLeft: "1px solid var(--moneo-border, #2a3442)",
-          minWidth: 0,
+          display: "grid",
+          gridTemplateColumns: "232px minmax(0, 1fr) 320px",
+          gridTemplateRows: "48px minmax(0, 1fr)",
+          gridTemplateAreas: `"nav topbar topbar" "nav main ai"`,
+          minHeight: "100vh",
         }}
       >
-        <AiPanel />
+        <div style={{ gridArea: "nav", borderRight: "1px solid var(--moneo-border, #2a3442)" }}>
+          <div style={{ padding: "16px 12px 0", fontWeight: 800, fontSize: 18 }}>Moneo</div>
+          <SideNav />
+        </div>
+        <header
+          style={{
+            gridArea: "topbar",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 16px",
+            borderBottom: "1px solid var(--moneo-border, #2a3442)",
+          }}
+        >
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <CommandPalette />
+            <JobIndicator />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <ShellIdentity />
+            <NotificationMount />
+          </div>
+        </header>
+        <main style={{ gridArea: "main", padding: 24, minWidth: 0 }}>{children}</main>
+        <div
+          style={{
+            gridArea: "ai",
+            borderLeft: "1px solid var(--moneo-border, #2a3442)",
+            minWidth: 0,
+          }}
+        >
+          <AiPanel />
+        </div>
       </div>
-    </div>
+    </ChatProvider>
   );
 }
