@@ -7,7 +7,7 @@ import { ImportWizardHost } from "@/components/ImportWizardHost";
  */
 export default function ImportPage() {
   return (
-    <main style={{ maxWidth: 720, margin: "0 auto", padding: 24 }}>
+    <main style={{ maxWidth: 960, margin: "0 auto", padding: 24 }}>
       <ImportWizardHost />
     </main>
   );

@@ -34,6 +34,62 @@ const MAPPING_FIELDS: { field: keyof WizardMapping; label: string }[] = [
   { field: "account", label: "Account" },
 ];
 
+function previewExtension(fileName: string | undefined): string {
+  const ext = fileName?.split(".").pop()?.trim().toUpperCase() ?? "";
+  return ext === "" ? "FILE" : ext.slice(0, 5);
+}
+
+function isNumericPreviewColumn(header: string): boolean {
+  return /amount|fee|balance|credit|debit|price|total|sum/i.test(header);
+}
+
+function isSignedPreviewColumn(header: string): boolean {
+  return /amount|balance|credit|debit/i.test(header);
+}
+
+function isDescriptionPreviewColumn(header: string): boolean {
+  return /descrip|narrative|detail|memo|reference|payee/i.test(header);
+}
+
+function isStatePreviewColumn(header: string): boolean {
+  return /^(state|status)$/i.test(header.trim());
+}
+
+function isTypePreviewColumn(header: string): boolean {
+  return /^(type|kind|transaction\s?type)$/i.test(header.trim());
+}
+
+function previewAmountColor(header: string, cell: string): string | undefined {
+  if (!isSignedPreviewColumn(header)) {
+    return undefined;
+  }
+  const value = Number(cell.replace(/[^0-9.\-]/g, ""));
+  if (!Number.isFinite(value) || value === 0) {
+    return undefined;
+  }
+  return value < 0 ? "#f0883e" : "#3fb950";
+}
+
+function previewStateStyle(cell: string): { background: string; color: string } {
+  const normalized = cell.trim().toUpperCase();
+  if (normalized === "COMPLETED" || normalized === "SUCCESS" || normalized === "SETTLED") {
+    return { background: "rgb(63 185 80 / 0.14)", color: "#7ee787" };
+  }
+  if (normalized === "PENDING" || normalized === "PROCESSING" || normalized === "AUTHORISED") {
+    return { background: "rgb(210 153 34 / 0.16)", color: "#e3b341" };
+  }
+  if (
+    normalized === "FAILED" ||
+    normalized === "DECLINED" ||
+    normalized === "CANCELLED" ||
+    normalized === "CANCELED" ||
+    normalized === "REJECTED"
+  ) {
+    return { background: "rgb(248 81 73 / 0.14)", color: "#ff7b72" };
+  }
+  return { background: "rgb(154 167 184 / 0.14)", color: "#c4cdd8" };
+}
+
 export interface ImportWizardCallbacks {
   onFileSelected: (file: File) => void;
   onContinue: () => void;
@@ -113,40 +169,173 @@ export function ImportWizard({
       ) : null}
 
       {state.step === "preview" && state.preview ? (
-        <div style={{ display: "grid", gap: 8 }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>Preview of {state.file?.fileName}</h2>
+        <div style={{ display: "grid", gap: 12 }}>
+          <div
+            style={{
+              display: "grid",
+              gap: 6,
+              border: "1px solid var(--moneo-border)",
+              borderRadius: 12,
+              padding: "12px 14px",
+              background: "var(--moneo-surface)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <span
+                style={{
+                  flexShrink: 0,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.06em",
+                  color: "var(--moneo-accent)",
+                  background: "rgb(79 140 255 / 0.12)",
+                  border: "1px solid rgb(79 140 255 / 0.35)",
+                  borderRadius: 6,
+                  padding: "2px 8px",
+                }}
+              >
+                {previewExtension(state.file?.fileName)}
+              </span>
+              <h2
+                title={state.file?.fileName}
+                className="import-preview-title"
+                style={{ margin: 0, fontSize: 16, fontWeight: 650 }}
+              >
+                {state.file?.fileName ?? "Statement preview"}
+              </h2>
+            </div>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--moneo-muted)" }}>
+              {`${state.preview.totalRows} data rows · Showing the first ${state.preview.preview.length} · ${state.preview.headers.length} columns`}
+            </p>
+          </div>
           {state.preview.duplicate ? (
-            <p role="status" style={{ margin: 0 }}>
+            <p
+              role="status"
+              style={{
+                margin: 0,
+                fontSize: 13,
+                border: "1px solid rgb(210 153 34 / 0.45)",
+                background: "rgb(210 153 34 / 0.1)",
+                borderRadius: 10,
+                padding: "10px 12px",
+              }}
+            >
               {`Already imported: ${state.preview.duplicate.message}`}
             </p>
           ) : null}
-          <p style={{ margin: 0, fontSize: 13 }}>
-            {`${state.preview.totalRows} data rows. Showing the first ${state.preview.preview.length}.`}
-          </p>
-          <table>
-            <caption>First rows of the statement file</caption>
-            <thead>
-              <tr>
-                {state.preview.headers.map((header, index) => (
-                  <th key={`${header}-${index}`} scope="col">
-                    {header}
+          <div className="import-preview-scroll" role="region" aria-label="Statement rows" tabIndex={0}>
+            <table>
+              <caption>First rows of the statement file</caption>
+              <thead>
+                <tr>
+                  <th scope="col" aria-label="Row number" title="Source row number">
+                    #
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {state.preview.preview.map((row) => (
-                <tr key={row.rowNumber}>
-                  {row.cells.map((cell, index) => (
-                    <td key={index}>{cell}</td>
+                  {state.preview.headers.map((header, index) => (
+                    <th
+                      key={`${header}-${index}`}
+                      scope="col"
+                      title={header}
+                      style={
+                        isNumericPreviewColumn(header) ? { textAlign: "right" } : undefined
+                      }
+                    >
+                      {header}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {state.preview.preview.map((row) => (
+                  <tr key={row.rowNumber}>
+                    <td style={{ color: "var(--moneo-muted)", fontSize: 12 }}>{row.rowNumber}</td>
+                    {row.cells.map((cell, index) => {
+                      const header = state.preview?.headers[index] ?? "";
+                      const numeric = isNumericPreviewColumn(header);
+                      const description = isDescriptionPreviewColumn(header);
+                      const stateColumn = isStatePreviewColumn(header);
+                      const typeColumn = isTypePreviewColumn(header);
+                      const blank = cell.trim() === "";
+                      if (stateColumn && !blank) {
+                        const badge = previewStateStyle(cell);
+                        return (
+                          <td key={index}>
+                            <span
+                              style={{
+                                display: "inline-block",
+                                fontSize: 11,
+                                fontWeight: 700,
+                                letterSpacing: "0.04em",
+                                background: badge.background,
+                                color: badge.color,
+                                borderRadius: 999,
+                                padding: "2px 10px",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {cell}
+                            </span>
+                          </td>
+                        );
+                      }
+                      if (typeColumn && !blank) {
+                        return (
+                          <td key={index}>
+                            <span
+                              style={{
+                                display: "inline-block",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                color: "var(--moneo-text)",
+                                background: "rgb(154 167 184 / 0.12)",
+                                border: "1px solid rgb(154 167 184 / 0.25)",
+                                borderRadius: 999,
+                                padding: "1px 10px",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {cell}
+                            </span>
+                          </td>
+                        );
+                      }
+                      return (
+                        <td
+                          key={index}
+                          title={cell}
+                          style={{
+                            textAlign: numeric ? "right" : "left",
+                            whiteSpace: description ? "normal" : "nowrap",
+                            minWidth: description ? 200 : undefined,
+                            maxWidth: description ? 300 : undefined,
+                            color: blank
+                              ? "var(--moneo-muted)"
+                              : (previewAmountColor(header, cell) ?? undefined),
+                            fontWeight:
+                              previewAmountColor(header, cell) !== undefined ? 600 : undefined,
+                          }}
+                        >
+                          {blank ? "—" : cell}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {state.preview.parseErrors.length > 0 ? (
-            <div role="alert">
-              <p style={{ margin: "0 0 4px" }}>
+            <div
+              role="alert"
+              style={{
+                border: "1px solid rgb(248 81 73 / 0.45)",
+                background: "rgb(248 81 73 / 0.08)",
+                borderRadius: 10,
+                padding: "10px 12px",
+                fontSize: 13,
+              }}
+            >
+              <p style={{ margin: "0 0 4px", fontWeight: 650 }}>
                 {`${state.preview.parseErrors.length} malformed rows will be skipped:`}
               </p>
               <ul style={{ margin: 0, paddingLeft: 20 }}>
@@ -157,10 +346,36 @@ export function ImportWizard({
             </div>
           ) : null}
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" onClick={callbacks.onBack}>
+            <button
+              type="button"
+              onClick={callbacks.onBack}
+              style={{
+                border: "1px solid var(--moneo-border)",
+                background: "transparent",
+                color: "var(--moneo-text)",
+                borderRadius: 8,
+                padding: "8px 14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
               Back
             </button>
-            <button type="button" onClick={callbacks.onContinue} disabled={!forward}>
+            <button
+              type="button"
+              onClick={callbacks.onContinue}
+              disabled={!forward}
+              style={{
+                border: "none",
+                background: "var(--moneo-accent)",
+                color: "#fff",
+                borderRadius: 8,
+                padding: "8px 16px",
+                fontWeight: 700,
+                cursor: forward ? "pointer" : "not-allowed",
+                opacity: forward ? 1 : 0.5,
+              }}
+            >
               Continue to mapping
             </button>
           </div>
