@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: dark;
   --moneo-bg: #0f141b;
   --moneo-surface: #171e28;
   --moneo-border: #2a3442;
@@ -30,6 +31,30 @@ a {
 :focus-visible {
   outline: 2px solid var(--moneo-accent);
   outline-offset: 2px;
+}
+
+/* Native form controls render on a dark page. Without an explicit dark
+   color-scheme + colors, browsers pop the <select> listbox in light mode
+   (white background) while options inherit the light page text — white on
+   white and unreadable, as seen on the import mapping step. */
+select,
+input,
+textarea {
+  color-scheme: dark;
+}
+
+select {
+  border: 1px solid var(--moneo-border);
+  background: var(--moneo-surface);
+  color: var(--moneo-text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  max-width: 100%;
+}
+
+select option {
+  background: var(--moneo-surface);
+  color: var(--moneo-text);
 }
 
 .finance-controls :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
