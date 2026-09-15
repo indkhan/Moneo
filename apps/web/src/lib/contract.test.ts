@@ -220,11 +220,62 @@ const wireJob: JobStatus = {
   attempts: 1,
   maxAttempts: 5,
   error: null,
+  result: null,
   createdAt: "2026-09-12T00:00:00Z",
   updatedAt: "2026-09-12T00:00:00Z",
 };
 
 describe("generated client", () => {
+  it("copies the CSRF cookie into mutation request headers", async () => {
+    const previousDocument = globalThis.document;
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: { cookie: "__Host-moneo_csrf=csrf-123" },
+    });
+    try {
+      let headers: HeadersInit | undefined;
+      const client = createClient({
+        fetchFn: stubFetch((_url, init) => {
+          headers = init?.headers;
+          return { ...wireJob, status: "queued" };
+        }),
+      });
+
+      await client.submitJob({ type: "import.process" });
+
+      expect(new Headers(headers).get("x-csrf-token")).toBe("csrf-123");
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      });
+    }
+  });
+
+  it("prefers the local CSRF cookie when an old secure cookie remains", async () => {
+    const previousDocument = globalThis.document;
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: { cookie: "__Host-moneo_csrf=old; moneo_csrf=current" },
+    });
+    try {
+      let headers: HeadersInit | undefined;
+      const client = createClient({
+        fetchFn: stubFetch((_url, init) => {
+          headers = init?.headers;
+          return { ...wireJob, status: "queued" };
+        }),
+      });
+      await client.submitJob({ type: "import.process" });
+      expect(new Headers(headers).get("x-csrf-token")).toBe("current");
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      });
+    }
+  });
+
   it("lists, reads, retries, stops, submits, and executes through typed methods", async () => {
     const seen: string[] = [];
     const client = createClient({
@@ -302,6 +353,20 @@ describe("generated client", () => {
     const error = await client.listJobs().catch((e: unknown) => e);
     expect((error as ApiError).problem.code).toBe("INTERNAL_ERROR");
     expect((error as ApiError).status).toBe(502);
+  });
+
+  it("keeps legacy error and reason fields visible", async () => {
+    const client = createClient({
+      fetchFn: (() =>
+        Promise.resolve({
+          ok: false,
+          status: 403,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: () => Promise.resolve({ error: "forbidden", reason: "csrf_missing_cookie" }),
+        })) as unknown as typeof fetch,
+    });
+    const error = await client.listJobs().catch((e: unknown) => e);
+    expect((error as ApiError).problem.detail).toContain("csrf_missing_cookie");
   });
 });
 

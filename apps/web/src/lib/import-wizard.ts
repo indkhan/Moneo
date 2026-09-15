@@ -59,7 +59,15 @@ export interface WizardPreview {
 }
 
 export type WizardMapping = Record<
-  "date" | "description" | "amount" | "credit" | "debit" | "currency" | "direction" | "account",
+  | "date"
+  | "description"
+  | "amount"
+  | "fee"
+  | "credit"
+  | "debit"
+  | "currency"
+  | "direction"
+  | "account",
   number | null
 >;
 
@@ -69,6 +77,7 @@ export interface WizardJob {
   progressStage: string | null;
   progressPercent: number | null;
   errorMessage: string | null;
+  result?: Record<string, unknown> | null;
 }
 
 export interface ImportWizardState {
@@ -211,6 +220,7 @@ export function applyJobSubmitted(state: ImportWizardState, jobId: string): Impo
       progressStage: null,
       progressPercent: null,
       errorMessage: null,
+      result: null,
     },
     error: null,
   };
@@ -302,6 +312,7 @@ export function resumeWizardProgress(saved: unknown): ImportWizardState | null {
       progressStage: null,
       progressPercent: null,
       errorMessage: null,
+      result: null,
     },
   };
 }
@@ -310,6 +321,10 @@ export interface WizardSummary {
   fileName: string;
   totalRows: number;
   parseErrors: number;
+  importedRows: number;
+  skippedRows: number;
+  duplicateRows: number;
+  reviewRows: number;
   mappedFields: string[];
   accountName: string;
   status: WizardJob["status"] | "not-started";
@@ -319,6 +334,12 @@ export interface WizardSummary {
 
 /** Everything the summary step renders, derived — never stored — from state. */
 export function wizardSummary(state: ImportWizardState): WizardSummary {
+  const count = (key: string, fallback = 0): number => {
+    const value = state.job?.result?.[key];
+    return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : fallback;
+  };
   const mappedFields =
     state.mapping === null
       ? []
@@ -329,6 +350,10 @@ export function wizardSummary(state: ImportWizardState): WizardSummary {
     fileName: state.file?.fileName ?? "—",
     totalRows: state.preview?.totalRows ?? 0,
     parseErrors: state.preview?.parseErrors.length ?? 0,
+    importedRows: count("newCount"),
+    skippedRows: count("errorCount", state.preview?.parseErrors.length ?? 0),
+    duplicateRows: count("duplicateCount"),
+    reviewRows: count("reviewCount"),
     mappedFields,
     accountName: state.accountName.trim() || state.preview?.suggestedAccount || "—",
     status: state.job?.status ?? "not-started",

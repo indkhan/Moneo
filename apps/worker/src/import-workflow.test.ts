@@ -50,6 +50,7 @@ const CSV_MAPPING = {
   currency: null,
   direction: null,
   account: null,
+  fee: null,
 };
 
 function csvInput(overrides: Partial<ImportJobInput> = {}): ImportJobInput {
@@ -327,6 +328,32 @@ describe("stage order and summary", () => {
       liveCtx(),
     );
     expect(named.sourceAccountId).not.toBe(first.sourceAccountId);
+  });
+
+  it("uses a mapped account column to keep statement products separate", async () => {
+    const store = createMemoryImportStore({
+      objects: {
+        "quarantine/key/statement.csv": bytesOf(
+          "product,date,desc,amount\nCurrent,2026-01-01,Coffee,-3.50\nSavings,2026-01-02,Transfer,100.00\n",
+        ),
+      },
+    });
+    const seen: Array<{ id: string; label: string | null | undefined }> = [];
+    await runImportWorkflow(
+      store,
+      csvInput({ mapping: { ...CSV_MAPPING, date: 1, description: 2, amount: 3, account: 0 } }),
+      liveCtx(),
+      {
+        canonicalize: {
+          canonicalize: (input) => {
+            seen.push({ id: input.sourceAccountId, label: input.sourceAccountLabel });
+            return Promise.resolve({ disposition: "accepted" });
+          },
+        },
+      },
+    );
+    expect(seen.map((row) => row.label)).toEqual(["Current", "Savings"]);
+    expect(new Set(seen.map((row) => row.id)).size).toBe(2);
   });
 
   it("exposes the stage contract in order", () => {

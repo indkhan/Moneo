@@ -39,6 +39,7 @@ const CSV_MAPPING = {
   currency: null,
   direction: null,
   account: null,
+  fee: null,
 };
 
 function csvInput(overrides: Partial<ImportJobInput> = {}): ImportJobInput {

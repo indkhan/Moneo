@@ -52,6 +52,7 @@ export function toJobStatus(job: BackgroundJob): JobStatus {
     attempts: job.attempts,
     maxAttempts: job.maxAttempts,
     error: job.error,
+    result: job.result,
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),
   };

@@ -24,12 +24,21 @@ import { DomainError } from "@moneo/shared/problem";
  */
 
 export type MappedField =
-  "date" | "description" | "amount" | "credit" | "debit" | "currency" | "direction" | "account";
+  | "date"
+  | "description"
+  | "amount"
+  | "fee"
+  | "credit"
+  | "debit"
+  | "currency"
+  | "direction"
+  | "account";
 
 export interface ColumnMapping {
   date: number | null;
   description: number | null;
   amount: number | null;
+  fee: number | null;
   credit: number | null;
   debit: number | null;
   currency: number | null;
@@ -49,6 +58,7 @@ export interface DetectedMapping {
 const FIELD_ORDER: readonly MappedField[] = [
   "date",
   "amount",
+  "fee",
   "credit",
   "debit",
   "currency",
@@ -64,6 +74,7 @@ const SYNONYMS: Record<MappedField, readonly string[]> = {
     "transactiondate",
     "valuedate",
     "postingdate",
+    "completeddate",
     "datum",
     "buchungstag",
     "buchung",
@@ -72,6 +83,7 @@ const SYNONYMS: Record<MappedField, readonly string[]> = {
     "posted",
   ],
   amount: ["amount", "betrag", "value", "umsatz", "summe"],
+  fee: ["fee", "fees", "gebuhr", "gebuehr"],
   credit: ["credit", "haben", "gutschrift", "eingang", "zufluss", "einnahmen"],
   debit: ["debit", "soll", "lastschrift", "ausgang", "belastung", "ausgaben"],
   currency: ["currency", "ccy", "wahrung", "waehrung"],
@@ -87,6 +99,7 @@ const SYNONYMS: Record<MappedField, readonly string[]> = {
     "kontonummer",
     "wallet",
     "kontobezeichnung",
+    "product",
   ],
   description: [
     "description",
@@ -138,6 +151,7 @@ export function detectColumnMapping(headers: string[]): DetectedMapping {
     date: null,
     description: null,
     amount: null,
+    fee: null,
     credit: null,
     debit: null,
     currency: null,
@@ -148,6 +162,7 @@ export function detectColumnMapping(headers: string[]): DetectedMapping {
     date: "none",
     description: "none",
     amount: "none",
+    fee: "none",
     credit: "none",
     debit: "none",
     currency: "none",
@@ -278,7 +293,10 @@ function serialToISO(serial: number): string | null {
  */
 export function parseStatementDate(raw: string): string {
   const text = raw.trim();
-  let match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  let match =
+    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):?[0-5]\d)?)?$/.exec(
+      text,
+    );
   if (match) {
     const iso = `${match[1]}-${match[2]}-${match[3]}`;
     if (Number.isNaN(Date.parse(`${iso}T00:00:00Z`))) {
@@ -510,6 +528,16 @@ export function previewMappedRows(args: {
           amountMinor = parseStatementAmount(debitRaw, currency).amountMinor;
           direction = "debit";
         }
+      }
+
+      const feeRaw = cellOf(row.cells, args.mapping.fee ?? null);
+      if (feeRaw !== "") {
+        const fee = parseStatementAmount(feeRaw, currency);
+        const signedAmount = direction === "credit" ? amountMinor : -amountMinor;
+        const signedFee = fee.direction === "credit" ? fee.amountMinor : -fee.amountMinor;
+        const net = signedAmount - signedFee;
+        amountMinor = net < 0n ? -net : net;
+        direction = net < 0n ? "debit" : "credit";
       }
 
       const accountRaw = cellOf(row.cells, args.mapping.account);

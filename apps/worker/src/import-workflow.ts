@@ -268,6 +268,7 @@ function asMapping(value: unknown): ColumnMapping {
     "date",
     "description",
     "amount",
+    "fee",
     "credit",
     "debit",
     "currency",
@@ -283,6 +284,7 @@ function asMapping(value: unknown): ColumnMapping {
     date: (mapping["date"] as number | null) ?? null,
     description: (mapping["description"] as number | null) ?? null,
     amount: (mapping["amount"] as number | null) ?? null,
+    fee: (mapping["fee"] as number | null) ?? null,
     credit: (mapping["credit"] as number | null) ?? null,
     debit: (mapping["debit"] as number | null) ?? null,
     currency: (mapping["currency"] as number | null) ?? null,
@@ -409,13 +411,21 @@ export async function runImportWorkflow(
 
   // — SOURCE_ACCOUNT_DETECTION ———————————————————————————————————
   await store.setImportStage(input.importId, "SOURCE_ACCOUNT_DETECTION");
-  const { label, key } = accountLabelFor(input.fileName, input.accountName);
-  const account = await store.upsertSourceAccount({
-    workspaceId: input.workspaceId,
-    dataSourceId: input.dataSourceId,
-    stableKey: key,
-    displayName: label,
-  });
+  const accounts = new Map<string, { id: string; label: string }>();
+  const sourceAccountFor = async (rowAccount?: string | null) => {
+    const { label, key } = accountLabelFor(input.fileName, rowAccount || input.accountName);
+    const cached = accounts.get(key);
+    if (cached) return cached;
+    const account = await store.upsertSourceAccount({
+      workspaceId: input.workspaceId,
+      dataSourceId: input.dataSourceId,
+      stableKey: key,
+      displayName: label,
+    });
+    const resolved = { id: account.id, label };
+    accounts.set(key, resolved);
+    return resolved;
+  };
 
   // — SOURCE_TRANSACTION_UPSERT (batched) —————————————————————————
   // With the Issue 4.11 hook, each row additionally resolves to accepted /
@@ -443,6 +453,7 @@ export async function runImportWorkflow(
     });
     errorCount += mapped.errors.length;
     for (const item of mapped.preview) {
+      const account = await sourceAccountFor(item.account);
       const stableKey = `row:${input.importId}:${item.rowNumber}`;
       const txn = await store.upsertSourceTransaction({
         workspaceId: input.workspaceId,
@@ -476,7 +487,7 @@ export async function runImportWorkflow(
             importId: input.importId,
             sourceAccountId: account.id,
             sourceTransactionId: txn.id,
-            sourceAccountLabel: label,
+            sourceAccountLabel: account.label,
             row: item,
           });
           if (decided.disposition === "accepted") {
@@ -506,13 +517,14 @@ export async function runImportWorkflow(
     await store.cancelImport(input.importId);
     throw new JobCancelledError();
   }
+  const firstAccount = accounts.values().next().value ?? (await sourceAccountFor());
   const summary: ImportSummary = {
     rowCount: parsed.rows.length + parsed.errors.length,
     newCount,
     duplicateCount,
     reviewCount,
     errorCount,
-    sourceAccountId: account.id,
+    sourceAccountId: firstAccount.id,
   };
   await store.completeImport(input.importId, summary);
   return summary;

@@ -52,11 +52,20 @@ function loadSaved(): ImportWizardState {
 
 export function ImportWizardHost({ client }: { client?: MoneoClient }) {
   const api = React.useMemo(() => client ?? createClient(), [client]);
-  const [state, setState] = useState<ImportWizardState>(loadSaved);
+  const [state, setState] = useState<ImportWizardState>(initialWizardState);
+  const [storageLoaded, setStorageLoaded] = useState(false);
   const stateRef = React.useRef(state);
   stateRef.current = state;
 
   useEffect(() => {
+    setState(loadSaved());
+    setStorageLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!storageLoaded) {
+      return;
+    }
     try {
       const saved = serializeWizardProgress(state);
       if (saved) {
@@ -67,7 +76,7 @@ export function ImportWizardHost({ client }: { client?: MoneoClient }) {
     } catch {
       // Private-mode storage failures must never break the wizard itself.
     }
-  }, [state]);
+  }, [state, storageLoaded]);
 
   // Resume polling when reopening mid-processing. The derived id keeps the
   // effect stable across poll responses (same id → no resubscribe).
@@ -93,6 +102,7 @@ export function ImportWizardHost({ client }: { client?: MoneoClient }) {
               progressPercent: job.progressPercent,
               errorMessage:
                 job.error && typeof job.error["message"] === "string" ? job.error["message"] : null,
+              result: job.result,
             }),
           );
         })

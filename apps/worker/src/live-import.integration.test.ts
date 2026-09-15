@@ -38,7 +38,7 @@ describe.runIf(live)("live durable import smoke", () => {
     await objects.put(
       objectKey,
       new TextEncoder().encode(
-        "Date,Description,Amount,Currency\n2026-09-01,Coffee,-250,EUR\n2026-09-02,Salary,100000,EUR\n",
+        "Product,Completed Date,Description,Amount,Fee,Currency\nCurrent,2026-09-01 12:00:00,Card fee,0.00,7.99,EUR\nSavings,2026-09-02 12:00:00,Transfer,100.00,0.00,EUR\nSavings,2026-09-03 12:00:00,Closing transaction,0.00,0.00,EUR\n",
       ),
     );
     await admin.query("INSERT INTO workspaces (id, name) VALUES ($1, $2)", [
@@ -57,14 +57,15 @@ describe.runIf(live)("live durable import smoke", () => {
           objectKey,
           fileName: "statement.csv",
           mapping: {
-            date: 0,
-            description: 1,
-            amount: 2,
+            date: 1,
+            description: 2,
+            amount: 3,
+            fee: 4,
             credit: null,
             debit: null,
-            currency: 3,
+            currency: 5,
             direction: null,
-            account: null,
+            account: 0,
           },
         },
       }),
@@ -101,11 +102,20 @@ describe.runIf(live)("live durable import smoke", () => {
     const counts = await admin.query(
       `SELECT
       (SELECT count(*)::int FROM imports WHERE workspace_id = $1) AS imports,
+      (SELECT count(*)::int FROM accounts WHERE workspace_id = $1) AS accounts,
       (SELECT count(*)::int FROM source_transaction_observations WHERE workspace_id = $1) AS observations,
       (SELECT count(*)::int FROM transactions WHERE workspace_id = $1) AS transactions,
+      (SELECT error_count::int FROM imports WHERE workspace_id = $1 LIMIT 1) AS errors,
       (SELECT count(*)::int FROM background_job_attempts WHERE workspace_id = $1) AS attempts`,
       [workspaceId],
     );
-    expect(counts.rows[0]).toEqual({ imports: 1, observations: 2, transactions: 2, attempts: 1 });
+    expect(counts.rows[0]).toEqual({
+      imports: 1,
+      accounts: 2,
+      observations: 3,
+      transactions: 2,
+      errors: 1,
+      attempts: 1,
+    });
   });
 });

@@ -26,6 +26,7 @@ const MAPPING_FIELDS: { field: keyof WizardMapping; label: string }[] = [
   { field: "date", label: "Date" },
   { field: "description", label: "Description" },
   { field: "amount", label: "Amount" },
+  { field: "fee", label: "Fee" },
   { field: "credit", label: "Credit (or pair with debit)" },
   { field: "debit", label: "Debit (or pair with credit)" },
   { field: "currency", label: "Currency" },
@@ -246,7 +247,12 @@ export function ImportWizard({
 
       {state.step === "summary" ? (
         <div style={{ display: "grid", gap: 8 }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>Import {summary.status}</h2>
+          <h2 style={{ margin: 0, fontSize: 18 }}>
+            Import{" "}
+            {summary.status === "succeeded" && summary.skippedRows > 0
+              ? "completed with errors"
+              : summary.status}
+          </h2>
           {summary.errorMessage ? (
             <p role="alert" style={{ color: "#f85149", margin: 0 }}>
               {summary.errorMessage}
@@ -262,9 +268,25 @@ export function ImportWizard({
               <dd style={{ margin: 0 }}>{summary.totalRows}</dd>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <dt>Skipped rows</dt>
-              <dd style={{ margin: 0 }}>{summary.parseErrors}</dd>
+              <dt>Imported rows</dt>
+              <dd style={{ margin: 0 }}>{summary.importedRows}</dd>
             </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <dt>Skipped rows</dt>
+              <dd style={{ margin: 0 }}>{summary.skippedRows}</dd>
+            </div>
+            {summary.duplicateRows > 0 ? (
+              <div style={{ display: "flex", gap: 8 }}>
+                <dt>Duplicate rows</dt>
+                <dd style={{ margin: 0 }}>{summary.duplicateRows}</dd>
+              </div>
+            ) : null}
+            {summary.reviewRows > 0 ? (
+              <div style={{ display: "flex", gap: 8 }}>
+                <dt>Rows needing review</dt>
+                <dd style={{ margin: 0 }}>{summary.reviewRows}</dd>
+              </div>
+            ) : null}
             <div style={{ display: "flex", gap: 8 }}>
               <dt>Account</dt>
               <dd style={{ margin: 0 }}>{summary.accountName}</dd>

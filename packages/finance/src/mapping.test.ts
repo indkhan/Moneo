@@ -58,18 +58,21 @@ describe("auto-detection", () => {
       "Type",
       "Product",
       "Started Date",
+      "Completed Date",
       "Description",
       "Amount",
+      "Fee",
       "Currency",
     ]);
-    // "Started Date" contains "date" (partial); the rest are exact.
-    expect(detected.mapping.date).toBe(2);
-    expect(detected.mapping.description).toBe(3);
-    expect(detected.mapping.amount).toBe(4);
-    expect(detected.mapping.currency).toBe(5);
+    expect(detected.mapping.date).toBe(3);
+    expect(detected.mapping.description).toBe(4);
+    expect(detected.mapping.amount).toBe(5);
+    expect(detected.mapping.fee).toBe(6);
+    expect(detected.mapping.currency).toBe(7);
+    expect(detected.mapping.account).toBe(1);
     expect(detected.confidence.amount).toBe("exact");
-    expect(detected.confidence.date).toBe("partial");
-    expect(detected.unmapped).toEqual([0, 1]);
+    expect(detected.confidence.date).toBe("exact");
+    expect(detected.unmapped).toEqual([0, 2]);
   });
 
   it("maps a German Commerzbank-style header", () => {
@@ -111,6 +114,7 @@ describe("validation", () => {
     currency: null,
     direction: null,
     account: null,
+    fee: null,
   };
 
   it("accepts a minimal valid mapping", () => {
@@ -170,10 +174,19 @@ describe("date parsing", () => {
     expect(parseStatementDate("13/01/2026")).toBe("2026-01-13");
     expect(parseStatementDate("44927")).toBe("2023-01-01");
     expect(parseStatementDate(" 2026-03-04 ")).toBe("2026-03-04");
+    expect(parseStatementDate("2026-03-04 12:34:56")).toBe("2026-03-04");
   });
 
   it("rejects impossible and unrecognized dates", () => {
-    for (const bad of ["2026-13-01", "32.01.2026", "13/13/2026", "yesterday", "", "123"]) {
+    for (const bad of [
+      "2026-13-01",
+      "2026-01-01 25:00:00",
+      "32.01.2026",
+      "13/13/2026",
+      "yesterday",
+      "",
+      "123",
+    ]) {
       expect(() => parseStatementDate(bad), bad).toThrow();
     }
   });
@@ -328,6 +341,24 @@ describe("typed preview", () => {
     expect(preview).toMatchObject([
       { direction: "credit", amountMinor: "10000" },
       { direction: "debit", amountMinor: "2500" },
+    ]);
+  });
+
+  it("subtracts a mapped fee from the signed amount", () => {
+    const heads = ["date", "text", "amount", "fee", "currency"];
+    const mapping = resolveMapping(heads);
+    const { preview, errors } = previewMappedRows({
+      headers: heads,
+      rows: [
+        row(2, ["2026-01-01", "delivery fee", "0.00", "7.99", "EUR"]),
+        row(3, ["2026-01-02", "top-up", "100.00", "1.00", "EUR"]),
+      ],
+      mapping,
+    });
+    expect(errors).toEqual([]);
+    expect(preview).toMatchObject([
+      { direction: "debit", amountMinor: "799" },
+      { direction: "credit", amountMinor: "9900" },
     ]);
   });
 

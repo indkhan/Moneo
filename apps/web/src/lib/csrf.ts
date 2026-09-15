@@ -16,7 +16,8 @@
  * performs a server-side write (login only redirects + sets a client-side
  * state cookie; metrics-free by design).
  */
-export const CSRF_COOKIE = "__Host-moneo_csrf";
+// `__Host-` cookies require Secure, which browsers reject on local HTTP.
+export const CSRF_COOKIE = process.env.NODE_ENV === "development" ? "moneo_csrf" : "__Host-moneo_csrf";
 export const CSRF_HEADER = "x-csrf-token";
 export const CSRF_COOKIE_MAX_AGE = 7 * 24 * 60 * 60;
 
@@ -130,6 +131,10 @@ export function guardMutation(input: MutationGuardInput): MutationGuardResult {
 }
 
 /** `Set-Cookie` value for the double-submit token (readable by our JS by design). */
-export function csrfSetCookie(token: string, maxAge = CSRF_COOKIE_MAX_AGE): string {
-  return `${CSRF_COOKIE}=${token}; Path=/; Max-Age=${maxAge}; Secure; SameSite=Lax`;
+export function csrfSetCookie(
+  token: string,
+  maxAge = CSRF_COOKIE_MAX_AGE,
+  secure = process.env.NODE_ENV !== "development",
+): string {
+  return `${CSRF_COOKIE}=${token}; Path=/; Max-Age=${maxAge};${secure ? " Secure;" : ""} SameSite=Lax`;
 }

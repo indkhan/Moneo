@@ -1,7 +1,7 @@
 /**
  * GENERATED — do not edit by hand.
  * Source: apps/web/openapi/openapi.json (info.version=v1)
- * contractSha: 59fa5a364f428174c5ce371ec6a79be0bd9d6803057b1cae9fd33197edc7f5dd
+ * contractSha: f352952f7a7fbf13340ce4de788082959e270d569f526a649f120d7f548a0936
  * Regenerate: pnpm --filter @moneo/web gen:client
  * Every browser DTO comes from here; later API issues extend the contract first.
  */
@@ -75,6 +75,7 @@ export interface JobStatus {
   attempts: number;
   maxAttempts: number;
   error: Record<string, unknown> | null;
+  result: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -312,7 +313,7 @@ export interface ImportPreview {
   suggestedAccount: string;
 }
 
-export const CONTRACT_SHA = "59fa5a364f428174c5ce371ec6a79be0bd9d6803057b1cae9fd33197edc7f5dd";
+export const CONTRACT_SHA = "f352952f7a7fbf13340ce4de788082959e270d569f526a649f120d7f548a0936";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -328,15 +329,39 @@ export class ApiError extends Error {
 export type FetchFn = typeof fetch;
 
 async function request<T>(fetchFn: FetchFn, baseUrl: string, path: string, init?: RequestInit): Promise<T> {
+  const csrfToken = typeof document === "undefined"
+    ? undefined
+    : document.cookie.match(/(?:^|; )moneo_csrf=([^;]*)/)?.[1]
+      ?? document.cookie.match(/(?:^|; )__Host-moneo_csrf=([^;]*)/)?.[1];
+  const headers = new Headers(init?.headers);
+  headers.set("content-type", headers.get("content-type") ?? "application/json");
+  if (csrfToken) headers.set("x-csrf-token", csrfToken);
   const response = await fetchFn(`${baseUrl}${path}`, {
     ...init,
-    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+    headers,
   });
   const contentType = response.headers.get("content-type") ?? "";
   const body = contentType.includes("json") ? await response.json() : null;
   if (!response.ok) {
     if (body && typeof body === "object" && "code" in body && "status" in body) {
       throw new ApiError(body as ProblemDetails);
+    }
+    if (body && typeof body === "object") {
+      const legacy = body as { error?: unknown; reason?: unknown; message?: unknown };
+      const detail = [legacy.error, legacy.reason, legacy.message]
+        .filter((part): part is string => typeof part === "string" && part.length > 0)
+        .join(": ");
+      if (detail) {
+        throw new ApiError({
+          type: "https://moneo.app/problems/http-error",
+          title: "Request failed",
+          status: response.status,
+          detail,
+          code: response.status === 403 ? "FORBIDDEN" : "INTERNAL_ERROR",
+          retryable: response.status >= 500,
+          correlationId: "client",
+        });
+      }
     }
     throw new ApiError({
       type: "https://moneo.app/problems/internal-error",

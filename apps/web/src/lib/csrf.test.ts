@@ -169,6 +169,10 @@ describe("guardMutation", () => {
 });
 
 describe("csrfSetCookie", () => {
+  it("allows the local HTTP app to use the JS-readable cookie", () => {
+    expect(csrfSetCookie("token-123", 60, false)).not.toContain("Secure");
+  });
+
   it("is host-only, Secure and Lax — readable by our JS by double-submit design", () => {
     const header = csrfSetCookie("token-123");
     expect(header).toContain(`${CSRF_COOKIE}=token-123`);

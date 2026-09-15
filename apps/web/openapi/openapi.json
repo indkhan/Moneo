@@ -1612,7 +1612,16 @@
       },
       "JobStatus": {
         "type": "object",
-        "required": ["id", "type", "status", "attempts", "maxAttempts", "createdAt", "updatedAt"],
+        "required": [
+          "id",
+          "type",
+          "status",
+          "attempts",
+          "maxAttempts",
+          "result",
+          "createdAt",
+          "updatedAt"
+        ],
         "properties": {
           "id": {
             "type": "string",
@@ -1642,6 +1651,9 @@
             "minimum": 1
           },
           "error": {
+            "type": ["object", "null"]
+          },
+          "result": {
             "type": ["object", "null"]
           },
           "createdAt": {

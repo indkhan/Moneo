@@ -30,7 +30,7 @@ test("cross-origin write rejected; token-bearing same-origin write passes the ga
   const get = await request.get("/home");
   const csrfCookies = get.headersArray().filter((h) => h.name.toLowerCase() === "set-cookie");
   const csrfCookie = csrfCookies.map((h) => h.value).join("; ");
-  const token = csrfCookie.match(/__Host-moneo_csrf=([^;]+)/)?.[1];
+  const token = csrfCookie.match(/(?:__Host-)?moneo_csrf=([^;]+)/)?.[1];
   expect(token).toBeTruthy();
   expect(csrfCookie).not.toMatch(/Domain=/i);
 

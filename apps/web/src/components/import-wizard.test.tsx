@@ -65,6 +65,7 @@ function previewed(): ImportWizardState {
       currency: null,
       direction: null,
       account: null,
+      fee: null,
     },
   };
 }
@@ -136,6 +137,7 @@ describe("import wizard ui", () => {
       "Currency",
       "Direction",
       "Account",
+      "Fee",
     ]) {
       expect(html).toContain(`Column for ${label}`);
     }
@@ -163,6 +165,23 @@ describe("import wizard ui", () => {
     expect(html).toContain("Import queued");
     expect(html).toContain("statement.csv");
     expect(html).toContain("Start a new import");
+  });
+
+  it("summary step reports worker row errors instead of claiming zero skips", () => {
+    const processing = applyJobSubmitted(previewed(), "job-1");
+    const html = render({
+      ...processing,
+      step: "summary",
+      job: {
+        ...processing.job!,
+        status: "succeeded",
+        result: { newCount: 416, duplicateCount: 0, reviewCount: 0, errorCount: 2 },
+      },
+    });
+    expect(html).toContain("Imported rows");
+    expect(html).toContain(">416<");
+    expect(html).toContain("Skipped rows");
+    expect(html).toContain(">2<");
   });
 
   it("announces failures as alerts", () => {

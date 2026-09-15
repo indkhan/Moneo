@@ -45,6 +45,7 @@ const MAPPING: WizardMapping = {
   currency: null,
   direction: null,
   account: null,
+  fee: null,
 };
 
 function uploaded(): ImportWizardState {
@@ -155,6 +156,7 @@ describe("transitions", () => {
       progressStage: "PARSE",
       progressPercent: 40,
       errorMessage: null,
+      result: { newCount: 416, duplicateCount: 0, reviewCount: 0, errorCount: 2 },
     });
     expect(state.step).toBe("processing");
 
@@ -164,6 +166,7 @@ describe("transitions", () => {
       progressStage: "IMPORT_SUMMARY",
       progressPercent: 100,
       errorMessage: null,
+      result: { newCount: 416, duplicateCount: 0, reviewCount: 0, errorCount: 2 },
     });
     expect(state.step).toBe("summary");
   });
@@ -274,12 +277,15 @@ describe("summary model", () => {
         progressStage: "IMPORT_SUMMARY",
         progressPercent: 100,
         errorMessage: null,
+        result: { newCount: 416, duplicateCount: 0, reviewCount: 0, errorCount: 2 },
       }),
     );
     expect(done).toMatchObject({
       fileName: "statement.csv",
       totalRows: 1,
       parseErrors: 0,
+      importedRows: 416,
+      skippedRows: 2,
       accountName: "statement",
       status: "succeeded",
       progressStage: "IMPORT_SUMMARY",

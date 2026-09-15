@@ -85,13 +85,14 @@ async function readProblem(response: Response): Promise<{ status: number; code: 
 
 describe("toJobStatus", () => {
   it("maps the row onto the contract shape", () => {
-    expect(toJobStatus(row())).toMatchObject({
+    expect(toJobStatus(row({ result: { newCount: 2, errorCount: 1 } }))).toMatchObject({
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       type: "import.process",
       status: "queued",
       attempts: 0,
       maxAttempts: 5,
       createdAt: "2026-09-12T12:00:00.000Z",
+      result: { newCount: 2, errorCount: 1 },
     });
   });
 });
