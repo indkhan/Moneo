@@ -1,0 +1,10 @@
+date,description,amount,currency
+2024-02-01,Tokyo hotel,-12500,JPY
+2024-02-02,Kuwait books,-12.345,KWD
+2024-02-03,Big corporate action,9007199254740993,JPY
+2024-02-04,Too precise EUR,10.001,EUR
+2024-02-05,Mystery money,100,USD
+2024-02-06,Empty currency,100,
+2024-02-07,Zero row,0.00,EUR
+2024-02-08,Spaced amount,1 234.56,EUR
+2024-02-09,Symbol amount,€12.00,EUR
