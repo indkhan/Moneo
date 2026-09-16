@@ -12,3 +12,4 @@ storybook-static/
 .drizzle/
 test-results/
 playwright-report/
+proof-output/
