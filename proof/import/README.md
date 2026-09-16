@@ -24,7 +24,9 @@ against (never the parser's own recomputation).
 - CSV is parsed by a hand-rolled strict RFC 4180 reader
   (`proof/import/parser.ts`): no CSV dependency, so delimiter, quoting and
   newline behaviour are fully audited. Only UTF-8 (with/without BOM) is
-  admitted; anything else fails as `unsupported-encoding`.
+  admitted; anything else fails as `unsupported-encoding`. CRLF inside quoted
+  fields is normalised to LF so Windows exports and CRLF checkouts parse
+  identically to LF bytes.
 - XLSX is read with `fflate@0.8.3` (tiny, no dependencies) in streaming
   `Unzip` mode with a running decompressed-size cap, plus a targeted
   SpreadsheetML subset reader (shared strings, inline strings, plain/numeric
