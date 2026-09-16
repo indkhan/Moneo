@@ -32,7 +32,7 @@ Status: Done | Epic: E00 | Release: R1 | Dependencies: none
 
 ## E00-S02 — Prove the editable artifact security boundary
 
-Status: Ready | Epic: E00 | Release: R1 | Dependencies: E00-S01
+Status: Done | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 **Outcome:** A hand-authored chart and scenario control run as supported HTML/CSS/JS inside the real proposed restriction mechanism, or evidence demonstrates the design needs revision.
 
@@ -55,7 +55,7 @@ Status: Ready | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 **Decision gate:** Keep the design only on evidence. If a required primitive/browser fails, stop dependent artifact implementation and record the smallest safe alternative for a contract decision. Do not substitute an unrestricted iframe or `unsafe-eval` to get a green demo.
 
-**Execution record:** Not started; no branch, SHA, review, test or merge evidence.
+**Execution record:** Orchestrator/implementer: Codex; branch: `story/e00-s02-artifact-boundary`; base/current-main SHA: `66dc960db9610ff3863b7297eea4195a36586b59`; implementation SHA: `8b0978fca5d6b459a68f67f2e992f3e3c46d9352`; fixed/reviewed SHA: `567dfb8be58952713fafc3a2c09b6cd0565c869a`. Independent adversarial review first requested changes at `8b0978f` for pre-validation activation, forgeable VM bindings/state, same-site local origins, shared relaxed CSP and a browser-start flake. Implementer fixed all findings; re-review verdict: Pass with no findings at `567dfb8`, reproducing typecheck, Vitest 1/1, browser 33/33 and clean diff/status. Runtime proof pins quickjs-emscripten 0.32.0, css-tree 3.2.1, Vite 8.3.0 and Playwright 1.62.0; tested automated engines: Chromium 151.0.7922.34, Firefox 153.0 and WebKit 26.5 on Windows 11 10.0.26200, i5-12450HX, 16 GiB RAM. Playwright 1.63.0/WebKit 26.6 was rejected after reinstall because that build failed host validation for `libxslt.dll`/`libwebp.dll` and exited `0xC0E90002`; 1.62.0/WebKit 26.5 passed, and branded Safari/macOS remains a later deployment qualification rather than a claimed pass. Auth0 was intentionally excluded from the artifact site after checking its separate session layers/custom-domain guidance; tests prove the local `localhost` app cookie/storage sentinel is absent at the `127.0.0.1` renderer. Enforced initial limits: 2 MiB source, 16 MiB QuickJS heap, 512 KiB stack, 1 MiB/message, 100 messages/second, 5-second start/execution ceiling and Stop under 1 second. Candidate `dbbb3eb00f354c32c3cb6aed1bcc754f0f550a3f` was created after `git fetch origin main`; local current main remained `66dc960` (remote `origin/main` remained `ee20bcd`). Candidate commands/results: `npm ci` 0 (53 packages, 0 vulnerabilities), `npm run check` 0, `npm run test:artifact` 0 (33/33 across all three engines), `npm run test:failure` 1 as intended, `git diff --check main..HEAD` 0, clean status. Locally merged by fast-forwarding `main` to merge SHA `dbbb3eb`; post-merge smoke: `npm run check` 0 and Chromium artifact suite 11/11. No production credentials, real financial data, push or remote PR/CI were used. Proof limitations and commands are recorded in `proof/artifact/README.md`; Safari/macOS, deployed registrable domains, production persistence/grants and independent runtime penetration review remain E05/E08 gates, not blockers for this bounded proof.
 
 ## E00-S03 — Prove import fidelity with exact fixtures
 
