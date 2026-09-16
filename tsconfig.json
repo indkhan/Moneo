@@ -3,8 +3,11 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    // Proof sources run under Vitest and Node type-stripping without emit;
+    // explicit `.ts` relative imports keep both resolvers aligned.
+    "allowImportingTsExtensions": true,
     "strict": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["test/**/*.ts", "checks/**/*.ts"]
+  "include": ["test/**/*.ts", "checks/**/*.ts", "proof/import/**/*.ts"]
 }

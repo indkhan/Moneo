@@ -1,0 +1,7 @@
+date,description,amount
+01/02/2024,Slash date,10.00
+30.02.2024,Impossible date,-5.00
+2024-13-01,Bad month,7.00
+24-01-02,Short year,1.00
+,No date,2.00
+2024-02-29,Leap day ok,3.00

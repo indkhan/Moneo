@@ -21,4 +21,6 @@ Run `npm run check` for typechecking and the normal test suite together. `npm ru
 
 The E00-S02 browser proof is documented in [`proof/artifact/README.md`](proof/artifact/README.md). Install its pinned browser builds once with `npm run test:artifact:install`, then run `npm run test:artifact`.
 
+The E00-S03 import-fidelity proof is documented in [`proof/import/README.md`](proof/import/README.md). Its golden fixtures and hand-specified expectations live in `proof/import/fixtures/`; run it with `npm run test:import`. Hostile and resource-bound cases execute inside a disposable bounded child process.
+
 Proofs should keep committed synthetic fixtures beside their tests and write disposable reports, screenshots, and measurements under the ignored `proof-output/` directory. Later stories add browser or service dependencies only when their proof consumes them.
