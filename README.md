@@ -23,4 +23,6 @@ The E00-S02 browser proof is documented in [`proof/artifact/README.md`](proof/ar
 
 The E00-S03 import-fidelity proof is documented in [`proof/import/README.md`](proof/import/README.md). Its golden fixtures and hand-specified expectations live in `proof/import/fixtures/`; run it with `npm run test:import`. Hostile and resource-bound cases execute inside a disposable bounded child process.
 
+The E00-S05 identity proof is decided in [`proof/identity/REPORT.md`](proof/identity/REPORT.md). Its deterministic checks run offline with `npm run test:identity`; the opt-in live gates (skipped without credentials, never part of CI) run with `npm run probe:identity`.
+
 Proofs should keep committed synthetic fixtures beside their tests and write disposable reports, screenshots, and measurements under the ignored `proof-output/` directory. Later stories add browser or service dependencies only when their proof consumes them.
