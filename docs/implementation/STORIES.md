@@ -6,7 +6,7 @@ Every story inherits: synthetic data until external-beta gates; no secrets or fi
 
 ## E00-S01 — Establish an executable proof harness
 
-Status: Ready | Epic: E00 | Release: R1 | Dependencies: none
+Status: In progress | Epic: E00 | Release: R1 | Dependencies: none
 
 **Outcome:** A fresh checkout can execute a minimal synthetic check and host the four bounded feasibility proofs using documented commands.
 
@@ -28,7 +28,7 @@ Status: Ready | Epic: E00 | Release: R1 | Dependencies: none
 
 **Review focus:** Secret inclusion, unnecessary scaffolding, unreproducible environment assumptions, tests that always pass. **Rollback:** Revert added harness files/commit without deleting user work or history.
 
-**Execution record:** Not started; no branch, SHA, review, test or merge evidence.
+**Execution record:** Orchestrator/implementer: Codex; branch: `story/e00-s01-proof-harness`; base: `ee20bcd238acf80b114c1b1601e70e45e8b5e4e0`; implementation, review, candidate, merge and smoke evidence pending.
 
 ## E00-S02 — Prove the editable artifact security boundary
 
