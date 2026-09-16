@@ -336,7 +336,7 @@
     }
   ],
   "measured": {
-    "status": "pass-23-23",
+    "status": "pass-24-24",
     "date": "2026-09-17",
     "host": "Windows 11 10.0.26200, 12th Gen Intel Core i5-12450HX, 16 GiB RAM",
     "node": "22.23.2, npm 10.9.8",

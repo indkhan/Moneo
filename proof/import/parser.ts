@@ -245,6 +245,12 @@ export function parseCsvText(
           inQuotes = false;
           i += 1;
         }
+      } else if (c === "\r" && text[i + 1] === "\n") {
+        // Normalise CRLF inside quoted fields to LF: Windows exports and
+        // CRLF checkouts must parse identically to LF bytes. Row-breaking
+        // CRLF outside quotes is handled by the separator logic below.
+        field += "\n";
+        i += 2;
       } else {
         field += c;
         i += 1;

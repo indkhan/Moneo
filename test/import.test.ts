@@ -151,6 +151,26 @@ describe("E00-S03 XLSX golden fixtures (manifest oracle)", () => {
   }
 });
 
+describe("E00-S03 CRLF robustness (Windows bytes and checkouts)", () => {
+  it("CRLF bytes parse identically to LF bytes", () => {
+    const fx = MANIFEST.csvFixtures.find((f) => f.id === "utf8-bom-quoted");
+    if (!fx) throw new Error("fixture utf8-bom-quoted missing");
+    const onDisk = readFileSync(join(FIX, fx.file)).toString("utf-8");
+    const lfText = onDisk.replaceAll("\r\n", "\n");
+    const crlfText = lfText.replaceAll("\n", "\r\n");
+    const lfRes = parseImportFile(new Uint8Array(Buffer.from(lfText, "utf-8")), fx.file, fx.profile);
+    const crlfRes = parseImportFile(new Uint8Array(Buffer.from(crlfText, "utf-8")), fx.file, fx.profile);
+    expect(lfRes.ok && crlfRes.ok).toBe(true);
+    if (!lfRes.ok || !crlfRes.ok) return;
+    const norm = (ps: Proposal[]) =>
+      ps.map(comparable).sort((x, y) => (x as { rowNumber: number }).rowNumber - (y as { rowNumber: number }).rowNumber);
+    expect(norm(crlfRes.proposals)).toEqual(norm(lfRes.proposals));
+    expect(crlfRes.proposals.map((p) => p.observationId)).toEqual(
+      lfRes.proposals.map((p) => p.observationId),
+    );
+  });
+});
+
 describe("E00-S03 observation identity and reimport decisions", () => {
   const profileOf = (id: string): ImportProfile => {
     const fx = MANIFEST.csvFixtures.find((f) => f.id === id);
