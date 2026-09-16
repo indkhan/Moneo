@@ -69,7 +69,7 @@ function render(message: any) {
 }
 
 window.addEventListener("message", event => {
-  if (event.source !== parent || event.origin !== "http://127.0.0.1:4173" || event.data?.type !== "connect" || event.data?.protocol !== PROTOCOL || event.data?.nonce !== nonce || event.ports.length !== 1 || port) return;
+  if (event.source !== parent || event.origin !== "http://localhost:4173" || event.data?.type !== "connect" || event.data?.protocol !== PROTOCOL || event.data?.nonce !== nonce || event.ports.length !== 1 || port) return;
   port = event.ports[0];
   port.onmessage = ({ data }) => {
     if (!accept(data)) return;
@@ -91,4 +91,4 @@ window.addEventListener("message", event => {
   };
 });
 
-parent.postMessage({ type: "ready", protocol: PROTOCOL, nonce }, "http://127.0.0.1:4173");
+parent.postMessage({ type: "ready", protocol: PROTOCOL, nonce }, "http://localhost:4173");

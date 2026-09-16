@@ -1,6 +1,6 @@
 # E00-S02 artifact boundary proof
 
-This is a feasibility proof, not the production artifact runtime. It uses two local origins: the trusted host at `127.0.0.1:4173` and the credential-free renderer at `127.0.0.1:4174`. Generated JavaScript runs inside QuickJS/WASM in a dedicated, terminable worker and can emit only the bounded UI/state protocol. Auth0 is deliberately absent: current Auth0 session guidance separates the application session from the authorization-server session, and the Moneo contract keeps the artifact registrable site outside that relying-party boundary.
+This is a feasibility proof, not the production artifact runtime. It uses site-separated local hosts: the trusted host at `localhost:4173` and the credential-free renderer at `127.0.0.1:4174`. Generated JavaScript runs inside QuickJS/WASM in a dedicated, terminable worker and can emit only the bounded UI/state protocol. Auth0 is deliberately absent: current Auth0 session guidance separates the application session from the authorization-server session, and the Moneo contract keeps the artifact registrable site outside that relying-party boundary.
 
 ## Run
 
@@ -29,6 +29,6 @@ Playwright 1.63.0/WebKit 26.6 was rejected on this host: its Windows build repor
 - execution/start ceiling: 5 seconds
 - explicit Stop: asserted below 1 second
 
-The WASM bytes are bundled into the worker asset as a data URL. CSP therefore permits `data:` only for the trusted renderer bootstrap's `connect-src`; external HTTP(S) still fails and generated code has no fetch/DOM/navigation/storage globals. A production bundler may pass a compiled `WebAssembly.Module` directly and restore literal `connect-src 'none'` without changing the VM boundary.
+The WASM bytes are bundled into the worker asset as a data URL. Only the worker response permits `data:` in `connect-src` and `wasm-unsafe-eval`; the renderer page retains `connect-src 'none'` and `script-src 'self'`. External HTTP(S) still fails and generated code has no fetch/DOM/navigation/storage globals. A production bundler may pass a compiled `WebAssembly.Module` directly and restore literal worker `connect-src 'none'` without changing the VM boundary.
 
 The proof deliberately keeps only a tiny HTML tag/attribute allowlist, CSS property/value AST allowlist, one trusted chart primitive, one synthetic read-only finance query, and host-memory state. Add breadth only when an R1 story consumes it. Production state persistence, tenant grants, deployed registrable domains, Safari, and independent runtime penetration review remain E05/E08 work.

@@ -12,8 +12,11 @@ function serve(port, renderer) {
     if (!path.startsWith(root)) { response.writeHead(404).end(); return; }
     try { if ((await stat(path)).isDirectory()) path = join(path, "index.html"); }
     catch { response.writeHead(404).end(); return; }
-    const csp = renderer
-      ? "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src data:; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'none'; font-src 'none'; frame-src 'none'; object-src 'none'; media-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors http://127.0.0.1:4173"
+    const worker = renderer && pathname.startsWith("/assets/worker-");
+    const csp = worker
+      ? "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src data:; worker-src 'none'; object-src 'none'; base-uri 'none'"
+      : renderer
+      ? "default-src 'none'; script-src 'self'; connect-src 'none'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'none'; font-src 'none'; frame-src 'none'; object-src 'none'; media-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors http://localhost:4173"
       : "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-src http://127.0.0.1:4174; worker-src 'none'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
     response.writeHead(200, {
       "Content-Type": mime[extname(path)] ?? "application/octet-stream",
