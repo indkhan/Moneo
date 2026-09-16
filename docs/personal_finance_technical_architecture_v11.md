@@ -1,10 +1,30 @@
 # AI-Native Personal Finance Workspace — Technical Architecture
 
-**Status:** Architecture working specification  
+**Status:** Reviewed staged architecture baseline (2026-09-16); feasibility gates remain explicit  
 **Companion:** `ai_native_personal_finance_product_spec_v7.md`  
-**Current focus:** PostgreSQL canonical financial data model
+**Current focus:** R1 core finance/AI/live-artifact loop, with later capabilities separated
 
-**Execution authority (2026-09-12):** [IMPLEMENTATION-EPOCHS.md](IMPLEMENTATION-EPOCHS.md) is the sole team backlog, dependency schedule and release-gate authority. This document owns technical contracts. Sections 490–534 retain supporting implementation design detail and stable references; their epoch ordering/checklists do not independently authorize scope or completion. The explicit contracts in §§535–539 refine earlier conceptual descriptions where necessary. Product behavior remains owned by the product specification.
+**Authority (2026-09-16):** The [product specification](ai_native_personal_finance_product_spec_v7.md) Delivery baseline owns R1/R2/R3 scope. This document owns implementation contracts. The [implementation plan](implementation/README.md) owns epic/wave sequencing, the canonical story ledger, delivery gates and reusable agent prompts. Older “V1/MVP” language describes the full-product target unless explicitly assigned to R1 below. A contract applies when its feature ships; it does not require building that feature early. Sections 495–534 are retired/reserved after removing the premature epoch plan; stable financial-contract numbers 535–539 are retained.
+
+## Review decisions and reading guide
+
+Build the product as a modular monolith, not a platform for arbitrary future financial applications. Keep the robust financial boundaries; stage feature breadth. R1 includes the secure editable HTML/CSS/JS artifact runtime, not merely templates. The founder is building through orchestrated agents with adversarial review/test/merge gates. Funding is available; no fixed monthly ceiling was supplied. International AI processing is acceptable. Development may use OpenRouter free models with training permitted; production customer-data controls are a separate policy (§130).
+
+| Area | Decision |
+|---|---|
+| Canonical data | Keep PostgreSQL, Drizzle/node-postgres, tenant-safe keys/RLS, exact money, source/canonical separation, audit/undo. |
+| API | Keep one schema source, typed domain functions, generated HTTP clients and scoped AI/artifact adapters. No generic domain framework. |
+| Jobs | Keep BullMQ/Redis and PG checkpoints/outbox; shrink initial deployment and add explicit lost-queue/worker recovery (§§182–200). |
+| AI | OpenRouter first; no heavy agent framework, vector database or mandatory specialist swarm. Free development models are candidates, not a production quality promise. |
+| Artifacts | Keep restricted VM + trusted renderer + separate site. Prove this early. No DOM emulation platform or arbitrary package ecosystem. |
+| Forecast | R1 daily, deterministic assumption cases. Statistical quantiles/calibration/model selection are R3 and evidence-gated (§§227–273). |
+| Hosting | Retain Vercel web, Render workers, Neon, Upstash, S3/KMS, Auth0 EU and Grafana EU as a funded managed baseline. No claim that each vendor is universally best. No extra services until their feature needs them. |
+| Frontend | Keep Next/React, Query/Table, Radix/Tailwind, ECharts, generated client, Vitest/Playwright. Add Virtual, dnd-kit, Storybook/MSW and Zustand only at the consuming slice; React state/context first. |
+| Deferred | Custom provider credentials, full investment/plan surfaces, multiple dashboards, scheduled AI refresh, probabilistic forecasting, household/bank sync. Product release table is authoritative. |
+
+**Navigation:** §§1–45 data/planning; §§46–82 domain/API; §§83–123 artifact isolation; §§124–174 AI; §§175–226 durability; §§227–273 projections; §§274–347 frontend; §§348–415 operations; §§416–489 security; §§490–494 story requirements and delivery gates; §§535–539 detailed finance/privacy contracts; §540 research and feasibility gates.
+
+Schema sketches are conceptual, not migrations. Apply §27's tenant keys, §63's versions, required checks/FKs and the later explicit contracts consistently. Build tables only with the first story that needs them. There is no reason to pre-create every package or table shown in this reference.
 
 ---
 
@@ -131,7 +151,9 @@ currency_code
 direction = INFLOW | OUTFLOW
 ```
 
-Amount is positive and direction is explicit.
+Transaction amount is positive and direction is explicit. Balance snapshots and projections are signed: negative cash/overdraft is valid; liabilities store positive amounts owed and are subtracted exactly once from net worth. Zero-value source rows remain observations with an explicit non-monetary/rejected disposition, not fabricated positive transactions.
+
+At every JSON/HTTP/AI/artifact boundary, minor-unit amounts and BIGINT versions are decimal strings (for example `"3142"`), never JavaScript numbers. Parse and calculate money with BigInt and an audited decimal library for rates; use a single rounding policy. Chart-only numbers may be scaled/converted with range checks; authoritative values/tooltips keep exact strings. Currency exponent must be known for monetary operations. R1 supports fiat; do not force crypto quantities into fiat minor units.
 
 Example:
 
@@ -819,6 +841,10 @@ OTHER
 
 A transfer can therefore support two or more legs without redesigning the schema.
 
+For R1, accepted own-account transfer principal is excluded from income/spending; fees remain spending. Transfer legs still change each account balance. A transfer cancels only for aggregates containing both legs and within the same valuation basis; movement into a non-spendable account reduces spendable cash. Do not invent an income/expense from FX conversion differences. Unconfirmed matches retain an explicit uncertainty flag. Credit-card repayment is a transfer when both owned accounts are represented, while the purchase is the expense.
+
+Refunds reduce spending in the refund posting period by default and are linked to the original purchase for explanation; they are not salary/income. Do not rewrite closed-period totals silently. Pending entries are excluded from posted historical totals; forecast holds and already-adjusted available balances must not deduct the same purchase twice. A single source observation cannot back multiple active economic events except through a future explicitly designed split model. Asset/holding valuations and an investment-account total must never both contribute the same value to net worth.
+
 ---
 
 # 17. Recurring Series
@@ -1181,7 +1207,7 @@ Do not GIN-index every text/JSON column by default.
 
 # 25. V1 vs Later
 
-Core V1 database:
+Full-product data catalogue (create each table only in its release/story):
 
 ```text
 users
@@ -1234,14 +1260,9 @@ Planning, AI, artifact, jobs, and notification schemas will be designed as subse
 
 ---
 
-# 26. Open Implementation Detail
+# 26. Tenant-Key Decision Resolved
 
-Before migrations are finalized, decide whether to enforce tenant consistency on foreign keys with composite `(workspace_id, id)` references in addition to RLS.
-
-That pattern provides an extra database-level guarantee that a row cannot accidentally reference an object in another workspace, but adds schema/index verbosity.
-
-It should be evaluated before implementation rather than added inconsistently later.
-
+Use the composite tenant keys and foreign keys in §27 from the first tenant migration. This is not an open decision. Global reference tables remain globally keyed.
 
 ---
 
@@ -1470,7 +1491,7 @@ FIXED_AMOUNT
 
 Percentage allocations can be added later.
 
-The service layer should validate over-allocation because the allowed amount depends on live balances and other allocations and is not a simple row-local constraint.
+Validate over-allocation in one transaction, locking the affected account/allocation parent rows in a consistent order before reading totals and writing. Concurrent valid requests must not reserve the same cash twice. A virtual allocation changes reserved/spendable cash, not actual cash or net worth; a planned contribution to an owned account is an internal movement, not consumption. Later external spending consumes/releases its associated reservation once.
 
 ---
 
@@ -1814,7 +1835,7 @@ Do not duplicate all baseline financial state into a scenario.
 
 # 36. Resolved Financial Model Snapshots
 
-Forecasts and historical analyses must be reproducible.
+Forecasts and historical analyses must be reproducible within the applicable retention/access policy; immutable inputs are required, not only timestamps (see §59).
 
 Therefore, each forecast should operate on an immutable resolved input snapshot.
 
@@ -2434,7 +2455,7 @@ Good AI-visible input:
 {
   "transactionId": "...",
   "categoryId": "...",
-  "expectedVersion": 4
+  "expectedVersion": "4"
 }
 ```
 
@@ -2750,7 +2771,7 @@ Example analytics result:
 
 ```json
 {
-  "amountMinor": 29300,
+  "amountMinor": "29300",
   "currency": "EUR",
   "changePercent": "26.8",
   "evidenceRef": "ev_...",
@@ -2767,6 +2788,10 @@ Example analytics result:
 - calculation version.
 
 The model should not need to duplicate thousands of source rows into a chat answer merely to preserve evidence.
+
+A cutoff date is not a snapshot: later corrections change old rows. Evidence retains query/calculation version, currency/FX version, policy version, immutable input values or revision references, contributing IDs and completeness. Capture consistent inputs in a short repeatable-read transaction or materialize the exact input set; never hold a transaction open during a model call. Use append-only revisions or bounded immutable evidence payloads to reproduce the old result. A live filtered link alone is insufficient. Resolve under current authorization/exclusions and distinguish “as calculated then” from “current corrected view”; deletion/retention takes precedence over reproducibility.
+
+Every canonical finance mutation increments a workspace data revision in its transaction. Derived outputs record revision and policy/config versions. Live widgets mark older results stale while refreshing. Coalesce rebuilds by target revision; start with coarse workspace invalidation, not a speculative dependency graph.
 
 ---
 
@@ -2848,7 +2873,7 @@ FAILED_FINAL
 
 Do not treat an ambiguous worker transport timeout as evidence that the command did not commit.
 
-The operation record is the reconciliation point.
+The operation record is the reconciliation point. For atomic DB commands, claim and semantic result commit together so crash rolls both back. Expiring a replay payload must not erase the durable duplicate-effect guard for jobs or accepted canonical operations; an expired key returns an explicit expired/conflict result rather than silently becoming a new command.
 
 ---
 
@@ -3144,6 +3169,8 @@ COMMIT
 
 Only after commit can the outbox dispatcher publish downstream work.
 
+A dispatcher marks `published_at` only after enqueue acknowledgement, but that flag is not proof that Redis will retain the job. A periodic reconciler reads durable nonterminal jobs/ready steps, checks transport presence with a grace period, and re-enqueues missing work using stable IDs. After total Redis loss it rebuilds eligible work and scheduler ticks from PostgreSQL. It never reruns terminal jobs or invents new logical command IDs. Cross-workspace dispatch uses a dedicated narrowly privileged discovery function/role exposing only job IDs and tenant IDs; domain work always re-enters the normal tenant transaction. Do not grant general RLS bypass to ordinary workers to make dispatch possible.
+
 ---
 
 # 70. Undo
@@ -3203,7 +3230,7 @@ Example:
   "status": 412,
   "code": "VERSION_CONFLICT",
   "retryable": false,
-  "currentVersion": 8,
+  "currentVersion": "8",
   "requestId": "..."
 }
 ```
@@ -3356,6 +3383,8 @@ finance.forecast.evaluateScenario
 Raw transaction descriptions require an explicit artifact permission scope.
 
 Canonical mutations should not be arbitrarily callable by generated JavaScript during page load.
+
+The backend derives artifact identity, active grant, version, scope and AI-policy version from a server-issued runtime session; browser-provided manifest/scopes are not authority. Revoke sessions when grants, policy or login access change. Every RPC rechecks the current grant and rejects stale sessions.
 
 When an artifact offers an explicit user action such as:
 
@@ -3763,7 +3792,7 @@ from generated markup.
 
 # 88. CSS Handling
 
-Generated CSS can remain highly flexible, but it must be parsed and sanitized.
+Generated CSS uses a documented allowlist of properties and value grammars, parsed with a maintained CSS parser. A denylist of `http`/`https` strings is not a sanitizer. Reject all URL-bearing/resource-loading constructs, including escaped, protocol-relative, SVG and custom-property indirections unless a trusted resource handle explicitly permits them.
 
 Disallow external resource loading constructs, including:
 
@@ -3958,7 +3987,7 @@ canvas-backed trusted charts
 
 but the renderer remains authoritative over what is actually created.
 
-The artifact may conceptually manipulate a virtual document API, but never the browser's real `document`.
+R1 exposes `render`, bounded `patch`, input events and trusted chart primitives. Do not implement a general virtual browser/DOM compatibility layer. HTML/CSS/JS remains editable within this documented SDK subset; unsupported browser APIs produce clear build errors.
 
 ---
 
@@ -4136,14 +4165,16 @@ user clicks
       ↓
 artifact sends intent payload
       ↓
-main application shows/handles action
+main application renders exact target/change in trusted host UI
+      ↓
+user activates that host-owned action
       ↓
 normal Finance Command layer
       ↓
 audit + undo + optimistic concurrency
 ```
 
-The VM never receives a general canonical-write capability merely because the UI contains a button.
+The VM never receives a general canonical-write capability merely because the UI contains a button. A generated message claiming `userClicked=true` is not proof. A trusted host action binds the displayed payload hash, entity versions and one-use intent token to the command so generated code cannot swap the payload after review.
 
 ---
 
@@ -4168,7 +4199,7 @@ artifact version/schema
 
 If per-user state becomes useful later, user identity can be included deliberately.
 
-The artifact manifest should declare a state schema/version.
+The artifact manifest should declare a state schema/version. State patches use expected versions to prevent multi-tab lost updates. Activate code and validated/migrated state atomically; migration failure preserves the old pair. Revert requires compatible saved state or an explicit reset, never old code blindly running against new state.
 
 State migrations occur explicitly between artifact versions.
 
@@ -4296,7 +4327,7 @@ font-src 'none';
 form-action 'none';
 base-uri 'none';
 
-worker-src 'self' blob:;
+worker-src 'self';
 
 img-src data: blob:;
 style-src 'self' 'unsafe-inline';
@@ -4320,7 +4351,7 @@ Generated JavaScript runs inside the VM, so CSP does not need to relax `unsafe-e
 
 Avoid `'unsafe-eval'`.
 
-Avoid WebAssembly execution outside the trusted runtime bootstrap.
+For an external trusted Worker, ship its own response CSP with `script-src 'self' 'wasm-unsafe-eval'; connect-src 'none'` and other restrictive defaults. Bundle the pinned WASM bytes with the trusted bootstrap so initialization does not require a network fetch. The renderer page can retain the stricter non-WASM policy. Test the actual worker loading path in supported Chromium, Firefox and WebKit builds; CSP delivery/inheritance differs for external and blob workers. Never add general `'unsafe-eval'` or arbitrary network permission to make initialization work. See §540 for the CSP source.
 
 ---
 
@@ -5071,32 +5102,17 @@ finishReason
 
 ---
 
-# 130. OpenRouter Normal-Mode Privacy Policy
+# 130. OpenRouter Privacy Policy by Environment
 
-Financial context is sensitive.
+Use explicit, separately credentialed deployment profiles; never infer policy from a model name alone.
 
-For Normal mode, finance-containing requests should default to provider policies equivalent to:
+**Development (founder-authorized):** OpenRouter free models may be used even when the endpoint permits training. Default fixtures are synthetic, including imports, accounts, prompts and artifact data. Any use of the founder's actual statements requires a deliberate development setting and clear disclosure of the endpoint's terms. This does not authorize using future customers' records or cloning production into development. No credentials/secrets may enter model context.
 
-```text
-data_collection = deny
-zdr = true
-require_parameters = true
-allow_fallbacks = true
-```
+**Production customer financial traffic:** Enforce `data_collection: "deny"`, `zdr: true`, and required parameter support on every request and fallback. Disable content logging and third-party response caching. If no qualified endpoint satisfies policy, return recoverable unavailability; do not downgrade to the development policy. The founder permits international processing, so EU-only inference is not required, but actual processors, regions, contracts and transfers must be disclosed/reviewed before customer launch. ZDR is not a residency guarantee.
 
-Do not silently weaken the privacy policy merely to make a model available.
+A free model may be used in production only if it independently meets this policy, task quality, capacity and reliability requirements. Pin a small evaluated model set at implementation; free availability and rate limits change. Development uses mocks for deterministic tests and live free calls for smoke/evaluation only. No fallback from a free route to paid billing without an explicitly configured budget.
 
-If no compliant endpoint/model is available:
-
-```text
-use a pre-qualified compliant model fallback
-or
-surface temporary unavailability
-```
-
-Do not route finance data to a provider that violates the configured data policy.
-
-Where regional/in-region routing is contractually available, route according to the workspace/deployment data residency policy.
+OpenRouter/model SDK is used directly behind a small module. Add a second provider adapter only when Custom AI actually ships. Sources and vendor qualification checks are in §540.
 
 ---
 
@@ -5606,6 +5622,8 @@ Deep Analysis should **not** be one enormous autonomous agent loop.
 
 Use deterministic high-level phases with durable checkpoints.
 
+The following is the full-product workflow; R1 combines investigation topics in one bounded checkpointed investigation, retaining evidence validation, review, budgets and saved output. No fixed agent count is a quality requirement.
+
 Recommended workflow:
 
 ```text
@@ -5649,11 +5667,13 @@ Recommended workflow:
 
 Each phase is persisted/checkpointed.
 
-A worker crash resumes from the last completed phase rather than restarting expensive model calls from zero.
+A worker crash resumes from the last completed phase rather than restarting completed phases. An in-flight provider request with no durably stored response may be billed again on retry; record the uncertainty, reserve retry budget, and never promise exactly-once inference billing.
 
 ---
 
 # 148. Deep Analysis Parallelization
+
+**Optional after R1:** Add independent investigators when evaluation justifies the additional calls and scheduling.
 
 Independent investigations can fan out in parallel.
 
@@ -6486,7 +6506,7 @@ Lock the following:
 3. Capability-specific versioned prompts/model policies.
 4. Product-controlled pre-qualified model/fallback lists in Normal mode.
 5. OpenRouter is behind an internal provider adapter.
-6. Financial Normal-mode traffic defaults to no data collection + ZDR-capable routing.
+6. Production Included traffic requires no-collection/ZDR routing; development follows the separate authorized policy in §130.
 7. Model/provider feature compatibility is enforced.
 8. Prompt caching is used opportunistically with stable session IDs/prefixes.
 9. Third-party full-response caching is off by default for financial AI.
@@ -6495,7 +6515,7 @@ Lock the following:
 12. Future arbitrary external documents use quarantined extraction before privileged tool-capable reasoning.
 13. Structured outputs are schema validated.
 14. Agent loops have hard token/tool/time/cost bounds.
-15. Deep Analysis is a durable, checkpointed workflow with parallel bounded investigators.
+15. Deep Analysis is a durable, checkpointed workflow. R1 uses one bounded investigation over baseline metrics; specialist fan-out is optional later when evaluation proves value.
 16. Claims are evidence-validated before final Deep Analysis publication.
 17. Evaluator/reviewer passes are used selectively where criteria are clear.
 18. Every run/model/tool step is operationally recorded.
@@ -6543,7 +6563,7 @@ Redis must never be the only record that a business-critical workflow existed or
 
 # 176. Queue Technology
 
-Use BullMQ v6+ with Redis for V1.
+Use a current patched stable BullMQ release with Redis, pinning the tested version and supported Node/Redis versions in the lockfile. Do not depend on an unverified major-version API.
 
 Reasons:
 
@@ -6783,120 +6803,15 @@ Store large/sensitive input in PostgreSQL or object storage and enqueue referenc
 
 ---
 
-# 182. Queue Topology
+# 182. Initial Queue Topology
 
-Separate queues by workload/resource class so expensive background jobs cannot starve interactive work.
-
-Recommended initial queues:
-
-```text
-interactive-ai
-background-ai
-imports
-artifacts
-maintenance
-notifications
-```
-
-## interactive-ai
-
-Examples:
-
-```text
-chat tool-loop continuations
-small AI classifications triggered by user action
-```
-
-Optimized for low latency.
-
-## background-ai
-
-Examples:
-
-```text
-Deep Analysis investigators
-Deep Analysis synthesis
-recommendation generation
-scheduled AI refresh
-```
-
-Lower latency priority, larger jobs.
-
-## imports
-
-Examples:
-
-```text
-parse file
-normalize transaction batch
-merchant matching
-transfer detection
-```
-
-## artifacts
-
-Examples:
-
-```text
-build
-static validation
-sandbox smoke test
-review
-repair
-```
-
-Potentially more CPU-heavy.
-
-## maintenance
-
-Examples:
-
-```text
-analytics rebuild
-large reclassification
-derived-data regeneration
-```
-
-Lowest user-interactive priority.
-
-## notifications
-
-Small delivery/preparation jobs isolated from large analysis queues.
+R1 starts with `interactive-ai`, `background` and `artifact-build` queues. Reserve interactive capacity; isolate artifact compilation/browser tests and untrusted file parsing from the IO worker's event loop. Import, maintenance and completion-notice jobs can share the background queue with bounded per-job resources and workspace limits. Split queues further only when queue-age or resource measurements justify it. A logical queue is not a requirement for a separate paid service.
 
 ---
 
-# 183. Worker Deployment Topology
+# 183. Initial Worker Deployment
 
-Run multiple worker processes/instances for availability.
-
-Do not rely on one large worker process.
-
-Recommended:
-
-```text
-interactive AI workers
-background AI workers
-import workers
-artifact workers
-maintenance workers
-```
-
-This allows each class to scale independently.
-
-For IO-heavy jobs:
-
-```text
-higher BullMQ concurrency
-```
-
-For CPU-heavy work:
-
-```text
-low concurrency
-separate processes / sandboxed processors
-```
-
-Artifact compilation/runtime testing must not block the Node event loop long enough to cause unrelated jobs to stall.
+Start with one IO worker service consuming interactive/background queues with separate concurrency limits, and one isolated artifact-build service. Dispatch/schedule polling may live in the IO service initially. Use terminable child processes for untrusted file parsing/scanning, with memory/time limits and no unnecessary credentials. A brief deploy interruption is acceptable if durable recovery succeeds. Add replicas or separate worker services when availability or measured backlog requires them; six mostly idle services are not an R1 prerequisite.
 
 ---
 
@@ -7261,25 +7176,13 @@ BullMQ Flows may be used as an execution optimization later, but the workflow ca
 
 ---
 
-# 195. Workflow Step Claiming
+# 195. Workflow Claims, Reclaim and Fencing
 
-A worker handling a workflow step must atomically claim it.
+A worker must atomically claim a READY/RETRYABLE step and increment a monotonic `attempt_generation`, recording its attempt identity. Every checkpoint/final result commits only if the generation still matches, the step is RUNNING, cancellation has not won, and current authorization/policy permits publication.
 
-Conceptually:
+BullMQ owns transport leases. If a stalled job is redelivered, reclaim the PG RUNNING step through a compare-and-swap against the recorded attempt after verifying transport recovery/expired ownership. Do not use a permanent `status = RUNNING` guard that makes crash recovery impossible. A superseded worker may finish computation but cannot publish a stale result. Canonical tool commands reuse durable logical operation IDs across attempts; fencing and financial idempotency are separate safeguards.
 
-```sql
-UPDATE ai_workflow_steps
-SET status = 'RUNNING',
-    attempt = attempt + 1,
-    started_at = now()
-WHERE ...
-  AND status IN ('READY', 'RETRYABLE')
-RETURNING ...
-```
-
-Only the successful claimant runs the step.
-
-Duplicate BullMQ deliveries therefore become harmless.
+Test concurrent redelivery, death after claim, death after tool commit, stale worker finishing after replacement, and cancellation racing with publication. Unique `(workspace_id, workflow_run_id, step_key)` prevents duplicate logical steps.
 
 ---
 
@@ -7369,7 +7272,7 @@ If a provider does not support interruption, mark cancellation requested and dis
 
 BullMQ already maintains active-job locks and renews them.
 
-Do not invent a second competing lock protocol.
+Do not invent a second competing transport lock protocol.
 
 Use PostgreSQL `last_heartbeat_at` only for:
 
@@ -7379,7 +7282,7 @@ operational diagnostics
 detecting workflow/controller anomalies
 ```
 
-not as the BullMQ job ownership mechanism.
+not as the BullMQ job ownership mechanism. PostgreSQL attempt-generation fencing (§195) protects durable publication from stale workers; it does not replace the transport lease.
 
 Update it periodically for long steps.
 
@@ -7712,7 +7615,7 @@ This gives:
 - catch-up after Redis loss/outage,
 - easier schedule editing/audit.
 
-BullMQ v6 Job Schedulers should be used instead of legacy repeatable-job APIs.
+The pinned BullMQ release's supported Job Schedulers should be used instead of legacy repeatable-job APIs.
 
 ---
 
@@ -8003,7 +7906,7 @@ CI/staging must test:
 kill worker mid-job
 kill worker after DB write before BullMQ completion
 Redis unavailable during enqueue
-Redis restarts
+Redis restarts and total queue-state loss
 DB unavailable during processing
 provider 429
 provider 500
@@ -8068,7 +7971,7 @@ Temporal's durable execution can resume workflows after failures, but adopting i
 
 Lock the following:
 
-1. BullMQ v6+ with Redis is the V1 execution queue.
+1. A tested, pinned stable BullMQ release with Redis is the R1 execution queue.
 2. PostgreSQL is the durable source of job/workflow/schedule truth.
 3. Queue semantics are treated as at-least-once.
 4. All business-relevant handlers are idempotent.
@@ -8083,7 +7986,7 @@ Lock the following:
 13. Durable workflows are decomposed into small checkpointed steps.
 14. Deep Analysis fan-out/fan-in dependencies live in PostgreSQL.
 15. Cancellation is durable in PostgreSQL and cooperatively propagated through BullMQ/AbortSignal.
-16. BullMQ lock/stall detection owns execution leases; PostgreSQL heartbeat is observability only.
+16. BullMQ owns transport leases; PG heartbeat is diagnostic and attempt generations fence stale publication (§195).
 17. CPU-heavy artifact work is isolated from ordinary Node IO workers.
 18. Progress is durable in PostgreSQL; QueueEvents supplies realtime hints.
 19. Terminal failures live durably in PostgreSQL; no separate DLQ is required initially.
@@ -8099,28 +8002,15 @@ Lock the following:
 
 ---
 
-# 227. Forecasting Engine — Deterministic and Probabilistic Architecture
+# 227. Forecast Delivery Boundary
 
-Forecasting is a core finance capability and must remain outside the LLM arithmetic path.
+R1 uses a deterministic daily cash-flow engine and explicit assumption cases. Keep reconciled starting balances, recurrence, editable assumptions, goals/reservations, scenario deltas, evidence and reproducible snapshots. Do not build a statistical model-selection platform to prove the core artifact loop.
 
-The forecasting engine powers:
+**R1:** one recent-history baseline (median of complete weekly variable-spend buckets, with included/excluded dates recorded), confirmed recurring schedules, explicit low/base/high assumptions and flat scenarios. Require at least eight complete weeks for the historical baseline; with less history use explicit user assumptions or show insufficient data. This is an initial product policy, not statistical validation. Partial import coverage never counts as a complete zero-spend week. Distribute weekly amounts across days with an exact remainder policy and disclose that simplification. Month-end recurrence clamps to the final day; leap-day yearly recurrence uses February's final day in non-leap years. Business-day adjustment must be explicit. Budget targets never silently replace behavior estimates.
 
-```text
-Available to Spend
-Plan Overview
-Goals
-Scenarios
-Expected / Conservative / Optimistic balances
-Cash-flow risk
-Deep Analysis
-Recommendations
-Notifications
-Artifacts
-```
+**R3:** §§240–252 and §§268–270 are statistical candidates, backtesting, calibration and quantile storage. The probabilistic parts of §§235–239, 247, 257–263 and 273 are also R3, not required migrations or promises for R1. Add a model only after it improves held-out results on representative data. Sparse/changed history remains a limitation even with Monte Carlo.
 
-The LLM may interpret forecast results.
-
-It does not calculate the forecast itself.
+R1 runs record `method = SCENARIO_CASES`, input snapshot, engine version, horizon and case assumptions. Use band-based series/points in §38, never probability labels. R3 uses `method = EMPIRICAL_DISTRIBUTION` with seed/version/calibration metadata. Consumers check method before displaying probabilities; both methods reuse the Finance API and evidence boundary.
 
 ---
 
@@ -8147,27 +8037,11 @@ The engine should produce a **forecast distribution**, not false point precision
 
 ---
 
-# 229. Expected / Conservative / Optimistic
+# 229. Scenario Cases and Later Quantiles
 
-Do not generate three forecasts independently.
+R1 Expected / Conservative / Optimistic are explicit assumption cases, not statistical confidence bounds. Conservative inputs use lower income/higher expense assumptions and expose the choices. Unsupported cases are unavailable rather than decorative bands.
 
-Generate one probabilistic set of coherent future cash-flow paths and derive quantiles.
-
-Default UI interpretation:
-
-```text
-Conservative = P10 cash outcome
-Expected     = P50 / median cash outcome
-Optimistic   = P90 cash outcome
-```
-
-These correspond to the bounds and midpoint of an 80% central forecast interval.
-
-The labels are user-facing aliases for distributional quantiles.
-
-The engine should internally support arbitrary quantiles.
-
-A P10/P90 band does **not** mean that the exact P10 line is one single realized scenario path; it is the per-horizon lower/upper quantile of the simulated distribution.
+For a qualified R3 distribution, derive P10/P50/P90 from the same simulated distribution. Median is not mean. Whether a low quantile is conservative depends on the metric (low cash vs high expense). Pointwise quantiles are not a coherent cash-flow path; risk calculations evaluate pathwise constraints before aggregation.
 
 ---
 
@@ -8473,9 +8347,11 @@ Do not fit complex category models from a handful of observations.
 
 ---
 
-# 240. V1 Candidate Statistical Models
+# 240. R3 Candidate Statistical Models
 
-V1 should deliberately prefer simple, interpretable models.
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
+
+R3 should prefer simple, interpretable models after the R1 baseline.
 
 Candidates:
 
@@ -8502,6 +8378,8 @@ Do not introduce deep-learning time-series models in V1 without clear backtested
 
 # 241. Model Selection Uses Rolling-Origin Backtesting
 
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
+
 Do not choose a forecasting method based on in-sample residual fit.
 
 Use time-series cross-validation / rolling forecasting origin.
@@ -8522,6 +8400,8 @@ When data is too short, use the simpler robust fallback and widen uncertainty.
 
 # 242. Point Forecast Metrics
 
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
+
 Track at least:
 
 ```text
@@ -8537,6 +8417,8 @@ Accuracy should be evaluated on true held-out/rolling-origin forecasts, not fitt
 ---
 
 # 243. Probabilistic Forecast Metrics
+
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
 
 For quantile/distribution forecasts track:
 
@@ -8563,6 +8445,8 @@ forecast distributions.
 
 # 244. Residual / Empirical Bootstrap
 
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
+
 For uncertain variable behavior, prefer empirical residual/sample-path simulation over an automatic normal-distribution assumption when data supports it.
 
 Conceptually:
@@ -8581,6 +8465,8 @@ Store the random seed for reproducibility.
 ---
 
 # 245. Preserve Cross-Category Correlation
+
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
 
 Do not independently sample every category if avoidable.
 
@@ -8618,6 +8504,8 @@ then allocate by recent/category-share distribution
 
 # 246. Block Bootstrap
 
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
+
 Use short residual blocks where practical instead of independent single-week draws.
 
 This helps preserve:
@@ -8633,6 +8521,8 @@ Block length is a model hyperparameter chosen/backtested rather than a permanent
 ---
 
 # 247. Forecast Path Simulation
+
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
 
 A single simulation path should:
 
@@ -8666,6 +8556,8 @@ Do not hard-code the count into the domain model.
 
 # 248. Reproducible Simulation
 
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
+
 Every forecast run stores:
 
 ```text
@@ -8677,7 +8569,7 @@ path count
 quantiles requested
 ```
 
-Given the same engine version/input/seed, the numerical run should be reproducible.
+Given the same engine/input/seed and pinned arithmetic policy, the run should reproduce. Distribution mechanics may use floating point, but monetary increments are quantized using the exact-money rounding policy before authoritative accumulation, with remainder handling recorded.
 
 This is valuable for:
 
@@ -8691,6 +8583,8 @@ Deep Analysis evidence
 ---
 
 # 249. Do Not Persist Every Monte Carlo Path by Default
+
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
 
 Thousands of daily paths create unnecessary storage.
 
@@ -8713,6 +8607,8 @@ Normal user forecasts should be regenerable from the snapshot and seed.
 ---
 
 # 250. Forecast Quantile Schema Refinement
+
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
 
 Refine the earlier forecast-point design so arbitrary quantiles can be stored.
 
@@ -8750,13 +8646,15 @@ Examples:
 9000 = P90
 ```
 
-This is more flexible than a hard-coded `EXPECTED/CONSERVATIVE/OPTIMISTIC` enum.
+This applies to R3 distribution outputs. R1 keeps explicit band-based cases; never rename scenario cases to quantiles.
 
 The UI maps quantiles to labels.
 
 ---
 
 # 251. Forecast Component Model Records
+
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
 
 Store derived model diagnostics.
 
@@ -8796,6 +8694,8 @@ These are derived/rebuildable.
 ---
 
 # 252. Forecast Calibration
+
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
 
 Backtesting should measure whether nominal quantiles are calibrated.
 
@@ -8944,86 +8844,39 @@ If no explicit contribution plan exists, the system may estimate likely contribu
 
 ---
 
-# 257. Goal Forecast Outputs
+# 257. Goal Projection Outputs
 
-For each goal calculate:
+R1 returns allocated amount, required deterministic contribution, completion/shortfall under each case and its assumptions. Allocation is a reservation, not a new asset. R1 returns no success probability.
 
-```text
-P(target reached by target date)
-median projected completion date
-P10/P90 completion date where meaningful
-required deterministic monthly contribution
-projected shortfall/surplus at target date
-```
-
-The AI can explain these outputs but does not invent them.
+R3 may add probabilities/quantiles only with a qualified distribution. Paths not completing within the horizon must remain represented; do not discard them to produce misleading finite completion dates.
 
 ---
 
-# 258. Available to Spend — Formal Definition
+# 258. Available to Spend — R1 and Later Risk Model
 
-Do not define Available to Spend as simply:
-
-```text
-current balance - upcoming bills
-```
-
-Use a risk-adjusted liquidity margin.
-
-For each simulation path calculate:
+R1 calculates a conditional margin over a default 30-day horizon under the displayed conservative case:
 
 ```text
-margin(path) =
-minimum over protection horizon of:
-
-spendable_cash(t)
-- required_safety_floor(t)
-- protected/reserved allocations not already represented as cash-flow events
+margin(t) = eligible spendable cash(t) - safety floor(t)
+            - protected allocations not already accounted for
+estimated margin = minimum across all days, including today
 ```
 
-If the user spends `X` immediately, every future margin is reduced by `X`.
+Use reconciled booked/current balances and apply pending holds once; an available balance already reduced by holds must not deduct them again (§536). Virtual goal contributions increase reserved cash without reducing actual cash/net worth. External spending consumes its associated reservation once.
 
-Therefore for required confidence `c`:
+Return a positive estimate only with usable required balances, FX, commitments and coverage. A negative margin displays `0 available` AND the shortfall/date; zero does not imply safety constraints are met. Missing required inputs return `UNAVAILABLE`, not zero.
 
-```text
-AvailableToSpend =
-max(0, quantile_(1-c)( margin(path) ))
-```
+**Account constraints:** Combined positive cash cannot hide a shortfall in the account paying rent. Evaluate each protected account's dated obligations/floor; assume inter-account transfers only when explicitly scheduled. For a selected spending account, deduct hypothetical spending there and check all affected constraints. Without a selected source, show aggregate headroom only when account constraints hold, labeled conditional on funding allocation; otherwise return a funding-gap warning and no actionable number. No money movement is implied.
 
-Example:
-
-```text
-confidence = 90%
-→ use P10 of minimum future liquidity margin
-```
-
-This means approximately 90% of simulated paths still respect the configured liquidity/safety constraints after spending that amount today.
+**R3 only:** For a validated probabilistic model and specified funding allocation, evaluate each path's minimum liquidity margin with all applicable account constraints, then take the configured lower quantile. Do not deduct X from every account or assume fungibility. Simulation coverage is conditional on the model, not a real-world guarantee. Preserve R1 unavailable/shortfall/provenance behavior.
 
 ---
 
-# 259. Available-to-Spend Default Policy
+# 259. Available-to-Spend Presentation
 
-Recommended default:
+R1 default horizon is 30 days, inspectable/editable. Show method, case assumptions, dated balances, reservations, commitments, limiting day/account, coverage and shortfall. Explain from the actual engine timeline, not a fixed subtraction template or LLM arithmetic.
 
-```text
-protection horizon = 30 days
-confidence          = 90%
-```
-
-Both become inspectable Financial Model assumptions/settings.
-
-A user can choose a different policy such as:
-
-```text
-60 days
-95% confidence
-```
-
-The UI should explain:
-
-> “€643 is the amount you can spend now while keeping your configured safety rules satisfied in roughly 90% of forecast paths over the next 30 days.”
-
-The normal dashboard can use a simpler label; the detail panel exposes the methodology.
+If R3 probabilities ship, expose the confidence parameter and calibration/history limitations. Never display “90% safe” merely because 90% of simulated paths pass. Held-out backtesting is required before probability-bearing claims.
 
 ---
 
@@ -9206,6 +9059,8 @@ This preserves historical forecast-vs-actual evaluation.
 
 # 268. Forecast Accuracy Records
 
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
+
 Add:
 
 ## forecast_accuracy_evaluations
@@ -9241,6 +9096,8 @@ This lets the engine improve model selection/calibration from real historical pe
 
 # 269. Forecast Model Registry
 
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
+
 Use an internal model interface.
 
 Conceptually:
@@ -9264,6 +9121,8 @@ If later advanced models materially outperform the TypeScript baseline, they can
 ---
 
 # 270. Model Combination
+
+**Release: R3 only.** This is a gated statistical capability, not part of R1 scenario projections.
 
 Simple forecast combinations can outperform individual models.
 
@@ -9325,37 +9184,11 @@ If an AI answer contains forecasted numbers, those numbers must be traceable to 
 
 ---
 
-# 273. Forecasting Decision Summary
+# 273. Forecast Decision Summary
 
-Lock the following:
+R1 keeps exact application arithmetic, daily dated balances, snapshots, explainable events, assumptions, case comparisons and per-account checks. Use one concrete TypeScript module, not a pluggable registry before a justified second model exists. Native amounts remain canonical; no LLM supplies authoritative totals.
 
-1. Forecasting is deterministic/probabilistic application code, not LLM arithmetic.
-2. Use a component-based cash-flow simulation engine.
-3. Generate one forecast distribution; derive P10/P50/P90 rather than three unrelated forecasts.
-4. Use a daily internal timeline and aggregate only for presentation.
-5. Starting balances come from reconciled balance snapshots.
-6. Separate deterministic, recurring-uncertain, behavioral, and scenario cash flows.
-7. Model recurring streams separately from variable spending.
-8. Model variable spending mainly at weekly/category level with hierarchical fallbacks.
-9. Prefer simple interpretable statistical models in V1.
-10. Select/calibrate models with rolling-origin time-series cross-validation.
-11. Evaluate point and probabilistic accuracy.
-12. Use residual/empirical bootstrap simulation where appropriate.
-13. Preserve cross-category dependence through joint/block residual sampling where data allows.
-14. Store seed/configuration for reproducibility.
-15. Do not persist all Monte Carlo paths by default.
-16. Store arbitrary forecast quantiles rather than a hard-coded three-band enum.
-17. Report forecast confidence/data-quality reasons.
-18. Support behavior-based and plan-based forecast modes separately.
-19. Add explicit goal contribution plans.
-20. Define Available-to-Spend as a risk-adjusted minimum-liquidity quantile.
-21. Default Available-to-Spend protection policy: 30 days / 90% confidence, inspectable/editable.
-22. Do not treat investment value or credit capacity as ordinary spendable cash.
-23. Scenario sensitivity is computed by the engine.
-24. Do not forecast investment returns or FX speculatively in V1.
-25. Keep historical forecast runs immutable and continuously evaluate them against actual outcomes.
-26. Implement V1 engine in TypeScript behind a pluggable model interface.
-
+Statistical forecasting, joint/block bootstrap, arbitrary quantiles, model combination and calibrated probabilities are R3 work. Retained sections are gated design candidates, not R1 scaffolding. Investments/FX are not invisibly predicted. Consumers distinguish scenario cases from probabilities and partial from complete coverage.
 
 ---
 
@@ -9397,7 +9230,7 @@ TanStack Query
 TanStack Table
 TanStack Virtual
 
-Zustand (very limited UI state only)
+React state/context first; optional Zustand for demonstrated cross-route UI complexity
 
 Vercel AI SDK UI
 Orval-generated OpenAPI client
@@ -9946,7 +9779,7 @@ Do not move state into Zustand merely because multiple nested components need it
 
 # 294. Zustand Scope
 
-Use Zustand only for cross-route browser UI concerns that do not naturally belong to the URL or backend.
+Use React state/context first. Add Zustand only for demonstrated cross-route concerns outside URL/backend state.
 
 Potential examples:
 
@@ -11177,7 +11010,7 @@ Never render model-produced HTML with unrestricted `dangerouslySetInnerHTML`.
 
 Any Markdown HTML support should be disabled or strictly sanitized.
 
-Links are validated and rendered with safe attributes.
+Links are validated and rendered with safe attributes. Disable model-produced remote images, embeds and automatic URL previews: loading them can transmit financial text encoded in a URL. External navigation is a visible user action, never an automatic request from model output. Do not let generated artifact intent fields trigger model calls without a host-owned user action or an explicitly enabled bounded schedule.
 
 ---
 
@@ -11292,7 +11125,7 @@ Lock the following:
 6. Authenticated financial data is not placed in shared Next.js caches.
 7. URL search params own shareable/navigation state.
 8. Local React state owns local transient state.
-9. Zustand is limited to cross-route ephemeral UI state.
+9. React state/context first; optional Zustand only for cross-route ephemeral UI state.
 10. Financial data is not persisted into browser storage for caching.
 11. Orval generates the browser client/types/TanStack Query hooks/MSW mocks from OpenAPI.
 12. Feature mutation wrappers add idempotency, version checks, optimistic policy, and invalidation.
@@ -11311,7 +11144,7 @@ Lock the following:
 25. Tailwind/CSS semantic tokens define visual theme and density.
 26. WCAG 2.2 AA is the baseline.
 27. Critical optional bundles are lazy-loaded.
-28. Storybook + Vitest/Testing Library + MSW + Playwright form the frontend test stack.
+28. Vitest/Testing Library + Playwright are initial; add Storybook/MSW at the consuming slice when useful.
 29. AI output never renders unrestricted raw HTML.
 30. Framework/dependency security updates are operationally mandatory.
 
@@ -11456,28 +11289,13 @@ These belong on Render background workers.
 
 ---
 
-# 352. AI Response Streaming on Vercel
+# 352. Durable Chat Execution and Streaming
 
-Normal chat streams may remain Vercel functions because they are request-scoped and Vercel supports streaming.
+Message submission atomically persists message, AI run, job and outbox. The interactive worker owns model/tool execution from the first call. Vercel serves a bounded authenticated event stream as a transport subscriber, never sole work owner. Do not invent mid-request migration from a dying function to a worker.
 
-The durable AI run already exists independently in PostgreSQL.
+Persist completed model turns, structured tool references/results and logical operation IDs before continuing. Buffer text deltas for bounded replay; reconnect reloads persisted content and resumes or explicitly restarts interrupted generation. Never concatenate separate generations into one answer. A RUNNING row alone is not durability: reclaim, fencing and missing-queue reconciliation (§§69,195) make it recoverable.
 
-Therefore:
-
-```text
-browser stream disconnect
-≠
-AI run lost
-```
-
-If a response approaches platform execution limits:
-
-```text
-durable workflow continues in worker infrastructure
-browser reconnects to persisted/run event state
-```
-
-Do not design correctness around one HTTP function surviving indefinitely.
+Reconnect validates login/workspace/policy. Provider cancellation/billing can lag Stop; halt additional calls and reject late publication. Prove behavior with crash tests.
 
 ---
 
@@ -11535,34 +11353,9 @@ Its backend deployment must never become a privileged finance API.
 
 # 355. Render Worker Role
 
-Use Render background workers in Frankfurt for:
+Use Render Frankfurt for the two services in §§182–183. IO workers own durable interactive/background AI, import orchestration, maintenance and dispatch. Artifact build/test workers use synthetic fixtures with no customer finance database, production object-store or model credentials. Trusted orchestration supplies bounded source/mock input and validates output. Add replicas/classes only when measured requirements justify them.
 
-```text
-interactive AI continuation workers where needed
-background AI
-imports
-artifacts
-maintenance
-notifications
-outbox dispatcher
-schedule dispatcher
-```
-
-Deploy logical workload classes as separate Render services so they can scale independently.
-
-Example:
-
-```text
-worker-interactive-ai
-worker-background-ai
-worker-imports
-worker-artifacts
-worker-maintenance
-worker-notifications
-worker-dispatch
-```
-
-At very small scale, compatible low-volume classes may share a process initially, but queue/resource boundaries remain in code.
+Untrusted parser/scanner subprocesses are constrained and receive no unnecessary database/model credentials. Trusted orchestration handles accepted-source persistence.
 
 ---
 
@@ -11963,12 +11756,14 @@ Vercel OIDC identity
 Render:
 
 ```text
-Render managed OIDC identity
+Render managed OIDC identity (Pro workspace or higher)
 → AWS IAM role
 → automatically rotated temporary credentials
 ```
 
 Do not place permanent AWS access keys in Vercel or Render environment variables when OIDC is available.
+
+Render managed OIDC is plan-dependent: include its workspace subscription and verify federation before deploying. Do not silently fall back to permanent keys.
 
 Create separate narrowly scoped AWS roles per:
 
@@ -12134,26 +11929,9 @@ It is still not durable business truth.
 
 ---
 
-# 376. Separate Rate-Limit Redis
+# 376. Rate-Limit Storage
 
-Do not mix queue memory/keyspace with application rate-limiting state.
-
-Use a separate Redis database/resource for:
-
-```text
-API rate limits
-temporary abuse-control counters
-small ephemeral infrastructure cache if later needed
-```
-
-Benefits:
-
-```text
-separate blast radius
-different retention/access patterns
-independent sizing
-queue correctness unaffected by rate-limit pressure
-```
+Keep queue Redis dedicated and no-eviction. R1 uses edge/provider abuse protection plus transactional PostgreSQL workspace concurrency/cost reservations for expensive work. Add separate Redis request counters only if distributed request limits need them under measured traffic. Per-process counters cannot be the only cross-instance spending control. Never put evicting limiter/cache workloads into the queue store.
 
 ---
 
@@ -12542,7 +12320,7 @@ At least quarterly in early production:
 
 ```text
 restore logical/native backup
-into isolated non-production database
+into isolated restricted recovery environment
       ↓
 apply/verify schema
       ↓
@@ -13161,7 +12939,7 @@ Lock the following V1 deployment decisions:
 3. Render Frankfurt hosts always-on BullMQ/background workers.
 4. Neon paid PostgreSQL in AWS Frankfurt is the production database baseline.
 5. Upstash Frankfurt fixed-plan Redis is the BullMQ execution store with eviction disabled.
-6. Rate limiting uses a separate Redis resource.
+6. Edge/provider abuse protection and PG budget controls come first; separate Redis counters only if needed (§376).
 7. AWS S3/KMS in `eu-central-1` stores files/backups and encrypts user custom-provider credentials.
 8. Vercel and Render access AWS using OIDC federation/short-lived credentials where supported.
 9. GitHub Actions accesses AWS using OIDC rather than static AWS keys.
@@ -13229,7 +13007,7 @@ EU-region production tenant
 custom authentication domain
 ```
 
-Why Auth0 over Clerk for this product:
+Reasons for the Auth0 baseline:
 
 ```text
 EU-region data hosting available
@@ -13241,9 +13019,7 @@ session revocation
 mature Next.js integration
 ```
 
-Clerk remains technically strong, but currently does not offer regional data residency and hosts auth data in the United States.
-
-For a finance-focused EU-first application, Auth0 EU is the preferred baseline.
+Auth0 EU remains the managed identity baseline. This is a project choice, not a claim that alternative providers are unsuitable; verify selected-plan entitlements before implementation.
 
 Do not self-build authentication in V1.
 
@@ -13467,7 +13243,9 @@ revoke session
 sign out all other sessions
 ```
 
-Session revocation propagates to Auth0 and the application session layer.
+Application sessions have server-side records: session ID/hash, user, issue/activity/expiry times, revoked-at and strong-auth time/method. Check current validity on requests, privileged worker operations and stream/RPC renewal. Revoke locally first and coordinate Auth0 revocation where supported. Auth0 SSO revocation alone does not invalidate an issued application cookie. Test copied old cookies after revocation.
+
+Use the provider SDK's supported server session integration, not custom OAuth/password handling. Verify TOTP/recovery, fresh-auth signals, passkeys and session-management API entitlements in the selected plan. Product workspaces are our model, not a paid Auth0 Organization for each consumer.
 
 Do not display precise IP/location history unnecessarily.
 
@@ -14182,11 +13960,11 @@ bounded transaction slices
 
 over full account histories.
 
-Normal-mode provider policy remains:
+Production Included-mode provider policy remains (development follows §130):
 
 ```text
 no provider data collection
-ZDR-required routing where available
+ZDR-required routing; fail closed if unavailable
 ```
 
 Custom-mode users are informed that their selected provider's data handling/privacy terms apply to content sent through that provider.
@@ -14944,13 +14722,7 @@ rate-limit/DoS tests
 backup/restore tests
 ```
 
-Before live Open Banking / external-money functionality:
-
-```text
-independent penetration test
-```
-
-strongly recommended.
+Before live Open Banking / external-money functionality, an independent penetration test is mandatory. Before external R1 users receive executable artifacts with financial data, require independent runtime security review as well as hostile-artifact tests.
 
 ---
 
@@ -15135,7 +14907,7 @@ Lock the following:
 17. V1 uploads accept only CSV/XLSX with quarantine, strict parser/resource limits, and malware scanning.
 18. Macro-enabled/legacy spreadsheet formats are rejected initially.
 19. Provider-managed encryption protects general data at rest; KMS envelope encryption protects opaque high-value credentials/tokens.
-20. AI data exposure is minimized and Normal-mode ZDR/no-collection routing remains required.
+20. Production customer AI data is minimized with mandatory ZDR/no-collection routing; development is separately configured (§130).
 21. The product does not proactively infer/persist sensitive personal traits from financial behavior.
 22. Data retention is purpose-specific and machine-documented.
 23. Original imported file bytes default to limited retention rather than indefinite storage.
@@ -15161,2631 +14933,42 @@ Lock the following:
 
 ---
 
-# 490. MVP Implementation Strategy
+# 490. Epic and Story Execution Plan
 
-**Supporting reference only:** implement against the issue scopes, dependency table, coverage map and exit gates in [IMPLEMENTATION-EPOCHS.md](IMPLEMENTATION-EPOCHS.md). The following historical epoch notes explain intended designs; do not maintain a second issue list here. When a note conflicts with the current execution order, the implementation plan wins on scheduling, while technical invariants elsewhere in this architecture remain mandatory.
+The [implementation plan](implementation/README.md) contains the single execution backlog: nine R1 epics, six sequencing waves and 56 initial stories. E00's five bounded proof stories are specified first; subsequent stories remain Draft until refined against the actual code. Product release scope comes from the companion Delivery baseline; technical invariants come from this document. The previous 22-epoch draft was removed because it delayed artifact feasibility and required the entire product before validation. Section numbers 495–534 remain reserved, not missing deliverables. “Epoch” is a synonym for epic; waves are sequencing groups, not another branch or ticket hierarchy.
 
-The implementation roadmap follows a **walking-skeleton + vertical-slice** strategy.
+Use vertical slices: schema → domain function → API/tool → UI → tests → deploy. Build only the schema and services the slice needs. Prove the sandbox, import fidelity, durable recovery and identity/provider path early with synthetic data. Then deliver foundation/isolation → durable import/corrections/analytics → grounded AI and editable live artifacts → basic projections/initial analysis → core-loop beta. Exact dependencies and R1 coverage live in the [story ledger](implementation/STORIES.md) and [epics/waves](implementation/EPICS.md); privacy, money correctness and recovery are gates throughout. The [delivery workflow](implementation/WORKFLOW.md) binds review to commit SHAs and requires checks of the candidate integrated with latest main. The [reusable prompts](implementation/PROMPTS.md) operationalize that workflow without creating a custom orchestration framework.
 
-Do not build:
+# 491. Agent Delivery Contract
 
-```text
-all database tables
-→ all backend APIs
-→ all frontend screens
-→ AI at the end
-```
+The founder/orchestrator assigns bounded stories with explicit files/ownership, dependencies, behavior, invariants, error paths and acceptance commands. Agents use isolated branches/worktrees; parallel work starts only after shared contracts stabilize. An independent adversarial reviewer checks the actual diff and originating story. The implementer addresses findings, tests run on the integrated candidate, and only then does the orchestrator merge. Review cannot be replaced by the implementer's own summary or a model saying “looks good.”
 
-Instead, repeatedly deliver complete product slices:
+Do not assign “implement the architecture” or one giant epoch. An epoch closes only when its integrated user journey works and review findings are resolved. Any changed assumption updates both plans before dependent stories begin.
 
-```text
-database
-→ application service
-→ API/tool contract
-→ frontend
-→ observability
-→ tests
-→ deploy
-```
+# 492. Story Readiness
 
-Each epoch must leave the repository in a deployable state.
+Each story records objective, release, user trigger/outcome, non-goals, dependencies, domain/API contract, migration and tenant keys if needed, exact-money/authorization invariants, retry/cancellation behavior, UI empty/error/incomplete states, telemetry, runnable checks, and rollback/recovery impact. Security-sensitive parser/runtime dependencies and provider features require a tested pinned choice before the dependent story starts. Qualify import formats with fixtures; do not promise bank coverage from a filename.
 
-An epoch is an integration milestone, not a giant branch.
+Reuse existing domain functions and platform features. No empty future packages, speculative plugin systems, forecast model registries, staff portal, or blanket boilerplate test suites. Implement security/privacy controls appropriate to the slice, not a late catch-up phase.
 
-Implementation inside an epoch should still be split into small reviewed changes.
+# 493. R1 Acceptance and Adversarial Gates
 
----
+Before external users provide financial data, demonstrate:
 
-# 491. Delivery Rules
+- Two workspaces cannot cross-read, cross-link, mutate, export or access each other's data through UI, worker, AI or artifact.
+- Golden EUR/JPY/three-decimal-currency fixtures, amounts beyond JS safe integer range, duplicate multiplicity, credit repayment, refund, FX, transfer fees, balance cutoff and goal reservations produce exact expected outcomes.
+- Retry, concurrent commands, cancellation, worker death, stale attempts and complete Redis loss neither lose accepted work nor duplicate canonical effects.
+- AI claims link to frozen calculation evidence; exclusion changes invalidate context, prevent subsequent dispatch and block stale publication. Provider budgets are atomically reserved before concurrent calls and reconciled afterward; unknown usage is not zero.
+- An intentionally hostile artifact cannot reach host DOM/credentials/network, exceed capabilities or prevent the host from stopping it. Test in supported browsers. Build/review workers carry no customer finance credentials and use synthetic data; trusted host preview supplies authorized data afterward.
+- The full core loop works, including reopening, manual code edit, failed edit retaining the previous active version, second import, live query refresh, and policy revocation.
+- Export/deletion/retention work, restore reapplies deletion tombstones, and backups have been restored successfully in an isolated restricted recovery environment.
+- Representative load measurements include import size/time, transaction-query latency, multiple open artifacts, cancellation latency and per-run AI cost. Thresholds and dataset sizes are specified in the relevant story before testing.
 
-Every implementation epoch follows these rules.
+# 494. Definition of Planning Readiness
 
-## 491.1 Trunk-first
+The two plans establish scope and contracts, not a guarantee of implementation feasibility. Before dependent implementation: pass §540's bounded technical spikes, select supported formats/model configurations, and set measured resource/time/cost limits. These are finite proof tasks. Do not expand the architecture indefinitely while trying to eliminate all uncertainty.
 
-Use:
-
-```text
-main/trunk
-short-lived branches
-small PRs
-feature flags where incomplete behavior must merge early
-```
-
-Avoid long-lived feature branches.
-
-## 491.2 Small batches
-
-Prefer changes that can be:
-
-```text
-reviewed independently
-tested independently
-deployed independently
-rolled back independently
-```
-
-## 491.3 Feature flags
-
-Feature flags are acceptable for:
-
-```text
-unfinished UI
-new forecasting engine path
-new AI capability
-artifact runtime
-Deep Analysis
-```
-
-Do not use flags to permanently maintain multiple business-logic implementations.
-
-Flags require:
-
-```text
-owner
-purpose
-default
-expiry/removal condition
-test coverage
-```
-
-## 491.4 Database changes travel with code
-
-Every schema migration is:
-
-```text
-version controlled
-reviewed
-tested against representative schema
-backward compatible during rollout
-```
-
-## 491.5 Definition of done
-
-An epoch is not done because:
-
-```text
-"the code compiles"
-```
-
-It is done only when:
-
-```text
-migration applies
-API/tool contract works
-frontend path works where relevant
-tests pass
-observability exists
-security constraints are verified
-deployment succeeds
-rollback/recovery behavior is understood
-```
-
----
-
-# 492. Release Tracks
-
-Use three simultaneous tracks during implementation:
-
-```text
-PRODUCT
-PLATFORM
-QUALITY/SECURITY
-```
-
-Every epoch may touch all three.
-
-Do not create a separate late-stage "security phase."
-
-Security, observability, migrations, and testability are built into each slice.
-
----
-
-# 493. Feature-Flag Registry
-
-Create a small typed flag registry from the start.
-
-Example initial flags:
-
-```text
-ai_chat
-deep_analysis
-forecast_v1
-artifact_runtime
-artifact_generation
-investments_v1
-privacy_export
-```
-
-Flags are evaluated server-side for authoritative capability availability.
-
-The frontend may consume the resulting capability map for presentation.
-
-Do not trust a browser-only flag to protect a backend feature.
-
----
-
-# 494. Global Definition of Done
-
-Every production-facing epoch must satisfy:
-
-```text
-[ ] TypeScript passes
-[ ] lint/format passes
-[ ] unit tests pass
-[ ] integration tests pass
-[ ] relevant Playwright flow passes
-[ ] migration tested from previous schema
-[ ] tenant-isolation test added where relevant
-[ ] no secret/security scan finding introduced
-[ ] OpenAPI regenerated and diff reviewed
-[ ] observability spans/logs/metrics added
-[ ] error states are user-visible
-[ ] accessibility checks pass for changed UI
-[ ] feature can be disabled safely if incomplete
-[ ] deploy/staging smoke test passes
-[ ] architecture/spec updated if implementation changed a decision
-```
-
-For finance calculations also require:
-
-```text
-[ ] deterministic fixtures
-[ ] exact-money arithmetic tests
-[ ] no floating-point authoritative money path
-```
-
-For AI features also require:
-
-```text
-[ ] capability evals
-[ ] tool-permission tests
-[ ] structured-output validation
-[ ] cost/token limit tests
-[ ] prompt-injection/adversarial tests appropriate to the capability
-```
-
----
-
-# 495. Wave 0 — Engineering Foundation
-
-Purpose:
-
-> Establish a production-shaped skeleton before product complexity begins.
-
-Contains Epochs 0–2.
-
----
-
-# 496. Epoch 0 — Monorepo, CI, Local Stack, and Production Skeleton
-
-## Goal
-
-A developer can clone the repository, run the complete local platform, execute tests, and deploy a harmless authenticated shell through the real CI/CD path.
-
-## Deliverables
-
-Repository:
-
-```text
-/apps/web
-/apps/worker
-
-/packages/db
-/packages/finance
-/packages/forecast
-/packages/ai
-/packages/artifacts
-/packages/ui
-/packages/shared
-```
-
-Tooling:
-
-```text
-TypeScript strict mode
-package manager lockfile
-ESLint
-Prettier
-Vitest
-Playwright
-Storybook
-Drizzle
-Orval
-OpenTelemetry bootstrap
-```
-
-Local infrastructure:
-
-```text
-PostgreSQL
-Redis
-local S3-compatible store or test abstraction
-```
-
-Production projects/resources provisioned:
-
-```text
-Vercel project
-Render worker skeleton
-Neon non-prod + production projects
-Upstash non-prod + production resources
-S3/KMS environment resources
-Grafana Cloud EU stack
-Auth0 dev/staging/prod tenant structure
-```
-
-## Database
-
-Initial migration contains only global/application scaffolding needed by the next epoch:
-
-```text
-currencies
-schema_migrations/tooling
-```
-
-Seed ISO currency metadata.
-
-## Backend
-
-Create:
-
-```text
-GET /api/v1/health
-GET /api/v1/version
-```
-
-Version output includes:
-
-```text
-release
-git SHA
-schema version
-environment
-```
-
-No sensitive infrastructure metadata.
-
-## Frontend
-
-Implement authenticated application shell placeholder:
-
-```text
-Home
-Money
-Plan
-AI
-Settings
-```
-
-No finance functionality yet.
-
-## Worker
-
-Start BullMQ worker skeleton with:
-
-```text
-startup
-Redis connection
-Postgres connection
-SIGTERM handling
-OTel
-health telemetry
-```
-
-No business jobs yet.
-
-## CI
-
-PR workflow:
-
-```text
-install
-lint
-typecheck
-unit
-build web
-build worker
-Storybook test
-Playwright smoke
-dependency scan
-secret scan
-CodeQL
-```
-
-Production deploy remains protected.
-
-## Tests
-
-Must prove:
-
-```text
-fresh database migration works
-web build works
-worker starts/stops gracefully
-health/version route works
-local stack boots reproducibly
-OTel trace can be emitted
-```
-
-## Done
-
-From an empty checkout:
-
-```text
-setup → migrate → seed → test → run
-```
-
-works without undocumented manual fixes.
-
-A harmless production/staging release has successfully passed the real deployment pipeline.
-
----
-
-# 497. Epoch 1 — Authentication, Workspace, RLS, and Security Skeleton
-
-## Goal
-
-A real user can securely sign in and receive an isolated workspace.
-
-## Database
-
-Add:
-
-```text
-users
-workspaces
-workspace_members
-security_audit_events
-```
-
-Use:
-
-```text
-(workspace_id, id)
-```
-
-tenant key rules where applicable.
-
-Enable RLS on tenant-owned tables.
-
-Create:
-
-```text
-application_role
-migration role strategy
-```
-
-## Auth
-
-Integrate:
-
-```text
-Auth0 EU tenant
-custom auth domain configuration
-secure BFF/session cookie
-login/logout/callback
-```
-
-Passkey enrollment support can be exposed if production custom domain is ready.
-
-## Application service
-
-Create:
-
-```text
-AuthIdentityService
-WorkspaceService
-withWorkspaceTransaction()
-```
-
-Every tenant DB integration test must use the same transaction-local RLS mechanism intended for production.
-
-## API
-
-Initial routes:
-
-```text
-GET  /api/v1/me
-GET  /api/v1/workspaces/current
-GET  /api/v1/security/sessions
-POST /api/v1/security/sessions/revoke-others
-```
-
-Session-management endpoint implementation can initially return only supported Auth0-backed data.
-
-## Frontend
-
-Build:
-
-```text
-sign-in flow
-first workspace creation
-authenticated shell
-Settings → General skeleton
-Settings → Privacy & Security skeleton
-```
-
-## Security
-
-Add:
-
-```text
-CSRF middleware
-Origin/Fetch Metadata checks
-base CSP
-HSTS config for production
-Permissions Policy
-same-origin CORS policy
-```
-
-## Tests
-
-Mandatory isolation cases:
-
-```text
-Workspace A cannot read B
-Workspace A cannot update B
-wrong workspace FK fails
-application role cannot bypass RLS
-missing workspace context returns no tenant data / fails safely
-```
-
-Auth tests:
-
-```text
-unauthenticated route redirect/401
-CSRF rejection
-session revocation behavior
-secure-cookie attributes
-```
-
-## Done
-
-Two test users with two workspaces can use the same deployment and automated tests prove cross-workspace access is denied at both application and PostgreSQL layers.
-
----
-
-# 498. Epoch 2 — API Contract, Command Infrastructure, Audit, Outbox, Jobs
-
-## Goal
-
-Build the cross-cutting execution machinery once before finance mutations rely on it.
-
-## Database
-
-Add:
-
-```text
-command_operations
-audit_events
-outbox_events
-background_jobs
-background_job_attempts
-scheduled_tasks
-```
-
-## Backend
-
-Implement:
-
-```text
-query handler base
-command executor
-idempotency claim/result
-optimistic-version helper
-audit writer
-outbox writer
-problem-details error mapper
-```
-
-Implement outbox dispatcher:
-
-```text
-FOR UPDATE SKIP LOCKED
-→ BullMQ
-→ published_at
-```
-
-## Worker
-
-Implement generic job lifecycle:
-
-```text
-load durable job
-claim attempt
-RUNNING
-heartbeat
-SUCCEEDED / FAILED_FINAL / CANCELLED
-```
-
-Add retry classification.
-
-## OpenAPI
-
-Establish:
-
-```text
-/api/v1 contract conventions
-RFC 9457 errors
-cursor envelope
-command metadata
-```
-
-Generate initial Orval client.
-
-## Frontend
-
-Implement generic:
-
-```text
-API error boundary
-Problem Details rendering
-global job indicator shell
-```
-
-## Observability
-
-Trace:
-
-```text
-HTTP request
-command operation
-DB transaction
-outbox publish
-BullMQ execution
-```
-
-with shared correlation IDs.
-
-## Tests
-
-Must prove:
-
-```text
-same idempotency key + same payload → same semantic result
-same key + different payload → reject
-outbox duplicate delivery does not duplicate effect
-worker duplicate delivery exits safely
-transient retry works
-permanent error does not retry
-cancel_requested stops future work
-```
-
-## Done
-
-A synthetic test command can safely mutate a test entity, write audit/outbox, dispatch a job, survive duplicate delivery, and expose complete correlated traces.
-
-Remove the synthetic test feature from production UI once proven.
-
----
-
-# 499. Wave 1 — First Real Product Walking Skeleton
-
-Purpose:
-
-> Deliver the first end-to-end finance product quickly.
-
-At the end of this wave a user can:
-
-```text
-sign in
-import CSV/XLSX
-see accounts/transactions
-inspect source data
-correct a transaction
-ask AI a grounded question
-```
-
-Contains Epochs 3–6.
-
----
-
-# 500. Epoch 3 — Import Upload and Raw Source Layer
-
-## Goal
-
-Upload a real supported statement and preserve it safely without yet solving every normalization problem.
-
-## Database
-
-Add:
-
-```text
-data_sources
-imports
-source_accounts
-source_transactions
-source_transaction_observations
-```
-
-## Object storage
-
-Implement:
-
-```text
-private quarantine upload
-generated object key
-file metadata
-retention metadata
-```
-
-## API
-
-```text
-POST /api/v1/imports/initiate
-POST /api/v1/imports/:id/complete-upload
-GET  /api/v1/imports/:id
-GET  /api/v1/imports
-POST /api/v1/imports/:id/cancel
-```
-
-## Worker pipeline
-
-Initial workflow:
-
-```text
-FILE_VALIDATION
-PARSE
-SOURCE_ACCOUNT_DETECTION
-SOURCE_TRANSACTION_UPSERT
-IMPORT_SUMMARY
-```
-
-Support:
-
-```text
-CSV
-XLSX
-```
-
-Reject unsupported/macro formats.
-
-## Parser interface
-
-```text
-StatementParser
-detect()
-preview()
-parse()
-```
-
-Initial generic AI-assisted mapping may come later; first include reliable manual mapping path.
-
-## Frontend
-
-Money empty state:
-
-```text
-Import financial data
-```
-
-Import wizard:
-
-```text
-upload
-detected columns
-mapping preview
-account selection/name
-import progress
-summary
-```
-
-## Security
-
-Add:
-
-```text
-size limits
-row limits
-zip-bomb limits
-formula non-execution
-no external relationship fetches
-malware scan hook
-quarantine
-```
-
-## Tests
-
-Fixtures:
-
-```text
-clean CSV
-clean XLSX
-duplicate file
-identical legitimate rows
-malformed rows
-huge cell
-formula cells
-unsupported macro file
-ZIP bomb simulation
-cancelled import
-worker retry
-```
-
-## Done
-
-A user can import a supported statement, close/reload the browser, watch durable progress, and inspect a preserved raw source record/history after completion.
-
----
-
-# 501. Epoch 4 — Canonical Accounts and Transactions
-
-## Goal
-
-Turn imported source observations into the first useful Money experience.
-
-## Database
-
-Add:
-
-```text
-accounts
-account_source_links
-account_balance_snapshots
-transactions
-transaction_source_links
-```
-
-plus necessary indexes.
-
-## Canonicalization
-
-Implement:
-
-```text
-source account → canonical account mapping
-source transaction → canonical transaction creation
-pending/source lifecycle-safe linking model
-```
-
-For initial file imports, source identity may use importer-generated stable keys where safe.
-
-## API
-
-```text
-GET /api/v1/accounts
-GET /api/v1/accounts/:id
-GET /api/v1/accounts/:id/balances
-
-GET /api/v1/transactions
-GET /api/v1/transactions/:id
-```
-
-Transactions list uses cursor/keyset pagination.
-
-## Frontend
-
-Implement:
-
-```text
-Money → Overview minimal
-Money → Accounts
-Money → Transactions
-Transaction detail drawer
-```
-
-Transaction table:
-
-```text
-TanStack Query infinite cursor
-TanStack Table
-TanStack Virtual
-server filtering/sorting
-```
-
-Initial filters:
-
-```text
-date
-account
-direction
-amount
-text
-```
-
-## Evidence/raw source
-
-Transaction detail can show:
-
-```text
-canonical fields
-View original
-import/source
-```
-
-## Tests
-
-Must test:
-
-```text
-money minor units
-JPY/EUR/BHD exponent fixtures
-cursor stability with equal dates
-pagination while new row arrives
-source/canonical links
-account archive does not erase history
-```
-
-## Done
-
-Imported data is usable as a real transaction database, not merely an import preview.
-
----
-
-# 502. Epoch 5 — Canonical Corrections, Categories, Tags, and Audit/Undo
-
-## Goal
-
-Make imported finance data correctable and establish the product's evidence/audit philosophy.
-
-## Database
-
-Add:
-
-```text
-system_categories
-categories
-tags
-transaction_tags
-counterparties
-transaction_relations
-```
-
-Add `version` to mutable canonical entities where not already present.
-
-## Commands
-
-```text
-transactions.setCategory
-transactions.setCounterparty
-transactions.addTags
-transactions.removeTags
-transactions.setNote
-transactions.excludeFromAnalytics
-
-operations.undo
-```
-
-## API/UI
-
-Transaction drawer gains:
-
-```text
-edit category
-edit merchant/counterparty
-tags
-note
-excluded flag
-audit history
-Undo
-```
-
-## Categories
-
-Seed stable system taxonomy.
-
-Support user category creation minimally.
-
-## Merchant normalization
-
-Begin deterministic/manual canonical counterparties.
-
-Do not introduce full AI normalization yet.
-
-## Tests
-
-Must prove:
-
-```text
-expectedVersion conflict
-idempotent category command
-undo success
-undo conflict after newer edit
-audit before/after record
-no cross-workspace category/tag link
-optimistic UI rollback on conflict
-```
-
-## Done
-
-The user can correct imported financial truth, inspect the change history, and safely undo a correction.
-
----
-
-# 503. Epoch 6 — First Grounded Finance AI Chat
-
-## Goal
-
-Deliver the earliest version of the product's core differentiator: AI that can answer questions from actual finance data.
-
-## Database
-
-Add:
-
-```text
-conversations
-messages
-ai_capabilities
-ai_capability_versions
-workspace_ai_config
-workspace_ai_capability_overrides
-ai_runs
-ai_model_calls
-ai_tool_calls
-```
-
-## AI gateway
-
-Implement:
-
-```text
-ModelGateway
-OpenRouter adapter
-privacy routing policy
-model/capability registry
-bounded tool loop
-structured tool-call validation
-cost/token limits
-```
-
-## Initial read tools
-
-```text
-accounts.list
-accounts.getBalances
-transactions.search
-transactions.get
-analytics.cashflow
-analytics.spendingByCategory
-analytics.spendingByCounterparty
-analytics.comparePeriods
-```
-
-## Analytics
-
-Implement deterministic SQL/application analytics required by those tools.
-
-## Frontend
-
-AI → Chat:
-
-```text
-persistent thread list
-streamed response
-tool activity cards
-evidence links
-Stop
-```
-
-Home AI input can route into a conversation.
-
-## Evidence
-
-Implement initial evidence references for:
-
-```text
-transaction search result
-category aggregate
-counterparty aggregate
-cashflow aggregate
-```
-
-## Prompt-injection policy
-
-Transaction descriptions/tool text are passed as untrusted data.
-
-AI cannot make canonical writes in this epoch.
-
-## Evals
-
-Create baseline eval set:
-
-```text
-"How much did I spend last month?"
-"Top grocery merchants?"
-"Why was August higher?"
-"How much income did I receive?"
-```
-
-Measure:
-
-```text
-tool selection
-numeric correctness
-evidence correctness
-unsupported-claim rate
-```
-
-## Done
-
-A user can import statements and ask a real grounded finance question whose numeric answer comes from deterministic tools and whose supporting data can be opened.
-
-This is the first true product walking skeleton.
-
----
-
-# 504. Wave 2 — Finance Intelligence
-
-Purpose:
-
-> Turn raw transactions into an intelligent financial model.
-
-Contains Epochs 7–10.
-
----
-
-# 505. Epoch 7 — Merchant Normalization and Financial Review Inbox
-
-## Goal
-
-Automatically improve transaction quality while keeping uncertainty visible.
-
-## Database
-
-Add/refine:
-
-```text
-normalization confidence fields
-review_items
-merchant/counterparty aliases if required
-```
-
-## AI capabilities
-
-```text
-merchant_normalizer
-transaction_classifier
-financial_inbox_assistant
-```
-
-Structured output only.
-
-## Pipeline
-
-After import/canonicalization:
-
-```text
-high-confidence normalization → apply
-medium/low → Review item
-```
-
-No arbitrary silent low-confidence rewrite.
-
-## Review item types
-
-Initial:
-
-```text
-UNKNOWN_MERCHANT
-UNCERTAIN_CATEGORY
-POSSIBLE_DUPLICATE
-UNUSUAL_TRANSACTION
-```
-
-## Frontend
-
-Money → Review:
-
-```text
-Needs attention
-Uncertain
-Possible duplicates
-Unusual
-Resolved
-```
-
-Batch resolve where safe.
-
-## Tests/evals
-
-Classifier fixtures and eval corpus include:
-
-```text
-merchant aliases
-international merchants
-ambiguous descriptions
-same merchant different categories
-```
-
-Track confidence calibration, not only accuracy.
-
-## Done
-
-Imports become progressively cleaner without blocking ingestion or hiding uncertainty.
-
----
-
-# 506. Epoch 8 — Transfers, Recurring Series, and Financial Events
-
-## Goal
-
-Stop treating every bank row as independent spending/income.
-
-## Database
-
-Add:
-
-```text
-transfers
-transfer_transactions
-recurring_series
-recurring_series_transactions
-financial_events
-financial_event_transactions
-```
-
-## Detection
-
-Implement deterministic/statistical candidate detection:
-
-```text
-own-account transfer candidates
-recurring expense/income candidates
-event grouping suggestions
-```
-
-AI may assist interpretation/ranking, not perform arithmetic truth.
-
-## Commands
-
-```text
-transfers.confirm
-transfers.reject
-
-recurring.confirm
-recurring.reject
-recurring.update
-
-financialEvents.create
-financialEvents.linkTransactions
-```
-
-## Frontend
-
-Implement:
-
-```text
-Money → Recurring
-Review → Transfers
-Review → Recurring
-event suggestions in transaction/detail/review
-```
-
-## Analytics
-
-Cashflow/spending excludes confirmed own-account transfer movement correctly.
-
-## Tests
-
-Must cover:
-
-```text
-€500 out / €500 in same workspace
-transfer with fee
-near-equal FX transfer
-salary recurrence
-variable electricity recurrence
-subscription price change
-false transfer candidate
-```
-
-## Done
-
-Core analytics correctly distinguish:
-
-```text
-spending
-income
-internal movement
-recurring commitments
-contextual events
-```
-
----
-
-# 507. Epoch 9 — Planning Core: Goals, Rules, Assumptions, Financial Model
-
-## Goal
-
-Create the deterministic planning layer before forecasting.
-
-## Database
-
-Add:
-
-```text
-goals
-goal_allocations
-goal_contribution_plans
-financial_rules
-financial_assumptions
-ai_preferences
-spending_plans
-spending_plan_versions
-spending_plan_lines
-```
-
-## Commands
-
-Implement initial high-value commands:
-
-```text
-goals.create
-goals.changeTarget
-goals.changeDate
-goals.setPriority
-goalAllocations.set
-
-financialRules.create
-financialRules.update
-financialRules.disable
-
-financialAssumptions.confirm
-financialAssumptions.supersede
-```
-
-## Frontend
-
-Plan:
-
-```text
-Overview skeleton
-Goals
-Financial Model
-```
-
-Settings:
-
-```text
-Financial Rules
-AI preferences
-```
-
-## AI
-
-Financial Assistant gains:
-
-```text
-goals.read
-financialModel.read
-selected explicit goal/rule write tools
-```
-
-Canonical writes execute only when matching explicit user intent.
-
-## Tests
-
-Cover precedence:
-
-```text
-user-confirmed assumption beats inference
-disabled rule stops affecting model
-goal allocation affects spendable cash model
-rule version conflict
-AI cannot silently create rule from informational question
-```
-
-## Done
-
-The app has an inspectable explicit model of user intent/rules/assumptions instead of burying future planning facts in chat memory.
-
----
-
-# 508. Epoch 10 — Forecast V1, Available to Spend, and Scenarios
-
-## Goal
-
-Deliver deterministic/probabilistic future planning without LLM arithmetic.
-
-## Database
-
-Add:
-
-```text
-scenarios
-scenario_overrides
-financial_model_snapshots
-forecast_runs
-forecast_series
-forecast_quantile_points
-forecast_events
-forecast_component_models
-forecast_accuracy_evaluations
-plan_conflicts
-```
-
-## Forecast engine
-
-Implement V1:
-
-```text
-daily simulation timeline
-starting-balance reconciliation
-deterministic events
-recurring amount/date uncertainty
-weekly variable-spend baseline
-simple/robust model selection
-empirical residual simulation
-P10/P50/P90
-seeded reproducibility
-```
-
-Start with only models that can be rigorously tested.
-
-## Available to Spend
-
-Implement:
-
-```text
-30-day default horizon
-90% confidence
-P10 minimum-liquidity margin
-```
-
-with inspectable assumptions.
-
-## Scenarios
-
-Implement:
-
-```text
-create scenario
-add/remove override
-evaluate
-compare to actual baseline
-```
-
-## Frontend
-
-Plan:
-
-```text
-Forecast
-Scenarios
-Available-to-Spend detail
-Goal forecast status
-```
-
-## Tests
-
-Golden fixtures must prove exact outcomes for deterministic cases.
-
-Probabilistic tests prove:
-
-```text
-fixed seed reproducibility
-quantile ordering
-more uncertainty widens intervals
-cash conservation for transfers
-goal reserve handling
-no double-counting safety floors
-```
-
-Backtest harness created even if early users lack history.
-
-## Done
-
-No user-facing forecast number depends on an LLM calculation.
-
----
-
-# 509. Wave 3 — AI-Native Product Experience
-
-Purpose:
-
-> Move from "finance app with chat" to the intended AI-native workspace.
-
-Contains Epochs 11–14.
-
----
-
-# 510. Epoch 11 — Recommendations and Home Dashboard V1
-
-## Goal
-
-Turn financial state into a proactive personalized landing page.
-
-## Database
-
-Add:
-
-```text
-recommendations
-dashboards
-dashboard_versions/layout
-dashboard_widgets
-notifications
-```
-
-## Recommendation engine
-
-Initial sources:
-
-```text
-unusual spending
-recurring price changes
-cashflow risk
-goal delay
-new recurring payment
-large transaction
-```
-
-Pipeline:
-
-```text
-deterministic trigger/finding
-→ structured AI framing where useful
-→ validation/ranking
-→ recommendation
-```
-
-## Home
-
-Implement:
-
-```text
-Net Worth
-Available to Spend
-This Month
-top 3 recommendations
-core cashflow widget
-goal status widget
-recent activity
-Ask anything about your money
-```
-
-## Detail panels
-
-Metric click opens breakdown/evidence instead of immediate route change.
-
-## Dashboard customization
-
-Initial:
-
-```text
-explicit Customize mode
-reorder
-resize
-remove
-restore
-```
-
-Use versioned layout command.
-
-## Tests
-
-Recommendation tests ensure:
-
-```text
-goal linkage
-no generic moral judgment
-dismiss/ignore behavior
-evidence exists
-deterministic number consistency
-```
-
-## Done
-
-Home is personalized from actual finance/model state and immediately useful after imports.
-
----
-
-# 511. Epoch 12 — Deep Analysis Durable Workflow
-
-## Goal
-
-Deliver the flagship comprehensive financial investigation.
-
-## Workflow
-
-Implement persisted stages:
-
-```text
-SNAPSHOT
-BASELINE
-CANDIDATES
-SPENDING_INVESTIGATOR
-INCOME_INVESTIGATOR
-RECURRING_INVESTIGATOR
-RISK_INVESTIGATOR
-GOALS_INVESTIGATOR
-SYNTHESIS
-EVIDENCE_VALIDATION
-RECOMMENDATIONS
-REVIEW
-PERSIST
-```
-
-Parallelize independent investigator stages.
-
-## Database
-
-Use existing:
-
-```text
-ai_workflow_runs
-ai_workflow_steps
-```
-
-Add analysis result tables if not yet present:
-
-```text
-analyses
-analysis_findings
-analysis_evidence_links
-```
-
-## Frontend
-
-AI → Deep Analysis:
-
-```text
-Run Deep Analysis
-optional instruction
-live durable progress
-Stop
-historical analyses
-analysis detail
-```
-
-First successful import can automatically create the initial analysis run behind a feature flag.
-
-## Validation
-
-Every important finding:
-
-```text
-has evidence
-has reproducible numbers where applicable
-has data cutoff
-```
-
-## Evals
-
-Curated synthetic financial datasets with planted:
-
-```text
-subscription increase
-travel spike
-income change
-duplicate cost
-goal risk
-cash shortfall
-```
-
-Measure:
-
-```text
-important-finding recall
-false-positive rate
-unsupported claim rate
-numeric correctness
-evidence coverage
-```
-
-## Done
-
-A browser can close during Deep Analysis and later reopen to the correct persisted progress/result.
-
----
-
-# 512. Epoch 13 — Artifact Runtime Security Boundary
-
-## Goal
-
-Implement the artifact sandbox before generated artifacts are exposed.
-
-## Runtime project
-
-Create separate deployment/site:
-
-```text
-trusted artifact renderer
-dedicated Worker
-QuickJS/WASM candidate
-MessageChannel protocol
-```
-
-## SDK
-
-Initial read-only SDK:
-
-```text
-artifact.ui
-artifact.state
-artifact.format
-
-artifact.finance.analytics.cashflow
-artifact.finance.analytics.spendingByCategory
-artifact.finance.accounts.getBalances
-artifact.finance.goals.get
-artifact.finance.forecast.evaluate
-```
-
-## Renderer
-
-Implement trusted primitives:
-
-```text
-text
-metric
-stack/grid
-table
-button
-input
-slider
-select
-trusted ECharts chart
-```
-
-## Security
-
-Implement:
-
-```text
-separate site
-CSP
-Permissions Policy
-sandbox iframe
-HTML/CSS sanitizer
-no generated browser globals
-no direct network
-resource quotas
-RPC schema validation
-```
-
-## Adversarial tests
-
-Required:
-
-```text
-fetch
-XHR
-WebSocket
-navigation
-parent DOM
-localStorage
-cookie
-indexedDB
-dynamic import
-infinite loop
-memory bomb
-tool flood
-permission escalation
-forged MessagePort
-```
-
-## Frontend
-
-Developer-only/sample artifact viewer first.
-
-No AI-generated artifact creation yet.
-
-## Done
-
-Security tests demonstrate that intentionally malicious sample artifact source cannot:
-
-```text
-access host DOM
-access credentials
-perform network I/O
-cross permission boundary
-freeze the app
-```
-
-while normal interactive sample artifacts work.
-
----
-
-# 513. Epoch 14 — Artifact Generation, Library, Editor, and Dashboard Pinning
-
-## Goal
-
-Turn the secure runtime into the user's persistent AI-generated workspace.
-
-## Database
-
-Add/finalize:
-
-```text
-artifacts
-artifact_versions
-artifact_state
-artifact_permissions
-artifact_activity
-```
-
-## AI workflow
-
-Implement:
-
-```text
-artifact_planner
-artifact_builder
-validation
-sandbox smoke test
-artifact_reviewer
-bounded repair loop
-publish candidate
-```
-
-## Frontend
-
-AI → Library:
-
-```text
-Artifacts
-Analyses
-Conversations
-```
-
-Artifact full-screen:
-
-```text
-Preview
-Code
-Data
-Activity
-Versions
-```
-
-Support:
-
-```text
-Edit with AI
-direct developer code edit
-revert version
-dashboard compact mode
-pin to dashboard
-```
-
-## Permissions
-
-User can inspect the data categories an artifact can access.
-
-Permission expansion creates a new version/manifest.
-
-## Tests/evals
-
-Artifact eval suite:
-
-```text
-build success
-responsive
-empty data
-missing data
-runtime success
-permission minimization
-financial-number correctness
-dashboard compact mode
-keyboard interaction
-```
-
-## Done
-
-A user can ask:
-
-> "Build me a Japan affordability planner"
-
-and receive a validated persistent interactive artifact that can be reopened, edited, versioned, and pinned without gaining arbitrary browser/network/finance authority.
-
----
-
-# 514. Wave 4 — Breadth and Product Completeness
-
-Purpose:
-
-> Fill in the remaining MVP finance surfaces without compromising the core architecture.
-
-Contains Epochs 15–18.
-
----
-
-# 515. Epoch 15 — Spending Plans and Plan Conflict UX
-
-## Goal
-
-Complete the core planning experience.
-
-## Backend
-
-Implement:
-
-```text
-spending plan create
-versioning
-activate version
-planned-vs-actual analytics
-behavior vs plan forecast
-plan conflict detection
-```
-
-## Frontend
-
-Plan:
-
-```text
-Overview
-Spending Plans
-conflict cards
-plan-vs-behavior comparison
-```
-
-AI examples:
-
-```text
-"Save €400/month without cutting travel."
-"How can I get Japan on track?"
-```
-
-AI proposes plan changes through typed commands.
-
-## Tests
-
-Must cover:
-
-```text
-one active version
-version history
-plan target not treated as guaranteed behavior
-conflict explanation linked to forecast evidence
-```
-
-## Done
-
-User intent, actual behavior, and plan target are visually/distinctly represented.
-
----
-
-# 516. Epoch 16 — Investments, Assets, and Debt V1
-
-## Goal
-
-Make net worth complete enough for broad personal finance without becoming a brokerage product.
-
-## Database
-
-Finalize:
-
-```text
-investment_accounts
-instruments
-holding_snapshots
-assets
-asset_valuations
-liabilities
-liability_balance_snapshots
-```
-
-## Import/manual entry
-
-Support:
-
-```text
-manual investment account
-holding CSV/XLSX import
-manual assets
-manual liabilities
-```
-
-## Frontend
-
-Money:
-
-```text
-Investments
-Assets & Debt
-```
-
-## Analytics
-
-Include in:
-
-```text
-net worth
-allocation
-Deep Analysis context
-goal/scenario context where appropriate
-```
-
-Exclude investments from Available-to-Spend by default.
-
-## Done
-
-Net worth can include cash, investments, manual assets, and debts without pretending to provide live brokerage-market tracking.
-
----
-
-# 517. Epoch 17 — Notifications, Scheduling, and Proactivity
-
-## Goal
-
-Make proactive intelligence durable and user-controlled.
-
-## Backend
-
-Implement:
-
-```text
-scheduled_tasks
-weekly/since-last-check summary generation
-recommendation notifications
-forecast-risk notifications
-artifact scheduled AI refresh
-```
-
-Apply missed-run policies.
-
-## Frontend
-
-Notification center:
-
-```text
-financial alerts
-AI job completion
-imports
-artifact updates
-goal/forecast warnings
-```
-
-Settings:
-
-```text
-notification categories
-AI Proactivity Low/Balanced/High
-```
-
-V1 delivery:
-
-```text
-in-app only
-```
-
-## Tests
-
-Cover:
-
-```text
-schedule catch-up policy
-duplicate scheduler tick
-notification deduplication
-proactivity setting does not suppress mandatory/core alerts
-```
-
-## Done
-
-The product can bring important changes to the user without becoming noisy or depending on the user opening a specific screen.
-
----
-
-# 518. Epoch 18 — Data Portability, Privacy Workflows, and Security UX
-
-## Goal
-
-Complete the required self-service privacy/security controls before public beta.
-
-## Backend
-
-Implement:
-
-```text
-full export workflow
-deletion workflow
-deletion tombstone ledger
-raw file retention cleanup
-credential destruction
-session-revocation orchestration
-```
-
-## Frontend
-
-Settings → Privacy & Security:
-
-```text
-active sessions
-revoke others
-security methods
-export data
-delete workspace/account
-data retention explanation
-artifact permissions
-```
-
-## Step-up
-
-Require real step-up for:
-
-```text
-export
-delete
-security-factor change
-Custom AI credential replacement
-```
-
-## Tests
-
-Must prove:
-
-```text
-export contains only workspace data
-cross-workspace export impossible
-export expires
-delete removes active domain data
-delete removes S3 objects
-delete destroys encrypted credential
-restore+tombstone test re-deletes erased subject
-```
-
-## Done
-
-Privacy rights are operational product flows rather than support promises.
-
----
-
-# 519. Wave 5 — Production Hardening and Closed Beta
-
-Purpose:
-
-> Make the system safe and observable enough for real finance data from external users.
-
-Contains Epochs 19–21.
-
----
-
-# 520. Epoch 19 — Production Observability, Backups, DR, and Runbooks
-
-## Goal
-
-Prove that the product can be operated and recovered.
-
-## Observability
-
-Finalize dashboards/alerts for:
-
-```text
-HTTP
-Postgres
-Redis/BullMQ
-outbox
-AI
-forecast
-artifact
-imports
-security events
-```
-
-## Backups
-
-Enable/verify:
-
-```text
-Neon PITR
-scheduled snapshots
-daily direct pg_dump to encrypted S3
-S3 lifecycle
-```
-
-## Restore drill
-
-Perform documented restore into isolated environment.
-
-Verify:
-
-```text
-schema
-tenant isolation
-critical finance data
-deletion tombstones
-artifact metadata
-AI metadata
-```
-
-## Runbooks
-
-Complete:
-
-```text
-DB outage
-Redis outage
-AI provider outage
-bad deploy
-bad migration
-backup restore
-queue backlog
-credential compromise
-data deletion failure
-```
-
-## Done
-
-A tested backup has been restored successfully and the team can identify/triage a synthetic production incident through observability.
-
----
-
-# 521. Epoch 20 — Security Hardening and External Review Gate
-
-## Goal
-
-Close the launch-critical attack surface.
-
-## Security verification
-
-Run:
-
-```text
-ASVS/API checklist
-DAST
-tenant-isolation suite
-CSRF suite
-XSS/CSP suite
-file parser adversarial tests
-artifact sandbox adversarial suite
-prompt-injection/tool-abuse suite
-rate-limit tests
-dependency/SBOM review
-secrets review
-```
-
-## Privacy
-
-Complete:
-
-```text
-DPIA
-processor inventory
-international-transfer map
-retention registry
-privacy notice draft/final review
-RoPA/data map
-```
-
-## Admin/support
-
-Ensure production staff access is:
-
-```text
-separate identity
-strong MFA
-audited
-least privilege
-```
-
-## External security review
-
-Before any bank-sync/money-moving features, independent pentest is mandatory.
-
-For the initial CSV-only closed beta, external review is still strongly preferred if budget permits.
-
-## Done
-
-No known critical/high launch-blocking security finding remains unresolved.
-
----
-
-# 522. Epoch 21 — Closed Beta / MVP Launch Gate
-
-## Goal
-
-Validate the full intended V1 experience with production-shaped data and telemetry.
-
-## Required user journey
-
-An invited user can:
-
-```text
-1. create account
-2. complete strong-auth setup
-3. import CSV/XLSX
-4. resolve import uncertainty
-5. see populated Home
-6. inspect transactions/accounts/recurring
-7. correct categorization
-8. ask grounded AI questions
-9. receive initial Deep Analysis
-10. create goal
-11. evaluate forecast/scenario
-12. see recommendations
-13. generate an artifact
-14. pin artifact/dashboard
-15. inspect AI activity/evidence
-16. export/delete data if desired
-```
-
-## Beta instrumentation
-
-Measure:
-
-```text
-import success/failure
-time to usable first dashboard
-classifier correction rate
-AI unsupported-claim rate
-tool error rate
-Deep Analysis completion rate
-forecast confidence/calibration diagnostics
-artifact generation success
-artifact runtime failure
-job retry/stall rate
-support/security incidents
-```
-
-## Launch blockers
-
-Block wider launch if:
-
-```text
-cross-tenant isolation failure
-data-loss bug
-wrong-money arithmetic
-unbounded duplicate writes
-unrecoverable import corruption
-high unsupported-claim rate in core finance answers
-artifact sandbox escape
-backup restore failure
-privacy deletion/export failure
-```
-
-## Done
-
-The system passes the complete production user journey using realistic synthetic fixtures and a controlled closed beta, with no launch-blocking reliability/security findings.
-
----
-
-# 523. What Is Explicitly NOT Required for MVP
-
-Do not delay MVP for:
-
-```text
-live bank sync
-mobile apps
-household sharing
-public artifact sharing
-transaction splitting
-real-time brokerage feeds
-market-return forecasting
-FX forecasting
-money movement
-subscription cancellation
-investment trading
-credit decisions
-email/push notifications
-self-hosting
-local-first mode
-full offline finance data
-enterprise SSO
-complex RBAC
-Temporal
-Kafka
-microservices
-separate read/write databases
-deep-learning forecasting
-```
-
-These remain future capabilities.
-
----
-
-# 524. Post-MVP Wave A — Live Banking
-
-Only begin after the V1 source/canonical model is stable.
-
-Expected work:
-
-```text
-Open Banking provider selection
-consent/auth flows
-encrypted provider tokens
-source sync cursors
-added/modified/removed semantics
-balance freshness
-reauthentication
-provider webhooks
-sync reconciliation
-provider outage UX
-GDPR/DPIA update
-external pentest
-```
-
-The existing source observation model is intentionally designed for this.
-
----
-
-# 525. Post-MVP Wave B — Sharing / Household
-
-Expected work:
-
-```text
-workspace member invitations
-relationship/attribute-based permissions
-account visibility scopes
-shared goals
-audit actor clarity
-privacy boundaries
-conflict handling
-```
-
-No schema-wide rewrite should be necessary because workspace tenancy exists from day one.
-
----
-
-# 526. Post-MVP Wave C — Financial Documents
-
-Expected work:
-
-```text
-PDF/document ingestion
-quarantined extraction model
-document evidence
-document-linked facts
-prompt-injection isolation
-document retention
-```
-
-Do not give privileged tool-capable agents arbitrary document text directly.
-
----
-
-# 527. Post-MVP Wave D — External Financial Actions
-
-This is a new risk tier.
-
-Examples:
-
-```text
-money movement
-subscription cancellation
-brokerage actions
-```
-
-Before launch require:
-
-```text
-separate action policy
-strong step-up
-provider idempotency/reconciliation
-double-entry/internal ledger where appropriate
-transaction signing/confirmation UX
-stronger fraud/risk controls
-legal/regulatory review
-external penetration test
-incident playbooks
-```
-
-Do not evolve read/analyze tools casually into money-moving tools.
-
----
-
-# 528. Dependency Graph
-
-High-level dependency structure:
-
-```text
-0 Foundation
-   ↓
-1 Auth/RLS
-   ↓
-2 Commands/Jobs
-   ↓
-3 Source Import
-   ↓
-4 Canonical Transactions
-   ↓
-5 Corrections/Audit
-   ↓
-6 AI Chat ───────────────┐
-   ↓                     │
-7 Normalization/Review   │
-   ↓                     │
-8 Transfers/Recurring   │
-   ↓                     │
-9 Planning Core         │
-   ↓                     │
-10 Forecast/Scenarios   │
-   ↓                     │
-11 Home/Recommendations│
-   ↓                     │
-12 Deep Analysis ───────┤
-                         │
-13 Artifact Runtime      │
-   ↓                     │
-14 Artifact Generation ◄─┘
-   ↓
-15 Spending Plans
-16 Investments/Assets/Debt
-17 Notifications
-18 Privacy Workflows
-19 Ops/DR
-20 Security Gate
-21 Closed Beta
-```
-
-Some epochs may overlap in engineering execution after their required contracts are stable, but dependencies must remain respected.
-
----
-
-# 529. Recommended Parallelization
-
-Once Epoch 6 is complete, work can safely fan out.
-
-Possible independent streams:
-
-```text
-Stream A:
-  normalization
-  recurring/transfers
-
-Stream B:
-  planning
-  forecast
-
-Stream C:
-  artifact runtime security
-
-Stream D:
-  frontend design system/dashboard primitives
-```
-
-Deep Analysis depends heavily on:
-
-```text
-analytics
-financial model
-forecast
-job/workflow platform
-```
-
-and should not be implemented before those contracts stabilize.
-
-Artifact AI generation depends on the artifact runtime boundary being proven first.
-
----
-
-# 530. What Must Be Built Earlier Than It Feels Necessary
-
-These are intentionally early:
-
-```text
-RLS
-idempotency
-audit
-outbox
-job durability
-exact-money utilities
-tenant isolation tests
-structured AI tool schemas
-evidence references
-```
-
-Retrofitting them after finance/AI features exist is significantly riskier.
-
----
-
-# 531. What Must NOT Be Overbuilt Early
-
-These intentionally wait:
-
-```text
-complex forecasting model families
-Temporal
-Kafka
-microservices
-enterprise authorization
-offline sync
-multi-region active-active
-specialized search cluster
-data warehouse
-separate analytics database
-vector database
-```
-
-PostgreSQL and the modular monolith should carry the MVP until measured constraints appear.
-
----
-
-# 532. Implementation Contract for AI Coding Agents
-
-Every epoch should be converted into issue-sized tasks before handing it to an implementation model.
-
-Each task must include:
-
-```text
-objective
-files/modules expected to change
-database migration if any
-API/tool contract
-business invariants
-error behavior
-security/authorization behavior
-tests required
-observability required
-acceptance checks
-explicit non-goals
-```
-
-Never hand an AI coding agent:
-
-> "Implement Epoch 12."
-
-Instead provide bounded tasks such as:
-
-```text
-Add analysis_workflow schema and Drizzle migration.
-Implement Deep Analysis baseline step.
-Implement spending investigator contract.
-Implement workflow fan-out scheduling.
-Implement Deep Analysis progress API.
-Implement progress UI.
-```
-
-Each independently tested and merged.
-
----
-
-# 533. Epoch Completion Review
-
-Before closing each epoch perform an adversarial review against:
-
-```text
-correctness
-security
-tenant isolation
-idempotency
-failure/retry behavior
-UX dead ends
-accessibility
-data loss
-privacy
-performance
-observability
-spec drift
-```
-
-Any architectural change discovered during implementation updates this technical architecture before the next dependent epoch begins.
-
----
-
-# 534. MVP Architecture Exit Criteria
-
-The architecture phase is considered complete enough for implementation when:
-
-```text
-[✓] product surfaces specified
-[✓] canonical finance model specified
-[✓] planning model specified
-[✓] typed API/tool layer specified
-[✓] artifact sandbox specified
-[✓] AI orchestration specified
-[✓] durable jobs specified
-[✓] forecast engine specified
-[✓] frontend architecture specified
-[✓] infrastructure specified
-[✓] security/privacy specified
-[✓] implementation order specified
-```
-
-Further design should happen just-in-time at issue level rather than expanding the architecture indefinitely.
-
-The execution artifact is [IMPLEMENTATION-EPOCHS.md](IMPLEMENTATION-EPOCHS.md). Its issue-readiness checklist must pass before assignment; architectural coverage alone is not proof that an issue is ready or implemented.
+Before public SaaS launch: validate core-loop usefulness with users, complete the applicable privacy/processor/legal review and operational/security gates, and close known launch-blocking findings. Funding does not replace budget enforcement or usage evidence.
 
 ---
 
@@ -17793,7 +14976,7 @@ The execution artifact is [IMPLEMENTATION-EPOCHS.md](IMPLEMENTATION-EPOCHS.md). 
 
 Implements product §14 and refines §§11 and 265. Native `amount_minor`, direction and currency remain canonical; converted amounts are rebuildable projections. A conversion uses the source and target currency exponents and an exact decimal rate expressed as target major units per source major unit. Round once at the target minor-unit boundary using decimal round-half-even; retain the rate and calculation version so the result can be reproduced. Do not sum currencies before valuation or use binary floating point for authoritative conversions.
 
-Each valuation identifies transaction, target currency, effective transaction date, actual rate date, rate source and calculation version. Rate data is immutable/versioned; a provider correction creates a new calculation version. Where a provider publishes no rate on the requested date, use its latest prior published rate only under a documented maximum-age policy, retaining both requested and actual rate dates. Do not use future rates. The issue must choose and verify the initial source, coverage and maximum-age limit before coding. Unsupported or older rates are unavailable; an explicitly entered dated rate is a separate, audited source. Identity conversion requires no external rate.
+Each valuation identifies transaction, target currency, effective transaction date, actual rate date, rate source and calculation version. Rate data is immutable/versioned; a provider correction creates a new calculation version. Where a provider publishes no rate on the requested date, use its latest prior published rate only under a documented maximum-age policy, retaining both requested and actual rate dates. Do not use future rates. R1 uses ECB historical reference rates for supported fiat pairs, triangulated through EUR on the same date. Allow at most seven calendar days for latest-prior rates (an initial product policy, not an ECB guarantee). Label reference valuations, never bank execution quotes. A statement's actual booked account-currency amount stays canonical; preserve original purchase currency separately, never replace the debit with a reference conversion. Verify source availability, coverage and use terms in the FX story. See §540. Unsupported or older rates are unavailable; an explicitly entered dated rate is a separate, audited source. Identity conversion requires no external rate.
 
 Aggregate queries return completeness metadata, coverage/count of unvalued contributing rows and provenance. Missing values are never treated as zero. A partial subtotal may be displayed only with an explicit incomplete label; AI must not claim it is the full total. A base-currency change invalidates affected analytics/forecasts and schedules valuation rebuilds without rewriting native transactions. Old evidence remains reproducible against its recorded version, subject to current authorization. Future forecasts follow §265 and expose their distinct reference/scenario FX assumption.
 
@@ -17814,7 +14997,7 @@ Implements product §6.2 without weakening §9's prohibition on fuzzy uniqueness
 1. Within one import, `(workspace_id, import_id, row_number)` identifies a replayed observation. A new import retains its own observations even when it overlaps an earlier file.
 2. A trustworthy source external ID, scoped to workspace/source/account as appropriate, can identify an existing source transaction. Record the matching rule/version.
 3. Without trustworthy IDs, normalized date/amount/currency/description can generate candidates, but never prove identity alone. A supported importer may automatically link only when its documented statement semantics and occurrence alignment disambiguate the match. Preserve multiplicity; one accepted purchase cannot absorb arbitrarily many identical new rows.
-4. Ambiguous candidates remain durably staged and visible outside accepted canonical totals until resolved. The user can link a row to an existing transaction or keep it distinct. Store that decision through an idempotent, version-checked domain command with audit and source links. E4 provides minimal resolution UI; E7 reuses it in Review.
+4. Ambiguous candidates remain durably staged and visible outside accepted canonical totals until resolved. The user can link a row to an existing transaction or keep it distinct. Store that decision through an idempotent, version-checked domain command with audit and source links. The first canonical-import slice provides minimal resolution UI; the richer Review surface reuses it.
 5. Linking observations preserves accepted canonical corrections. Reimporting or retrying a decision does not duplicate the business effect. A mistaken decision is reversed through an audited compensation that preserves source history and triggers affected projections.
 
 The matching ticket must specify its supported importer rules and fixtures before coding; an unspecified format defaults to review for ambiguity. Import summaries reconcile all row dispositions: accepted new, matched existing, pending review and rejected. Pending/rejected rows explicitly reduce data completeness. Do not advertise complete totals while economically ambiguous rows remain unresolved.
@@ -17827,7 +15010,7 @@ Store a workspace-owned policy keyed by object type and tenant-safe object ident
 
 Apply eligibility before aggregation, forecasting inputs, evidence resolution, retrieval, prompt construction or provider transmission. Ordinary full-workspace analytics caches/snapshots cannot be reused for AI when they include excluded objects. AI-derived outputs record policy version and eligible-input provenance; cache keys include the policy version. Results calculated on a subset identify limited coverage and cannot be represented as a full-workspace total. If a requested calculation needs excluded inputs and cannot be safely recomputed on eligible inputs, return an unavailable result rather than a fabricated substitute. Denied direct lookups use the normal non-disclosing authorization response.
 
-On policy change, invalidate affected AI contexts, derived caches and artifact data; cancel/restart affected queued or running work with fresh authorized inputs. Revalidate policy immediately before each tool/evidence read and provider dispatch, and reject stale results at publication. Serialize policy updates and provider-dispatch authorization per workspace so their ordering is defined. Cancellation cannot recall an already dispatched request. Resuming a conversation must rebuild eligible context and omit affected earlier tool results/summaries; treat content without sufficient provenance as ineligible. Stored historical outputs that may contain now-excluded data must not be fed back into models or artifacts. Ordinary owner-visible historical records follow retention/access policy and are clearly historical.
+On policy change, invalidate affected AI contexts, derived caches and artifact data; cancel/restart affected queued or running work with fresh authorized inputs. Revalidate policy immediately before each tool/evidence read and provider dispatch, and reject stale results at publication. Serialize policy updates and dispatch-start authorization per workspace; persist a permit bound to policy version in a short transaction. Already-issued permits count as in flight and may race with revocation. Never hold a DB transaction open for provider network calls or promise retroactive prevention of already-authorized dispatch. Cancellation cannot recall an already dispatched request. Resuming a conversation must rebuild eligible context and omit affected earlier tool results/summaries; treat content without sufficient provenance as ineligible. Stored historical outputs that may contain now-excluded data must not be fed back into models or artifacts. Ordinary owner-visible historical records follow retention/access policy and are clearly historical.
 
 Test with excluded data whose amounts/descriptions are unique sentinel values: direct queries, aggregates, evidence, recommendations, Deep Analysis, cached chat context and generated artifacts must not expose them. Test changes during execution and attempted scope escalation in Custom AI. Clearly inform users that a new exclusion controls subsequent access and cannot recall data already sent to a provider.
 
@@ -17838,3 +15021,27 @@ Implements product §§81.5–81.9 and uses §§373–374 for encryption. Includ
 Provider secrets are written only to authenticated, fresh-authenticated server endpoints and stored with envelope encryption. Return only masked metadata, status and credential identifier. Rotation/revocation is versioned and audited; resolve the current active credential just before dispatch rather than embedding a decrypted key in job payloads. Decrypt only inside trusted execution. Credential test calls are bounded and must not include finance data. Reject arbitrary provider URLs to prevent SSRF; models and endpoints must satisfy the capability/privacy contract.
 
 Persist configuration/prompt versions used by each run for reproducibility without storing credentials in run context. Queued runs revalidate current access, credential status and budgets. Do not silently fall back between Included and Custom credentials or billing modes. An unavailable provider produces a recoverable, explicit error. Settings expose mode, connection status, model mapping, prompt restore, actual usage and data exclusions; missing provider cost metadata is shown as unavailable rather than zero.
+
+# 540. Research Record and Bounded Feasibility Gates
+
+Checked 2026-09-16. Sources verify capabilities/constraints, not a claim that a vendor is universally best. Recheck entitlements and pin patched versions during implementation.
+
+| Choice | Evidence and implication |
+|---|---|
+| BullMQ/Upstash | [Upstash integration](https://upstash.com/docs/redis/integrations/bullmq) confirms compatibility and recommends Fixed plans because idle polling generates commands. [BullMQ production guidance](https://docs.bullmq.io/guide/going-to-production) covers production configuration. Keep this known stack; a PostgreSQL-only queue is a viable alternative, not a necessary rewrite of a funded plan. |
+| Runtime | [QuickJS](https://bellard.org/quickjs/quickjs.html) documents memory/stack limits and interrupts. It does not prove our bindings/renderer secure. [MDN CSP](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src) documents the WASM-specific permission addressed in §103. |
+| OpenRouter | [ZDR controls](https://openrouter.ai/docs/guides/features/zdr) and [provider policies](https://openrouter.ai/docs/guides/privacy/provider-logging) distinguish retention/training from regional processing. [Free variants](https://openrouter.ai/docs/guides/routing/model-variants/free) have different availability/limits; [limit guidance](https://openrouter.ai/docs/api_reference/limits) covers quota/error handling. Use mocks for CI and a small live smoke/evaluation set. Free access does not establish production quality/privacy. EU-only inference is not required here. |
+| Auth0 | [Pricing/entitlements](https://auth0.com/pricing) includes passkeys but gates MFA features by tier. [Session layers](https://auth0.com/docs/manage-users/sessions/session-layers) explains the separate application-session boundary. Keep managed auth and verify the exact factor/session APIs. |
+| Render/AWS | [Managed OIDC](https://render.com/docs/oidc) requires Pro or higher. [Render Next.js hosting](https://render.com/docs/deploy-nextjs-app) is an available consolidation option; retain Vercel's managed Next.js workflow unless operating evidence favors a move. |
+| Forecast | [Forecasting: Principles and Practice](https://otexts.com/fpp3/prediction-intervals.html) describes model-conditional intervals and bootstrap assumptions. Scenario cases are not calibrated probabilities; more simulated paths do not fix inadequate history. |
+| FX | [ECB reference rates](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html) provides informational historical rates, not execution quotes. Use with §535's coverage/freshness policy. |
+| Tenancy | [PostgreSQL row security](https://www.postgresql.org/docs/current/ddl-rowsecurity.html) documents owner/bypass behavior. Keep the non-owner runtime role, FORCE RLS and transaction-local context. |
+
+Before dependent feature stories, run these bounded proofs:
+
+1. **Artifact:** A manually authored spending chart and interactive scenario using editable HTML/CSS/JS, VM, build pipeline and mocked Finance SDK. Prove compact/full modes, persisted state, keyboard input, infinite-loop termination, failed-edit rollback and hostile no-network cases across supported browsers. Choose the maintained WASM wrapper/sanitizer/parser after this proof. Never fall back to raw iframe execution if it fails.
+2. **Import/money:** Synthetic CSV/XLSX fixtures with locale ambiguities, identical purchases, overlaps, formula/external-link cells, fees/refunds, missing balances and FX gaps. Prove exact values and visible staging/coverage. AI proposes mapping; deterministic code validates every amount/date/currency. Ambiguous numeric mapping requires review.
+3. **Durability:** Command → outbox → worker. Kill at claim, tool commit, provider response and publication boundaries; erase queue state; recover; repeat after cancellation/revocation. Prove idempotent effects and stale-attempt rejection.
+4. **Identity/provider:** Selected Auth0 plan's passkey/TOTP/recovery/step-up/revoke behavior, Render AWS federation, separate development/production OpenRouter policies, and tool/structured-output support through the chosen free model. A failing free model is replaced or mocked, not accommodated by weakening safety.
+
+Record outcomes in future stories. Runtime feasibility, security, model quality and operating cost require measurements; architecture prose cannot certify them.
