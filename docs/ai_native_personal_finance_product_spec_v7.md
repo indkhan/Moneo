@@ -6,7 +6,7 @@
 **Current scope:** SaaS destination; core-loop release first, broader product staged  
 **Primary platform:** Desktop web first
 
-**Document authority (2026-09-16):** This document owns product behavior and release scope. The [technical architecture](personal_finance_technical_architecture_v11.md) owns technical contracts. No implementation backlog exists yet; epochs and stories will be written after this review. The release table below takes precedence over older uses of “V1”, “MVP”, and “locked V1” in the detailed feature catalogue. Those descriptions preserve the target product, not a requirement to ship everything together.
+**Document authority (2026-09-16):** This document owns product behavior and release scope. The [technical architecture](personal_finance_technical_architecture_v11.md) owns technical contracts. The [implementation plan](implementation/README.md) owns epic/wave sequencing, the canonical story ledger, delivery gates and reusable agent prompts. The release table below takes precedence over older uses of “V1”, “MVP”, and “locked V1” in the detailed feature catalogue. Those descriptions preserve the target product, not a requirement to ship everything together.
 
 ## Delivery baseline
 
@@ -35,7 +35,7 @@ R1 remains a real SaaS slice, initially validated with controlled users. It is n
 
 **R1 deep-analysis commitment:** Thoroughness means checking all available core data and explaining unsupported areas, not launching a fixed number of agents. One checkpointed investigation can cover spending, income, recurring costs, cash projection and goals; additional specialists must improve measured quality. Trigger once after the initial import batch is accepted; coalesce nearby imports, preserve review/coverage warnings, and avoid restarting expensive analysis for each file or minor correction. Home renders trusted data before AI finishes. Ordinary data refresh never requires a new model call.
 
-**Validation before expanding:** Run the complete import → correction → grounded answer → generated artifact → pin → second import → live update journey with representative users. Record import failures/manual repair, incorrect or unsupported claims, artifact repair effort, time to useful output, AI cost, and whether users reopen saved tools. Keep testing cohorts and success thresholds explicit in the future release stories; do not substitute a generated demo for usage evidence.
+**Validation before expanding:** Run the complete import → correction → grounded answer → generated artifact → pin → second import → live update journey with representative users. Record import failures/manual repair, incorrect or unsupported claims, artifact repair effort, time to useful output, AI cost, and whether users reopen saved tools. Refine cohort size, observation window and decision thresholds in E08-S06 before the controlled beta; do not substitute a generated demo for usage evidence. See the [story ledger](implementation/STORIES.md).
 
 **Deployment constraints resolved:** Funding is available; no fixed monthly ceiling is imposed for this planning pass. AI may process internationally. Development may use OpenRouter free models even where training is permitted, with synthetic fixtures by default and explicit opt-in for the founder's real data. Production customer traffic follows the separate no-training/ZDR policy in architecture §130. No free-model availability, operating-price or launch-date guarantee is implied.
 

@@ -4,7 +4,7 @@
 **Companion:** `ai_native_personal_finance_product_spec_v7.md`  
 **Current focus:** R1 core finance/AI/live-artifact loop, with later capabilities separated
 
-**Authority (2026-09-16):** The [product specification](ai_native_personal_finance_product_spec_v7.md) Delivery baseline owns R1/R2/R3 scope. This document owns implementation contracts. No epoch/story backlog currently exists. Older “V1/MVP” language describes the full-product target unless explicitly assigned to R1 below. A contract applies when its feature ships; it does not require building that feature early. Sections 495–534 are retired/reserved after removing the premature epoch plan; stable financial-contract numbers 535–539 are retained.
+**Authority (2026-09-16):** The [product specification](ai_native_personal_finance_product_spec_v7.md) Delivery baseline owns R1/R2/R3 scope. This document owns implementation contracts. The [implementation plan](implementation/README.md) owns epic/wave sequencing, the canonical story ledger, delivery gates and reusable agent prompts. Older “V1/MVP” language describes the full-product target unless explicitly assigned to R1 below. A contract applies when its feature ships; it does not require building that feature early. Sections 495–534 are retired/reserved after removing the premature epoch plan; stable financial-contract numbers 535–539 are retained.
 
 ## Review decisions and reading guide
 
@@ -22,7 +22,7 @@ Build the product as a modular monolith, not a platform for arbitrary future fin
 | Frontend | Keep Next/React, Query/Table, Radix/Tailwind, ECharts, generated client, Vitest/Playwright. Add Virtual, dnd-kit, Storybook/MSW and Zustand only at the consuming slice; React state/context first. |
 | Deferred | Custom provider credentials, full investment/plan surfaces, multiple dashboards, scheduled AI refresh, probabilistic forecasting, household/bank sync. Product release table is authoritative. |
 
-**Navigation:** §§1–45 data/planning; §§46–82 domain/API; §§83–123 artifact isolation; §§124–174 AI; §§175–226 durability; §§227–273 projections; §§274–347 frontend; §§348–415 operations; §§416–489 security; §§490–494 future story requirements; §§535–539 detailed finance/privacy contracts; §540 research and feasibility gates.
+**Navigation:** §§1–45 data/planning; §§46–82 domain/API; §§83–123 artifact isolation; §§124–174 AI; §§175–226 durability; §§227–273 projections; §§274–347 frontend; §§348–415 operations; §§416–489 security; §§490–494 story requirements and delivery gates; §§535–539 detailed finance/privacy contracts; §540 research and feasibility gates.
 
 Schema sketches are conceptual, not migrations. Apply §27's tenant keys, §63's versions, required checks/FKs and the later explicit contracts consistently. Build tables only with the first story that needs them. There is no reason to pre-create every package or table shown in this reference.
 
@@ -14933,11 +14933,11 @@ Lock the following:
 
 ---
 
-# 490. Future Epoch and Story Planning
+# 490. Epic and Story Execution Plan
 
-The next planning phase will create the single execution backlog. It does not exist yet. Product release scope comes from the companion Delivery baseline; technical invariants come from this document. The previous 22-epoch draft is removed because it delayed artifact feasibility and required the entire product before validation. Section numbers 495–534 remain reserved, not missing deliverables.
+The [implementation plan](implementation/README.md) contains the single execution backlog: nine R1 epics, six sequencing waves and 56 initial stories. E00's five bounded proof stories are specified first; subsequent stories remain Draft until refined against the actual code. Product release scope comes from the companion Delivery baseline; technical invariants come from this document. The previous 22-epoch draft was removed because it delayed artifact feasibility and required the entire product before validation. Section numbers 495–534 remain reserved, not missing deliverables. “Epoch” is a synonym for epic; waves are sequencing groups, not another branch or ticket hierarchy.
 
-Use vertical slices: schema → domain function → API/tool → UI → tests → deploy. Build only the schema and services the slice needs. Prove the sandbox and import fidelity early with synthetic data. A sensible dependency order is foundation/isolation → durable import/corrections/analytics → grounded AI → editable live artifacts → basic projections/initial analysis → core-loop beta. This is a dependency guide, not a new assigned backlog; privacy, money correctness and recovery are gates throughout.
+Use vertical slices: schema → domain function → API/tool → UI → tests → deploy. Build only the schema and services the slice needs. Prove the sandbox, import fidelity, durable recovery and identity/provider path early with synthetic data. Then deliver foundation/isolation → durable import/corrections/analytics → grounded AI and editable live artifacts → basic projections/initial analysis → core-loop beta. Exact dependencies and R1 coverage live in the [story ledger](implementation/STORIES.md) and [epics/waves](implementation/EPICS.md); privacy, money correctness and recovery are gates throughout. The [delivery workflow](implementation/WORKFLOW.md) binds review to commit SHAs and requires checks of the candidate integrated with latest main. The [reusable prompts](implementation/PROMPTS.md) operationalize that workflow without creating a custom orchestration framework.
 
 # 491. Agent Delivery Contract
 
