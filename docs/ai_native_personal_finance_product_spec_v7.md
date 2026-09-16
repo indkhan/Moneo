@@ -1,12 +1,43 @@
 # AI-Native Personal Finance Workspace — Product Specification
 
-**Status:** Working product definition  
+**Status:** Reviewed product direction; staged delivery baseline (2026-09-16)  
 **Product stage:** Clean-slate concept / pre-design  
 **Primary audience:** Power users first  
-**Current scope:** Serious SaaS-quality product, without focusing on monetization yet  
+**Current scope:** SaaS destination; core-loop release first, broader product staged  
 **Primary platform:** Desktop web first
 
-**Team handoff (2026-09-12):** This document owns product behavior and V1 scope. [IMPLEMENTATION-EPOCHS.md](IMPLEMENTATION-EPOCHS.md) owns issue assignments, dependencies, acceptance gates and the V1 coverage map; [technical architecture](personal_finance_technical_architecture_v11.md) owns implementation contracts. Existing section numbers remain stable. The following clarifications are acceptance requirements, not completed functionality.
+**Document authority (2026-09-16):** This document owns product behavior and release scope. The [technical architecture](personal_finance_technical_architecture_v11.md) owns technical contracts. The [implementation plan](implementation/README.md) owns epic/wave sequencing, the canonical story ledger, delivery gates and reusable agent prompts. The release table below takes precedence over older uses of “V1”, “MVP”, and “locked V1” in the detailed feature catalogue. Those descriptions preserve the target product, not a requirement to ship everything together.
+
+## Delivery baseline
+
+The destination is a commercial SaaS built by the founder and implementation agents coordinated through an orchestrator. Deliver bounded stories, then independent adversarial review, tests, integration checks, and merge. Agent throughput does not remove the need to validate demand or reduce simultaneous moving parts.
+
+**Product hypothesis:** A power user will repeatedly import financial data and return because grounded analysis can become an editable, persistent, live financial tool. This is worth testing; these plans do not establish market demand or willingness to pay.
+
+| Capability | R1: core-loop release | R2: finance breadth | R3: advanced workspace |
+|---|---|---|---|
+| Ingestion | CSV/XLSX, manual mapping, AI mapping assistance, multiple accounts, source history, duplicate review, manual transactions/balances | Additional tested institution profiles and holdings import | Live banking remains a separate later project |
+| Financial correctness | Exact money, supported fiat FX, transfer/refund treatment, categories/tags, corrections, audit/undo, coverage labels | Full event-management and richer reconciliation UX | No reduction in correctness at any stage |
+| Money UI | Accounts, transaction table/filter/bulk edits, source/detail drawer, review queue, basic recurring confirmation | Saved views, rich merchant/event pages, recurring calendar, investments/assets/debt | Advanced analytics as validated |
+| AI | Persistent contextual chat, evidence, activity, Stop, bounded thorough initial Deep Analysis, a few evidence-backed findings | Richer specialist investigations and proactive recommendations | Scheduled reviews and refresh |
+| Planning | Basic savings goals, virtual allocations, explicit assumptions, daily cash projection, flat what-if scenarios | Spending plans, conflicts, scenario branches, richer goal types | Calibrated probabilistic forecasts only after evaluation |
+| Artifacts | Editable HTML/CSS/JS, isolated runtime, live scoped Finance SDK, persisted local state, AI edits, code editor, immutable versions/revert, compact/full views | More approved primitives, export formats, richer debugging | Scheduled AI refresh |
+| Home | One dashboard, trusted metrics, pin/unpin/reorder/limited grid sizes, initial personalization that respects user edits | Multiple dashboards and richer customization | Advanced automation |
+| AI settings | Included AI, visible read-only prompts, usage/cost visibility, account-level AI exclusions | Custom provider keys/models/prompts and asset-level exclusions when those objects exist | Additional provider integrations after qualification |
+| Shared UI | Basic navigation palette, job progress/completion, in-app notices, evidence links | Cross-object natural-language search and richer notification preferences | Scheduled summaries |
+| Privacy/operations | Strong auth, tenant isolation, export/delete, backups with restore proof, retention, cost limits, redacted telemetry, security checks before external financial data | Extend controls alongside each new capability | Public launch requires applicable privacy/legal/operational review |
+
+R1 remains a real SaaS slice, initially validated with controlled users. It is not the full-product catalogue in §70. Deferred features must not acquire placeholder tables, empty navigation pages, generic frameworks, or paid services just to anticipate later work.
+
+**R1 artifact commitment:** Editable code is essential. This means the supported Artifact SDK and sanitized HTML/CSS subset, not unrestricted browser JavaScript, arbitrary React/npm applications, or direct DOM/network access. Clearly explain this in the editor. Embedded “Ask AI” uses the normal persistent AI panel with artifact context; it is not a second autonomous agent. Core finance totals and forecasts come from backend tools; local sliders may calculate illustrative values but cannot publish them as authoritative financial metrics.
+
+**R1 projection commitment:** Show explicit Expected / Conservative / Optimistic assumption cases. These are scenario ranges, not P10/P50/P90 probabilities. Show horizon, dated starting balances, assumptions, missing coverage and sensitivity. “Available to Spend” is an estimate under the conservative case, unavailable when required inputs are missing or constraints cannot be met; never a guarantee or “90% safe” claim. Architecture §258 defines the calculation and per-account checks.
+
+**R1 deep-analysis commitment:** Thoroughness means checking all available core data and explaining unsupported areas, not launching a fixed number of agents. One checkpointed investigation can cover spending, income, recurring costs, cash projection and goals; additional specialists must improve measured quality. Trigger once after the initial import batch is accepted; coalesce nearby imports, preserve review/coverage warnings, and avoid restarting expensive analysis for each file or minor correction. Home renders trusted data before AI finishes. Ordinary data refresh never requires a new model call.
+
+**Validation before expanding:** Run the complete import → correction → grounded answer → generated artifact → pin → second import → live update journey with representative users. Record import failures/manual repair, incorrect or unsupported claims, artifact repair effort, time to useful output, AI cost, and whether users reopen saved tools. Refine cohort size, observation window and decision thresholds in E08-S06 before the controlled beta; do not substitute a generated demo for usage evidence. See the [story ledger](implementation/STORIES.md).
+
+**Deployment constraints resolved:** Funding is available; no fixed monthly ceiling is imposed for this planning pass. AI may process internationally. Development may use OpenRouter free models even where training is permitted, with synthetic fixtures by default and explicit opt-in for the founder's real data. Production customer traffic follows the separate no-training/ZDR policy in architecture §130. No free-model availability, operating-price or launch-date guarantee is implied.
 
 ---
 
@@ -436,7 +467,7 @@ Update financial model
 
 # 7. Raw vs Normalized Financial Data
 
-Original financial data must never be destroyed.
+Original financial observations must never be silently overwritten. Explicit user deletion and the documented retention policy still apply; original uploaded bytes and parsed observations have separate lifecycles.
 
 Every imported transaction should have at least two conceptual layers.
 
@@ -496,7 +527,7 @@ Sep 11
 Revolut_Aug-Sep.csv
 842 rows
 91 new
-751 duplicates ignored
+751 matched existing (source observations preserved)
 
 Aug 03
 Revolut_July-Aug.csv
@@ -745,7 +776,7 @@ Example:
 
 > “I spent €15 cash at the flea market.”
 
-AI may create the manual transaction through application tools.
+AI may create the manual transaction through application tools when the user explicitly requests it, with audit and undo. Unknown amount, currency or account must be clarified rather than guessed.
 
 Manual tracking exists from V1 but should not dominate the primary UX.
 
@@ -755,7 +786,7 @@ A transaction-only import may not include a trustworthy account balance. Offer s
 
 # 16. Financial Inbox / Review Queue
 
-Uncertainty should be non-blocking.
+Classification uncertainty should be non-blocking. Ambiguous amounts, currencies, account identity or duplicate identity remain staged outside accepted totals until resolved; visible completeness warnings follow the affected metrics.
 
 The product should not stop onboarding because 100 transactions are uncertain.
 
@@ -843,7 +874,7 @@ Undo should be pervasive.
 
 # 18. Financial Memory
 
-The AI should have persistent **financial memory**, not just chat history.
+The AI should have persistent **financial memory**, not just chat history. Memory is a view over canonical goals, rules, assumptions, recurring series and AI preferences, not a second financial-facts database.
 
 The system may learn or store information such as:
 
@@ -888,6 +919,8 @@ Examples:
 > “Don't count my ETF as money available for spending.”
 
 > “My salary sometimes arrives between the 26th and 30th.”
+
+The salary timing example is a financial assumption, not a deterministic rule; store it in Financial Model under income assumptions.
 
 > “Treat anything I transfer to Scalable as savings, not spending.”
 
@@ -1018,8 +1051,10 @@ Current cash              €1,420
 - normal groceries          €180
 - safety buffer             €140
 ────────────────────────────────
-Available                   €643
+Illustrative margin         €643
 ```
+
+This is an illustrative breakdown. The live result uses the minimum dated margin and per-account checks in architecture §258, not necessarily a period-end subtraction.
 
 Then the user might say:
 
@@ -2000,9 +2035,9 @@ In Custom mode:
 - prompts are editable,
 - each prompt has **Restore default**.
 
-No prompt testing workflow is required.
+No end-user prompt-testing workflow is required; product-managed prompts still require offline evaluation.
 
-No prompt version history is required.
+No user-facing prompt version history is required. Internal prompt/configuration versions are retained for audit, evaluation and rollback.
 
 ---
 
@@ -2171,9 +2206,9 @@ The internal model should avoid assuming that bank transactions are the only pos
 
 ---
 
-# 70. V1 / MVP Scope
+# 70. Full-Product Capability Catalogue
 
-The agreed first serious MVP should contain the unique complete loop rather than trying to integrate every financial service.
+The target product contains the capabilities below. The Delivery baseline assigns release timing; this catalogue is not the R1 launch checklist.
 
 ## 70.1 Data ingestion
 
@@ -2411,7 +2446,7 @@ The system:
 1. Detects the file structures.
 2. Creates the accounts.
 3. Normalizes transactions.
-4. Removes duplicates.
+4. Links confirmed overlaps without erasing source observations; stages ambiguous rows for review.
 5. Matches transfers.
 6. Normalizes merchants.
 7. Categorizes high-confidence transactions.
@@ -2485,42 +2520,17 @@ The differentiator is the combination of:
 
 ---
 
-# 75. Next Design Phase
+# 75. Next Planning Phase
 
-The next phase is to define the exact V1 experience **screen by screen**.
+The screen catalogue in §§77–82 is already defined. Next, translate only the R1 slice into bounded epochs and stories using the resolved deployment constraints. Each story needs behavior, invariants, dependencies, error/empty/incomplete states and runnable acceptance checks. Prototype the artifact runtime early; do not wait until the end to learn whether the main differentiator is feasible.
 
-Recommended order:
-
-1. **Home**
-2. **Money**
-3. **Plan**
-4. **AI**
-5. **Settings**
-6. Cross-screen systems:
-   - command palette,
-   - AI side panel,
-   - notifications,
-   - review inbox,
-   - artifact viewer/editor.
-
-For each screen, define:
-
-- information architecture,
-- exact sections,
-- default state,
-- empty state,
-- interactions,
-- AI integration,
-- desktop layout,
-- what is V1 vs later,
-- key user actions,
-- navigation behavior.
+No application implementation is authorized by the existence of a feature description alone. The future backlog will control assignments and merge order; it cannot silently expand release scope or weaken financial/security invariants.
 
 ---
 
 # 76. Decisions That Are Already Locked
 
-These should not be casually reopened unless new constraints appear:
+These describe the target product. The Delivery baseline controls staging; R2/R3 items below are not R1 commitments:
 
 - Power-user first.
 - Desktop web first.
@@ -2581,7 +2591,7 @@ These should not be casually reopened unless new constraints appear:
 
 ---
 
-# 77. Home Screen — Locked V1 Design
+# 77. Home Screen — Target Product Design
 
 The Home screen is now considered defined at the product level.
 
@@ -2611,7 +2621,7 @@ Upcoming fixed expenses    -€510
 Expected normal spending   -€290
 Safety reserve             -€200
 ────────────────────────────────
-Available                  €1,340
+Illustrative margin        €1,340
 
 Forecast
 Today        €1,340
@@ -2621,6 +2631,8 @@ In 30 days     €780
 [Ask AI about this]
 [Open full analysis]
 ```
+
+This mockup illustrates inspectability, not the calculation formula. Live details use the limiting day/account and explicit assumptions in architecture §258.
 
 The detail panel should support follow-up questions such as:
 
@@ -2796,7 +2808,7 @@ The default hierarchy is:
 
 ---
 
-# 78. Money Section — Locked V1 Design
+# 78. Money Section — Target Product Design
 
 The Money section is now defined as the primary structured financial-data workspace.
 
@@ -3222,7 +3234,7 @@ The Money section should follow these rules:
 
 ---
 
-# 79. Plan Section — Locked V1 Design
+# 79. Plan Section — Target Product Design
 
 The Plan section is now defined as the forward-looking control center of the product.
 
@@ -3407,7 +3419,7 @@ Plan should feel:
 
 ---
 
-# 80. AI Section — Locked V1 Design
+# 80. AI Section — Target Product Design
 
 The AI section is now defined as the intelligence center of the product.
 
@@ -3679,7 +3691,7 @@ The AI experience should be:
 
 ---
 
-# 81. Settings — Locked V1 Design
+# 81. Settings — Target Product Design
 
 Settings is now defined as a powerful but secondary configuration area that stays out of normal daily finance workflows.
 
@@ -3757,7 +3769,6 @@ Examples:
 ```text
 Always keep €500 in Commerzbank
 Do not count ETFs as spendable money
-Salary usually arrives between 26–30th
 Transfers to Scalable count as savings
 ```
 
@@ -3885,9 +3896,9 @@ Custom mode:
 
 > Edit + Restore default.
 
-No prompt testing workflow is required.
+No end-user prompt-testing workflow is required; product-managed prompts still require offline evaluation.
 
-No default prompt version history is required.
+No user-facing default prompt version history is required; internal versions remain required.
 
 ## 81.8 AI Usage
 
@@ -4035,9 +4046,9 @@ This distinction should remain visible to the user.
 
 ---
 
-# 82. Shared Systems — Locked V1 Design
+# 82. Shared Systems — Target Product Design
 
-The shared systems below are now part of the locked V1 product definition. They connect Home, Money, Plan, AI, Settings, and generated artifacts into one coherent workspace.
+The shared systems below describe the target product, delivered according to the release baseline. They connect Home, Money, Plan, AI, Settings, and generated artifacts into one coherent workspace.
 
 ## 82.1 Persistent AI Side Panel
 
@@ -4178,8 +4189,9 @@ Example completion summary:
 ```text
 842 rows processed
 91 new transactions
-751 duplicates ignored
-4 need review
+747 matched existing
+4 pending review
+0 rejected
 ```
 
 Messy or uncertain rows should generally go to Financial Review instead of blocking the entire import.
@@ -4299,39 +4311,8 @@ Across all shared systems:
 
 # 83. Product Definition Status
 
-The product-level V1 definition is now substantially complete.
+The product direction and staged scope are ready to drive the next planning discussion. R1 preserves editable live code artifacts and the trustworthy finance/AI loop. R2/R3 retain the broader vision without holding the first validation release hostage to it.
 
-Locked areas include:
+Before final deployment commitments, verify provider entitlements and qualify actual models on the intended financial tasks. Funding and international AI processing are accepted; development free-model permissions remain separate from customer-data policy. The architecture records the finite feasibility gates. These are implementation proofs, not grounds to keep adding speculative architecture.
 
-```text
-Home
-Money
-Plan
-AI
-Settings
-
-Persistent AI Side Panel
-Command Palette
-Notifications
-Import Workflow
-Artifact Editor
-Background Jobs
-Evidence Deep-Linking
-```
-
-Implementation planning is maintained in [IMPLEMENTATION-EPOCHS.md](IMPLEMENTATION-EPOCHS.md). Its V1 coverage map assigns the locked surfaces in this document to issues and acceptance gates. The list below identifies design disciplines, not a second execution backlog.
-
-Recommended next topics:
-
-1. Technical architecture.
-2. Core data model.
-3. Finance tool/API surface.
-4. Artifact sandbox/runtime.
-5. AI orchestration and model routing.
-6. Forecasting architecture.
-7. Background jobs.
-8. Security/privacy boundaries.
-9. Frontend architecture.
-10. MVP implementation phases / epochs.
-11. Testing strategy.
-12. Deployment/infrastructure.
+The next artifact is the future epoch/story backlog; it does not yet exist. Every R1 row in the Delivery baseline must map to acceptance evidence when that backlog is written. Completion of this document is not proof of implemented or tested software.
