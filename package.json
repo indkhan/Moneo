@@ -6,14 +6,21 @@
   },
   "packageManager": "npm@10.9.8",
   "scripts": {
+    "build:artifact-proof": "vite build --configLoader runner --config proof/artifact/vite.config.ts",
+    "test:artifact": "npm run build:artifact-proof && playwright test --config proof/artifact/playwright.config.ts",
+    "test:artifact:install": "playwright install chromium firefox webkit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run test/harness.test.ts",
     "test:failure": "vitest run checks/deliberate-failure.test.ts",
     "check": "npm run typecheck && npm test"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.0",
     "@types/node": "22.20.3",
+    "css-tree": "3.2.1",
+    "quickjs-emscripten": "0.32.0",
     "typescript": "7.0.2",
+    "vite": "8.3.0",
     "vitest": "5.0.1"
   }
 }
