@@ -302,9 +302,39 @@ Status: Done
 
 ## E01-S05 — Enforce AI data policy before any provider integration
 
-Status: Draft | Dependencies: E01-S04
+Status: In progress | Release: R1 | Epic: E01
+Dependencies: E01-S04 (Done at `5cf1ed8`)
 
-Persist account AI exclusions and policy version; introduce the shared authorized data-selection/dispatch gate consumed later by mapping/chat/artifacts. Acceptance: excluded data cannot enter provider payloads even through aggregates or stale work; policy changes invalidate queued work appropriately. Use a recording fake provider now. Define unknown-account upload behavior explicitly before E02-S04 to avoid sending data before account exclusion is known.
+Outcome: Account AI exclusions with a monotonically increasing workspace policy version gate every provider-bound data selection through one shared module; excluded data (unique sentinel values) never reaches payloads, aggregates, or stale dispatches; policy changes invalidate queued permits; unknown accounts default to deny.
+Contracts: Architecture §538 (workspace-owned policy, AI exclusion separate from analytics, eligibility before aggregation/evidence/dispatch, no full-workspace cache reuse for AI, provenance + policy-versioned outputs, change invalidates contexts/queued work with revalidation before dispatch, short-tx permits, sentinel-value tests, no retroactive prevention of already-dispatched), §53 (invocation classes — this story builds the data gate, not the orchestrator), §158 (decimal strings; no money columns exist yet so sentinels live in account names), §27/§23 (composite keys, FORCE RLS). No live provider, no chat/artifacts/mapping yet (recording fake provider only).
+Scope: `migrations/004_ai_policy.sql` (+rollback) — `ai_policies` (workspace PK, policy_version), `ai_exclusions` (PK workspace+account, FK accounts, reason, actor), `ai_dispatch_permits` (composite PK, UNIQUE workspace+purpose? no — multiple permits allowed; status QUEUED/DISPATCHED/INVALIDATED, snapshot eligible ids JSONB, policy version, 15-min expiry), FORCE RLS workspace-equality on all three; `src/ai-policy.ts` (`setAccountExclusion` with FOR UPDATE-serialized version bump + queued-permit invalidation, `issuePermit` snapshotting eligible ids, `consumePermit` with pre-dispatch revalidation CAS, `selectEligible` + `summarizeEligible` with provenance); `src/ai-fake-provider.ts` (in-memory recording sender + sentinel tripwire, test transport only); tenancy-router HTTP (`PUT /api/ai/exclusions`, `GET /api/ai/policy`, `POST /api/ai/permits`, `POST /api/ai/test-dispatch` gated to non-production); `test/ai-policy.test.ts` (own DB `moneo_e01_policy`, sentinel names); `test:policy` + CI step.
+Out of scope: Live OpenRouter calls (E02-S04/E04-S01 reuse this gate), chat/threads, artifact SDK, mapping inference, embeddings/vector DB, custom AI config (E04-S06), per-object exclusions beyond accounts (accounts only per story), analytics exclusion (separate per §538).
+
+Acceptance:
+1. Given workspace with accounts A (included) and B (excluded, unique sentinel name), when issuing a permit and selecting eligible data, then selection contains A only with provenance `{policyVersion, eligibleIds}`; the fake-send log contains no B sentinel in payload, ids, counts, or hashes input (hashes cover eligible data only); A sentinel present (non-vacuous).
+2. Given a QUEUED permit P at version N, when B is newly excluded (version N+1), then P's row becomes INVALIDATED and consuming P fails 409 `permit_invalidated` (`permit_stale` covers version drift without invalidation as defense-in-depth); a fresh permit carries version N+1 with B absent; already-DISPATCHED P is history (no recall claimed — limitation stated in response/docs).
+3. Given a permit request naming an unknown/not-yet-created account id, when issued, then 400 `unknown_account`; permits snapshot explicit eligible id lists (no wildcards), so accounts created after issuance are never covered — unknown defaults to deny (E02-S04 input).
+4. Given direct/aggregate reads (list, summary counts), when B is excluded, then B is absent from rows and counts; `summarizeEligible` reports limited coverage explicitly when exclusions exist (`coverage:"partial"` vs `"full"`).
+5. Given the fake transport, when sending, then the log stores hashes + ids + policyVersion + purpose only (no names/amounts), and the sentinel tripwire throws on any leak (defense-in-depth test double, not a security boundary claim).
+
+Invariants: Eligibility computed inside tenant tx from current exclusions; permits immutable snapshots; every dispatch revalidates version + CAS status; tenant checks via withTenant everywhere; no finance payloads in permit rows or logs; unknown = deny.
+Failure lifecycle: Consume-CAS losers get explicit `permit_stale`/`permit_consumed`; double-consume → second fails `permit_consumed`; expired permits → `permit_expired`; policy-change tx serializes writers (FOR UPDATE) so versions never skip/duplicate; rollback file drops the three tables (synthetic only).
+UI/accessibility: Not applicable — no browser UI (S06 owns the shell).
+Data changes: `004_ai_policy.sql` adds three tables; rollback drops them. No seed data.
+Observability: Redacted events (`ai_exclusion_set`, `ai_permit_issued/consumed/invalidated` with counts only, no ids/names); 409 bodies carry reason only.
+Limits: Policy suite <= 120 s real-PG; permit TTL 15 min; exclusion reasons ≤200 chars; sentinel names synthetic.
+Verification: `npm run test:policy` 0 (real PG own DB, fails closed); regression of prior suites; `git diff --check`; secret scan. No live gate (fake transport by design).
+Review focus: Eligibility bypass (any selection path skipping exclusions); wildcard/implicit permits; TOCTOU between issue and consume (revalidation atomicity); invalidation completeness (every QUEUED permit flipped?); sentinel-vacuous tests (assert presence of included); hash-then-exclude gaps; RLS on the three tables; actor confusion; production exposure of test-dispatch; scope creep toward chat/providers.
+Rollout/rollback: App-only; rollback = prior image + `004 rollback.sql` (destroys synthetic policy rows; permits die with the table). Known limitation: already-dispatched sends cannot be recalled (stated, §538-conformant).
+
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s05-ai-policy`
+- Base SHA: `58b6f19e97bc23dc6470a3414c067e78aff3f8a2`
+- Tests: (to be recorded)
+- Review: (to be recorded)
+- Integration: (to be recorded)
+- Merge SHA / post-merge smoke: (to be recorded)
+- Remaining blockers or explicitly accepted nonblocking follow-up: (to be recorded)
 
 ## E01-S06 — Add minimal shell, telemetry and safe operational controls
 

@@ -15,7 +15,7 @@ RUN npm ci --ignore-scripts && \
 # compiled dist output plus package.json metadata (no node_modules needed).
 
 FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS runtime
-ENV NODE_ENV=production
+ENV NODE_ENV=production APP_ENV=production
 WORKDIR /app
 COPY --from=build /src/apps/web/dist ./dist
 COPY --from=build /src/package.json ./package.json

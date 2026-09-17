@@ -10,6 +10,8 @@ import type { Pool, PoolClient } from "pg";
 import { isUuid, uuidv7 } from "./ids.ts";
 import type { Session } from "./session-store.ts";
 import { CommandError, getAccountView, listAccountViews, renameAccount, validateRenameInput } from "./commands/accounts.ts";
+import { consumePermit, getPolicy, issuePermit, PolicyError, setAccountExclusion, summarizeEligible } from "./ai-policy.ts";
+import { createFakeProvider } from "./ai-fake-provider.ts";
 
 export class TenantDenied extends Error {
   constructor() {
@@ -194,6 +196,15 @@ export type TenancyRouter = {
   handle: (req: IncomingMessage, res: ServerResponse, path: string, method: string, query: URLSearchParams) => Promise<boolean>;
 };
 
+// Test-transport log only (dies with the process). Bounded so a long-lived
+// dev server cannot grow it without limit; E02/E04 replace this transport.
+const fakeTransport = createFakeProvider(200);
+
+function policyErrorBody(err: PolicyError): { status: number; body: unknown } {
+  if (err.code === "unknown_account") return { status: 400, body: { error: "invalid_request", reason: err.code } };
+  return { status: 409, body: { error: "conflict", reason: err.code } };
+}
+
 export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver): TenancyRouter {
   // Every route resolves the session first (uniform 401), then the user row,
   // then membership inside withTenant. Missing and foreign resources share
@@ -218,9 +229,11 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
 
   return {
     handle: async (req, res, path, method, query) => {
-      // Only the two JSON POST routes read the body (via readJsonBody, the
-      // sole "data" listener); everything else discards up front.
-      if (method !== "POST") req.resume();
+      // JSON routes (POST/PUT) read the body via readJsonBody, the sole
+      // "data" listener — discarding here first would eat the body and hang
+      // the reader waiting for "end" (S03 drain lesson). Everything else
+      // discards up front so sockets stay reusable.
+      if (method !== "POST" && method !== "PUT") req.resume();
       req.on("error", () => {});
       try {
         if (path === "/api/workspaces" && method === "GET") {
@@ -292,6 +305,130 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             if (err instanceof CommandError) {
               const mapped = commandErrorBody(err);
               tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/ai/exclusions" && method === "PUT") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown; accountId?: unknown; excluded?: unknown; reason?: unknown };
+          if (typeof body.workspaceId !== "string" || !isUuid(body.workspaceId) || typeof body.accountId !== "string" || typeof body.excluded !== "boolean") {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, body.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            tenantJson(res, 200, await setAccountExclusion(pool, resolved.claim, resolved.claim.userId, body.accountId, body.excluded, body.reason as string | undefined));
+          } catch (err) {
+            if (err instanceof PolicyError) {
+              const mapped = policyErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/ai/policy" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          tenantJson(res, 200, await getPolicy(pool, resolved.claim));
+          return true;
+        }
+        if (path === "/api/ai/policy/summary" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          tenantJson(res, 200, await summarizeEligible(pool, resolved.claim));
+          return true;
+        }
+        if (path === "/api/ai/permits" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown; purpose?: unknown; accountIds?: unknown };
+          if (typeof body.workspaceId !== "string" || !isUuid(body.workspaceId)) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          if (body.accountIds !== undefined && (!Array.isArray(body.accountIds) || body.accountIds.some((id) => typeof id !== "string"))) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, body.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            tenantJson(res, 201, await issuePermit(pool, resolved.claim, body.purpose as string, body.accountIds as string[] | undefined));
+          } catch (err) {
+            if (err instanceof PolicyError) {
+              const mapped = policyErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/ai/test-dispatch" && method === "POST") {
+          // Test transport only: the recording fake provider E02/E04 replace
+          // with the qualified OpenRouter path. Allowlisted to local
+          // development/test (including unset); every other environment,
+          // production included, gets a uniform 404.
+          const appEnv = process.env["APP_ENV"];
+          if (appEnv !== undefined && appEnv !== "development" && appEnv !== "test") {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown; permitId?: unknown; sentinels?: unknown };
+          if (typeof body.workspaceId !== "string" || !isUuid(body.workspaceId) || typeof body.permitId !== "string") {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const resolved = await claims(req, body.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const selection = await consumePermit(pool, resolved.claim, body.permitId);
+            const sentinels = Array.isArray(body.sentinels) ? (body.sentinels as unknown[]).filter((s): s is string => typeof s === "string") : [];
+            const record = fakeTransport.send(selection, "test-dispatch", sentinels);
+            tenantJson(res, 200, { record, accounts: selection.accounts });
+          } catch (err) {
+            if (err instanceof PolicyError) {
+              const mapped = policyErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            if (err instanceof Error && err.message.startsWith("fake_provider_tripwire")) {
+              tenantJson(res, 500, { error: "transport_tripwire" });
               return true;
             }
             throw err;
