@@ -1,6 +1,6 @@
 # E00-S05 decision/evidence report — identity, deployment identity, development AI
 
-Status: **Pass** for the revised R1 decision. A pinned disposable Keycloak 26.7.4 container proved login, refresh and provider-side session revocation; hardened Docker containers proved per-service synthetic-secret isolation; the OpenRouter development-model live gate passed using synthetic inputs. No secret values, tokens or response bodies were logged.
+Status: **Pass** for the revised R1 decision. Digest-pinned Keycloak 26.7.4 proved browser Authorization Code + PKCE, refresh and provider-side session revocation; hardened Docker Compose services proved per-service synthetic-secret isolation; the OpenRouter development-model live gate passed using synthetic inputs. No secret values, tokens or response bodies were logged.
 
 Founder decision on 2026-09-17 replaced Auth0 and Render/AWS with self-hosted Keycloak and Docker-hosted services for R1. The architecture override records production gates; this proof uses Keycloak `start-dev` only as a disposable feasibility fixture.
 
@@ -24,8 +24,8 @@ Founder decision on 2026-09-17 replaced Auth0 and Render/AWS with self-hosted Ke
 
 - Dev allows training-permitted free routes; production denies them, non-ZDR routes, content-logged routes, and unqualified free routes; failed primaries return recoverable unavailability, never a privacy downgrade (`policy.ts`).
 - App-session revocation denies even with live SSO (copied-cookie case); SSO logout alone leaves an issued app cookie valid — so E01-S02 must revoke locally first (`session-layers.ts`).
-- A disposable Keycloak realm issues and refreshes a synthetic user session; Admin REST logout makes the prior refresh token fail. The container and temporary realm credentials are removed after every run (`npm run test:identity:docker`).
-- Docker proof services run with numeric non-root UID 65532, read-only root filesystems, all capabilities dropped, no-new-privileges and no network. Only the explicitly mounted service reads the synthetic secret; an ungranted peer cannot see it.
+- A digest-pinned disposable Keycloak realm completes browser Authorization Code + PKCE and refreshes a synthetic user session; Admin REST logout makes the newly rotated refresh token fail. Its unique Docker network, container and temporary realm credentials are verified absent after every run (`npm run test:identity:docker`).
+- Docker Compose proof services run with digest-pinned Alpine, numeric non-root UID 65532, read-only root filesystems, all capabilities dropped, no-new-privileges and no network. Only the service granted the Compose secret reads it; an ungranted peer cannot see it.
 - Tool allowlist + strict decimal-string money args, malformed-output rejection, 401/402/403/404 vs retryable 429/408/5xx/timeout taxonomy, one-retry cap, and the hard 20-request budget (`openrouter-probe.ts`, mock transports).
 
 ## Live OpenRouter result
