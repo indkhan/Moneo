@@ -28,10 +28,11 @@ function json(res: ServerResponse, status: number, body: unknown, allow?: string
   res.end(payload);
 }
 
-function drain(req: IncomingMessage): void {
-  // Never buffer or log request bodies on this slice; just consume so the
-  // socket can be reused.
-  req.on("data", () => {});
+function discard(req: IncomingMessage): void {
+  // Discard an unread body so the socket can be reused. Call only on paths
+  // that never read the body: attaching a "data" listener before the JSON
+  // reader would consume the body and hang the reader waiting for "end".
+  req.resume();
   req.on("error", () => {});
 }
 
@@ -39,9 +40,8 @@ export type AuthDelegate = {
   handle: (req: import("node:http").IncomingMessage, res: ServerResponse, path: string, method: string, query: URLSearchParams) => Promise<boolean>;
 };
 
-export function createApp(auth?: AuthDelegate | null): Server {
+export function createApp(auth?: AuthDelegate | null, tenancy?: AuthDelegate | null): Server {
   return createServer((req, res) => {
-    drain(req);
     const method = req.method ?? "GET";
     const rawUrl = req.url ?? "/";
     const path = rawUrl.split("?", 1)[0];
@@ -50,12 +50,22 @@ export function createApp(auth?: AuthDelegate | null): Server {
       try {
         if (path === "/auth/login" || path === "/auth/callback" || path === "/auth/logout" || path === "/api/me") {
           if (!auth) {
+            discard(req);
             json(res, 503, { error: "auth_not_configured" });
             return;
           }
           if (await auth.handle(req, res, path, method, query)) return;
         }
+        if (path === "/api/workspaces" || path === "/api/accounts" || path.startsWith("/api/accounts/")) {
+          if (!tenancy) {
+            discard(req);
+            json(res, 503, { error: "tenancy_not_configured" });
+            return;
+          }
+          if (await tenancy.handle(req, res, path, method, query)) return;
+        }
         if (path === "/healthz" || path === "/readyz" || path === "/version") {
+          discard(req);
           if (method !== "GET" && method !== "HEAD") {
             json(res, 405, { error: "method_not_allowed" }, "GET");
             return;
@@ -78,6 +88,7 @@ export function createApp(auth?: AuthDelegate | null): Server {
           json(res, 200, body);
           return;
         }
+        discard(req);
         json(res, 404, { error: "not_found" });
       } catch {
         // All request handling is fail-closed: an unexpected throw must not

@@ -3,166 +3,29 @@
 // (moneo_e01_test, fails closed without PG). No secrets are committed or
 // logged; captured tokens/codes must never appear in app responses.
 
-import { createHash, randomBytes } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { randomBytes } from "node:crypto";
+import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { Pool } from "pg";
+import type { Pool } from "pg";
 import { createApp } from "../apps/web/src/server.ts";
 import { createAuthRouter, type AuthConfig } from "../apps/web/src/auth.ts";
-import { createPool, migrate, withDatabase } from "../apps/web/src/db.ts";
 import { countLiveSessions } from "../apps/web/src/session-store.ts";
-
-// ---- disposable database (same guard convention as the E00 durable proof) ----
-
-const TEST_DB = "moneo_e01_test";
-
-function env(name: string): string {
-  // Mirror the E00 proof convention: process env first, repo .env fallback.
-  // Values are never logged; failures name only the missing variable.
-  let value = process.env[name];
-  if (!value) {
-    try {
-      for (const line of readFileSync(".env", "utf8").split(/\r?\n/)) {
-        const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
-        if (m?.[1] === name) {
-          value = m[2].replace(/^['"]|['"]$/g, "");
-          break;
-        }
-      }
-    } catch { /* no .env file */ }
-  }
-  if (!value) throw new Error(`E01-S02 prerequisite missing: ${name} (local disposable PostgreSQL).`);
-  return value;
-}
+import { ensureTestPool } from "./helpers/test-db.ts";
+import { startStubIssuer, STUB_CLIENT_SECRET, type StubIssuer } from "./helpers/stub-issuer.ts";
 
 let pool: Pool;
-
-async function ensureTestDatabase(): Promise<void> {
-  const appUrl = env("DATABASE_URL");
-  let setupUrl = process.env["DATABASE_MIGRATION_URL"];
-  if (!setupUrl) {
-    try {
-      setupUrl = env("DATABASE_MIGRATION_URL");
-    } catch {
-      setupUrl = appUrl;
-    }
-  }
-  const appDb = new URL(appUrl).pathname.replace("/", "");
-  if (TEST_DB === appDb || ["postgres", "template0", "template1"].includes(TEST_DB)) {
-    throw new Error("E01-S02 refused: test database must be disposable.");
-  }
-  const setup = new Pool({ connectionString: setupUrl, connectionTimeoutMillis: 8000 });
-  try {
-    const found = await setup.query("SELECT 1 FROM pg_database WHERE datname = $1", [TEST_DB]);
-    if (found.rowCount === 0) {
-      const appUser = decodeURIComponent(new URL(appUrl).username);
-      if (!/^[A-Za-z_][A-Za-z0-9_@$]*$/.test(appUser)) throw new Error("E01-S02 refused: app-role username is not a safe SQL identifier.");
-      await setup.query(`CREATE DATABASE "${TEST_DB}" OWNER "${appUser}"`);
-    }
-  } finally {
-    await setup.end();
-  }
-  pool = createPool(withDatabase(appUrl, TEST_DB));
-  await migrate(pool, "apps/web/migrations");
-  await pool.query("TRUNCATE app_sessions");
-}
-
-// ---- stub OIDC issuer ----
-
-type StubCode = { challenge: string; clientId: string; redirectUri: string; sub: string; used: boolean };
-
-let stub: Server;
+let stub: StubIssuer;
 let stubBase = "";
-let evilIssuer = false;
-const codes = new Map<string, StubCode>();
-const accessToSub = new Map<string, string>();
-const STUB_CLIENT_SECRET = "stub-secret";
-
-function stubJson(res: ServerResponse, status: number, body: unknown, location?: string): void {
-  const payload = `${JSON.stringify(body)}\n`;
-  res.writeHead(status, {
-    "Content-Type": "application/json",
-    "Content-Length": Buffer.byteLength(payload),
-    ...(location ? { Location: location } : {}),
-  });
-  res.end(payload);
-}
-
-function readBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve) => {
-    let data = "";
-    req.on("data", (chunk) => (data += chunk));
-    req.on("end", () => resolve(data));
-  });
-}
 
 beforeAll(async () => {
-  await ensureTestDatabase();
-  stub = createServer(async (req, res) => {
-    const url = new URL(req.url ?? "/", "http://stub.invalid");
-    if (url.pathname === "/.well-known/openid-configuration") {
-      stubJson(res, 200, {
-        issuer: evilIssuer ? "http://evil.invalid/realms/moneo" : stubBase,
-        authorization_endpoint: `${stubBase}/authorize`,
-        token_endpoint: `${stubBase}/token`,
-        userinfo_endpoint: `${stubBase}/userinfo`,
-      });
-      return;
-    }
-    if (url.pathname === "/authorize") {
-      const clientId = url.searchParams.get("client_id");
-      const redirectUri = url.searchParams.get("redirect_uri");
-      const challenge = url.searchParams.get("code_challenge");
-      const method = url.searchParams.get("code_challenge_method");
-      const state = url.searchParams.get("state");
-      if (clientId !== "moneo-test-client" || !redirectUri?.endsWith("/auth/callback") || !challenge || method !== "S256" || !state) {
-        stubJson(res, 400, { error: "invalid_request" });
-        return;
-      }
-      const code = randomBytes(24).toString("base64url");
-      codes.set(code, { challenge, clientId, redirectUri, sub: url.searchParams.get("login_as") ?? "synthetic-user-a", used: false });
-      const back = new URL(redirectUri);
-      back.searchParams.set("code", code);
-      back.searchParams.set("state", state);
-      res.writeHead(302, { Location: back.toString() });
-      res.end();
-      return;
-    }
-    if (url.pathname === "/token") {
-      const body = new URLSearchParams(await readBody(req));
-      const code = body.get("code") ?? "";
-      const entry = codes.get(code);
-      const verifier = body.get("code_verifier") ?? "";
-      const expected = createHash("sha256").update(verifier).digest("base64url");
-      if (body.get("grant_type") !== "authorization_code" || !entry || entry.used || entry.challenge !== expected || body.get("client_id") !== entry.clientId || body.get("redirect_uri") !== entry.redirectUri || body.get("client_secret") !== STUB_CLIENT_SECRET) {
-        stubJson(res, 400, { error: "invalid_grant" });
-        return;
-      }
-      entry.used = true;
-      const access = `stub-access-${randomBytes(16).toString("hex")}`;
-      accessToSub.set(access, entry.sub);
-      stubJson(res, 200, { access_token: access, token_type: "Bearer", expires_in: 300 });
-      return;
-    }
-    if (url.pathname === "/userinfo") {
-      const sub = accessToSub.get((req.headers.authorization ?? "").replace(/^Bearer /, ""));
-      if (!sub) {
-        stubJson(res, 401, { error: "invalid_token" });
-        return;
-      }
-      stubJson(res, 200, { sub });
-      return;
-    }
-    stubJson(res, 404, { error: "not_found" });
-  });
-  await new Promise<void>((resolve) => stub.listen(0, "127.0.0.1", resolve));
-  stubBase = `http://127.0.0.1:${(stub.address() as AddressInfo).port}`;
+  pool = await ensureTestPool("E01-S02", "moneo_e01_test", ["app_sessions"]);
+  stub = await startStubIssuer();
+  stubBase = stub.base;
 }, 60_000);
 
 afterAll(async () => {
-  if (stub) await new Promise<void>((resolve) => stub.close(() => resolve()));
+  if (stub) await stub.close();
   for (const server of appServers) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
@@ -208,7 +71,7 @@ async function login(base: string, loginAs = "synthetic-user-a", returnTo?: stri
   expect(done.status).toBe(302);
   const cookie = done.headers.get("set-cookie")!;
   // Recover the stub access token bound to this code for leak assertions.
-  const accessToken = [...accessToSub.entries()].at(-1)?.[0] ?? "";
+  const accessToken = stub.lastAccessToken();
   return { cookie: cookie.split(";")[0], code, accessToken };
 }
 
@@ -296,7 +159,7 @@ describe("e01-s02 auth and revocation", () => {
   });
 
   it("evil issuer discovery (iss mismatch) refuses the login", async () => {
-    evilIssuer = true;
+    stub.setEvil(true);
     try {
       const { base, events } = await startApp();
       const start = await fetch(`${base}/auth/login`, { redirect: "manual" });
@@ -304,7 +167,7 @@ describe("e01-s02 auth and revocation", () => {
       expect(start.headers.get("location")).toBe("/");
       expect(events).toContain("auth_login_fail:discovery");
     } finally {
-      evilIssuer = false;
+      stub.setEvil(false);
     }
   });
 

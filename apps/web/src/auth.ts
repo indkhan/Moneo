@@ -9,7 +9,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Pool } from "pg";
-import { createSession, readSession, revokeSession } from "./session-store.ts";
+import { createSession, readSession, revokeSession, type Session } from "./session-store.ts";
 
 export type AuthConfig = {
   issuer: string; // exact issuer identifier, e.g. http://127.0.0.1:8080/realms/moneo
@@ -107,6 +107,13 @@ function setSessionCookie(res: ServerResponse, config: AuthConfig, id: string | 
   const value = id === null ? "expired" : sessionCookieValue(id, config.sessionSecret);
   const age = id === null ? "Max-Age=0" : `Max-Age=${maxAgeSec}`;
   res.setHeader("Set-Cookie", `${SESSION_COOKIE}=${value}; HttpOnly; Path=/; SameSite=Lax${secure}; ${age}`);
+}
+
+/** Resolve the live server-checked session for a request, or null. Shared by tenant trust boundaries. */
+export async function requestSession(pool: Pool, secret: string, req: IncomingMessage): Promise<Session | null> {
+  const id = verifySessionCookie(parseCookies(req)[SESSION_COOKIE], secret);
+  if (!id) return null;
+  return readSession(pool, id);
 }
 
 export type AuthRouter = {
@@ -301,6 +308,11 @@ export function createAuthRouter(config: AuthConfig, pool: Pool): AuthRouter {
 
   return {
     handle: async (req, res, path, method, query) => {
+      // No auth route reads the request body; discard up front so sockets
+      // stay reusable. (Never do this on routes with a JSON reader: an early
+      // "data" listener would eat the body — see server discard().)
+      req.resume();
+      req.on("error", () => {});
       if (path === "/auth/login" && method === "GET") {
         await handleLogin(res, query);
         return true;

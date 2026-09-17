@@ -1,0 +1,221 @@
+// E01-S03 tenant ownership: two synthetic users, isolated workspaces, real
+// PostgreSQL (`moneo_e01_test`, fails closed without PG). Proves API-level
+// and database-level isolation, tenant-swapped denial, connection hygiene,
+// least-privilege role posture, FORCED RLS, and migration rollback.
+
+import { randomBytes, randomUUID } from "node:crypto";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { Pool, PoolClient } from "pg";
+import { createApp } from "../apps/web/src/server.ts";
+import { createAuthRouter, requestSession, type AuthConfig } from "../apps/web/src/auth.ts";
+import { createTenancyRouter, withTenant } from "../apps/web/src/tenancy.ts";
+import { migrate } from "../apps/web/src/db.ts";
+import { ensureTestPool } from "./helpers/test-db.ts";
+import { startStubIssuer, STUB_CLIENT_ID, STUB_CLIENT_SECRET, type StubIssuer } from "./helpers/stub-issuer.ts";
+
+let pool: Pool;
+let stub: StubIssuer;
+const appServers: Server[] = [];
+const sessionSecret = randomBytes(32).toString("hex");
+
+async function startApp(): Promise<string> {
+  const config: AuthConfig = {
+    issuer: stub.base,
+    clientId: STUB_CLIENT_ID,
+    clientSecret: STUB_CLIENT_SECRET,
+    appBaseUrl: "http://127.0.0.1:1",
+    sessionSecret,
+    sessionTtlSec: 43200,
+  };
+  const server = createApp(
+    createAuthRouter(config, pool),
+    createTenancyRouter(pool, (req) => requestSession(pool, sessionSecret, req)),
+  );
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  appServers.push(server);
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  config.appBaseUrl = base;
+  return base;
+}
+
+async function login(base: string, loginAs: string): Promise<string> {
+  const start = await fetch(`${base}/auth/login`, { redirect: "manual" });
+  const authorizeUrl = `${start.headers.get("location")!}&login_as=${loginAs}`;
+  const callbackUrl = (await fetch(authorizeUrl, { redirect: "manual" })).headers.get("location")!;
+  const done = await fetch(callbackUrl, { redirect: "manual" });
+  return done.headers.get("set-cookie")!.split(";")[0];
+}
+
+async function json(method: string, url: string, cookie: string, body?: unknown): Promise<{ status: number; body: unknown }> {
+  const res = await fetch(url, {
+    method,
+    headers: { cookie, ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return { status: res.status, body: await res.json() };
+}
+
+beforeAll(async () => {
+  pool = await ensureTestPool("E01-S03", "moneo_e01_test", ["accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
+  stub = await startStubIssuer();
+}, 60_000);
+
+afterAll(async () => {
+  if (stub) await stub.close();
+  for (const server of appServers) {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+  if (pool) await pool.end();
+});
+
+describe("e01-s03 tenant ownership", () => {
+  it("two users own isolated workspaces over HTTP with uniform 404s", async () => {
+    const base = await startApp();
+    const cookieA = await login(base, "synthetic-tenant-a");
+    const cookieB = await login(base, "synthetic-tenant-b");
+
+    const wsA = (await json("POST", `${base}/api/workspaces`, cookieA, { name: "Household A", baseCurrency: "EUR", timezone: "Europe/Berlin" })) as { status: number; body: { id: string } };
+    expect(wsA.status).toBe(201);
+    const wsB = (await json("POST", `${base}/api/workspaces`, cookieB, { name: "Household B", baseCurrency: "USD" })) as { status: number; body: { id: string } };
+    expect(wsB.status).toBe(201);
+
+    const acctA = (await json("POST", `${base}/api/accounts`, cookieA, { workspaceId: wsA.body.id, name: "Checking A" })) as { status: number; body: { id: string } };
+    expect(acctA.status).toBe(201);
+    const acctB = (await json("POST", `${base}/api/accounts`, cookieB, { workspaceId: wsB.body.id, name: "Checking B" })) as { status: number; body: { id: string } };
+    expect(acctB.status).toBe(201);
+
+    // Lists are scoped.
+    const listA = await json("GET", `${base}/api/accounts?workspaceId=${wsA.body.id}`, cookieA);
+    expect(listA.body).toEqual({ accounts: [{ workspaceId: wsA.body.id, id: acctA.body.id, name: "Checking A" }] });
+    const listWSA = await json("GET", `${base}/api/workspaces`, cookieA);
+    expect((listWSA.body as { workspaces: { id: string }[] }).workspaces.map((w) => w.id)).toEqual([wsA.body.id]);
+
+    // Tenant-swapped IDs are indistinguishable from missing IDs.
+    const swapped = await json("GET", `${base}/api/accounts/${acctB.body.id}?workspaceId=${wsA.body.id}`, cookieA);
+    expect(swapped.status).toBe(404);
+    expect(swapped.body).toEqual({ error: "not_found" });
+    const swappedWs = await json("GET", `${base}/api/accounts?workspaceId=${wsB.body.id}`, cookieA);
+    expect(swappedWs.status).toBe(404);
+    expect(swappedWs.body).toEqual({ error: "not_found" });
+    const missing = await json("GET", `${base}/api/accounts/${randomUUID()}?workspaceId=${wsA.body.id}`, cookieA);
+    expect(missing.status).toBe(swapped.status);
+    expect(missing.body).toEqual(swapped.body);
+
+    // Writing into a foreign workspace fails the same way.
+    const writeForeign = await json("POST", `${base}/api/accounts`, cookieA, { workspaceId: wsB.body.id, name: "Sneaky" });
+    expect(writeForeign.status).toBe(404);
+
+    // Unauthenticated tenant calls are 401, not 404 (auth boundary first).
+    const anon = await json("GET", `${base}/api/accounts?workspaceId=${wsA.body.id}`, "moneo_session=expired");
+    expect(anon.status).toBe(401);
+  });
+
+  it("database boundaries deny foreign reads/writes under real RLS", async () => {
+    const base = await startApp();
+    const cookieA = await login(base, "synthetic-tenant-c");
+    const cookieB = await login(base, "synthetic-tenant-d");
+    const wsA = ((await json("POST", `${base}/api/workspaces`, cookieA, { name: "WA", baseCurrency: "EUR" })).body as { id: string }).id;
+    const wsB = ((await json("POST", `${base}/api/workspaces`, cookieB, { name: "WB", baseCurrency: "EUR" })).body as { id: string }).id;
+    const acctB = ((await json("POST", `${base}/api/accounts`, cookieB, { workspaceId: wsB, name: "B-acct" })).body as { id: string }).id;
+    const userA = (await pool.query("SELECT id FROM users WHERE auth_subject = $1", ["synthetic-tenant-c"])).rows[0].id as string;
+
+    // Direct read under A's context sees zero B rows.
+    await withTenant(pool, { userId: userA, workspaceId: wsA }, async (client: PoolClient) => {
+      const rows = await client.query("SELECT id FROM accounts WHERE id = $1", [acctB]);
+      expect(rows.rowCount).toBe(0);
+      const all = await client.query("SELECT count(*)::int AS n FROM accounts");
+      expect((all.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    // Unscoped pooled reads see zero tenant rows (fail closed, no error oracle).
+    const bare = await pool.connect();
+    try {
+      expect(((await bare.query("SELECT count(*)::int AS n FROM accounts")).rows[0] as { n: number }).n).toBe(0);
+      expect(((await bare.query("SELECT count(*)::int AS n FROM workspaces")).rows[0] as { n: number }).n).toBe(0);
+      expect(((await bare.query("SELECT count(*)::int AS n FROM workspace_members")).rows[0] as { n: number }).n).toBe(0);
+      await expect(bare.query("INSERT INTO accounts (workspace_id, id, name) VALUES ($1, $2, $3)", [wsA, randomUUID(), "Nope"])).rejects.toThrow();
+    } finally {
+      bare.release();
+    }
+
+    // Relational integrity: accounts cannot point at a missing workspace. From
+    // app paths RLS denies first (WITH CHECK), so the FK is the third layer
+    // for privileged/owner access; either way no orphan row is created. The
+    // savepoint keeps the aborted INSERT from poisoning the transaction.
+    await withTenant(pool, { userId: userA, workspaceId: wsA }, async (client: PoolClient) => {
+      await client.query("SAVEPOINT hostile_insert");
+      await expect(client.query("INSERT INTO accounts (workspace_id, id, name) VALUES ($1, $2, $3)", [randomUUID(), randomUUID(), "Orphan"])).rejects.toThrow();
+      await client.query("ROLLBACK TO SAVEPOINT hostile_insert");
+      const orphans = await client.query("SELECT count(*)::int AS n FROM accounts WHERE name = 'Orphan'");
+      expect((orphans.rows[0] as { n: number }).n).toBe(0);
+    });
+
+    // Composite keys: the same account UUID may exist in both workspaces yet stay invisible across the boundary.
+    await withTenant(pool, { userId: userA, workspaceId: wsA }, async (client: PoolClient) => {
+      await client.query("INSERT INTO accounts (workspace_id, id, name) VALUES ($1, $2, $3)", [wsA, acctB, "Same id, own side"]);
+      const mine = await client.query("SELECT name FROM accounts WHERE workspace_id = $1 AND id = $2", [wsA, acctB]);
+      expect((mine.rows[0] as { name: string }).name).toBe("Same id, own side");
+    });
+    const stillB = await json("GET", `${base}/api/accounts/${acctB}?workspaceId=${wsB}`, cookieB);
+    expect((stillB.body as { name: string }).name).toBe("B-acct");
+
+    // Non-member context throws before executing work.
+    const outsider = randomUUID();
+    await expect(withTenant(pool, { userId: outsider, workspaceId: wsA }, async () => "executed")).rejects.toThrow("tenant_denied");
+  });
+
+  it("pooled connections never retain tenant identity", async () => {
+    const base = await startApp();
+    const cookie = await login(base, "synthetic-tenant-e");
+    const ws = ((await json("POST", `${base}/api/workspaces`, cookie, { name: "WE", baseCurrency: "CHF" })).body as { id: string }).id;
+    const user = (await pool.query("SELECT id FROM users WHERE auth_subject = $1", ["synthetic-tenant-e"])).rows[0].id as string;
+
+    await withTenant(pool, { userId: user, workspaceId: ws }, async (client: PoolClient) => {
+      expect((await client.query("SELECT current_setting('app.current_workspace', true) AS v")).rows[0]).toMatchObject({ v: ws });
+    });
+    // Same pool, fresh checkout: settings are gone.
+    const probe = await pool.connect();
+    try {
+      expect((await probe.query("SELECT current_setting('app.current_workspace', true) AS v")).rows[0]).toMatchObject({ v: "" });
+      expect((await probe.query("SELECT current_setting('app.current_user', true) AS v")).rows[0]).toMatchObject({ v: "" });
+    } finally {
+      probe.release();
+    }
+  });
+
+  it("app role is least-privilege and RLS is forced", async () => {
+    const role = await pool.query("SELECT current_user AS u, rolsuper AS super, rolbypassrls AS bypass FROM pg_roles WHERE rolname = current_user");
+    expect(role.rows[0]).toMatchObject({ super: false, bypass: false });
+    const forced = await pool.query("SELECT relname, relforcerowsecurity AS forced FROM pg_class WHERE relname IN ('workspaces', 'workspace_members', 'accounts')");
+    expect(forced.rows).toHaveLength(3);
+    for (const row of forced.rows as { relname: string; forced: boolean }[]) {
+      expect(row.forced).toBe(true);
+    }
+  });
+
+  it("migration 002 rolls back and re-applies on the suite database", async () => {
+    const { readFileSync } = await import("node:fs");
+    const rollback = readFileSync("apps/web/migrations/002_tenancy.rollback.sql", "utf8");
+    const admin = await pool.connect();
+    try {
+      await admin.query("BEGIN");
+      await admin.query(rollback);
+      await admin.query("COMMIT");
+    } catch (err) {
+      try {
+        await admin.query("ROLLBACK");
+      } catch { /* preserve */ }
+      throw err;
+    } finally {
+      admin.release();
+    }
+    const gone = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts')");
+    expect((gone.rows[0] as { n: number }).n).toBe(0);
+    // Self-healing: the idempotent migrator restores the empty shape.
+    await migrate(pool, "apps/web/migrations");
+    const back = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts')");
+    expect((back.rows[0] as { n: number }).n).toBe(4);
+  });
+});
