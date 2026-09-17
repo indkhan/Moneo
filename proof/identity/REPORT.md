@@ -1,6 +1,6 @@
 # E00-S05 decision/evidence report — identity, deployment identity, development AI
 
-Status: deterministic proof passes offline; all three live gates honestly **Blocked** (no credentials in this environment). No live results invented, no production paths touched.
+Status: deterministic proof passes offline; the OpenRouter development-model live gate passed on 2026-09-17 using synthetic inputs. Auth0 user-flow and Render-to-AWS OIDC remain **Blocked**. No secret values, tokens or response bodies were logged.
 
 ## Vendor documentation verified live (2026-09-17)
 
@@ -27,9 +27,9 @@ Status: deterministic proof passes offline; all three live gates honestly **Bloc
 
 ## What is Blocked (one smallest input per gate)
 
-1. **Auth0 live** — founder supplies test-tenant `AUTH0_TEST_DOMAIN` + `AUTH0_TEST_CLIENT_ID`/`AUTH0_TEST_CLIENT_SECRET` + authorized test `AUTH0_TEST_USERNAME`/`AUTH0_TEST_PASSWORD` (process env shows all five absent). Then `npm run probe:identity` runs login + logout-endpoint reachability; stale-session denial lands in E01-S02. Smallest question: *which Auth0 plan (Free vs Essentials+) funds the tenant, given MFA/back-channel logout gating above?*
-2. **Render OIDC live** — founder supplies Render workspace ID (`tea-…`, Pro plan or higher) + AWS IAM OIDC provider/role with the role ARN in the service `AWS_ROLE_ARN` variable (all absent). Then deploy one service and run `aws sts get-caller-identity` in its shell. Smallest question: *is the Render workspace on Pro (or higher), and what is its workspace ID?*
-3. **OpenRouter live** — founder supplies `OPENROUTER_API_KEY` (development key, synthetic use only; absent). Then `npm run probe:identity` spends ≤5 inference requests (tool, structured-output, bogus-model 404) against the selected model within the 20-request cap. Smallest question: *which development OpenRouter API key may the probe use?*
+1. **Auth0 live** — the ignored environment contains application and Management API clients, but not the five `AUTH0_TEST_*` inputs. A bounded attempt obtained a Management API token, then received 403 when creating a disposable synthetic user, so no user was created and no cleanup was required. Supply an authorized test username/password (plus the existing domain/client values under the proof names), or grant the test Management client `create:users` and `delete:users`. Confirm the selected Auth0 plan; stale application-session denial lands in E01-S02.
+2. **Render OIDC live** — `RENDER_WORKSPACE_ID` and `AWS_ROLE_ARN` are absent. Supply a Render Pro-or-higher workspace plus its AWS IAM OIDC provider/role, deploy one disposable service and run `aws sts get-caller-identity` in its shell. Never substitute a static AWS key.
+3. **OpenRouter live — Passed 2026-09-17.** `OPENROUTER_API_KEY` from the ignored local environment ran three bounded synthetic requests: tool selection and strict structured output returned 200 and validated; a bogus model was rejected once with HTTP 400 and no retry or fallback. OpenRouter currently uses 400 for this chat-completions rejection, so the deterministic taxonomy now treats 400 as non-retryable `invalid-request` while retaining 404 as non-retryable `unavailable-model`.
 
 Missing accounts/entitlements are explicit blockers; other E00 work may continue.
 

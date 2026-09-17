@@ -271,6 +271,7 @@ describe("provider error classification", () => {
     expect(classifyProviderError(402)).toMatchObject({ category: "credit", retryable: false });
     expect(classifyProviderError(403)).toMatchObject({ category: "forbidden", retryable: false });
     expect(classifyProviderError(404)).toMatchObject({ category: "unavailable-model", retryable: false });
+    expect(classifyProviderError(400)).toMatchObject({ category: "invalid-request", retryable: false });
   });
 
   it("retries rate limits, timeouts and provider failures with backoff guidance", () => {

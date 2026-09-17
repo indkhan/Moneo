@@ -69,7 +69,7 @@ describe.skipIf(!has("OPENROUTER_API_KEY"))("openrouter live development-model p
     expect(parseStructuredOutput(content).ok).toBe(true);
   }, 75_000);
 
-  it("unavailable model surfaces an explicit 404, never a downgrade", async () => {
+  it("unavailable model is rejected explicitly, never downgraded or retried", async () => {
     const outcome = await runBoundedProbe(
       liveTransport(requireApiKey()),
       liveBudget,
@@ -77,8 +77,11 @@ describe.skipIf(!has("OPENROUTER_API_KEY"))("openrouter live development-model p
       0,
     );
     expect(outcome.attempts).toBe(1);
-    expect(outcome.attempt?.httpStatus).toBe(404);
-    expect(outcome.error).toMatchObject({ category: "unavailable-model", retryable: false });
+    expect([400, 404]).toContain(outcome.attempt?.httpStatus);
+    expect(outcome.error).toMatchObject({
+      category: outcome.attempt?.httpStatus === 404 ? "unavailable-model" : "invalid-request",
+      retryable: false,
+    });
   }, 40_000);
 });
 
@@ -108,8 +111,6 @@ describe.skipIf(!auth0Ready)("auth0 live gate", () => {
       body: params.toString(),
       signal: AbortSignal.timeout(PROBE_BUDGET.timeoutMs),
     });
-    // Reachability + credential validity only; the app-session revocation
-    // contract is proven deterministically and lands in E01-S02.
     expect(login.status).toBe(200);
     const logout = await fetch(`https://${domain}/oidc/logout`, {
       method: "GET",
