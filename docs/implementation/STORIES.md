@@ -108,7 +108,7 @@ Status: Ready | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 ## E00-S05 — Qualify identity, deployment identity and development AI
 
-Status: Ready | Epic: E00 | Release: R1 | Dependencies: E00-S01
+Status: Done | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 **Outcome:** Record a tested, accessible path for Auth0 sessions, Render-to-cloud identity and OpenRouter development model behavior, with missing prerequisites explicit.
 
@@ -127,7 +127,7 @@ Status: Ready | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 **Failure/rollback:** Remove disposable test sessions/objects as appropriate without deleting shared resources. No production data/migrations. Missing accounts/entitlements are explicit blockers; the orchestrator may continue other independent E00 work.
 
-**Execution record:** Not started; no branch, SHA, review, test or merge evidence.
+**Execution record:** Implementer: prior session (commit `f3e0bce`); orchestrator/integrator: this session; branch: `story/e00-s05-identity-provider`; base/current-main SHA at review: `aa8b088`; implementation/reviewed SHA: `f3e0bce` (10 files, +1136/-1: proof/identity REPORT/policy/session-layers/render-oidc/openrouter-probe, test/identity + identity-live, package.json scripts, README, tsconfig include). Independent adversarial review (separate task): Pass with no blockers at `f3e0bce` — reproduced typecheck, 42/42 deterministic, 7/7 live skipped without creds, 24/24 import regression, clean diff/status, zero secret hits, and re-verified all four vendor claims live (Auth0 session layers, Auth0 pricing entitlements gating, Render managed OIDC Pro+ with tea- workspace ID / aud sts.amazonaws.com / one role per service via AWS_ROLE_ARN, OpenRouter ZDR + free-variant limits + error taxonomy). Candidate tree == `f3e0bce` (linear ahead of `aa8b088`; verified after `git fetch origin main`, remote origin/main still `ee20bcd` stale): `npm ci` 0 (55 packages, 0 vulnerabilities), `npm run typecheck` 0, `npm test` 0 (1/1), `npm run test:identity` 0 (42/42), `npm run test:import` 0 (24/24), `npm run probe:identity` 0 (7 skipped — all three live gates Blocked, no creds), `npm run test:failure` 1 as intended, `git diff --check main...HEAD` 0, clean status on Node v22.23.2 / npm 10.9.8. Merged with `--no-ff` as `262d593`; post-merge smoke on main: `npm run check` 0, `test:identity` 0 (42/42), `test:import` 0 (24/24), `probe:identity` 0 (7 skipped), `test:failure` 1 as intended, clean status. Live gates honestly Blocked with precise founder inputs in REPORT.md (Auth0 tenant vars + plan decision; Render Pro workspace ID + IAM provider/role ARN in AWS_ROLE_ARN; dev OPENROUTER_API_KEY; unblocked spend would be <=5 inference + 2 Auth0 reachability within the 20-request cap). No live sessions/objects created so no disposable cleanup; no prod data/migrations; secrets hygiene clean (env names only, key in header at runtime only, synthetic prompts only). Nonblocking reviewer notes carried forward: Render WorkspacePlan exact-matches "pro" (doc says Pro or higher); live retry does not yet honor Retry-After/backoff; 2 catalog GETs sit outside RequestBudget accounting; deterministic test:identity not wired into CI (consistent with test:import, revisit in E01-S01); Auth0 ROPG grant may need confirm/switch at unblock. No remote push/PR (local-only merges, consistent with S01-S03); remote CI still pending E01-S01.
 
 ---
 
