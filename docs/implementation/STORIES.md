@@ -290,13 +290,15 @@ Review focus: Key/payload-hash canonicalization gaps (same intent different byte
 Rollout/rollback: App-only; rollback = prior image + `003 rollback.sql` (destroys synthetic op records; versions reset — no prod data). Known limitation: single app instance executor (no cross-instance fencing needed pre-E02 worker).
 
 Execution record:
-- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s04-commands`
-- Base SHA: `da1a32958d212ea429d95b8fb803d74f67672bbb`
-- Tests: (to be recorded)
-- Review: (to be recorded)
-- Integration: (to be recorded)
-- Merge SHA / post-merge smoke: (to be recorded)
-- Remaining blockers or explicitly accepted nonblocking follow-up: (to be recorded)
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s04-commands` (deleted after merge)
+- Base SHA / heads: base `da1a32958d212ea429d95b8fb803d74f67672bbb`; impl `8539f57`; fix `a234415`; isolation `b087b16`; header-comments `5b5bd42`
+- Tests: `npm run typecheck` 0; `test:commands` 0 (8/8 real PG: happy-path + raw-text decimal check, same-key replay single bump, reuse/expired 409s, stale + 10-way version race, backdated expiry, >safe-integer `...993`→`...994`, error-agreement table + domain-level TxOutcome check, failed-replay determinism + 10-way failure-race convergence); `test:money` 0 (4/4 goldens incl. float-trap); regression harness 1/1, web 8/8, auth 13/13, db 2/2, tenancy 6/6, import 26/26, identity 36/36, durable 12/12; `build:web` 0; `git diff --check` 0; parallel 4-file run 29/29 green after per-suite DB isolation. Notable debug: S01 `drain()` legacy already fixed in S03; three review blockers fixed (see Review).
+- Review: Changes-requested at `8539f57` with three reproduced blockers — B1 23505 poisoned tx (503s on same-key races), B2 fail()-throw rolled back journal (dead FAILED replay), B3 tenancy 002-rollback destroyed 003 column (CI-order red) — plus 7 nonblocking notes. Fix `a234415`: savepoint-guarded claims + bounded retry, TxOutcome (throws only after commit), ordered 003→002 rollback test + 003-rollback first coverage, version-bearing create, dead-code deletion, §61-deviation + staleness ledger notes; re-review Pass at `a234415` (13/13 hostile probes, zero 503s). Isolation `b087b16` (per-suite DBs) Pass; header-comment touch-up `5b5bd42` is 2 comment lines (diff-verified, suites re-run 14/14 parallel green) under the same approval.
+- Integration: `git fetch origin main` — origin/main stale (local-only merges); local main at base `da1a329` unchanged; merge-base == base; candidate == `5b5bd42` (reviewed `b087b16` + comment-only delta, verified); full candidate gates green (see Tests). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `5cf1ed8`; post-merge `npm run check` green, clean status.
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: `command_claim_unsettled` 503 residual only after 3 consecutive poll-misses under sustained contention (bounded, no poisoning); validator hand-mirrors schemas (canonicalization at domain layer); `renameAccountTx` trusts caller actorId/workspaceId (HTTP passes session values — future adapters must too); single-instance executor (E02 fences); CI run itself unobserved — first push proves it.
+
+Status: Done
 
 ## E01-S05 — Enforce AI data policy before any provider integration
 
