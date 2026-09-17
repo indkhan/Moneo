@@ -67,6 +67,8 @@ jobs:
         run: npm run test:auth
       - name: Migrator atomicity (real PG)
         run: npm run test:db
+      - name: Tenant isolation (real PG)
+        run: npm run test:tenancy
       - name: Durable effects (real PG + Redis)
         run: npm run test:durable
       - name: Deliberate failure must exit nonzero

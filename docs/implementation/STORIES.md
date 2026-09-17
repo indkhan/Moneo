@@ -193,7 +193,7 @@ Dependencies: E01-S01 (Done at `722155f`)
 
 Outcome: Two synthetic users complete Keycloak Authorization Code + S256 PKCE sign-in against the app, receive server-checked httpOnly app sessions, and lose API + reconnect access on logout/revocation/expiry; CSRF, open-redirect and token-leak attacks fail closed.
 Contracts: Architecture R1 identity override (§9: pinned self-hosted Keycloak, Auth Code + PKCE, server-side sessions, local revocation; `start-dev` proof-only), §§416–489 security, §130 provider policy (dev/prod split — this story adds no AI calls); E00-S05 decision (pinned keycloak digest `sha256:82a7…`, PKCE browser proof, per-service secrets). No Auth0/Render/AWS paths.
-Scope: `apps/web/src/auth.ts` (PKCE login/callback/logout, HMAC-signed session cookies, state/nonce, relative-only redirects, Origin/Referer check on logout), `apps/web/src/session-store.ts` (PG-backed `app_sessions`: random 256-bit id, keycloak sub, issued/expires/revoked columns; every API read re-checks DB), `apps/web/migrations/001_sessions.sql` + minimal ordered migrator (no ORM; `pg` promoted to dependencies, same pin), `GET /api/me` server-checked endpoint + reconnect semantics (401 with no token payload), `test/auth.test.ts` deterministic suite against an in-test stub OIDC issuer (synthetic sub/keys, no network), `test/auth-keycloak-live.test.ts` bounded disposable-Keycloak gate (login, refresh-before, admin-logout, refresh-denied, secret isolation reuse from E00 proof; skipped without Docker, never CI-required).
+Scope: `apps/web/src/auth.ts` (PKCE login/callback/logout, HMAC-signed session cookies, state/nonce, relative-only redirects, Origin/Referer check on logout), `apps/web/src/session-store.ts` (PG-backed `app_sessions`: random 256-bit id, keycloak sub, issued/expires/revoked columns; every API read re-checks DB), `apps/web/migrations/001_sessions.sql` + minimal ordered migrator (no ORM; `pg` promoted to dependencies, same pin), `GET /api/me` server-checked endpoint + reconnect semantics (401 with no token payload), `test/auth.test.ts` deterministic suite against a shared stub OIDC issuer (`test/helpers/stub-issuer.ts`; synthetic sub/keys, no network), `test/auth-keycloak-live.test.ts` bounded disposable-Keycloak gate (login, refresh-before, admin-logout, refresh-denied, secret isolation reuse from E00 proof; skipped without Docker, never CI-required).
 Out of scope: Workspaces/membership/RLS (S03), commands/money (S04), UI shell (S06), production Keycloak persistence/TLS/backups/hosting (E08 gates), WebAuthn enrollment (later slice; password flow in live gate is synthetic-only).
 
 Acceptance:
@@ -226,9 +226,39 @@ Status: Done
 
 ## E01-S03 — Enforce tenant ownership in the database and API
 
-Status: Draft | Dependencies: E01-S02
+Status: In progress | Release: R1 | Epic: E01
+Dependencies: E01-S02 (Done at `11b0515`)
 
-Introduce workspace/membership and only needed rows, composite tenant keys/FKs, FORCE RLS and transaction-local context under nonowner roles. Acceptance: two-tenant real-PG tests deny foreign reads/links/writes and reused connections do not retain identity; minimal worker discovery cannot become general bypass access. Migration/rollback and privileged maintenance roles must be explicit.
+Outcome: Two synthetic users own isolated workspaces via HTTP; every tenant read/write passes session → membership → transaction-local RLS context; cross-tenant IDs fail identically to missing IDs at API and database boundaries; pooled connections never retain tenant identity; no worker/maintenance path bypasses isolation.
+Contracts: Architecture §§95–123 (pooled multi-tenant, `workspace_id` tenant key, RLS defense-in-depth, NOBYPASSRLS app role, transaction-local `app.current_workspace`), §125–135 (UUIDv7: generated in app code since CI runs PG17 without `uuidv7()`), §§219–263 (users/workspaces/workspace_members sketches), §1166–1196 (RLS pattern incl. FORCE + explicit scoping), §§1265–1304 (composite PK `(workspace_id,id)` + same-workspace FKs from the first tenant migration). No Auth0/Render/AWS paths.
+Scope: `apps/web/migrations/002_tenancy.sql` (+rollback) — `users`, `workspaces`, `workspace_members`, minimal `accounts` (id/name only, no money columns; S04/E03-S01 extend), composite PK `(workspace_id,id)` on accounts, parent FK links to `workspaces`/`users` (no tenant→tenant composite FK exists yet — no second tenant table references `accounts` in this slice), ENABLE+FORCE RLS with `app.current_workspace`/`app.current_user` policies; `src/ids.ts` (app-side UUIDv7, no dep); `src/tenancy.ts` (`withTenant`: single-client BEGIN → `set_config` LOCAL → membership check → work → COMMIT/ROLLBACK; `ensureUser`; HTTP routers for workspaces/accounts CRUD-minimal); `auth.ts` exports `requestSession` for the tenant trust boundary; `server.ts`/`main.ts` wire the second router; `test/helpers/stub-issuer.ts` extracted from `test/auth.test.ts` (shared stub, no behavior change); `test/tenancy.test.ts` (real PG `moneo_e01_test`); `test:tenancy` script + CI step.
+Out of scope: Money columns/flows (S04), AI policy (S05), UI shell (S06), currencies/reference seed data (no FK to currencies yet — `base_currency_code` is a `^[A-Z]{3}$`-checked code, seed arrives with the FX story), WebAuthn, staging realm/grant deployment (E08 gates), Keycloak→app propagation (S02 limitation stands).
+
+Acceptance:
+1. Given synthetic users A/B each with a workspace + account, when A lists/gets through the API, then only A's rows appear; B's workspace/account IDs return uniform `{error:"not_found"}` (no cross-tenant oracle); and direct DB reads under A's context return zero B rows while unscoped reads return zero rows for everyone.
+2. Given a tenant-swapped ID (B's account id requested under A's membership, and vice versa), when read via API and via direct DB context, then both deny; inserting an account for a nonexistent workspace fails on the FK; reusing B's account UUID inside A's workspace is allowed by the composite key but stays invisible to B.
+3. Given pooled connections, when `withTenant(A)` completes, then a bare checkout shows empty tenant settings and `withTenant(B)` sees only B; `current_setting(...,true)` never leaks across checkouts (asserted on the same pool).
+4. Given the app role, when inspected, then it is non-superuser without BYPASSRLS and RLS is FORCED on workspaces, workspace_members and accounts (`users` intentionally un-RLS'd: identity anchor with no tenant/finance data, every access explicitly scoped by verified session sub — RLS there would block the session-to-user lookup itself); unscoped INSERT fails on WITH CHECK; a non-member `withTenant` throws before executing work; the only privileged path is DDL via the migration role (documented, no app-code bypass function exists).
+5. Given migration `002`, when rolled back on a scratch copy, then all four tables/policies vanish and re-migration restores them (suite-owned, self-healing via idempotent migrate).
+
+Invariants: Exact JSON shapes with UUID strings; no money in this slice (nothing to round); tenant denial uniform 404 at API and zero-row at DB; no sub/cookie/token material in tenant errors; membership checked on every trust boundary (HTTP + withTenant); RLS never relied upon alone (queries also scope explicitly).
+Failure lifecycle: Non-member/expired-session tenant calls fail closed without partial writes (verified by counts); double-create with same idempotency is S04 scope — duplicate POSTs create distinct rows (documented); DB-down → 503 uniform; rollback file is the only destructive op and runs only in the suite + explicit ops docs.
+UI/accessibility: Not applicable — no browser UI (S06 owns the shell).
+Data changes: `002_tenancy.sql` adds the four tables + policies; rollback drops them (pre-beta: tenant rows are synthetic; documented loss = re-create). Ownership/grant split: dev/test DBs are app-owned so no GRANTs needed; deployment GRANTs to a least-privilege app role arrive with the staging-identity story (recorded limitation, not silent).
+Observability: Redacted tenant events (`workspace_created`, `tenant_denied` with no IDs/subs); 404 body `{error:"not_found"}`; no workspace/account names in logs.
+Limits: Tenancy suite <= 120 s real-PG; names 1–200 chars; roles `owner|member`; UUIDv7 ids; pending-login single-instance limit (S02) unchanged.
+Verification: `npm run test:tenancy` 0 (real PG, fails closed without PG); `npm run test:auth` 0 (shared stub refactor must not regress: 13/13); `npm run test:db` 0; regression check/web/import/identity/durable; `git diff --check`; secret scan. No live gate beyond the S02 Keycloak qualification (unchanged mechanism).
+Review focus: Missing membership check on any path; RLS policy bypass (search_path, SECURITY DEFINER, owner loophole, empty-setting cast errors failing OPEN); context set outside a transaction (SET LOCAL error path); UUID predictability; oracle differences (status/body/timing/headers) between missing and foreign; worker/discovery bypass functions; migration non-atomicity (B2 pattern); scope creep toward money/UI.
+Rollout/rollback: App-only; rollback = prior image + `002 rollback.sql` (destroys synthetic tenant rows; no prod data exists). Known limitations: no staging GRANT split yet; no currencies seed (code-checked); single-instance pending logins (S02).
+
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s03-tenancy`
+- Base SHA: `949db949d409fe46917a52541085349a87c74fc9` (verified via merge-base; earlier entry recorded a non-resolving value)
+- Tests: (to be recorded)
+- Review: (to be recorded)
+- Integration: (to be recorded)
+- Merge SHA / post-merge smoke: (to be recorded)
+- Remaining blockers or explicitly accepted nonblocking follow-up: (to be recorded)
 
 ## E01-S04 — Establish exact command and read contracts
 

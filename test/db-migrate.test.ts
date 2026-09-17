@@ -5,54 +5,16 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readFileSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
-import { Pool } from "pg";
-import { createPool, migrate, withDatabase } from "../apps/web/src/db.ts";
+import type { Pool } from "pg";
+import { migrate } from "../apps/web/src/db.ts";
+import { ensureTestPool } from "./helpers/test-db.ts";
 
-function env(name: string): string {
-  let value = process.env[name];
-  if (!value) {
-    try {
-      for (const line of readFileSync(".env", "utf8").split(/\r?\n/)) {
-        const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
-        if (m?.[1] === name) {
-          value = m[2].replace(/^['"]|['"]$/g, "");
-          break;
-        }
-      }
-    } catch { /* no .env file */ }
-  }
-  if (!value) throw new Error(`E01-S02 prerequisite missing: ${name} (local disposable PostgreSQL).`);
-  return value;
-}
-
-const TEST_DB = "moneo_e01_test";
 let pool: Pool;
 
 async function testPool(): Promise<Pool> {
   if (!pool) {
-    const appUrl = env("DATABASE_URL");
-    let setupUrl = process.env["DATABASE_MIGRATION_URL"];
-    if (!setupUrl) {
-      try {
-        setupUrl = env("DATABASE_MIGRATION_URL");
-      } catch {
-        setupUrl = appUrl;
-      }
-    }
-    const setup = new Pool({ connectionString: setupUrl, connectionTimeoutMillis: 8000 });
-    try {
-      const found = await setup.query("SELECT 1 FROM pg_database WHERE datname = $1", [TEST_DB]);
-      if (found.rowCount === 0) {
-        const appUser = decodeURIComponent(new URL(appUrl).username);
-        if (!/^[A-Za-z_][A-Za-z0-9_@$]*$/.test(appUser)) throw new Error("E01-S02 refused: app-role username is not a safe SQL identifier.");
-        await setup.query(`CREATE DATABASE "${TEST_DB}" OWNER "${appUser}"`);
-      }
-    } finally {
-      await setup.end();
-    }
-    pool = createPool(withDatabase(appUrl, TEST_DB));
+    pool = await ensureTestPool("E01-S02", "moneo_e01_test");
   }
   return pool;
 }

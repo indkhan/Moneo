@@ -6,8 +6,9 @@
 
 import { join } from "node:path";
 import { createApp } from "./server.ts";
-import { createAuthRouter } from "./auth.ts";
+import { createAuthRouter, requestSession } from "./auth.ts";
 import { createPool, migrate } from "./db.ts";
+import { createTenancyRouter } from "./tenancy.ts";
 
 const port = Number(process.env["PORT"] ?? "3000");
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -61,7 +62,8 @@ async function start(): Promise<void> {
     },
     pool,
   );
-  const server = createApp(router);
+  const tenancy = createTenancyRouter(pool, (req) => requestSession(pool, sessionSecret, req));
+  const server = createApp(router, tenancy);
   server.on("clientError", (_err, socket) => socket.destroy());
   server.listen(port, "0.0.0.0", () => {
     console.log(`moneo-web listening on :${port} release=${process.env["APP_RELEASE"] ?? "dev"} auth=on`);
