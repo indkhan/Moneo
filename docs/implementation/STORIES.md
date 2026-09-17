@@ -366,13 +366,15 @@ Review focus: Unescaped interpolation; log/query/body leakage; request-id unique
 Rollout/rollback: App-only; rollback = prior image. Known limitation: no browser-driven keyboard proof yet (structural only); single-instance rate state (sticky/resets on restart — documented, fine pre-scale).
 
 Execution record:
-- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s06-shell`
-- Base SHA: `7a94fc500aed77b6debc2022e0679eb6bb8102d4` (verified via rev-parse at branch creation)
-- Tests: (to be recorded)
-- Review: (to be recorded)
-- Integration: (to be recorded)
-- Merge SHA / post-merge smoke: (to be recorded)
-- Remaining blockers or explicitly accepted nonblocking follow-up: (to be recorded)
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s06-shell` (deleted after merge)
+- Base SHA / heads: base `7a94fc500aed77b6debc2022e0679eb6bb8102d4`; impl `3336ad8`; fix `171d355`; micro-fix/reviewed `e2b0c88`
+- Tests: `npm run typecheck` 0; `test:ui` 0 (10/10: structure/labels/script-absence, XSS escape + JSON exactness, form replay + 409 recovery with prefilled retry, two-sided cross-tenant 404 shells, logout bridge + cookie clear, exclusion toggle + versioned redirect, redacted correlated logs + id uniqueness, 429 JSON/HTML + readyz/db matrix, controls unit); regression harness 1/1, web 8/8 (S01 shape intact), auth 13/13, db 2/2, tenancy 6/6, commands 8/8, money 4/4, policy 6/6, import 26/26, identity 36/36, durable 12/12; `build:web` 0; `git diff --check` 0.
+- Review: Changes-requested at `3336ad8` (B1 TenantDenied→503 on UI paths, B2 logout JSON dead-end; 11 nonblocking). Fix `171d355`: 404 shells everywhere, POST /logout bridge + nav + notice, 409 reuse/expired shells with fresh-key retry, escaped htmlError, single-escape boundary, media-type Accept parse, Retry-After, finish-once + destroy accounting, readyz timer hygiene, rate clamps, single session resolution, requestId on edge JSON; re-review Pass at `171d355` (8/8 probes incl. APP_ENV=production shell). Micro-fix `e2b0c88` (single-escape residual, logout cookie clear, close-listener slot release, requestId on config 503s): final Pass at `e2b0c88`.
+- Integration: `git fetch origin main` — origin/main stale (local-only merges); local main at base `7a94fc5` unchanged; merge-base == base; candidate == reviewed `e2b0c88`; full candidate gates green (see Tests). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `b24b03e`; post-merge `npm run check`, `test:ui` 10/10, clean status.
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: no real-browser AT/keyboard run (structural only — browser journeys arrive with the core loop); single-instance rate state (resets on restart); q-value weighting ignored in Accept parse (info); CI run unobserved — first push proves it.
+
+Status: Done
 
 ## E02-S01 — Persist accepted jobs and outbox dispatch
 
