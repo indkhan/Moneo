@@ -23,8 +23,14 @@ const databaseUrl = process.env["DATABASE_URL"] ?? "";
 const appBaseUrl = process.env["APP_BASE_URL"] ?? `http://127.0.0.1:${port}`;
 const authConfigured = Boolean(issuer && clientId && sessionSecret && databaseUrl);
 
-if ((issuer || clientId || sessionSecret) && !authConfigured) {
+if ((issuer || clientId || clientSecret || sessionSecret) && !authConfigured) {
   console.error("E01-S02 refused: partial auth configuration (need KEYCLOAK_ISSUER, KEYCLOAK_CLIENT_ID, SESSION_SECRET and DATABASE_URL).");
+  process.exit(1);
+}
+
+const sessionTtlSec = Number(process.env["SESSION_TTL_SEC"] ?? "43200");
+if (!Number.isInteger(sessionTtlSec) || sessionTtlSec < 60 || sessionTtlSec > 30 * 24 * 3600) {
+  console.error("E01-S02 refused: SESSION_TTL_SEC must be an integer 60-2592000.");
   process.exit(1);
 }
 
@@ -42,11 +48,6 @@ async function start(): Promise<void> {
     await migrate(pool, join(process.cwd(), "apps", "web", "migrations"));
   } catch (err) {
     console.error(`E01-S02: migration failed (${(err as Error).message}).`);
-    process.exit(1);
-  }
-  const sessionTtlSec = Number(process.env["SESSION_TTL_SEC"] ?? "43200");
-  if (!Number.isInteger(sessionTtlSec) || sessionTtlSec < 60 || sessionTtlSec > 30 * 24 * 3600) {
-    console.error("E01-S02 refused: SESSION_TTL_SEC must be an integer 60-2592000.");
     process.exit(1);
   }
   const router = createAuthRouter(
