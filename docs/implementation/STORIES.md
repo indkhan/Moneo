@@ -59,7 +59,7 @@ Status: Done | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 ## E00-S03 — Prove import fidelity with exact fixtures
 
-Status: Ready | Epic: E00 | Release: R1 | Dependencies: E00-S01
+Status: Done | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 **Outcome:** The selected CSV/XLSX parsing approach produces a validated canonical proposal with exact values and source provenance, while financial ambiguity stays explicit.
 
@@ -79,7 +79,7 @@ Status: Ready | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 **Decision gate:** Record chosen parser/dependencies and enforcement approach. Failed fidelity/security cases block the corresponding accepted input shape until fixed or explicitly excluded in product UX.
 
-**Execution record:** Not started; no branch, SHA, review, test or merge evidence.
+**Execution record:** Recovered parked branch `story/e00-s03-import-fidelity` (uncommitted proof tree on base `795bea5`; verified `git status`/diff, no secrets, `.env`/`proof-output/` ignored). Committed parked work as `ccc74e8` ("test: prove import fidelity with exact fixtures", 19 files, +2232/-1). Independent adversarial review: Pass with no blockers at `ccc74e8` (reviewer reproduced typecheck, 23/23 tests, hand-recomputed oracle spot-checks for signed-mixed-currency and debit-credit-de fixtures, 34 edge + 11 hostile/reimport probes, float/network/secret scans; 5 nonblocking suggestions recorded: duplicate-header first-match parser.ts:448-460, column-cap row-end enforcement parser.ts:215-235, multi-sheet ignoredSheets counting path without fixture, coincident-separator plain-Error, per-probe timing strings). Integration candidate `a445f62` (fresh CRLF checkout under core.autocrlf=true) exposed 1/23 failure: raw CRLF kept inside quoted multiline field vs LF oracle. Fix cycle 1 (orchestrator-authored, reviewer-independent): `7dc449b` normalises CRLF to LF inside quoted CSV fields only (RFC 4180 field-data scope; lone CR preserved; amount/date/identity paths untouched) plus a checkout-independent CRLF-vs-LF regression test, README note and manifest status 24/24. Independent re-review: Pass with no new blockers at `7dc449b` (typecheck + 24/24 reproduced, probes confirm no silent money/date change; one nonblocking note deferred: manifest measured.observations prose still says "23/23" while status is pass-24-24 — update on next touch). Rebuilt candidate `aa8b088` after `git fetch origin main` (remote origin/main still `ee20bcd`, stale; local main `795bea5` unchanged): `npm ci` 0 (0 vulnerabilities), `npm run typecheck` 0, `npm test` 0 (1/1), `npm run test:import` 0 (24/24 on CRLF-checkout bytes), `npm run test:failure` nonzero-as-intended (1 deliberate failure), `git diff --check main...HEAD` 0, clean status. Merged FF-only into main as `aa8b088`; post-merge smoke on main: `npm ci` 0 vulns, `npm run check` 0, `npm run test:import` 0 (24/24), `npm run test:failure` nonzero-as-intended, clean status. Runtime pins fflate 0.8.3 (exact, integrity-hashed, zero-dependency); enforced limits: 20 MiB upload, 100 MiB streaming decompressed cap, 100k rows, 50 cols, 200 zip entries, 60 s child-kill deadline, 256 MiB child budget (reduced equivalents documented for timeout/decompressed probes). No remote push/PR (local-only merges, consistent with S01/S02); remote CI still pending E01-S01.
 
 ## E00-S04 — Prove durable effects despite worker and queue failure
 
