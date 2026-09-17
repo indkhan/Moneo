@@ -192,6 +192,20 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
   });
 }
 
+/** Single session resolution per call: branch on session (401) versus claim (404) without a second roundtrip. Shared with the UI router. */
+export async function sessionClaims(
+  pool: Pool,
+  resolveSession: SessionResolver,
+  req: IncomingMessage,
+  workspaceId: string,
+): Promise<{ session: Session | null; claim: TenantClaims | null }> {
+  const session = await resolveSession(req);
+  if (!session || !isUuid(workspaceId)) return { session, claim: null };
+  const found = await pool.query("SELECT id FROM users WHERE auth_subject = $1", [session.keycloakSub]);
+  if ((found.rowCount ?? 0) === 0) return { session, claim: null };
+  return { session, claim: { userId: (found.rows[0] as { id: string }).id, workspaceId } };
+}
+
 export type TenancyRouter = {
   handle: (req: IncomingMessage, res: ServerResponse, path: string, method: string, query: URLSearchParams) => Promise<boolean>;
 };
@@ -210,13 +224,7 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
   // then membership inside withTenant. Missing and foreign resources share
   // one 404 body so callers cannot distinguish them.
   async function claims(req: IncomingMessage, workspaceId: string): Promise<{ session: Session | null; claim: TenantClaims | null }> {
-    // Single session resolution per call: the caller branches on session
-    // (401) versus claim (404) without a second roundtrip.
-    const session = await resolveSession(req);
-    if (!session || !isUuid(workspaceId)) return { session, claim: null };
-    const found = await pool.query("SELECT id FROM users WHERE auth_subject = $1", [session.keycloakSub]);
-    if ((found.rowCount ?? 0) === 0) return { session, claim: null };
-    return { session, claim: { userId: (found.rows[0] as { id: string }).id, workspaceId } };
+    return sessionClaims(pool, resolveSession, req, workspaceId);
   }
 
   function denied(res: ServerResponse, authed: boolean): void {

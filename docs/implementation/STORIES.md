@@ -340,9 +340,39 @@ Status: Done
 
 ## E01-S06 — Add minimal shell, telemetry and safe operational controls
 
-Status: Draft | Dependencies: E01-S04
+Status: In progress | Release: R1 | Epic: E01
+Dependencies: E01-S04 (Done at `5cf1ed8`; S05 Done at `972def9` — shell may surface S04 commands + S05 policy reads)
 
-Build accessible navigation/error/loading shell, redacted request/job correlation and health checks, edge request limits and transactionally enforced operation concurrency where consumed. Acceptance: keyboard navigation and recovery work, cross-tenant identifiers cannot expose data, logs exclude payloads/secrets, and denied work is visible. No staff console or blanket telemetry framework.
+Outcome: A zero-dependency server-rendered HTML shell (no JS, native keyboard semantics) lets a signed-in user list workspaces/accounts, rename via the S04 command with visible conflict recovery, and toggle AI exclusions; every request carries a correlation id through redacted logs; edge rate/concurrency caps and a DB-aware readiness probe protect the slice.
+Contracts: Architecture §§274–347 frontend direction (staged: no Next/React yet — smallest server HTML now, S06 owns no framework lock-in), §§348–415 ops (health/readiness, redacted telemetry, no secrets in logs), §63/S04 concurrency (transactional CAS reused, plus edge caps), §538 policy reads surfaced. No staff console, no blanket telemetry, no client JS bundle.
+Scope: `src/ui/shell.ts` (HTML shell: skip-link, landmarks, error/empty/notice states, inline CSS incl. focus-visible, zero `<script>`, strict escaping util); `src/ui/routes.ts` (`GET /`, `GET /w/:id`, `POST /w/:id/rename` via `accounts.rename` with per-render idempotency keys, `POST /w/:id/exclusions` via policy gate; HTML errors with correlation id; JSON preserved for API clients via existing routers); `src/http-controls.ts` (per-IP fixed-window rate limits on mutating/auth routes, global in-flight cap, X-Request-Id + redacted request log `{id,method,path,status,ms}` — never query/headers/bodies — injectable logger/limits); `server.ts` third delegate + controls wiring, `/readyz` optional DB ping; `main.ts` wiring (ui router, console logger, prod limits); `test/ui-shell.test.ts` (PG-backed shell + service-free control unit tests); `test:ui` + CI step; README shell section.
+Out of scope: Next.js/React, client JS, CSS framework, staff console, metrics backends/OpenTelemetry export, job progress UI (E02/E04), chat/artifacts UI, pagination/virtualization (tiny lists), full keyboard-traversal browser proof (native semantics asserted structurally; browser journeys arrive with the core loop).
+
+Acceptance:
+1. Given a signed-in synthetic user, when opening `/` and `/w/:id`, then workspace/account/policy data renders with skip-link, nav/main landmarks, labelled forms and an empty state where applicable; a `<script>`-bearing account name renders escaped (no raw tag) in HTML while JSON stays exact.
+2. Given a rename submitted twice (same form key) or concurrently (5 parallel), when processed, then one version bump, replays identical, conflicts render the error shell with the current version and a prefilled retry form (recovery works); cross-tenant workspace ids render the error shell with 404 status (no data).
+3. Given any login/callback/API traffic carrying codes/tokens/cookies/subs, when logged, then log lines contain only id/method/pathname/status/ms; X-Request-Id echoes uniquely per request and appears in the error shell for correlation.
+4. Given bursts beyond the configured test limits (e.g. 5/min mutating), when sent, then excess fails 429 JSON/HTML appropriately and the service stays responsive; in-flight beyond cap fails 503; `/readyz` with failing DB ping fails 503 while `/healthz` stays 200.
+5. Given unauthenticated browser navigation, when opening `/`, then the landing offers login (no redirect loop, no data); logout returns to landing.
+
+Invariants: HTML-escaped interpolation everywhere; no secrets/payloads/subs in logs or error shells (request id only); tenant checks via existing withTenant paths (UI adds no data path); rate-limit keys by IP only (no identity oracle); form keys are fresh UUIDs per render (replay only on resubmit).
+Failure lifecycle: Conflict/denied submissions never partially apply (command atomicity reused); oversized form bodies 400/413 without logging content; 429/503 are explicit with retry semantics (no silent drops); rollback = prior image (no migrations in this story).
+UI/accessibility: Skip-link first, `<html lang>`, landmarks, native links/buttons/forms (keyboard by construction), visible `:focus-visible`, `role="alert"` errors, labelled inputs, 200/404/409 statuses preserved for AT; no JS required for any flow.
+Data changes: None — no migrations.
+Observability: Redacted request log + error-shell request ids; readiness reflects DB; no telemetry backend.
+Limits: Shell suite <= 120 s; form bodies 64 KB (shared cap); test rate windows seconds-long; in-flight cap 128 prod / small injected in tests; log line ≤300 chars.
+Verification: `npm run test:ui` 0 (PG-backed shell + unit controls); regression of prior suites; `git diff --check`; secret scan; HTML snapshot grep for `<script` absence in responses.
+Review focus: Unescaped interpolation; log/query/body leakage; request-id uniqueness/correlation breaks; rate-limit bypass (X-Forwarded-For trust? must use socket IP only); concurrency-cap deadlocks; readiness lying (cached true); UI data path bypassing withTenant/policy gate; form CSRF (same-origin? logout precedent — assess POST forms); idempotency-key reuse across forms; scope creep toward SPA/framework.
+Rollout/rollback: App-only; rollback = prior image. Known limitation: no browser-driven keyboard proof yet (structural only); single-instance rate state (sticky/resets on restart — documented, fine pre-scale).
+
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s06-shell`
+- Base SHA: `7a94fc500aed77b6debc2022e0679eb6bb8102d4` (verified via rev-parse at branch creation)
+- Tests: (to be recorded)
+- Review: (to be recorded)
+- Integration: (to be recorded)
+- Merge SHA / post-merge smoke: (to be recorded)
+- Remaining blockers or explicitly accepted nonblocking follow-up: (to be recorded)
 
 ## E02-S01 — Persist accepted jobs and outbox dispatch
 
