@@ -59,10 +59,10 @@ const gitSha = process.env["GIT_SHA"] ?? "local";
 console.log(`staging smoke: building ${CANDIDATE} (GIT_SHA redacted from log values)`);
 sh(["docker", "build", "-f", "apps/web/Dockerfile", "-t", CANDIDATE, "--build-arg", "APP_RELEASE=staging", "--build-arg", `GIT_SHA=${gitSha}`, "."]);
 
-const imageEnv = sh(["docker", "inspect", "-f", "{{json .Config.Env}}", CANDIDATE]);
+const imageEnv = JSON.parse(sh(["docker", "inspect", "-f", "{{json .Config.Env}}", CANDIDATE]));
 for (const name of SECRET_NAMES) {
-  const hit = imageEnv.split(",").find((entry) => entry.includes(name) && !entry.replaceAll('"', "").endsWith(`${name}=`));
-  if (hit && !hit.endsWith('=') && !hit.endsWith('="')) throw new Error(`staging smoke failed: image config carries a value for ${name}.`);
+  const hit = imageEnv.find((entry) => entry.startsWith(`${name}=`) && entry.length > name.length + 1);
+  if (hit) throw new Error(`staging smoke failed: image config carries a value for ${name}.`);
 }
 console.log("staging smoke: image config carries no secret values");
 
@@ -79,6 +79,9 @@ sh(["docker", "tag", CANDIDATE, CURRENT]);
 if (hadCurrent) {
   const rolled = await runAndProbe(PREVIOUS, "moneo-e01-smoke-rollback", 3102);
   console.log(`staging smoke: rollback to prior tag serves /healthz release=${rolled.release}`);
+  sh(["docker", "tag", PREVIOUS, CURRENT]);
+  const restored = await runAndProbe(CURRENT, "moneo-e01-smoke-restored", 3103);
+  console.log(`staging smoke: restored current tag serves /healthz release=${restored.release}`);
 } else {
   console.log("staging smoke: no prior tag existed; rollback path recorded for the next deploy (tag staging-current -> staging-previous above).");
 }

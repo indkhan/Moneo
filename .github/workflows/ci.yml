@@ -81,7 +81,7 @@ jobs:
       - name: Run read-only as non-root, probe /healthz
         run: |
           docker run -d --rm --name moneo-ci-smoke --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
-            --user 65532:65532 --cap-drop ALL -p 127.0.0.1:3101:3000 moneo-web:staging-candidate
+            --user 65532:65532 --cap-drop ALL --security-opt no-new-privileges:true -p 127.0.0.1:3101:3000 moneo-web:staging-candidate
           trap 'docker rm -f moneo-ci-smoke >/dev/null 2>&1 || true' EXIT
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:3101/healthz; then break; fi

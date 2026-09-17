@@ -1,6 +1,6 @@
 # E01-S01: secrets and local state must never enter image build contexts.
-.env
-.env*.local
+.env*
+!.env.example
 node_modules/
 .git/
 proof-output/
