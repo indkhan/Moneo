@@ -214,13 +214,15 @@ Review focus: Session fixation (login must rotate), cookie flags/scope, HMAC com
 Rollout/rollback: App-only; rollback = prior image + `001 rollback.sql` (forces re-login, no tenant data exists yet); known limitation: Keycloak realm config for staging deferred to the story that deploys staging identity (not this slice).
 
 Execution record:
-- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s02-auth-revoke`
-- Base SHA: `02875995843dc663e950225b83e6dea80e8a449c` (corrected after review: earlier entry recorded a non-resolving truncation)
-- Tests: (to be recorded)
-- Review: (to be recorded)
-- Integration: (to be recorded)
-- Merge SHA / post-merge smoke: (to be recorded)
-- Remaining blockers or explicitly accepted nonblocking follow-up: (to be recorded)
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s02-auth-revoke` (deleted after merge)
+- Base SHA / heads: base `02875995843dc663e950225b83e6dea80e8a449c`; impl `85407b1`; fix `414d53e`; startup-fix/reviewed `72c32b8`
+- Tests: `npm run typecheck` 0; `npm run test:auth` 0 (13/13 deterministic, stub OIDC issuer, real PG `moneo_e01_test` incl. login/opaque-cookie, logout+reconnect 401, two-user isolation, expiry, forged/missing/replayed state, evil-iss discovery refusal, redirect allowlist incl. CRLF, logout CSRF matrix, tamper/unknown-cookie oracle, unconfigured-503, constructor refusals); `npm run test:db` 0 (2/2 migrator atomicity + idempotence); `npm run test:auth:live` 1/1 bounded Keycloak gate (34 s + 51 s passes; first attempt failed after ~15 min on a transient and orphaned one container+network, removed manually; two clean passes left no residue); regression `npm test` 1/1, `test:web` 8/8, `test:import` 26/26, `test:identity` 36/36, `test:durable` 12/12 (100 cmds/314 ms; WSL Redis restarted mid-run); `test:failure` exit 1 as intended; `build:web` 0; `git diff --check` 0; secret scan clean; no `.env` tracked. CI replay (B4 proof): disposable postgres:17-alpine container + exact CI bootstrap SQL (role + 3 DBs) then `test:auth` 13/13, `test:db` 2/2, `test:durable` 12/12 under least-privilege app role; replay container removed. Startup probes: bogus/out-of-range SESSION_TTL_SEC refused exit 1 pre-DB. Env: Windows 11, Node v22.23.2/npm 10.9.8, Docker 29.7.2.
+- Review: independent Pass-track at `414d53e` after Changes-requested at `85407b1` (B1 acceptance-5 narrowed + non-propagation limitation recorded; B2 single-client migrator transactions + atomicity test; B3 base-SHA correction; B4 CI superuser service + bootstrap step; N1–N10 all closed incl. CRLF redirect, HEAD parity, trailing-slash/public-client refusal, full server wrap, TTL validation, APP_BASE_URL docs). Reviewer reproduced typecheck, auth 13/13, db 2/2, web 8/8, import/identity/durable, live gate 1/1 in 65 s, plus 13 hostile probes (12/12 safe). Startup fix `72c32b8` (TTL-before-migrate, clientSecret guard): final Pass at `72c32b8` with behavioral startup probes.
+- Integration: `git fetch origin main` — origin/main `1b97208` (stale, local-only merges per E00 precedent); local main at branch base `0287599` unchanged; merge-base == base; candidate == reviewed `72c32b8`; full candidate gates re-ran green (see Tests). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `11b0515`; post-merge `npm run check` (1/1 + 8/8), `test:auth` 13/13, `test:db` 2/2, `build:web` 0, clean status.
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: GitHub Actions run itself unobserved (no runner here; YAML reviewed + container replay green) — first push will prove it; branch protection pointing at `ci` still unverified; remote push/PR not performed.
+
+Status: Done
 
 ## E01-S03 — Enforce tenant ownership in the database and API
 
