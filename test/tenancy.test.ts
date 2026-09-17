@@ -166,6 +166,27 @@ describe("e01-s03 tenant ownership", () => {
     await expect(withTenant(pool, { userId: outsider, workspaceId: wsA }, async () => "executed")).rejects.toThrow("tenant_denied");
   });
 
+  it("malformed bodies and invalid fields fail 400 without leaking tenant state", async () => {
+    const base = await startApp();
+    const cookie = await login(base, "synthetic-tenant-f");
+    const ws = ((await json("POST", `${base}/api/workspaces`, cookie, { name: "WF", baseCurrency: "EUR" })).body as { id: string }).id;
+    // Malformed JSON.
+    const bad = await fetch(`${base}/api/accounts`, { method: "POST", headers: { cookie, "Content-Type": "application/json" }, body: "{oops" });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: "invalid_request" });
+    // Oversized body.
+    const big = await fetch(`${base}/api/accounts`, { method: "POST", headers: { cookie, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: ws, name: "x".repeat(70 * 1024) }) });
+    expect(big.status).toBe(400);
+    // Invalid fields (empty name, bad currency) are 400, not 404.
+    const emptyName = await json("POST", `${base}/api/accounts`, cookie, { workspaceId: ws, name: "" });
+    expect(emptyName.status).toBe(400);
+    const badCurrency = await json("POST", `${base}/api/workspaces`, cookie, { name: "W", baseCurrency: "euro" });
+    expect(badCurrency.status).toBe(400);
+    // Nothing was created by the failed calls.
+    const list = await json("GET", `${base}/api/accounts?workspaceId=${ws}`, cookie);
+    expect(list.body).toEqual({ accounts: [] });
+  });
+
   it("pooled connections never retain tenant identity", async () => {
     const base = await startApp();
     const cookie = await login(base, "synthetic-tenant-e");

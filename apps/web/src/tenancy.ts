@@ -16,6 +16,13 @@ export class TenantDenied extends Error {
   }
 }
 
+/** Malformed caller input (distinct from denial: reveals nothing about tenants). */
+export class TenantInvalid extends Error {
+  constructor() {
+    super("tenant_invalid");
+  }
+}
+
 export type TenantClaims = { userId: string; workspaceId: string };
 
 /** Run work as a verified member of the workspace. Throws TenantDenied for non-members. */
@@ -49,24 +56,15 @@ export async function withTenant<T>(pool: Pool, claims: TenantClaims, work: (cli
   }
 }
 
-/** Find-or-create the internal user for an auth subject. Call inside a transaction. */
-export async function ensureUser(client: PoolClient, authSubject: string): Promise<string> {
-  const found = await client.query("SELECT id FROM users WHERE auth_subject = $1", [authSubject]);
-  if ((found.rowCount ?? 0) > 0) return (found.rows[0] as { id: string }).id;
-  const id = uuidv7();
-  await client.query("INSERT INTO users (id, auth_subject) VALUES ($1, $2)", [id, authSubject]);
-  return id;
-}
-
 export type Workspace = { id: string; name: string; baseCurrency: string; timezone: string; role: string };
 
 function checkName(name: unknown): string {
-  if (typeof name !== "string" || name.length < 1 || name.length > 200) throw new TenantDenied();
+  if (typeof name !== "string" || name.length < 1 || name.length > 200) throw new TenantInvalid();
   return name;
 }
 
 function checkCurrency(code: unknown): string {
-  if (typeof code !== "string" || !/^[A-Z]{3}$/.test(code)) throw new TenantDenied();
+  if (typeof code !== "string" || !/^[A-Z]{3}$/.test(code)) throw new TenantInvalid();
   return code;
 }
 
@@ -205,12 +203,22 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
   // Every route resolves the session first (uniform 401), then the user row,
   // then membership inside withTenant. Missing and foreign resources share
   // one 404 body so callers cannot distinguish them.
-  async function claims(req: IncomingMessage, workspaceId: string): Promise<TenantClaims | null> {
+  async function claims(req: IncomingMessage, workspaceId: string): Promise<{ session: Session | null; claim: TenantClaims | null }> {
+    // Single session resolution per call: the caller branches on session
+    // (401) versus claim (404) without a second roundtrip.
     const session = await resolveSession(req);
-    if (!session || !isUuid(workspaceId)) return null;
+    if (!session || !isUuid(workspaceId)) return { session, claim: null };
     const found = await pool.query("SELECT id FROM users WHERE auth_subject = $1", [session.keycloakSub]);
-    if ((found.rowCount ?? 0) === 0) return null;
-    return { userId: (found.rows[0] as { id: string }).id, workspaceId };
+    if ((found.rowCount ?? 0) === 0) return { session, claim: null };
+    return { session, claim: { userId: (found.rows[0] as { id: string }).id, workspaceId } };
+  }
+
+  function denied(res: ServerResponse, authed: boolean): void {
+    // Authenticated-but-denied shares one body with missing resources so
+    // callers cannot distinguish foreign from absent; unauthenticated callers
+    // get the auth boundary's 401 instead.
+    if (authed) tenantJson(res, 404, { error: "not_found" });
+    else tenantJson(res, 401, { error: "unauthorized" });
   }
 
   return {
@@ -241,14 +249,12 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
         }
         if (path === "/api/accounts" && method === "GET") {
           const workspaceId = query.get("workspaceId") ?? "";
-          const claim = await claims(req, workspaceId);
-          if (!claim) {
-            const session = await resolveSession(req);
-            if (!session) tenantJson(res, 401, { error: "unauthorized" });
-            else tenantJson(res, 404, { error: "not_found" });
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
             return true;
           }
-          tenantJson(res, 200, { accounts: await listAccounts(pool, claim) });
+          tenantJson(res, 200, { accounts: await listAccounts(pool, resolved.claim) });
           return true;
         }
         if (path === "/api/accounts" && method === "POST") {
@@ -262,25 +268,23 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             tenantJson(res, 404, { error: "not_found" });
             return true;
           }
-          const claim = await claims(req, body.workspaceId);
-          if (!claim) {
+          const resolved = await claims(req, body.workspaceId);
+          if (!resolved.claim) {
             tenantJson(res, 404, { error: "not_found" });
             return true;
           }
-          tenantJson(res, 201, await createAccount(pool, claim, body.name as string));
+          tenantJson(res, 201, await createAccount(pool, resolved.claim, body.name as string));
           return true;
         }
         const accountMatch = path.match(/^\/api\/accounts\/([A-Za-z0-9-]+)$/);
         if (accountMatch && method === "GET") {
           const workspaceId = query.get("workspaceId") ?? "";
-          const claim = await claims(req, workspaceId);
-          if (!claim) {
-            const session = await resolveSession(req);
-            if (!session) tenantJson(res, 401, { error: "unauthorized" });
-            else tenantJson(res, 404, { error: "not_found" });
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
             return true;
           }
-          const account = await getAccount(pool, claim, accountMatch[1]);
+          const account = await getAccount(pool, resolved.claim, accountMatch[1]);
           if (!account) tenantJson(res, 404, { error: "not_found" });
           else tenantJson(res, 200, account);
           return true;
@@ -288,6 +292,10 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
       } catch (err) {
         if (err instanceof TenantDenied) {
           tenantJson(res, 404, { error: "not_found" });
+          return true;
+        }
+        if (err instanceof TenantInvalid || (err instanceof Error && (err.message === "body_too_large" || err.message === "body_invalid"))) {
+          tenantJson(res, 400, { error: "invalid_request" });
           return true;
         }
         throw err;
