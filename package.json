@@ -17,7 +17,11 @@
     "test:durable": "vitest run test/durable.test.ts",
     "probe:identity": "vitest run test/identity-live.test.ts",
     "test:failure": "vitest run checks/deliberate-failure.test.ts",
-    "check": "npm run typecheck && npm test"
+    "test:web": "vitest run test/web-health.test.ts",
+    "build:web": "tsc -p apps/web/tsconfig.json",
+    "start:web": "node apps/web/dist/main.js",
+    "staging:smoke": "node scripts/staging-smoke.mjs",
+    "check": "npm run typecheck && npm test && npm run test:web"
   },
   "devDependencies": {
     "@playwright/test": "1.62.0",

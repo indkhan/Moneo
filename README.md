@@ -30,4 +30,26 @@ temporary credential files after the run.
 
 The E00-S04 durable-effects proof is documented in [`proof/durable/README.md`](proof/durable/README.md). It needs local PostgreSQL and a local Redis 7+ (see that README for the disposable database/DB convention); run it with `npm run test:durable`. It fails closed when either service is missing.
 
+## E01 application slice
+
+Copy `.env.example` to `.env` (ignored by Git) for machine-local synthetic
+settings; never commit real values. Then:
+
+```powershell
+npm ci
+npm run typecheck
+npm run test:web
+npm run build:web
+npm run start:web   # serves http://127.0.0.1:3000/healthz
+```
+
+`GET /healthz`, `/readyz` and `/version` report only build metadata
+(release/gitSha); they never echo request data or environment secrets.
+Required CI is defined in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+and runs the same deterministic gates plus a staging image smoke. Run the
+synthetic staging smoke locally with `npm run staging:smoke` (needs Docker;
+builds `moneo-web:staging-candidate`, probes `/healthz` as non-root
+read-only, promotes to `staging-current` and re-serves the prior tag as the
+rollback demonstration). Compose staging is declared in [`compose.yml`](compose.yml).
+
 Proofs should keep committed synthetic fixtures beside their tests and write disposable reports, screenshots, and measurements under the ignored `proof-output/` directory. Later stories add browser or service dependencies only when their proof consumes them.

@@ -1,0 +1,75 @@
+// E01-S01 minimal application slice: zero-dependency HTTP health/version
+// surface. No UI, no auth, no database yet (S02/S03 own those). Only build
+// metadata (release/gitSha from env) is ever reported; request headers,
+// bodies and process env are never echoed.
+
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+
+export type AppInfo = { name: "moneo-web"; release: string; gitSha: string };
+
+export function appInfo(): AppInfo {
+  return {
+    name: "moneo-web",
+    release: process.env["APP_RELEASE"] ?? "dev",
+    gitSha: process.env["GIT_SHA"] ?? "unknown",
+  };
+}
+
+function json(res: ServerResponse, status: number, body: unknown, allow?: string): void {
+  const payload = `${JSON.stringify(body)}\n`;
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Length": Buffer.byteLength(payload),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    ...(allow ? { Allow: allow } : {}),
+  });
+  res.end(payload);
+}
+
+function drain(req: IncomingMessage): void {
+  // Never buffer or log request bodies on this slice; just consume so the
+  // socket can be reused.
+  req.on("data", () => {});
+  req.on("error", () => {});
+}
+
+export function createApp(): Server {
+  return createServer((req, res) => {
+    drain(req);
+    const method = req.method ?? "GET";
+    const path = (req.url ?? "/").split("?", 1)[0];
+    if (path === "/healthz" || path === "/readyz" || path === "/version") {
+      if (method !== "GET" && method !== "HEAD") {
+        json(res, 405, { error: "method_not_allowed" }, "GET");
+        return;
+      }
+      const info = appInfo();
+      const body =
+        path === "/readyz"
+          ? { ready: true, checks: { build: "ok" }, ...info }
+          : { status: "ok", ...info };
+      if (method === "HEAD") {
+        res.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Referrer-Policy": "no-referrer",
+        });
+        res.end();
+        return;
+      }
+      json(res, 200, body);
+      return;
+    }
+    json(res, 404, { error: "not_found" });
+  });
+}
+
+export async function listen(server: Server, port: number, host = "127.0.0.1"): Promise<string> {
+  await new Promise<void>((resolve) => server.listen(port, host, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("E01-S01: could not bind app server.");
+  return `http://${address.address === "::" ? "127.0.0.1" : address.address}:${address.port}`;
+}
