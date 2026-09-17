@@ -30,6 +30,25 @@
   ],
   "csvFixtures": [
     {
+      "id": "fee-refund-coverage",
+      "file": "fee-refund-coverage.csv",
+      "covers": "fee and refund direction, missing balance, unsupported-currency FX gap and incomplete coverage",
+      "profile": {
+        "delimiter": ",",
+        "dateFormat": "iso",
+        "amount": { "kind": "signed", "decimalSep": ".", "thousandsSep": "," },
+        "columns": { "date": "date", "description": "description", "amount": "amount", "currency": "currency" }
+      },
+      "expected": {
+        "accepted": [
+          { "row": 2, "date": "2024-06-01", "description": "Card fee", "amountMinor": "250", "currency": "EUR", "direction": "OUTFLOW" },
+          { "row": 3, "date": "2024-06-02", "description": "Purchase refund", "amountMinor": "1250", "currency": "EUR", "direction": "INFLOW" }
+        ],
+        "needsReview": [{ "row": 4, "reasons": ["unsupported-currency"] }],
+        "rejected": []
+      }
+    },
+    {
       "id": "utf8-bom-quoted",
       "file": "utf8-bom-quoted.csv",
       "covers": "UTF-8 BOM, quoted commas, embedded newline, escaped quotes",
@@ -336,11 +355,11 @@
     }
   ],
   "measured": {
-    "status": "pass-24-24",
+    "status": "pass-26-26",
     "date": "2026-09-17",
     "host": "Windows 11 10.0.26200, 12th Gen Intel Core i5-12450HX, 16 GiB RAM",
     "node": "22.23.2, npm 10.9.8",
     "fflate": "0.8.3",
-    "observations": "23/23 vitest cases pass in ~2.7s total. Golden CSV/XLSX fixtures parse in 0-8ms in-process. Isolated-child hostile probes (spawn included): corrupt/truncated rejection 385ms, unsupported format/schema 241ms, 21MiB upload-limit plus 100001-row row-limit plus 51-column column-limit 487ms combined, 12MiB-payload expansion bomb aborted on a 1MiB override decompressed cap 336ms, 800ms-timeout kill of a 5s runaway plus healthy-parse recovery 956ms combined. Healthy child heap stays far below the 256MiB budget (assertion in suite). Timeout and decompressed-cap probes use reduced values to exercise the same enforcement path without waiting out production limits."
+    "observations": "26/26 vitest cases pass. Golden CSV/XLSX fixtures parse in-process. Isolated-child hostile probes cover corrupt/truncated rejection, unsupported formats, upload/row/column/decompressed limits, timeout kill and recovery within the documented bounds. Fee/refund direction stays exact; missing balance and FX gaps produce explicit incomplete coverage. Healthy child heap stays below the 256MiB budget. Timeout and decompressed-cap probes use reduced values to exercise the same enforcement path without waiting out production limits."
   }
 }

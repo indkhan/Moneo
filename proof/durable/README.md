@@ -69,14 +69,17 @@ topology, BullMQ Flows (PG workflow state is the durable graph per §194).
 
 ## Fault coverage (each a runnable test in `test/durable.test.ts`)
 
-Worker death is simulated by omitting the next protocol step at each
-persisted boundary (accept → dispatch → claim → publish); PG transaction
-atomicity is what makes the omitted step safe to replay. No live SIGKILL
-mid-handler is performed in this proof — E02-S02 should add one.
+Worker death is exercised by launching a disposable worker process, waiting
+until it reports the claim, synthetic provider-response, or atomic publish
+boundary, and force-killing it before it can return. The test then recovers
+from PostgreSQL truth. The synthetic counter's effect commit and publication
+are one transaction, so one kill point covers both without an unsafe gap.
 
 - 20 concurrent identical submissions + duplicate dispatch → one effect.
 - Crash before dispatch / after enqueue-before-marking / during execution /
   after effect commit → no loss, no duplicate on recovery.
+- Real process termination after claim, after a synthetic provider response,
+  and after atomic effect publication → recovery applies exactly once.
 - `FLUSHDB` of the dedicated Redis DB → reconciler restores 5/5.
 - Stale generation publish fenced; cancel after claim blocks publication;
   cancel after success preserves history; cross-tenant claim/publish denied.

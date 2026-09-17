@@ -19,6 +19,7 @@ import {
   parseAmountToMinor,
   parseDateToIso,
   parseImportFile,
+  summarizeCoverage,
   type ImportProfile,
   type Proposal,
 } from "../proof/import/parser.ts";
@@ -221,6 +222,29 @@ describe("E00-S03 observation identity and reimport decisions", () => {
     expect(proposals[0]!.kind).toBe("needs_review");
     expect((proposals[0] as { reasons: string[] }).reasons).toEqual(["possible-overlap"]);
     expect(proposals[1]!.kind).toBe("accepted");
+  });
+});
+
+describe("E00-S03 financial semantics and coverage", () => {
+  it("keeps fees/refunds exact and exposes missing balance and FX gaps", () => {
+    const fx = MANIFEST.csvFixtures.find((f) => f.id === "fee-refund-coverage");
+    if (!fx) throw new Error("fixture fee-refund-coverage missing");
+    const parsed = parseImportFile(
+      new Uint8Array(readFileSync(join(FIX, fx.file))),
+      fx.file,
+      fx.profile,
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.proposals.map(comparable)).toEqual(expectedComparable(fx.expected));
+    expect(summarizeCoverage(parsed.proposals, { balanceProvided: false, baseCurrency: "EUR" })).toEqual({
+      complete: false,
+      accepted: 2,
+      pendingReview: 1,
+      rejected: 0,
+      missingBalance: true,
+      fxGapCurrencies: ["USD"],
+    });
   });
 });
 

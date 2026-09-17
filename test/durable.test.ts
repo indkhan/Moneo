@@ -38,6 +38,7 @@ import {
   processApplyJob,
   publishEffect,
 } from "../proof/durable/worker.ts";
+import { killDurableChild } from "../proof/durable/kill-child.ts";
 
 const TENANT_A = "tenant-a";
 const TENANT_B = "tenant-b";
@@ -222,6 +223,29 @@ describe("E00-S04 durable effects", () => {
       expect(await attemptStatuses(operationId)).toEqual(["STALE", "SUCCEEDED"]);
     } finally {
       await queue.close();
+    }
+  }, 60000);
+
+  it("real worker-process death at claim, provider-response and publish boundaries recovers exactly once", async () => {
+    for (const phase of ["after-claim", "after-provider-response", "after-publish"] as const) {
+      await truncateAll(pool);
+      const operationId = randomUUID();
+      await acceptCommand(pool, TENANT_A, operationId, { counterId: COUNTER });
+      const queue = applyQueue(env);
+      try {
+        await dispatchOutbox(pool, queue);
+        const killed = await killDurableChild({ phase, tenantId: TENANT_A, operationId, leaseMs: 300 });
+        expect(killed).toMatchObject({ marker: phase, killed: true });
+        if (phase !== "after-publish") {
+          await new Promise((r) => setTimeout(r, 600));
+          expect((await reconcile(pool, queue)).requeuedStalled).toBe(1);
+        }
+        await drainUntil({ [TENANT_A]: 1 });
+        expect(await effectCount(TENANT_A)).toBe(1);
+        expect(await counterValue(pool, TENANT_A, COUNTER)).toBe(1);
+      } finally {
+        await queue.close();
+      }
     }
   }, 60000);
 

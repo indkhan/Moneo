@@ -56,6 +56,9 @@ values discarded, row stays reviewable), workbooks with external links
 
 Zero-value rows remain observations with a `rejected` (`zero-amount`)
 disposition per architecture section 2.5; they never become canonical money.
+The fee/refund fixture fixes direction and exact minor units independently.
+`summarizeCoverage` reports missing balance, staged rows and currencies without
+qualified FX as incomplete instead of presenting a false complete total.
 
 ## Resource envelope (initial experiment limits, not production promises)
 
