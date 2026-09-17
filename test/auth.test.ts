@@ -338,6 +338,32 @@ describe("e01-s02 auth and revocation", () => {
     }
   });
 
+  it("control-character redirects fall back to / without mint-then-fail sessions", async () => {
+    const { base } = await startApp();
+    const before = await countLiveSessions(pool);
+    const start = await fetch(`${base}/auth/login?returnTo=${encodeURIComponent("/x\r\nSet-Cookie: evil=1")}`, { redirect: "manual" });
+    const callbackUrl = (await fetch(start.headers.get("location")!, { redirect: "manual" })).headers.get("location")!;
+    const done = await fetch(callbackUrl, { redirect: "manual" });
+    expect(done.headers.get("location")).toBe("/");
+    expect(await countLiveSessions(pool)).toBe(before + 1); // legitimate login, sanitized landing
+  });
+
+  it("HEAD /api/me matches GET semantics and clears dead cookies", async () => {
+    const { base } = await startApp();
+    const { cookie } = await login(base);
+    expect((await fetch(`${base}/api/me`, { method: "HEAD", headers: { cookie } })).status).toBe(200);
+    await fetch(`${base}/auth/logout`, { method: "POST", headers: { cookie, origin: base } });
+    const head = await fetch(`${base}/api/me`, { method: "HEAD", headers: { cookie } });
+    expect(head.status).toBe(401);
+    expect(head.headers.get("set-cookie") ?? "").toContain("Max-Age=0");
+  });
+
+  it("misconfigured issuers and public clients are refused at router construction", async () => {
+    expect(() => createAuthRouter({ issuer: `${stubBase}/`, clientId: "moneo-test-client", clientSecret: STUB_CLIENT_SECRET, appBaseUrl: "http://127.0.0.1:1", sessionSecret, sessionTtlSec: 60 }, pool)).toThrow(/trailing slash/);
+    expect(() => createAuthRouter({ issuer: stubBase, clientId: "moneo-test-client", clientSecret: "", appBaseUrl: "http://127.0.0.1:1", sessionSecret, sessionTtlSec: 60 }, pool)).toThrow(/confidential client secret/);
+    expect(() => createAuthRouter({ issuer: stubBase, clientId: "moneo-test-client", clientSecret: STUB_CLIENT_SECRET, appBaseUrl: "http://127.0.0.1:1", sessionSecret: "", sessionTtlSec: 60 }, pool)).toThrow(/SESSION_SECRET/);
+  });
+
   it("unconfigured app answers 503 without auth behavior", async () => {
     const bare = createApp(null);
     await new Promise<void>((resolve) => bare.listen(0, "127.0.0.1", resolve));

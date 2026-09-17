@@ -44,6 +44,11 @@ async function start(): Promise<void> {
     console.error(`E01-S02: migration failed (${(err as Error).message}).`);
     process.exit(1);
   }
+  const sessionTtlSec = Number(process.env["SESSION_TTL_SEC"] ?? "43200");
+  if (!Number.isInteger(sessionTtlSec) || sessionTtlSec < 60 || sessionTtlSec > 30 * 24 * 3600) {
+    console.error("E01-S02 refused: SESSION_TTL_SEC must be an integer 60-2592000.");
+    process.exit(1);
+  }
   const router = createAuthRouter(
     {
       issuer,
@@ -51,7 +56,7 @@ async function start(): Promise<void> {
       clientSecret,
       appBaseUrl,
       sessionSecret,
-      sessionTtlSec: Number(process.env["SESSION_TTL_SEC"] ?? "43200"),
+      sessionTtlSec,
     },
     pool,
   );

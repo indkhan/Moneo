@@ -19,12 +19,12 @@ jobs:
       postgres:
         image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
         env:
-          POSTGRES_DB: moneo_ci
-          POSTGRES_USER: moneo_app
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: ci-synthetic-only
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U moneo_app -d moneo_ci"
+          --health-cmd "pg_isready -U postgres -d postgres"
           --health-interval 5s --health-timeout 3s --health-retries 10
       redis:
         image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
@@ -44,6 +44,13 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+      - name: Create least-privilege CI roles and databases
+        run: |
+          PGPASSWORD=ci-synthetic-only psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE moneo_app LOGIN PASSWORD 'ci-synthetic-only';" \
+            -c "CREATE DATABASE moneo_ci OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_durable_proof OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_e01_test OWNER moneo_app;"
       - name: Install (lockfile)
         run: npm ci
       - name: Typecheck
@@ -58,6 +65,8 @@ jobs:
         run: npm run test:identity
       - name: Auth session contract (real PG)
         run: npm run test:auth
+      - name: Migrator atomicity (real PG)
+        run: npm run test:db
       - name: Durable effects (real PG + Redis)
         run: npm run test:durable
       - name: Deliberate failure must exit nonzero

@@ -14,7 +14,7 @@ import { createSession, readSession, revokeSession } from "./session-store.ts";
 export type AuthConfig = {
   issuer: string; // exact issuer identifier, e.g. http://127.0.0.1:8080/realms/moneo
   clientId: string;
-  clientSecret: string; // confidential client; empty string means public client (stub tests only)
+  clientSecret: string; // confidential client secret; required, never empty in this slice
   appBaseUrl: string; // e.g. http://127.0.0.1:3000 — origin allowlist + Secure-cookie switch
   sessionSecret: string; // HMAC key; server refuses to start auth without it
   sessionTtlSec: number;
@@ -66,6 +66,11 @@ export async function loadDiscovery(issuer: string): Promise<Discovery> {
 
 function safeReturnTo(value: string | null): string {
   if (!value) return "/";
+  // Control characters would make the callback redirect throw after the
+  // session is already created; reject them up front so hostile input never
+  // reaches the redirect and can never mint-then-fail a session.
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(value)) return "/";
   if (!value.startsWith("/") || value.startsWith("//") || value.includes("\\") || value.includes("://")) return "/";
   return value;
 }
@@ -111,6 +116,14 @@ export type AuthRouter = {
 export function createAuthRouter(config: AuthConfig, pool: Pool): AuthRouter {
   if (!config.sessionSecret) throw new Error("E01-S02 refused: SESSION_SECRET is required.");
   if (!config.issuer || !config.clientId || !config.appBaseUrl) throw new Error("E01-S02 refused: issuer, clientId and appBaseUrl are required.");
+  if (!config.clientSecret) throw new Error("E01-S02 refused: confidential client secret is required (public clients are not admitted in this slice).");
+  if (config.issuer !== config.issuer.replace(/\/+$/, "")) throw new Error("E01-S02 refused: issuer must be exact with no trailing slash.");
+  try {
+    void new URL(config.issuer);
+    void new URL(config.appBaseUrl);
+  } catch {
+    throw new Error("E01-S02 refused: issuer and appBaseUrl must be valid absolute URLs.");
+  }
   const event = config.onEvent ?? (() => {});
   // Read per request: tests bind an ephemeral port after constructing the
   // router and then set config.appBaseUrl to the live base URL.
@@ -266,16 +279,24 @@ export function createAuthRouter(config: AuthConfig, pool: Pool): AuthRouter {
     json(res, 200, { ok: true });
   }
 
-  async function handleMe(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  async function handleMe(req: IncomingMessage, res: ServerResponse, headOnly: boolean): Promise<void> {
     const id = verifySessionCookie(parseCookies(req)[SESSION_COOKIE], config.sessionSecret);
     const session = id ? await readSession(pool, id) : null;
-    if (!session) {
-      event("auth_denied:me");
-      setSessionCookie(res, config, null, 0);
-      json(res, 401, { error: "unauthorized" });
+    event(session ? "auth_ok:me" : "auth_denied:me");
+    if (!session) setSessionCookie(res, config, null, 0);
+    const body = session
+      ? { sub: session.keycloakSub, issuedAt: session.createdAt, expiresAt: session.expiresAt }
+      : { error: "unauthorized" };
+    if (headOnly) {
+      res.writeHead(session ? 200 : 401, {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "no-referrer",
+      });
+      res.end();
       return;
     }
-    json(res, 200, { sub: session.keycloakSub, issuedAt: session.createdAt, expiresAt: session.expiresAt });
+    json(res, session ? 200 : 401, body);
   }
 
   return {
@@ -293,18 +314,7 @@ export function createAuthRouter(config: AuthConfig, pool: Pool): AuthRouter {
         return true;
       }
       if (path === "/api/me" && (method === "GET" || method === "HEAD")) {
-        if (method === "HEAD") {
-          const id = verifySessionCookie(parseCookies(req)[SESSION_COOKIE], config.sessionSecret);
-          const session = id ? await readSession(pool, id) : null;
-          res.writeHead(session ? 200 : 401, {
-            "X-Content-Type-Options": "nosniff",
-            "X-Frame-Options": "DENY",
-            "Referrer-Policy": "no-referrer",
-          });
-          res.end();
-          return true;
-        }
-        await handleMe(req, res);
+        await handleMe(req, res, method === "HEAD");
         return true;
       }
       return false;

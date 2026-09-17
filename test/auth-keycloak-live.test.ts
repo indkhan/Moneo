@@ -2,8 +2,10 @@
 // Authorization Code + S256 PKCE login, pre-revocation refresh success and
 // post-admin-logout refresh denial, plus non-root/read-only per-service
 // secret isolation. Manual gate (needs Docker); skipped without it, never
-// part of CI. Reuses the qualified E00 mechanism; the app-session half of
-// acceptance-5 is covered deterministically in test/auth.test.ts.
+// part of CI. Reuses the qualified E00 mechanism for the Keycloak half of
+// acceptance-5; app-side revocation is proven deterministically in
+// test/auth.test.ts. Keycloak logout does not propagate to app sessions
+// (explicit known limitation recorded in STORIES.md E01-S02).
 
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";

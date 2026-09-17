@@ -29,17 +29,32 @@ export async function migrate(pool: Pool, migrationsDir: string): Promise<string
   const applied: string[] = [];
   for (const file of files) {
     const version = file.replace(/\.sql$/, "");
-    const done = await pool.query("SELECT 1 FROM schema_migrations WHERE version = $1", [version]).catch(() => null);
+    // A missing schema_migrations table means no migration has ever applied;
+    // any other SELECT failure is a real error and must not be swallowed.
+    let done = null;
+    try {
+      done = await pool.query("SELECT 1 FROM schema_migrations WHERE version = $1", [version]);
+    } catch (err) {
+      if ((err as { code?: string }).code !== "42P01") throw err;
+    }
     if (done && (done.rowCount ?? 0) > 0) continue;
     const sql = readFileSync(join(migrationsDir, file), "utf8");
-    await pool.query("BEGIN");
+    // One dedicated client per file: BEGIN/body/COMMIT must share a single
+    // connection, otherwise pool.query may spread them across connections and
+    // a multi-statement migration could half-apply.
+    const client = await pool.connect();
     try {
-      await pool.query(sql);
-      await pool.query("INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING", [version]);
-      await pool.query("COMMIT");
+      await client.query("BEGIN");
+      await client.query(sql);
+      await client.query("INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING", [version]);
+      await client.query("COMMIT");
     } catch (err) {
-      await pool.query("ROLLBACK");
+      try {
+        await client.query("ROLLBACK");
+      } catch { /* already failed; preserve the original error */ }
       throw err;
+    } finally {
+      client.release();
     }
     applied.push(version);
   }

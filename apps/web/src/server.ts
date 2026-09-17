@@ -55,38 +55,38 @@ export function createApp(auth?: AuthDelegate | null): Server {
           }
           if (await auth.handle(req, res, path, method, query)) return;
         }
+        if (path === "/healthz" || path === "/readyz" || path === "/version") {
+          if (method !== "GET" && method !== "HEAD") {
+            json(res, 405, { error: "method_not_allowed" }, "GET");
+            return;
+          }
+          const info = appInfo();
+          const body =
+            path === "/readyz"
+              ? { ready: true, checks: { build: "ok" }, ...info }
+              : { status: "ok", ...info };
+          if (method === "HEAD") {
+            res.writeHead(200, {
+              "Content-Type": "application/json; charset=utf-8",
+              "X-Content-Type-Options": "nosniff",
+              "X-Frame-Options": "DENY",
+              "Referrer-Policy": "no-referrer",
+            });
+            res.end();
+            return;
+          }
+          json(res, 200, body);
+          return;
+        }
+        json(res, 404, { error: "not_found" });
       } catch {
-        // Auth failures are fail-closed inside the delegate; an unexpected
-        // throw here must not leak detail or leave the socket hanging.
+        // All request handling is fail-closed: an unexpected throw must not
+        // leak detail or leave the socket hanging.
         try {
-          json(res, 503, { error: "auth_unavailable" });
+          if (!res.headersSent) json(res, 503, { error: "unavailable" });
+          else res.destroy();
         } catch { /* socket already gone */ }
-        return;
       }
-    if (path === "/healthz" || path === "/readyz" || path === "/version") {
-      if (method !== "GET" && method !== "HEAD") {
-        json(res, 405, { error: "method_not_allowed" }, "GET");
-        return;
-      }
-      const info = appInfo();
-      const body =
-        path === "/readyz"
-          ? { ready: true, checks: { build: "ok" }, ...info }
-          : { status: "ok", ...info };
-      if (method === "HEAD") {
-        res.writeHead(200, {
-          "Content-Type": "application/json; charset=utf-8",
-          "X-Content-Type-Options": "nosniff",
-          "X-Frame-Options": "DENY",
-          "Referrer-Policy": "no-referrer",
-        });
-        res.end();
-        return;
-      }
-      json(res, 200, body);
-      return;
-    }
-    json(res, 404, { error: "not_found" });
     })();
   });
 }
