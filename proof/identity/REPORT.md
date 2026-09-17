@@ -1,14 +1,16 @@
 # E00-S05 decision/evidence report — identity, deployment identity, development AI
 
-Status: deterministic proof passes offline; the OpenRouter development-model live gate passed on 2026-09-17 using synthetic inputs. Auth0 user-flow and Render-to-AWS OIDC remain **Blocked**. No secret values, tokens or response bodies were logged.
+Status: **Pass** for the revised R1 decision. A pinned disposable Keycloak 26.7.4 container proved login, refresh and provider-side session revocation; hardened Docker containers proved per-service synthetic-secret isolation; the OpenRouter development-model live gate passed using synthetic inputs. No secret values, tokens or response bodies were logged.
+
+Founder decision on 2026-09-17 replaced Auth0 and Render/AWS with self-hosted Keycloak and Docker-hosted services for R1. The architecture override records production gates; this proof uses Keycloak `start-dev` only as a disposable feasibility fixture.
 
 ## Vendor documentation verified live (2026-09-17)
 
 | Claim used | Source (checked 2026-09-17) | What it confirms |
 |---|---|---|
-| 3 separate session layers; app logout clears the app session, SSO logout is a redirect to the logout endpoint, federated logout optional | https://auth0.com/docs/manage-users/sessions/session-layers | Arch §426: SSO revocation alone does not invalidate an issued app cookie — revoke locally first |
-| Free $0/25k MAU incl. passkeys, passwordless, 1 custom domain; Pro/Enterprise MFA **not** on Free; OIDC back-channel logout, long-lived sessions, continuous session protection are Enterprise-only | https://auth0.com/pricing | Plan/entitlement decision needed before E01-S02; Free tier cannot supply Enterprise session APIs |
-| Managed OIDC requires **Pro workspace or higher**; AWS flow = IAM provider `oidc.render.com/{WORKSPACE_ID}` (aud `sts.amazonaws.com`) + per-service role via `AWS_ROLE_ARN`, one role per service | https://render.com/docs/oidc | Arch §370 path is real but plan-gated; no static-key fallback |
+| Keycloak 26.7.4 official container supports Docker and realm import; `start-dev` is development-only | https://www.keycloak.org/server/containers | Pinned disposable identity proof and explicit production exclusion |
+| Keycloak exposes OIDC and Admin REST APIs for application login and session administration | https://www.keycloak.org/docs-api/latest/rest-api/index.html | Live token, refresh and user-session logout proof |
+| Docker grants Compose secrets only to explicitly listed services | https://docs.docker.com/compose/how-tos/use-secrets/ | Per-service secret boundary carried into E01 deployment |
 | Per-request `provider.zdr:true`; per-model-group enforcement; unknown endpoints conservatively marked retain+train; ZDR ≠ residency; plugins excluded; OpenRouter itself ZDR unless logging opted in | https://openrouter.ai/docs/guides/features/zdr | §130 production route shape |
 | `:free` suffix variant; availability/rate limits differ from paid | https://openrouter.ai/docs/guides/routing/model-variants/free | Free models are replaceable smoke, never production qualification |
 | Free caps 20 req/min, 50/1000 req/day; 401/402/403/404/408/429/5xx semantics; 429 → backoff + honor Retry-After; negative balance → 402 even on free models | https://openrouter.ai/docs/api_reference/limits | Probe error taxonomy + budget |
@@ -22,23 +24,20 @@ Status: deterministic proof passes offline; the OpenRouter development-model liv
 
 - Dev allows training-permitted free routes; production denies them, non-ZDR routes, content-logged routes, and unqualified free routes; failed primaries return recoverable unavailability, never a privacy downgrade (`policy.ts`).
 - App-session revocation denies even with live SSO (copied-cookie case); SSO logout alone leaves an issued app cookie valid — so E01-S02 must revoke locally first (`session-layers.ts`).
-- Render OIDC readiness gate pins the Pro plan, workspace ID, IAM provider/trust, and one least-privilege role per service; static keys refused as fallback (`render-oidc.ts`).
+- A disposable Keycloak realm issues and refreshes a synthetic user session; Admin REST logout makes the prior refresh token fail. The container and temporary realm credentials are removed after every run (`npm run test:identity:docker`).
+- Docker proof services run with numeric non-root UID 65532, read-only root filesystems, all capabilities dropped, no-new-privileges and no network. Only the explicitly mounted service reads the synthetic secret; an ungranted peer cannot see it.
 - Tool allowlist + strict decimal-string money args, malformed-output rejection, 401/402/403/404 vs retryable 429/408/5xx/timeout taxonomy, one-retry cap, and the hard 20-request budget (`openrouter-probe.ts`, mock transports).
 
-## What is Blocked (one smallest input per gate)
+## Live OpenRouter result
 
-1. **Auth0 live** — the ignored environment contains application and Management API clients, but not the five `AUTH0_TEST_*` inputs. A bounded attempt obtained a Management API token, then received 403 when creating a disposable synthetic user, so no user was created and no cleanup was required. Supply an authorized test username/password (plus the existing domain/client values under the proof names), or grant the test Management client `create:users` and `delete:users`. Confirm the selected Auth0 plan; stale application-session denial lands in E01-S02.
-2. **Render OIDC live** — `RENDER_WORKSPACE_ID` and `AWS_ROLE_ARN` are absent. Supply a Render Pro-or-higher workspace plus its AWS IAM OIDC provider/role, deploy one disposable service and run `aws sts get-caller-identity` in its shell. Never substitute a static AWS key.
-3. **OpenRouter live — Passed 2026-09-17.** `OPENROUTER_API_KEY` from the ignored local environment ran three bounded synthetic requests: tool selection and strict structured output returned 200 and validated; a bogus model was rejected once with HTTP 400 and no retry or fallback. OpenRouter currently uses 400 for this chat-completions rejection, so the deterministic taxonomy now treats 400 as non-retryable `invalid-request` while retaining 404 as non-retryable `unavailable-model`.
-
-Missing accounts/entitlements are explicit blockers; other E00 work may continue.
+`OPENROUTER_API_KEY` from the ignored local environment ran three bounded synthetic requests: tool selection and strict structured output returned 200 and validated; a bogus model was rejected once with HTTP 400 and no retry or fallback. The deterministic taxonomy treats 400 as non-retryable `invalid-request` while retaining 404 as non-retryable `unavailable-model`.
 
 ## Remaining risks
 
 - Free-model availability/quality rotates; production qualification is deferred to E08-S03 and must re-run the evaluation rubric on pinned no-training/ZDR routes.
-- Auth0 Free-tier session APIs are weaker (no back-channel logout/continuous protection); the E01-S02 design must assume app-side revocation as the enforcement point.
-- Render OIDC stays untested until a Pro workspace + AWS role exist; the documented safe alternative is no deployment-identity story until then (never static keys).
+- Production Keycloak still needs PostgreSQL persistence, TLS/hostname configuration, strong-factor/passkey qualification, upgrades, backup/restore and restricted administration before external users.
+- Docker secrets are host-mounted files, not a cloud KMS. Host hardening, encrypted secret provisioning and production network placement remain deployment gates.
 
 ## Cleanup
 
-No live sessions, tenants, roles, keys, or objects were created (all live gates blocked before any request), so there is nothing disposable to delete and no shared resource was touched. Live probes create no objects when unblocked.
+The Keycloak container, realm file and generated credentials were removed after the proof. Hardened service containers used `--rm`; no proof container remains. The earlier Auth0 attempt created no user. OpenRouter received synthetic prompts only.

@@ -24,7 +24,6 @@ import {
   type ProbeTransport,
 } from "../proof/identity/openrouter-probe.ts";
 import { PROBE_BUDGET, resolveProviderPolicy, selectRoute, type RouteProfile } from "../proof/identity/policy.ts";
-import { checkRenderOidcReadiness, allowStaticAwsKeys } from "../proof/identity/render-oidc.ts";
 import {
   applyAppRevocation,
   applySsoLogout,
@@ -128,81 +127,6 @@ describe("application session vs provider SSO logout (§426)", () => {
   it("denies when both layers are gone", () => {
     const gone = applyAppRevocation(applySsoLogout(FRESH_SESSION));
     expect(evaluateRequest(gone)).toBe("deny-stale-session");
-  });
-});
-
-describe("Render OIDC readiness gate (§370)", () => {
-  it("blocks a non-Pro workspace and names the founder input", () => {
-    const verdict = checkRenderOidcReadiness({
-      workspacePlan: "free",
-      workspaceIdKnown: false,
-      awsIdentityProviderConfigured: false,
-      roleArnKnown: false,
-      singleRolePerService: true,
-    });
-    expect(verdict.ready).toBe(false);
-    if (!verdict.ready) {
-      expect(verdict.blockedBy).toBe("render-managed-oidc-plan");
-      expect(verdict.founderInput).toMatch(/Pro plan or higher/);
-    }
-  });
-
-  it("blocks a missing workspace ID", () => {
-    const verdict = checkRenderOidcReadiness({
-      workspacePlan: "pro",
-      workspaceIdKnown: false,
-      awsIdentityProviderConfigured: false,
-      roleArnKnown: false,
-      singleRolePerService: true,
-    });
-    expect(verdict.ready).toBe(false);
-    if (!verdict.ready) {
-      expect(verdict.blockedBy).toBe("render-workspace-id");
-    }
-  });
-
-  it("blocks a missing AWS identity provider", () => {
-    const verdict = checkRenderOidcReadiness({
-      workspacePlan: "pro",
-      workspaceIdKnown: true,
-      awsIdentityProviderConfigured: false,
-      roleArnKnown: false,
-      singleRolePerService: true,
-    });
-    expect(verdict.ready).toBe(false);
-    if (!verdict.ready) {
-      expect(verdict.blockedBy).toBe("aws-iam-identity-provider");
-    }
-  });
-
-  it("blocks a missing least-privilege role ARN", () => {
-    const verdict = checkRenderOidcReadiness({
-      workspacePlan: "pro",
-      workspaceIdKnown: true,
-      awsIdentityProviderConfigured: true,
-      roleArnKnown: false,
-      singleRolePerService: true,
-    });
-    expect(verdict.ready).toBe(false);
-    if (!verdict.ready) {
-      expect(verdict.blockedBy).toBe("aws-role-arn");
-      expect(verdict.founderInput).toMatch(/AWS_ROLE_ARN/);
-    }
-  });
-
-  it("reports ready only with the full least-privilege shape", () => {
-    const verdict = checkRenderOidcReadiness({
-      workspacePlan: "pro",
-      workspaceIdKnown: true,
-      awsIdentityProviderConfigured: true,
-      roleArnKnown: true,
-      singleRolePerService: true,
-    });
-    expect(verdict).toEqual({ ready: true, note: expect.any(String) });
-  });
-
-  it("refuses permanent AWS keys as a fallback", () => {
-    expect(allowStaticAwsKeys("test").allowed).toBe(false);
   });
 });
 
