@@ -2,6 +2,10 @@
 -- and the idempotent command_operations journal (§§60–61). Composite keys
 -- per §27; FORCE RLS per §23. Replay detail retention 30 days (§60); an
 -- expired key returns an explicit expired result, never a silent new command.
+-- Deliberate §61 sketch deviations pre-E02: the claim row starts FAILED_FINAL
+-- and is upgraded to SUCCEEDED (no IN_PROGRESS state while execution is
+-- single-transaction atomic); completed_at is NOT NULL DEFAULT now();
+-- actor_type/ai_run_id arrive with AI/worker callers.
 
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 1;
 DO $$ BEGIN

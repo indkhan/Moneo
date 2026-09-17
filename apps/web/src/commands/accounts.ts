@@ -102,12 +102,27 @@ function rowToView(row: { workspace_id: string; id: string; name: string; versio
   return { workspaceId: row.workspace_id, id: row.id, name: row.name, version: formatDecimalBigint(BigInt(row.version)) };
 }
 
+type StoredOp = {
+  operationId: string;
+  status: string;
+  requestHash: string;
+  response: unknown;
+  error: { code: CommandError["code"]; currentVersion?: string } | null;
+  expiresAt: string;
+};
+
+/** Terminal outcome computed inside the transaction. Returned, never thrown:
+ * throwing a CommandError through the tx boundary would roll back the very
+ * journal row that makes retries deterministic (§60 rule 3). The wrapper
+ * converts outcomes to throws only after commit. */
+export type TxOutcome = { ok: true; result: CommandResult } | { ok: false; code: CommandError["code"]; currentVersion?: string };
+
 /**
  * Execute accounts.rename idempotently inside the caller's transaction
  * (claim + effect commit together per §61; crash rolls both back).
  * Must run under withTenant context for the target workspace.
  */
-export async function renameAccountTx(client: PoolClient, claims: TenantClaims, actorId: string, input: RenameInput): Promise<CommandResult> {
+export async function renameAccountTx(client: PoolClient, claims: TenantClaims, actorId: string, input: RenameInput): Promise<TxOutcome> {
   let expected: bigint;
   try {
     expected = parseDecimalBigint(input.expectedVersion);
@@ -116,74 +131,85 @@ export async function renameAccountTx(client: PoolClient, claims: TenantClaims, 
   }
   const hash = requestHash(input);
 
+  const readOp = async (): Promise<StoredOp | undefined> => {
+    const found = await client.query(
+      "SELECT id AS \"operationId\", status, request_hash AS \"requestHash\", response_payload AS \"response\", error_payload AS \"error\", expires_at AS \"expiresAt\" FROM command_operations WHERE workspace_id = $1 AND command_name = $2 AND idempotency_key = $3",
+      [claims.workspaceId, RENAME_COMMAND, input.idempotencyKey],
+    );
+    return found.rows[0] as StoredOp | undefined;
+  };
+
+  const settle = (row: StoredOp): TxOutcome => {
+    if (new Date(row.expiresAt).getTime() <= Date.now()) return { ok: false, code: "idempotency_expired" };
+    if (row.requestHash !== hash) return { ok: false, code: "idempotency_reuse" };
+    if (row.status === "SUCCEEDED") return { ok: true, result: { view: row.response as AccountView, operationId: row.operationId, replayed: true } };
+    return { ok: false, code: row.error?.code ?? "version_mismatch", currentVersion: row.error?.currentVersion };
+  };
+
   // Fast path: a terminal record for this key already exists.
-  const prior = await client.query(
-    "SELECT id AS \"operationId\", status, request_hash AS \"requestHash\", response_payload AS \"response\", error_payload AS \"error\", expires_at AS \"expiresAt\" FROM command_operations WHERE workspace_id = $1 AND command_name = $2 AND idempotency_key = $3",
-    [claims.workspaceId, RENAME_COMMAND, input.idempotencyKey],
-  );
-  if ((prior.rowCount ?? 0) > 0) {
-    const row = prior.rows[0] as { operationId: string; status: string; requestHash: string; response: unknown; error: { code: CommandError["code"]; currentVersion?: string } | null; expiresAt: string };
-    if (new Date(row.expiresAt).getTime() <= Date.now()) throw new CommandError("idempotency_expired");
-    if (row.requestHash !== hash) throw new CommandError("idempotency_reuse");
-    if (row.status === "SUCCEEDED") return { view: row.response as AccountView, operationId: row.operationId, replayed: true };
-    throw new CommandError(row.error?.code ?? "version_mismatch", row.error?.currentVersion);
-  }
+  const prior = await readOp();
+  if (prior) return settle(prior);
 
   // Claim the key before executing so concurrent duplicates converge here.
-  const operationId = uuidv7();
-  try {
-    await client.query(
-      "INSERT INTO command_operations (workspace_id, id, command_name, idempotency_key, request_hash, actor_id, status, expires_at) VALUES ($1, $2, $3, $4, $5, $6, 'FAILED_FINAL', now() + ($7 || ' days')::interval)",
-      [claims.workspaceId, operationId, RENAME_COMMAND, input.idempotencyKey, hash, actorId, String(REPLAY_RETENTION_DAYS)],
-    );
-  } catch (err) {
-    if ((err as { code?: string }).code !== "23505") throw err;
-    // Lost the race: the winner's row becomes visible on commit, so poll
-    // briefly before concluding. A rolled-back winner stays invisible and the
-    // caller retries the same key into a fresh claim.
-    let row: { operationId: string; status: string; requestHash: string; response: unknown; error: { code: CommandError["code"]; currentVersion?: string } | null; expiresAt: string } | undefined;
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const winner = await client.query(
-        "SELECT id AS \"operationId\", status, request_hash AS \"requestHash\", response_payload AS \"response\", error_payload AS \"error\", expires_at AS \"expiresAt\" FROM command_operations WHERE workspace_id = $1 AND command_name = $2 AND idempotency_key = $3",
-        [claims.workspaceId, RENAME_COMMAND, input.idempotencyKey],
+  // Bounded attempts: a lost race re-reads the winner; a rolled-back winner
+  // stays invisible and the claim is retried with the same key.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const operationId = uuidv7();
+    await client.query("SAVEPOINT command_claim");
+    let claimed = false;
+    try {
+      await client.query(
+        "INSERT INTO command_operations (workspace_id, id, command_name, idempotency_key, request_hash, actor_id, status, expires_at) VALUES ($1, $2, $3, $4, $5, $6, 'FAILED_FINAL', now() + ($7 || ' days')::interval)",
+        [claims.workspaceId, operationId, RENAME_COMMAND, input.idempotencyKey, hash, actorId, String(REPLAY_RETENTION_DAYS)],
       );
-      row = winner.rows[0] as typeof row;
-      if (row) break;
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      claimed = true;
+    } catch (err) {
+      if ((err as { code?: string }).code !== "23505") throw err;
+      // Lost the race: the failed INSERT aborted only to the savepoint, so
+      // the transaction (and the poll below) survives — unlike a bare 23505,
+      // which would poison the whole tx with 25P02 on the next statement.
+      await client.query("ROLLBACK TO SAVEPOINT command_claim");
     }
-    if (!row) throw new CommandError("version_mismatch");
-    if (new Date(row.expiresAt).getTime() <= Date.now()) throw new CommandError("idempotency_expired");
-    if (row.requestHash !== hash) throw new CommandError("idempotency_reuse");
-    if (row.status === "SUCCEEDED") return { view: row.response as AccountView, operationId: row.operationId, replayed: true };
-    throw new CommandError(row.error?.code ?? "version_mismatch", row.error?.currentVersion);
-  }
+    if (!claimed) {
+      // The winner's row becomes visible on commit; poll briefly.
+      let row: StoredOp | undefined;
+      for (let poll = 0; poll < 20; poll++) {
+        row = await readOp();
+        if (row) break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      if (row) return settle(row);
+      continue; // winner rolled back; retry the claim with the same key
+    }
 
-  const fail = async (code: CommandError["code"], currentVersion?: string): Promise<never> => {
-    await client.query("UPDATE command_operations SET status = 'FAILED_FINAL', error_payload = $1, completed_at = now() WHERE workspace_id = $2 AND id = $3", [
-      JSON.stringify(currentVersion === undefined ? { code } : { code, currentVersion }),
+    const fail = async (code: CommandError["code"], currentVersion?: string): Promise<TxOutcome> => {
+      await client.query("UPDATE command_operations SET status = 'FAILED_FINAL', error_payload = $1, completed_at = now() WHERE workspace_id = $2 AND id = $3", [
+        JSON.stringify(currentVersion === undefined ? { code } : { code, currentVersion }),
+        claims.workspaceId,
+        operationId,
+      ]);
+      return { ok: false, code, currentVersion };
+    };
+
+    // Single atomic compare-and-swap: no TOCTOU between check and mutate.
+    const updated = await client.query(
+      "UPDATE accounts SET name = $1, version = version + 1, updated_at = now() WHERE workspace_id = $2 AND id = $3 AND version = $4 RETURNING workspace_id, id, name, version",
+      [input.name, claims.workspaceId, input.accountId, expected.toString(10)],
+    );
+    if ((updated.rowCount ?? 0) === 0) {
+      const current = await client.query("SELECT version FROM accounts WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, input.accountId]);
+      if ((current.rowCount ?? 0) === 0) return fail("not_found");
+      return fail("version_mismatch", formatDecimalBigint(BigInt((current.rows[0] as { version: string }).version)));
+    }
+    const view = rowToView(updated.rows[0] as { workspace_id: string; id: string; name: string; version: string });
+    await client.query("UPDATE command_operations SET status = 'SUCCEEDED', response_payload = $1, completed_at = now() WHERE workspace_id = $2 AND id = $3", [
+      JSON.stringify(view),
       claims.workspaceId,
       operationId,
     ]);
-    throw new CommandError(code, currentVersion);
-  };
-
-  // Single atomic compare-and-swap: no TOCTOU between check and mutate.
-  const updated = await client.query(
-    "UPDATE accounts SET name = $1, version = version + 1, updated_at = now() WHERE workspace_id = $2 AND id = $3 AND version = $4 RETURNING workspace_id, id, name, version",
-    [input.name, claims.workspaceId, input.accountId, expected.toString(10)],
-  );
-  if ((updated.rowCount ?? 0) === 0) {
-    const current = await client.query("SELECT version FROM accounts WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, input.accountId]);
-    if ((current.rowCount ?? 0) === 0) return fail("not_found");
-    return fail("version_mismatch", formatDecimalBigint(BigInt((current.rows[0] as { version: string }).version)));
+    return { ok: true, result: { view, operationId, replayed: false } };
   }
-  const view = rowToView(updated.rows[0] as { workspace_id: string; id: string; name: string; version: string });
-  await client.query("UPDATE command_operations SET status = 'SUCCEEDED', response_payload = $1, completed_at = now() WHERE workspace_id = $2 AND id = $3", [
-    JSON.stringify(view),
-    claims.workspaceId,
-    operationId,
-  ]);
-  return { view, operationId, replayed: false };
+  throw new Error("command_claim_unsettled");
 }
 
 export async function renameAccount(
@@ -195,7 +221,9 @@ export async function renameAccount(
   const input = validateRenameInput(raw);
   if (input.workspaceId !== claims.workspaceId) throw new TenantDenied();
   if (!isUuid(input.accountId)) throw new TenantDenied();
-  return withTenant(pool, claims, (client) => renameAccountTx(client, claims, actorId, input));
+  const outcome = await withTenant(pool, claims, (client) => renameAccountTx(client, claims, actorId, input));
+  if (!outcome.ok) throw new CommandError(outcome.code, outcome.currentVersion);
+  return outcome.result;
 }
 
 export async function getAccountView(pool: Parameters<typeof withTenant>[0], claims: TenantClaims, accountId: string): Promise<AccountView | null> {

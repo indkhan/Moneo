@@ -136,14 +136,15 @@ export async function listWorkspaces(pool: Pool, authSubject: string): Promise<W
   });
 }
 
-export type Account = { workspaceId: string; id: string; name: string };
+export type Account = { workspaceId: string; id: string; name: string; version: string };
 
 export async function createAccount(pool: Pool, claims: TenantClaims, name: string): Promise<Account> {
   const clean = checkName(name);
   return withTenant(pool, claims, async (client) => {
     const id = uuidv7();
-    await client.query("INSERT INTO accounts (workspace_id, id, name) VALUES ($1, $2, $3)", [claims.workspaceId, id, clean]);
-    return { workspaceId: claims.workspaceId, id, name: clean };
+    const rows = await client.query("INSERT INTO accounts (workspace_id, id, name) VALUES ($1, $2, $3) RETURNING version", [claims.workspaceId, id, clean]);
+    const version = String((rows.rows[0] as { version: string }).version);
+    return { workspaceId: claims.workspaceId, id, name: clean, version };
   });
 }
 
@@ -153,21 +154,6 @@ function commandErrorBody(err: CommandError): { status: number; body: unknown } 
     return { status: 409, body: err.currentVersion === undefined ? { error: "conflict", reason: err.code } : { error: "conflict", reason: err.code, currentVersion: err.currentVersion } };
   }
   return { status: 409, body: { error: "conflict", reason: err.code } };
-}
-
-export async function listAccounts(pool: Pool, claims: TenantClaims): Promise<Account[]> {
-  return withTenant(pool, claims, async (client) => {
-    const rows = await client.query('SELECT workspace_id AS "workspaceId", id, name FROM accounts WHERE workspace_id = $1 ORDER BY created_at', [claims.workspaceId]);
-    return rows.rows as Account[];
-  });
-}
-
-export async function getAccount(pool: Pool, claims: TenantClaims, id: string): Promise<Account | null> {
-  if (!isUuid(id)) return null;
-  return withTenant(pool, claims, async (client) => {
-    const rows = await client.query('SELECT workspace_id AS "workspaceId", id, name FROM accounts WHERE workspace_id = $1 AND id = $2', [claims.workspaceId, id]);
-    return (rows.rows[0] as Account | undefined) ?? null;
-  });
 }
 
 // ---- HTTP boundary ----

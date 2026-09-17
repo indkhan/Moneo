@@ -197,11 +197,46 @@ describe("e01-s04 command contracts", () => {
     // Domain-level agreement: same codes without HTTP.
     const user = (await pool.query("SELECT id FROM users WHERE auth_subject = $1", ["synthetic-cmd-g"])).rows[0].id as string;
     const { withTenant } = await import("../apps/web/src/tenancy.ts");
-    const view = await withTenant(pool, { userId: user, workspaceId }, async (client) => {
+    const outcome = await withTenant(pool, { userId: user, workspaceId }, async (client) => {
       const { renameAccountTx } = await import("../apps/web/src/commands/accounts.ts");
       return renameAccountTx(client, { userId: user, workspaceId }, user, { workspaceId, accountId, name: "Direct", expectedVersion: "1", idempotencyKey: randomUUID() });
     });
-    expect(view.view.version).toBe("2");
+    if (!outcome.ok) throw new Error(`expected success, got ${outcome.code}`);
+    expect(outcome.result.view.version).toBe("2");
     expect(await getAccountView(pool, { userId: user, workspaceId }, accountId)).toMatchObject({ version: "2" });
+  });
+
+  it("failed commands journal their error: replays are deterministic, and races converge", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId, accountId } = await setupAccount(base, "synthetic-cmd-h");
+    const key = randomUUID();
+    const body = { workspaceId, accountId, name: "Never", expectedVersion: "7", idempotencyKey: key };
+    const first = await rename(base, cookie, body);
+    expect(first.status).toBe(409);
+    expect(first.json).toEqual({ error: "conflict", reason: "version_mismatch", currentVersion: "1" });
+    // Same key again AFTER a legitimate rename moved the version: the
+    // recorded error replays instead of re-executing against new state.
+    await rename(base, cookie, { workspaceId, accountId, name: "Legit", expectedVersion: "1", idempotencyKey: randomUUID() });
+    const replay = await rename(base, cookie, body);
+    expect(replay.status).toBe(409);
+    expect(replay.json).toEqual({ error: "conflict", reason: "version_mismatch", currentVersion: "1" });
+    // Ten parallel fresh-key renames on one version: exactly one winner.
+    const racy = await Promise.all(
+      Array.from({ length: 10 }, () => rename(base, cookie, { workspaceId, accountId, name: "Race", expectedVersion: "2", idempotencyKey: randomUUID() })),
+    );
+    expect(racy.filter((r) => r.status === 200)).toHaveLength(1);
+    // Ten parallel identical failing retries on one key: all converge on the
+    // single recorded outcome (B1 regression: no 503s, one journal row).
+    const failKey = randomUUID();
+    const failBody = { workspaceId, accountId, name: "SameFail", expectedVersion: "99", idempotencyKey: failKey };
+    const racyFail = await Promise.all(Array.from({ length: 10 }, () => rename(base, cookie, failBody)));
+    for (const r of racyFail) {
+      expect(r.status).toBe(409);
+      expect((r.json as { reason: string }).reason).toBe("version_mismatch");
+    }
+    const current = (await (await fetch(`${base}/api/accounts/${accountId}?workspaceId=${workspaceId}`, { headers: { cookie } })).json()) as { version: string };
+    for (const r of racyFail) {
+      expect(r.json).toEqual({ error: "conflict", reason: "version_mismatch", currentVersion: current.version });
+    }
   });
 });
