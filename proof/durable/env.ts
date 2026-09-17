@@ -62,7 +62,8 @@ export function loadProofEnv(): ProofEnv {
   }
   let redisHost = "";
   try {
-    redisHost = new URL(redisUrl).hostname;
+    // URL.hostname keeps IPv6 brackets (e.g. "[::1]"); strip them for compare.
+    redisHost = new URL(redisUrl).hostname.replace(/^\[(.*)\]$/, "$1");
   } catch {
     throw new Error("E00-S04 misconfigured: REDIS_URL is not a valid URL.");
   }

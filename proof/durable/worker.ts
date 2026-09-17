@@ -117,8 +117,10 @@ export async function publishEffect(
         return { ok: false, reason: "STALE_ATTEMPT" };
       }
       const cancelled = row.cancel_requested_at !== null || row.state === "CANCELLED";
+      // Never overwrite a terminal attempt record: a duplicate publish of an
+      // already-succeeded claim reports TERMINAL and leaves history intact.
       await client.query(
-        "UPDATE proof_attempts SET status = $2, completed_at = now() WHERE id = $1",
+        "UPDATE proof_attempts SET status = $2, completed_at = now() WHERE id = $1 AND status = 'RUNNING'",
         [claim.attemptId, cancelled ? "BLOCKED" : "STALE"],
       );
       await client.query("COMMIT");

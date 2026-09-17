@@ -69,6 +69,11 @@ topology, BullMQ Flows (PG workflow state is the durable graph per §194).
 
 ## Fault coverage (each a runnable test in `test/durable.test.ts`)
 
+Worker death is simulated by omitting the next protocol step at each
+persisted boundary (accept → dispatch → claim → publish); PG transaction
+atomicity is what makes the omitted step safe to replay. No live SIGKILL
+mid-handler is performed in this proof — E02-S02 should add one.
+
 - 20 concurrent identical submissions + duplicate dispatch → one effect.
 - Crash before dispatch / after enqueue-before-marking / during execution /
   after effect commit → no loss, no duplicate on recovery.
@@ -85,9 +90,10 @@ topology, BullMQ Flows (PG workflow state is the durable graph per §194).
   (204/191/253/268 ms across four runs) against a 30 s budget (Windows 11,
   i5-12450HX, 16 GiB RAM, PostgreSQL 18.6, Redis 7.0.15, BullMQ 6.3.6,
   Node v22.23.2).
-- Heartbeats are recorded as attempt rows; there is no BullMQ-competing
-  transport lock (§199). Production lease/heartbeat/reconcile values will be
-  set with real workload measurements in E02-S02.
+- Heartbeats: there is no periodic heartbeat in the proof and no
+  BullMQ-competing transport lock (§199); attempt started/completed
+  timestamps are the only liveness record. Production lease/heartbeat/
+  reconcile values will be set with real workload measurements in E02-S02.
 
 ## Decision carried forward
 

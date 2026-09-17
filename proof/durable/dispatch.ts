@@ -20,6 +20,10 @@ export async function dispatchOutbox(
   queue: Queue<ApplyJobData>,
   limit = 100,
 ): Promise<DispatchCounts> {
+  // Selected in autocommit, so SKIP LOCKED only skips rows locked by a
+  // concurrent dispatcher right now; the actual exactly-once mechanism is the
+  // deterministic job key (transport dedup) plus the idempotent PG fence, not
+  // the row lock.
   const claimed = await pool.query(
     `SELECT id, operation_id, tenant_id FROM proof_outbox
      WHERE published_at IS NULL AND available_at <= now()

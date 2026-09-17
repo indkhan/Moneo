@@ -238,6 +238,13 @@ describe("E00-S04 durable effects", () => {
       expect(await processApplyJob(pool, TENANT_A, operationId, "redelivery-worker", 5000)).toBe(
         "duplicate-terminal-noop",
       );
+      // A duplicate publish of the same already-succeeded claim reports
+      // TERMINAL and leaves the SUCCEEDED attempt record intact.
+      expect(await publishEffect(pool, TENANT_A, operationId, claim)).toEqual({
+        ok: false,
+        reason: "TERMINAL",
+      });
+      expect(await attemptStatuses(operationId)).toEqual(["SUCCEEDED"]);
       await drainUntil({ [TENANT_A]: 1 });
       expect(await effectCount(TENANT_A)).toBe(1);
     } finally {
@@ -347,6 +354,17 @@ describe("E00-S04 durable effects", () => {
       await queue.close();
     }
   }, 60000);
+
+  it("refuses a proof database override pointing at a shared database", async () => {
+    const appDb = new URL(env.appUrl).pathname.replace("/", "");
+    process.env.DURABLE_PROOF_DB = appDb;
+    try {
+      const bad = loadProofEnv();
+      await expect(ensureProofDatabase(bad)).rejects.toThrow("dedicated disposable database");
+    } finally {
+      delete process.env.DURABLE_PROOF_DB;
+    }
+  }, 30000);
 
   it("100 stalled commands recover within 30 seconds with zero missing/duplicate effects", async () => {
     const N = 100;
