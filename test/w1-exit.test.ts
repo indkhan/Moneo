@@ -14,7 +14,7 @@ import { createApp } from "../apps/web/src/server.ts";
 import { createAuthRouter, requestSession, type AuthConfig } from "../apps/web/src/auth.ts";
 import type { Session } from "../apps/web/src/session-store.ts";
 import { createControls } from "../apps/web/src/http-controls.ts";
-import { createTenancyRouter, TenantDenied, withTenant } from "../apps/web/src/tenancy.ts";
+import { createTenancyRouter, withTenant } from "../apps/web/src/tenancy.ts";
 import { getAccountView } from "../apps/web/src/commands/accounts.ts";
 import { createUiRouter } from "../apps/web/src/ui/routes.ts";
 import { ensureTestPool } from "./helpers/test-db.ts";

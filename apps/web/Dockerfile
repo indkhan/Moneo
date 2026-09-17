@@ -11,8 +11,8 @@ COPY apps/web/src apps/web/src
 RUN npm ci --ignore-scripts && \
     npx --no-install tsc -p apps/web/tsconfig.json && \
     npm prune --omit=dev
-# The runtime server has zero dependencies; the runtime layer copies only the
-# compiled dist output plus package.json metadata (no node_modules needed).
+# The runtime layer ships the compiled dist output plus the pruned production
+# modules (pg since E01-S02) and package.json metadata.
 
 FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS runtime
 ENV NODE_ENV=production APP_ENV=production
