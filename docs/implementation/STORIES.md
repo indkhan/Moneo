@@ -188,9 +188,39 @@ Status: Done
 
 ## E01-S02 — Authenticate and revoke application sessions
 
-Status: Draft | Dependencies: E01-S01
+Status: In progress | Release: R1 | Epic: E01
+Dependencies: E01-S01 (Done at `722155f`)
 
-Implement the selected Keycloak Authorization Code + PKCE flow and server-checked app sessions, logout/revocation, CSRF/origin protection and safe redirects. Acceptance: authenticated session works, expired/revoked session fails across API and reconnect, two sessions behave according to the contract, and errors reveal no tokens. Use the E00 identity decision. Verify the containerized identity integration separately from deterministic CI mocks.
+Outcome: Two synthetic users complete Keycloak Authorization Code + S256 PKCE sign-in against the app, receive server-checked httpOnly app sessions, and lose API + reconnect access on logout/revocation/expiry; CSRF, open-redirect and token-leak attacks fail closed.
+Contracts: Architecture R1 identity override (§9: pinned self-hosted Keycloak, Auth Code + PKCE, server-side sessions, local revocation; `start-dev` proof-only), §§416–489 security, §130 provider policy (dev/prod split — this story adds no AI calls); E00-S05 decision (pinned keycloak digest `sha256:82a7…`, PKCE browser proof, per-service secrets). No Auth0/Render/AWS paths.
+Scope: `apps/web/src/auth.ts` (PKCE login/callback/logout, HMAC-signed session cookies, state/nonce, relative-only redirects, Origin/Referer check on logout), `apps/web/src/session-store.ts` (PG-backed `app_sessions`: random 256-bit id, keycloak sub, issued/expires/revoked columns; every API read re-checks DB), `apps/web/migrations/001_sessions.sql` + minimal ordered migrator (no ORM; `pg` promoted to dependencies, same pin), `GET /api/me` server-checked endpoint + reconnect semantics (401 with no token payload), `test/auth.test.ts` deterministic suite against an in-test stub OIDC issuer (synthetic sub/keys, no network), `test/auth-keycloak-live.test.ts` bounded disposable-Keycloak gate (login, refresh-before, admin-logout, refresh-denied, secret isolation reuse from E00 proof; skipped without Docker, never CI-required).
+Out of scope: Workspaces/membership/RLS (S03), commands/money (S04), UI shell (S06), production Keycloak persistence/TLS/backups/hosting (E08 gates), WebAuthn enrollment (later slice; password flow in live gate is synthetic-only).
+
+Acceptance:
+1. Given a fresh stub-issuer login, when the callback completes with valid state/PKCE, then `/api/me` returns 200 with the synthetic sub and an `HttpOnly; SameSite=Lax; Path=/` session cookie is set (`Secure` on https deployments, plain-http local exempt); the cookie value is a random opaque id (no JWT/sub/token inside).
+2. Given a valid session, when logout revokes it (or expiry passes, or admin revocation is simulated at the store), then `/api/me` and a reconnect `GET /api/me` both return 401 JSON with no token/session material; the old cookie cannot be replayed.
+3. Given two concurrent sessions for synthetic users A and B, when A logs out, then B's `/api/me` still returns 200 and A's returns 401; sessions never cross.
+4. Given forged/missing state, wrong PKCE verifier, cross-tenant issuer (`iss` mismatch), expired stub code, absolute redirect target (`https://evil.invalid` / `//evil`), or cross-origin POST logout without Origin allowlist, then the flow fails closed (4xx, safe landing redirect `/` for GET) and error bodies/headers contain no tokens, codes or secrets.
+5. Given the disposable Keycloak container (manual gate), when browser PKCE login → refresh (200) → admin logout → refresh is attempted, then refresh is denied (400/401) exactly as in the E00 proof; app-side revocation (logout/expiry/store revocation) is proven deterministically in `test/auth.test.ts`. Known limitation: Keycloak logout does not propagate to app sessions — app sessions are purely local per the architecture's local-revocation contract, so a user logged out at Keycloak keeps their app session until app logout/expiry; propagation is out of R1 scope unless a later story needs it.
+
+Invariants: Tokens/codes/verifiers never enter logs, error bodies, redirects or committed files; session ids are CSPRNG 256-bit; cookies `HttpOnly; Secure (https only, plain-http local exempt); SameSite=Lax; Path=/`; HMAC key from `SESSION_SECRET` only (fail-closed when missing); issuer identity checked at discovery (exact `iss` match per OIDC Discovery 4.3, same-origin endpoints) plus confidential-client authentication at the token endpoint; user identity comes from the back-channel userinfo endpoint (no local JWT parsing, so no ID-token `aud` claim exists to check — deliberately, to avoid a JWT library).
+Failure lifecycle: Failed callback exchanges leave no session row (verified by count); double-logout is idempotent 200/204; expired sessions are lazily purged on read + bounded periodic delete (no unbounded growth); DB-down fails closed 503 with no session oracle (uniform 401/503, no existence signal).
+UI/accessibility: Not applicable — no browser UI in this slice (reason: S06 owns the shell; live gate drives Keycloak's own login form via Playwright as in E00).
+Data changes: Migration `001_sessions.sql` creates `app_sessions` + `schema_migrations`; rollback `001_sessions.rollback.sql` drops them (sessions are disposable pre-beta; documented data loss = forced re-login). No tenant tables yet.
+Observability: Redacted auth events (login_ok, logout_ok, callback_fail with reason code only, session_denied with no sub); `/api/me` 401 body `{error:"unauthorized"}`; no sub/token/cookie values logged.
+Limits: Stub-issuer suite <= 60 s; live Keycloak gate <= 5 min, disposable network/containers removed fail-closed; session id 256-bit, PKCE verifier 43–128 chars, state 256-bit, callback replay window single-use (code/verifier consumed on first exchange attempt); pending logins are single-use in-memory with 10-min TTL and 1000-entry cap — single-instance limit (no shared/Redis store until a story scales past one container).
+Verification: `npm run test:auth` 0 (new deterministic suite, real PG disposable DB `moneo_e01_test`, fails closed without PG); `npm run test:db` 0 (migrator atomicity incl. failing-file rollback); `npm run test:auth:live` manual bounded Keycloak gate (Docker; skipped without Docker); regression `npm run check`, `test:web`, `test:import`, `test:identity`, `test:durable`; `git diff --check`; tracked-file secret scan. Live gate separate from CI per E00 precedent. CI replay: disposable postgres:17-alpine container + the exact CI role/DB bootstrap SQL, then `test:auth` + `test:db` + `test:durable` against it.
+Review focus: Session fixation (login must rotate), cookie flags/scope, HMAC compare timing, PKCE/state single-use + storage, iss/aud checks, open-redirect allowlist, logout CSRF, error oracle (valid vs invalid session indistinguishable), migration rollback safety, scope creep toward workspaces/UI.
+Rollout/rollback: App-only; rollback = prior image + `001 rollback.sql` (forces re-login, no tenant data exists yet); known limitation: Keycloak realm config for staging deferred to the story that deploys staging identity (not this slice).
+
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s02-auth-revoke`
+- Base SHA: `02875995843dc663e950225b83e6dea80e8a449c` (corrected after review: earlier entry recorded a non-resolving truncation)
+- Tests: (to be recorded)
+- Review: (to be recorded)
+- Integration: (to be recorded)
+- Merge SHA / post-merge smoke: (to be recorded)
+- Remaining blockers or explicitly accepted nonblocking follow-up: (to be recorded)
 
 ## E01-S03 — Enforce tenant ownership in the database and API
 

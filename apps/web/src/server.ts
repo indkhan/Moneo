@@ -35,35 +35,59 @@ function drain(req: IncomingMessage): void {
   req.on("error", () => {});
 }
 
-export function createApp(): Server {
+export type AuthDelegate = {
+  handle: (req: import("node:http").IncomingMessage, res: ServerResponse, path: string, method: string, query: URLSearchParams) => Promise<boolean>;
+};
+
+export function createApp(auth?: AuthDelegate | null): Server {
   return createServer((req, res) => {
     drain(req);
     const method = req.method ?? "GET";
-    const path = (req.url ?? "/").split("?", 1)[0];
-    if (path === "/healthz" || path === "/readyz" || path === "/version") {
-      if (method !== "GET" && method !== "HEAD") {
-        json(res, 405, { error: "method_not_allowed" }, "GET");
-        return;
+    const rawUrl = req.url ?? "/";
+    const path = rawUrl.split("?", 1)[0];
+    const query = new URLSearchParams(rawUrl.includes("?") ? rawUrl.slice(rawUrl.indexOf("?") + 1) : "");
+    void (async () => {
+      try {
+        if (path === "/auth/login" || path === "/auth/callback" || path === "/auth/logout" || path === "/api/me") {
+          if (!auth) {
+            json(res, 503, { error: "auth_not_configured" });
+            return;
+          }
+          if (await auth.handle(req, res, path, method, query)) return;
+        }
+        if (path === "/healthz" || path === "/readyz" || path === "/version") {
+          if (method !== "GET" && method !== "HEAD") {
+            json(res, 405, { error: "method_not_allowed" }, "GET");
+            return;
+          }
+          const info = appInfo();
+          const body =
+            path === "/readyz"
+              ? { ready: true, checks: { build: "ok" }, ...info }
+              : { status: "ok", ...info };
+          if (method === "HEAD") {
+            res.writeHead(200, {
+              "Content-Type": "application/json; charset=utf-8",
+              "X-Content-Type-Options": "nosniff",
+              "X-Frame-Options": "DENY",
+              "Referrer-Policy": "no-referrer",
+            });
+            res.end();
+            return;
+          }
+          json(res, 200, body);
+          return;
+        }
+        json(res, 404, { error: "not_found" });
+      } catch {
+        // All request handling is fail-closed: an unexpected throw must not
+        // leak detail or leave the socket hanging.
+        try {
+          if (!res.headersSent) json(res, 503, { error: "unavailable" });
+          else res.destroy();
+        } catch { /* socket already gone */ }
       }
-      const info = appInfo();
-      const body =
-        path === "/readyz"
-          ? { ready: true, checks: { build: "ok" }, ...info }
-          : { status: "ok", ...info };
-      if (method === "HEAD") {
-        res.writeHead(200, {
-          "Content-Type": "application/json; charset=utf-8",
-          "X-Content-Type-Options": "nosniff",
-          "X-Frame-Options": "DENY",
-          "Referrer-Policy": "no-referrer",
-        });
-        res.end();
-        return;
-      }
-      json(res, 200, body);
-      return;
-    }
-    json(res, 404, { error: "not_found" });
+    })();
   });
 }
 
