@@ -1,5 +1,5 @@
 // E01-S03 tenant ownership: two synthetic users, isolated workspaces, real
-// PostgreSQL (`moneo_e01_test`, fails closed without PG). Proves API-level
+// PostgreSQL (`moneo_e01_tenancy`, fails closed without PG). Proves API-level
 // and database-level isolation, tenant-swapped denial, connection hygiene,
 // least-privilege role posture, FORCED RLS, and migration rollback.
 

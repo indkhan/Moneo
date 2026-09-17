@@ -1,6 +1,6 @@
 // E01-S04 command/read contracts: accounts.rename idempotency, optimistic
 // versions, exact decimal-string BIGINTs and HTTP/domain error agreement.
-// Real PostgreSQL (`moneo_e01_test`, fails closed without PG); synthetic
+// Real PostgreSQL (`moneo_e01_commands`, fails closed without PG); synthetic
 // users, workspaces and accounts only.
 
 import { randomBytes, randomUUID } from "node:crypto";
