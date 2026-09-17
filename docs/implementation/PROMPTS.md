@@ -211,33 +211,16 @@ mark a test passed from memory. Continue one story under the normal workflow
 and update the durable record with any recovered evidence or blocker.
 ```
 
-## Finish W0 audit, then run W1
+## Run W1 / E01 after the passed W0 exit
 
 ```text
 Act as the Moneo implementation orchestrator. Read AGENTS.md and every file in
 docs/implementation required by README.md. Inspect Git and the canonical story
-ledger before trusting status labels. Start from the W0 exit audit recorded on
-2026-09-17; do not start E01 while any reopened E00 dependency is incomplete.
+ledger before trusting status labels. Confirm the recorded W0 pass at merged
+revision `b3e0280acfdd563a9d4211a0344b477dec977656`; if the tree or status has
+changed, revalidate affected gates rather than reusing stale approval.
 
-Close E00-S03, E00-S04 and E00-S05 through the normal workflow. For S03 add the
-missing independently expected fee/refund, missing-balance and FX-gap proof
-cases required by architecture §540. For S04 use real child-process termination
-at the specified persisted boundaries against real disposable PostgreSQL and
-Redis, proving recovery and stale-attempt fencing. For S05 run the bounded live
-Auth0, Render-to-AWS OIDC and development OpenRouter probes; skipped live gates
-remain Blocked. Never print or commit credentials. If the required founder
-accounts, plan choices or credentials are absent, record the exact blocker,
-finish other authorized corrections, and stop before E01.
-
-For each correction: use a short-lived branch/worktree, add the smallest
-risk-specific check, commit, delegate independent adversarial review to a
-separate agent/task, fix findings, obtain re-review on the new SHA, test a
-latest-main integration candidate, merge only after all gates pass, run the
-post-merge smoke, and update STORIES.md with actual SHAs and results. Then run
-and record the complete W0 exit demonstration. Do not treat prior approval as
-covering new commits.
-
-Only after W0 passes, execute all of W1/E01 in dependency order E01-S01 through
+Execute all of W1/E01 in dependency order E01-S01 through
 E01-S06. Before assigning each Draft story, refine its canonical STORIES.md
 entry with STORY-TEMPLATE.md against the then-current code and authoritative
 product/architecture contracts; mark Ready only when implementation semantics,
@@ -251,7 +234,7 @@ Build the smallest consumed vertical slice. Reuse the proven E00 code where it
 fits; do not create the full conceptual package tree, generic command framework,
 blank services, staff console or R2/R3 placeholders. Use real PostgreSQL for
 tenant/RLS/transaction guarantees, deterministic synthetic fixtures in CI, and
-separate bounded live Auth0/deployment checks. Preserve exact decimal-string
+separate bounded live Keycloak/Docker deployment checks. Preserve exact decimal-string
 money and versions at JSON boundaries, deny tenant/policy access at every trust
 boundary, keep secrets and financial payloads out of logs/artifacts, and never
 weaken a failed gate to continue.
