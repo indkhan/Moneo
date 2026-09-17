@@ -66,8 +66,8 @@ jobs:
         run: git diff --check
       - name: Secret hygiene (tracked files only)
         run: |
-          test -z "$(git ls-files | grep -E '(^|/)\.env($|\.)' || true)"
-          test -z "$(git grep -nE 'BEGIN [A-Z ]*PRIVATE KEY|aws_secret_access_key|AKIA[0-9A-Z]{16}' -- . || true)"
+          test -z "$(git ls-files | grep -E '(^|/)\.env($|\.)' | grep -v '\.env\.example$' || true)"
+          test -z "$(git grep -nE 'BEGIN [A-Z ]*PRIVATE KEY|aws_secret_access_key|AKIA[0-9A-Z]{16}' -- . ':!.github/workflows/ci.yml' || true)"
           echo "secret scan: no findings in tracked files"
 
   staging-smoke:
