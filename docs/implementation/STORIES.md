@@ -176,13 +176,15 @@ Review focus: Secret inclusion in context/image/CI logs; over-broad Dockerfile (
 Rollout/rollback: Staging-only tags `moneo-web:staging-N`; rollback = re-tag/re-run prior image + health re-check; known limitation: no production TLS/persistent volumes — E08 gates own them.
 
 Execution record:
-- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s01-app-ci-slice` / main worktree branch
-- Base SHA: `1b972081c6c37ac455b20ff047dc698e93423533`
-- Tests: (to be recorded)
-- Review: (to be recorded)
-- Integration: (to be recorded)
-- Merge SHA / post-merge smoke: (to be recorded)
-- Remaining blockers or explicitly accepted nonblocking follow-up: (to be recorded)
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s01-app-ci-slice` (deleted after merge) / main worktree branch
+- Base SHA / implementation head SHA: base `1b972081c6c37ac455b20ff047dc698e93423533`; impl `b8af292`; fix `892a3c6`; scan-fix/reviewed `707705b`
+- Tests: `npm ci` 0 (0 vulnerabilities); `npm run typecheck` 0; `npm test` 0 (1/1); `npm run test:web` 0 (8/8 new health/version/shape/header/sentinel contract); `npm run test:import` 0 (26/26); `npm run test:identity` 0 (36/36); `npm run test:durable` 0 (12/12 real PG+Redis, 100-command recovery 884 ms; Redis WSL service restarted mid-run, suite fails closed otherwise); `npm run test:failure` exit 1 as intended (red-gate proof); `npm run build:web` 0; `npm run staging:smoke` PASS twice pre-merge (2nd run: prior-tag rollback re-served /healthz, restore re-probed); `git diff --check` 0; tracked-file secret scan 0 findings (GNU sh -e reproduced); no `.env` tracked; zero new dependencies. Env: Windows 11, Node v22.23.2/npm 10.9.8, Docker 29.7.2, node:22-alpine digest `sha256:c610…` (=v22.23.2/alpine 3.24.1), postgres:17-alpine `sha256:18cf…`, redis:7-alpine `sha256:ff02…`, keycloak `sha256:82a7…` (reserved for S02/S03).
+- Review: independent reviewer Pass with no blockers at `b8af292` (reproduced typecheck, web 8/8, import 26/26, identity 36/36, hostile probes, non-root/read-only container probe; 5 nonblocking notes). Fix cycle closed 4 (rollback restore+reprobe, JSON exact-prefix env check, `.env*` dockerignore, CI flag parity) at `892a3c6`; re-review found 1 blocker (CI hygiene self-matched `.env.example` + own pattern literal, red gate reproduced under sh -e). Scan-exclusion fix at `707705b`; final re-review Pass at `707705b` (exact step exit 0, positive/negative grep controls verified).
+- Integration: `git fetch origin main` — main and origin/main both `1b97208` (unchanged); merge-base == base; candidate == reviewed `707705b`; full candidate gates re-ran green (see Tests). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `722155f`; post-merge `npm run check` 0, `npm run build:web` 0, `npm run staging:smoke` PASS (candidate→current promote, prior-tag rollback + restore all serve /healthz 200), clean status.
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: broaden CI secret scan (e.g. gitleaks) as later hardening; `.Config.Env` null-guard one-liner on next smoke-script touch; staging timing limits (build ≤5 min, p95 <100 ms, smoke ≤3 min) not yet measured — first measurement due at W1 exit demo. Remote push/PR not performed (local-only merge, consistent with E00); GitHub branch protection pointing at `ci` unverified — verify when remote write is granted.
+
+Status: Done
 
 ## E01-S02 — Authenticate and revoke application sessions
 
