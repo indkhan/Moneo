@@ -1,14 +1,17 @@
-// E01-S02 production entrypoint: serves the S01 health surface always, and
-// the auth slice only when fully configured (issuer + client + secret +
-// database). Partial identity configuration refuses to start rather than
-// serving half-secured auth. Logs only the bound address and release, never
-// env values or request data.
+// E01-S06 production entrypoint: serves the S01 health surface always, and
+// the auth/tenancy/UI slices only when fully configured (issuer + client +
+// secret + database). Partial identity configuration refuses to start rather
+// than serving half-secured auth. Startup/request logs carry release,
+// addresses and redacted request lines only — never env values, request
+// data, subjects or tokens.
 
 import { join } from "node:path";
 import { createApp } from "./server.ts";
 import { createAuthRouter, requestSession } from "./auth.ts";
 import { createPool, migrate } from "./db.ts";
+import { createControls, type LogLine } from "./http-controls.ts";
 import { createTenancyRouter } from "./tenancy.ts";
+import { createUiRouter } from "./ui/routes.ts";
 
 const port = Number(process.env["PORT"] ?? "3000");
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -63,7 +66,18 @@ async function start(): Promise<void> {
     pool,
   );
   const tenancy = createTenancyRouter(pool, (req) => requestSession(pool, sessionSecret, req));
-  const server = createApp(router, tenancy);
+  const ui = createUiRouter(pool, (req) => requestSession(pool, sessionSecret, req), { appBaseUrl });
+  const controls = createControls({
+    logger: (line: LogLine) => console.log(JSON.stringify(line)),
+  });
+  const server = createApp(router, tenancy, {
+    ui,
+    controls,
+    dbPing: async () => {
+      const rows = await pool.query("SELECT 1 AS ok");
+      return (rows.rowCount ?? 0) === 1;
+    },
+  });
   server.on("clientError", (_err, socket) => socket.destroy());
   server.listen(port, "0.0.0.0", () => {
     console.log(`moneo-web listening on :${port} release=${process.env["APP_RELEASE"] ?? "dev"} auth=on`);

@@ -45,6 +45,18 @@ npm run start:web   # serves http://127.0.0.1:3000/healthz
 
 `GET /healthz`, `/readyz` and `/version` report only build metadata
 (release/gitSha); they never echo request data or environment secrets.
+`/readyz` additionally reflects database reachability when configured.
+
+## Web shell and operational controls
+
+With identity configured, the same server renders a zero-JavaScript HTML
+shell: `GET /` lists workspaces, `GET /w/:id` shows accounts with rename
+forms (backed by the idempotent command) and AI-exclusion toggles (backed
+by the policy gate). Every request gets a server-generated `X-Request-Id`
+that also appears in error pages; request logs carry only
+id/method/path/status/ms. Mutating/auth routes are rate-limited per client
+IP and the server caps in-flight requests; `/readyz` fails when the
+database is unreachable. Run the shell suite with `npm run test:ui`.
 Required CI is defined in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 and runs the same deterministic gates plus a staging image smoke. Run the
 synthetic staging smoke locally with `npm run staging:smoke` (needs Docker;
