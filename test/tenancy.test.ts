@@ -58,7 +58,9 @@ async function json(method: string, url: string, cookie: string, body?: unknown)
 }
 
 beforeAll(async () => {
-  pool = await ensureTestPool("E01-S03", "moneo_e01_test", ["command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
+  // Own database: parallel vitest workers must not share a database with a
+  // suite whose rollback test drops tables.
+  pool = await ensureTestPool("E01-S03", "moneo_e01_tenancy", ["command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
   stub = await startStubIssuer();
 }, 60_000);
 

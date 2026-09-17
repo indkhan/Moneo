@@ -50,7 +50,10 @@ jobs:
             -c "CREATE ROLE moneo_app LOGIN PASSWORD 'ci-synthetic-only';" \
             -c "CREATE DATABASE moneo_ci OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_durable_proof OWNER moneo_app;" \
-            -c "CREATE DATABASE moneo_e01_test OWNER moneo_app;"
+            -c "CREATE DATABASE moneo_e01_test OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_e01_db OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_e01_tenancy OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_e01_commands OWNER moneo_app;"
       - name: Install (lockfile)
         run: npm ci
       - name: Typecheck

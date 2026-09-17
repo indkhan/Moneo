@@ -74,7 +74,8 @@ async function rename(base: string, cookie: string, body: unknown): Promise<{ st
 }
 
 beforeAll(async () => {
-  pool = await ensureTestPool("E01-S04", "moneo_e01_test", ["command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
+  // Own database: parallel vitest workers must not share suite state.
+  pool = await ensureTestPool("E01-S04", "moneo_e01_commands", ["command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
   stub = await startStubIssuer();
 }, 60_000);
 
