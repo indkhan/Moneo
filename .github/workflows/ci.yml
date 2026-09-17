@@ -34,7 +34,7 @@ jobs:
           --health-interval 5s --health-timeout 3s --health-retries 10
     env:
       DATABASE_URL: postgresql://moneo_app:ci-synthetic-only@localhost:5432/moneo_ci
-      DATABASE_MIGRATION_URL: postgresql://moneo_app:ci-synthetic-only@localhost:5432/moneo_ci
+      DATABASE_MIGRATION_URL: postgresql://postgres:ci-synthetic-only@localhost:5432/postgres
       DURABLE_PROOF_DB: moneo_durable_proof
       DURABLE_PROOF_REDIS_DB: "15"
       REDIS_URL: redis://localhost:6379
@@ -56,6 +56,8 @@ jobs:
         run: npm run test:import
       - name: Identity deterministic checks
         run: npm run test:identity
+      - name: Auth session contract (real PG)
+        run: npm run test:auth
       - name: Durable effects (real PG + Redis)
         run: npm run test:durable
       - name: Deliberate failure must exit nonzero

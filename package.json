@@ -18,10 +18,15 @@
     "probe:identity": "vitest run test/identity-live.test.ts",
     "test:failure": "vitest run checks/deliberate-failure.test.ts",
     "test:web": "vitest run test/web-health.test.ts",
+    "test:auth": "vitest run test/auth.test.ts",
+    "test:auth:live": "vitest run test/auth-keycloak-live.test.ts",
     "build:web": "tsc -p apps/web/tsconfig.json",
     "start:web": "node apps/web/dist/main.js",
     "staging:smoke": "node scripts/staging-smoke.mjs",
     "check": "npm run typecheck && npm test && npm run test:web"
+  },
+  "dependencies": {
+    "pg": "8.23.0"
   },
   "devDependencies": {
     "@playwright/test": "1.62.0",
@@ -31,7 +36,6 @@
     "css-tree": "3.2.1",
     "fflate": "0.8.3",
     "ioredis": "5.11.1",
-    "pg": "8.23.0",
     "quickjs-emscripten": "0.32.0",
     "typescript": "7.0.2",
     "vite": "8.3.0",

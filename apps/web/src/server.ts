@@ -35,11 +35,34 @@ function drain(req: IncomingMessage): void {
   req.on("error", () => {});
 }
 
-export function createApp(): Server {
+export type AuthDelegate = {
+  handle: (req: import("node:http").IncomingMessage, res: ServerResponse, path: string, method: string, query: URLSearchParams) => Promise<boolean>;
+};
+
+export function createApp(auth?: AuthDelegate | null): Server {
   return createServer((req, res) => {
     drain(req);
     const method = req.method ?? "GET";
-    const path = (req.url ?? "/").split("?", 1)[0];
+    const rawUrl = req.url ?? "/";
+    const path = rawUrl.split("?", 1)[0];
+    const query = new URLSearchParams(rawUrl.includes("?") ? rawUrl.slice(rawUrl.indexOf("?") + 1) : "");
+    void (async () => {
+      try {
+        if (path === "/auth/login" || path === "/auth/callback" || path === "/auth/logout" || path === "/api/me") {
+          if (!auth) {
+            json(res, 503, { error: "auth_not_configured" });
+            return;
+          }
+          if (await auth.handle(req, res, path, method, query)) return;
+        }
+      } catch {
+        // Auth failures are fail-closed inside the delegate; an unexpected
+        // throw here must not leak detail or leave the socket hanging.
+        try {
+          json(res, 503, { error: "auth_unavailable" });
+        } catch { /* socket already gone */ }
+        return;
+      }
     if (path === "/healthz" || path === "/readyz" || path === "/version") {
       if (method !== "GET" && method !== "HEAD") {
         json(res, 405, { error: "method_not_allowed" }, "GET");
@@ -64,6 +87,7 @@ export function createApp(): Server {
       return;
     }
     json(res, 404, { error: "not_found" });
+    })();
   });
 }
 
