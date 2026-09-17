@@ -23,6 +23,7 @@
     "test:tenancy": "vitest run test/tenancy.test.ts",
     "test:commands": "vitest run test/commands.test.ts",
     "test:money": "vitest run test/money.test.ts",
+    "test:policy": "vitest run test/ai-policy.test.ts",
     "test:auth:live": "vitest run test/auth-keycloak-live.test.ts",
     "build:web": "tsc -p apps/web/tsconfig.json",
     "start:web": "node apps/web/dist/main.js",

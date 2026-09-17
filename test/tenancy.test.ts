@@ -60,7 +60,7 @@ async function json(method: string, url: string, cookie: string, body?: unknown)
 beforeAll(async () => {
   // Own database: parallel vitest workers must not share a database with a
   // suite whose rollback test drops tables.
-  pool = await ensureTestPool("E01-S03", "moneo_e01_tenancy", ["command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
+  pool = await ensureTestPool("E01-S03", "moneo_e01_tenancy", ["ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
   stub = await startStubIssuer();
 }, 60_000);
 
@@ -218,13 +218,13 @@ describe("e01-s03 tenant ownership", () => {
     }
   });
 
-  it("migrations 003 then 002 roll back and re-apply on the suite database", async () => {
+  it("migrations 004 then 003 then 002 roll back and re-apply on the suite database", async () => {
     const { readFileSync } = await import("node:fs");
-    // Newest first: 002's rollback drops the accounts table that carries
-    // 003's version column, so 003 must roll back first while 003_commands
-    // is still recorded — otherwise re-migrate never restores the column
-    // and later suites sharing this database lose it (B3).
-    for (const file of ["003_commands.rollback.sql", "002_tenancy.rollback.sql"]) {
+    // Newest first: 004's exclusions reference accounts, and 002's rollback
+    // drops the accounts table that carries 003's version column, so 004
+    // then 003 must roll back first while recorded — otherwise re-migrate
+    // never restores the dependent objects.
+    for (const file of ["004_ai_policy.rollback.sql", "003_commands.rollback.sql", "002_tenancy.rollback.sql"]) {
       const sql = readFileSync(`apps/web/migrations/${file}`, "utf8");
       const admin = await pool.connect();
       try {
@@ -240,13 +240,13 @@ describe("e01-s03 tenant ownership", () => {
         admin.release();
       }
     }
-    const gone = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations')");
+    const gone = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations', 'ai_policies', 'ai_exclusions', 'ai_dispatch_permits')");
     expect((gone.rows[0] as { n: number }).n).toBe(0);
     // Self-healing: the idempotent migrator restores the full shape,
-    // including 003's version column and journal.
+    // including 003's version column/journal and the 004 policy tables.
     await migrate(pool, "apps/web/migrations");
-    const back = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations')");
-    expect((back.rows[0] as { n: number }).n).toBe(5);
+    const back = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations', 'ai_policies', 'ai_exclusions', 'ai_dispatch_permits')");
+    expect((back.rows[0] as { n: number }).n).toBe(8);
     const versionCol = await pool.query("SELECT 1 FROM information_schema.columns WHERE table_name = 'accounts' AND column_name = 'version'");
     expect(versionCol.rowCount).toBe(1);
   });
