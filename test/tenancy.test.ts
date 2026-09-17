@@ -88,7 +88,7 @@ describe("e01-s03 tenant ownership", () => {
 
     // Lists are scoped.
     const listA = await json("GET", `${base}/api/accounts?workspaceId=${wsA.body.id}`, cookieA);
-    expect(listA.body).toEqual({ accounts: [{ workspaceId: wsA.body.id, id: acctA.body.id, name: "Checking A" }] });
+    expect(listA.body).toEqual({ accounts: [{ workspaceId: wsA.body.id, id: acctA.body.id, name: "Checking A", version: "1" }] });
     const listWSA = await json("GET", `${base}/api/workspaces`, cookieA);
     expect((listWSA.body as { workspaces: { id: string }[] }).workspaces.map((w) => w.id)).toEqual([wsA.body.id]);
 

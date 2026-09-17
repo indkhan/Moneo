@@ -21,6 +21,8 @@
     "test:auth": "vitest run test/auth.test.ts",
     "test:db": "vitest run test/db-migrate.test.ts",
     "test:tenancy": "vitest run test/tenancy.test.ts",
+    "test:commands": "vitest run test/commands.test.ts",
+    "test:money": "vitest run test/money.test.ts",
     "test:auth:live": "vitest run test/auth-keycloak-live.test.ts",
     "build:web": "tsc -p apps/web/tsconfig.json",
     "start:web": "node apps/web/dist/main.js",

@@ -69,6 +69,8 @@ jobs:
         run: npm run test:db
       - name: Tenant isolation (real PG)
         run: npm run test:tenancy
+      - name: Command contracts and money goldens
+        run: npm run test:commands && npm run test:money
       - name: Durable effects (real PG + Redis)
         run: npm run test:durable
       - name: Deliberate failure must exit nonzero
