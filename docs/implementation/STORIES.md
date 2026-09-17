@@ -328,13 +328,15 @@ Review focus: Eligibility bypass (any selection path skipping exclusions); wildc
 Rollout/rollback: App-only; rollback = prior image + `004 rollback.sql` (destroys synthetic policy rows; permits die with the table). Known limitation: already-dispatched sends cannot be recalled (stated, §538-conformant).
 
 Execution record:
-- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s05-ai-policy`
-- Base SHA: `58b6f19e97bc23dc6470a3414c067e78aff3f8a2`
-- Tests: (to be recorded)
-- Review: (to be recorded)
-- Integration: (to be recorded)
-- Merge SHA / post-merge smoke: (to be recorded)
-- Remaining blockers or explicitly accepted nonblocking follow-up: (to be recorded)
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s05-ai-policy` (deleted after merge)
+- Base SHA / heads: base `58b6f19e97bc23dc6470a3414c067e78aff3f8a2`; impl `b54113f`; fix/reviewed `26087ae`
+- Tests: `npm run typecheck` 0; `test:policy` 0 (6/6 real PG own DB: sentinel non-leak incl. non-vacuous presence + tripwire, invalidation with INVALIDATED-vs-stale split, unknown-deny + no future coverage, tenant isolation + monotonic versions, B1 race interleaving, N5 no-op stability); regression harness 1/1, web 8/8, auth 13/13, db 2/2, tenancy 6/6, commands 8/8, money 4/4, import 26/26, identity 36/36, durable 12/12; `build:web` 0; `git diff --check` 0. Notable debug: PUT-body hang (S03 discard rule covered POST readers only; PUT exclusions hung on `end`) — fixed by POST+PUT reader rule, suite ~2 s. Older suites' truncate/rollback chains extended for 004 FKs (accepted per-migration maintenance).
+- Review: Changes-requested at `b54113f` with one reproduced blocker — B1 issuePermit snapshot race (exclusion committing between reads stamped pre-change data post-change; reviewer deterministically reproduced dispatch of excluded data) — plus 6 nonblocking notes. Fix `26087ae`: FOR UPDATE-serialized issuance, selectEligible expiry + sole-authorization doc, test-dispatch allowlist + APP_ENV=test pin, id dedupe, JSONB array CHECK, no-op skip, bounded fake log; re-review Pass at `26087ae` incl. deterministic lock-schedule probe (writer blocked mid-snapshot → pre-change permit invalidated, zero post-change leaks), 20-round fuzz (100/100 consistent), APP_ENV matrix 7/7.
+- Integration: `git fetch origin main` — origin/main stale (local-only merges); local main at base `58b6f19` unchanged; merge-base == base; candidate == reviewed `26087ae`; full candidate gates green (see Tests). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `972def9`; post-merge `npm run check`, `test:policy` 6/6, clean status.
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: race test probabilistic (deterministic backstop = reviewer R1/R2 probes, recorded); fresh-install 004 replay unobserved (CI fresh-install proves on first push); CI run itself unobserved — first push proves it.
+
+Status: Done
 
 ## E01-S06 — Add minimal shell, telemetry and safe operational controls
 
