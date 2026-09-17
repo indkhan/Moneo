@@ -12,6 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run test/harness.test.ts",
     "test:import": "vitest run test/import.test.ts",
+    "test:identity": "vitest run test/identity.test.ts",
+    "probe:identity": "vitest run test/identity-live.test.ts",
     "test:failure": "vitest run checks/deliberate-failure.test.ts",
     "check": "npm run typecheck && npm test"
   },
