@@ -66,7 +66,7 @@ async function start(): Promise<void> {
     pool,
   );
   const tenancy = createTenancyRouter(pool, (req) => requestSession(pool, sessionSecret, req));
-  const ui = createUiRouter(pool, (req) => requestSession(pool, sessionSecret, req), { appBaseUrl });
+  const ui = createUiRouter(pool, (req) => requestSession(pool, sessionSecret, req), { appBaseUrl, sessionSecret });
   const controls = createControls({
     logger: (line: LogLine) => console.log(JSON.stringify(line)),
   });

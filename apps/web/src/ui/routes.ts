@@ -10,11 +10,13 @@ import { isUuid } from "../ids.ts";
 import { CommandError, renameAccount, validateRenameInput } from "../commands/accounts.ts";
 import { getPolicy, PolicyError, setAccountExclusion, summarizeEligible } from "../ai-policy.ts";
 import { getAccountView, listAccountViews } from "../commands/accounts.ts";
-import { listWorkspaces, sessionClaims, TenantInvalid, type SessionResolver } from "../tenancy.ts";
+import { revokeRequestSession } from "../auth.ts";
+import { listWorkspaces, sessionClaims, TenantDenied, TenantInvalid, type SessionResolver } from "../tenancy.ts";
 import { errorPage, escapeHtml, page } from "./shell.ts";
 
 export type UiConfig = {
   appBaseUrl: string;
+  sessionSecret: string;
   onEvent?: (code: string) => void;
 };
 
@@ -81,7 +83,8 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
     if ((path === "/" || path === "/index.html") && method === "GET") {
       const me = await authedOf();
       if (!me) {
-        html(res, 200, page({ title: "Moneo", requestId, authed: false, content: `<p>Sign in to see your workspaces.</p><p><a href="/auth/login">Log in</a></p>` }));
+        const notice = query.get("notice") === "logged-out" ? "Signed out." : undefined;
+        html(res, 200, page({ title: "Moneo", requestId, authed: false, notice, content: `<p>Sign in to see your workspaces.</p><p><a href="/auth/login">Log in</a></p>` }));
         return true;
       }
       const spaces = await listWorkspaces(pool, me.sub);
@@ -107,11 +110,21 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
         html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace.", back: "/", requestId, authed: true }));
         return true;
       }
-      const [accounts, policy, summary] = await Promise.all([
-        listAccountViews(pool, resolved.claim),
-        getPolicy(pool, resolved.claim),
-        summarizeEligible(pool, resolved.claim),
-      ]);
+      let accounts, policy, summary;
+      try {
+        [accounts, policy, summary] = await Promise.all([
+          listAccountViews(pool, resolved.claim),
+          getPolicy(pool, resolved.claim),
+          summarizeEligible(pool, resolved.claim),
+        ]);
+      } catch (err) {
+        if (err instanceof TenantDenied) {
+          event("ui_denied:workspace");
+          html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace.", back: "/", requestId, authed: true }));
+          return true;
+        }
+        throw err;
+      }
       const excluded = new Set(policy.excludedAccountIds);
       const rows =
         accounts.length === 0
@@ -143,17 +156,31 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
       return true;
     }
 
+    // Browser logout bridge: the JSON /auth/logout endpoint cannot navigate,
+    // so the shell posts here for revoke-then-land behavior (zero-JS flow).
+    if (path === "/logout" && method === "POST") {
+      if (!sameOrigin(req, config.appBaseUrl)) {
+        event("ui_denied:origin");
+        html(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: "/", requestId, authed: true }));
+        return true;
+      }
+      await revokeRequestSession(pool, config.sessionSecret, req);
+      res.writeHead(303, { Location: "/?notice=logged-out" });
+      res.end();
+      return true;
+    }
+
     const actionMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/(rename|exclusions)$/);
     if (actionMatch && method === "POST" && actionMatch[2] === "rename") {
       const workspaceId = actionMatch[1];
       if (!sameOrigin(req, config.appBaseUrl)) {
         event("ui_denied:origin");
-        html(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: `/w/${escapeHtml(workspaceId)}`, requestId, authed: true }));
+        html(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: `/w/${workspaceId}`, requestId, authed: true }));
         return true;
       }
       const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
       if (!resolved.claim) {
-        const authed = (await resolveSession(req)) !== null;
+        const authed = resolved.session !== null;
         html(res, authed ? 404 : 401, errorPage({ status: authed ? 404 : 401, heading: authed ? "Not found" : "Sign in required", message: "No such workspace.", back: "/", requestId, authed }));
         return true;
       }
@@ -165,6 +192,26 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
         expectedVersion: form?.get("expectedVersion") ?? "",
         idempotencyKey: form?.get("idempotencyKey") ?? "",
       };
+      const conflictShell = async (heading: string, message: string, status: number): Promise<void> => {
+        // Fresh-key retry form: a conflicted key must never be resubmitted.
+        const current = typeof raw.accountId === "string" && isUuid(raw.accountId) ? await getAccountView(pool, resolved.claim!, raw.accountId).catch(() => null) : null;
+        event("ui_command_conflict:rename");
+        html(
+          res,
+          status,
+          page({
+            title: heading,
+            requestId,
+            authed: true,
+            content: `<div class="alert" role="alert"><h2>${escapeHtml(heading)}</h2><p>${escapeHtml(message)}</p><p><a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p></div>
+              ${
+              current
+                ? `<form method="post" action="/w/${escapeHtml(workspaceId)}/rename"><input type="hidden" name="accountId" value="${escapeHtml(current.id)}"><input type="hidden" name="expectedVersion" value="${escapeHtml(current.version)}"><input type="hidden" name="idempotencyKey" value="${randomUUID()}"><label>New name <input name="name" required maxlength="200" value="${escapeHtml(typeof raw.name === "string" ? raw.name : current.name)}"></label> <button type="submit">Retry rename</button></form>`
+                : ``
+            }`,
+          }),
+        );
+      };
       try {
         const input = validateRenameInput(raw);
         await renameAccount(pool, resolved.claim, resolved.claim.userId, input);
@@ -173,29 +220,18 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
         res.end();
         return true;
       } catch (err) {
-        if (err instanceof CommandError && err.code === "version_mismatch") {
-          const current = await getAccountView(pool, resolved.claim, typeof raw.accountId === "string" ? raw.accountId : "");
-          event("ui_command_conflict:rename");
-          html(
-            res,
-            409,
-            page({
-              title: "Rename conflict",
-              requestId,
-              authed: true,
-              content: `<div class="alert" role="alert"><h2>Someone else changed this account</h2><p>Current version is ${escapeHtml(err.currentVersion ?? "?")}. Review and retry.</p><p><a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p></div>
-              ${
-                current
-                  ? `<form method="post" action="/w/${escapeHtml(workspaceId)}/rename"><input type="hidden" name="accountId" value="${escapeHtml(current.id)}"><input type="hidden" name="expectedVersion" value="${escapeHtml(current.version)}"><input type="hidden" name="idempotencyKey" value="${randomUUID()}"><label>New name <input name="name" required maxlength="200" value="${escapeHtml(typeof raw.name === "string" ? raw.name : current.name)}"></label> <button type="submit">Retry rename</button></form>`
-                  : ``
-              }`,
-            }),
-          );
+        if (err instanceof CommandError && (err.code === "version_mismatch" || err.code === "idempotency_reuse" || err.code === "idempotency_expired")) {
+          const message =
+            err.code === "version_mismatch"
+              ? `Someone else changed this account. Current version is ${err.currentVersion ?? "unknown"}. Review and retry.`
+              : `This form was already submitted (${err.code === "idempotency_reuse" ? "changed values" : "expired key"}). Review the current values and retry with a fresh form.`;
+          await conflictShell("Rename conflict", message, 409);
           return true;
         }
-        if (err instanceof CommandError || err instanceof TenantInvalid) {
+        if (err instanceof CommandError || err instanceof TenantInvalid || err instanceof TenantDenied) {
           event("ui_command_denied:rename");
-          html(res, err instanceof CommandError && err.code === "not_found" ? 404 : 400, errorPage({ status: err instanceof CommandError && err.code === "not_found" ? 404 : 400, heading: "Rename failed", message: "Check the values and retry.", back: `/w/${escapeHtml(workspaceId)}`, requestId, authed: true }));
+          const status = err instanceof CommandError && err.code === "not_found" ? 404 : err instanceof TenantDenied ? 404 : 400;
+          html(res, status, errorPage({ status, heading: status === 404 ? "Not found" : "Rename failed", message: status === 404 ? "No such workspace or account." : "Check the values and retry.", back: `/w/${workspaceId}`, requestId, authed: true }));
           return true;
         }
         throw err;
@@ -206,12 +242,12 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
       const workspaceId = actionMatch[1];
       if (!sameOrigin(req, config.appBaseUrl)) {
         event("ui_denied:origin");
-        html(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: `/w/${escapeHtml(workspaceId)}`, requestId, authed: true }));
+        html(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: `/w/${workspaceId}`, requestId, authed: true }));
         return true;
       }
       const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
       if (!resolved.claim) {
-        const authed = (await resolveSession(req)) !== null;
+        const authed = resolved.session !== null;
         html(res, authed ? 404 : 401, errorPage({ status: authed ? 404 : 401, heading: authed ? "Not found" : "Sign in required", message: "No such workspace.", back: "/", requestId, authed }));
         return true;
       }
@@ -219,7 +255,7 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
       const accountId = form?.get("accountId") ?? "";
       const excluded = form?.get("excluded") === "true";
       if (!isUuid(accountId)) {
-        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such account.", back: `/w/${escapeHtml(workspaceId)}`, requestId, authed: true }));
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such account.", back: `/w/${workspaceId}`, requestId, authed: true }));
         return true;
       }
       try {
@@ -228,8 +264,9 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
         res.end();
         return true;
       } catch (err) {
-        if (err instanceof PolicyError) {
-          html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such account.", back: `/w/${escapeHtml(workspaceId)}`, requestId, authed: true }));
+        if (err instanceof PolicyError || err instanceof TenantDenied) {
+          event("ui_denied:exclusion");
+          html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace or account.", back: `/w/${workspaceId}`, requestId, authed: true }));
           return true;
         }
         throw err;

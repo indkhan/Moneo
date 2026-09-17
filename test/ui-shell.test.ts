@@ -34,7 +34,7 @@ async function startApp(opts: { limits?: { authMax?: number; mutatingMax?: numbe
     sessionSecret,
     sessionTtlSec: 43200,
   };
-  const uiConfig = { appBaseUrl: "http://127.0.0.1:1" };
+  const uiConfig = { appBaseUrl: "http://127.0.0.1:1", sessionSecret };
   const resolve = (req: IncomingMessage): Promise<Session | null> => requestSession(pool, sessionSecret, req);
   const server = createApp(createAuthRouter(config, pool), createTenancyRouter(pool, resolve), {
     ui: createUiRouter(pool, resolve, uiConfig),
@@ -163,15 +163,60 @@ describe("e01-s06 shell and controls", () => {
     const { base } = await startApp();
     const a = await login(base, "synthetic-ui-d");
     const b = await login(base, "synthetic-ui-e");
+    // Both users hold rows (own workspaces): membership, not user existence,
+    // decides. A cross-read must 404-shell, never 503-JSON (B1 regression).
+    await setupWorkspace(base, a.cookie, "A's own");
     const wsB = await setupWorkspace(base, b.cookie, "B's own");
-    const page = await fetch(`${base}/w/${wsB}`, { headers: { cookie: a.cookie } });
-    expect(page.status).toBe(404);
-    const html = await page.text();
-    expect(html).toContain('role="alert"');
-    expect(html).not.toContain("B&#39;s own");
-    expect(html).not.toContain("B's own");
+    const getPage = await fetch(`${base}/w/${wsB}`, { headers: { cookie: a.cookie } });
+    expect(getPage.status).toBe(404);
+    expect(await getPage.text()).toContain('role="alert"');
+    for (const action of ["rename", "exclusions"]) {
+      const fields: Record<string, string> = action === "rename"
+        ? { accountId: randomUUID(), name: "X", expectedVersion: "1", idempotencyKey: randomUUID() }
+        : { accountId: randomUUID(), excluded: "true" };
+      const f = form(fields);
+      const acted = await fetch(`${base}/w/${wsB}/${action}`, { method: "POST", headers: { cookie: a.cookie, origin: base, ...f.headers }, body: f.payload, redirect: "manual" });
+      expect(acted.status).toBe(404);
+      const html = await acted.text();
+      expect(html).toContain('role="alert"');
+      expect(html).not.toContain("B&#39;s own");
+      expect(html).not.toContain("B's own");
+    }
     const anon = await fetch(`${base}/w/${wsB}`);
     expect(anon.status).toBe(401);
+  });
+
+  it("logout bridge revokes and lands back home", async () => {
+    const { base } = await startApp();
+    const { cookie } = await login(base, "synthetic-ui-logout");
+    const out = await fetch(`${base}/logout`, { method: "POST", headers: { cookie, origin: base }, redirect: "manual" });
+    expect(out.status).toBe(303);
+    expect(out.headers.get("location")).toBe("/?notice=logged-out");
+    const landing = await fetch(`${base}/?notice=logged-out`, { headers: { cookie } });
+    expect((await landing.text())).toContain("Signed out.");
+    expect((await fetch(`${base}/api/me`, { headers: { cookie } })).status).toBe(401);
+    const cross = await fetch(`${base}/logout`, { method: "POST", headers: { cookie, origin: "https://evil.invalid" }, redirect: "manual" });
+    expect(cross.status).toBe(403);
+  });
+
+  it("spent idempotency keys surface a 409 shell with a fresh retry form", async () => {
+    const { base } = await startApp();
+    const { cookie } = await login(base, "synthetic-ui-reuse");
+    const ws = await setupWorkspace(base, cookie, "W");
+    const id = await setupAccount(base, cookie, ws, "Old");
+    const key = randomUUID();
+    const post = (body: Record<string, string>) => {
+      const f = form(body);
+      return fetch(`${base}/w/${ws}/rename`, { method: "POST", headers: { cookie, origin: base, ...f.headers }, body: f.payload, redirect: "manual" });
+    };
+    expect((await post({ accountId: id, name: "One", expectedVersion: "1", idempotencyKey: key })).status).toBe(303);
+    const reuse = await post({ accountId: id, name: "Two", expectedVersion: "2", idempotencyKey: key });
+    expect(reuse.status).toBe(409);
+    const html = await reuse.text();
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('name="idempotencyKey"');
+    // The retry form carries a FRESH key, never the spent one.
+    expect(html).not.toContain(key);
   });
 
   it("exclusion toggles post back with the new policy version", async () => {
@@ -219,7 +264,8 @@ describe("e01-s06 shell and controls", () => {
     // Mutating budget is per-IP (2 used by setup): further POSTs are 429…
     const limited = await fetch(`${base}/api/accounts`, { method: "POST", headers: { cookie, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: ws, name: "B" }) });
     expect(limited.status).toBe(429);
-    expect(await limited.json()).toEqual({ error: "rate_limited" });
+    expect(limited.headers.get("retry-after")).toBeDefined();
+    expect(await limited.json()).toMatchObject({ error: "rate_limited" });
     // …JSON by default and HTML when the client prefers it.
     const f = form({ accountId: id, name: "Z", expectedVersion: "1", idempotencyKey: randomUUID() });
     const page = await fetch(`${base}/w/${ws}/rename`, { method: "POST", headers: { cookie, origin: base, Accept: "text/html", ...f.headers }, body: f.payload, redirect: "manual" });

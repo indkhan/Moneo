@@ -22,9 +22,11 @@ export type ControlsConfig = {
   clock?: () => number;
 };
 
+export type GateState = { id: string; started: number; admitted: boolean; reject?: 429 | 503; retryAfterSec?: number };
+
 export type Controls = {
-  begin: (req: IncomingMessage, res: ServerResponse) => { id: string; started: number; admitted: boolean; reject?: 429 | 503 };
-  finish: (state: { id: string; started: number; admitted: boolean }, method: string, path: string, status: number) => void;
+  begin: (req: IncomingMessage, res: ServerResponse) => GateState;
+  finish: (state: GateState, method: string, path: string, status: number) => void;
 };
 
 function bucketOf(path: string, method: string): "auth" | "mutating" | "read" {
@@ -37,10 +39,13 @@ export function createControls(config: ControlsConfig = {}): Controls {
   const logger = config.logger ?? (() => {});
   const clock = config.clock ?? Date.now;
   const authWindow = config.authWindowMs ?? 60_000;
-  const authMax = config.authMax ?? 30;
+  // Degenerate max=0 would admit exactly one request per window; clamp to an
+  // explicit closed state instead (callers wanting closed use maxInflight: 0,
+  // which rejects everything deterministically).
+  const authMax = Math.max(1, config.authMax ?? 30);
   const mutatingWindow = config.mutatingWindowMs ?? 60_000;
-  const mutatingMax = config.mutatingMax ?? 120;
-  const maxInflight = config.maxInflight ?? 128;
+  const mutatingMax = Math.max(1, config.mutatingMax ?? 120);
+  const maxInflight = Math.max(0, config.maxInflight ?? 128);
   const counts = new Map<string, { count: number; resetAt: number }>();
   let inflight = 0;
 
@@ -52,7 +57,7 @@ export function createControls(config: ControlsConfig = {}): Controls {
       try {
         res.setHeader("X-Request-Id", id);
       } catch { /* headers already sent; id still returned for logs */ }
-      if (inflight >= maxInflight) return { id, started, admitted: false, reject: 503 };
+      if (inflight >= maxInflight) return { id, started, admitted: false, reject: 503, retryAfterSec: 1 };
       const ip = req.socket.remoteAddress ?? "unknown";
       const rawUrl = req.url ?? "/";
       const path = rawUrl.split("?", 1)[0];
@@ -72,7 +77,7 @@ export function createControls(config: ControlsConfig = {}): Controls {
         if (!entry || entry.resetAt <= now) {
           counts.set(key, { count: 1, resetAt: now + windowMs });
         } else if (entry.count >= max) {
-          return { id, started, admitted: false, reject: 429 };
+          return { id, started, admitted: false, reject: 429, retryAfterSec: Math.max(1, Math.ceil((entry.resetAt - now) / 1000)) };
         } else {
           entry.count += 1;
         }

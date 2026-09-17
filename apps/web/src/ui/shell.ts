@@ -23,7 +23,7 @@ const STYLE = [
 export function page(opts: { title: string; requestId: string; authed: boolean; notice?: string; content: string }): string {
   const notice = opts.notice ? `<div class="notice" role="status"><p>${escapeHtml(opts.notice)}</p></div>` : "";
   const nav = opts.authed
-    ? `<ul><li><a href="/">Workspaces</a></li><li><form class="inline" method="post" action="/auth/logout"><button type="submit">Log out</button></form></li></ul>`
+    ? `<ul><li><a href="/">Workspaces</a></li><li><form class="inline" method="post" action="/logout"><button type="submit">Log out</button></form></li></ul>`
     : `<ul><li><a href="/auth/login">Log in</a></li></ul>`;
   return `<!DOCTYPE html>
 <html lang="en">

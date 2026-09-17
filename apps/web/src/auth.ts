@@ -109,6 +109,16 @@ function setSessionCookie(res: ServerResponse, config: AuthConfig, id: string | 
   res.setHeader("Set-Cookie", `${SESSION_COOKIE}=${value}; HttpOnly; Path=/; SameSite=Lax${secure}; ${age}`);
 }
 
+/** Revoke the request's session if it verifies. Returns true when a live session was revoked. Shared by the UI logout bridge. */
+export async function revokeRequestSession(pool: Pool, secret: string, req: IncomingMessage): Promise<boolean> {
+  const id = verifySessionCookie(parseCookies(req)[SESSION_COOKIE], secret);
+  if (!id) return false;
+  const live = await readSession(pool, id);
+  if (!live) return false;
+  await revokeSession(pool, id);
+  return true;
+}
+
 /** Resolve the live server-checked session for a request, or null. Shared by tenant trust boundaries. */
 export async function requestSession(pool: Pool, secret: string, req: IncomingMessage): Promise<Session | null> {
   const id = verifySessionCookie(parseCookies(req)[SESSION_COOKIE], secret);

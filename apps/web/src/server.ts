@@ -4,6 +4,7 @@
 // bodies and process env are never echoed.
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { escapeHtml } from "./ui/shell.ts";
 
 export type AppInfo = { name: "moneo-web"; release: string; gitSha: string };
 
@@ -47,12 +48,18 @@ export type AppOptions = {
 };
 
 function wantsHtml(req: import("node:http").IncomingMessage): boolean {
-  return (req.headers.accept ?? "").includes("text/html");
+  // Proper media-type check: comma-separated, case-insensitive, parameters
+  // stripped (a bare substring match misfires on e.g. "text/html;q=0").
+  return (req.headers.accept ?? "")
+    .split(",")
+    .map((part) => part.split(";", 1)[0].trim().toLowerCase())
+    .includes("text/html");
 }
 
-function htmlError(res: ServerResponse, status: number, heading: string, message: string, requestId: string): void {
+function htmlError(res: ServerResponse, status: number, heading: string, message: string, requestId: string, retryAfterSec?: number): void {
   // Minimal negotiated shell for edge rejections; feature pages use ui/shell.
-  const body = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${status} — Moneo</title></head><body><main><h1>${status}</h1><div role="alert"><h2>${heading}</h2><p>${message}</p></div><p>Request ${requestId}</p></main></body></html>
+  // Escape everything interpolated: static today, enforced by construction.
+  const body = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${status} — Moneo</title></head><body><main><h1>${status}</h1><div role="alert"><h2>${escapeHtml(heading)}</h2><p>${escapeHtml(message)}</p></div><p>Request ${escapeHtml(requestId)}</p></main></body></html>
 `;
   res.writeHead(status, {
     "Content-Type": "text/html; charset=utf-8",
@@ -60,6 +67,7 @@ function htmlError(res: ServerResponse, status: number, heading: string, message
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
+    ...(retryAfterSec !== undefined ? { "Retry-After": String(retryAfterSec) } : {}),
   });
   res.end(body);
 }
@@ -73,7 +81,12 @@ export function createApp(auth?: AuthDelegate | null, tenancy?: AuthDelegate | n
     const controls = options.controls ?? null;
     const gate = controls ? controls.begin(req, res) : null;
     const requestId = gate ? gate.id : "uncontrolled";
+    let finished = false;
     const finish = (status: number): void => {
+      // Exactly once: double-end and destroy paths must not double-log or
+      // double-release the in-flight slot.
+      if (finished) return;
+      finished = true;
       if (gate && controls) controls.finish(gate, method, rawUrl, status);
     };
     const origEnd = res.end.bind(res);
@@ -86,10 +99,21 @@ export function createApp(auth?: AuthDelegate | null, tenancy?: AuthDelegate | n
       try {
         if (gate && gate.reject) {
           discard(req);
+          const retryAfterSec = gate.retryAfterSec;
           if (wantsHtml(req)) {
-            htmlError(res, gate.reject, gate.reject === 429 ? "Too many requests" : "Busy", gate.reject === 429 ? "Slow down and retry." : "Try again shortly.", requestId);
+            htmlError(res, gate.reject, gate.reject === 429 ? "Too many requests" : "Busy", gate.reject === 429 ? "Slow down and retry." : "Try again shortly.", requestId, retryAfterSec);
           } else {
-            json(res, gate.reject, { error: gate.reject === 429 ? "rate_limited" : "unavailable" });
+            const body: Record<string, unknown> = { error: gate.reject === 429 ? "rate_limited" : "unavailable", requestId };
+            const payload = `${JSON.stringify(body)}\n`;
+            res.writeHead(gate.reject, {
+              "Content-Type": "application/json; charset=utf-8",
+              "Content-Length": Buffer.byteLength(payload),
+              "X-Content-Type-Options": "nosniff",
+              "X-Frame-Options": "DENY",
+              "Referrer-Policy": "no-referrer",
+              ...(retryAfterSec !== undefined ? { "Retry-After": String(retryAfterSec) } : {}),
+            });
+            res.end(payload);
           }
           return;
         }
@@ -109,7 +133,7 @@ export function createApp(auth?: AuthDelegate | null, tenancy?: AuthDelegate | n
           }
           if (await tenancy.handle(req, res, path, method, query, requestId)) return;
         }
-        if (path === "/" || path === "/index.html" || path === "/w" || path.startsWith("/w/")) {
+        if (path === "/" || path === "/index.html" || path === "/w" || path.startsWith("/w/") || path === "/logout") {
           if (options.ui) {
             if (await options.ui.handle(req, res, path, method, query, requestId)) return;
           }
@@ -125,10 +149,18 @@ export function createApp(auth?: AuthDelegate | null, tenancy?: AuthDelegate | n
           let readyStatus = 200;
           if (path === "/readyz" && options.dbPing) {
             let dbOk = false;
+            let timer: ReturnType<typeof setTimeout> | undefined;
             try {
-              dbOk = await Promise.race([options.dbPing(), new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3000))]);
+              const ping = options.dbPing();
+              // Swallow the late settlement either way: after the race the
+              // timeout is cleared and a late rejection must not surface as
+              // an unhandled rejection.
+              ping.catch(() => {});
+              dbOk = await Promise.race([ping, new Promise<boolean>((resolve) => (timer = setTimeout(() => resolve(false), 3000)))]);
             } catch {
               dbOk = false;
+            } finally {
+              if (timer) clearTimeout(timer);
             }
             checks = { ...checks, db: dbOk ? "ok" : "fail" };
             if (!dbOk) readyStatus = 503;
@@ -151,18 +183,22 @@ export function createApp(auth?: AuthDelegate | null, tenancy?: AuthDelegate | n
           return;
         }
         discard(req);
-        if (!options.ui && (path === "/" || path === "/index.html" || path === "/w" || path.startsWith("/w/"))) {
+        if (!options.ui && (path === "/" || path === "/index.html" || path === "/w" || path.startsWith("/w/") || path === "/logout")) {
           json(res, 503, { error: "ui_not_configured" });
           return;
         }
         json(res, 404, { error: "not_found" });
       } catch {
         // All request handling is fail-closed: an unexpected throw must not
-        // leak detail or leave the socket hanging.
+        // leak detail or leave the socket hanging. The slot is always
+        // released via finish(), even on the destroy path.
         try {
-          if (!res.headersSent) json(res, 503, { error: "unavailable" });
+          if (!res.headersSent) json(res, 503, { error: "unavailable", requestId });
           else res.destroy();
         } catch { /* socket already gone */ }
+        finally {
+          finish(503);
+        }
       }
     })();
   });
