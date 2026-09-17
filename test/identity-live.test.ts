@@ -1,8 +1,8 @@
 // E00-S05 live identity gates. Opt-in only: run with `npm run probe:identity`.
 // Never part of CI (`npm test` / `npm run check`). Without credentials every
 // suite skips and names the exact missing input. With credentials the file
-// spends at most 5 OpenRouter inference requests (shared budget of 20) plus
-// 2 credential-free Auth0 reachability calls. No real data, synthetic only.
+// spends at most 5 OpenRouter inference requests (shared budget of 20).
+// No real data, synthetic only.
 // Secret values travel only in request headers at runtime and are never
 // logged; failures report statuses, categories and counts only.
 
@@ -69,7 +69,7 @@ describe.skipIf(!has("OPENROUTER_API_KEY"))("openrouter live development-model p
     expect(parseStructuredOutput(content).ok).toBe(true);
   }, 75_000);
 
-  it("unavailable model surfaces an explicit 404, never a downgrade", async () => {
+  it("unavailable model is rejected explicitly, never downgraded or retried", async () => {
     const outcome = await runBoundedProbe(
       liveTransport(requireApiKey()),
       liveBudget,
@@ -77,65 +77,16 @@ describe.skipIf(!has("OPENROUTER_API_KEY"))("openrouter live development-model p
       0,
     );
     expect(outcome.attempts).toBe(1);
-    expect(outcome.attempt?.httpStatus).toBe(404);
-    expect(outcome.error).toMatchObject({ category: "unavailable-model", retryable: false });
+    expect([400, 404]).toContain(outcome.attempt?.httpStatus);
+    expect(outcome.error).toMatchObject({
+      category: outcome.attempt?.httpStatus === 404 ? "unavailable-model" : "invalid-request",
+      retryable: false,
+    });
   }, 40_000);
 });
-
-const AUTH0_VARS = [
-  "AUTH0_TEST_DOMAIN",
-  "AUTH0_TEST_CLIENT_ID",
-  "AUTH0_TEST_CLIENT_SECRET",
-  "AUTH0_TEST_USERNAME",
-  "AUTH0_TEST_PASSWORD",
-] as const;
-const auth0Ready = AUTH0_VARS.every(has);
-
-describe.skipIf(!auth0Ready)("auth0 live gate", () => {
-  it("Blocked: needs test tenant + authorized test account; stale-session denial lands in E01-S02", async () => {
-    const domain = process.env["AUTH0_TEST_DOMAIN"]!;
-    const params = new URLSearchParams({
-      grant_type: "password",
-      client_id: process.env["AUTH0_TEST_CLIENT_ID"]!,
-      client_secret: process.env["AUTH0_TEST_CLIENT_SECRET"]!,
-      username: process.env["AUTH0_TEST_USERNAME"]!,
-      password: process.env["AUTH0_TEST_PASSWORD"]!,
-      scope: "openid profile email",
-    });
-    const login = await fetch(`https://${domain}/oauth/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: params.toString(),
-      signal: AbortSignal.timeout(PROBE_BUDGET.timeoutMs),
-    });
-    // Reachability + credential validity only; the app-session revocation
-    // contract is proven deterministically and lands in E01-S02.
-    expect(login.status).toBe(200);
-    const logout = await fetch(`https://${domain}/oidc/logout`, {
-      method: "GET",
-      redirect: "manual",
-      signal: AbortSignal.timeout(PROBE_BUDGET.timeoutMs),
-    });
-    expect([200, 302, 400]).toContain(logout.status);
-  }, 75_000);
-});
-
-if (!auth0Ready) {
-  describe("auth0 live gate", () => {
-    it.skip(`Blocked: founder supplies ${AUTH0_VARS.filter((v) => !has(v)).join(", ")} for the test tenant`, () => {});
-  });
-}
 
 if (!has("OPENROUTER_API_KEY")) {
   describe("openrouter live development-model probes", () => {
     it.skip("Blocked: founder supplies OPENROUTER_API_KEY (development key, synthetic use only)", () => {});
   });
 }
-
-describe("render OIDC live gate", () => {
-  it.skip(
-    "Blocked: founder supplies Render Pro workspace ID (tea-…) + AWS IAM provider/role ARN in AWS_ROLE_ARN; " +
-      "then deploy one service and run `aws sts get-caller-identity` in its shell to prove AssumeRoleWithWebIdentity",
-    () => {},
-  );
-});

@@ -110,15 +110,15 @@ Status: Done | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 Status: Changes requested | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
-**Outcome:** Record a tested, accessible path for Auth0 sessions, Render-to-cloud identity and OpenRouter development model behavior, with missing prerequisites explicit.
+**Outcome:** Record a tested, accessible path for Keycloak sessions, Docker service isolation and OpenRouter development model behavior, with missing prerequisites explicit.
 
 **Contracts:** Architecture identity/security contracts, §130 provider policy and §540; product deployment constraints. Verify current vendor documentation/features/entitlements instead of relying on quoted historical prices or model availability.
 
-**Scope:** Minimal isolated synthetic probes for Auth0 login/logout/session revocation, the selected Render OIDC-to-S3/KMS identity path if entitlement is available, and free-model tool/structured-output behavior. Use existing authorized test accounts; do not expose secret values in docs or logs. Record environment variable names only. If access is unavailable, complete read-only documentation/config preparation and mark the live gate Blocked with the precise missing input.
+**Scope:** Minimal isolated synthetic probes for pinned Keycloak login/logout/session revocation in a disposable Docker network, Docker per-service identity/secret isolation, and free-model tool/structured-output behavior. Use synthetic identities only; do not expose secret values in docs or logs. `start-dev` is admitted only for the bounded proof. Production Keycloak persistence/TLS/backups remain E01/E08 gates.
 
 **Acceptance:**
 1. Distinguish app session revocation from provider SSO logout; demonstrate the intended stale-session denial in the probe or retain a blocker for the dependent auth story.
-2. Validate least-privilege temporary deployment identity on the selected plan, or propose a documented safe alternative for decision. Documentation alone is not a tested credential flow.
+2. Validate non-root/read-only Docker services and per-service secret mounts: the granted service reads its synthetic secret, an ungranted peer cannot, and no long-lived cloud credential is introduced. Documentation alone is not a tested boundary.
 3. Execute at most 20 synthetic live requests against an explicitly selected currently available development model, with bounded time/output/retries. Test tool selection, argument schema, malformed-output handling, and an unavailable/rate-limited provider. Deterministic mock cases must cover errors that cannot reliably be triggered live.
 4. Record provider/model/version-or-ID, date, free-tier limits, training/retention disclosures and test results. A failing free model may be replaced or used only for development smoke, never silently weaken validation or impersonate production qualification.
 5. Define separate development and production config/policy. Production external customer requests require qualified no-training/ZDR routes with no privacy downgrade fallback. No founder/customer real data is necessary for this proof.
@@ -137,11 +137,11 @@ Independent review of merged `main` at `ad70354b4d8b3e67ec976bef77117d6a319260b6
 
 - **E00-S03:** add independently expected fee/refund semantics, missing-balance coverage and FX-gap staging/coverage cases required by architecture §540, or obtain and record an authoritative contract narrowing before implementation. Rerun the import suite and affected exact-money checks.
 - **E00-S04:** replace call-omission simulations with an actual child worker process killed at the persisted claim, effect/tool-commit, provider-response analogue and publication boundaries; prove recovery/fencing with real PostgreSQL and Redis and no leaked child/connection state.
-- **E00-S05:** run the bounded live Auth0, Render-to-AWS OIDC and OpenRouter probes described in its acceptance criteria. Required founder inputs remain the Auth0 plan/test tenant, Render Pro+ workspace plus AWS role, and a development-only OpenRouter key. Skips remain Blocked, not Pass.
+- **E00-S05:** founder decision superseded Auth0 and Render/AWS with pinned self-hosted Keycloak and Docker-hosted services. Run the revised live Keycloak session-revocation, hardened per-service secret-isolation and OpenRouter probes; production persistence/TLS/backup/hosting remain later gates, not proof substitutions.
 
 E00-S03/S04 correction evidence: implementation `da3967230bc411c4c2c7de04623e7675f16bc597`, fix/reviewed SHA `fe5d836a8dc1d2e6ef210908f503b868ff2016a3`, independent re-review Pass with no blockers. The import suite passed 26/26 with explicit fee/refund direction and incomplete missing-balance/FX coverage. The real PostgreSQL/Redis durable suite passed 12/12, killing disposable worker processes after claim, persisted provider response, idempotent tool-effect commit and fenced publication; one provider checkpoint/effect/counter increment survived recovery, 100 stalled commands recovered in 248 ms, and no child process remained. Latest-main candidate checks at `fe5d836`: typecheck 0, harness 1/1, import 26/26, durable 12/12, identity 42/42, diff check clean. Locally merged as `4111cdd73731b071f731e584686be9846ea4813e`; post-merge typecheck, import 26/26 and durable 12/12 passed (100-command recovery 247 ms). E00-S05 remains open, so W0 remains Blocked.
 
-E01-S01 may be refined while these corrections run, but no E01 implementation starts until all three reopened stories pass independent re-review and the integrated W0 exit is rerun successfully.
+E01-S01 may be refined while E00-S05 is reviewed, but no E01 implementation starts until its revised proof passes independent review and the integrated W0 exit is rerun successfully.
 
 # Later-wave stories — refine before Ready
 
@@ -157,7 +157,7 @@ Create the minimal Next/TS application and consumed domain/data boundaries; pin 
 
 Status: Draft | Dependencies: E01-S01
 
-Implement selected Auth0 flow and server-checked app sessions, logout/revocation, CSRF/origin protection and safe redirects. Acceptance: authenticated session works, expired/revoked session fails across API and reconnect, two sessions behave according to the contract, and errors reveal no tokens. Use the E00 identity decision. Verify real auth integration separately from deterministic CI mocks.
+Implement the selected Keycloak Authorization Code + PKCE flow and server-checked app sessions, logout/revocation, CSRF/origin protection and safe redirects. Acceptance: authenticated session works, expired/revoked session fails across API and reconnect, two sessions behave according to the contract, and errors reveal no tokens. Use the E00 identity decision. Verify the containerized identity integration separately from deterministic CI mocks.
 
 ## E01-S03 — Enforce tenant ownership in the database and API
 

@@ -24,6 +24,9 @@ The E00-S02 browser proof is documented in [`proof/artifact/README.md`](proof/ar
 The E00-S03 import-fidelity proof is documented in [`proof/import/README.md`](proof/import/README.md). Its golden fixtures and hand-specified expectations live in `proof/import/fixtures/`; run it with `npm run test:import`. Hostile and resource-bound cases execute inside a disposable bounded child process.
 
 The E00-S05 identity proof is decided in [`proof/identity/REPORT.md`](proof/identity/REPORT.md). Its deterministic checks run offline with `npm run test:identity`; the opt-in live gates (skipped without credentials, never part of CI) run with `npm run probe:identity`.
+The revised Docker/Keycloak gate runs with `npm run test:identity:docker`; it
+creates only disposable synthetic identities and removes its containers and
+temporary credential files after the run.
 
 The E00-S04 durable-effects proof is documented in [`proof/durable/README.md`](proof/durable/README.md). It needs local PostgreSQL and a local Redis 7+ (see that README for the disposable database/DB convention); run it with `npm run test:durable`. It fails closed when either service is missing.
 

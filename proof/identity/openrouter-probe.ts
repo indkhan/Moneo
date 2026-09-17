@@ -108,6 +108,7 @@ export type ErrorCategory =
   | "auth"
   | "credit"
   | "forbidden"
+  | "invalid-request"
   | "unavailable-model"
   | "timeout"
   | "rate-limited"
@@ -134,6 +135,9 @@ export function classifyProviderError(httpStatus: number | null, retryAfterMs?: 
   }
   if (httpStatus === 403) {
     return { category: "forbidden", retryable: false, reason: "guardrail/moderation block (403)" };
+  }
+  if (httpStatus === 400) {
+    return { category: "invalid-request", retryable: false, reason: "provider rejected request/model (400)" };
   }
   if (httpStatus === 404) {
     return { category: "unavailable-model", retryable: false, reason: "model id not available (404)" };

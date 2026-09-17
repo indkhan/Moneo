@@ -13,6 +13,7 @@
     "test": "vitest run test/harness.test.ts",
     "test:import": "vitest run test/import.test.ts",
     "test:identity": "vitest run test/identity.test.ts",
+    "test:identity:docker": "vitest run test/identity-docker-live.test.ts",
     "test:durable": "vitest run test/durable.test.ts",
     "probe:identity": "vitest run test/identity-live.test.ts",
     "test:failure": "vitest run checks/deliberate-failure.test.ts",
