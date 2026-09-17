@@ -151,7 +151,7 @@ The entries below define bounded outcomes, dependencies and minimum acceptance. 
 
 ## E01-S01 — Deploy the smallest application and CI slice
 
-Status: In progress | Release: R1 | Epic: E01
+Status: Done | Release: R1 | Epic: E01
 Dependencies: E00-S01, E00-S02, E00-S03, E00-S04, E00-S05 (W0 Pass at `b3e0280acfdd563a9d4211a0344b477dec977656`; HEAD `1b97208` is docs-only, no code revalidation needed)
 
 Outcome: A fresh checkout installs, typechecks, tests, builds and serves a minimal versioned health endpoint; CI runs the same gates plus a synthetic staging deploy/health smoke; a failing required check blocks merge and a rollback to the prior deployment is demonstrated.
@@ -188,7 +188,7 @@ Status: Done
 
 ## E01-S02 — Authenticate and revoke application sessions
 
-Status: In progress | Release: R1 | Epic: E01
+Status: Done | Release: R1 | Epic: E01
 Dependencies: E01-S01 (Done at `722155f`)
 
 Outcome: Two synthetic users complete Keycloak Authorization Code + S256 PKCE sign-in against the app, receive server-checked httpOnly app sessions, and lose API + reconnect access on logout/revocation/expiry; CSRF, open-redirect and token-leak attacks fail closed.
@@ -226,7 +226,7 @@ Status: Done
 
 ## E01-S03 — Enforce tenant ownership in the database and API
 
-Status: In progress | Release: R1 | Epic: E01
+Status: Done | Release: R1 | Epic: E01
 Dependencies: E01-S02 (Done at `11b0515`)
 
 Outcome: Two synthetic users own isolated workspaces via HTTP; every tenant read/write passes session → membership → transaction-local RLS context; cross-tenant IDs fail identically to missing IDs at API and database boundaries; pooled connections never retain tenant identity; no worker/maintenance path bypasses isolation.
@@ -264,7 +264,7 @@ Status: Done
 
 ## E01-S04 — Establish exact command and read contracts
 
-Status: In progress | Release: R1 | Epic: E01
+Status: Done | Release: R1 | Epic: E01
 Dependencies: E01-S03 (Done at `59041bc`)
 
 Outcome: The first intent-based command `accounts.rename` and its reads run through one domain module consumed by the HTTP adapter; retries are safe, conflicts explicit, BIGINT versions exact as decimal strings at every JSON boundary, and HTTP/domain errors agree.
@@ -302,7 +302,7 @@ Status: Done
 
 ## E01-S05 — Enforce AI data policy before any provider integration
 
-Status: In progress | Release: R1 | Epic: E01
+Status: Done | Release: R1 | Epic: E01
 Dependencies: E01-S04 (Done at `5cf1ed8`)
 
 Outcome: Account AI exclusions with a monotonically increasing workspace policy version gate every provider-bound data selection through one shared module; excluded data (unique sentinel values) never reaches payloads, aggregates, or stale dispatches; policy changes invalidate queued permits; unknown accounts default to deny.
@@ -340,7 +340,7 @@ Status: Done
 
 ## E01-S06 — Add minimal shell, telemetry and safe operational controls
 
-Status: In progress | Release: R1 | Epic: E01
+Status: Done | Release: R1 | Epic: E01
 Dependencies: E01-S04 (Done at `5cf1ed8`; S05 Done at `972def9` — shell may surface S04 commands + S05 policy reads)
 
 Outcome: A zero-dependency server-rendered HTML shell (no JS, native keyboard semantics) lets a signed-in user list workspaces/accounts, rename via the S04 command with visible conflict recovery, and toggle AI exclusions; every request carries a correlation id through redacted logs; edge rate/concurrency caps and a DB-aware readiness probe protect the slice.
@@ -375,6 +375,24 @@ Execution record:
 - Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: no real-browser AT/keyboard run (structural only — browser journeys arrive with the core loop); single-instance rate state (resets on restart); q-value weighting ignored in Accept parse (info); CI run unobserved — first push proves it.
 
 Status: Done
+
+---
+
+## W1 exit — 2026-09-18
+
+**W1 exit: Pass** at merged revision `5730b03`. E01-S01 through E01-S06 are Done with independent review current at every merge SHA. No E02 work started; no real-customer data; no public release.
+
+**Exit demonstration** (`test/w1-exit.test.ts`, committed, own `moneo_e01_w1` DB, one app + one stub issuer + real PG): two synthetic users sign in and create isolated workspaces/accounts; tenant-swapped IDs fail at the API (uniform 404s incl. write attempts) and at the database boundary (zero foreign rows under RLS + membership context, own-row count intact); logout revokes the session (401 on API and reconnect, second user unaffected); an optimistic conflict is visible (409 `version_mismatch` with decimal-string `currentVersion`); outsider claims deny on `withTenant` and on the domain read workers reuse (`tenant_denied`); revoked sessions cannot reach their own rows. Local result: `npm run test:w1` 1/1.
+
+**Full-suite evidence on the merged tree** (Windows 11, Node v22.23.2/npm 10.9.8, Docker 29.7.2, local PG18/Redis7): typecheck 0; harness 1/1; web 8/8; auth 13/13; db 2/2; tenancy 6/6; commands 8/8; money 4/4; policy 6/6; ui 10/10; import 26/26; identity 36/36; durable 12/12; w1-exit 1/1; failure-exit 1 as intended; build:web 0; diff-check clean; secret scan clean; zero new production dependencies beyond S02's `pg@8.23.0`.
+
+**CI evidence** (GitHub Actions, `ci` workflow): runs `35288573549` and `35288673696` on branch `story/w1-exit` both `success` — gates (install, typecheck, harness, web, import, identity, auth, db, tenancy, commands+money, policy, ui, w1-exit, failure-exit-must-fail, web build, diff + secret hygiene, PG17/Redis7 services) plus staging-smoke (digest-pinned build, read-only non-root probe, `/healthz`). Branch protection pointing at `ci` still unverified (no admin access claimed); remote `main` untouched (local-only merges per E00 precedent; the pushed `story/w1-exit` branch carries the same SHAs as evidence).
+
+**Synthetic staging evidence** (local Docker): `npm run staging:smoke` PASS on the merged tree — candidate image serves `/healthz` as non-root read-only with no secret values in config, promotes to current, and the prior tag re-serves (rollback) plus restore. The exit demo caught and fixed one real staging defect: the runtime image missed production `node_modules` after S02 promoted `pg` (boot crash `MODULE_NOT_FOUND`), fixed by copying pruned prod modules (reviewed, Pass at `6ee8378`).
+
+**Closeout fixes bound to this exit:** Dockerfile prod-modules fix + `test/w1-exit.test.ts` + `test:w1`/CI wiring (`6ee8378`, Pass); cosmetic follow-up (`a193da8`, 3 lines, typecheck + exit suite re-run); merged as `5730b03`.
+
+**Known limitations carried into W2:** Keycloak→app session propagation absent by design (S02); staging GRANT split + production TLS/persistence/backups/hosting remain E08 gates; single-instance rate/pending state; no browser AT/keyboard run yet; free-model live gates stay bounded/manual; remote `main` still unpushed.
 
 ## E02-S01 — Persist accepted jobs and outbox dispatch
 
