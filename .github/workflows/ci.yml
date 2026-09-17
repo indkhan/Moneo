@@ -1,0 +1,93 @@
+# E01-S01 required CI: install, typecheck, deterministic tests, web build,
+# staging image smoke and secret/diff hygiene. A failing required step blocks
+# merge (branch protection points at `ci`). Live/bounded gates (artifact
+# browsers, Keycloak Docker, OpenRouter probes) stay manual per-story and are
+# referenced, not silently skipped, in the ledger.
+name: ci
+
+on:
+  push:
+    branches: ["main", "story/**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        env:
+          POSTGRES_DB: moneo_ci
+          POSTGRES_USER: moneo_app
+          POSTGRES_PASSWORD: ci-synthetic-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U moneo_app -d moneo_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://moneo_app:ci-synthetic-only@localhost:5432/moneo_ci
+      DATABASE_MIGRATION_URL: postgresql://moneo_app:ci-synthetic-only@localhost:5432/moneo_ci
+      DURABLE_PROOF_DB: moneo_durable_proof
+      DURABLE_PROOF_REDIS_DB: "15"
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install (lockfile)
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Harness smoke
+        run: npm test
+      - name: Web health contract
+        run: npm run test:web
+      - name: Import fidelity goldens
+        run: npm run test:import
+      - name: Identity deterministic checks
+        run: npm run test:identity
+      - name: Durable effects (real PG + Redis)
+        run: npm run test:durable
+      - name: Deliberate failure must exit nonzero
+        run: "! npm run test:failure"
+      - name: Web build
+        run: npm run build:web
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Secret hygiene (tracked files only)
+        run: |
+          test -z "$(git ls-files | grep -E '(^|/)\.env($|\.)' | grep -v '\.env\.example$' || true)"
+          test -z "$(git grep -nE 'BEGIN [A-Z ]*PRIVATE KEY|aws_secret_access_key|AKIA[0-9A-Z]{16}' -- . ':!.github/workflows/ci.yml' || true)"
+          echo "secret scan: no findings in tracked files"
+
+  staging-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [gates]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build staging image
+        run: docker build -f apps/web/Dockerfile -t moneo-web:staging-candidate --build-arg GIT_SHA="$GITHUB_SHA" .
+      - name: Run read-only as non-root, probe /healthz
+        run: |
+          docker run -d --rm --name moneo-ci-smoke --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --user 65532:65532 --cap-drop ALL --security-opt no-new-privileges:true -p 127.0.0.1:3101:3000 moneo-web:staging-candidate
+          trap 'docker rm -f moneo-ci-smoke >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3101/healthz; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3101/healthz | grep -q '"status":"ok"'
+          test "$(docker exec moneo-ci-smoke id -u)" != "0"
+          docker rm -f moneo-ci-smoke
+          trap - EXIT

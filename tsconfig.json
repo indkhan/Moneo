@@ -9,5 +9,5 @@
     "strict": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["test/**/*.ts", "checks/**/*.ts", "proof/import/**/*.ts", "proof/identity/**/*.ts", "proof/durable/**/*.ts"]
+  "include": ["test/**/*.ts", "checks/**/*.ts", "apps/web/src/**/*.ts", "proof/import/**/*.ts", "proof/identity/**/*.ts", "proof/durable/**/*.ts"]
 }

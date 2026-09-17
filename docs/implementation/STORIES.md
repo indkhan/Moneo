@@ -151,9 +151,38 @@ The entries below define bounded outcomes, dependencies and minimum acceptance. 
 
 ## E01-S01 — Deploy the smallest application and CI slice
 
-Status: Draft | Dependencies: E00-S01, E00-S02, E00-S03, E00-S04, E00-S05
+Status: In progress | Release: R1 | Epic: E01
+Dependencies: E00-S01, E00-S02, E00-S03, E00-S04, E00-S05 (W0 Pass at `b3e0280acfdd563a9d4211a0344b477dec977656`; HEAD `1b97208` is docs-only, no code revalidation needed)
 
-Create the minimal Next/TS application and consumed domain/data boundaries; pin supported versions and wire typecheck, lint, meaningful tests and build in CI. Add synthetic staging deployment/health smoke and environment documentation. Acceptance: a fresh checkout and deployed build work, a failing required check blocks merge, no secrets enter artifacts, and a rollback to the prior deployment is demonstrated. No unused package tree or full schema.
+Outcome: A fresh checkout installs, typechecks, tests, builds and serves a minimal versioned health endpoint; CI runs the same gates plus a synthetic staging deploy/health smoke; a failing required check blocks merge and a rollback to the prior deployment is demonstrated.
+Contracts: Architecture R1 deployment/identity override (2026-09-17, §9: self-hosted Keycloak + Docker, no Auth0/Render/AWS), §§348–415 ops/health, §540 gates; product Delivery baseline R1 slice. No Next.js until S06 needs UI — smallest TS HTTP slice on Node built-ins.
+Scope: `apps/web/` minimal TS HTTP server (`/healthz`, `/readyz`, `/version`, 404/405 handling, no deps beyond node: built-ins); `Dockerfile.web` (pinned node alpine digest, non-root, read-only capable); `compose.yml` (app + postgres/redis/keycloak pinned digests for synthetic staging only); `.github/workflows/ci.yml` (install, typecheck, deterministic tests, build, staging smoke, secret/diff scan); `.env.example` (names only); `scripts/staging-smoke` (build/run/curl/rollback demo); `test/web-health.test.ts`; README env/commands section.
+Out of scope: Next.js/React UI (S06), Keycloak login flow (S02), workspace schema/RLS (S03), commands/money (S04), AI policy (S05), full schema/package tree, production TLS/persistence/backups (E08 gates), paid/cloud provisioning.
+
+Acceptance:
+1. Given a fresh checkout, when `npm ci`, `npm run typecheck`, `npm run test:web`, `npm run build:web`, `npm run start:web` run per README, then all succeed and `GET /healthz` returns 200 `{status:"ok", release, gitSha}` with no secret payload.
+2. Given a deliberately failing check (e.g. `npm run test:failure`), then the required CI gate exits nonzero and the candidate is not mergeable; evidence shows the red gate.
+3. Given a staging deploy of candidate image tag N, when health smoke passes and a prior tag N-1 exists, then rollback to N-1 re-serves `/healthz` 200; build context contains no `.env`/secret files (scan passes, image history shows no secret env).
+4. Given the built image, when run as non-root with a read-only filesystem, then `/healthz` still returns 200 and the process does not run as uid 0.
+
+Invariants: No secrets/financial payloads in logs, image layers, CI artifacts or committed files; exact version reporting only. Non-root/read-only service posture from day one.
+Failure lifecycle: Unhealthy container fails smoke without replacing the prior deployment; failed smoke leaves prior tag running; no destructive cleanup of shared resources.
+UI/accessibility: Not applicable — no browser UI in this slice (reason: S06 owns the shell).
+Data changes: None — no migrations, no persistent data; staging uses disposable containers/volumes only.
+Observability: `/healthz` (liveness), `/readyz` (readiness incl. build marker), `/version` (release+gitSha, redacted otherwise); CI publishes step exit codes; no payload/secret logging.
+Limits: App image build <= 5 min on reference hardware; `/healthz` p95 < 100 ms locally; smoke completes <= 3 min; fixtures: synthetic only.
+Verification: `npm ci` 0; `npm run typecheck` 0; `npm run test:web` 0 (new); `npm test` 0 (1/1 regression); `npm run test:failure` nonzero-as-intended; `npm run build:web` 0; `scripts/staging-smoke` 0 incl. rollback demo; `git diff --check` 0; secret scan 0 findings; `docker build` + non-root/read-only probe pass. Deterministic CI tests only; live Keycloak/PG/Redis qualification stays in S02/S03.
+Review focus: Secret inclusion in context/image/CI logs; over-broad Dockerfile (unpinned base, root user, writable assumption); CI that cannot actually fail; unreproducible host assumptions; tests that always pass; scope creep toward full Next app or full schema.
+Rollout/rollback: Staging-only tags `moneo-web:staging-N`; rollback = re-tag/re-run prior image + health re-check; known limitation: no production TLS/persistent volumes — E08 gates own them.
+
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s01-app-ci-slice` / main worktree branch
+- Base SHA: `1b972081c6c37ac455b20ff047dc698e93423533`
+- Tests: (to be recorded)
+- Review: (to be recorded)
+- Integration: (to be recorded)
+- Merge SHA / post-merge smoke: (to be recorded)
+- Remaining blockers or explicitly accepted nonblocking follow-up: (to be recorded)
 
 ## E01-S02 — Authenticate and revoke application sessions
 
