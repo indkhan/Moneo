@@ -59,6 +59,14 @@ CREATE TABLE IF NOT EXISTS proof_counters (
   PRIMARY KEY (tenant_id, counter_id)
 );
 
+CREATE TABLE IF NOT EXISTS proof_provider_results (
+  operation_id UUID PRIMARY KEY REFERENCES proof_commands (operation_id),
+  tenant_id TEXT NOT NULL,
+  response JSONB NOT NULL,
+  received_generation BIGINT NOT NULL,
+  received_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS proof_effects (
   operation_id UUID PRIMARY KEY,
   tenant_id TEXT NOT NULL,

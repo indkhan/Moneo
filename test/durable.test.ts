@@ -63,6 +63,14 @@ async function effectCount(tenantId: string): Promise<number> {
   return r.rows[0].n as number;
 }
 
+async function providerCheckpointCount(operationId: string): Promise<number> {
+  const r = await pool.query(
+    "SELECT count(*)::int AS n FROM proof_provider_results WHERE operation_id = $1",
+    [operationId],
+  );
+  return r.rows[0].n as number;
+}
+
 async function attemptStatuses(operationId: string): Promise<string[]> {
   const r = await pool.query(
     "SELECT status FROM proof_attempts WHERE operation_id = $1 ORDER BY attempt_no",
@@ -226,8 +234,8 @@ describe("E00-S04 durable effects", () => {
     }
   }, 60000);
 
-  it("real worker-process death at claim, provider-response and publish boundaries recovers exactly once", async () => {
-    for (const phase of ["after-claim", "after-provider-response", "after-publish"] as const) {
+  it("real process death at claim, provider-response, tool-commit and publish boundaries recovers exactly once", async () => {
+    for (const phase of ["after-claim", "after-provider-response", "after-tool-commit", "after-publish"] as const) {
       await truncateAll(pool);
       const operationId = randomUUID();
       await acceptCommand(pool, TENANT_A, operationId, { counterId: COUNTER });
@@ -241,6 +249,7 @@ describe("E00-S04 durable effects", () => {
           expect((await reconcile(pool, queue)).requeuedStalled).toBe(1);
         }
         await drainUntil({ [TENANT_A]: 1 });
+        expect(await providerCheckpointCount(operationId)).toBe(1);
         expect(await effectCount(TENANT_A)).toBe(1);
         expect(await counterValue(pool, TENANT_A, COUNTER)).toBe(1);
       } finally {

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-type Phase = "after-claim" | "after-provider-response" | "after-publish";
+type Phase = "after-claim" | "after-provider-response" | "after-tool-commit" | "after-publish";
 
 export async function killDurableChild(
   input: { phase: Phase; tenantId: string; operationId: string; leaseMs: number },

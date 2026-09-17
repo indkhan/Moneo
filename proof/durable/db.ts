@@ -59,6 +59,6 @@ export async function migrate(pool: Pool): Promise<void> {
 /** Cleanup is limited to the proof tables in the proof database. */
 export async function truncateAll(pool: Pool): Promise<void> {
   await pool.query(
-    "TRUNCATE proof_attempts, proof_effects, proof_counters, proof_jobs, proof_outbox, proof_commands",
+    "TRUNCATE proof_attempts, proof_effects, proof_provider_results, proof_counters, proof_jobs, proof_outbox, proof_commands",
   );
 }
