@@ -17,6 +17,10 @@ RUN npm ci --ignore-scripts && \
 FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS runtime
 ENV NODE_ENV=production APP_ENV=production
 WORKDIR /app
+# Production dependencies are required at runtime since E01-S02 (pg backs
+# sessions/tenancy/commands/policy). The build layer prunes devDependencies,
+# so only prod modules ship here — verify with the smoke's no-secret check.
+COPY --from=build /src/node_modules ./node_modules
 COPY --from=build /src/apps/web/dist ./dist
 COPY --from=build /src/package.json ./package.json
 ARG APP_RELEASE=dev
