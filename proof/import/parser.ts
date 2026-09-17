@@ -1047,3 +1047,33 @@ export function decideReimport(
   }
   return { decisions, proposals: adjusted };
 }
+
+export function summarizeCoverage(
+  proposals: Proposal[],
+  input: { balanceProvided: boolean; baseCurrency: string },
+): {
+  complete: boolean;
+  accepted: number;
+  pendingReview: number;
+  rejected: number;
+  missingBalance: boolean;
+  fxGapCurrencies: string[];
+} {
+  const accepted = proposals.filter((p) => p.kind === "accepted").length;
+  const pendingReview = proposals.filter((p) => p.kind === "needs_review").length;
+  const rejected = proposals.filter((p) => p.kind === "rejected").length;
+  const fxGapCurrencies = [...new Set(proposals.flatMap((p) => {
+    if (p.kind === "accepted") return p.currency === input.baseCurrency ? [] : [p.currency];
+    const currency = p.raw.currency;
+    return p.reasons.includes("unsupported-currency") && currency ? [currency] : [];
+  }))].sort();
+  const missingBalance = !input.balanceProvided;
+  return {
+    complete: !missingBalance && pendingReview === 0 && rejected === 0 && fxGapCurrencies.length === 0,
+    accepted,
+    pendingReview,
+    rejected,
+    missingBalance,
+    fxGapCurrencies,
+  };
+}

@@ -38,6 +38,7 @@ import {
   processApplyJob,
   publishEffect,
 } from "../proof/durable/worker.ts";
+import { killDurableChild } from "../proof/durable/kill-child.ts";
 
 const TENANT_A = "tenant-a";
 const TENANT_B = "tenant-b";
@@ -59,6 +60,14 @@ async function effectCount(tenantId: string): Promise<number> {
   const r = await pool.query("SELECT count(*)::int AS n FROM proof_effects WHERE tenant_id = $1", [
     tenantId,
   ]);
+  return r.rows[0].n as number;
+}
+
+async function providerCheckpointCount(operationId: string): Promise<number> {
+  const r = await pool.query(
+    "SELECT count(*)::int AS n FROM proof_provider_results WHERE operation_id = $1",
+    [operationId],
+  );
   return r.rows[0].n as number;
 }
 
@@ -222,6 +231,30 @@ describe("E00-S04 durable effects", () => {
       expect(await attemptStatuses(operationId)).toEqual(["STALE", "SUCCEEDED"]);
     } finally {
       await queue.close();
+    }
+  }, 60000);
+
+  it("real process death at claim, provider-response, tool-commit and publish boundaries recovers exactly once", async () => {
+    for (const phase of ["after-claim", "after-provider-response", "after-tool-commit", "after-publish"] as const) {
+      await truncateAll(pool);
+      const operationId = randomUUID();
+      await acceptCommand(pool, TENANT_A, operationId, { counterId: COUNTER });
+      const queue = applyQueue(env);
+      try {
+        await dispatchOutbox(pool, queue);
+        const killed = await killDurableChild({ phase, tenantId: TENANT_A, operationId, leaseMs: 300 });
+        expect(killed).toMatchObject({ marker: phase, killed: true });
+        if (phase !== "after-publish") {
+          await new Promise((r) => setTimeout(r, 600));
+          expect((await reconcile(pool, queue)).requeuedStalled).toBe(1);
+        }
+        await drainUntil({ [TENANT_A]: 1 });
+        expect(await providerCheckpointCount(operationId)).toBe(1);
+        expect(await effectCount(TENANT_A)).toBe(1);
+        expect(await counterValue(pool, TENANT_A, COUNTER)).toBe(1);
+      } finally {
+        await queue.close();
+      }
     }
   }, 60000);
 

@@ -58,25 +58,27 @@ topology, BullMQ Flows (PG workflow state is the durable graph per §194).
    without ever touching the transport.
 3. `claimAttempt` moves `QUEUED` (or lease-expired `RUNNING`) to `RUNNING`
    under a row lock while raising monotonic `attempt_generation`.
-4. `publishEffect` commits effect row + counter increment + `SUCCEEDED` only
-   when generation still matches, state is `RUNNING` and no cancel won; the
-   `proof_effects(operation_id)` PK is a second backstop. Losers are recorded
-   `STALE` (superseded) or `BLOCKED` (cancelled); unknown/forged identities
-   answer `STALE_ATTEMPT` without disclosing existence.
+4. The synthetic provider response is checkpointed once by logical operation;
+   a replacement attempt reuses it. The tool effect then commits idempotently
+   under `proof_effects(operation_id)` before a separate fenced publication
+   marks the job and attempt `SUCCEEDED`. A crash in either gap resumes without
+   rebilling or repeating the counter effect.
 5. `reconcile` rebuilds transport purely from PG: unpublished outbox,
    published-but-unstarted jobs, lease-expired `RUNNING` jobs. Queue job
    status is never consulted.
 
 ## Fault coverage (each a runnable test in `test/durable.test.ts`)
 
-Worker death is simulated by omitting the next protocol step at each
-persisted boundary (accept → dispatch → claim → publish); PG transaction
-atomicity is what makes the omitted step safe to replay. No live SIGKILL
-mid-handler is performed in this proof — E02-S02 should add one.
+Worker death is exercised by launching a disposable worker process, waiting
+until it reports the claim, persisted synthetic provider-response, committed
+tool effect, or final publication boundary, and force-killing it before it can
+return. The test then recovers from PostgreSQL truth.
 
 - 20 concurrent identical submissions + duplicate dispatch → one effect.
 - Crash before dispatch / after enqueue-before-marking / during execution /
   after effect commit → no loss, no duplicate on recovery.
+- Real process termination after claim, persisted provider response, committed
+  tool effect and final publication → one checkpoint, effect and publication.
 - `FLUSHDB` of the dedicated Redis DB → reconciler restores 5/5.
 - Stale generation publish fenced; cancel after claim blocks publication;
   cancel after success preserves history; cross-tenant claim/publish denied.

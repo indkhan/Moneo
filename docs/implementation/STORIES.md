@@ -59,7 +59,7 @@ Status: Done | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 ## E00-S03 — Prove import fidelity with exact fixtures
 
-Status: Done | Epic: E00 | Release: R1 | Dependencies: E00-S01
+Status: Changes requested | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 **Outcome:** The selected CSV/XLSX parsing approach produces a validated canonical proposal with exact values and source provenance, while financial ambiguity stays explicit.
 
@@ -83,7 +83,7 @@ Status: Done | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 ## E00-S04 — Prove durable effects despite worker and queue failure
 
-Status: Done | Epic: E00 | Release: R1 | Dependencies: E00-S01
+Status: Changes requested | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 **Outcome:** One synthetic command is durably accepted and applied once despite retry, process death, stale attempts and complete Redis transport loss.
 
@@ -108,7 +108,7 @@ Status: Done | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 ## E00-S05 — Qualify identity, deployment identity and development AI
 
-Status: Done | Epic: E00 | Release: R1 | Dependencies: E00-S01
+Status: Changes requested | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 **Outcome:** Record a tested, accessible path for Auth0 sessions, Render-to-cloud identity and OpenRouter development model behavior, with missing prerequisites explicit.
 
@@ -130,6 +130,16 @@ Status: Done | Epic: E00 | Release: R1 | Dependencies: E00-S01
 **Execution record:** Implementer: prior session (commit `f3e0bce`); orchestrator/integrator: this session; branch: `story/e00-s05-identity-provider`; base/current-main SHA at review: `aa8b088`; implementation/reviewed SHA: `f3e0bce` (10 files, +1136/-1: proof/identity REPORT/policy/session-layers/render-oidc/openrouter-probe, test/identity + identity-live, package.json scripts, README, tsconfig include). Independent adversarial review (separate task): Pass with no blockers at `f3e0bce` — reproduced typecheck, 42/42 deterministic, 7/7 live skipped without creds, 24/24 import regression, clean diff/status, zero secret hits, and re-verified all four vendor claims live (Auth0 session layers, Auth0 pricing entitlements gating, Render managed OIDC Pro+ with tea- workspace ID / aud sts.amazonaws.com / one role per service via AWS_ROLE_ARN, OpenRouter ZDR + free-variant limits + error taxonomy). Candidate tree == `f3e0bce` (linear ahead of `aa8b088`; verified after `git fetch origin main`, remote origin/main still `ee20bcd` stale): `npm ci` 0 (55 packages, 0 vulnerabilities), `npm run typecheck` 0, `npm test` 0 (1/1), `npm run test:identity` 0 (42/42), `npm run test:import` 0 (24/24), `npm run probe:identity` 0 (7 skipped — all three live gates Blocked, no creds), `npm run test:failure` 1 as intended, `git diff --check main...HEAD` 0, clean status on Node v22.23.2 / npm 10.9.8. Merged with `--no-ff` as `262d593`; post-merge smoke on main: `npm run check` 0, `test:identity` 0 (42/42), `test:import` 0 (24/24), `probe:identity` 0 (7 skipped), `test:failure` 1 as intended, clean status. Live gates honestly Blocked with precise founder inputs in REPORT.md (Auth0 tenant vars + plan decision; Render Pro workspace ID + IAM provider/role ARN in AWS_ROLE_ARN; dev OPENROUTER_API_KEY; unblocked spend would be <=5 inference + 2 Auth0 reachability within the 20-request cap). No live sessions/objects created so no disposable cleanup; no prod data/migrations; secrets hygiene clean (env names only, key in header at runtime only, synthetic prompts only). Nonblocking reviewer notes carried forward: Render WorkspacePlan exact-matches "pro" (doc says Pro or higher); live retry does not yet honor Retry-After/backoff; 2 catalog GETs sit outside RequestBudget accounting; deterministic test:identity not wired into CI (consistent with test:import, revisit in E01-S01); Auth0 ROPG grant may need confirm/switch at unblock. No remote push/PR (local-only merges, consistent with S01-S03); remote CI still pending E01-S01.
 
 ---
+
+## W0 exit audit — 2026-09-17
+
+Independent review of merged `main` at `ad70354b4d8b3e67ec976bef77117d6a319260b6` against the pre-E00 baseline `ee20bcd238acf80b114c1b1601e70e45e8b5e4e0` found the deterministic proof code healthy but the W0 exit **Blocked**. Reopened stories retain their existing execution records; new approval must bind to corrective SHAs.
+
+- **E00-S03:** add independently expected fee/refund semantics, missing-balance coverage and FX-gap staging/coverage cases required by architecture §540, or obtain and record an authoritative contract narrowing before implementation. Rerun the import suite and affected exact-money checks.
+- **E00-S04:** replace call-omission simulations with an actual child worker process killed at the persisted claim, effect/tool-commit, provider-response analogue and publication boundaries; prove recovery/fencing with real PostgreSQL and Redis and no leaked child/connection state.
+- **E00-S05:** run the bounded live Auth0, Render-to-AWS OIDC and OpenRouter probes described in its acceptance criteria. Required founder inputs remain the Auth0 plan/test tenant, Render Pro+ workspace plus AWS role, and a development-only OpenRouter key. Skips remain Blocked, not Pass.
+
+E01-S01 may be refined while these corrections run, but no E01 implementation starts until all three reopened stories pass independent re-review and the integrated W0 exit is rerun successfully.
 
 # Later-wave stories — refine before Ready
 

@@ -18,6 +18,26 @@ export type PublishResult =
   | { ok: true }
   | { ok: false; reason: "STALE_ATTEMPT" | "CANCELLED" | "TERMINAL" };
 
+async function rejectedAttempt(
+  pool: Pool,
+  tenantId: string,
+  operationId: string,
+  claim: Pick<Claim, "attemptId">,
+): Promise<PublishResult> {
+  const cur = await pool.query(
+    "SELECT state, cancel_requested_at FROM proof_jobs WHERE operation_id = $1 AND tenant_id = $2",
+    [operationId, tenantId],
+  );
+  const row = cur.rows[0] as { state: string; cancel_requested_at: string | null } | undefined;
+  const cancelled = row !== undefined && (row.cancel_requested_at !== null || row.state === "CANCELLED");
+  const reason = cancelled ? "CANCELLED" : row?.state === "SUCCEEDED" ? "TERMINAL" : "STALE_ATTEMPT";
+  await pool.query(
+    "UPDATE proof_attempts SET status = $2, completed_at = now() WHERE id = $1 AND status = 'RUNNING'",
+    [claim.attemptId, cancelled ? "BLOCKED" : "STALE"],
+  );
+  return { ok: false, reason };
+}
+
 /**
  * Atomically claim a QUEUED job, or reclaim a RUNNING job whose PG lease
  * expired. Concurrent claimants serialize on the row lock; losers observe the
@@ -82,12 +102,34 @@ export async function claimAttempt(
   }
 }
 
-/**
- * Publish the synthetic effect exactly once. The compare-and-swap on
- * (RUNNING, generation, no-cancel) plus the PK on proof_effects give two
- * independent backstops against stale or duplicate publication.
- */
-export async function publishEffect(
+export async function persistProviderResponse(
+  pool: Pool,
+  tenantId: string,
+  operationId: string,
+  claim: Pick<Claim, "attemptId" | "generation">,
+): Promise<PublishResult> {
+  const saved = await pool.query(
+    `INSERT INTO proof_provider_results (operation_id, tenant_id, response, received_generation)
+     SELECT $1, $2, '{"synthetic":"ok"}'::jsonb, $3
+     FROM proof_jobs
+     WHERE operation_id = $1 AND tenant_id = $2 AND state = 'RUNNING'
+       AND attempt_generation = $3 AND cancel_requested_at IS NULL
+     ON CONFLICT (operation_id) DO NOTHING`,
+    [operationId, tenantId, claim.generation],
+  );
+  if (saved.rowCount === 1) return { ok: true };
+  const existing = await pool.query(
+    `SELECT 1 FROM proof_provider_results r
+     JOIN proof_jobs j USING (operation_id, tenant_id)
+     WHERE r.operation_id = $1 AND r.tenant_id = $2 AND j.state = 'RUNNING'
+       AND j.attempt_generation = $3 AND j.cancel_requested_at IS NULL`,
+    [operationId, tenantId, claim.generation],
+  );
+  if (existing.rowCount === 1) return { ok: true };
+  return rejectedAttempt(pool, tenantId, operationId, claim);
+}
+
+export async function commitToolEffect(
   pool: Pool,
   tenantId: string,
   operationId: string,
@@ -96,52 +138,30 @@ export async function publishEffect(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const swapped = await client.query(
-      `UPDATE proof_jobs SET state = 'SUCCEEDED', lease_expires_at = NULL, updated_at = now()
+    const current = await client.query(
+      `SELECT state, cancel_requested_at FROM proof_jobs
        WHERE operation_id = $1 AND tenant_id = $2 AND state = 'RUNNING'
-         AND attempt_generation = $3 AND cancel_requested_at IS NULL`,
+         AND attempt_generation = $3 AND cancel_requested_at IS NULL FOR UPDATE`,
       [operationId, tenantId, claim.generation],
     );
-    if (swapped.rowCount !== 1) {
-      const cur = await client.query(
-        "SELECT state, attempt_generation, cancel_requested_at FROM proof_jobs WHERE operation_id = $1 AND tenant_id = $2",
-        [operationId, tenantId],
-      );
-      const row = cur.rows[0] as
-        | { state: string; cancel_requested_at: string | null }
-        | undefined;
-      // Unknown (or foreign-tenant) operation: answer STALE_ATTEMPT without
-      // disclosing whether the operation exists, and touch nothing.
-      if (row === undefined) {
-        await client.query("COMMIT");
-        return { ok: false, reason: "STALE_ATTEMPT" };
-      }
-      const cancelled = row.cancel_requested_at !== null || row.state === "CANCELLED";
-      // Never overwrite a terminal attempt record: a duplicate publish of an
-      // already-succeeded claim reports TERMINAL and leaves history intact.
-      await client.query(
-        "UPDATE proof_attempts SET status = $2, completed_at = now() WHERE id = $1 AND status = 'RUNNING'",
-        [claim.attemptId, cancelled ? "BLOCKED" : "STALE"],
-      );
+    if (current.rowCount !== 1) {
       await client.query("COMMIT");
-      return { ok: false, reason: cancelled ? "CANCELLED" : row.state === "SUCCEEDED" ? "TERMINAL" : "STALE_ATTEMPT" };
+      return await rejectedAttempt(pool, tenantId, operationId, claim);
     }
     const counter = await client.query("SELECT payload FROM proof_commands WHERE operation_id = $1", [
       operationId,
     ]);
     const counterId = (counter.rows[0].payload as { counterId: string }).counterId;
-    await client.query(
-      "INSERT INTO proof_effects (operation_id, tenant_id, counter_id) VALUES ($1, $2, $3)",
+    const inserted = await client.query(
+      "INSERT INTO proof_effects (operation_id, tenant_id, counter_id) VALUES ($1, $2, $3) ON CONFLICT (operation_id) DO NOTHING",
       [operationId, tenantId, counterId],
     );
-    await client.query(
-      "UPDATE proof_counters SET value = value + 1 WHERE tenant_id = $1 AND counter_id = $2",
-      [tenantId, counterId],
-    );
-    await client.query(
-      "UPDATE proof_attempts SET status = 'SUCCEEDED', completed_at = now() WHERE id = $1",
-      [claim.attemptId],
-    );
+    if (inserted.rowCount === 1) {
+      await client.query(
+        "UPDATE proof_counters SET value = value + 1 WHERE tenant_id = $1 AND counter_id = $2",
+        [tenantId, counterId],
+      );
+    }
     await client.query("COMMIT");
     return { ok: true };
   } catch (e) {
@@ -154,6 +174,64 @@ export async function publishEffect(
   } finally {
     client.release();
   }
+}
+
+export async function publishCommittedEffect(
+  pool: Pool,
+  tenantId: string,
+  operationId: string,
+  claim: Pick<Claim, "attemptId" | "generation">,
+): Promise<PublishResult> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const swapped = await client.query(
+      `UPDATE proof_jobs SET state = 'SUCCEEDED', lease_expires_at = NULL, updated_at = now()
+       WHERE operation_id = $1 AND tenant_id = $2 AND state = 'RUNNING'
+         AND attempt_generation = $3 AND cancel_requested_at IS NULL
+         AND EXISTS (SELECT 1 FROM proof_effects WHERE operation_id = $1 AND tenant_id = $2)`,
+      [operationId, tenantId, claim.generation],
+    );
+    if (swapped.rowCount !== 1) {
+      const cur = await client.query(
+        "SELECT state, cancel_requested_at FROM proof_jobs WHERE operation_id = $1 AND tenant_id = $2",
+        [operationId, tenantId],
+      );
+      const row = cur.rows[0] as { state: string; cancel_requested_at: string | null } | undefined;
+      const cancelled = row !== undefined && (row.cancel_requested_at !== null || row.state === "CANCELLED");
+      await client.query(
+        "UPDATE proof_attempts SET status = $2, completed_at = now() WHERE id = $1 AND status = 'RUNNING'",
+        [claim.attemptId, cancelled ? "BLOCKED" : "STALE"],
+      );
+      await client.query("COMMIT");
+      return { ok: false, reason: cancelled ? "CANCELLED" : row?.state === "SUCCEEDED" ? "TERMINAL" : "STALE_ATTEMPT" };
+    }
+    await client.query(
+      "UPDATE proof_attempts SET status = 'SUCCEEDED', completed_at = now() WHERE id = $1",
+      [claim.attemptId],
+    );
+    await client.query("COMMIT");
+    return { ok: true };
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/** Persist response, commit the idempotent tool effect, then publish. */
+export async function publishEffect(
+  pool: Pool,
+  tenantId: string,
+  operationId: string,
+  claim: Pick<Claim, "attemptId" | "generation">,
+): Promise<PublishResult> {
+  const checkpointed = await persistProviderResponse(pool, tenantId, operationId, claim);
+  if (!checkpointed.ok) return checkpointed;
+  const committed = await commitToolEffect(pool, tenantId, operationId, claim);
+  if (!committed.ok) return committed;
+  return publishCommittedEffect(pool, tenantId, operationId, claim);
 }
 
 /**
