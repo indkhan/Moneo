@@ -232,6 +232,8 @@ describe("e01-s02 auth and revocation", () => {
     await new Promise<void>((resolve) => bare.listen(0, "127.0.0.1", resolve));
     appServers.push(bare);
     const base = `http://127.0.0.1:${(bare.address() as AddressInfo).port}`;
-    expect((await (await fetch(`${base}/api/me`)).json())).toEqual({ error: "auth_not_configured" });
+    const body = (await (await fetch(`${base}/api/me`)).json()) as { error: string; requestId: string };
+    expect(body).toMatchObject({ error: "auth_not_configured" });
+    expect(body.requestId).toMatch(/^[0-9a-f-]{36}$|^uncontrolled$/);
   });
 });

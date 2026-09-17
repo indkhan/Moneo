@@ -119,6 +119,11 @@ export async function revokeRequestSession(pool: Pool, secret: string, req: Inco
   return true;
 }
 
+/** Clear the session cookie (used after revocation so stale cookies do not linger client-side). */
+export function clearSessionCookie(res: ServerResponse, secure: boolean): void {
+  res.setHeader("Set-Cookie", `moneo_session=expired; HttpOnly; Path=/; SameSite=Lax${secure ? "; Secure" : ""}; Max-Age=0`);
+}
+
 /** Resolve the live server-checked session for a request, or null. Shared by tenant trust boundaries. */
 export async function requestSession(pool: Pool, secret: string, req: IncomingMessage): Promise<Session | null> {
   const id = verifySessionCookie(parseCookies(req)[SESSION_COOKIE], secret);

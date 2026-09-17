@@ -95,6 +95,9 @@ export function createApp(auth?: AuthDelegate | null, tenancy?: AuthDelegate | n
       finish(res.statusCode);
       return (origEnd as (...a: unknown[]) => unknown)(...args);
     };
+    // Client aborts never call end(): release the in-flight slot on close.
+    // finish() is once-guarded, so the normal end path is unaffected.
+    res.on("close", () => finish(res.statusCode || 503));
     void (async () => {
       try {
         if (gate && gate.reject) {
@@ -120,7 +123,7 @@ export function createApp(auth?: AuthDelegate | null, tenancy?: AuthDelegate | n
         if (path === "/auth/login" || path === "/auth/callback" || path === "/auth/logout" || path === "/api/me") {
           if (!auth) {
             discard(req);
-            json(res, 503, { error: "auth_not_configured" });
+            json(res, 503, { error: "auth_not_configured", requestId });
             return;
           }
           if (await auth.handle(req, res, path, method, query, requestId)) return;
@@ -128,7 +131,7 @@ export function createApp(auth?: AuthDelegate | null, tenancy?: AuthDelegate | n
         if (path === "/api/workspaces" || path === "/api/accounts" || path.startsWith("/api/accounts/") || path === "/api/commands/accounts.rename" || path.startsWith("/api/ai/")) {
           if (!tenancy) {
             discard(req);
-            json(res, 503, { error: "tenancy_not_configured" });
+            json(res, 503, { error: "tenancy_not_configured", requestId });
             return;
           }
           if (await tenancy.handle(req, res, path, method, query, requestId)) return;
@@ -184,7 +187,7 @@ export function createApp(auth?: AuthDelegate | null, tenancy?: AuthDelegate | n
         }
         discard(req);
         if (!options.ui && (path === "/" || path === "/index.html" || path === "/w" || path.startsWith("/w/") || path === "/logout")) {
-          json(res, 503, { error: "ui_not_configured" });
+          json(res, 503, { error: "ui_not_configured", requestId });
           return;
         }
         json(res, 404, { error: "not_found" });

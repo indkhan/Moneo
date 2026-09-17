@@ -186,12 +186,13 @@ describe("e01-s06 shell and controls", () => {
     expect(anon.status).toBe(401);
   });
 
-  it("logout bridge revokes and lands back home", async () => {
+  it("logout bridge revokes, clears the cookie, and lands back home", async () => {
     const { base } = await startApp();
     const { cookie } = await login(base, "synthetic-ui-logout");
     const out = await fetch(`${base}/logout`, { method: "POST", headers: { cookie, origin: base }, redirect: "manual" });
     expect(out.status).toBe(303);
     expect(out.headers.get("location")).toBe("/?notice=logged-out");
+    expect(out.headers.get("set-cookie") ?? "").toContain("Max-Age=0");
     const landing = await fetch(`${base}/?notice=logged-out`, { headers: { cookie } });
     expect((await landing.text())).toContain("Signed out.");
     expect((await fetch(`${base}/api/me`, { headers: { cookie } })).status).toBe(401);

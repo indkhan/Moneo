@@ -10,7 +10,7 @@ import { isUuid } from "../ids.ts";
 import { CommandError, renameAccount, validateRenameInput } from "../commands/accounts.ts";
 import { getPolicy, PolicyError, setAccountExclusion, summarizeEligible } from "../ai-policy.ts";
 import { getAccountView, listAccountViews } from "../commands/accounts.ts";
-import { revokeRequestSession } from "../auth.ts";
+import { clearSessionCookie, revokeRequestSession } from "../auth.ts";
 import { listWorkspaces, sessionClaims, TenantDenied, TenantInvalid, type SessionResolver } from "../tenancy.ts";
 import { errorPage, escapeHtml, page } from "./shell.ts";
 
@@ -136,11 +136,13 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
                 }</td><td><form method="post" action="/w/${escapeHtml(workspaceId)}/rename"><input type="hidden" name="accountId" value="${escapeHtml(a.id)}"><input type="hidden" name="expectedVersion" value="${escapeHtml(a.version)}"><input type="hidden" name="idempotencyKey" value="${randomUUID()}"><label>New name <input name="name" required maxlength="200" value="${escapeHtml(a.name)}"></label> <button type="submit">Rename</button></form></td><td><form method="post" action="/w/${escapeHtml(workspaceId)}/exclusions"><input type="hidden" name="accountId" value="${escapeHtml(a.id)}"><input type="hidden" name="excluded" value="${excluded.has(a.id) ? "false" : "true"}"><button type="submit">${excluded.has(a.id) ? "Include in AI" : "Exclude from AI"}</button></form></td></tr>`,
               )
               .join("")}</tbody></table>`;
+      // Raw query values: page() escapes at the boundary (pre-escaping here
+      // would double-escape).
       const notice =
         query.get("notice") === "renamed"
           ? "Account renamed."
           : query.get("notice") === "exclusion-updated"
-            ? `AI policy updated (version ${escapeHtml(query.get("policyVersion") ?? "")}).`
+            ? `AI policy updated (version ${query.get("policyVersion") ?? ""}).`
             : undefined;
       html(
         res,
@@ -165,6 +167,7 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
         return true;
       }
       await revokeRequestSession(pool, config.sessionSecret, req);
+      clearSessionCookie(res, config.appBaseUrl.startsWith("https://"));
       res.writeHead(303, { Location: "/?notice=logged-out" });
       res.end();
       return true;
