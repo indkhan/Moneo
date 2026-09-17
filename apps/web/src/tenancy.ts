@@ -9,6 +9,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Pool, PoolClient } from "pg";
 import { isUuid, uuidv7 } from "./ids.ts";
 import type { Session } from "./session-store.ts";
+import { CommandError, getAccountView, listAccountViews, renameAccount, validateRenameInput } from "./commands/accounts.ts";
 
 export class TenantDenied extends Error {
   constructor() {
@@ -135,30 +136,24 @@ export async function listWorkspaces(pool: Pool, authSubject: string): Promise<W
   });
 }
 
-export type Account = { workspaceId: string; id: string; name: string };
+export type Account = { workspaceId: string; id: string; name: string; version: string };
 
 export async function createAccount(pool: Pool, claims: TenantClaims, name: string): Promise<Account> {
   const clean = checkName(name);
   return withTenant(pool, claims, async (client) => {
     const id = uuidv7();
-    await client.query("INSERT INTO accounts (workspace_id, id, name) VALUES ($1, $2, $3)", [claims.workspaceId, id, clean]);
-    return { workspaceId: claims.workspaceId, id, name: clean };
+    const rows = await client.query("INSERT INTO accounts (workspace_id, id, name) VALUES ($1, $2, $3) RETURNING version", [claims.workspaceId, id, clean]);
+    const version = String((rows.rows[0] as { version: string }).version);
+    return { workspaceId: claims.workspaceId, id, name: clean, version };
   });
 }
 
-export async function listAccounts(pool: Pool, claims: TenantClaims): Promise<Account[]> {
-  return withTenant(pool, claims, async (client) => {
-    const rows = await client.query('SELECT workspace_id AS "workspaceId", id, name FROM accounts WHERE workspace_id = $1 ORDER BY created_at', [claims.workspaceId]);
-    return rows.rows as Account[];
-  });
-}
-
-export async function getAccount(pool: Pool, claims: TenantClaims, id: string): Promise<Account | null> {
-  if (!isUuid(id)) return null;
-  return withTenant(pool, claims, async (client) => {
-    const rows = await client.query('SELECT workspace_id AS "workspaceId", id, name FROM accounts WHERE workspace_id = $1 AND id = $2', [claims.workspaceId, id]);
-    return (rows.rows[0] as Account | undefined) ?? null;
-  });
+function commandErrorBody(err: CommandError): { status: number; body: unknown } {
+  if (err.code === "not_found") return { status: 404, body: { error: "not_found" } };
+  if (err.code === "version_mismatch") {
+    return { status: 409, body: err.currentVersion === undefined ? { error: "conflict", reason: err.code } : { error: "conflict", reason: err.code, currentVersion: err.currentVersion } };
+  }
+  return { status: 409, body: { error: "conflict", reason: err.code } };
 }
 
 // ---- HTTP boundary ----
@@ -254,7 +249,7 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             denied(res, resolved.session !== null);
             return true;
           }
-          tenantJson(res, 200, { accounts: await listAccounts(pool, resolved.claim) });
+          tenantJson(res, 200, { accounts: await listAccountViews(pool, resolved.claim) });
           return true;
         }
         if (path === "/api/accounts" && method === "POST") {
@@ -276,6 +271,33 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           tenantJson(res, 201, await createAccount(pool, resolved.claim, body.name as string));
           return true;
         }
+        if (path === "/api/commands/accounts.rename" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          // Schema-validated once here; the domain module validates again on
+          // the same objects so HTTP can never smuggle unchecked input.
+          const input = validateRenameInput(await readJsonBody(req));
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await renameAccount(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof CommandError) {
+              const mapped = commandErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
         const accountMatch = path.match(/^\/api\/accounts\/([A-Za-z0-9-]+)$/);
         if (accountMatch && method === "GET") {
           const workspaceId = query.get("workspaceId") ?? "";
@@ -284,7 +306,7 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             denied(res, resolved.session !== null);
             return true;
           }
-          const account = await getAccount(pool, resolved.claim, accountMatch[1]);
+          const account = await getAccountView(pool, resolved.claim, accountMatch[1]);
           if (!account) tenantJson(res, 404, { error: "not_found" });
           else tenantJson(res, 200, account);
           return true;

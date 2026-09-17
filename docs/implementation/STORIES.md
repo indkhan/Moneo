@@ -264,9 +264,39 @@ Status: Done
 
 ## E01-S04 — Establish exact command and read contracts
 
-Status: Draft | Dependencies: E01-S03
+Status: In progress | Release: R1 | Epic: E01
+Dependencies: E01-S03 (Done at `59041bc`)
 
-Implement the first consumed shared command/read function, schema-derived API/client path, decimal-string money/version boundaries, optimistic conflicts and durable command idempotency. Acceptance: same operation retries safely, conflicting versions/payload reuse fail explicitly, >safe-integer values round-trip exactly, and HTTP/domain errors agree. Prove with a small real setting/account operation; do not build a generic command framework.
+Outcome: The first intent-based command `accounts.rename` and its reads run through one domain module consumed by the HTTP adapter; retries are safe, conflicts explicit, BIGINT versions exact as decimal strings at every JSON boundary, and HTTP/domain errors agree.
+Contracts: Architecture §158 (minor-unit/BIGINT versions as decimal strings, BigInt math, no float money), §§2224–2355 (§47 CQRS-lite intent commands, §48 one domain contract/multiple adapters, §49 JSON Schema 2020-12 single source), §§2800–2959 (§60 idempotency keyed by workspace+command, request-hash reuse rules, 30-day replay retention; §61 command_operations table + claim/result atomic commit; §62 IDEMPOTENT_WRITE; §63 expectedVersion + `UPDATE ... WHERE version` → CONFLICT), §27 composite keys, §23 RLS. No generic command framework, no event sourcing, no money columns yet (E03-S01 owns balances).
+Scope: `migrations/003_commands.sql` (+rollback) — `accounts.version BIGINT NOT NULL DEFAULT 1`, `command_operations` per §61 (composite PK, UNIQUE workspace+command+key, statuses SUCCEEDED/FAILED_FINAL, request/response/error payloads, 30-day expiry) with FORCE RLS; `src/money.ts` — strict decimal-string↔BigInt boundary (`parseDecimalBigint`), minor-unit parse/format with fiat exponent table, no-float rule, consumed today by version parsing with goldens as the §158 contract E03 will extend; `src/commands/accounts.ts` — `accounts.rename` domain command + `accounts.get/list` reads, JSON Schema 2020-12 contract objects + 40-line validator shared by the HTTP adapter (single source per §49); `tenancy.ts` routes `POST /api/commands/accounts.rename` and version-bearing account views (S03 shape tests updated to include `version:"1"`); `test/commands.test.ts` (real PG); `test:commands` script + CI step.
+Out of scope: Money columns/balances (E03-S01), AI/artifact adapters (later consumers of the same module), member management, generic executor/queue (E02 owns jobs), currencies seed (code-checked, unchanged).
+
+Acceptance:
+1. Given an account at version `"1"`, when `accounts.rename` runs with matching `expectedVersion` and a fresh key, then 200 returns the new name with `version:"2"` and GET reflects it; replaying the same key+params returns the identical result (same `operationId`) with no second version bump.
+2. Given a completed key, when reused with different params, then 409 `idempotency_reuse` and the row is untouched; when reused after expiry (backdated in-test), then 409 `idempotency_expired`.
+3. Given a stale `expectedVersion`, when renaming, then 409 `version_mismatch` with decimal-string `currentVersion`; two concurrent renames on one version yield exactly one 200.
+4. Given an account with version seeded past JS safe-integer (`9007199254740993`), when read and renamed, then JSON carries exact decimal strings (`"...993"` → `"...994"`) with no number anywhere (assert raw text).
+5. Given invalid/unknown inputs, when sent via HTTP versus the domain module, then error codes agree (400 invalid_request, 404 not_found, 409 conflict variants); contract schemas carry `$schema: 2020-12` and drive HTTP validation (numeric `expectedVersion` → 400).
+
+Invariants: Versions/minor-units cross JSON only as decimal strings; BigInt-only arithmetic; idempotency scoped by (workspace, command, key); validation failures never consume a key; terminal command errors are recorded (FAILED_FINAL) so retries replay deterministically; tenant checks unchanged (withTenant inside every command); no sub/token material in command errors.
+Failure lifecycle: Concurrent same-key races converge via savepoint-guarded UNIQUE claim + poll + re-read (one journal row); crash mid-tx rolls back claim+effect together (atomic executor); failed replays return the recorded error (stale `currentVersion` by §60 rule 3 — clients GET for current state); ambiguous transport outcome → client reconciles via GET/replay, never blind re-execution with a new key (documented); rollback file drops the table + version column (synthetic data only). §61 deviations recorded in `003_commands.sql` (no IN_PROGRESS pre-E02, completed_at NOT NULL, actor_type/ai_run_id with AI/worker callers); validator hand-mirrors the Schema objects (canonicalization lives at the domain layer); `renameAccountTx` trusts caller `actorId`/`workspaceId` — HTTP passes session values (verified), future AI/artifact adapters must do the same.
+UI/accessibility: Not applicable — no browser UI (S06 owns the shell).
+Data changes: `003_commands.sql` adds version column + command_operations; rollback reverses both. Existing S03 rows default to version 1.
+Observability: Redacted command events (`command_ok:accounts.rename`, `command_conflict:<reason>` with no IDs/params); 409 bodies carry reason + currentVersion only; request params never logged.
+Limits: Commands suite <= 120 s real-PG; idempotency keys UUID; request bodies 64 KB (S03 cap); replay retention 30 days; names 1–200 (unchanged).
+Verification: `npm run test:commands` 0 (real PG, fails closed); `test:tenancy` 0 (updated shapes); regression check/web/auth/db/import/identity/durable; `git diff --check`; secret scan.
+Review focus: Key/payload-hash canonicalization gaps (same intent different bytes → false reuse or missed dedup); TOCTOU between check and mutate (must be single UPDATE-WHERE); replay returning stale data after later legitimate writes; expired-key resurrection; version string canonicalization (leading zeros/whitespace/plus); float/Number contamination anywhere in the path; RLS on command_operations; generic-framework creep.
+Rollout/rollback: App-only; rollback = prior image + `003 rollback.sql` (destroys synthetic op records; versions reset — no prod data). Known limitation: single app instance executor (no cross-instance fencing needed pre-E02 worker).
+
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e01-s04-commands`
+- Base SHA: `da1a32958d212ea429d95b8fb803d74f67672bbb`
+- Tests: (to be recorded)
+- Review: (to be recorded)
+- Integration: (to be recorded)
+- Merge SHA / post-merge smoke: (to be recorded)
+- Remaining blockers or explicitly accepted nonblocking follow-up: (to be recorded)
 
 ## E01-S05 — Enforce AI data policy before any provider integration
 

@@ -14,7 +14,8 @@ let pool: Pool;
 
 async function testPool(): Promise<Pool> {
   if (!pool) {
-    pool = await ensureTestPool("E01-S02", "moneo_e01_test");
+    // Own database: parallel vitest workers must not share suite state.
+    pool = await ensureTestPool("E01-S02", "moneo_e01_db");
   }
   return pool;
 }

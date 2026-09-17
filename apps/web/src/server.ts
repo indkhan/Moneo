@@ -56,7 +56,7 @@ export function createApp(auth?: AuthDelegate | null, tenancy?: AuthDelegate | n
           }
           if (await auth.handle(req, res, path, method, query)) return;
         }
-        if (path === "/api/workspaces" || path === "/api/accounts" || path.startsWith("/api/accounts/")) {
+        if (path === "/api/workspaces" || path === "/api/accounts" || path.startsWith("/api/accounts/") || path === "/api/commands/accounts.rename") {
           if (!tenancy) {
             discard(req);
             json(res, 503, { error: "tenancy_not_configured" });

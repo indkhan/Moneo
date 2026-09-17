@@ -1,5 +1,5 @@
 // E01-S03 tenant ownership: two synthetic users, isolated workspaces, real
-// PostgreSQL (`moneo_e01_test`, fails closed without PG). Proves API-level
+// PostgreSQL (`moneo_e01_tenancy`, fails closed without PG). Proves API-level
 // and database-level isolation, tenant-swapped denial, connection hygiene,
 // least-privilege role posture, FORCED RLS, and migration rollback.
 
@@ -58,7 +58,9 @@ async function json(method: string, url: string, cookie: string, body?: unknown)
 }
 
 beforeAll(async () => {
-  pool = await ensureTestPool("E01-S03", "moneo_e01_test", ["accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
+  // Own database: parallel vitest workers must not share a database with a
+  // suite whose rollback test drops tables.
+  pool = await ensureTestPool("E01-S03", "moneo_e01_tenancy", ["command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
   stub = await startStubIssuer();
 }, 60_000);
 
@@ -88,7 +90,7 @@ describe("e01-s03 tenant ownership", () => {
 
     // Lists are scoped.
     const listA = await json("GET", `${base}/api/accounts?workspaceId=${wsA.body.id}`, cookieA);
-    expect(listA.body).toEqual({ accounts: [{ workspaceId: wsA.body.id, id: acctA.body.id, name: "Checking A" }] });
+    expect(listA.body).toEqual({ accounts: [{ workspaceId: wsA.body.id, id: acctA.body.id, name: "Checking A", version: "1" }] });
     const listWSA = await json("GET", `${base}/api/workspaces`, cookieA);
     expect((listWSA.body as { workspaces: { id: string }[] }).workspaces.map((w) => w.id)).toEqual([wsA.body.id]);
 
@@ -216,27 +218,36 @@ describe("e01-s03 tenant ownership", () => {
     }
   });
 
-  it("migration 002 rolls back and re-applies on the suite database", async () => {
+  it("migrations 003 then 002 roll back and re-apply on the suite database", async () => {
     const { readFileSync } = await import("node:fs");
-    const rollback = readFileSync("apps/web/migrations/002_tenancy.rollback.sql", "utf8");
-    const admin = await pool.connect();
-    try {
-      await admin.query("BEGIN");
-      await admin.query(rollback);
-      await admin.query("COMMIT");
-    } catch (err) {
+    // Newest first: 002's rollback drops the accounts table that carries
+    // 003's version column, so 003 must roll back first while 003_commands
+    // is still recorded — otherwise re-migrate never restores the column
+    // and later suites sharing this database lose it (B3).
+    for (const file of ["003_commands.rollback.sql", "002_tenancy.rollback.sql"]) {
+      const sql = readFileSync(`apps/web/migrations/${file}`, "utf8");
+      const admin = await pool.connect();
       try {
-        await admin.query("ROLLBACK");
-      } catch { /* preserve */ }
-      throw err;
-    } finally {
-      admin.release();
+        await admin.query("BEGIN");
+        await admin.query(sql);
+        await admin.query("COMMIT");
+      } catch (err) {
+        try {
+          await admin.query("ROLLBACK");
+        } catch { /* preserve */ }
+        throw err;
+      } finally {
+        admin.release();
+      }
     }
-    const gone = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts')");
+    const gone = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations')");
     expect((gone.rows[0] as { n: number }).n).toBe(0);
-    // Self-healing: the idempotent migrator restores the empty shape.
+    // Self-healing: the idempotent migrator restores the full shape,
+    // including 003's version column and journal.
     await migrate(pool, "apps/web/migrations");
-    const back = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts')");
-    expect((back.rows[0] as { n: number }).n).toBe(4);
+    const back = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations')");
+    expect((back.rows[0] as { n: number }).n).toBe(5);
+    const versionCol = await pool.query("SELECT 1 FROM information_schema.columns WHERE table_name = 'accounts' AND column_name = 'version'");
+    expect(versionCol.rowCount).toBe(1);
   });
 });
