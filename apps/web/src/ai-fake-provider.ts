@@ -20,7 +20,7 @@ export type FakeProvider = {
   log: () => FakeSendRecord[];
 };
 
-export function createFakeProvider(): FakeProvider {
+export function createFakeProvider(maxRecords = 200): FakeProvider {
   const records: FakeSendRecord[] = [];
   return {
     send(selection, purpose, sentinels = []) {
@@ -38,6 +38,7 @@ export function createFakeProvider(): FakeProvider {
         at: new Date().toISOString(),
       };
       records.push(record);
+      while (records.length > maxRecords) records.shift();
       return record;
     },
     log: () => [...records],

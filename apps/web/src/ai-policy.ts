@@ -63,6 +63,13 @@ export async function setAccountExclusion(
     // Serialize writers per workspace so versions never skip or duplicate.
     await client.query("INSERT INTO ai_policies (workspace_id, policy_version) VALUES ($1, 1) ON CONFLICT (workspace_id) DO NOTHING", [claims.workspaceId]);
     await client.query("SELECT policy_version FROM ai_policies WHERE workspace_id = $1 FOR UPDATE", [claims.workspaceId]);
+    const already = await client.query("SELECT 1 FROM ai_exclusions WHERE workspace_id = $1 AND account_id = $2", [claims.workspaceId, accountId]);
+    if (((already.rowCount ?? 0) > 0) === excluded) {
+      // No-op change: same state must not bump the version or invalidate
+      // queued permits (availability cost without any safety gain).
+      const version = await currentVersion(client, claims.workspaceId);
+      return { policyVersion: version.toString(10), excludedAccountIds: await excludedIds(client, claims.workspaceId) };
+    }
     if (excluded) {
       await client.query(
         "INSERT INTO ai_exclusions (workspace_id, account_id, reason, created_by) VALUES ($1, $2, $3, $4) ON CONFLICT (workspace_id, account_id) DO UPDATE SET reason = EXCLUDED.reason, created_by = EXCLUDED.created_by",
@@ -100,6 +107,12 @@ function checkPurpose(purpose: unknown): string {
 export async function issuePermit(pool: Pool, claims: TenantClaims, purpose: string, requestedAccountIds?: string[]): Promise<Permit> {
   const cleanPurpose = checkPurpose(purpose);
   return withTenant(pool, claims, async (client) => {
+    // Serialize with exclusion writers (same FOR UPDATE pattern): the
+    // eligible snapshot and the stamped version must come from one policy
+    // generation, otherwise an exclusion committing between the two reads
+    // would stamp pre-change data with the post-change version (B1).
+    await client.query("INSERT INTO ai_policies (workspace_id, policy_version) VALUES ($1, 1) ON CONFLICT (workspace_id) DO NOTHING", [claims.workspaceId]);
+    await client.query("SELECT policy_version FROM ai_policies WHERE workspace_id = $1 FOR UPDATE", [claims.workspaceId]);
     const known = await client.query("SELECT id FROM accounts WHERE workspace_id = $1", [claims.workspaceId]);
     const knownIds = new Set((known.rows as { id: string }[]).map((r) => r.id));
     const excluded = new Set(await excludedIds(client, claims.workspaceId));
@@ -110,7 +123,7 @@ export async function issuePermit(pool: Pool, claims: TenantClaims, purpose: str
       for (const id of requestedAccountIds) {
         if (!isUuid(id) || !knownIds.has(id)) throw new PolicyError("unknown_account");
       }
-      eligible = [...requestedAccountIds].filter((id) => !excluded.has(id)).sort();
+      eligible = [...new Set(requestedAccountIds)].filter((id) => !excluded.has(id)).sort();
     }
     const version = await currentVersion(client, claims.workspaceId);
     const id = uuidv7();
@@ -123,18 +136,23 @@ export async function issuePermit(pool: Pool, claims: TenantClaims, purpose: str
   });
 }
 
-/** Eligible selection for a permit, with provenance. Exclusions applied before anything else. */
+/**
+ * Eligible selection for a permit, with provenance. Exclusions applied before
+ * anything else. Read-only helper for tests/diagnostics — consumePermit is
+ * the sole dispatch authorization (it alone enforces expiry + CAS).
+ */
 export async function selectEligible(pool: Pool, claims: TenantClaims, permitId: string): Promise<EligibleSelection> {
   if (!isUuid(permitId)) throw new TenantInvalid();
   return withTenant(pool, claims, async (client) => {
-    const found = await client.query("SELECT policy_version AS v, eligible_account_ids AS ids, status FROM ai_dispatch_permits WHERE workspace_id = $1 AND id = $2", [
+    const found = await client.query("SELECT policy_version AS v, eligible_account_ids AS ids, status, expires_at AS e FROM ai_dispatch_permits WHERE workspace_id = $1 AND id = $2", [
       claims.workspaceId,
       permitId,
     ]);
     if ((found.rowCount ?? 0) === 0) throw new PolicyError("permit_consumed");
-    const permit = found.rows[0] as { v: string; ids: string[]; status: string };
+    const permit = found.rows[0] as { v: string; ids: string[]; status: string; e: string };
     if (permit.status === "INVALIDATED") throw new PolicyError("permit_invalidated");
     if (permit.status !== "QUEUED") throw new PolicyError("permit_consumed");
+    if (new Date(permit.e).getTime() <= Date.now()) throw new PolicyError("permit_expired");
     const eligible = (permit.ids as string[]).filter((id) => isUuid(id));
     const rows =
       eligible.length === 0

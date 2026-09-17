@@ -196,7 +196,9 @@ export type TenancyRouter = {
   handle: (req: IncomingMessage, res: ServerResponse, path: string, method: string, query: URLSearchParams) => Promise<boolean>;
 };
 
-const fakeTransport = createFakeProvider();
+// Test-transport log only (dies with the process). Bounded so a long-lived
+// dev server cannot grow it without limit; E02/E04 replace this transport.
+const fakeTransport = createFakeProvider(200);
 
 function policyErrorBody(err: PolicyError): { status: number; body: unknown } {
   if (err.code === "unknown_account") return { status: 400, body: { error: "invalid_request", reason: err.code } };
@@ -391,8 +393,11 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
         }
         if (path === "/api/ai/test-dispatch" && method === "POST") {
           // Test transport only: the recording fake provider E02/E04 replace
-          // with the qualified OpenRouter path. Never in production.
-          if (process.env["APP_ENV"] === "production") {
+          // with the qualified OpenRouter path. Allowlisted to local
+          // development/test (including unset); every other environment,
+          // production included, gets a uniform 404.
+          const appEnv = process.env["APP_ENV"];
+          if (appEnv !== undefined && appEnv !== "development" && appEnv !== "test") {
             tenantJson(res, 404, { error: "not_found" });
             return true;
           }

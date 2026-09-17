@@ -82,6 +82,10 @@ async function setupWorkspace(base: string, sub: string): Promise<{ cookie: stri
 }
 
 beforeAll(async () => {
+  // Pin the test environment name so the test-dispatch allowlist is
+  // deterministic regardless of the developer's shell (Windows-safe: no
+  // cross-env dependency for inline VAR= assignments).
+  process.env["APP_ENV"] = "test";
   // Own database: parallel vitest workers must not share suite state.
   pool = await ensureTestPool("E01-S05", "moneo_e01_policy", ["ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
   stub = await startStubIssuer();
@@ -180,6 +184,46 @@ describe("e01-s05 ai data policy", () => {
     const sent = await call("POST", `${base}/api/ai/test-dispatch`, cookie, { workspaceId, permitId: permit.id });
     expect(sent.status).toBe(200);
     expect(JSON.stringify(sent.json)).not.toContain("Late account");
+  });
+
+  it("concurrent exclusion and issuance never stamps pre-change data with the post-change version", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId, acctIn, acctOut } = await setupWorkspace(base, "synthetic-pol-f");
+    const v0 = ((await call("GET", `${base}/api/ai/policy?workspaceId=${workspaceId}`, cookie)).json as { policyVersion: string }).policyVersion;
+    // Fire the exclusion bump and five issuances without awaiting between
+    // them: the policy lock serializes the snapshot, so every permit is
+    // either fully before (old version, old eligibility) or fully after —
+    // never old eligibility stamped with the new version (B1 leak signature).
+    const toggle = call("PUT", `${base}/api/ai/exclusions`, cookie, { workspaceId, accountId: acctOut, excluded: true });
+    const issued = await Promise.all(
+      Array.from({ length: 5 }, () => call("POST", `${base}/api/ai/permits`, cookie, { workspaceId, purpose: "race" })),
+    );
+    const bumped = (await toggle).json as { policyVersion: string };
+    expect(issued.every((r) => r.status === 201)).toBe(true);
+    const permits = issued.map((r) => r.json as { id: string; policyVersion: string; eligibleAccountIds: string[] });
+    for (const p of permits) {
+      const hasOut = p.eligibleAccountIds.includes(acctOut);
+      expect(hasOut ? p.policyVersion : "new").toBe(hasOut ? v0 : "new");
+      expect(!hasOut || p.policyVersion !== bumped.policyVersion).toBe(true);
+      expect(p.eligibleAccountIds).toContain(acctIn);
+    }
+    // And dispatching the pre-change permits after invalidation fails closed.
+    for (const p of permits.filter((p) => p.policyVersion === v0)) {
+      const sent = await call("POST", `${base}/api/ai/test-dispatch`, cookie, { workspaceId, permitId: p.id });
+      expect(sent.status).toBe(409);
+    }
+  });
+
+  it("no-op exclusion changes neither bump the version nor invalidate permits", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId, acctOut } = await setupWorkspace(base, "synthetic-pol-g");
+    const first = (await call("PUT", `${base}/api/ai/exclusions`, cookie, { workspaceId, accountId: acctOut, excluded: true })).json as { policyVersion: string };
+    expect(first.policyVersion).toBe("2");
+    const permit = (await call("POST", `${base}/api/ai/permits`, cookie, { workspaceId, purpose: "q" })).json as { id: string };
+    const repeat = (await call("PUT", `${base}/api/ai/exclusions`, cookie, { workspaceId, accountId: acctOut, excluded: true })).json as { policyVersion: string };
+    expect(repeat.policyVersion).toBe("2"); // unchanged, no invalidation
+    const sent = await call("POST", `${base}/api/ai/test-dispatch`, cookie, { workspaceId, permitId: permit.id });
+    expect(sent.status).toBe(200);
   });
 
   it("policy reads are tenant-isolated and versions increase monotonically", async () => {

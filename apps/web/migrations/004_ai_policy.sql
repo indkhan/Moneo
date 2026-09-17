@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS ai_dispatch_permits (
   status TEXT NOT NULL CONSTRAINT ai_permits_status CHECK (status IN ('QUEUED', 'DISPATCHED', 'INVALIDATED')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   expires_at TIMESTAMPTZ NOT NULL,
-  PRIMARY KEY (workspace_id, id)
+  PRIMARY KEY (workspace_id, id),
+  CONSTRAINT ai_permits_ids_array CHECK (jsonb_typeof(eligible_account_ids) = 'array')
 );
 
 ALTER TABLE ai_policies ENABLE ROW LEVEL SECURITY;
