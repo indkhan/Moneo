@@ -83,7 +83,7 @@ Status: Done | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 ## E00-S04 — Prove durable effects despite worker and queue failure
 
-Status: Ready | Epic: E00 | Release: R1 | Dependencies: E00-S01
+Status: Done | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 **Outcome:** One synthetic command is durably accepted and applied once despite retry, process death, stale attempts and complete Redis transport loss.
 
@@ -104,7 +104,7 @@ Status: Ready | Epic: E00 | Release: R1 | Dependencies: E00-S01
 
 **Decision gate:** Carry the proven transaction boundaries into E02-S01/S02. A successful happy-path queue demo alone does not pass.
 
-**Execution record:** Not started; no branch, SHA, review, test or merge evidence.
+**Execution record:** Orchestrator/implementer: this session; branch: `story/e00-s04-durable-effects`; base/current-main SHA: `0ec685108410f43c0c9ff652e55d43eb5d98dbb2`; implementation SHA: `ed0775f3187b6821c30808293639703dbe77da65`; fix SHA: `2c9b9bad89ad62b3be0ca2d52f895790219a3303`. Independent adversarial review (separate task contexts): Pass with no blockers at `ed0775f` (reran typecheck, durable 10/10, import 24/24, identity 42/42, plus 8 independent fault/isolation probes P1–P8, all passing), then Pass renewed at `2c9b9ba` after all 7 nonblocking findings were closed (attempt-history preservation on duplicate publish, shared-database guard on DURABLE_PROOF_DB, dedup-framing comment, heartbeat/kill-simulation honesty notes, dead-code removal, IPv6 loopback normalization). Merged with `--no-ff` as `4eefbd802d20625824baa0643cfdb70a510c022e` (merged tree verified identical to reviewed `2c9b9ba`). Post-merge smoke on main: `npm ci` 0 (89 packages, 0 vulnerabilities), `npm run typecheck` 0, `npm test` 0 (1/1), `npm run test:import` 0 (24/24), `npm run test:identity` 0 (42/42), `npm run test:durable` 0 (11/11), `npm run test:failure` nonzero as intended, `git diff --check` 0, clean status. Runtime proof pins bullmq 6.3.6, ioredis 5.11.1, pg 8.23.0, @types/pg 8.23.1 against PostgreSQL 18.6 (disposable `moneo_durable_proof` database, app-role runtime I/O) and Redis 7.0.15 (dedicated logical DB on the local disposable server, loopback-guarded flush); measured on Windows 11, i5-12450HX, 16 GiB RAM, Node v22.23.2 / npm 10.9.8. Acceptance evidence: 20-way concurrent identical submissions + duplicate dispatch apply exactly once with incompatible/foreign reuse rejected; crash before dispatch, after enqueue-before-marking, during execution (300–500 ms test lease, stale generation fenced STALE) and after effect commit all recover with zero loss/duplication; FLUSHDB of the dedicated Redis DB restored 5/5 via the PG reconciler; cancel after claim blocks publication (BLOCKED) while cancel after success preserves history; forged cross-tenant claim/publish denied without disclosure; 100 stalled commands reclaimed and drained in ~190–330 ms (264 ms post-merge) against the 30 s budget with a tenant-B sentinel proving isolation. Proven transaction boundaries (PG outbox + BullMQ transport + attempt-generation fence) carry into E02-S01/S02. Environment notes: local WSL Ubuntu stops after its last client session, so Redis needs a held session during runs (documented in proof/durable/README.md); remote `origin/main` remains `ee20bcd` (stale) and no push was performed, matching prior local-only E00 integrations. No blockers; `.env` remained ignored/untracked and unread into the diff.
 
 ## E00-S05 — Qualify identity, deployment identity and development AI
 
