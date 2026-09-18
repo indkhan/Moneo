@@ -20,6 +20,8 @@ import { isUuid, uuidv7 } from "./ids.ts";
 import { TenantDenied, TenantInvalid, withTenant, type TenantClaims } from "./tenancy.ts";
 
 export const IMPORTS_START = "imports.start";
+export const IMPORTS_PARSE = "imports.parse";
+export const IMPORTS_COMMIT = "imports.commit";
 export const IMPORTS_JOB_VERSION = "1";
 const REPLAY_RETENTION_DAYS = 30;
 export const MAX_ACTIVE_SYNTHETIC_JOBS = 2;

@@ -13,6 +13,7 @@ import { CommandError, getAccountView, listAccountViews, renameAccount, validate
 import { acceptImportJob, JobError, readJob, validateAcceptInput } from "./jobs.ts";
 import { cancelJob } from "./job-recovery.ts";
 import { acceptUpload, listObservations, loadUploadConfig, MAX_UPLOAD_BYTES, readImport, UploadError } from "./uploads.ts";
+import { acceptImportCommitJob, ImportCommitError, readImportCommitStatus } from "./import-commit.ts";
 import { acceptMapping, listMappingProfiles, MappingError, mappingErrorBody, proposeMapping, readCurrentMapping } from "./mapping.ts";
 import { liveMappingTransport, loadMappingProvider } from "./mapping-provider.ts";
 import { readMultipart } from "./multipart.ts";
@@ -229,6 +230,11 @@ function uploadErrorBody(err: UploadError): { status: number; body: unknown } {
   if (err.code === "payload_too_large") return { status: 413, body: { error: "payload_too_large", reason: err.reason ?? "upload-limit" } };
   if (err.code === "idempotency_reuse") return { status: 409, body: { error: "conflict", reason: err.code } };
   return { status: 400, body: { error: "invalid_request", ...(err.reason ? { reason: err.reason } : {}) } };
+}
+
+function importCommitErrorBody(err: ImportCommitError): { status: number; body: unknown } {
+  if (err.code === "not_found") return { status: 404, body: { error: "not_found" } };
+  return { status: 409, body: { error: "conflict", reason: err.code } };
 }
 
 export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver): TenancyRouter {
@@ -648,6 +654,59 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             }
             throw err;
           }
+          return true;
+        }
+        // E02-S05 import commit: POST to start commit job, GET status.
+        const importCommitMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/imports\/([A-Za-z0-9-]+)\/commit$/);
+        if (importCommitMatch && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: { workspaceId: string; idempotencyKey: string; importId: string; accountId: string };
+          try {
+            const body = (await readJsonBody(req)) as { idempotencyKey?: unknown; accountId?: unknown };
+            if (typeof body.idempotencyKey !== "string" || !isUuid(body.idempotencyKey) || typeof body.accountId !== "string" || !isUuid(body.accountId)) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            input = { workspaceId: importCommitMatch[1], idempotencyKey: body.idempotencyKey, importId: importCommitMatch[2], accountId: body.accountId };
+          } catch (err) {
+            if (err instanceof Error && (err.message === "body_too_large" || err.message === "body_invalid")) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            throw err;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await acceptImportCommitJob(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, result.replayed ? 200 : 201, { job: result.view, operationId: result.operationId, jobId: result.jobId, replayed: result.replayed, requestId });
+          } catch (err) {
+            if (err instanceof ImportCommitError) {
+              const mapped = importCommitErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        const importCommitReadMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/imports\/([A-Za-z0-9-]+)\/commit$/);
+        if (importCommitReadMatch && method === "GET") {
+          const resolved = await claims(req, importCommitReadMatch[1]);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const status = await readImportCommitStatus(pool, resolved.claim, importCommitReadMatch[2]);
+          if (!status) tenantJson(res, 404, { error: "not_found" });
+          else tenantJson(res, 200, { commit: status, requestId });
           return true;
         }
         // E02-S04 mapping: propose (deterministic first, bounded model
