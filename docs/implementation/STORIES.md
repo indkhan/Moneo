@@ -466,8 +466,8 @@ Execution record:
 
 ## E02-S03 — Upload, quarantine and parse bounded source files
 
-Status: Ready | Release: R1 | Epic: E02
-Dependencies: E02-S02, E00-S03 (both Done; refined against merged `7a2ae4c`)
+Status: In progress | Release: R1 | Epic: E02
+Dependencies: E02-S02, E00-S03 (both Done; refined Ready at `6d4b4ea`)
 
 Outcome: An authenticated user can submit CSV/XLSX into private quarantine and receive exact traceable parsed observations or a safe typed rejection through the durable job system.
 Contracts: Product §§6–8; architecture §§5–9, 181–183, 202, 216–218, 443–446 and 455–456; E00-S03 parser/fixture decision.
@@ -495,9 +495,10 @@ Refinement record (orchestrator, no product code changed):
 - Implementation binding: S03 must run these images (or explicitly re-pinned successors) in real PG/object-store/scanner integration (`npm run test:upload`); docs-only selection would not have sufficed — the put/get/private and OK/FOUND runs above are the gate evidence. No founder decision required (test-only, no product/boundary change).
 
 Execution record:
-- Assignee / branch / worktree:
-- Base SHA / implementation head SHA:
-- Tests: commands, environment, exit codes, result links:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e02-s03-upload-parse`
+- Base SHA / implementation head SHA: base `6d4b4ea0d52764413f9c867c3b3f341a856c8331` / impl `pending-commit`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18, WSL Redis 8.4.2, MinIO RELEASE.2025-09-07 (loopback :9000, disposable bucket) + ClamAV 1.5.4 (loopback :3310), UPLOAD_REDIS_DB 12. `npm run typecheck` 0; `npm run test:upload` 0 (17/17: exact CSV/XLSX oracle money through the stack, replay/conflict, typed unsupported/empty/mismatch/oversize with no storage, EICAR quarantine+reject with zero observations, formula review without execution, external-link reject, bomb decompressed-limit, cell-limit row reject, 2500-row chunked dense identity + terminal noop, child-deadline kill with transient recovery, cancel-before/race invariant, tenant/missing uniformity + B sentinels, traversal-proof keys + metadata-only responses, minimal Redis payload + disabled hiding + strict profiles, custom dialect, real worker delivery, labelled form + status page); `npm run test:import` 0 (26/26, proof untouched); `npm run test:job-recovery` 0 (14/14); `npm run test:jobs` 0 (8/8); `npm run test:durable` 0 (12/12); `test:tenancy` 0 (6/6); `test:commands` 0 (8/8); `test:policy` 0 (7/7); `test:auth` 0 (13/13); `test:db` 0 (2/2); `test:money` 0 (4/4); `test:ui` 0 (10/10); `test:w1` 0 (1/1); harness 1/1; `test:web` 0 (8/8); `test:http` 0 (1/1); `test:identity` 0 (36/36); `npm run test:failure` exit 1 as intended; `npm run build:web` 0; `npm run build:worker` 0; `npm run build:parser` 0; `git diff --check` 0; tracked-file secret scan clean; no `.env` tracked.
+- Design note: S3 is hand-rolled SigV4 on Node built-ins (no SDK); clamd INSTREAM replies are NUL-terminated (a `\n` wait hung every scan — caught by test, fixed); parser job file must carry the `out` path (dropped field broke every parse — caught by test, fixed); upload contract types are local mirrors of the proof parser (build-root decoupling; oracle tests pin drift); S3 PUT precedes the PG tx (orphans expire via retention lifecycle, never the reverse); terminal counts reconcile from stored rows; cancelled parse imports keep staged-so-far rows with non-terminal status (S05 commits STAGED only). fflate 0.8.3 promoted to dependencies (parser runtime). Per-migration maintenance as before.
 - Review: reviewer, reviewed SHA, findings, verdict:
 - Integration: current main SHA, tested candidate SHA, checks:
 - Merge SHA / post-merge smoke:

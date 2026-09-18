@@ -12,6 +12,8 @@ import { getPolicy, PolicyError, setAccountExclusion, summarizeEligible } from "
 import { getAccountView, listAccountViews } from "../commands/accounts.ts";
 import { clearSessionCookie, revokeRequestSession } from "../auth.ts";
 import { readLimitedBody } from "../http-controls.ts";
+import { readMultipart } from "../multipart.ts";
+import { acceptUpload, listObservations, loadUploadConfig, MAX_UPLOAD_BYTES, readImport, UploadError } from "../uploads.ts";
 import { listWorkspaces, sessionClaims, TenantDenied, TenantInvalid, type SessionResolver } from "../tenancy.ts";
 import { errorPage, escapeHtml, page } from "./shell.ts";
 
@@ -145,7 +147,7 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
           requestId,
           authed: true,
           notice,
-          content: `<p>AI coverage: ${escapeHtml(summary.coverage)} (${escapeHtml(String(summary.accountCount))} of ${escapeHtml(String(accounts.length))} accounts eligible, policy v${escapeHtml(summary.policyVersion)}).</p>${rows}`,
+          content: `<p>AI coverage: ${escapeHtml(summary.coverage)} (${escapeHtml(String(summary.accountCount))} of ${escapeHtml(String(accounts.length))} accounts eligible, policy v${escapeHtml(summary.policyVersion)}).</p><p><a href="/w/${escapeHtml(workspaceId)}/imports/new">Import a bank file (CSV/XLSX)</a></p>${rows}`,
         }),
       );
       return true;
@@ -267,6 +269,156 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
         }
         throw err;
       }
+    }
+
+    // E02-S03 minimal import upload: native file form (keyboard by
+    // construction), allowlist + size help, typed error shells. S06 owns
+    // multi-file polish, progress streaming and review queues.
+    const importsNewMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/imports\/new$/);
+    if (importsNewMatch && method === "GET") {
+      const workspaceId = importsNewMatch[1];
+      const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+      if (!resolved.session) {
+        html(res, 401, errorPage({ status: 401, heading: "Sign in required", message: "Log in to import files.", back: "/", requestId, authed: false }));
+        return true;
+      }
+      if (!resolved.claim) {
+        event("ui_denied:workspace");
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace.", back: "/", requestId, authed: true }));
+        return true;
+      }
+      let uploadsReady = true;
+      try {
+        loadUploadConfig();
+      } catch {
+        uploadsReady = false;
+      }
+      const help = `<p>Accepted formats: <strong>.csv</strong> and <strong>.xlsx</strong> only, up to 20 MiB. Files are scanned for malware and parsed in a bounded worker; rejected files explain why.</p>`;
+      const content = uploadsReady
+        ? `${help}<form method="post" action="/w/${escapeHtml(workspaceId)}/imports" enctype="multipart/form-data"><input type="hidden" name="idempotencyKey" value="${randomUUID()}"><p><label for="upload-file">Bank file</label> <input id="upload-file" type="file" name="file" accept=".csv,.xlsx" required></p><p><button type="submit">Upload and parse</button></p></form>`
+        : `${help}<div class="alert" role="alert"><h2>Imports unavailable</h2><p>File intake is temporarily disabled. Try again later.</p></div>`;
+      html(res, 200, page({ title: "Import a bank file", requestId, authed: true, content }));
+      return true;
+    }
+
+    const importsPostMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/imports$/);
+    if (importsPostMatch && method === "POST") {
+      const workspaceId = importsPostMatch[1];
+      if (!sameOrigin(req, config.appBaseUrl)) {
+        event("ui_denied:origin");
+        html(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: `/w/${workspaceId}`, requestId, authed: true }));
+        return true;
+      }
+      const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+      if (!resolved.claim) {
+        const authed = resolved.session !== null;
+        req.resume();
+        html(res, authed ? 404 : 401, errorPage({ status: authed ? 404 : 401, heading: authed ? "Not found" : "Sign in required", message: "No such workspace.", back: "/", requestId, authed }));
+        return true;
+      }
+      let uploadConfig;
+      try {
+        uploadConfig = loadUploadConfig();
+      } catch {
+        event("ui_uploads_disabled");
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "File intake is temporarily disabled.", back: `/w/${workspaceId}`, requestId, authed: true }));
+        return true;
+      }
+      const fail = (status: number, heading: string, message: string): void => {
+        event("ui_upload_denied");
+        html(res, status, errorPage({ status, heading, message, back: `/w/${workspaceId}/imports/new`, requestId, authed: true }));
+      };
+      let form;
+      try {
+        form = await readMultipart(req, { maxBytes: MAX_UPLOAD_BYTES + 64 * 1024 });
+      } catch (err) {
+        if (err instanceof Error && err.message === "body_too_large") fail(413, "File too large", "Files above 20 MiB are not accepted. Split the statement and retry.");
+        else fail(400, "Upload failed", "The submission could not be read. Retry with a CSV or XLSX file.");
+        return true;
+      }
+      try {
+        if (!form.file) throw new UploadError("invalid_request", "missing-file");
+        if (typeof form.fields["idempotencyKey"] !== "string" || !isUuid(form.fields["idempotencyKey"])) {
+          throw new UploadError("invalid_request", "bad-idempotency-key");
+        }
+        const result = await acceptUpload(pool, resolved.claim, resolved.claim.userId, uploadConfig, {
+          workspaceId,
+          idempotencyKey: form.fields["idempotencyKey"],
+          filename: form.file.filename,
+          bytes: form.file.bytes,
+        });
+        event("ui_upload_ok");
+        res.writeHead(303, { Location: `/w/${workspaceId}/imports/${result.import.id}` });
+        res.end();
+        return true;
+      } catch (err) {
+        if (err instanceof UploadError && err.code === "idempotency_reuse") {
+          fail(409, "Already submitted", "This form was already submitted with different content. Check the import status or start a fresh upload.");
+          return true;
+        }
+        if (err instanceof UploadError && err.code === "payload_too_large") {
+          fail(413, "File too large", "Files above 20 MiB are not accepted. Split the statement and retry.");
+          return true;
+        }
+        if (err instanceof UploadError || err instanceof TenantInvalid || err instanceof TenantDenied) {
+          fail(err instanceof TenantDenied ? 404 : 400, err instanceof TenantDenied ? "Not found" : "Upload failed", "Only validated CSV or XLSX files are accepted. Check the format and retry.");
+          return true;
+        }
+        throw err;
+      }
+    }
+
+    const importStatusMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/imports\/([A-Za-z0-9-]+)$/);
+    if (importStatusMatch && method === "GET") {
+      const workspaceId = importStatusMatch[1];
+      const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+      if (!resolved.session) {
+        html(res, 401, errorPage({ status: 401, heading: "Sign in required", message: "Log in to view imports.", back: "/", requestId, authed: false }));
+        return true;
+      }
+      if (!resolved.claim) {
+        event("ui_denied:workspace");
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace.", back: "/", requestId, authed: true }));
+        return true;
+      }
+      let viewed;
+      try {
+        viewed = await readImport(pool, resolved.claim, importStatusMatch[2]);
+      } catch (err) {
+        if (err instanceof TenantDenied) {
+          html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such import.", back: `/w/${workspaceId}`, requestId, authed: true }));
+          return true;
+        }
+        throw err;
+      }
+      if (!viewed) {
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such import.", back: `/w/${workspaceId}`, requestId, authed: true }));
+        return true;
+      }
+      const sample = await listObservations(pool, resolved.claim, importStatusMatch[2], { limit: 5 }).catch(() => ({ rows: [], total: 0 }));
+      const stateLine =
+        viewed.status === "STAGED"
+          ? `Parsed ${escapeHtml(viewed.rowCount ?? "?")} rows: ${escapeHtml(viewed.stagedCount ?? "?")} staged, ${escapeHtml(viewed.reviewCount ?? "?")} need review, ${escapeHtml(viewed.rejectedCount ?? "?")} rejected.`
+          : viewed.status === "REJECTED"
+            ? `Rejected (${escapeHtml(viewed.errorCode ?? "unknown reason")}). No rows entered review or totals.`
+            : `Status ${escapeHtml(viewed.status)} — refresh this page to update; processing continues in the background.`;
+      const sampleRows =
+        sample.rows.length === 0
+          ? `<p>No staged rows to preview yet.</p>`
+          : `<table><caption>First staged rows</caption><thead><tr><th scope="col">Row</th><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Status</th></tr></thead><tbody>${sample.rows
+              .map((row) => `<tr><td>${escapeHtml(String(row.rowNo))}</td><td>${escapeHtml(row.effectiveDate ?? "—")}</td><td>${escapeHtml(row.description ?? "—")}</td><td>${escapeHtml(row.status)}</td></tr>`)
+              .join("")}</tbody></table>`;
+      html(
+        res,
+        200,
+        page({
+          title: "Import status",
+          requestId,
+          authed: true,
+          content: `<h2>${escapeHtml(viewed.fileName)}</h2><p>${stateLine}</p>${sampleRows}<p><a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p>`,
+        }),
+      );
+      return true;
     }
 
     return false;

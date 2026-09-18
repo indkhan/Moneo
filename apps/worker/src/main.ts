@@ -12,8 +12,9 @@ import { hostname } from "node:os";
 import type { Pool } from "pg";
 import type { Queue, Worker } from "bullmq";
 import { createPool } from "../../web/src/db.ts";
-import { dispatchOutbox, jobsQueue, processImportJob, startJobsWorker, type JobPayload } from "../../web/src/jobs.ts";
+import { dispatchOutbox, jobsQueue, processImportJob, readJob, resolveJobRoute, startJobsWorker, type JobPayload } from "../../web/src/jobs.ts";
 import { parseLeaseMsEnv } from "../../web/src/job-recovery.ts";
+import { loadUploadConfig, processParseJob } from "../../web/src/uploads.ts";
 
 export type WorkerService = {
   pool: Pool;
@@ -35,11 +36,29 @@ export function createWorkerService(opts: { databaseUrl: string; redisUrl: strin
     async (job) => {
       let outcome: string;
       try {
-        outcome = await processImportJob(pool, job.data.backgroundJobId, {
-          workerId,
-          leaseMs,
-          bullmqJobId: job.id,
-        });
+        // Route by durable job type (resolved under the accepting member's
+        // tenancy inside): the transport payload stays {backgroundJobId}.
+        const workerRoute = await resolveJobRoute(pool, job.data.backgroundJobId);
+        let jobType = "imports.start";
+        if (workerRoute) {
+          const view = await readJob(pool, { userId: workerRoute.acceptedBy, workspaceId: workerRoute.workspaceId }, job.data.backgroundJobId);
+          if (view) jobType = view.jobType;
+        }
+        const invocation = { workerId, leaseMs, bullmqJobId: job.id };
+        if (jobType === "imports.parse") {
+          let uploadConfig;
+          try {
+            uploadConfig = loadUploadConfig();
+          } catch {
+            // Misconfigured scanner/storage must not fail the durable job:
+            // stay RUNNING for the sweep to redeliver once configured.
+            console.log(JSON.stringify({ event: "job_deferred", reason: "upload_config_missing" }));
+            return "config-missing-deferred";
+          }
+          outcome = await processParseJob(pool, job.data.backgroundJobId, uploadConfig, invocation);
+        } else {
+          outcome = await processImportJob(pool, job.data.backgroundJobId, invocation);
+        }
       } catch (err) {
         if ((err as { code?: string }).code === "lease_held") {
           // A live attempt holds the job: not a failure, just not ours now.

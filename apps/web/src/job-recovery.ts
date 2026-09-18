@@ -163,7 +163,7 @@ export async function heartbeatAttempt(
   });
 }
 
-async function fencedGuard(
+export async function fencedGuard(
   client: PoolClient,
   route: JobRoute & { jobId: string },
   claim: Pick<Claim, "attemptId" | "generation">,
@@ -186,7 +186,7 @@ async function fencedGuard(
   return { ok: true };
 }
 
-async function markAttempt(
+export async function markAttempt(
   client: PoolClient,
   route: JobRoute & { jobId: string },
   attemptId: string,

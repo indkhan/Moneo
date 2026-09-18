@@ -14,7 +14,7 @@ on:
 jobs:
   gates:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
@@ -32,12 +32,22 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 3s --health-retries 10
+      # MinIO and ClamAV run as explicit docker steps below (service
+      # containers cannot take the required server args / slow-start waits).
     env:
       DATABASE_URL: postgresql://moneo_app:ci-synthetic-only@localhost:5432/moneo_ci
       DATABASE_MIGRATION_URL: postgresql://postgres:ci-synthetic-only@localhost:5432/postgres
       DURABLE_PROOF_DB: moneo_durable_proof
       DURABLE_PROOF_REDIS_DB: "15"
       REDIS_URL: redis://localhost:6379
+      UPLOADS_ENABLED: "1"
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: ci-minio-test-only
+      S3_SECRET_KEY: ci-minio-test-only-secret-01
+      S3_BUCKET: moneo-ci-upload-test
+      CLAMAV_HOST: localhost
+      CLAMAV_PORT: "3310"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,7 +68,22 @@ jobs:
             -c "CREATE DATABASE moneo_e01_ui OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e01_w1 OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e02_jobs OWNER moneo_app;" \
-            -c "CREATE DATABASE moneo_e02_recovery OWNER moneo_app;"
+            -c "CREATE DATABASE moneo_e02_recovery OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_e02_upload OWNER moneo_app;"
+      - name: Start MinIO + ClamAV test services (synthetic only)
+        run: |
+          docker run -d --name ci-minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=ci-minio-test-only -e MINIO_ROOT_PASSWORD=ci-minio-test-only-secret-01 \
+            quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e server /data
+          docker run -d --name ci-clamav -p 3310:3310 \
+            clamav/clamav:stable@sha256:9cb27d7660bdf66e9878c832cb433dd8aa152cfbe16f3c2c0084c80b04ae22b4
+      - name: Wait for object store + scanner (clamd downloads signatures)
+        run: node scripts/wait-for-services.mjs
+        env:
+          WAIT_S3_ENDPOINT: http://localhost:9000
+          WAIT_CLAMD_HOST: localhost
+          WAIT_CLAMD_PORT: "3310"
+          WAIT_TIMEOUT_MS: "420000"
       - name: Install (lockfile)
         run: npm ci
       - name: Typecheck
@@ -91,6 +116,10 @@ jobs:
         run: npm run test:jobs
       - name: Job recovery, fencing and cancel (real PG + Redis)
         run: npm run test:job-recovery
+      - name: Build parser child (upload worker dependency)
+        run: npm run build:parser
+      - name: Quarantine upload and bounded parse (real PG + MinIO + ClamAV)
+        run: npm run test:upload
       - name: Durable effects (real PG + Redis)
         run: npm run test:durable
       - name: Deliberate failure must exit nonzero

@@ -12,6 +12,8 @@ import type { Session } from "./session-store.ts";
 import { CommandError, getAccountView, listAccountViews, renameAccount, validateRenameInput } from "./commands/accounts.ts";
 import { acceptImportJob, JobError, readJob, validateAcceptInput } from "./jobs.ts";
 import { cancelJob } from "./job-recovery.ts";
+import { acceptUpload, listObservations, loadUploadConfig, MAX_UPLOAD_BYTES, readImport, UploadError } from "./uploads.ts";
+import { readMultipart } from "./multipart.ts";
 import { consumePermit, getPolicy, issuePermit, PolicyError, setAccountExclusion, summarizeEligible } from "./ai-policy.ts";
 import { readLimitedBody } from "./http-controls.ts";
 import { createFakeProvider } from "./ai-fake-provider.ts";
@@ -218,6 +220,13 @@ function jobErrorBody(err: JobError): { status: number; body: unknown } {
   if (err.code === "not_found") return { status: 404, body: { error: "not_found" } };
   if (err.code === "workspace_busy") return { status: 409, body: { error: "conflict", reason: err.code } };
   return { status: 409, body: { error: "conflict", reason: err.code } };
+}
+
+function uploadErrorBody(err: UploadError): { status: number; body: unknown } {
+  if (err.code === "not_found") return { status: 404, body: { error: "not_found" } };
+  if (err.code === "payload_too_large") return { status: 413, body: { error: "payload_too_large", reason: err.reason ?? "upload-limit" } };
+  if (err.code === "idempotency_reuse") return { status: 409, body: { error: "conflict", reason: err.code } };
+  return { status: 400, body: { error: "invalid_request", ...(err.reason ? { reason: err.reason } : {}) } };
 }
 
 export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver): TenancyRouter {
@@ -531,6 +540,112 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           const outcome = await cancelJob(pool, resolved.claim, jobCancelMatch[2]);
           if (!outcome) tenantJson(res, 404, { error: "not_found" });
           else tenantJson(res, 200, { status: outcome.status, changed: outcome.changed, effectApplied: outcome.effectApplied, requestId });
+          return true;
+        }
+        // E02-S03 quarantine uploads. Disabled by default (UPLOADS_ENABLED +
+        // S3 + scanner config): without it the endpoint hides as 404.
+        const uploadsMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/uploads$/);
+        if (uploadsMatch && method === "POST") {
+          let config;
+          try {
+            config = loadUploadConfig();
+          } catch {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const session = await resolveSession(req);
+          if (!session) {
+            // Drain the unread body so the socket stays reusable.
+            req.resume();
+            req.on("error", () => {});
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const workspaceId = uploadsMatch[1];
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            req.resume();
+            req.on("error", () => {});
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          let form;
+          try {
+            form = await readMultipart(req, { maxBytes: MAX_UPLOAD_BYTES + 64 * 1024 });
+          } catch (err) {
+            if (err instanceof Error && err.message === "body_too_large") {
+              tenantJson(res, 413, { error: "payload_too_large", reason: "upload-limit" });
+              return true;
+            }
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          try {
+            if (!form.file) throw new UploadError("invalid_request", "missing-file");
+            if (typeof form.fields["idempotencyKey"] !== "string" || !isUuid(form.fields["idempotencyKey"])) {
+              throw new UploadError("invalid_request", "bad-idempotency-key");
+            }
+            let profile: unknown;
+            if (form.fields["profile"] !== undefined) {
+              try {
+                profile = JSON.parse(form.fields["profile"]);
+              } catch {
+                throw new UploadError("invalid_request", "bad-profile");
+              }
+            }
+            const result = await acceptUpload(pool, resolved.claim, resolved.claim.userId, config, {
+              workspaceId,
+              idempotencyKey: form.fields["idempotencyKey"],
+              filename: form.file.filename,
+              bytes: form.file.bytes,
+              profile,
+            });
+            tenantJson(res, result.replayed ? 200 : 201, { import: result.import, jobId: result.jobId, replayed: result.replayed, requestId });
+          } catch (err) {
+            if (err instanceof UploadError) {
+              const mapped = uploadErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        const importReadMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/imports\/([A-Za-z0-9-]+)$/);
+        if (importReadMatch && method === "GET") {
+          const resolved = await claims(req, importReadMatch[1]);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const viewed = await readImport(pool, resolved.claim, importReadMatch[2]);
+          if (!viewed) tenantJson(res, 404, { error: "not_found" });
+          else tenantJson(res, 200, { import: viewed, requestId });
+          return true;
+        }
+        const observationsMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/imports\/([A-Za-z0-9-]+)\/observations$/);
+        if (observationsMatch && method === "GET") {
+          const resolved = await claims(req, observationsMatch[1]);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const limit = query.get("limit");
+          const offset = query.get("offset");
+          try {
+            const page = await listObservations(pool, resolved.claim, observationsMatch[2], {
+              ...(limit === null ? {} : { limit: Number(limit) }),
+              ...(offset === null ? {} : { offset: Number(offset) }),
+            });
+            // Unknown import reads as an empty page (uniform with missing).
+            tenantJson(res, 200, { ...page, requestId });
+          } catch (err) {
+            if (err instanceof TenantInvalid) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            throw err;
+          }
           return true;
         }
       } catch (err) {

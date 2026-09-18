@@ -5,8 +5,8 @@
     "noEmitOnError": true,
     "rewriteRelativeImportExtensions": true,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["child.ts", "parser.ts"]
 }
