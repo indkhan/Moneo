@@ -382,6 +382,16 @@ Execution record:
 
 **Known limitations carried into W2:** Keycloak→app session propagation absent by design (S02); staging GRANT split + production TLS/persistence/backups/hosting remain E08 gates; single-instance rate/pending state; no browser AT/keyboard run yet; free-model live gates stay bounded/manual; remote `main` still unpushed.
 
+### E00/E01 post-exit audit — 2026-09-18
+
+**Result: Pass with fixes.** Audit branch `story/e00-e01-audit-fixes`, base `8f5ddb2`; implementation `d56a404`, configured-staging CI follow-up `a389659`, final reviewed code/planning candidate `790277c`. Root-cause fixes: the runtime image now includes migrations; the configured staging smoke boots real PostgreSQL and the auth/database path; AI permit consumption serializes with policy exclusion; the shared HTTP reader enforces 64 KiB in bytes and drains without retaining overflow; artifact browser security is a required CI job and uses real pointer interaction; duplicate status lines were removed. No E02 implementation was started.
+
+**Verification:** clean `npm ci` (88 packages, 0 vulnerabilities); 135/135 deterministic and real-service tests passed across harness, web, import, identity, auth, DB, tenancy, commands, money, policy, UI, HTTP-limit, W1 and durable recovery, plus typecheck and web build; live identity Docker 1/1 and live auth 1/1 passed; artifact security 33/33 passed on Chromium/Firefox/WebKit; configured staging smoke passed in 16.86 s; deliberate-failure gate exited 1 as required. A local 100-request `/healthz` sample measured p95 16.75 ms and max 45.70 ms against the <100 ms target. OpenRouter qualification remained honestly skipped (4 tests) because no credential was available; it remains a bounded manual gate, not a pass.
+
+**Independent/remote evidence:** independent review requested changes at `a389659`, then Pass with no findings at `790277c` after the real-pointer and E02-boundary corrections; reviewer reran the focused WebKit proof and diff check. GitHub Actions run `35292211391` passed at exact SHA `a389659` (gates 49 s, artifact security 1 m 59 s, configured staging smoke 26 s); the `790277c` delta then passed the complete local 33-test browser matrix. Live `main` protection is strict and requires `gates`, `artifact-security` and `staging-smoke`, enforces admins and conversation resolution, and disables force pushes/deletions.
+
+**E02 readiness:** S01, S02 and S04–S07 are Ready with dependencies, contracts, scoped acceptance, verification and rollback fields. S01 owns immutable `background_job_results`; S02 owns `background_job_attempts`. S03 remains Draft until a digest-pinned private S3-compatible test service and malware scanner are selected and exercised without changing the trust boundary.
+
 ## E02-S01 — Persist accepted jobs and outbox dispatch
 
 Status: Ready | Release: R1 | Epic: E02
