@@ -128,7 +128,7 @@ export function createApp(auth?: AuthDelegate | null, tenancy?: AuthDelegate | n
           }
           if (await auth.handle(req, res, path, method, query, requestId)) return;
         }
-        if (path === "/api/workspaces" || path === "/api/accounts" || path.startsWith("/api/accounts/") || path === "/api/commands/accounts.rename" || path.startsWith("/api/ai/")) {
+        if (path === "/api/workspaces" || path.startsWith("/api/workspaces/") || path === "/api/accounts" || path.startsWith("/api/accounts/") || path === "/api/commands/accounts.rename" || path.startsWith("/api/ai/")) {
           if (!tenancy) {
             discard(req);
             json(res, 503, { error: "tenancy_not_configured", requestId });

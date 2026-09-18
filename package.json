@@ -27,23 +27,26 @@
     "test:ui": "vitest run test/ui-shell.test.ts",
     "test:http": "vitest run test/http-body.test.ts",
     "test:w1": "vitest run test/w1-exit.test.ts",
+    "test:jobs": "vitest run test/jobs.test.ts",
     "test:auth:live": "vitest run test/auth-keycloak-live.test.ts",
     "build:web": "tsc -p apps/web/tsconfig.json",
+    "build:worker": "tsc -p apps/worker/tsconfig.json",
+    "start:worker": "node apps/worker/dist/worker/src/main.js",
     "start:web": "node apps/web/dist/main.js",
     "staging:smoke": "node scripts/staging-smoke.mjs",
     "check": "npm run typecheck && npm test && npm run test:web"
   },
   "dependencies": {
+    "bullmq": "6.3.6",
+    "ioredis": "5.11.1",
     "pg": "8.23.0"
   },
   "devDependencies": {
     "@playwright/test": "1.62.0",
     "@types/node": "22.20.3",
     "@types/pg": "8.23.1",
-    "bullmq": "6.3.6",
     "css-tree": "3.2.1",
     "fflate": "0.8.3",
-    "ioredis": "5.11.1",
     "quickjs-emscripten": "0.32.0",
     "typescript": "7.0.2",
     "vite": "8.3.0",

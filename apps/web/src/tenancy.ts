@@ -10,6 +10,7 @@ import type { Pool, PoolClient } from "pg";
 import { isUuid, uuidv7 } from "./ids.ts";
 import type { Session } from "./session-store.ts";
 import { CommandError, getAccountView, listAccountViews, renameAccount, validateRenameInput } from "./commands/accounts.ts";
+import { acceptImportJob, JobError, readJob, validateAcceptInput } from "./jobs.ts";
 import { consumePermit, getPolicy, issuePermit, PolicyError, setAccountExclusion, summarizeEligible } from "./ai-policy.ts";
 import { readLimitedBody } from "./http-controls.ts";
 import { createFakeProvider } from "./ai-fake-provider.ts";
@@ -209,6 +210,12 @@ const fakeTransport = createFakeProvider(200);
 
 function policyErrorBody(err: PolicyError): { status: number; body: unknown } {
   if (err.code === "unknown_account") return { status: 400, body: { error: "invalid_request", reason: err.code } };
+  return { status: 409, body: { error: "conflict", reason: err.code } };
+}
+
+function jobErrorBody(err: JobError): { status: number; body: unknown } {
+  if (err.code === "not_found") return { status: 404, body: { error: "not_found" } };
+  if (err.code === "workspace_busy") return { status: 409, body: { error: "conflict", reason: err.code } };
   return { status: 409, body: { error: "conflict", reason: err.code } };
 }
 
@@ -447,6 +454,58 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           const account = await getAccountView(pool, resolved.claim, accountMatch[1]);
           if (!account) tenantJson(res, 404, { error: "not_found" });
           else tenantJson(res, 200, account);
+          return true;
+        }
+        // E02-S01 durable jobs: POST accept (idempotent), GET read. Both
+        // enforce session -> membership -> withTenant; foreign and missing
+        // job ids share one 404 body.
+        const importJobsMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/import-jobs$/);
+        if (importJobsMatch && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const workspaceId = importJobsMatch[1];
+          let input: ReturnType<typeof validateAcceptInput>;
+          try {
+            const body = (await readJsonBody(req)) as { idempotencyKey?: unknown; label?: unknown };
+            input = validateAcceptInput({ workspaceId, idempotencyKey: body.idempotencyKey, ...(body.label === undefined ? {} : { label: body.label }) });
+          } catch (err) {
+            if (err instanceof TenantInvalid || (err instanceof Error && (err.message === "body_too_large" || err.message === "body_invalid"))) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            throw err;
+          }
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await acceptImportJob(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, result.replayed ? 200 : 201, { job: result.view, operationId: result.operationId, jobId: result.jobId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof JobError) {
+              const mapped = jobErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        const jobReadMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/jobs\/([A-Za-z0-9-]+)$/);
+        if (jobReadMatch && method === "GET") {
+          const resolved = await claims(req, jobReadMatch[1]);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const job = await readJob(pool, resolved.claim, jobReadMatch[2]);
+          if (!job) tenantJson(res, 404, { error: "not_found" });
+          else tenantJson(res, 200, { job });
           return true;
         }
       } catch (err) {
