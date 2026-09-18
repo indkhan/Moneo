@@ -128,7 +128,7 @@ export function createApp(auth?: AuthDelegate | null, tenancy?: AuthDelegate | n
           }
           if (await auth.handle(req, res, path, method, query, requestId)) return;
         }
-        if (path === "/api/workspaces" || path.startsWith("/api/workspaces/") || path === "/api/accounts" || path.startsWith("/api/accounts/") || path === "/api/commands/accounts.rename" || path.startsWith("/api/ai/")) {
+        if (path === "/api/workspaces" || path.startsWith("/api/workspaces/") || path === "/api/accounts" || path.startsWith("/api/accounts/") || path === "/api/commands/accounts.rename" || path.startsWith("/api/ai/") || path.startsWith("/api/")) {
           if (!tenancy) {
             discard(req);
             json(res, 503, { error: "tenancy_not_configured", requestId });
@@ -191,10 +191,11 @@ export function createApp(auth?: AuthDelegate | null, tenancy?: AuthDelegate | n
           return;
         }
         json(res, 404, { error: "not_found" });
-      } catch {
+      } catch (err) {
         // All request handling is fail-closed: an unexpected throw must not
         // leak detail or leave the socket hanging. The slot is always
         // released via finish(), even on the destroy path.
+        console.error("Request error:", err);
         try {
           if (!res.headersSent) json(res, 503, { error: "unavailable", requestId });
           else res.destroy();

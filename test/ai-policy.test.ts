@@ -87,7 +87,7 @@ beforeAll(async () => {
   // cross-env dependency for inline VAR= assignments).
   process.env["APP_ENV"] = "test";
   // Own database: parallel vitest workers must not share suite state.
-  pool = await ensureTestPool("E01-S05", "moneo_e01_policy", ["parsed_observations", "source_objects", "imports", "data_sources", "background_job_attempts", "job_dispatch_index", "outbox_events", "background_job_results", "background_jobs", "ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
+  pool = await ensureTestPool("E01-S05", "moneo_e01_policy", ["mapping_provider_usage", "mapping_provider_reservations", "mapping_proposals", "mapping_profiles", "parsed_observations", "source_objects", "imports", "data_sources", "background_job_attempts", "job_dispatch_index", "outbox_events", "background_job_results", "background_jobs", "ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
   stub = await startStubIssuer();
 }, 60_000);
 

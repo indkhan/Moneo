@@ -230,6 +230,10 @@ beforeAll(async () => {
     savedEnv[name] = process.env[name];
   }
   pool = await ensureTestPool("E02-S03", "moneo_e02_upload", [
+    "mapping_provider_usage",
+    "mapping_provider_reservations",
+    "mapping_proposals",
+    "mapping_profiles",
     "background_job_attempts",
     "parsed_observations",
     "source_objects",
@@ -251,6 +255,10 @@ beforeAll(async () => {
   ]);
   stub = await startStubIssuer();
   appDbUrl = env("E02-S03", "DATABASE_URL");
+  // Hydrate S3/scanner names from the ignored local .env the same way
+  for (const name of ["S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET"]) {
+    if (!process.env[name]) process.env[name] = env("E02-S03", name);
+  }
   process.env["UPLOADS_ENABLED"] = "1";
   if (!process.env["S3_ENDPOINT"]) process.env["S3_ENDPOINT"] = "http://127.0.0.1:9000";
   if (!process.env["S3_REGION"]) process.env["S3_REGION"] = "us-east-1";

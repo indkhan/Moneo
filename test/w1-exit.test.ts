@@ -72,7 +72,7 @@ async function postJson(base: string, path: string, cookie: string, body: unknow
 
 beforeAll(async () => {
   // Own database: parallel vitest workers must not share suite state.
-  pool = await ensureTestPool("W1-EXIT", "moneo_e01_w1", ["parsed_observations", "source_objects", "imports", "data_sources", "background_job_attempts", "job_dispatch_index", "outbox_events", "background_job_results", "background_jobs", "ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
+  pool = await ensureTestPool("W1-EXIT", "moneo_e01_w1", ["mapping_provider_usage", "mapping_provider_reservations", "mapping_proposals", "mapping_profiles", "parsed_observations", "source_objects", "imports", "data_sources", "background_job_attempts", "job_dispatch_index", "outbox_events", "background_job_results", "background_jobs", "ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
   stub = await startStubIssuer();
 }, 60_000);
 
