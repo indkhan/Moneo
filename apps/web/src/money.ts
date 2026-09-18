@@ -55,6 +55,21 @@ export function parseMinor(amount: string, currency: string): bigint {
   return minor;
 }
 
+/** Signed decimal major-unit string (e.g. "-31.42" or "100.00") → signed minor units for the currency. Exact; rejects excess precision. */
+export function parseSignedMinor(amount: string, currency: string): bigint {
+  const exponent = currencyExponent(currency);
+  if (typeof amount !== "string") throw new Error("not_decimal_string");
+  const match = amount.match(/^(-?)([0-9]+)(?:\.([0-9]*))?$/);
+  if (!match) throw new Error("not_decimal_string");
+  const [, sign, whole, fractionRaw] = match as [string, string, string, string | undefined];
+  const fraction = (fractionRaw ?? "").replace(/_+$/, "");
+  if (fraction.length > exponent) throw new Error("excess_precision");
+  const padded = fraction.padEnd(exponent, "0");
+  const minor = BigInt(`${whole.replace(/^0+(?=\d)/, "")}${padded}` || "0");
+  if (minor > MAX_I64) throw new Error("decimal_out_of_range");
+  return sign === "-" ? -minor : minor;
+}
+
 /** Minor units → canonical major-unit decimal string (e.g. 3142n EUR → "31.42"). */
 export function formatMinor(minor: bigint, currency: string): string {
   const exponent = currencyExponent(currency);

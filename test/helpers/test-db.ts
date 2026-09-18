@@ -5,8 +5,11 @@
 // least-privilege app URL, creation uses the migration URL.
 
 import { readFileSync } from "node:fs";
-import { Pool } from "pg";
+import { Pool, types } from "pg";
 import { createPool, migrate, withDatabase } from "../../apps/web/src/db.ts";
+
+// Parse DATE (OID 1082) as string in YYYY-MM-DD format to avoid timezone issues
+types.setTypeParser(1082, (val: string) => val);
 
 export function env(story: string, name: string): string {
   let value = process.env[name];

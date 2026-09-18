@@ -75,7 +75,7 @@ async function rename(base: string, cookie: string, body: unknown): Promise<{ st
 
 beforeAll(async () => {
   // Own database: parallel vitest workers must not share suite state.
-  pool = await ensureTestPool("E01-S04", "moneo_e01_commands", ["mapping_provider_usage", "mapping_provider_reservations", "mapping_proposals", "mapping_profiles", "review_decisions", "source_links", "transactions", "import_commit_batches", "parsed_observations", "source_objects", "imports", "data_sources", "background_job_attempts", "job_dispatch_index", "outbox_events", "background_job_results", "background_jobs", "ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
+  pool = await ensureTestPool("E01-S04", "moneo_e01_commands", ["manual_transactions", "balance_snapshots", "balance_audit", "mapping_provider_usage", "mapping_provider_reservations", "mapping_proposals", "mapping_profiles", "review_decisions", "source_links", "transactions", "import_commit_batches", "parsed_observations", "source_objects", "imports", "data_sources", "background_job_attempts", "job_dispatch_index", "outbox_events", "background_job_results", "background_jobs", "ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
   stub = await startStubIssuer();
 }, 60_000);
 
@@ -203,7 +203,7 @@ describe("e01-s04 command contracts", () => {
       return renameAccountTx(client, { userId: user, workspaceId }, user, { workspaceId, accountId, name: "Direct", expectedVersion: "1", idempotencyKey: randomUUID() });
     });
     if (!outcome.ok) throw new Error(`expected success, got ${outcome.code}`);
-    expect(outcome.result.view.version).toBe("2");
+    expect(outcome.result.version).toBe("2");
     expect(await getAccountView(pool, { userId: user, workspaceId }, accountId)).toMatchObject({ version: "2" });
   });
 
