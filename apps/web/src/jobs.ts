@@ -328,7 +328,7 @@ export function startJobsWorker(redisUrl: string, processor: Processor<JobPayloa
 
 export type DispatchCounts = { enqueued: number; skipped: number };
 
-async function enqueueReady(queue: Queue<JobPayload>, outboxId: string, payload: JobPayload): Promise<void> {
+export async function enqueueReady(queue: Queue<JobPayload>, outboxId: string, payload: JobPayload): Promise<void> {
   const raw = JSON.stringify(payload);
   if (Buffer.byteLength(raw, "utf8") > 1024) throw new Error("job payload exceeds 1 KiB");
   if (Object.keys(payload).length !== 1 || typeof payload.backgroundJobId !== "string" || !isUuid(payload.backgroundJobId)) {
@@ -350,21 +350,21 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Relay due outbox rows to BullMQ. Discovery reads the ID-only dispatch
- * index (no tenant data); every per-job step re-enters withTenant with the
- * recorded accepting member, so membership + FORCE RLS still gate all domain
- * state. Crash-safe both ways: dying before enqueue leaves the row
- * unpublished for the next pass; dying after enqueue but before marking
- * published re-enqueues deterministically (same outbox-<id> key), absorbed
- * by the idempotent handler. Enqueue acknowledgement always precedes
- * published_at. Terminal jobs are consumed (outbox marked, index removed)
- * without ever touching the transport, so the sweep doubles as the S01
- * reconciler after worker death or total Redis loss. Transient transport
- * errors retry at most 3 times with exponential backoff+jitter; permanent
- * input failures are consumed without enqueue.
+ * Shared dispatch sweep over the ID-only index (used by the dispatcher and
+ * the S02 reconciler with different batch caps). Discovery reads UUIDs only;
+ * every per-job step re-enters withTenant with the recorded accepting
+ * member, so membership + FORCE RLS still gate all domain state. Crash-safe
+ * both ways: dying before enqueue leaves the row unpublished for the next
+ * pass; dying after enqueue but before marking published re-enqueues
+ * deterministically (same outbox-<id> key), absorbed by the idempotent
+ * handler. Enqueue acknowledgement always precedes published_at. Terminal
+ * and cancelled jobs are consumed (outbox marked, index retired) without
+ * ever touching the transport. RUNNING jobs keep their index row so a later
+ * redelivery can reclaim them; the deterministic key dedups live records.
+ * Transient transport errors retry at most 3 times with exponential
+ * backoff+jitter; permanent input failures are consumed without enqueue.
  */
-export async function dispatchOutbox(pool: Pool, queue: Queue<JobPayload>, limit = DISPATCH_BATCH_LIMIT): Promise<DispatchCounts> {
-  if (!Number.isInteger(limit) || limit < 1 || limit > DISPATCH_BATCH_LIMIT) throw new Error("dispatch limit out of range");
+export async function sweepDispatchIndex(pool: Pool, queue: Queue<JobPayload>, limit: number): Promise<DispatchCounts> {
   const due = await pool.query('SELECT workspace_id AS "workspaceId", job_id AS "jobId", outbox_id AS "outboxId", accepted_by AS "acceptedBy" FROM job_dispatch_index ORDER BY created_at LIMIT $1', [
     limit,
   ]);
@@ -386,16 +386,17 @@ export async function dispatchOutbox(pool: Pool, queue: Queue<JobPayload>, limit
           await client.query("DELETE FROM job_dispatch_index WHERE workspace_id = $1 AND job_id = $2", [route.workspaceId, route.jobId]);
           return "skipped" as const;
         }
-        const job = await client.query("SELECT status FROM background_jobs WHERE workspace_id = $1 AND id = $2", [route.workspaceId, route.jobId]);
+        const job = await client.query("SELECT status, cancel_requested_at AS \"cancelRequestedAt\", lease_expires_at AS \"leaseExpiresAt\" FROM background_jobs WHERE workspace_id = $1 AND id = $2", [route.workspaceId, route.jobId]);
         if ((job.rowCount ?? 0) === 0) {
           await client.query("UPDATE outbox_events SET published_at = now() WHERE workspace_id = $1 AND id = $2", [route.workspaceId, route.outboxId]);
           await client.query("DELETE FROM job_dispatch_index WHERE workspace_id = $1 AND job_id = $2", [route.workspaceId, route.jobId]);
           return "skipped" as const;
         }
         const status = (job.rows[0] as { status: string }).status;
-        if (status !== "QUEUED") {
-          // Terminal/cancelled/running work is consumed, never re-enqueued
-          // as new logical work; the index row retires with the job.
+        const cancelRequested = (job.rows[0] as { cancelRequestedAt: string | null }).cancelRequestedAt !== null;
+        if (status === "SUCCEEDED" || status === "FAILED_FINAL" || status === "CANCELLED") {
+          // Terminal work is consumed, never re-enqueued as new logical
+          // work; the index row retires with the job.
           await client.query("UPDATE outbox_events SET published_at = now() WHERE workspace_id = $1 AND id = $2 AND published_at IS NULL", [
             route.workspaceId,
             route.outboxId,
@@ -403,6 +404,43 @@ export async function dispatchOutbox(pool: Pool, queue: Queue<JobPayload>, limit
           await client.query("DELETE FROM job_dispatch_index WHERE workspace_id = $1 AND job_id = $2", [route.workspaceId, route.jobId]);
           return "skipped" as const;
         }
+        if (status === "CANCEL_REQUESTED" || cancelRequested) {
+          // Cooperative cancel outstanding. While a lease is live the worker
+          // may still be mid-boundary and will finalize itself at its next
+          // fence — keep the route and enqueue nothing. Once no live lease
+          // holds the job (dead worker), the sweep finalizes CANCELLED here
+          // so the request converges instead of stranding (attempt history
+          // is preserved, no effect publishes).
+          const leaseExpiresAt = (job.rows[0] as { leaseExpiresAt: string | null }).leaseExpiresAt;
+          const live = leaseExpiresAt !== null && new Date(leaseExpiresAt).getTime() > Date.now();
+          if (live) return "skipped" as const;
+          await client.query(
+            "UPDATE background_jobs SET status = 'CANCELLED', completed_at = coalesce(completed_at, now()), updated_at = now() WHERE workspace_id = $1 AND id = $2",
+            [route.workspaceId, route.jobId],
+          );
+          await client.query(
+            "UPDATE background_job_attempts SET status = 'CANCELLED', completed_at = coalesce(completed_at, now()) WHERE workspace_id = $1 AND background_job_id = $2 AND status = 'RUNNING'",
+            [route.workspaceId, route.jobId],
+          );
+          await client.query("UPDATE outbox_events SET published_at = now() WHERE workspace_id = $1 AND id = $2 AND published_at IS NULL", [
+            route.workspaceId,
+            route.outboxId,
+          ]);
+          await client.query("DELETE FROM job_dispatch_index WHERE workspace_id = $1 AND job_id = $2", [route.workspaceId, route.jobId]);
+          return "skipped" as const;
+        }
+        if (status !== "QUEUED" && status !== "RUNNING") {
+          await client.query("UPDATE outbox_events SET published_at = now() WHERE workspace_id = $1 AND id = $2 AND published_at IS NULL", [
+            route.workspaceId,
+            route.outboxId,
+          ]);
+          await client.query("DELETE FROM job_dispatch_index WHERE workspace_id = $1 AND job_id = $2", [route.workspaceId, route.jobId]);
+          return "skipped" as const;
+        }
+        // QUEUED: first publish. RUNNING: keep the index row so a later
+        // redelivery can reclaim the generation; the deterministic key
+        // dedups against the live record, and the claim fence serializes
+        // true duplicates (the S02 recovery path depends on this).
         const payload = (outbox.rows[0] as { payload: JobPayload }).payload as JobPayload;
         if (!payload || typeof payload.backgroundJobId !== "string" || payload.backgroundJobId !== route.jobId) {
           await client.query("UPDATE outbox_events SET published_at = now(), attempt_count = attempt_count + 1, last_error = 'permanent_invalid_payload' WHERE workspace_id = $1 AND id = $2", [
@@ -450,52 +488,12 @@ export async function dispatchOutbox(pool: Pool, queue: Queue<JobPayload>, limit
   return { enqueued, skipped };
 }
 
-export type ProcessOutcome = "applied" | "duplicate-terminal-noop";
-
-/**
- * Idempotent synthetic handler: QUEUED -> RUNNING -> SUCCEEDED with exactly
- * one immutable result row. Routes through the ID-only index, then runs the
- * transition inside withTenant with the recorded accepting member, so a
- * removed member fails closed (TenantDenied, job stays QUEUED for the S02
- * reclaim path) instead of running unscoped. Terminal jobs exit as no-ops
- * without touching effects and retire their index row. Crash rolls the
- * transaction back and the next delivery retries safely.
- */
-export async function processImportJob(pool: Pool, backgroundJobId: string): Promise<ProcessOutcome> {
-  if (!isUuid(backgroundJobId)) throw new TenantInvalid();
-  const route = await resolveJobRoute(pool, backgroundJobId);
-  if (!route) return "duplicate-terminal-noop";
-  return withTenant(pool, { userId: route.acceptedBy, workspaceId: route.workspaceId }, async (client) => {
-    const cur = await client.query("SELECT status FROM background_jobs WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [
-      route.workspaceId,
-      backgroundJobId,
-    ]);
-    if ((cur.rowCount ?? 0) === 0) {
-      await client.query("DELETE FROM job_dispatch_index WHERE workspace_id = $1 AND job_id = $2", [route.workspaceId, backgroundJobId]);
-      return "duplicate-terminal-noop" as const;
-    }
-    const status = (cur.rows[0] as { status: string }).status;
-    if (status !== "QUEUED") {
-      await client.query("DELETE FROM job_dispatch_index WHERE workspace_id = $1 AND job_id = $2", [route.workspaceId, backgroundJobId]);
-      return "duplicate-terminal-noop" as const;
-    }
-    await client.query(
-      "UPDATE background_jobs SET status = 'RUNNING', started_at = now(), attempt_count = attempt_count + 1, updated_at = now() WHERE workspace_id = $1 AND id = $2",
-      [route.workspaceId, backgroundJobId],
-    );
-    await client.query(
-      "INSERT INTO background_job_results (workspace_id, id, background_job_id, result_kind) VALUES ($1, $2, $3, 'synthetic-noop') ON CONFLICT (workspace_id, background_job_id) DO NOTHING",
-      [route.workspaceId, uuidv7(), backgroundJobId],
-    );
-    const result = await client.query("SELECT id FROM background_job_results WHERE workspace_id = $1 AND background_job_id = $2", [
-      route.workspaceId,
-      backgroundJobId,
-    ]);
-    await client.query(
-      "UPDATE background_jobs SET status = 'SUCCEEDED', completed_at = now(), result_ref = $3, updated_at = now() WHERE workspace_id = $1 AND id = $2",
-      [route.workspaceId, backgroundJobId, JSON.stringify({ backgroundJobResultId: (result.rows[0] as { id: string }).id })],
-    );
-    await client.query("DELETE FROM job_dispatch_index WHERE workspace_id = $1 AND job_id = $2", [route.workspaceId, backgroundJobId]);
-    return "applied" as const;
-  });
+/** First-publish dispatcher: relays new outbox rows with a ≤50 batch cap. */
+export async function dispatchOutbox(pool: Pool, queue: Queue<JobPayload>, limit = DISPATCH_BATCH_LIMIT): Promise<DispatchCounts> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > DISPATCH_BATCH_LIMIT) throw new Error("dispatch limit out of range");
+  return sweepDispatchIndex(pool, queue, limit);
 }
+
+// E02-S02 phased handler (claim -> two checkpoints -> fenced publish),
+// re-exported here so S01 consumers keep a single import surface.
+export { processImportJobPhased as processImportJob, type ProcessOutcome } from "./job-recovery.ts";

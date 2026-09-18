@@ -28,6 +28,7 @@
     "test:http": "vitest run test/http-body.test.ts",
     "test:w1": "vitest run test/w1-exit.test.ts",
     "test:jobs": "vitest run test/jobs.test.ts",
+    "test:job-recovery": "vitest run test/job-recovery.test.ts",
     "test:auth:live": "vitest run test/auth-keycloak-live.test.ts",
     "build:web": "tsc -p apps/web/tsconfig.json",
     "build:worker": "tsc -p apps/worker/tsconfig.json",
