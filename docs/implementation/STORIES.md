@@ -430,8 +430,8 @@ Execution record:
 
 ## E02-S02 — Recover, fence and cancel durable jobs
 
-Status: Ready | Release: R1 | Epic: E02
-Dependencies: E02-S01
+Status: In progress | Release: R1 | Epic: E02
+Dependencies: E02-S01 (Done at `eb349d0`)
 
 Outcome: Accepted jobs survive worker death and complete Redis loss, stale workers cannot publish, and an authorized user can cancel future work with durable visible state.
 Contracts: Architecture §§177–180, 189–200, 215–218; E00-S04 fault proof and E02-S01 production tables/API.
@@ -454,7 +454,15 @@ Verification: `npm run test:job-recovery` with real disposable PG/Redis and chil
 Review focus: heartbeat used as a competing lock, unfenced writes, cancel/result races, terminal resurrection, cross-tenant reconciliation, nested retries and process cleanup.
 Rollout/rollback: Deploy additive schema and reconciler-disabled code, then worker, then enable reconciliation; rollback disables claims/reconciler first and leaves durable rows readable.
 
-Execution record: unassigned; populate the standard branch/SHA/tests/review/integration/merge/blocker fields when started.
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e02-s02-job-recovery`
+- Base SHA / implementation head SHA: base `73b5c97c27a559fbc3c0726c261b488f589c94d8` / impl `pending-commit`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18, WSL Redis 8.4.2, RECOVERY_REDIS_DB 13, fault lease 2000 ms. `npm run typecheck` 0; `npm run test:job-recovery` 0 (11/11: SIGKILL after claim/checkpoint/effect via real child processes with PG-truth kill timing, fencing + single-winner redelivery, heartbeat visibility, cancel-before-claim idempotent, cancel-race wins fence with no effect, Redis-loss rebuild with B sentinels intact, real-worker delivery + graceful close, 100 lost jobs <30 s, status/cancel vocabulary + requestId + uniform errors, batch caps); `npm run test:jobs` 0 (8/8, unchanged — phased handler is backward compatible); `npm run test:durable` 0 (12/12); `test:tenancy` 0 (6/6); `test:commands` 0 (8/8); `test:policy` 0 (7/7); `test:auth` 0 (13/13); `test:db` 0 (2/2); `test:money` 0 (4/4); `test:ui` 0 (10/10); `test:w1` 0 (1/1); harness 1/1; `test:web` 0 (8/8); `test:http` 0 (1/1); `test:import` 0 (26/26); `test:identity` 0 (36/36); `npm run test:failure` exit 1 as intended; `npm run build:web` 0; `npm run build:worker` 0; `git diff --check` 0; tracked-file secret scan clean; no `.env` tracked.
+- Design note: kill timing is polled from PG truth (vitest buffers child stdio until the hanging test ends); after-effect polling reads under test membership because commit retires the dispatch index. S01 `dispatchOutbox` now keeps the index for RUNNING jobs (required: the phased handler spans transactions; retiring it stranded crash recovery) and consumes CANCEL_REQUESTED without enqueue. `processImportJob` is the phased claim → 2 checkpoints → fenced publish (re-exported from jobs.ts; S01 suite passes unmodified). Per-migration maintenance: all suites' truncate lists + tenancy rollback ordering extended for `background_job_attempts`.
+- Review: reviewer, reviewed SHA, findings, verdict:
+- Integration: current main SHA, tested candidate SHA, checks:
+- Merge SHA / post-merge smoke:
+- Remaining blockers or explicitly accepted nonblocking follow-up:
 
 ## E02-S03 — Upload, quarantine and parse bounded source files
 

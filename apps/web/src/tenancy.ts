@@ -11,6 +11,7 @@ import { isUuid, uuidv7 } from "./ids.ts";
 import type { Session } from "./session-store.ts";
 import { CommandError, getAccountView, listAccountViews, renameAccount, validateRenameInput } from "./commands/accounts.ts";
 import { acceptImportJob, JobError, readJob, validateAcceptInput } from "./jobs.ts";
+import { cancelJob } from "./job-recovery.ts";
 import { consumePermit, getPolicy, issuePermit, PolicyError, setAccountExclusion, summarizeEligible } from "./ai-policy.ts";
 import { readLimitedBody } from "./http-controls.ts";
 import { createFakeProvider } from "./ai-fake-provider.ts";
@@ -201,7 +202,7 @@ export async function sessionClaims(
 }
 
 export type TenancyRouter = {
-  handle: (req: IncomingMessage, res: ServerResponse, path: string, method: string, query: URLSearchParams) => Promise<boolean>;
+  handle: (req: IncomingMessage, res: ServerResponse, path: string, method: string, query: URLSearchParams, requestId?: string) => Promise<boolean>;
 };
 
 // Test-transport log only (dies with the process). Bounded so a long-lived
@@ -236,7 +237,7 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
   }
 
   return {
-    handle: async (req, res, path, method, query) => {
+    handle: async (req, res, path, method, query, requestId = "uncontrolled") => {
       // JSON routes (POST/PUT) read the body via readJsonBody, the sole
       // "data" listener — discarding here first would eat the body and hang
       // the reader waiting for "end" (S03 drain lesson). Everything else
@@ -485,7 +486,7 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           }
           try {
             const result = await acceptImportJob(pool, resolved.claim, resolved.claim.userId, input);
-            tenantJson(res, result.replayed ? 200 : 201, { job: result.view, operationId: result.operationId, jobId: result.jobId, replayed: result.replayed });
+            tenantJson(res, result.replayed ? 200 : 201, { job: result.view, operationId: result.operationId, jobId: result.jobId, replayed: result.replayed, requestId });
           } catch (err) {
             if (err instanceof JobError) {
               const mapped = jobErrorBody(err);
@@ -505,7 +506,31 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           }
           const job = await readJob(pool, resolved.claim, jobReadMatch[2]);
           if (!job) tenantJson(res, 404, { error: "not_found" });
-          else tenantJson(res, 200, { job });
+          else tenantJson(res, 200, { job, requestId });
+          return true;
+        }
+        const jobCancelMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/jobs\/([A-Za-z0-9-]+)\/cancel$/);
+        if (jobCancelMatch && method === "POST") {
+          // Cooperative durable cancel: idempotent; foreign/missing ids
+          // share the uniform 404 body. The (empty) body is drained so the
+          // socket stays reusable for keep-alive HTTP clients.
+          try {
+            await readJsonBody(req);
+          } catch (err) {
+            if (err instanceof Error && (err.message === "body_too_large" || err.message === "body_invalid")) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            throw err;
+          }
+          const resolved = await claims(req, jobCancelMatch[1]);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const outcome = await cancelJob(pool, resolved.claim, jobCancelMatch[2]);
+          if (!outcome) tenantJson(res, 404, { error: "not_found" });
+          else tenantJson(res, 200, { status: outcome.status, changed: outcome.changed, effectApplied: outcome.effectApplied, requestId });
           return true;
         }
       } catch (err) {
