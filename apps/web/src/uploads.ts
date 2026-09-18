@@ -503,6 +503,25 @@ export class ParserError extends Error {
   }
 }
 
+/**
+ * Minimal child environment: the parser runs hostile bytes, so it inherits
+ * NOTHING sensitive by construction. Only locale/temp/PATH basics cross;
+ * DATABASE, REDIS, S3, SESSION, KEYCLOAK, OPENROUTER, AI and NODE prefixed
+ * names never do (NODE_OPTIONS could inject code). SYSTEMROOT/TEMP ride
+ * along because Windows Node needs them; everything else stays with the
+ * parent.
+ */
+const CHILD_ENV_ALLOW = new Set(["PATH", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "LC_MESSAGES", "TZ"]);
+
+export function parserChildEnv(from: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of CHILD_ENV_ALLOW) {
+    const value = from[name];
+    if (typeof value === "string" && value.length > 0) out[name] = value;
+  }
+  return out;
+}
+
 export async function runParserChild(opts: {
   parserChild: string;
   bytes: Uint8Array;
@@ -531,7 +550,10 @@ export async function runParserChild(opts: {
       }),
       { mode: 0o600 },
     );
-    const child = spawn(process.execPath, ["--max-old-space-size=256", opts.parserChild, "--job", jobFile], { stdio: "ignore" });
+    const child = spawn(process.execPath, ["--max-old-space-size=256", opts.parserChild, "--job", jobFile], {
+      stdio: "ignore",
+      env: parserChildEnv(),
+    });
     const exit = await new Promise<{ code: number | null; signal: string | null }>((resolve) => {
       const timer = setTimeout(() => {
         try { child.kill("SIGKILL"); } catch { /* already gone */ }
@@ -736,7 +758,7 @@ export async function processParseJob(
       bytes,
       filename: loaded.fileName,
       profile: loaded.profile,
-      deadlineMs: 60_000,
+      deadlineMs: config.parseDeadlineMs,
       ...(opts?.limits === undefined ? {} : { limits: opts.limits }),
     });
     if (!parsed.ok) throw new ParserError(parsed.error.code, false, parsed.error.message);
@@ -832,7 +854,7 @@ export async function processParseJob(
       return { ok: false as const, reason: "stale_attempt" as const };
     }
     await client.query(
-      "UPDATE imports SET status = 'STAGED', completed_at = now(), row_count = $3, staged_count = $4, review_count = $5, rejected_count = $6 WHERE workspace_id = $1 AND id = $2",
+      "UPDATE imports SET status = 'STAGED', completed_at = now(), row_count = $3, staged_count = $4, review_count = $5, rejected_count = $6, expires_at = now() + interval '30 days' WHERE workspace_id = $1 AND id = $2",
       [route.workspaceId, loaded.importId, rows, staged, review, rejected],
     );
     await client.query("UPDATE source_objects SET status = 'ACCEPTED' WHERE workspace_id = $1 AND import_id = $2", [route.workspaceId, loaded.importId]);

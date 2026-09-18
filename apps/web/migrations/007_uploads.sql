@@ -22,7 +22,10 @@ CREATE TABLE IF NOT EXISTS data_sources (
   status TEXT NOT NULL CONSTRAINT data_sources_status CHECK (status IN ('ACTIVE', 'ARCHIVED')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (workspace_id, id)
+  PRIMARY KEY (workspace_id, id),
+  -- One upload origin per workspace+type: concurrent first uploads converge
+  -- on the winner via the savepoint claim in findOrCreateDataSource.
+  UNIQUE (workspace_id, type, name)
 );
 
 CREATE TABLE IF NOT EXISTS imports (

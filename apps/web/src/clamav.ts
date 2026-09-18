@@ -82,10 +82,16 @@ export async function clamdScan(config: ClamConfig, bytes: Uint8Array, timeoutMs
       // INSTREAM replies are NUL-terminated (the `z` command prefix asks
       // for it); never wait for a newline that will not come.
       if (!reply.includes("\n") && !reply.includes("\0")) return;
-      if (reply.includes("OK") && !reply.includes("FOUND")) finishResolve({ clean: true });
-      else {
+      if (reply.includes("FOUND")) {
         const found = reply.match(/stream:\s*(.+?)\s+FOUND/);
         finishResolve({ clean: false, signature: sanitizedSignature(found?.[1] ?? "unknown") });
+      } else if (/\bOK\b/.test(reply)) {
+        finishResolve({ clean: true });
+      } else {
+        // A scanner ERROR (or any unrecognized reply) is a transport
+        // problem, never a malware verdict: rejecting uploads on it would
+        // turn scanner trouble into permanent input failure.
+        finishReject(new Error(`clamd unexpected reply: ${reply.slice(0, 80)}`));
       }
     });
     socket.on("error", (err) => finishReject(new Error(`clamd connection failed: ${(err as Error).message}`)));

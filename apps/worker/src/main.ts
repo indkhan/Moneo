@@ -56,8 +56,14 @@ export function createWorkerService(opts: { databaseUrl: string; redisUrl: strin
             return "config-missing-deferred";
           }
           outcome = await processParseJob(pool, job.data.backgroundJobId, uploadConfig, invocation);
-        } else {
+        } else if (jobType === "imports.start") {
           outcome = await processImportJob(pool, job.data.backgroundJobId, invocation);
+        } else {
+          // Unknown job types never run a foreign effect: complete the
+          // transport record without touching PG truth (unreachable today
+          // via the job_type CHECK; defense in depth for future types).
+          console.log(JSON.stringify({ event: "job_deferred", reason: "unknown_job_type" }));
+          return "unknown-job-type-noop";
         }
       } catch (err) {
         if ((err as { code?: string }).code === "lease_held") {

@@ -27,9 +27,9 @@ import { createTenancyRouter, withTenant } from "../apps/web/src/tenancy.ts";
 import { createUiRouter } from "../apps/web/src/ui/routes.ts";
 import { withDatabase } from "../apps/web/src/db.ts";
 import { dispatchOutbox, jobsQueue, type JobPayload } from "../apps/web/src/jobs.ts";
-import { processParseJob, loadUploadConfig, runParserChild, ParserError, type UploadConfig } from "../apps/web/src/uploads.ts";
+import { processParseJob, loadUploadConfig, runParserChild, ParserError, parserChildEnv, type UploadConfig } from "../apps/web/src/uploads.ts";
 import { s3Delete, s3EnsureBucket, s3ListKeys, s3Put } from "../apps/web/src/s3.ts";
-import { clamdPing } from "../apps/web/src/clamav.ts";
+import { clamdPing, clamdScan } from "../apps/web/src/clamav.ts";
 import { buildXlsx, type FixtureCell } from "../proof/import/build-xlsx.ts";
 import { createWorkerService } from "../apps/worker/src/main.ts";
 import { ensureTestPool, env } from "./helpers/test-db.ts";
@@ -694,5 +694,81 @@ describe("e02-s03 quarantine upload and bounded parse", () => {
     // Unknown import reads 404 without disclosure.
     const missing = await fetch(`${base}/w/${workspaceId}/imports/${randomUUID()}`, { headers: { cookie } });
     expect(missing.status).toBe(404);
+  });
+
+  it("parser children inherit no secrets by construction", () => {
+    const hostile = {
+      PATH: "/usr/bin",
+      SYSTEMROOT: "C:\\Windows",
+      TEMP: "/tmp",
+      DATABASE_URL: "postgres://secret",
+      DATABASE_MIGRATION_URL: "postgres://secret",
+      REDIS_URL: "redis://secret",
+      S3_ACCESS_KEY: "secret",
+      S3_SECRET_KEY: "secret",
+      SESSION_SECRET: "secret",
+      KEYCLOAK_CLIENT_SECRET: "secret",
+      OPENROUTER_API_KEY: "secret",
+      AI_ANYTHING: "secret",
+      NODE_OPTIONS: "--require/evil",
+    };
+    const childEnv = parserChildEnv(hostile as NodeJS.ProcessEnv);
+    expect(childEnv).toMatchObject({ PATH: "/usr/bin", SYSTEMROOT: "C:\\Windows", TEMP: "/tmp" });
+    for (const name of Object.keys(childEnv)) {
+      expect(name).not.toMatch(/DATABASE|REDIS|S3|SESSION|KEYCLOAK|OPENROUTER|AI_|NODE_/);
+    }
+    for (const value of Object.values(childEnv)) {
+      expect(value).not.toContain("secret");
+      expect(value).not.toContain("evil");
+    }
+    // The live spawn path uses the same allowlist (defaults to process.env).
+    for (const name of Object.keys(parserChildEnv())) {
+      expect(name).not.toMatch(/DATABASE|REDIS|S3|SESSION|KEYCLOAK|OPENROUTER|AI_|NODE_/);
+    }
+  });
+
+  it("scanner errors are transient, never malware verdicts", async () => {
+    const { createServer } = await import("node:net");
+    const server = createServer((socket) => {
+      socket.on("data", () => {
+        socket.write("INSTREAM size limit exceeded, ERROR\0");
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as AddressInfo).port;
+    try {
+      await expect(clamdScan({ host: "127.0.0.1", port }, new TextEncoder().encode("x"), 5000)).rejects.toThrow("clamd unexpected reply");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("concurrent first uploads converge on one data source", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId, userId } = await setupWorkspace(base, "synthetic-up-q");
+    const bytes = new TextEncoder().encode("date,description,amount,currency\n2026-01-02,X,-100,EUR\n");
+    const ups = await Promise.all(
+      Array.from({ length: 5 }, (_, i) => upload(base, cookie, workspaceId, { filename: `q${i}.csv`, bytes, profile: CSV_PROFILE })),
+    );
+    expect(ups.every((u) => u.status === 201)).toBe(true);
+    const sources = await scoped(userId, workspaceId, async (client) => {
+      const r = await client.query("SELECT count(*)::int AS n FROM data_sources WHERE workspace_id = $1 AND type = 'csv_upload'", [workspaceId]);
+      return (r.rows[0] as { n: number }).n;
+    });
+    expect(sources).toBe(1);
+  });
+
+  it("staged imports refresh the retention marker to validation time", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId, userId } = await setupWorkspace(base, "synthetic-up-r");
+    const up = await upload(base, cookie, workspaceId, { filename: "r.csv", bytes: new TextEncoder().encode("date,description,amount,currency\n2026-01-02,X,-100,EUR\n"), profile: CSV_PROFILE });
+    const body = up.json as { import: { id: string }; jobId: string };
+    expect(await runJob(body.jobId)).toBe("applied");
+    const marker = await scoped(userId, workspaceId, async (client) => {
+      const r = await client.query("SELECT expires_at, completed_at FROM imports WHERE workspace_id = $1 AND id = $2", [workspaceId, body.import.id]);
+      return r.rows[0] as { expires_at: string; completed_at: string };
+    });
+    const skewMs = Math.abs(new Date(marker.expires_at).getTime() - (new Date(marker.completed_at).getTime() + 30 * 24 * 3600 * 1000));
+    expect(skewMs).toBeLessThan(60_000);
   });
 });
