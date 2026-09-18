@@ -7,7 +7,7 @@
 // scripted in-process model transport (no network). Upload staging reuses
 // the S03 stack, so MinIO + clamd + UPLOADS_ENABLED/S3_* apply here too.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { Server } from "node:http";
@@ -20,6 +20,8 @@ import { createAuthRouter, requestSession, type AuthConfig } from "../apps/web/s
 import { createTenancyRouter, withTenant } from "../apps/web/src/tenancy.ts";
 import { dispatchOutbox, jobsQueue, type JobPayload } from "../apps/web/src/jobs.ts";
 import { processParseJob, loadUploadConfig, type UploadConfig, type UploadProfile } from "../apps/web/src/uploads.ts";
+import { s3EnsureBucket } from "../apps/web/src/s3.ts";
+import { clamdPing } from "../apps/web/src/clamav.ts";
 import {
   acceptMapping,
   deduceMapping,
@@ -222,6 +224,11 @@ const SIMPLE_PROFILE = {
 };
 
 beforeAll(async () => {
+  // Hydrate S3/scanner names from the ignored local .env the same way
+  // DATABASE_URL is loaded: never log or echo values.
+  for (const name of ["S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET"]) {
+    if (!process.env[name]) process.env[name] = env("E02-S04", name);
+  }
   pool = await ensureTestPool("E02-S04", "moneo_e02_mapping", [
     "mapping_provider_usage",
     "mapping_provider_reservations",
@@ -253,6 +260,13 @@ beforeAll(async () => {
   if (!process.env["CLAMAV_HOST"]) process.env["CLAMAV_HOST"] = "127.0.0.1";
   if (!process.env["CLAMAV_PORT"]) process.env["CLAMAV_PORT"] = "3310";
   uploadConfig = loadUploadConfig();
+  await s3EnsureBucket(uploadConfig.s3);
+  if (!(await clamdPing(uploadConfig.clamav))) {
+    throw new Error("E02-S04 prerequisite missing: clamd unreachable at the configured CLAMAV_HOST/PORT.");
+  }
+  if (!existsSync(uploadConfig.parserChild)) {
+    throw new Error("E02-S04 prerequisite missing: parser child not built (run npm run build:parser).");
+  }
   redisUrl = mappingRedisUrl();
   queue = jobsQueue(redisUrl);
   await queue.waitUntilReady();
