@@ -53,7 +53,10 @@ export function validateWorkerId(value: unknown): string {
 export function parseLeaseMsEnv(raw: string | undefined): number {
   if (raw === undefined || raw === "") return DEFAULT_RUNTIME_LEASE_MS;
   const parsed = Number(raw);
-  return validateLeaseMs(parsed);
+  if (!Number.isInteger(parsed) || parsed < LEASE_MS_MIN || parsed > LEASE_MS_MAX) {
+    throw new Error(`E02-S02 worker refused: JOB_LEASE_MS must be an integer ${LEASE_MS_MIN}-${LEASE_MS_MAX}.`);
+  }
+  return parsed;
 }
 
 type JobRow = {
@@ -111,7 +114,7 @@ export async function claimAttempt(
     ]);
     const attemptNo = ((counted.rows[0] as { n: number }).n) + 1;
     const next = await client.query(
-      "UPDATE background_jobs SET status = 'RUNNING', attempt_generation = attempt_generation + 1, lease_expires_at = now() + make_interval(secs => $3), started_at = coalesce(started_at, now()), progress_stage = 'claimed', last_heartbeat_at = now(), updated_at = now() WHERE workspace_id = $1 AND id = $2 RETURNING attempt_generation",
+      "UPDATE background_jobs SET status = 'RUNNING', attempt_generation = attempt_generation + 1, attempt_count = attempt_count + 1, lease_expires_at = now() + make_interval(secs => $3), started_at = coalesce(started_at, now()), progress_stage = 'claimed', last_heartbeat_at = now(), updated_at = now() WHERE workspace_id = $1 AND id = $2 RETURNING attempt_generation",
       [route.workspaceId, route.jobId, lease / 1000],
     );
     const generation = Number((next.rows[0] as { attempt_generation: string }).attempt_generation);
@@ -165,15 +168,18 @@ async function fencedGuard(
   route: JobRoute & { jobId: string },
   claim: Pick<Claim, "attemptId" | "generation">,
 ): Promise<{ ok: true } | { ok: false; reason: "cancelled" | "terminal" | "stale_attempt" }> {
-  const job = await client.query("SELECT status, attempt_generation, cancel_requested_at FROM background_jobs WHERE workspace_id = $1 AND id = $2", [
-    route.workspaceId,
-    route.jobId,
-  ]);
+  // The row lock makes guard -> writes -> COMMIT atomic against concurrent
+  // cancel/claim transactions (which take the same lock): exactly one of
+  // publish vs cancel/claim wins, never a blend of both.
+  const job = await client.query(
+    "SELECT status, attempt_generation, cancel_requested_at FROM background_jobs WHERE workspace_id = $1 AND id = $2 FOR UPDATE",
+    [route.workspaceId, route.jobId],
+  );
   if ((job.rowCount ?? 0) === 0) return { ok: false, reason: "terminal" };
   const row = job.rows[0] as { status: string; attempt_generation: string; cancel_requested_at: string | null };
   if (row.cancel_requested_at !== null || row.status === "CANCELLED" || row.status === "CANCEL_REQUESTED") return { ok: false, reason: "cancelled" };
   if (row.status !== "RUNNING" || Number(row.attempt_generation) !== claim.generation) return { ok: false, reason: "stale_attempt" };
-  const attempt = await client.query("SELECT status FROM background_job_attempts WHERE workspace_id = $1 AND id = $2", [route.workspaceId, claim.attemptId]);
+  const attempt = await client.query("SELECT status FROM background_job_attempts WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [route.workspaceId, claim.attemptId]);
   if ((attempt.rowCount ?? 0) === 0 || (attempt.rows[0] as { status: string }).status !== "RUNNING") {
     return { ok: false, reason: "stale_attempt" };
   }
@@ -253,6 +259,18 @@ export async function commitEffectFenced(
       await markAttempt(client, route, claim.attemptId, guard.reason === "cancelled" ? "CANCELLED" : "STALE");
       return guard;
     }
+    // Defense in depth: the terminal write re-asserts the fence as a
+    // predicate (the guard's row lock already serializes us, so a zero-row
+    // update here means a logic error, never a silent blend). The claim
+    // lands BEFORE the result insert so a lost fence publishes nothing.
+    const terminal = await client.query(
+      "UPDATE background_jobs SET status = 'SUCCEEDED', completed_at = now(), progress_stage = 'effect', updated_at = now() WHERE workspace_id = $1 AND id = $2 AND status = 'RUNNING' AND attempt_generation = $3 AND cancel_requested_at IS NULL",
+      [route.workspaceId, route.jobId, claim.generation],
+    );
+    if ((terminal.rowCount ?? 0) !== 1) {
+      await markAttempt(client, route, claim.attemptId, "STALE");
+      return { ok: false, reason: "stale_attempt" };
+    }
     await client.query(
       "INSERT INTO background_job_results (workspace_id, id, background_job_id, result_kind) VALUES ($1, $2, $3, 'synthetic-noop') ON CONFLICT (workspace_id, background_job_id) DO NOTHING",
       [route.workspaceId, uuidv7(), route.jobId],
@@ -261,10 +279,11 @@ export async function commitEffectFenced(
       route.workspaceId,
       route.jobId,
     ]);
-    await client.query(
-      "UPDATE background_jobs SET status = 'SUCCEEDED', completed_at = now(), result_ref = $3, progress_stage = 'effect', updated_at = now() WHERE workspace_id = $1 AND id = $2",
-      [route.workspaceId, route.jobId, JSON.stringify({ backgroundJobResultId: (result.rows[0] as { id: string }).id })],
-    );
+    await client.query("UPDATE background_jobs SET result_ref = $3 WHERE workspace_id = $1 AND id = $2", [
+      route.workspaceId,
+      route.jobId,
+      JSON.stringify({ backgroundJobResultId: (result.rows[0] as { id: string }).id }),
+    ]);
     await markAttempt(client, route, claim.attemptId, "SUCCEEDED");
     await client.query("DELETE FROM job_dispatch_index WHERE workspace_id = $1 AND job_id = $2", [route.workspaceId, route.jobId]);
     return { ok: true };
@@ -349,6 +368,10 @@ export async function processImportJobPhased(
     if (err instanceof RecoveryError && (err.code === "not_found" || err.code === "terminal" || err.code === "cancelled")) {
       return "duplicate-terminal-noop";
     }
+    // lease_held intentionally propagates (typed RecoveryError): another
+    // live attempt owns the job, so this delivery must back off rather than
+    // report completion. The IO worker maps it to a deferred outcome;
+    // direct callers treat it as retry-later, never as success.
     throw err;
   }
   const pick = { attemptId: claim.attemptId, generation: claim.generation };

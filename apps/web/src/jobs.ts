@@ -386,7 +386,7 @@ export async function sweepDispatchIndex(pool: Pool, queue: Queue<JobPayload>, l
           await client.query("DELETE FROM job_dispatch_index WHERE workspace_id = $1 AND job_id = $2", [route.workspaceId, route.jobId]);
           return "skipped" as const;
         }
-        const job = await client.query("SELECT status, cancel_requested_at AS \"cancelRequestedAt\" FROM background_jobs WHERE workspace_id = $1 AND id = $2", [route.workspaceId, route.jobId]);
+        const job = await client.query("SELECT status, cancel_requested_at AS \"cancelRequestedAt\", lease_expires_at AS \"leaseExpiresAt\" FROM background_jobs WHERE workspace_id = $1 AND id = $2", [route.workspaceId, route.jobId]);
         if ((job.rowCount ?? 0) === 0) {
           await client.query("UPDATE outbox_events SET published_at = now() WHERE workspace_id = $1 AND id = $2", [route.workspaceId, route.outboxId]);
           await client.query("DELETE FROM job_dispatch_index WHERE workspace_id = $1 AND job_id = $2", [route.workspaceId, route.jobId]);
@@ -394,11 +394,34 @@ export async function sweepDispatchIndex(pool: Pool, queue: Queue<JobPayload>, l
         }
         const status = (job.rows[0] as { status: string }).status;
         const cancelRequested = (job.rows[0] as { cancelRequestedAt: string | null }).cancelRequestedAt !== null;
-        if (status === "SUCCEEDED" || status === "FAILED_FINAL" || status === "CANCELLED" || status === "CANCEL_REQUESTED" || cancelRequested) {
-          // Terminal/cancelled work is consumed, never re-enqueued as new
-          // logical work; the index row retires with the job. A RUNNING job
-          // whose cancel just won is consumed here; the in-flight worker
-          // observes the fence at its next boundary and publishes nothing.
+        if (status === "SUCCEEDED" || status === "FAILED_FINAL" || status === "CANCELLED") {
+          // Terminal work is consumed, never re-enqueued as new logical
+          // work; the index row retires with the job.
+          await client.query("UPDATE outbox_events SET published_at = now() WHERE workspace_id = $1 AND id = $2 AND published_at IS NULL", [
+            route.workspaceId,
+            route.outboxId,
+          ]);
+          await client.query("DELETE FROM job_dispatch_index WHERE workspace_id = $1 AND job_id = $2", [route.workspaceId, route.jobId]);
+          return "skipped" as const;
+        }
+        if (status === "CANCEL_REQUESTED" || cancelRequested) {
+          // Cooperative cancel outstanding. While a lease is live the worker
+          // may still be mid-boundary and will finalize itself at its next
+          // fence — keep the route and enqueue nothing. Once no live lease
+          // holds the job (dead worker), the sweep finalizes CANCELLED here
+          // so the request converges instead of stranding (attempt history
+          // is preserved, no effect publishes).
+          const leaseExpiresAt = (job.rows[0] as { leaseExpiresAt: string | null }).leaseExpiresAt;
+          const live = leaseExpiresAt !== null && new Date(leaseExpiresAt).getTime() > Date.now();
+          if (live) return "skipped" as const;
+          await client.query(
+            "UPDATE background_jobs SET status = 'CANCELLED', completed_at = coalesce(completed_at, now()), updated_at = now() WHERE workspace_id = $1 AND id = $2",
+            [route.workspaceId, route.jobId],
+          );
+          await client.query(
+            "UPDATE background_job_attempts SET status = 'CANCELLED', completed_at = coalesce(completed_at, now()) WHERE workspace_id = $1 AND background_job_id = $2 AND status = 'RUNNING'",
+            [route.workspaceId, route.jobId],
+          );
           await client.query("UPDATE outbox_events SET published_at = now() WHERE workspace_id = $1 AND id = $2 AND published_at IS NULL", [
             route.workspaceId,
             route.outboxId,

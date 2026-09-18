@@ -29,6 +29,7 @@ import {
   claimAttempt,
   commitEffectFenced,
   heartbeatAttempt,
+  parseLeaseMsEnv,
   reconcileTransport,
   RecoveryError,
 } from "../apps/web/src/job-recovery.ts";
@@ -46,6 +47,9 @@ let queue: Queue<JobPayload>;
 let appDbUrl: string;
 
 const FAULT_LEASE_MS = 2000;
+// Short lease for timing-deterministic tests without child kill latency
+// (keeps the story's 300–500 ms test-lease band covered literally).
+const SHORT_LEASE_MS = 400;
 
 function recoveryRedisUrl(): string {
   const base = env("E02-S02", "REDIS_URL");
@@ -366,13 +370,13 @@ describe("e02-s02 recovery, fencing and cancel", () => {
     const { jobId } = await accept(base, cookie, workspaceId);
     const route = await resolveJobRoute(pool, jobId);
     const full = { ...route!, jobId };
-    const first = await claimAttempt(pool, full, "worker-old", FAULT_LEASE_MS);
+    const first = await claimAttempt(pool, full, "worker-old", SHORT_LEASE_MS);
     // Concurrent redelivery while the lease is live cannot steal the job.
-    await expect(claimAttempt(pool, full, "worker-race", FAULT_LEASE_MS)).rejects.toMatchObject({ code: "lease_held" });
+    await expect(claimAttempt(pool, full, "worker-race", SHORT_LEASE_MS)).rejects.toMatchObject({ code: "lease_held" });
     // A stale heartbeat reports false instead of extending ownership.
     expect(await heartbeatAttempt(pool, full, first.attemptId)).toBe(true);
-    await new Promise((r) => setTimeout(r, FAULT_LEASE_MS + 300));
-    const second = await claimAttempt(pool, full, "worker-new", FAULT_LEASE_MS);
+    await new Promise((r) => setTimeout(r, SHORT_LEASE_MS + 300));
+    const second = await claimAttempt(pool, full, "worker-new", SHORT_LEASE_MS);
     expect(second.generation).toBe(first.generation + 1);
     expect(await heartbeatAttempt(pool, full, first.attemptId)).toBe(false);
     // The old worker finishing late cannot publish: every write is fenced.
@@ -386,6 +390,68 @@ describe("e02-s02 recovery, fencing and cancel", () => {
     expect(await commitEffectFenced(pool, full, win)).toMatchObject({ ok: true });
     expect(await resultCount(userId, workspaceId, jobId)).toBe(1);
     expect((await attemptHistory(userId, workspaceId, jobId)).map((h) => h.status)).toEqual(["STALE", "SUCCEEDED"]);
+  }, 60_000);
+
+  it("concurrent cancel and final publish have exactly one winner, never a blend", async () => {
+    // Regression for the fenced-publish TOCTOU: the guard holds the job row
+    // lock, so cancel-first + publish-ok + SUCCEEDED must never co-occur.
+    const base = await startApp();
+    const { cookie, workspaceId, userId } = await setupWorkspace(base, "synthetic-rec-race");
+    for (let round = 0; round < 10; round++) {
+      const { jobId } = await accept(base, cookie, workspaceId);
+      const route = await resolveJobRoute(pool, jobId);
+      const full = { ...route!, jobId };
+      const claim = await claimAttempt(pool, full, `worker-race-${round}`, 5000);
+      const pick = { attemptId: claim.attemptId, generation: claim.generation };
+      expect(await checkpointAttempt(pool, full, pick, "checkpoint-a")).toMatchObject({ ok: true });
+      const [published, cancelled] = await Promise.all([
+        commitEffectFenced(pool, full, pick),
+        cancelJob(pool, { userId, workspaceId }, jobId),
+      ]);
+      const effects = await resultCount(userId, workspaceId, jobId);
+      const status = await jobStatus(userId, workspaceId, jobId);
+      if (cancelled!.effectApplied === false && (cancelled!.status === "CANCELLED" || cancelled!.status === "CANCEL_REQUESTED")) {
+        // Cancel committed first: nothing may publish afterwards.
+        expect(published).toMatchObject({ ok: false, reason: "cancelled" });
+        expect(effects).toBe(0);
+        // The worker's fenced failure finalizes the cooperative cancel.
+        expect(["CANCELLED", "CANCEL_REQUESTED"]).toContain(status);
+      } else {
+        // Publish committed first: cancel honestly reports the effect.
+        expect(published).toMatchObject({ ok: true });
+        expect(cancelled).toMatchObject({ effectApplied: true });
+        expect(status).toBe("SUCCEEDED");
+        expect(effects).toBe(1);
+      }
+    }
+  }, 60_000);
+
+  it("cancel with a dead worker converges to CANCELLED on the next sweep", async () => {
+    // Regression: CANCEL_REQUESTED used to strand (index consumed, claim
+    // refused, repeat cancel a no-op). The sweep now finalizes it once no
+    // live lease holds the job.
+    const base = await startApp();
+    const { cookie, workspaceId, userId } = await setupWorkspace(base, "synthetic-rec-strand");
+    const { jobId } = await accept(base, cookie, workspaceId);
+    await dispatchOutbox(pool, queue);
+    const route = await resolveJobRoute(pool, jobId);
+    const full = { ...route!, jobId };
+    await claimAttempt(pool, full, "worker-doomed", SHORT_LEASE_MS);
+    const cancelled = await cancelJob(pool, { userId, workspaceId }, jobId);
+    expect(cancelled).toMatchObject({ status: "CANCEL_REQUESTED", effectApplied: false });
+    // While the lease is live the sweep leaves the worker its boundary.
+    expect(await reconcileTransport(pool, queue)).toMatchObject({ enqueued: expect.any(Number) });
+    expect(await jobStatus(userId, workspaceId, jobId)).toBe("CANCEL_REQUESTED");
+    // After the dead worker's lease expires, the sweep finalizes CANCELLED:
+    // attempt history preserved, nothing published, reclaim refused.
+    await new Promise((r) => setTimeout(r, SHORT_LEASE_MS + 400));
+    await reconcileTransport(pool, queue);
+    expect(await jobStatus(userId, workspaceId, jobId)).toBe("CANCELLED");
+    expect((await attemptHistory(userId, workspaceId, jobId)).map((h) => h.status)).toEqual(["CANCELLED"]);
+    expect(await resultCount(userId, workspaceId, jobId)).toBe(0);
+    const repeat = await cancelHttp(base, cookie, workspaceId, jobId);
+    expect(repeat.json).toMatchObject({ status: "CANCELLED", changed: false, effectApplied: false });
+    await expect(claimAttempt(pool, full, "worker-late", SHORT_LEASE_MS)).rejects.toMatchObject({ code: "cancelled" });
   }, 60_000);
 
   it("cancel before claim wins durably and repeat cancel is idempotent", async () => {
@@ -581,5 +647,21 @@ describe("e02-s02 recovery, fencing and cancel", () => {
     await expect(reconcileTransport(pool, queue, 101)).rejects.toThrow("reconcile limit out of range");
     await expect(dispatchOutbox(pool, queue, 51)).rejects.toThrow("dispatch limit out of range");
     expect((await reconcileTransport(pool, queue, 100)).enqueued).toBeGreaterThanOrEqual(0);
+    // Worker lease env parses with fail-closed bounds (plain Error: this is
+    // process configuration, not tenant input).
+    expect(parseLeaseMsEnv(undefined)).toBe(30_000);
+    expect(parseLeaseMsEnv("5000")).toBe(5000);
+    expect(() => parseLeaseMsEnv("bogus")).toThrow("JOB_LEASE_MS");
+    expect(() => parseLeaseMsEnv("50")).toThrow("JOB_LEASE_MS");
+  });
+
+  it("claimed jobs report their attempt count on reads", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "synthetic-rec-count");
+    const { jobId } = await accept(base, cookie, workspaceId);
+    const route = await resolveJobRoute(pool, jobId);
+    await claimAttempt(pool, { ...route!, jobId }, "worker-counter", SHORT_LEASE_MS);
+    const read = await readJobHttp(base, cookie, workspaceId, jobId);
+    expect(read.json).toMatchObject({ job: { status: "RUNNING", attemptCount: "1" } });
   });
 });
