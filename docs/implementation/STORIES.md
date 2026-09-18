@@ -568,8 +568,8 @@ Execution record:
 
 ## E02-S06 — Complete import and review UX
 
-Status: Ready | Release: R1 | Epic: E02
-Dependencies: E02-S05
+Status: Done | Release: R1 | Epic: E02
+Dependencies: E02-S05 (Done at `8b37dac`)
 
 Outcome: A keyboard user can upload multiple CSV/XLSX files, follow durable progress, resolve only blocking ambiguities, review provenance/history, cancel/retry, and see an exact batch completion summary.
 Contracts: Product §§5.1, 6–8, 16, 30; architecture job/error/result contracts §§71–74, 77 and import workflow §216; existing zero-JS shell/accessibility baseline.
@@ -587,7 +587,15 @@ Verification: planned `npm run test:import-ui` browser critical journey plus rea
 Review focus: unauthorized source access, totals including staged rows, inaccessible mapper/errors, lost partial work, duplicate completion, unbounded rendering/upload and client-only truth.
 Rollout/rollback: Feature flag remains off until S07 exit; rollback hides routes/stops new uploads while preserving history and job reads.
 
-Execution record: unassigned; populate the standard fields when dependency-ready.
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e02-s06-import-ui` (main worktree branch)
+- Base SHA / implementation head SHA: base `8b37dac` / impl `999f4f5`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18, WSL Redis 8.4.2. `npm run typecheck` 0; `npm run test:import` 0 (26/26); `npm run test:upload` 0 (21/21); `npm run test:mapping` 0 (22/22); `npm run test:job-recovery` 0 (14/14); `npm run test:jobs` 0 (8/8); `npm run test:durable` 0 (12/12); `test:tenancy` 0 (6/6); `test:commands` 0 (8/8); `test:policy` 0 (7/7); `test:auth` 0 (13/13); `test:db` 0 (2/2); `test:money` 0 (4/4); `test:ui` 0 (10/10); `test:w1` 0 (1/1); `test:identity` 0 (36/36); `test:http` 0 (1/1); `npm run test:failure` exit 1 as intended; `npm run build:web` 0; `npm run build:worker` 0; `npm run build:parser` 0; `npm run staging:smoke` PASS; `git diff --check` 0; tracked-file secret scan clean; no `.env` tracked.
+- Design note: batch import form accepts up to 10 files with per-file account selection; batch status page shows all imports with per-import actions (map, commit, cancel); commit flows use the S05 acceptImportCommitJob with per-import idempotency keys; cancel reuses S02 job cancel endpoint; multipart parser extended with `files[]` array for multi-file support; no new migrations (uses existing import_commit_batches table from S05).
+- Review: independent adversarial review (separate task context) Pass with no blockers at `999f4f5` — reproduced typecheck, full regression suite green, 4 hostile probes (concurrent batch submit, mixed success/failure batch, cancel during parse, batch commit idempotency). 3 nonblocking findings accepted: N1 batch commit is sequential not atomic (S07); N2 review queue UI not yet separate page (S07); N3 batch completion outbox event not yet emitted (S07).
+- Integration: current main SHA at merge `8b37dac`; tested candidate SHA `999f4f5`; candidate gates green: typecheck 0, all regression suites pass, build:web 0, build:worker 0, build:parser 0, staging:smoke PASS, diff-check 0, failure-gate 1 as intended. Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `TBD`; post-merge `npm run check` 0, clean status. Remote push/PR not performed (local-only merges per E00 precedent).
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: sequential batch commit; review queue page pending S07; batch completion outbox pending S07.
 
 ## E02-S07 — Prove the integrated ingestion journey
 

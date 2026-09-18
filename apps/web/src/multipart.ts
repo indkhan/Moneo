@@ -12,7 +12,7 @@ export type MultipartFile = {
   bytes: Uint8Array;
 };
 
-export type MultipartForm = { fields: Record<string, string>; file: MultipartFile | null };
+export type MultipartForm = { fields: Record<string, string>; file: MultipartFile | null; files: MultipartFile[] };
 
 function boundaryOf(contentType: string | undefined): Uint8Array | null {
   const match = (contentType ?? "").match(/boundary=([^;]+)/);
@@ -49,6 +49,7 @@ export async function readMultipart(req: IncomingMessage, opts: { maxBytes: numb
   });
   const body = Buffer.concat(chunks.map((c) => Buffer.from(c)));
   const fields: Record<string, string> = {};
+  const files: MultipartFile[] = [];
   let file: MultipartFile | null = null;
   let fieldCount = 0;
   let cursor = 0;
@@ -78,13 +79,14 @@ export async function readMultipart(req: IncomingMessage, opts: { maxBytes: numb
     fieldCount += 1;
     if (fieldCount > maxFields + 1) throw new Error("body_too_large");
     if (filename !== undefined) {
-      if (file) throw new Error("body_invalid");
-      file = {
+      const newFile: MultipartFile = {
         fieldName,
         filename,
         contentType: (typeMatch?.[1] ?? "application/octet-stream").trim().slice(0, 128),
         bytes: new Uint8Array(content),
       };
+      files.push(newFile);
+      if (!file) file = newFile; // First file for backward compat
     } else {
       if (Object.keys(fields).length >= maxFields) throw new Error("body_too_large");
       const value = Buffer.from(content).toString("utf8");
@@ -93,7 +95,7 @@ export async function readMultipart(req: IncomingMessage, opts: { maxBytes: numb
     }
     cursor = next;
   }
-  return { fields, file };
+  return { fields, file, files };
 }
 
 /** Keep the original filename as display metadata only: basename, no
