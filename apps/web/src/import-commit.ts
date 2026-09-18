@@ -349,15 +349,16 @@ async function findMatchCandidates(
   const startDate = new Date(parseDateOrNull(staged.effectiveDate)!.getTime() - windowDays * 24 * 60 * 60 * 1000);
   const endDate = new Date(parseDateOrNull(staged.effectiveDate)!.getTime() + windowDays * 24 * 60 * 60 * 1000);
   const res = await client.query(
-    `SELECT id AS "transactionId", amount_minor AS "amountMinor", currency, direction, effective_date AS "effectiveDate", description
+    `SELECT id AS "transactionId", amount_minor AS "amountMinor", currency, direction, effective_date::text AS "effectiveDate", description
      FROM transactions
      WHERE workspace_id = $1
        AND amount_minor = $2
        AND currency = $3
        AND direction = $4
        AND description = $5
-       AND effective_date BETWEEN $6 AND $7`,
-    [workspaceId, staged.amountMinor, staged.currency, staged.direction, staged.description, startDate, endDate],
+       AND effective_date BETWEEN $6 AND $7
+       AND import_id <> $8`,
+    [workspaceId, staged.amountMinor, staged.currency, staged.direction, staged.description, startDate, endDate, staged.importId],
   );
   return res.rows as MatchCandidate[];
 }
@@ -382,7 +383,7 @@ async function createSourceLink(
        match_reason = EXCLUDED.match_reason,
        resolved_at = EXCLUDED.resolved_at,
        resolved_by = EXCLUDED.resolved_by`,
-    [workspaceId, sourceLinkId, importId, rowNo, observationId, targetTransactionId, status, matchReason, status !== "NEW" ? new Date() : null, status !== "NEW" ? "system" : null],
+    [workspaceId, sourceLinkId, importId, rowNo, observationId, targetTransactionId, status, matchReason, status !== "NEW" ? new Date() : null, null],
   );
   return sourceLinkId;
 }
@@ -495,7 +496,7 @@ export async function processCommitJob(
   // Fetch STAGED observations for this import
   const observations = await fenced(async (client) => {
     const res = await client.query(
-      `SELECT import_id, row_no AS "rowNo", observation_id AS "observationId", amount_minor AS "amountMinor", currency, direction, effective_date AS "effectiveDate", description, source_sheet AS "sourceSheet"
+      `SELECT import_id AS "importId", row_no AS "rowNo", observation_id AS "observationId", amount_minor AS "amountMinor", currency, direction, effective_date::text AS "effectiveDate", description, source_sheet AS "sourceSheet"
        FROM parsed_observations
        WHERE workspace_id = $1 AND import_id = $2 AND status = 'STAGED'
        ORDER BY row_no`,

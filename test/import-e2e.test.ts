@@ -137,13 +137,13 @@ async function uploadFile(base: string, cookie: string, workspaceId: string, fil
   return { importId: body.import.id, jobId: body.jobId, workspaceId };
 }
 
-async function stageImport(base: string, sub: string, filename: string, bytes: Uint8Array, profile?: unknown): Promise<{ cookie: string; workspaceId: string; userId: string; importId: string; jobId: string; accountId: string }> {
-  const setup = await setupWorkspace(base, sub);
+async function stageImport(base: string, sub: string, filename: string, bytes: Uint8Array, profile?: unknown, existingSetup?: { cookie: string; workspaceId: string; userId: string }, existingAccountId?: string): Promise<{ cookie: string; workspaceId: string; userId: string; importId: string; jobId: string; accountId: string }> {
+  const setup = existingSetup ?? await setupWorkspace(base, sub);
   const { importId, jobId } = await uploadFile(base, setup.cookie, setup.workspaceId, filename, bytes, profile);
   await dispatchOutbox(pool, queue);
   const outcome = await processParseJob(pool, jobId, uploadConfig);
   if (outcome !== "applied") throw new Error(`staging failed with ${outcome}`);
-  const account = await withTenant(pool, { userId: setup.userId, workspaceId: setup.workspaceId }, async (client) => {
+  const account = existingAccountId ?? await withTenant(pool, { userId: setup.userId, workspaceId: setup.workspaceId }, async (client) => {
     const result = await client.query("INSERT INTO accounts (workspace_id, id, name) VALUES ($1, $2, 'Test Account') RETURNING id", [setup.workspaceId, randomUUID()]);
     return result.rows[0].id;
   });
@@ -266,16 +266,16 @@ describe("e02-s07 W2 integrated ingestion exit demonstration", () => {
       amount: { kind: "signed", decimalSep: ".", thousandsSep: "," },
       columns: { date: "date", description: "description", amount: "amount" },
       defaultCurrency: "EUR",
-    });
+    }, a, a.accountId);
     await proposeAndAcceptMapping({ userId: b.userId, workspaceId: b.workspaceId }, b.importId, b.accountId);
     await commitImport({ userId: b.userId, workspaceId: b.workspaceId }, b.importId, b.accountId);
 
-    const txCount = await pool.query("SELECT count(*)::int AS n FROM transactions WHERE workspace_id = $1", [a.workspaceId]);
+    const txCount = await withTenant(pool, { userId: a.userId, workspaceId: a.workspaceId }, (client) => client.query("SELECT count(*)::int AS n FROM transactions WHERE workspace_id = $1", [a.workspaceId]));
     expect(txCount.rows[0].n).toBe(3);
-    const linkCount = await pool.query("SELECT status, count(*)::int AS n FROM source_links WHERE workspace_id = $1 GROUP BY status", [a.workspaceId]);
+    const linkCount = await withTenant(pool, { userId: a.userId, workspaceId: a.workspaceId }, (client) => client.query("SELECT status, count(*)::int AS n FROM source_links WHERE workspace_id = $1 GROUP BY status", [a.workspaceId]));
     const statuses = Object.fromEntries(linkCount.rows.map((r) => [r.status, r.n]));
     expect(statuses.MATCHED).toBe(1);
-    expect(statuses.NEW).toBe(2);
+    expect(statuses.NEW).toBe(3);
     expect(statuses.PENDING_REVIEW ?? 0).toBe(0);
   }, 60000);
 
@@ -291,9 +291,9 @@ describe("e02-s07 W2 integrated ingestion exit demonstration", () => {
     });
     await proposeAndAcceptMapping({ userId: staged.userId, workspaceId: staged.workspaceId }, staged.importId, staged.accountId);
     await commitImport({ userId: staged.userId, workspaceId: staged.workspaceId }, staged.importId, staged.accountId);
-    const txCount = await pool.query("SELECT count(*)::int AS n FROM transactions WHERE workspace_id = $1", [staged.workspaceId]);
+    const txCount = await withTenant(pool, { userId: staged.userId, workspaceId: staged.workspaceId }, (client) => client.query("SELECT count(*)::int AS n FROM transactions WHERE workspace_id = $1", [staged.workspaceId]));
     expect(txCount.rows[0].n).toBe(2);
-    const linkCount = await pool.query("SELECT status, count(*)::int AS n FROM source_links WHERE workspace_id = $1 GROUP BY status", [staged.workspaceId]);
+    const linkCount = await withTenant(pool, { userId: staged.userId, workspaceId: staged.workspaceId }, (client) => client.query("SELECT status, count(*)::int AS n FROM source_links WHERE workspace_id = $1 GROUP BY status", [staged.workspaceId]));
     const statuses = Object.fromEntries(linkCount.rows.map((r) => [r.status, r.n]));
     expect(statuses.NEW).toBe(2);
   }, 60000);
@@ -309,7 +309,7 @@ describe("e02-s07 W2 integrated ingestion exit demonstration", () => {
     });
     await proposeAndAcceptMapping({ userId: staged.userId, workspaceId: staged.workspaceId }, staged.importId, staged.accountId);
     await commitImport({ userId: staged.userId, workspaceId: staged.workspaceId }, staged.importId, staged.accountId);
-    const txCount = await pool.query("SELECT count(*)::int AS n FROM transactions WHERE workspace_id = $1", [staged.workspaceId]);
+    const txCount = await withTenant(pool, { userId: staged.userId, workspaceId: staged.workspaceId }, (client) => client.query("SELECT count(*)::int AS n FROM transactions WHERE workspace_id = $1", [staged.workspaceId]));
     expect(txCount.rows[0].n).toBe(4);
   }, 60000);
 
@@ -319,18 +319,18 @@ describe("e02-s07 W2 integrated ingestion exit demonstration", () => {
     await proposeAndAcceptMapping({ userId: staged.userId, workspaceId: staged.workspaceId }, staged.importId, staged.accountId);
     await queue.obliterate({ force: true });
     await commitImport({ userId: staged.userId, workspaceId: staged.workspaceId }, staged.importId, staged.accountId);
-    const txCount = await pool.query("SELECT count(*)::int AS n FROM transactions WHERE workspace_id = $1", [staged.workspaceId]);
+    const txCount = await withTenant(pool, { userId: staged.userId, workspaceId: staged.workspaceId }, (client) => client.query("SELECT count(*)::int AS n FROM transactions WHERE workspace_id = $1", [staged.workspaceId]));
     expect(txCount.rows[0].n).toBe(2);
   }, 60000);
 
   it("cancel/retry is idempotent", async () => {
     const base = await startApp();
     const idempotencyKey = randomUUID();
-    const staged = await uploadFile(base, (await setupWorkspace(base, "e2e-user-e")).cookie, (await setupWorkspace(base, "e2e-user-e")).workspaceId, "clean.csv", new TextEncoder().encode(SIMPLE_CSV), SIMPLE_PROFILE, idempotencyKey);
+    const setup = await setupWorkspace(base, "e2e-user-e");
+    const staged = await uploadFile(base, setup.cookie, setup.workspaceId, "clean.csv", new TextEncoder().encode(SIMPLE_CSV), SIMPLE_PROFILE, idempotencyKey);
     await dispatchOutbox(pool, queue);
     await processParseJob(pool, staged.jobId, uploadConfig);
     // Cancel the parse job
-    const setup = await setupWorkspace(base, "e2e-user-e");
     const cancelRes = await fetch(`${base}/api/workspaces/${staged.workspaceId}/jobs/${staged.jobId}/cancel`, {
       method: "POST",
       headers: { cookie: setup.cookie, "Content-Type": "application/json" },
@@ -420,14 +420,15 @@ describe("e02-s07 W2 integrated ingestion exit demonstration", () => {
   it("limits: 1-row, 10-file batch, 100k-row resource ceilings", async () => {
     const base = await startApp();
     const { cookie, workspaceId, userId } = await setupWorkspace(base, "e2e-limits");
-    const oneRow = await stageImport(base, "e2e-limits", "1row.csv", new TextEncoder().encode("date,description,amount\n2026-01-01,Test,-100\n"), SIMPLE_PROFILE);
+    const setup = { cookie, workspaceId, userId };
+    const oneRow = await stageImport(base, "e2e-limits", "1row.csv", new TextEncoder().encode("date,description,amount\n2026-01-01,Test,-100\n"), SIMPLE_PROFILE, setup);
     expect(oneRow.importId).toBeDefined();
     const fileCount = 10;
     for (let i = 0; i < fileCount; i++) {
-      const res = await stageImport(base, "e2e-limits", `file${i}.csv`, new TextEncoder().encode(`date,description,amount\n2026-01-${String(i + 1).padStart(2, "0")},Test${i},-${i + 1}00\n`), SIMPLE_PROFILE);
+      const res = await stageImport(base, "e2e-limits", `file${i}.csv`, new TextEncoder().encode(`date,description,amount\n2026-01-${String(i + 1).padStart(2, "0")},Test${i},-${i + 1}00\n`), SIMPLE_PROFILE, setup);
       expect(res.importId).toBeDefined();
     }
-    const importCount = await pool.query("SELECT count(*)::int AS n FROM imports WHERE workspace_id = $1", [workspaceId]);
+    const importCount = await withTenant(pool, setup, (client) => client.query("SELECT count(*)::int AS n FROM imports WHERE workspace_id = $1", [workspaceId]));
     expect(importCount.rows[0].n).toBe(fileCount + 1);
   }, 30000);
 
