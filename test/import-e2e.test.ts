@@ -118,7 +118,7 @@ function multipartBody(fields: Record<string, string>, files: { field: string; f
   return { body: Buffer.concat(parts), contentType: `multipart/form-data; boundary=${boundary}` };
 }
 
-async function uploadFile(base: string, cookie: string, workspaceId: string, filename: string, bytes: Uint8Array, profile?: unknown, idempotencyKey?: string): Promise<{ importId: string; jobId: string }> {
+async function uploadFile(base: string, cookie: string, workspaceId: string, filename: string, bytes: Uint8Array, profile?: unknown, idempotencyKey?: string): Promise<{ importId: string; jobId: string; workspaceId: string }> {
   const built = multipartBody(
     { idempotencyKey: idempotencyKey ?? randomUUID(), ...(profile === undefined ? {} : { profile: JSON.stringify(profile) }) },
     [{ field: "file", filename, contentType: "application/octet-stream", bytes }],
@@ -134,7 +134,7 @@ async function uploadFile(base: string, cookie: string, workspaceId: string, fil
     throw new Error(`upload failed with ${res.status}: ${text.slice(0, 200)}`);
   }
   const body = (await res.json()) as { import: { id: string }; jobId: string };
-  return { importId: body.import.id, jobId: body.jobId };
+  return { importId: body.import.id, jobId: body.jobId, workspaceId };
 }
 
 async function stageImport(base: string, sub: string, filename: string, bytes: Uint8Array, profile?: unknown): Promise<{ cookie: string; workspaceId: string; userId: string; importId: string; jobId: string; accountId: string }> {
@@ -343,7 +343,7 @@ describe("e02-s07 W2 integrated ingestion exit demonstration", () => {
       workspaceId: setup.workspaceId,
       idempotencyKey: idempotencyKey,
       filename: "clean.csv",
-      bytes: new TextEncoder().encode(SIMPLE_CSV),
+      bytes: new Uint8Array(new TextEncoder().encode(SIMPLE_CSV)),
       profile: SIMPLE_PROFILE,
     });
     expect(replayResult.import.id).toBe(staged.importId);
@@ -383,7 +383,7 @@ describe("e02-s07 W2 integrated ingestion exit demonstration", () => {
     const formulaRes = await fetch(`${base}/api/workspaces/${workspaceId}/uploads`, {
       method: "POST",
       headers: { cookie },
-      body: new Blob([formulaBytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+      body: new Blob([Buffer.from(formulaBytes)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
     });
     expect([400, 201]).toContain(formulaRes.status);
     if (formulaRes.status === 201) {

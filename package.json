@@ -31,6 +31,7 @@
     "test:job-recovery": "vitest run test/job-recovery.test.ts",
     "test:upload": "vitest run test/upload.test.ts",
     "test:mapping": "vitest run test/mapping.test.ts",
+    "test:import-e2e": "vitest run test/import-e2e.test.ts",
     "probe:mapping": "node --env-file=.env ./node_modules/vitest/vitest.mjs run test/mapping-live.test.ts",
     "test:auth:live": "vitest run test/auth-keycloak-live.test.ts",
     "build:web": "tsc -p apps/web/tsconfig.json",
