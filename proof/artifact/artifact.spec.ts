@@ -90,7 +90,7 @@ test("stops runaway execution within one second while host remains interactive",
   await page.evaluate(() => window.proof.hostile(`while(true){}`));
   await expect(page.locator("#status")).toHaveText("connected", { timeout: 5_000 });
   const started = Date.now();
-  await page.locator("#stop").dispatchEvent("click");
+  await mouseClick(page, "#stop");
   await expect(page.locator("#status")).toHaveText("stopped", { timeout: 1_000 });
   expect(Date.now() - started).toBeLessThan(1_000);
   await expect(page.locator("#reload")).toBeEnabled();

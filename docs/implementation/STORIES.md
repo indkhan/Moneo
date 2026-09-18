@@ -389,11 +389,11 @@ Dependencies: E01-S05, E01-S06, E00-S04 (all Done; W1 Pass at `5730b03`)
 
 Outcome: An authenticated workspace can accept one synthetic `imports.start` command and receive a durable job ID; PostgreSQL records the operation/job/outbox before BullMQ sees it, and duplicate delivery has one business effect.
 Contracts: Product Delivery baseline ingestion/jobs; architecture §§60–62, 67–69, 176–189 and 215; E00-S04 proven PG-outbox/BullMQ boundary; existing `apps/web/src/commands/accounts.ts`, `tenancy.ts`, `ai-policy.ts` and `proof/durable/` patterns.
-Scope: migration `005_jobs.sql`/rollback for tenant-keyed `background_jobs`, `background_job_attempts` and `outbox_events`; `apps/web/src/jobs.ts` for accept/read/dispatch; one `apps/worker/` IO entry point using the already-pinned BullMQ/ioredis packages; authenticated `POST /api/workspaces/:workspaceId/import-jobs` and `GET .../jobs/:jobId`; queue payload contains only `backgroundJobId`; a synthetic no-file handler proves the boundary. Promote only the minimum reusable code from `proof/durable/`; keep the proof runnable.
+Scope: migration `005_jobs.sql`/rollback for tenant-keyed `background_jobs`, `background_job_results` and `outbox_events`; `apps/web/src/jobs.ts` for accept/read/dispatch; one `apps/worker/` IO entry point using the already-pinned BullMQ/ioredis packages; authenticated `POST /api/workspaces/:workspaceId/import-jobs` and `GET .../jobs/:jobId`; queue payload contains only `backgroundJobId`; a synthetic no-file handler inserts one immutable `background_job_results` row as the slice's named business effect. Promote only the minimum reusable code from `proof/durable/`; keep the proof runnable.
 Out of scope: parser/upload bytes, checkpoints/reclaim/cancel (S02), mapping/import rows (S03+), worker replicas, scheduler framework, additional queues/services, UI beyond the existing shell link/state.
 
 Acceptance:
-1. Given a valid session/membership and idempotency key, accepting the same canonical request concurrently or retrying after a lost response returns the same operation/job and produces one synthetic effect; incompatible key reuse returns conflict.
+1. Given a valid session/membership and idempotency key, accepting the same canonical request concurrently or retrying after a lost response returns the same operation/job and produces exactly one `background_job_results` row; incompatible key reuse returns conflict.
 2. Killing/failing dispatch before enqueue, after enqueue and before `published_at` leaves a recoverable outbox row; repeated dispatch creates no second logical job/effect.
 3. Tenant B and nonexistent job IDs are indistinguishable to tenant A at HTTP/DB boundaries; unscoped app-role reads return no rows; dispatcher discovery exposes only job/workspace IDs and ordinary worker work re-enters `withTenant`.
 4. Terminal duplicate BullMQ delivery exits without repeating the effect; Redis payload/logs contain no financial rows, cookie, token, policy payload or source bytes.
@@ -424,7 +424,7 @@ Dependencies: E02-S01
 
 Outcome: Accepted jobs survive worker death and complete Redis loss, stale workers cannot publish, and an authorized user can cancel future work with durable visible state.
 Contracts: Architecture §§177–180, 189–200, 215–218; E00-S04 fault proof and E02-S01 production tables/API.
-Scope: additive attempt generation/checkpoint fields or table, fenced claim/checkpoint/publish functions, missing-transport reconciler, durable cancellation endpoint/state, graceful SIGTERM, heartbeats for visibility only, and one synthetic two-checkpoint handler/fault child.
+Scope: additive `background_job_attempts` generation/checkpoint table, fenced claim/checkpoint/publish functions, missing-transport reconciler, durable cancellation endpoint/state, graceful SIGTERM, heartbeats for visibility only, and one synthetic two-checkpoint handler/fault child.
 Out of scope: file upload/parsing, generic workflow DSL, BullMQ Flows, Temporal, provider cancellation, replicas or dashboards.
 
 Acceptance:
