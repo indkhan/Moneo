@@ -105,21 +105,13 @@ jobs:
     needs: [gates, artifact-security]
     steps:
       - uses: actions/checkout@v4
-      - name: Build staging image
-        run: docker build -f apps/web/Dockerfile -t moneo-web:staging-candidate --build-arg GIT_SHA="$GITHUB_SHA" .
-      - name: Run read-only as non-root, probe /healthz
-        run: |
-          docker run -d --rm --name moneo-ci-smoke --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
-            --user 65532:65532 --cap-drop ALL --security-opt no-new-privileges:true -p 127.0.0.1:3101:3000 moneo-web:staging-candidate
-          trap 'docker rm -f moneo-ci-smoke >/dev/null 2>&1 || true' EXIT
-          for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:3101/healthz; then break; fi
-            sleep 1
-          done
-          curl -fsS http://127.0.0.1:3101/healthz | grep -q '"status":"ok"'
-          test "$(docker exec moneo-ci-smoke id -u)" != "0"
-          docker rm -f moneo-ci-smoke
-          trap - EXIT
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - name: Build, configured boot, health and rollback smoke
+        run: npm run staging:smoke
+        env:
+          GIT_SHA: ${{ github.sha }}
 
   artifact-security:
     runs-on: ubuntu-latest
