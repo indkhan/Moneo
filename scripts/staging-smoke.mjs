@@ -26,13 +26,23 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function fetchJson(url, timeoutMs = 3000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    return { status: response.status, body: await response.json() };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function waitForHealth(port, deadlineMs) {
   const started = Date.now();
   for (;;) {
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/healthz`, { signal: AbortSignal.timeout(3000) });
-      if (res.status === 200) {
-        const body = await res.json();
+      const { status, body } = await fetchJson(`http://127.0.0.1:${port}/healthz`);
+      if (status === 200) {
         if (body?.status === "ok" && body?.name === "moneo-web") return body;
       }
     } catch { /* not ready yet */ }
@@ -48,7 +58,7 @@ async function runAndProbe(tag, name, hostPort, extraArgs = [], requireReady = f
   try {
     const body = await waitForHealth(hostPort, 90_000);
     if (requireReady) {
-      const ready = await fetch(`http://127.0.0.1:${hostPort}/readyz`);
+      const ready = await fetchJson(`http://127.0.0.1:${hostPort}/readyz`);
       if (ready.status !== 200) throw new Error(`staging smoke failed: configured /readyz returned ${ready.status}`);
     }
     const uid = sh(["docker", "exec", name, "id", "-u"]);
