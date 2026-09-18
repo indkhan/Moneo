@@ -22,6 +22,11 @@ function shStatus(args) {
   return spawnSync(args[0], args.slice(1), { encoding: "utf8", timeout: 60_000 }).status;
 }
 
+function containerLogs(name) {
+  const result = spawnSync("docker", ["logs", name], { encoding: "utf8", timeout: 10_000 });
+  return `${result.stdout ?? ""}${result.stderr ?? ""}`.slice(-2000);
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -64,6 +69,8 @@ async function runAndProbe(tag, name, hostPort, extraArgs = [], requireReady = f
     const uid = sh(["docker", "exec", name, "id", "-u"]);
     if (uid === "0") throw new Error("staging smoke failed: app runs as root.");
     return body;
+  } catch (error) {
+    throw new Error(`${error instanceof Error ? error.message : error}\ncontainer logs:\n${containerLogs(name)}`);
   } finally {
     shStatus(["docker", "rm", "-f", name]);
   }
@@ -92,8 +99,10 @@ try {
   sh(["docker", "run", "-d", "--rm", "--name", configuredDb, "--network", configuredNetwork,
     "-e", "POSTGRES_USER=moneo", "-e", "POSTGRES_PASSWORD=synthetic-only", "-e", "POSTGRES_DB=moneo",
     "postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73"]);
-  for (let i = 0; i < 30 && shStatus(["docker", "exec", configuredDb, "pg_isready", "-U", "moneo", "-d", "moneo"]) !== 0; i++) await sleep(1000);
-  if (shStatus(["docker", "exec", configuredDb, "pg_isready", "-U", "moneo", "-d", "moneo"]) !== 0) throw new Error("staging smoke failed: configured PostgreSQL never became ready");
+  const finalPostgresReady = () => shStatus(["docker", "exec", configuredDb, "sh", "-c",
+    'test "$(cat /proc/1/comm)" = postgres && pg_isready -U moneo -d moneo']) === 0;
+  for (let i = 0; i < 30 && !finalPostgresReady(); i++) await sleep(1000);
+  if (!finalPostgresReady()) throw new Error(`staging smoke failed: configured PostgreSQL never became ready\ncontainer logs:\n${containerLogs(configuredDb)}`);
   const configured = await runAndProbe(CANDIDATE, "moneo-e01-smoke-configured-app", 3104, ["--network", configuredNetwork,
     "-e", "DATABASE_URL=postgresql://moneo:synthetic-only@moneo-e01-smoke-pg:5432/moneo",
     "-e", "KEYCLOAK_ISSUER=http://keycloak.invalid/realms/moneo", "-e", "KEYCLOAK_CLIENT_ID=moneo-web",
