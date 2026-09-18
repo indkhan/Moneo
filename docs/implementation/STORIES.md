@@ -394,7 +394,7 @@ Execution record:
 
 ## E02-S01 — Persist accepted jobs and outbox dispatch
 
-Status: In progress | Release: R1 | Epic: E02
+Status: Done | Release: R1 | Epic: E02
 Dependencies: E01-S05, E01-S06, E00-S04 (all Done; W1 Pass at `5730b03`; audit closeout at `b000e36`; W2 base `6d95893` verified: typecheck + check + w1-exit green)
 
 Outcome: An authenticated workspace can accept one synthetic `imports.start` command and receive a durable job ID; PostgreSQL records the operation/job/outbox before BullMQ sees it, and duplicate delivery has one business effect.
@@ -424,9 +424,9 @@ Execution record:
 - Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18, WSL Redis 8.4.2 (started via `redis-server --daemonize yes`), JOBS_REDIS_DB 14. `npm run typecheck` 0; `npm run test:jobs` 0 (8/8: 20-way duplicate-accept convergence + replay/incompatible/expired, dispatch crash windows, tenant isolation + discovery IDs, index schema guard + Redis-payload + posture + immutability, fairness cap, auth boundaries, Redis-loss rebuild, 100-job <30 s); `npm run test:durable` 0 (12/12, 100 cmds/252 ms); `test:tenancy` 0 (6/6); `test:commands` 0 (8/8); `test:policy` 0 (7/7); `test:auth` 0 (13/13); `test:db` 0 (2/2); `test:money` 0 (4/4); `test:ui` 0 (10/10); `test:w1` 0 (1/1); harness 1/1; `test:web` 0 (8/8); `test:http` 0 (1/1); `test:import` 0 (26/26); `test:identity` 0 (36/36); `npm run test:failure` exit 1 as intended; `npm run build:web` 0; `npm run build:worker` 0; `git diff --check` 0; tracked-file secret scan clean; no `.env` tracked.
 - Design note: first cut used SECURITY DEFINER discovery functions, but FORCE RLS correctly filters even owner-executed functions in app-owned dev/test DBs, so unscoped dispatch/discovery returned zero rows (5/8 tests failed). Replaced with ID-only `job_dispatch_index` (UUIDs + timestamps, no RLS — same rationale as the un-RLS'd users anchor), written atomically in the accept tx and retired at terminal state; every domain step re-enters withTenant with the recorded accepting member. Schema-guard test pins the ID-only shape. Per-migration maintenance (S05 precedent): older suites' truncate lists + tenancy rollback ordering extended for the four new tables.
 - Review: independent adversarial review (separate task context) Pass with no blockers at `f2f74efbaca3d9eb595f71b3b85faaa7b2f3df98` — reproduced typecheck, jobs 8/8, tenancy 6/6, commands 8/8, policy 7/7, durable 12/12, w1 1/1, auth 13/13, ui 10/10, db 2/2, money 4/4, web 8/8, http 1/1, both builds, diff-check clean, secret scan clean, plus 4 hostile probes (DB posture/enumeration, cap race, failing-queue dispatch, tampered-payload dispatch). 6 nonblocking findings accepted: N1 transient-counter rollback + batch abort (S02-hardening candidate), N2 fairness cap check-then-insert race (advisory-lock candidate), N3 index global enumerability documented tradeoff + story-wording touch-up, N4 malformed-workspace 400-vs-404 taxonomy, N5 job_failed log slicing, N6 orphaned-route reclaim owned by S02.
-- Integration: current main SHA, tested candidate SHA, checks:
-- Merge SHA / post-merge smoke:
-- Remaining blockers or explicitly accepted nonblocking follow-up:
+- Integration: current main SHA at merge `6d95893`; tested candidate SHA `4933628` (code tree identical to reviewed `f2f74ef`, plus docs-only ledger delta verified by empty non-docs diff); candidate gates green: typecheck 0, jobs 8/8, durable 12/12, w1 1/1, tenancy 6/6, commands 8/8, policy 7/7, build:web 0, build:worker 0, diff-check 0, failure-gate 1 as intended. Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `eb349d0a5a13bebaf1baba80bddf8abd62763183`; post-merge `npm run check` 0, `npm run test:jobs` 0 (8/8), clean status. Remote push/PR not performed (local-only merges per E00 precedent).
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted from independent review: N1 transient-counter/batch-abort hardening, N2 fairness-cap advisory lock, N3 index-enumerability wording + S02 orphan reclaim, N4 400/404 taxonomy, N5 worker log slicing, N6 removed-member reclaim owned by S02. Known limitation: removed accepting member stalls its job QUEUED (fail-closed) until S02 reclaim/cancel.
 
 ## E02-S02 — Recover, fence and cancel durable jobs
 
