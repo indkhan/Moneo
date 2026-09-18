@@ -506,8 +506,8 @@ Execution record:
 
 ## E02-S04 — Infer mappings with deterministic acceptance and manual fallback
 
-Status: In progress | Release: R1 | Epic: E02
-Dependencies: E02-S03, E01-S05, E00-S05 (all Done)
+Status: Done | Release: R1 | Epic: E02
+Dependencies: E02-S03, E01-S05, E00-S05 (all Done; W1 Pass at `5730b03`; audit closeout at `b000e36`; W2 base `2dfdbc6` verified)
 
 Outcome: Supported statement shapes map automatically; unresolved amount/date/currency/account fields ask only targeted questions, with a keyboard-usable manual mapper as fallback.
 Contracts: Product §§6.1, 7 and 16; architecture §§53, 74, 76, 190–192 and E00-S03/S05 plus E01-S05 policy permit.
@@ -526,8 +526,14 @@ Review focus: model output trusted as data, raw SQL/tool access, excluded data l
 Rollout/rollback: Deterministic/manual paths ship independently; AI assistance feature-disabled unless compliant development config exists. Rollback disables AI and preserves mapping proposals/history.
 
 Execution record:
-- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e02-s04-mapping`
-- Base SHA / implementation head SHA: base `2dfdbc64d231894c2b1a83a84a092cdb03ca02ac` /
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e02-s04-mapping` (main worktree branch)
+- Base SHA / implementation head SHA: base `2dfdbc64d231894c2b1a83a84a092cdb03ca02ac` / impl `21bdca2`; fix/reviewed `b3e45b9`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18, WSL Redis 8.4.2, MinIO RELEASE.2025-09-07 (loopback :9000) + ClamAV 1.5.4 (loopback :3310), MAPPING_REDIS_DB 11. `npm run typecheck` 0; `npm run test:mapping` 0 (22/22: deterministic matrix 13/13, propose/accept 9/9 incl. deterministic confidence, low-confidence manual fallback, reservation spend/validation, injection/fallback, retryable/denied errors, policy revocation blocks publication, reservation caps/unknown deny, profile versioning, HTTP vocab); `npm run probe:mapping` 0 (2/2 live OpenRouter stub transport); `npm run test:upload` 0 (21/21); `npm run test:job-recovery` 0 (14/14); `npm run test:jobs` 0 (8/8); `npm run test:durable` 0 (12/12, 100 cmds/530 ms); `test:tenancy` 0 (6/6); `test:commands` 0 (8/8); `test:policy` 0 (7/7); `test:auth` 0 (13/13); `test:db` 0 (2/2); `test:money` 0 (4/4); `test:ui` 0 (10/10); `test:w1` 0 (1/1); harness 1/1; `test:web` 0 (8/8); `test:http` 0 (1/1); `test:import` 0 (26/26); `test:identity` 0 (36/36); `npm run test:failure` exit 1 as intended; `npm run build:web` 0; `npm run build:worker` 0; `npm run build:parser` 0; `npm run staging:smoke` PASS; `git diff --check` 0; tracked-file secret scan clean; no `.env` tracked.
+- Design note: mapping deduction runs purely on staged cells with zero DB writes until accept; `deduceMapping` returns `high`/`low` confidence and targeted questions mirroring the E00 oracle exactly. `proposeMapping` reserves tokens via `mapping_provider_reservations` (FOR UPDATE serialized per E01-S05 pattern) before any model call; `validateModelMapping` rejects unknown fields/injected columns and enforces strict schema. `acceptMapping` CAS-validates policy version + proposal state. Profile save bumps version; strangers see uniform 404s. `mapping.ts` adds no new deps; `mapping-provider.ts` reuses the existing fake/real transport boundary from E01-S05. Per-migration maintenance: all suites' truncate lists + tenancy rollback ordering extended for `mapping_proposals`/`mapping_profiles`/`mapping_provider_reservations`/`mapping_provider_usage`.
+- Review: independent adversarial review (separate task context) Pass with no blockers at `b3e45b9` — reproduced typecheck, mapping 22/22, upload 21/21, job-recovery 14/14, jobs 8/8, durable 12/12, w1 1/1, tenancy 6/6, commands 8/8, policy 7/7, auth 13/13, ui 10/10, db 2/2, money 4/4, web 8/8, http 1/1, identity 36/36, import 26/26, both builds, diff-check clean, secret scan clean, live mapping probe 2/2, plus 4 hostile probes (malformed provider output, injection, revocation race, reservation leakage). 3 nonblocking findings accepted: N1 token reservation ceiling is synthetic-only (E04-S01 owns production budgets), N2 profile versioning has no TTL (acceptable pre-E03), N3 HTTP vocab test is structural (browser journeys at S06/S07).
+- Integration: current main SHA at merge `2dfdbc6`; tested candidate SHA `b3e45b9` (code tree identical to reviewed, plus docs-only ledger delta verified by empty non-docs diff); candidate gates green: typecheck 0, mapping 22/22, upload 21/21, job-recovery 14/14, jobs 8/8, durable 12/12, w1 1/1, build:web 0, build:worker 0, build:parser 0, staging:smoke PASS, diff-check 0, failure-gate 1 as intended. Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `TBD`; post-merge `npm run check` 0, `npm run test:mapping` 0 (22/22), clean status. Remote push/PR not performed (local-only merges per E00 precedent).
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: synthetic token ceiling; profile version TTL; structural HTTP vocab test. Live OpenRouter bounded probe remains manual/synthetic per E00-S05 precedent.
 
 ## E02-S05 — Commit imports with multiplicity-safe duplicate review
 
