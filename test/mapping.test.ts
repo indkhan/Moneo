@@ -18,6 +18,7 @@ import { Queue } from "bullmq";
 import { createApp } from "../apps/web/src/server.ts";
 import { createAuthRouter, requestSession, type AuthConfig } from "../apps/web/src/auth.ts";
 import { createTenancyRouter, withTenant } from "../apps/web/src/tenancy.ts";
+import { createUiRouter } from "../apps/web/src/ui/routes.ts";
 import { dispatchOutbox, jobsQueue, type JobPayload } from "../apps/web/src/jobs.ts";
 import { processParseJob, loadUploadConfig, type UploadConfig, type UploadProfile } from "../apps/web/src/uploads.ts";
 import { s3EnsureBucket } from "../apps/web/src/s3.ts";
@@ -93,6 +94,10 @@ async function startApp(): Promise<string> {
   const server = createApp(
     createAuthRouter(authConfig, pool),
     createTenancyRouter(pool, (req) => requestSession(pool, sessionSecret, req)),
+    {
+      ui: createUiRouter(pool, (req) => requestSession(pool, sessionSecret, req), { appBaseUrl: "http://127.0.0.1:1", sessionSecret }),
+      controls: null, // Disable edge controls for test simplicity
+    },
   );
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   appServers.push(server);
@@ -144,12 +149,16 @@ async function uploadFile(base: string, cookie: string, workspaceId: string, fil
     { idempotencyKey: randomUUID(), ...(profile === undefined ? {} : { profile: JSON.stringify(profile) }) },
     { field: "file", filename, contentType: "application/octet-stream", bytes },
   );
-  const res = await fetch(`${base}/api/workspaces/${workspaceId}/uploads`, {
+  const url = `${base}/api/workspaces/${workspaceId}/uploads`;
+  const res = await fetch(url, {
     method: "POST",
     headers: { cookie, "Content-Type": built.contentType },
     body: new Uint8Array(built.body),
   });
-  if (res.status !== 201) throw new Error(`upload failed with ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (res.status !== 201) {
+    const text = await res.text();
+    throw new Error(`upload failed with ${res.status}: ${text.slice(0, 200)}`);
+  }
   const body = (await res.json()) as { import: { id: string }; jobId: string };
   return { importId: body.import.id, jobId: body.jobId };
 }
@@ -223,7 +232,13 @@ const SIMPLE_PROFILE = {
   columns: { date: "date", description: "description", amount: "amount", currency: "currency" },
 };
 
+const savedEnv: Record<string, string | undefined> = {};
+
 beforeAll(async () => {
+  // Save and restore env to avoid polluting other test suites.
+  for (const name of ["UPLOADS_ENABLED", "S3_ENDPOINT", "S3_REGION", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET", "CLAMAV_HOST", "CLAMAV_PORT", "PARSER_CHILD"]) {
+    savedEnv[name] = process.env[name];
+  }
   // Hydrate S3/scanner names from the ignored local .env the same way
   // DATABASE_URL is loaded: never log or echo values.
   for (const name of ["S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET"]) {
@@ -274,6 +289,10 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
+  for (const [name, value] of Object.entries(savedEnv)) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
   if (queue) await queue.close();
   if (stub) await stub.close();
   for (const server of appServers) {
@@ -396,7 +415,7 @@ describe("e02-s04 propose and accept (real PG, stub transport)", () => {
 
   it("model assistance spends one reservation, validates strictly, and records unknown cost as pending", async () => {
     const base = await startApp();
-    const staged = await stageImport(base, "synthetic-map-c", "odd.csv", new TextEncoder().encode("when,what,howmuch\\n2026-01-02,Coffee,3.50\n"), {
+    const staged = await stageImport(base, "synthetic-map-c", "odd.csv", new TextEncoder().encode("when,what,howmuch\n2026-01-02,Coffee,3.50\n"), {
       delimiter: ",",
       dateFormat: "iso",
       amount: { kind: "signed", decimalSep: ".", thousandsSep: "" },
@@ -428,7 +447,7 @@ describe("e02-s04 propose and accept (real PG, stub transport)", () => {
   it("malformed, injected and off-header model output falls back to manual with the reservation spent", async () => {
     const base = await startApp();
     for (const mode of ["malformed", "unknown-field", "unknown-column"] as const) {
-      const staged = await stageImport(base, `synthetic-map-d-${mode}`, "odd.csv", new TextEncoder().encode("when,what,howmuch\\n2026-01-02,Coffee,3.50\n"), {
+      const staged = await stageImport(base, `synthetic-map-d-${mode}`, "odd.csv", new TextEncoder().encode("when,what,howmuch\n2026-01-02,Coffee,3.50\n"), {
         delimiter: ",",
         dateFormat: "iso",
         amount: { kind: "signed", decimalSep: ".", thousandsSep: "" },
@@ -452,7 +471,7 @@ describe("e02-s04 propose and accept (real PG, stub transport)", () => {
 
   it("retryable provider errors retry once on the same reservation; auth failures release nothing silently", async () => {
     const base = await startApp();
-    const staged = await stageImport(base, "synthetic-map-e", "odd.csv", new TextEncoder().encode("when,what,howmuch\\n2026-01-02,Coffee,3.50\n"), {
+    const staged = await stageImport(base, "synthetic-map-e", "odd.csv", new TextEncoder().encode("when,what,howmuch\n2026-01-02,Coffee,3.50\n"), {
       delimiter: ",",
       dateFormat: "iso",
       amount: { kind: "signed", decimalSep: ".", thousandsSep: "" },
@@ -476,7 +495,7 @@ describe("e02-s04 propose and accept (real PG, stub transport)", () => {
 
   it("policy revocation between dispatch and accept blocks publication", async () => {
     const base = await startApp();
-    const staged = await stageImport(base, "synthetic-map-f", "odd.csv", new TextEncoder().encode("when,what,howmuch\\n2026-01-02,Coffee,3.50\n"), {
+    const staged = await stageImport(base, "synthetic-map-f", "odd.csv", new TextEncoder().encode("when,what,howmuch\n2026-01-02,Coffee,3.50\n"), {
       delimiter: ",",
       dateFormat: "iso",
       amount: { kind: "signed", decimalSep: ".", thousandsSep: "" },
@@ -511,7 +530,7 @@ describe("e02-s04 propose and accept (real PG, stub transport)", () => {
 
   it("reservation caps and unknown accounts deny cleanly", async () => {
     const base = await startApp();
-    const staged = await stageImport(base, "synthetic-map-g", "odd.csv", new TextEncoder().encode("when,what,howmuch\\n2026-01-02,Coffee,3.50\n"), {
+    const staged = await stageImport(base, "synthetic-map-g", "odd.csv", new TextEncoder().encode("when,what,howmuch\n2026-01-02,Coffee,3.50\n"), {
       delimiter: ",",
       dateFormat: "iso",
       amount: { kind: "signed", decimalSep: ".", thousandsSep: "" },
