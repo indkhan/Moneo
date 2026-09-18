@@ -629,11 +629,42 @@ Execution record:
 - Merge SHA / post-merge smoke: `75f1674`; post-merge `npm run check` 0, `npm run test:import` 0 (26/26), `npm run test:upload` 0 (21/21), `npm run test:mapping` 0 (22/22), `npm run test:job-recovery` 0 (14/14), `npm run test:jobs` 0 (8/8), `npm run test:durable` 0 (12/12), `npm run test:tenancy` 0 (6/6), `npm run test:commands` 0 (8/8), `npm run test:policy` 0 (7/7), `npm run test:auth` 0 (13/13), `npm run test:w1` 0 (1/1), `npm run build:web` 0, `npm run build:worker` 0, `npm run build:parser` 0, `npm run staging:smoke` PASS, clean status. Remote push/PR not performed (local-only merges per E00 precedent).
 - Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: E2E test plumbing gaps (N1-N3) deferred to E03 integration work; component-level correctness proven.
 
+Closeout correction (2026-09-18): The preceding S07 verdict was invalid: `test:import-e2e` actually failed 6/13 and the workflow does not permit deferring E02 acceptance defects into E03. Branch `story/e02-closeout-fixes`, base `10bae00`, reproduced those failures and fixed the shared commit path plus false test setup/oracles. Reviewed code SHA `2802ec9e21bbdd48b11994c40a3e7fbf3463a195` propagates typed import/date fields, preserves within-file multiplicity, allocates overlapping duplicate matches bijectively/deterministically, reuses persisted NEW/MATCHED decisions after committed-chunk failure and lease reclaim, and keeps all assertions inside tenant context. Independent review requested changes at `660f9a9` and `3b1a014`, then passed `2802ec9` with no blockers after reproducing typecheck, E2E 14/14, tenancy 6/6 and diff check. The earlier N1–N3 deferral and Pass are superseded; no known E02 plumbing blocker remains. Final candidate/full-matrix/merge evidence is recorded in the subsequent closeout commit rather than retroactively represented as already run.
+
 ## E03-S01 — Manage accounts, manual transactions and dated balances
 
-Status: Draft | Dependencies: E02-S07
+Status: Ready | Release: R1 | Epic: E03
+Dependencies: E02-S07 (Done only after the `660f9a9` closeout fix is independently approved, integrated and recorded)
 
-Extend the account records already consumed by import with account list/detail, manual transactions and dated balance entry/correction. Acceptance: currency exponents, signed balances versus transaction direction, missing/zero balance and cutoff behavior match golden fixtures; retries/version conflicts are safe; audit/source indicators distinguish entered versus imported facts. Do not create full asset/debt/investment surfaces.
+Outcome: An authenticated workspace member can list/create/update basic cash accounts, add a manual posted transaction and record/correct an as-of balance; reads visibly distinguish manual/imported facts and unknown, zero and stale balances.
+Contracts: Product Delivery baseline table (manual transactions/balances and Accounts UI), product §§15–16; architecture §§3–9, 27, 63 and money contract §§535–536; existing `accounts`/`transactions` tables, `commands/accounts.ts`, `money.ts`, import provenance and tenant command/idempotency patterns.
+Scope: Extend the existing account row only with fields required by this slice (currency, version, archived/source metadata); add tenant-keyed dated balance snapshots and audit rows; add shared create/update/manual-transaction/balance-correction commands plus account list/detail HTTP and server-rendered forms. Reuse positive `amount_minor` + explicit direction for transactions and signed decimal-string minor units for balances. One account currency is immutable after financial facts exist unless a separately reviewed migration is supplied.
+Out of scope: E03-S02 transfer/refund/fee semantics, FX valuation, categories/tags/undo, bulk transaction table, recurrence, assets/debts/investments, AI tool exposure and balance derived from transaction sums.
+
+Acceptance:
+1. Exact goldens for EUR (2), JPY (0) and KWD (3) accept canonical decimal-string minor units, reject unknown currency/exponent and fractional-minor inputs, preserve values beyond JavaScript safe integer at JSON boundaries, and never use floating point.
+2. A missing balance is `unknown`, an explicit `"0"` is zero, negative cash/overdraft remains signed, and the newest reliable snapshot at or before a requested cutoff wins; later snapshots cannot leak into historical reads. Provenance, as-of time and freshness are returned.
+3. Retried/concurrent account, manual-transaction and balance commands converge by idempotency key; stale expected versions conflict without partial writes. Tenant swaps/nonexistent IDs are indistinguishable and unscoped app-role reads return no rows.
+4. Manual transactions clearly record manual source/audit identity and whether they occur after or are already included in the selected balance snapshot; imported transaction/source evidence remains unchanged. A correction appends history rather than overwriting evidence.
+
+Invariants: Composite tenant keys/FORCE RLS and explicit workspace predicates on every new table; exact money and BIGINT versions cross boundaries as strings; transaction amount is positive with explicit direction while balances are signed; unknown is never coerced to zero.
+Failure lifecycle: Commands are one PostgreSQL transaction with existing command-operation idempotency; validation/conflict failures are terminal and retry-safe; no background job or queue is needed for synchronous manual entry.
+UI/accessibility: Semantic account list/detail and labeled forms; keyboard submission, associated field/summary errors, focus moved to errors/success, 44px targets and usable 320px layout. Empty/unknown/zero/stale states use text, not color alone, and failed submissions preserve nonsecret input.
+Data changes: Additive migration/rollback for minimum account columns, balance snapshots and audit events; preserve current imported account/transaction rows with an explicit safe backfill. Rollback code first and schema only before new facts exist; never delete financial history to downgrade.
+Observability: Request/command/account IDs, result class and latency only; never names, descriptions, amounts or balance values in operational logs.
+Limits: Account list capped at 100 for R1; detail transactions/snapshots paginate at 100; synchronous command p95 target <500 ms locally over a 10k-transaction synthetic account, measured rather than promised externally.
+Verification: Add `npm run test:accounts` using real disposable PostgreSQL with independent exact-money/cutoff fixtures, concurrent retries/version races, rollback and tenant probes; add a focused UI/browser journey or extend the existing server-rendered UI suite. Regress `test:import-e2e`, `test:money`, `test:commands`, `test:tenancy`, `test:w1`, typecheck and web build; deliberate-failure/diff/secret gates remain required.
+Review focus: float/number coercion, inferred balances, date/time cutoff errors, imported provenance mutation, duplicate manual effects, cross-tenant IDs, unsafe currency changes and audit rows that can be rewritten.
+Rollout/rollback: Keep manual-entry routes behind the existing pre-release deployment boundary; additive schema lands before code. Disable writes first on rollback and retain all accepted facts/audit history for forward recovery.
+
+Execution record:
+- Assignee / branch / worktree:
+- Base SHA / implementation head SHA:
+- Tests: commands, environment, exit codes, result links:
+- Review: reviewer, reviewed SHA, findings, verdict:
+- Integration: current main SHA, tested candidate SHA, checks:
+- Merge SHA / post-merge smoke:
+- Remaining blockers or explicitly accepted nonblocking follow-up:
 
 ## E03-S02 — Calculate exact cash and spending semantics
 

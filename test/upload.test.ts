@@ -385,7 +385,8 @@ describe("e02-s03 quarantine upload and bounded parse", () => {
   it("unsupported, empty, mismatched and oversized uploads fail typed without storage", async () => {
     const base = await startApp();
     const { cookie, workspaceId } = await setupWorkspace(base, "synthetic-up-d");
-    const before = await s3ListKeys(config.s3, "quarantine/");
+    const prefix = `quarantine/${workspaceId}/`;
+    const before = await s3ListKeys(config.s3, prefix);
     const csv = new TextEncoder().encode("date,description,amount\n2026-01-02,X,-100\n");
     const pdf = await upload(base, cookie, workspaceId, { filename: "statement.pdf", bytes: csv });
     expect(pdf.status).toBe(400);
@@ -402,7 +403,7 @@ describe("e02-s03 quarantine upload and bounded parse", () => {
     expect(huge.json).toMatchObject({ error: "payload_too_large" });
     // No rejected upload above stored new quarantine bytes (earlier tests'
     // accepted objects persist by design; the suite wipes the prefix after).
-    expect(await s3ListKeys(config.s3, "quarantine/")).toEqual(before);
+    expect(await s3ListKeys(config.s3, prefix)).toEqual(before);
   });
 
   it("EICAR bytes are quarantined, detected, and rejected without observations", async () => {
