@@ -298,9 +298,26 @@ describe("e02-s07 W2 integrated ingestion exit demonstration", () => {
     expect(statuses.NEW).toBe(2);
   }, 60000);
 
-  it("worker death at each checkpoint converges without loss/duplication", async () => {
+  it("overlapping duplicate rows consume distinct prior transactions", async () => {
     const base = await startApp();
-    const staged = await stageImport(base, "e2e-user-c", "utf8-bom-quoted.csv", readFileSync(join(FIX, "utf8-bom-quoted.csv")), {
+    const bytes = readFileSync(join(FIX, "duplicates-within-file.csv"));
+    const profile = { ...SIMPLE_PROFILE, defaultCurrency: "EUR" };
+    const first = await stageImport(base, "e2e-duplicate-overlap", "first.csv", bytes, profile);
+    await proposeAndAcceptMapping(first, first.importId, first.accountId);
+    await commitImport(first, first.importId, first.accountId);
+    const second = await stageImport(base, "e2e-duplicate-overlap", "second.csv", bytes, profile, first, first.accountId);
+    await proposeAndAcceptMapping(second, second.importId, second.accountId);
+    await commitImport(second, second.importId, second.accountId);
+    const targets = await withTenant(pool, first, (client) => client.query(
+      "SELECT count(DISTINCT target_transaction_id)::int AS n FROM source_links WHERE workspace_id = $1 AND import_id = $2 AND status = 'MATCHED'",
+      [first.workspaceId, second.importId],
+    ));
+    expect(targets.rows[0].n).toBe(2);
+  }, 60000);
+
+  it("worker failure after a committed chunk converges without loss/duplication", async () => {
+    const base = await startApp();
+    const staged = await stageImport(base, "e2e-user-c", "duplicates-within-file.csv", readFileSync(join(FIX, "duplicates-within-file.csv")), {
       delimiter: ",",
       dateFormat: "iso",
       amount: { kind: "signed", decimalSep: ".", thousandsSep: "," },
@@ -308,9 +325,15 @@ describe("e02-s07 W2 integrated ingestion exit demonstration", () => {
       defaultCurrency: "EUR",
     });
     await proposeAndAcceptMapping({ userId: staged.userId, workspaceId: staged.workspaceId }, staged.importId, staged.accountId);
-    await commitImport({ userId: staged.userId, workspaceId: staged.workspaceId }, staged.importId, staged.accountId);
+    const accepted = await acceptImportCommitJob(pool, staged, staged.userId, { workspaceId: staged.workspaceId, idempotencyKey: randomUUID(), importId: staged.importId, accountId: staged.accountId });
+    await dispatchOutbox(pool, queue);
+    await expect(processCommitJob(pool, accepted.jobId, { ...DEFAULT_COMMIT_CONFIG, commitChunkRows: 1 }, { workerId: "e02-s07-fault", leaseMs: 400, faultAfterChunk: 1 })).rejects.toThrow("fault injected after committed chunk");
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(await processCommitJob(pool, accepted.jobId, { ...DEFAULT_COMMIT_CONFIG, commitChunkRows: 1 }, { workerId: "e02-s07-retry", leaseMs: 400 })).toBe("applied");
     const txCount = await withTenant(pool, { userId: staged.userId, workspaceId: staged.workspaceId }, (client) => client.query("SELECT count(*)::int AS n FROM transactions WHERE workspace_id = $1", [staged.workspaceId]));
-    expect(txCount.rows[0].n).toBe(4);
+    expect(txCount.rows[0].n).toBe(2);
+    const linkCount = await withTenant(pool, staged, (client) => client.query("SELECT count(*)::int AS n FROM source_links WHERE workspace_id = $1 AND import_id = $2", [staged.workspaceId, staged.importId]));
+    expect(linkCount.rows[0].n).toBe(2);
   }, 60000);
 
   it("Redis flush reconstructs all eligible nonterminal work", async () => {
