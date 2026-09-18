@@ -307,12 +307,21 @@ describe("e02-s07 W2 integrated ingestion exit demonstration", () => {
     await commitImport(first, first.importId, first.accountId);
     const second = await stageImport(base, "e2e-duplicate-overlap", "second.csv", bytes, profile, first, first.accountId);
     await proposeAndAcceptMapping(second, second.importId, second.accountId);
-    await commitImport(second, second.importId, second.accountId);
+    const accepted = await acceptImportCommitJob(pool, second, second.userId, { workspaceId: second.workspaceId, idempotencyKey: randomUUID(), importId: second.importId, accountId: second.accountId });
+    await dispatchOutbox(pool, queue);
+    await expect(processCommitJob(pool, accepted.jobId, { ...DEFAULT_COMMIT_CONFIG, commitChunkRows: 1 }, { workerId: "e02-s07-match-fault", leaseMs: 400, faultAfterChunk: 1 })).rejects.toThrow("fault injected after committed chunk");
+    const firstTarget = await withTenant(pool, first, (client) => client.query("SELECT target_transaction_id FROM source_links WHERE workspace_id = $1 AND import_id = $2 ORDER BY import_row_no LIMIT 1", [first.workspaceId, second.importId]));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(await processCommitJob(pool, accepted.jobId, { ...DEFAULT_COMMIT_CONFIG, commitChunkRows: 1 }, { workerId: "e02-s07-match-retry", leaseMs: 400 })).toBe("applied");
+    const replayedTarget = await withTenant(pool, first, (client) => client.query("SELECT target_transaction_id FROM source_links WHERE workspace_id = $1 AND import_id = $2 ORDER BY import_row_no LIMIT 1", [first.workspaceId, second.importId]));
+    expect(replayedTarget.rows[0].target_transaction_id).toBe(firstTarget.rows[0].target_transaction_id);
     const targets = await withTenant(pool, first, (client) => client.query(
       "SELECT count(DISTINCT target_transaction_id)::int AS n FROM source_links WHERE workspace_id = $1 AND import_id = $2 AND status = 'MATCHED'",
       [first.workspaceId, second.importId],
     ));
     expect(targets.rows[0].n).toBe(2);
+    const transactions = await withTenant(pool, first, (client) => client.query("SELECT count(*)::int AS n FROM transactions WHERE workspace_id = $1", [first.workspaceId]));
+    expect(transactions.rows[0].n).toBe(2);
   }, 60000);
 
   it("worker failure after a committed chunk converges without loss/duplication", async () => {

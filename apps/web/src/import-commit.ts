@@ -409,6 +409,18 @@ async function processCommitChunk(
 
   for (const obs of stagedRows) {
     total++;
+    const prior = await client.query(
+      "SELECT status FROM source_links WHERE workspace_id = $1 AND import_id = $2 AND import_row_no = $3",
+      [workspaceId, obs.importId, obs.rowNo],
+    );
+    if ((prior.rowCount ?? 0) > 0) {
+      const status = (prior.rows[0] as { status: string }).status;
+      if (status === "NEW" || status === "KEPT_DISTINCT") staged++;
+      else if (status === "MATCHED") matched++;
+      else if (status === "PENDING_REVIEW") review++;
+      else rejected++;
+      continue;
+    }
     const candidates = await findMatchCandidates(client, workspaceId, obs, config.matchWindowDays);
     const exactMatch = candidates.find((c) => isExactMatch(obs, c, config.matchWindowDays));
 
