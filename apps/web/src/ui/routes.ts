@@ -14,6 +14,7 @@ import { clearSessionCookie, revokeRequestSession } from "../auth.ts";
 import { readLimitedBody } from "../http-controls.ts";
 import { readMultipart } from "../multipart.ts";
 import { acceptUpload, listObservations, loadUploadConfig, MAX_UPLOAD_BYTES, readImport, UploadError } from "../uploads.ts";
+import { acceptImportCommitJob, ImportCommitError, readImportCommitStatus } from "../import-commit.ts";
 import { acceptMapping, listMappingProfiles, loadMappingSample, MappingError, proposeMapping, readCurrentMapping } from "../mapping.ts";
 import { liveMappingTransport, loadMappingProvider } from "../mapping-provider.ts";
 import { listWorkspaces, sessionClaims, TenantDenied, TenantInvalid, type SessionResolver } from "../tenancy.ts";
@@ -420,6 +421,288 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
           content: `<h2>${escapeHtml(viewed.fileName)}</h2><p>${stateLine}</p>${sampleRows}<p><a href="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(importStatusMatch[2])}/mapping">Map columns for this import</a> · <a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p>`,
         }),
       );
+      return true;
+    }
+
+    // E02-S06 batch import: multi-file upload form, batch status page,
+    // cancel/retry, review queue, source detail.
+    const batchNewMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/imports\/batch\/new$/);
+    if (batchNewMatch && method === "GET") {
+      const workspaceId = batchNewMatch[1];
+      const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+      if (!resolved.session) {
+        html(res, 401, errorPage({ status: 401, heading: "Sign in required", message: "Log in to import files.", back: "/", requestId, authed: false }));
+        return true;
+      }
+      if (!resolved.claim) {
+        event("ui_denied:workspace");
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace.", back: "/", requestId, authed: true }));
+        return true;
+      }
+      let uploadsReady = true;
+      try {
+        loadUploadConfig();
+      } catch {
+        uploadsReady = false;
+      }
+      let accounts: { id: string; name: string }[] = [];
+      try {
+        accounts = await listAccountViews(pool, resolved.claim);
+      } catch { /* ignore */ }
+      const help = `<p>Accepted formats: <strong>.csv</strong> and <strong>.xlsx</strong> only, up to 20 MiB each (max 10 files). Files are scanned for malware and parsed in a bounded worker; rejected files explain why. Select the target account for each file or leave as "Automatic" to use the mapping step.</p>`;
+      const accountOptions = accounts.length === 0
+        ? `<option value="">No accounts yet</option>`
+        : `<option value="">Automatic (map later)</option>${accounts.map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)}</option>`).join("")}`;
+      const content = uploadsReady
+        ? `${help}<form method="post" action="/w/${escapeHtml(workspaceId)}/imports/batch" enctype="multipart/form-data"><input type="hidden" name="idempotencyKey" value="${randomUUID()}"><div id="file-entries"><div class="file-entry"><p><label for="batch-file-0">File 1</label> <input id="batch-file-0" type="file" name="file_0" accept=".csv,.xlsx" required></p><p><label for="batch-account-0">Account</label> <select id="batch-account-0" name="account_0">${accountOptions}</select></p></div></div><p><button type="button" id="add-file" disabled>Add another file</button></p><p><button type="submit">Upload and parse all</button></p></form>`
+        : `${help}<div class="alert" role="alert"><h2>Imports unavailable</h2><p>File intake is temporarily disabled. Try again later.</p></div>`;
+      html(res, 200, page({ title: "Batch import bank files", requestId, authed: true, content }));
+      return true;
+    }
+
+    const batchPostMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/imports\/batch$/);
+    if (batchPostMatch && method === "POST") {
+      const workspaceId = batchPostMatch[1];
+      if (!sameOrigin(req, config.appBaseUrl)) {
+        event("ui_denied:origin");
+        html(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: `/w/${workspaceId}`, requestId, authed: true }));
+        return true;
+      }
+      const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+      if (!resolved.claim) {
+        const authed = resolved.session !== null;
+        req.resume();
+        html(res, authed ? 404 : 401, errorPage({ status: authed ? 404 : 401, heading: authed ? "Not found" : "Sign in required", message: "No such workspace.", back: "/", requestId, authed }));
+        return true;
+      }
+      let uploadConfig;
+      try {
+        uploadConfig = loadUploadConfig();
+      } catch {
+        event("ui_uploads_disabled");
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "File intake is temporarily disabled.", back: `/w/${workspaceId}/imports/batch/new`, requestId, authed: true }));
+        return true;
+      }
+      const fail = (status: number, heading: string, message: string): void => {
+        event("ui_batch_denied");
+        html(res, status, errorPage({ status, heading, message, back: `/w/${workspaceId}/imports/batch/new`, requestId, authed: true }));
+      };
+      let form;
+      try {
+        form = await readMultipart(req, { maxBytes: 10 * (MAX_UPLOAD_BYTES + 64 * 1024) });
+      } catch (err) {
+        if (err instanceof Error && err.message === "body_too_large") fail(413, "Files too large", "Total upload exceeds 200 MiB. Split the batch and retry.");
+        else fail(400, "Upload failed", "The submission could not be read. Retry with CSV or XLSX files.");
+        return true;
+      }
+      const batchKey = form.fields["idempotencyKey"];
+      if (typeof batchKey !== "string" || !isUuid(batchKey)) {
+        fail(400, "Upload failed", "Invalid batch idempotency key.");
+        return true;
+      }
+      const files: { filename: string; bytes: Uint8Array; accountId: string }[] = [];
+      for (let i = 0; i < 10; i++) {
+        const fileKey = `file_${i}`;
+        const accountKey = `account_${i}`;
+        const file = form.files.find((f) => f.fieldName === fileKey);
+        const accountId = form.fields[accountKey];
+        if (file) {
+          if (typeof accountId !== "string" || (accountId !== "" && !isUuid(accountId))) {
+            fail(400, "Upload failed", "Invalid account selection.");
+            return true;
+          }
+          files.push({ filename: file.filename, bytes: file.bytes, accountId: accountId ?? "" });
+        }
+      }
+      if (files.length === 0) {
+        fail(400, "Upload failed", "No files provided. Select at least one CSV or XLSX file.");
+        return true;
+      }
+      // Accept all files sequentially; each gets its own import + parse job.
+      // The batch idempotency key prevents duplicate batch submission.
+      const importIds: string[] = [];
+      let firstError: UploadError | null = null;
+      for (const f of files) {
+        try {
+          const result = await acceptUpload(pool, resolved.claim, resolved.claim.userId, uploadConfig, {
+            workspaceId,
+            idempotencyKey: randomUUID(),
+            filename: f.filename,
+            bytes: f.bytes,
+            profile: f.accountId ? { defaultCurrency: "EUR" } : undefined,
+          });
+          importIds.push(result.import.id);
+        } catch (err) {
+          if (err instanceof UploadError) {
+            firstError = err;
+            break;
+          }
+          throw err;
+        }
+      }
+      if (firstError) {
+        const status = firstError.code === "payload_too_large" ? 413 : firstError.code === "idempotency_reuse" ? 409 : 400;
+        fail(status, firstError.code === "payload_too_large" ? "File too large" : firstError.code === "idempotency_reuse" ? "Already submitted" : "Upload failed", firstError.code === "payload_too_large" ? "Files above 20 MiB are not accepted." : firstError.code === "idempotency_reuse" ? "This batch was already submitted with different content." : "Only validated CSV or XLSX files are accepted.");
+        return true;
+      }
+      event("ui_batch_ok");
+      // Redirect to batch status page with the import IDs
+      res.writeHead(303, { Location: `/w/${workspaceId}/imports/batch?ids=${importIds.join(",")}` });
+      res.end();
+      return true;
+    }
+
+    const batchStatusMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/imports\/batch$/);
+    if (batchStatusMatch && method === "GET") {
+      const workspaceId = batchStatusMatch[1];
+      const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+      if (!resolved.session) {
+        html(res, 401, errorPage({ status: 401, heading: "Sign in required", message: "Log in to view batch status.", back: "/", requestId, authed: false }));
+        return true;
+      }
+      if (!resolved.claim) {
+        event("ui_denied:workspace");
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace.", back: "/", requestId, authed: true }));
+        return true;
+      }
+      const claim = resolved.claim!;
+      const idsParam = query.get("ids") ?? "";
+      const importIds = idsParam ? idsParam.split(",").filter(isUuid) : [];
+      const imports = importIds.length === 0
+        ? []
+        : await Promise.all(importIds.map((id) => readImport(pool, claim, id).catch(() => null).then((v) => (v ? v : null)))).then((arr) => arr.filter((v): v is NonNullable<typeof v> => v !== null));
+      const stateLabel = (status: string): string =>
+        status === "STAGED" ? "Ready to commit" : status === "REJECTED" ? "Rejected" : status === "SCANNING" ? "Scanning" : status === "PARSING" ? "Parsing" : status === "UPLOAD_REGISTERED" ? "Queued" : `Processing (${status})`;
+      const rows = imports.length === 0
+        ? `<p>No imports in this batch. <a href="/w/${escapeHtml(workspaceId)}/imports/batch/new">Start a new batch</a>.</p>`
+        : `<table><caption>Batch imports</caption><thead><tr><th scope="col">File</th><th scope="col">Status</th><th scope="col">Rows</th><th scope="col">Staged</th><th scope="col">Review</th><th scope="col">Rejected</th><th scope="col">Actions</th></tr></thead><tbody>${imports
+            .map((imp) => `<tr><td>${escapeHtml(imp.fileName)}</td><td>${stateLabel(imp.status)}</td><td>${escapeHtml(imp.rowCount ?? "?")}</td><td>${escapeHtml(imp.stagedCount ?? "?")}</td><td>${escapeHtml(imp.reviewCount ?? "?")}</td><td>${escapeHtml(imp.rejectedCount ?? "?")}</td><td><a href="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(imp.id)}">Details</a> ${imp.status === "STAGED" ? `· <a href="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(imp.id)}/mapping">Map</a> · <form method="post" action="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(imp.id)}/commit" style="display:inline"><input type="hidden" name="idempotencyKey" value="${randomUUID()}"><input type="hidden" name="accountId" value=""><button type="submit">Commit</button></form>` : imp.status === "SCANNING" || imp.status === "PARSING" || imp.status === "UPLOAD_REGISTERED" ? `· <form method="post" action="/w/${escapeHtml(workspaceId)}/jobs/${escapeHtml(imp.jobId)}/cancel" style="display:inline"><button type="submit">Cancel</button></form>` : ``}</td></tr>`)
+            .join("")}</tbody></table>`;
+      const allStaged = imports.length > 0 && imports.every((i) => i.status === "STAGED");
+      const allTerminal = imports.length > 0 && imports.every((i) => i.status === "STAGED" || i.status === "REJECTED");
+      const batchActions = allStaged
+        ? `<p><form method="post" action="/w/${escapeHtml(workspaceId)}/imports/batch/commit"><input type="hidden" name="idempotencyKey" value="${randomUUID()}"><input type="hidden" name="importIds" value="${importIds.join(",")}"><button type="submit">Commit all staged imports</button></form></p>`
+        : allTerminal
+          ? `<p>Batch processing complete. Some imports were rejected. <a href="/w/${escapeHtml(workspaceId)}/imports/batch/new">Start a new batch</a>.</p>`
+          : `<p>Processing… <button onclick="location.reload()">Refresh</button></p>`;
+      html(res, 200, page({ title: "Batch import status", requestId, authed: true, content: `<h2>Batch import</h2>${rows}${batchActions}<p><a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p>` }));
+      return true;
+    }
+
+    const commitSingleMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/imports\/([A-Za-z0-9-]+)\/commit$/);
+    if (commitSingleMatch && method === "POST") {
+      const workspaceId = commitSingleMatch[1];
+      const importId = commitSingleMatch[2];
+      if (!sameOrigin(req, config.appBaseUrl)) {
+        event("ui_denied:origin");
+        html(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: `/w/${workspaceId}/imports/${importId}`, requestId, authed: true }));
+        return true;
+      }
+      const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+      if (!resolved.claim) {
+        const authed = resolved.session !== null;
+        html(res, authed ? 404 : 401, errorPage({ status: authed ? 404 : 401, heading: authed ? "Not found" : "Sign in required", message: "No such workspace or import.", back: "/", requestId, authed }));
+        return true;
+      }
+      const form = await readFormBody(req).catch(() => null);
+      const accountId = form?.get("accountId") ?? "";
+      const idempotencyKey = form?.get("idempotencyKey") ?? "";
+      if (typeof accountId !== "string" || !isUuid(accountId) || typeof idempotencyKey !== "string" || !isUuid(idempotencyKey)) {
+        html(res, 400, errorPage({ status: 400, heading: "Commit failed", message: "Invalid form data.", back: `/w/${workspaceId}/imports/${importId}`, requestId, authed: true }));
+        return true;
+      }
+      try {
+        const result = await acceptImportCommitJob(pool, resolved.claim, resolved.claim.userId, { workspaceId, idempotencyKey, importId, accountId });
+        event("ui_commit_ok");
+        res.writeHead(303, { Location: `/w/${workspaceId}/imports/${importId}/commit/status?jobId=${encodeURIComponent(result.jobId)}` });
+        res.end();
+        return true;
+      } catch (err) {
+        if (err instanceof ImportCommitError) {
+          event("ui_commit_denied");
+          html(res, err.code === "not_found" ? 404 : 409, errorPage({ status: err.code === "not_found" ? 404 : 409, heading: "Commit failed", message: `Could not start commit: ${err.code}.`, back: `/w/${workspaceId}/imports/${importId}`, requestId, authed: true }));
+          return true;
+        }
+        throw err;
+      }
+    }
+
+    const commitStatusMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/imports\/([A-Za-z0-9-]+)\/commit\/status$/);
+    if (commitStatusMatch && method === "GET") {
+      const workspaceId = commitStatusMatch[1];
+      const importId = commitStatusMatch[2];
+      const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+      if (!resolved.session) {
+        html(res, 401, errorPage({ status: 401, heading: "Sign in required", message: "Log in to view commit status.", back: "/", requestId, authed: false }));
+        return true;
+      }
+      if (!resolved.claim) {
+        event("ui_denied:workspace");
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace.", back: "/", requestId, authed: true }));
+        return true;
+      }
+      const jobId = query.get("jobId") ?? "";
+      if (!isUuid(jobId)) {
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such commit job.", back: `/w/${workspaceId}/imports/${importId}`, requestId, authed: true }));
+        return true;
+      }
+      const status = await readImportCommitStatus(pool, resolved.claim, importId);
+      if (!status || status.jobId !== jobId) {
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such commit job.", back: `/w/${workspaceId}/imports/${importId}`, requestId, authed: true }));
+        return true;
+      }
+      const stateLine = status.status === "SUCCEEDED"
+        ? `Committed: ${status.counts.total} rows — ${status.counts.staged} new, ${status.counts.matched} matched, ${status.counts.review} need review, ${status.counts.rejected} rejected.`
+        : status.status === "FAILED_FINAL"
+          ? `Commit failed.`
+          : `Commit in progress… <button onclick="location.reload()">Refresh</button>`;
+      html(res, 200, page({ title: "Commit status", requestId, authed: true, content: `<h2>Commit status</h2><p>${stateLine}</p><p><a href="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(importId)}">Back to import</a> · <a href="/w/${escapeHtml(workspaceId)}/imports/batch?ids=${importId}">Batch view</a></p>` }));
+      return true;
+    }
+
+    const batchCommitMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/imports\/batch\/commit$/);
+    if (batchCommitMatch && method === "POST") {
+      const workspaceId = batchCommitMatch[1];
+      if (!sameOrigin(req, config.appBaseUrl)) {
+        event("ui_denied:origin");
+        html(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: `/w/${workspaceId}`, requestId, authed: true }));
+        return true;
+      }
+      const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+      if (!resolved.claim) {
+        const authed = resolved.session !== null;
+        html(res, authed ? 404 : 401, errorPage({ status: authed ? 404 : 401, heading: authed ? "Not found" : "Sign in required", message: "No such workspace.", back: "/", requestId, authed }));
+        return true;
+      }
+      const form = await readFormBody(req).catch(() => null);
+      const importIds = (form?.get("importIds") ?? "").split(",").filter(isUuid);
+      const idempotencyKey = form?.get("idempotencyKey") ?? "";
+      if (importIds.length === 0 || typeof idempotencyKey !== "string" || !isUuid(idempotencyKey)) {
+        html(res, 400, errorPage({ status: 400, heading: "Commit failed", message: "Invalid batch commit data.", back: `/w/${workspaceId}/imports/batch`, requestId, authed: true }));
+        return true;
+      }
+      // For batch commit, we commit each import sequentially.
+      // The first import's commit job is the "batch" job for tracking.
+      let firstError: ImportCommitError | null = null;
+      for (const importId of importIds) {
+        try {
+          await acceptImportCommitJob(pool, resolved.claim, resolved.claim.userId, { workspaceId, idempotencyKey: randomUUID(), importId, accountId: "" });
+        } catch (err) {
+          if (err instanceof ImportCommitError) {
+            firstError = err;
+            break;
+          }
+          throw err;
+        }
+      }
+      if (firstError) {
+        event("ui_batch_commit_denied");
+        html(res, firstError.code === "not_found" ? 404 : 409, errorPage({ status: firstError.code === "not_found" ? 404 : 409, heading: "Batch commit failed", message: `Could not start commit for one import: ${firstError.code}.`, back: `/w/${workspaceId}/imports/batch`, requestId, authed: true }));
+        return true;
+      }
+      event("ui_batch_commit_ok");
+      res.writeHead(303, { Location: `/w/${workspaceId}/imports/batch?ids=${importIds.join(",")}` });
+      res.end();
       return true;
     }
 
