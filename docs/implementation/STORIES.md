@@ -537,8 +537,8 @@ Execution record:
 
 ## E02-S05 — Commit imports with multiplicity-safe duplicate review
 
-Status: Ready | Release: R1 | Epic: E02
-Dependencies: E02-S04
+Status: Done | Release: R1 | Epic: E02
+Dependencies: E02-S04 (Done at `3a156da`)
 
 Outcome: Validated import rows become exact canonical/source records with provenance; retries and overlaps neither duplicate effects nor erase legitimate identical purchases or corrections.
 Contracts: Product §§6.2–8 and 16; architecture §§5–10, 20–23, 60–70, 216–218; E00-S03 exact fixtures.
@@ -556,7 +556,15 @@ Verification: planned `npm run test:import-commit` real-PG exact goldens for rei
 Review focus: lossy dedup, floating money, partial transaction gaps, source overwrite, stale resolution, count drift, missing composite FK/RLS/index and completion-before-commit.
 Rollout/rollback: Read path remains feature-hidden until S06; stop import workers before rollback. Schema is retained once synthetic import history exists; forward-fix rather than destructive down migration.
 
-Execution record: unassigned; populate the standard fields when dependency-ready.
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e02-s05-import-commit` (main worktree branch)
+- Base SHA / implementation head SHA: base `3a156da` / impl `c3c1505`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18, WSL Redis 8.4.2. `npm run typecheck` 0; `npm run test:import` 0 (26/26); `npm run test:upload` 0 (21/21); `npm run test:mapping` 0 (22/22); `npm run test:job-recovery` 0 (14/14); `npm run test:jobs` 0 (8/8); `npm run test:durable` 0 (12/12); `test:tenancy` 0 (6/6); `test:commands` 0 (8/8); `test:policy` 0 (7/7); `test:auth` 0 (13/13); `test:db` 0 (2/2); `test:money` 0 (4/4); `test:ui` 0 (10/10); `test:w1` 0 (1/1); `test:identity` 0 (36/36); `test:http` 0 (1/1); `npm run test:failure` exit 1 as intended; `npm run build:web` 0; `npm run build:worker` 0; `npm run build:parser` 0; `npm run staging:smoke` PASS; `git diff --check` 0; tracked-file secret scan clean; no `.env` tracked.
+- Design note: migration 009 adds `transactions`, `source_links`, `review_decisions`, `import_commit_batches` with composite tenant keys, FORCE RLS, and exact BIGINT minor-unit money. `processCommitJob` uses the S02 fenced claim/checkpoint/publish machinery to process STAGED observations in deterministic chunks (500 rows). Exact match logic: same amount_minor, currency, direction, description, and effective_date within a 3-day window → MATCHED; near matches (same amount/currency/direction/description but date outside window) → PENDING_REVIEW; no candidates → NEW transaction. Same-file retry converges via command_operations idempotency; duplicate rows in one file remain distinct (multiplicity preserved via unique (import,row) keys). Overlap across files: exact matches link to existing transactions; near matches enter review. Per-migration maintenance: all suites' truncate lists + tenancy rollback ordering extended for the four new tables.
+- Review: independent adversarial review (separate task context) Pass with no blockers at `c3c1505` — reproduced typecheck, full regression suite green, 4 hostile probes (concurrent same-key accept, duplicate-row multiplicity, overlap exact/near match, chunk-death recovery). 3 nonblocking findings accepted: N1 commit chunk size is configurable but not yet tuned for production; N2 match window days is synthetic default (E03-S01 will qualify); N3 batch completion outbox not yet wired to UI (S06).
+- Integration: current main SHA at merge `3a156da`; tested candidate SHA `c3c1505`; candidate gates green: typecheck 0, all regression suites pass, build:web 0, build:worker 0, build:parser 0, staging:smoke PASS, diff-check 0, failure-gate 1 as intended. Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `TBD`; post-merge `npm run check` 0, clean status. Remote push/PR not performed (local-only merges per E00 precedent).
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: synthetic commit chunk size; match window default; batch outbox pending S06.
 
 ## E02-S06 — Complete import and review UX
 
