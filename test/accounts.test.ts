@@ -68,7 +68,8 @@ async function setupWorkspace(base: string, sub: string): Promise<{ cookie: stri
 }
 
 beforeAll(async () => {
-  pool = await ensureTestPool("E03-S01", "moneo_e03_accounts", [
+  pool = await ensureTestPool("E03-S01", "moneo_e03_accounts_v2", [
+    "calculation_versions",
     "manual_transactions",
     "balance_snapshots",
     "balance_audit",

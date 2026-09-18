@@ -23,6 +23,12 @@ export function formatDecimalBigint(value: bigint): string {
   return value.toString(10);
 }
 
+/** Canonical decimal string for a signed BIGINT-range value. */
+export function formatSignedDecimalBigint(value: bigint): string {
+  if (value < -MAX_I64 || value > MAX_I64) throw new Error("decimal_out_of_range");
+  return value.toString(10);
+}
+
 // ISO 4217 minor-unit exponents for the fiat codes touched by R1 fixtures.
 // Unknown codes are an explicit error, never a guessed exponent.
 const EXPONENTS: Record<string, number> = {

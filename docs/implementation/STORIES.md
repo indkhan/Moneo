@@ -633,7 +633,7 @@ Closeout correction (2026-09-18): The preceding S07 verdict was invalid: `test:i
 
 ## E03-S01 — Manage accounts, manual transactions and dated balances
 
-Status: Ready | Release: R1 | Epic: E03
+Status: Done | Release: R1 | Epic: E03
 Dependencies: E02-S07 (Done at closeout merge `d7c2a52`)
 
 Outcome: An authenticated workspace member can list/create/update basic cash accounts, add a manual posted transaction and record/correct an as-of balance; reads visibly distinguish manual/imported facts and unknown, zero and stale balances.
@@ -658,6 +658,52 @@ Review focus: float/number coercion, inferred balances, date/time cutoff errors,
 Rollout/rollback: Keep manual-entry routes behind the existing pre-release deployment boundary; additive schema lands before code. Disable writes first on rollback and retain all accepted facts/audit history for forward recovery.
 
 Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e03-s01-accounts-manual-transactions-balances` (main worktree branch)
+- Base SHA / implementation head SHA: base `b91ec939b2c438aa02eb662fcc4e8c085aff42bc` / impl `50d8575`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18. `npm run typecheck` 0; `npm run test:accounts` 0 (10/10: EUR/JPY/KWD exponent goldens, manual transaction idempotency/replay, balance snapshot signed amounts/corrections/audit, tenant isolation for all endpoints, >safe-integer version round-trip); `npm run test:tenancy` 0 (6/6); `npm run test:commands` 0 (8/8); `npm run test:money` 0 (4/4); `npm run test:policy` 0 (7/7); `npm run test:ui` 0 (10/10); `npm run test:jobs` 0 (8/8); `npm run test:job-recovery` 0 (14/14); `npm run test:upload` 0 (21/21); `npm run test:mapping` 0 (22/22); `npm run test:import` 0 (26/26); `npm run test:import-e2e` 0 (14/14); `npm run test:w1` 0 (1/1); `npm run test:durable` 0 (12/12); `npm run test:auth` 0 (13/13); `npm run test:identity` 0 (36/36); `npm run test:http` 0 (1/1); `npm run test:failure` exit 1 as intended; `npm run build:web` 0; `npm run build:worker` 0; `npm run build:parser` 0; `npm run staging:smoke` PASS; `git diff --check` 0; tracked-file secret scan clean; no `.env` tracked.
+- Review: independent adversarial review (separate task context) Pass with no blockers at `50d8575` — reproduced typecheck, all test suites green, 5 hostile probes (concurrent create/update/manual-tx/balance-snapshot/correction races, cross-tenant ID swaps, foreign-key violation handling, date timezone handling, negative balance handling). 2 nonblocking findings accepted: N1 balance snapshot upsert semantics (ON CONFLICT updates all fields); N2 manual transaction reference field optional but not yet searchable.
+- Integration: current main SHA at merge `b91ec93`; tested candidate SHA `50d8575`; candidate gates green (see Tests). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `50d8575`; post-merge `npm run check` 0, `npm run test:accounts` 0 (10/10), clean status.
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: N1 upsert semantics; N2 reference searchability deferred.
+
+## E03-S02 — Calculate exact cash and spending semantics
+
+Status: Ready | Release: R1 | Epic: E03
+Dependencies: E03-S01 (Done at merge `50d8575`)
+
+Outcome: Shared deterministic income/spend/cash calculations with transfers, fees, credit repayments and refunds per architecture §§536–538. Transfer principal is not spend, fees are expenses, refund posting-period treatment is consistent, and whole-workspace versus selected-account totals differ only as specified. Cover concurrent correction/recalculation and immutable calculation-version metadata.
+
+Contracts: Architecture §§536–538 money semantics; existing `transactions` (imported), `manual_transactions`, `balance_snapshots`, `accounts` tables; command/idempotency/tenant patterns from E01/E03-S01.
+
+Scope: Add shared calculation module `src/calculations/cash.ts` with pure functions for workspace totals, per-account totals, and selected-account totals. Implement `income`, `spend`, `cash`, `transfer`, `fee`, `credit_repayment`, `refund` classification using direction, counterparty account ownership, and category (later). Transfer detection: both legs in owned accounts → transfer (principal excluded from spend/income); fee leg → expense; refund → negative spend in same posting period. Credit repayment: transfer when both accounts owned. Calculation version metadata stored per workspace with immutable inputs/results. Reuse exact `amount_minor` + direction from transactions.
+
+Out of scope: FX valuation (S03), categories/tags (S05), recurrence (S07), AI tool exposure (E04), balance derived from transaction sums (architecture invariant: dated snapshots remain canonical).
+
+Acceptance:
+1. Independent goldens for multi-account fixtures: workspace with accounts A (EUR), B (USD), C (JPY) containing imported + manual transactions covering transfer A→B (both owned), fee on B, refund on A, credit repayment C→A (both owned). Workspace totals vs selected-account totals match independent expectations exactly.
+2. Transfer principal never appears in spend/income; fee legs are expenses; refunds reduce spend in posting period (negative spend, not income); credit repayment treated as transfer.
+3. Concurrent correction of a transaction's category/amount triggers recalculation with new version; prior version evidence immutable. Two concurrent corrections on different accounts converge without mixed-version results.
+4. Calculation version metadata: workspace-level `calculation_version` BIGINT, inputs hash, results hash, created_at. Read paths include version in response.
+
+Invariants: Exact money (minor units as decimal strings); immutable evidence; tenant isolation; no float/Number contamination; transfer/refund/fee classification via shared functions only.
+
+Failure lifecycle: Calculation functions are pure; no DB writes. Version bump on input change is a separate command (S04). Retries/recalculation safe by design.
+
+UI/accessibility: Not applicable — shared functions only (S06 consumes).
+
+Data changes: Additive migration for `calculation_versions` table (workspace PK, version, inputs_hash, results_hash, created_at); no destructive changes.
+
+Observability: Calculation version, latency only; never amounts/financial data in logs.
+
+Limits: Workspace up to 100 accounts, 10k transactions; calculation p95 <100 ms locally.
+
+Verification: Add `npm run test:calculations` with real PG for version metadata + pure-function goldens (no DB needed for core math). Regress `test:accounts`, `test:import`, `test:w1`, typecheck, web build.
+
+Review focus: Float contamination, transfer detection false positives/negatives, refund period boundary, credit repayment vs transfer ambiguity, version hash collision, mixed-version reads.
+
+Rollout/rollback: Pure functions ship behind feature flag; S04 commands expose them. Rollback = disable flag; calculation_versions table retained.
+
+Execution record:
 - Assignee / branch / worktree:
 - Base SHA / implementation head SHA:
 - Tests: commands, environment, exit codes, result links:
@@ -665,12 +711,6 @@ Execution record:
 - Integration: current main SHA, tested candidate SHA, checks:
 - Merge SHA / post-merge smoke:
 - Remaining blockers or explicitly accepted nonblocking follow-up:
-
-## E03-S02 — Calculate exact cash and spending semantics
-
-Status: Draft | Dependencies: E03-S01
-
-Implement shared deterministic income/spend/cash calculations with transfers, fees, credit repayments and refunds per architecture §§536–538. Acceptance: transfer principal is not spend, fees are expenses, refund posting-period treatment is consistent, and whole-workspace versus selected-account totals differ only as specified. Cover concurrent correction/recalculation and immutable calculation-version metadata.
 
 ## E03-S03 — Add historical fiat valuation with explicit coverage
 
