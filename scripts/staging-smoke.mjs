@@ -41,12 +41,16 @@ async function waitForHealth(port, deadlineMs) {
   }
 }
 
-async function runAndProbe(tag, name, hostPort) {
+async function runAndProbe(tag, name, hostPort, extraArgs = [], requireReady = false) {
   sh(["docker", "run", "-d", "--rm", "--name", name, "--read-only", "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
     "--user", "65532:65532", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
-    "-p", `127.0.0.1:${hostPort}:3000`, tag]);
+    "-p", `127.0.0.1:${hostPort}:3000`, ...extraArgs, tag]);
   try {
     const body = await waitForHealth(hostPort, 90_000);
+    if (requireReady) {
+      const ready = await fetch(`http://127.0.0.1:${hostPort}/readyz`);
+      if (ready.status !== 200) throw new Error(`staging smoke failed: configured /readyz returned ${ready.status}`);
+    }
     const uid = sh(["docker", "exec", name, "id", "-u"]);
     if (uid === "0") throw new Error("staging smoke failed: app runs as root.");
     return body;
@@ -65,6 +69,32 @@ for (const name of SECRET_NAMES) {
   if (hit) throw new Error(`staging smoke failed: image config carries a value for ${name}.`);
 }
 console.log("staging smoke: image config carries no secret values");
+sh(["docker", "run", "--rm", "--entrypoint", "node", CANDIDATE, "-e", "require('node:fs').accessSync('/app/apps/web/migrations/004_ai_policy.sql')"]);
+console.log("staging smoke: runtime migrations present");
+
+const configuredNetwork = "moneo-e01-smoke-configured";
+const configuredDb = "moneo-e01-smoke-pg";
+if (shStatus(["docker", "network", "inspect", configuredNetwork]) === 0 || shStatus(["docker", "container", "inspect", configuredDb]) === 0) {
+  throw new Error("staging smoke refused: configured-smoke resources already exist");
+}
+sh(["docker", "network", "create", configuredNetwork]);
+try {
+  sh(["docker", "run", "-d", "--rm", "--name", configuredDb, "--network", configuredNetwork,
+    "-e", "POSTGRES_USER=moneo", "-e", "POSTGRES_PASSWORD=synthetic-only", "-e", "POSTGRES_DB=moneo",
+    "postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73"]);
+  for (let i = 0; i < 30 && shStatus(["docker", "exec", configuredDb, "pg_isready", "-U", "moneo", "-d", "moneo"]) !== 0; i++) await sleep(1000);
+  if (shStatus(["docker", "exec", configuredDb, "pg_isready", "-U", "moneo", "-d", "moneo"]) !== 0) throw new Error("staging smoke failed: configured PostgreSQL never became ready");
+  const configured = await runAndProbe(CANDIDATE, "moneo-e01-smoke-configured-app", 3104, ["--network", configuredNetwork,
+    "-e", "DATABASE_URL=postgresql://moneo:synthetic-only@moneo-e01-smoke-pg:5432/moneo",
+    "-e", "KEYCLOAK_ISSUER=http://keycloak.invalid/realms/moneo", "-e", "KEYCLOAK_CLIENT_ID=moneo-web",
+    "-e", "KEYCLOAK_CLIENT_SECRET=synthetic-only-client-secret",
+    "-e", "SESSION_SECRET=synthetic-only-session-secret-32b", "-e", "APP_BASE_URL=http://127.0.0.1:3104"], true);
+  console.log(`staging smoke: configured image serves /healthz release=${configured.release} and /readyz`);
+} finally {
+  shStatus(["docker", "rm", "-f", "moneo-e01-smoke-configured-app"]);
+  shStatus(["docker", "rm", "-f", configuredDb]);
+  shStatus(["docker", "network", "rm", configuredNetwork]);
+}
 
 const hadCurrent = shStatus(["docker", "image", "inspect", CURRENT]) === 0;
 if (hadCurrent) {

@@ -11,6 +11,7 @@ import { CommandError, renameAccount, validateRenameInput } from "../commands/ac
 import { getPolicy, PolicyError, setAccountExclusion, summarizeEligible } from "../ai-policy.ts";
 import { getAccountView, listAccountViews } from "../commands/accounts.ts";
 import { clearSessionCookie, revokeRequestSession } from "../auth.ts";
+import { readLimitedBody } from "../http-controls.ts";
 import { listWorkspaces, sessionClaims, TenantDenied, TenantInvalid, type SessionResolver } from "../tenancy.ts";
 import { errorPage, escapeHtml, page } from "./shell.ts";
 
@@ -33,20 +34,12 @@ function html(res: ServerResponse, status: number, body: string): void {
 }
 
 function readFormBody(req: IncomingMessage): Promise<URLSearchParams> {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk) => {
-      data += chunk;
-      if (data.length > 64 * 1024) reject(new Error("body_too_large"));
-    });
-    req.on("end", () => {
-      try {
-        resolve(new URLSearchParams(data));
-      } catch {
-        reject(new Error("body_invalid"));
-      }
-    });
-    req.on("error", reject);
+  return readLimitedBody(req, 64 * 1024).then((body) => {
+    try {
+      return new URLSearchParams(body.toString("utf8"));
+    } catch {
+      throw new Error("body_invalid");
+    }
   });
 }
 

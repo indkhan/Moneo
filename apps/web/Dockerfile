@@ -22,6 +22,7 @@ WORKDIR /app
 # so only prod modules ship here — verify with the smoke's no-secret check.
 COPY --from=build /src/node_modules ./node_modules
 COPY --from=build /src/apps/web/dist ./dist
+COPY apps/web/migrations ./apps/web/migrations
 COPY --from=build /src/package.json ./package.json
 ARG APP_RELEASE=dev
 ARG GIT_SHA=unknown

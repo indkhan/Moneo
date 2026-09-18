@@ -81,6 +81,8 @@ jobs:
         run: npm run test:policy
       - name: Shell, telemetry and controls
         run: npm run test:ui
+      - name: HTTP streaming limits
+        run: npm run test:http
       - name: W1 integrated exit demonstration
         run: npm run test:w1
       - name: Durable effects (real PG + Redis)
@@ -100,7 +102,7 @@ jobs:
   staging-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [gates]
+    needs: [gates, artifact-security]
     steps:
       - uses: actions/checkout@v4
       - name: Build staging image
@@ -118,3 +120,16 @@ jobs:
           test "$(docker exec moneo-ci-smoke id -u)" != "0"
           docker rm -f moneo-ci-smoke
           trap - EXIT
+
+  artifact-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run test:artifact

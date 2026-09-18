@@ -11,6 +11,7 @@ import { isUuid, uuidv7 } from "./ids.ts";
 import type { Session } from "./session-store.ts";
 import { CommandError, getAccountView, listAccountViews, renameAccount, validateRenameInput } from "./commands/accounts.ts";
 import { consumePermit, getPolicy, issuePermit, PolicyError, setAccountExclusion, summarizeEligible } from "./ai-policy.ts";
+import { readLimitedBody } from "./http-controls.ts";
 import { createFakeProvider } from "./ai-fake-provider.ts";
 
 export class TenantDenied extends Error {
@@ -175,20 +176,12 @@ function tenantJson(res: ServerResponse, status: number, body: unknown): void {
 }
 
 function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk) => {
-      data += chunk;
-      if (data.length > 64 * 1024) reject(new Error("body_too_large"));
-    });
-    req.on("end", () => {
-      try {
-        resolve(data ? (JSON.parse(data) as unknown) : {});
-      } catch {
-        reject(new Error("body_invalid"));
-      }
-    });
-    req.on("error", reject);
+  return readLimitedBody(req, 64 * 1024).then((body) => {
+    try {
+      return body.length ? (JSON.parse(body.toString("utf8")) as unknown) : {};
+    } catch {
+      throw new Error("body_invalid");
+    }
   });
 }
 

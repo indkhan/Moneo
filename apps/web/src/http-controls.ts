@@ -8,6 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { Readable } from "node:stream";
 
 export type LogLine = { id: string; method: string; path: string; status: number; ms: number };
 export type Logger = (line: LogLine) => void;
@@ -28,6 +29,34 @@ export type Controls = {
   begin: (req: IncomingMessage, res: ServerResponse) => GateState;
   finish: (state: GateState, method: string, path: string, status: number) => void;
 };
+
+export function readLimitedBody(req: Readable, maxBytes: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    const cleanup = () => {
+      req.off("data", onData);
+      req.off("end", onEnd);
+      req.off("error", onError);
+    };
+    const onData = (chunk: Buffer | string) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      bytes += buffer.byteLength;
+      if (bytes > maxBytes) {
+        cleanup();
+        req.resume();
+        reject(new Error("body_too_large"));
+        return;
+      }
+      chunks.push(buffer);
+    };
+    const onEnd = () => { cleanup(); resolve(Buffer.concat(chunks, bytes)); };
+    const onError = (error: Error) => { cleanup(); reject(error); };
+    req.on("data", onData);
+    req.on("end", onEnd);
+    req.on("error", onError);
+  });
+}
 
 function bucketOf(path: string, method: string): "auth" | "mutating" | "read" {
   if (path === "/auth/login" || path === "/auth/callback" || path === "/auth/logout" || path === "/api/me") return "auth";

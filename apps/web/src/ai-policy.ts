@@ -190,7 +190,9 @@ export async function summarizeEligible(pool: Pool, claims: TenantClaims): Promi
 export async function consumePermit(pool: Pool, claims: TenantClaims, permitId: string): Promise<EligibleSelection> {
   if (!isUuid(permitId)) throw new TenantInvalid();
   return withTenant(pool, claims, async (client) => {
-    const version = await currentVersion(client, claims.workspaceId);
+    const locked = await client.query("SELECT policy_version AS v FROM ai_policies WHERE workspace_id = $1 FOR UPDATE", [claims.workspaceId]);
+    if ((locked.rowCount ?? 0) === 0) throw new PolicyError("permit_consumed");
+    const version = BigInt((locked.rows[0] as { v: string }).v);
     const updated = await client.query(
       "UPDATE ai_dispatch_permits SET status = 'DISPATCHED' WHERE workspace_id = $1 AND id = $2 AND status = 'QUEUED' AND policy_version = $3 AND expires_at > now() RETURNING policy_version AS v, eligible_account_ids AS ids",
       [claims.workspaceId, permitId, version.toString(10)],

@@ -3,6 +3,11 @@ import { expect, test, type Page } from "@playwright/test";
 declare global { interface Window { proof: { state(): { slider: number }; activate(source: any, migrate: (value: any) => any): Promise<boolean>; hostile(js: string): void } } }
 
 const frame = (page: Page) => page.frameLocator("#artifact");
+const mouseClick = async (page: Page, selector: string) => {
+  const box = await page.locator(selector).boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+};
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/host.html");
@@ -14,9 +19,9 @@ test("renders chart, supports keyboard control, and reopens host-persisted state
   const slider = frame(page).getByRole("slider", { name: "Scenario" });
   await slider.focus(); await slider.press("ArrowRight");
   await expect(frame(page).locator('[data-slot="value"]')).toHaveText("Illustrative buffer: €26");
-  await page.locator("#compact").click(); await expect(page.locator("#artifact")).toHaveAttribute("width", "320"); await expect(slider).toBeVisible();
-  await page.locator("#full").click(); await expect(page.locator("#artifact")).toHaveAttribute("width", "800"); await expect(slider).toBeVisible();
-  await page.locator("#reload").click();
+  await mouseClick(page, "#compact"); await expect(page.locator("#artifact")).toHaveAttribute("width", "320"); await expect(slider).toBeVisible();
+  await mouseClick(page, "#full"); await expect(page.locator("#artifact")).toHaveAttribute("width", "800"); await expect(slider).toBeVisible();
+  await mouseClick(page, "#reload");
   await expect(page.locator("#status")).toHaveText("ready");
   await expect(frame(page).getByRole("slider", { name: "Scenario" })).toHaveValue("26");
 });

@@ -184,8 +184,6 @@ Execution record:
 - Merge SHA / post-merge smoke: `722155f`; post-merge `npm run check` 0, `npm run build:web` 0, `npm run staging:smoke` PASS (candidate→current promote, prior-tag rollback + restore all serve /healthz 200), clean status.
 - Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: broaden CI secret scan (e.g. gitleaks) as later hardening; `.Config.Env` null-guard one-liner on next smoke-script touch; staging timing limits (build ≤5 min, p95 <100 ms, smoke ≤3 min) not yet measured — first measurement due at W1 exit demo. Remote push/PR not performed (local-only merge, consistent with E00); GitHub branch protection pointing at `ci` unverified — verify when remote write is granted.
 
-Status: Done
-
 ## E01-S02 — Authenticate and revoke application sessions
 
 Status: Done | Release: R1 | Epic: E01
@@ -221,8 +219,6 @@ Execution record:
 - Integration: `git fetch origin main` — origin/main `1b97208` (stale, local-only merges per E00 precedent); local main at branch base `0287599` unchanged; merge-base == base; candidate == reviewed `72c32b8`; full candidate gates re-ran green (see Tests). Merged with `--no-ff`.
 - Merge SHA / post-merge smoke: `11b0515`; post-merge `npm run check` (1/1 + 8/8), `test:auth` 13/13, `test:db` 2/2, `build:web` 0, clean status.
 - Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: GitHub Actions run itself unobserved (no runner here; YAML reviewed + container replay green) — first push will prove it; branch protection pointing at `ci` still unverified; remote push/PR not performed.
-
-Status: Done
 
 ## E01-S03 — Enforce tenant ownership in the database and API
 
@@ -260,8 +256,6 @@ Execution record:
 - Merge SHA / post-merge smoke: `59041bc`; post-merge `npm run check`, `test:tenancy` 6/6, clean status.
 - Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: deployment GRANT split deferred to staging-identity story (needs privilege-focused review); member-management admin-check due when member writes are built; GitHub Actions run unobserved (YAML + container replay from S02 green) — first push proves it.
 
-Status: Done
-
 ## E01-S04 — Establish exact command and read contracts
 
 Status: Done | Release: R1 | Epic: E01
@@ -297,8 +291,6 @@ Execution record:
 - Integration: `git fetch origin main` — origin/main stale (local-only merges); local main at base `da1a329` unchanged; merge-base == base; candidate == `5b5bd42` (reviewed `b087b16` + comment-only delta, verified); full candidate gates green (see Tests). Merged with `--no-ff`.
 - Merge SHA / post-merge smoke: `5cf1ed8`; post-merge `npm run check` green, clean status.
 - Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: `command_claim_unsettled` 503 residual only after 3 consecutive poll-misses under sustained contention (bounded, no poisoning); validator hand-mirrors schemas (canonicalization at domain layer); `renameAccountTx` trusts caller actorId/workspaceId (HTTP passes session values — future adapters must too); single-instance executor (E02 fences); CI run itself unobserved — first push proves it.
-
-Status: Done
 
 ## E01-S05 — Enforce AI data policy before any provider integration
 
@@ -336,8 +328,6 @@ Execution record:
 - Merge SHA / post-merge smoke: `972def9`; post-merge `npm run check`, `test:policy` 6/6, clean status.
 - Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: race test probabilistic (deterministic backstop = reviewer R1/R2 probes, recorded); fresh-install 004 replay unobserved (CI fresh-install proves on first push); CI run itself unobserved — first push proves it.
 
-Status: Done
-
 ## E01-S06 — Add minimal shell, telemetry and safe operational controls
 
 Status: Done | Release: R1 | Epic: E01
@@ -374,8 +364,6 @@ Execution record:
 - Merge SHA / post-merge smoke: `b24b03e`; post-merge `npm run check`, `test:ui` 10/10, clean status.
 - Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: no real-browser AT/keyboard run (structural only — browser journeys arrive with the core loop); single-instance rate state (resets on restart); q-value weighting ignored in Accept parse (info); CI run unobserved — first push proves it.
 
-Status: Done
-
 ---
 
 ## W1 exit — 2026-09-18
@@ -396,45 +384,181 @@ Status: Done
 
 ## E02-S01 — Persist accepted jobs and outbox dispatch
 
-Status: Draft | Dependencies: E01-S05, E01-S06, E00-S04
+Status: Ready | Release: R1 | Epic: E02
+Dependencies: E01-S05, E01-S06, E00-S04 (all Done; W1 Pass at `5730b03`)
 
-Productionize the proven durable acceptance/outbox/BullMQ path for a synthetic import job using tenant-safe rows and operation IDs. Acceptance: commit/dispatch races and duplicate delivery preserve one accepted job/effect; dispatcher failures retry; minimal service roles are enforced. Only one IO worker with needed queue concurrency.
+Outcome: An authenticated workspace can accept one synthetic `imports.start` command and receive a durable job ID; PostgreSQL records the operation/job/outbox before BullMQ sees it, and duplicate delivery has one business effect.
+Contracts: Product Delivery baseline ingestion/jobs; architecture §§60–62, 67–69, 176–189 and 215; E00-S04 proven PG-outbox/BullMQ boundary; existing `apps/web/src/commands/accounts.ts`, `tenancy.ts`, `ai-policy.ts` and `proof/durable/` patterns.
+Scope: migration `005_jobs.sql`/rollback for tenant-keyed `background_jobs`, `background_job_attempts` and `outbox_events`; `apps/web/src/jobs.ts` for accept/read/dispatch; one `apps/worker/` IO entry point using the already-pinned BullMQ/ioredis packages; authenticated `POST /api/workspaces/:workspaceId/import-jobs` and `GET .../jobs/:jobId`; queue payload contains only `backgroundJobId`; a synthetic no-file handler proves the boundary. Promote only the minimum reusable code from `proof/durable/`; keep the proof runnable.
+Out of scope: parser/upload bytes, checkpoints/reclaim/cancel (S02), mapping/import rows (S03+), worker replicas, scheduler framework, additional queues/services, UI beyond the existing shell link/state.
+
+Acceptance:
+1. Given a valid session/membership and idempotency key, accepting the same canonical request concurrently or retrying after a lost response returns the same operation/job and produces one synthetic effect; incompatible key reuse returns conflict.
+2. Killing/failing dispatch before enqueue, after enqueue and before `published_at` leaves a recoverable outbox row; repeated dispatch creates no second logical job/effect.
+3. Tenant B and nonexistent job IDs are indistinguishable to tenant A at HTTP/DB boundaries; unscoped app-role reads return no rows; dispatcher discovery exposes only job/workspace IDs and ordinary worker work re-enters `withTenant`.
+4. Terminal duplicate BullMQ delivery exits without repeating the effect; Redis payload/logs contain no financial rows, cookie, token, policy payload or source bytes.
+
+Invariants: PostgreSQL is durable truth; BullMQ is at-least-once transport; `(workspace_id,id)` keys/FORCE RLS and explicit workspace predicates apply to every tenant table; operation/request hashes and stable IDs provide idempotency; AI-policy permits are not created or consumed by this synthetic job.
+Failure lifecycle: Three bounded transient dispatcher attempts with exponential backoff/jitter; permanent input/policy failures do not retry; enqueue acknowledgement precedes `published_at`; no claim of exactly-once execution.
+UI/accessibility: Existing shell may show the returned job ID/status using semantic text; no progress/cancel UI until S02/S06.
+Data changes: Add only the three job/outbox tables, FK/index/RLS policies and additive enum checks; rollback drops these empty pre-E02 tables only and is forbidden after real import history exists.
+Observability: Redacted job/outbox IDs, type, state, attempts, queue latency and request ID; never log payload bodies or tenant finance data.
+Limits: One IO worker; `background` queue concurrency 2 and at most 2 active synthetic import jobs/workspace for this slice; dispatch claims at most 50 rows; queue payload <=1 KiB; 20-way duplicate-accept and 100-job recovery fixtures must finish within 30 seconds on the recorded reference machine.
+Verification: add/run `npm run test:jobs` against disposable real PostgreSQL/Redis; retain `npm run test:durable`; run `npm run typecheck`, `npm run test:tenancy`, `npm run test:commands`, `npm run test:policy`, `npm run test:w1`, `npm run build:web`, deliberate-failure gate, diff/secret scans. Independently assert exact row/effect counts and inspect Redis payloads/app-role attributes.
+Review focus: dual-write gaps, globally privileged workers, tenant leakage through IDs/errors, payloads in Redis/logs, BullMQ-ID-only deduplication, outbox rows marked before acknowledgement, unbounded retries or extra worker topology.
+Rollout/rollback: Feature remains synthetic/internal; enable worker only after migration and app deploy. Disable worker/dispatcher first to roll back; preserve accepted PG rows unless this pre-data slice is explicitly reset.
+
+Execution record:
+- Assignee / branch / worktree:
+- Base SHA / implementation head SHA:
+- Tests: commands, environment, exit codes, result links:
+- Review: reviewer, reviewed SHA, findings, verdict:
+- Integration: current main SHA, tested candidate SHA, checks:
+- Merge SHA / post-merge smoke:
+- Remaining blockers or explicitly accepted nonblocking follow-up:
 
 ## E02-S02 — Recover, fence and cancel durable jobs
 
-Status: Draft | Dependencies: E02-S01
+Status: Ready | Release: R1 | Epic: E02
+Dependencies: E02-S01
 
-Implement PG attempt fencing, checkpoints, stalled-job recovery, missing-queue reconciler and cancellation. Acceptance: killed worker, old-attempt completion and full disposable Redis loss cannot lose or double accepted work; cancellation prevents prohibited publication; lease values and user-visible states are documented. Real PG/Redis fault tests required.
+Outcome: Accepted jobs survive worker death and complete Redis loss, stale workers cannot publish, and an authorized user can cancel future work with durable visible state.
+Contracts: Architecture §§177–180, 189–200, 215–218; E00-S04 fault proof and E02-S01 production tables/API.
+Scope: additive attempt generation/checkpoint fields or table, fenced claim/checkpoint/publish functions, missing-transport reconciler, durable cancellation endpoint/state, graceful SIGTERM, heartbeats for visibility only, and one synthetic two-checkpoint handler/fault child.
+Out of scope: file upload/parsing, generic workflow DSL, BullMQ Flows, Temporal, provider cancellation, replicas or dashboards.
+
+Acceptance:
+1. Forced death after claim, checkpoint and effect commit resumes from PostgreSQL and finishes with one effect/terminal result and preserved attempt history.
+2. A replacement generation rejects every late checkpoint/final write from the old attempt; concurrent redelivery has one winning generation.
+3. Flushing the dedicated disposable Redis DB reconstructs all eligible nonterminal work from PG, never terminal/cancelled work, with tenant-B sentinels unchanged.
+4. Cancel before claim and cancel racing final publication produce documented `CANCELLED`/winner states; after cancellation wins, no new effect/result/completion event publishes; repeat cancel is idempotent.
+
+Invariants: BullMQ owns transport locks; PG generation fences publication; cancellation is cooperative and cannot undo already committed canonical effects; every privileged discovery result is re-authorized inside tenant context.
+Failure lifecycle: Reclaim only after verified lost/stalled transport ownership; retry classes/backoff stay bounded; graceful shutdown stops claims then closes workers; reconciliation is repeat-safe.
+UI/accessibility: Authenticated status/cancel responses expose queued/running/cancel-requested/cancelled/succeeded/failed with stable text and request ID; S06 owns richer progress UI.
+Data changes: Additive migration over S01 tables; rollback code first, schema second; attempt history is not deleted on retry.
+Observability: State transitions, queue age, attempt number/generation, heartbeat age, stall/reconcile/cancel counts; no input/result payload logging.
+Limits: Test claim lease 300–500 ms, runtime lease from config and measured before W2 exit; heartbeat no faster than 5 s; reconciler batch <=100; 100 lost jobs recover within 30 s; cancel visible within 1 s after the current atomic boundary in the synthetic handler.
+Verification: `npm run test:job-recovery` with real disposable PG/Redis and child-process kills, plus S01/job, tenancy, commands, policy, W1 and build regressions; exact row/effect/attempt assertions at every fault point.
+Review focus: heartbeat used as a competing lock, unfenced writes, cancel/result races, terminal resurrection, cross-tenant reconciliation, nested retries and process cleanup.
+Rollout/rollback: Deploy additive schema and reconciler-disabled code, then worker, then enable reconciliation; rollback disables claims/reconciler first and leaves durable rows readable.
+
+Execution record: unassigned; populate the standard branch/SHA/tests/review/integration/merge/blocker fields when started.
 
 ## E02-S03 — Upload, quarantine and parse bounded source files
 
-Status: Draft | Dependencies: E02-S02, E00-S03
+Status: Draft | Release: R1 | Epic: E02
+Dependencies: E02-S02, E00-S03
 
-Implement tenant-scoped upload batches/source objects, file validation/scanning and isolated bounded CSV/XLSX parse from the proof. Acceptance: source rows remain traceable, malicious/unsupported/oversize inputs fail safely, no formula/link executes, object IDs cannot cross tenants and interrupted upload/parser jobs recover. Define lifecycle cleanup with E08 retention in mind.
+Outcome: An authenticated user can submit CSV/XLSX into private quarantine and receive exact traceable parsed observations or a safe typed rejection through the durable job system.
+Contracts: Product §§6–8; architecture §§5–9, 181–183, 202, 216–218, 443–446 and 455–456; E00-S03 parser/fixture decision.
+Scope: tenant-keyed import/source-object metadata and quarantine lifecycle; generated object keys; signature/structure/size validation; dedicated malware scan; terminable credential-free parser child reusing `proof/import`; accepted parsed rows/checkpoints persisted in deterministic chunks. Choose and digest-pin the S3-compatible test service and scanner image during final refinement; record privacy/maintenance rationale.
+Out of scope: mapping inference, canonical transactions, duplicate matching, PDF/XLS/XLSM/ZIP, browser-serving uploads, production retention purge (E08).
+
+Acceptance: allow only validated CSV/XLSX; preserve original filename only as sanitized metadata; prove tenant/missing object IDs are uniform; formulas/external links/macros/oversize/bombs/malware fail without execution or accepted observations; retry/kill resumes deterministic chunks with one `(import,row)` observation and no orphan promoted object.
+Invariants: original bytes never enter logs/Redis/model context and never become public/executable content; parser/scanner receive no DB/model credentials; exact decimal/date ambiguity stays staged; every tenant table has composite keys/FORCE RLS.
+Failure lifecycle: interrupted upload stays quarantined and expires; scan/parse retry by stable job/chunk; permanent input rejection does not retry; accepted bytes and observations have separate lifecycle.
+UI/accessibility: Minimal upload form has label, allowlist/20 MiB help, keyboard submission and typed error/status; S06 owns multi-file polish.
+Data changes: Add imports/data_sources/source-object/parsed-observation staging tables only; no canonical transactions yet. Retention marker defaults to 30 days after successful validation, pending E08 enforcement/legal sign-off.
+Observability: Redacted size/type/hash prefix, scan/parser status, duration/resource ceilings and row/error counts; never filename contents, rows or full hashes in logs.
+Limits: E00 limits remain: 20 MiB upload, 100 MiB decompressed, 100k rows, 50 columns, 200 ZIP entries, 60 s, 256 MiB; add maximum 1 MiB/cell and deterministic chunk <=1,000 rows. Measure before changing.
+Verification: planned `npm run test:upload` real PG/object-store/scanner plus `npm run test:import`; hostile magic/extension, formula/link, bomb, process-kill, tenant-swap and cleanup checks; regress job recovery/W1/build.
+Review focus: direct serving, path/key traversal, unscanned promotion, credential inheritance, archive expansion, partial persistence, retention claims and scanner bypass.
+Rollout/rollback: Quarantine endpoint disabled by default until scanner/storage gates pass. Rollback stops uploads/jobs first and preserves quarantined/accepted metadata for controlled cleanup.
+
+Readiness blocker: select and test maintained digest-pinned private object-store and malware-scanner images without changing the production privacy boundary; then replace this line with the standard execution record and mark Ready.
 
 ## E02-S04 — Infer mappings with deterministic acceptance and manual fallback
 
-Status: Draft | Dependencies: E02-S03, E01-S05, E00-S05
+Status: Ready | Release: R1 | Epic: E02
+Dependencies: E02-S03, E01-S05, E00-S05
 
-Add deterministic profile inference first, bounded OpenRouter assistance where necessary, and optional mapping correction UI. Reuse the qualified transport/config rather than creating a second provider abstraction later. Acceptance: ordinary supported files import without mapping clicks, ambiguous amounts/currency/dates request targeted clarification, excluded/unknown-account data follows the established disclosure policy, and invalid model output cannot write canonical rows. Define a bounded provider reservation here; E04-S01 extends the same ledger rather than replacing it.
+Outcome: Supported statement shapes map automatically; unresolved amount/date/currency/account fields ask only targeted questions, with a keyboard-usable manual mapper as fallback.
+Contracts: Product §§6.1, 7 and 16; architecture §§53, 74, 76, 190–192 and E00-S03/S05 plus E01-S05 policy permit.
+Scope: deterministic header/profile rules first; strict mapping proposal schema; one bounded OpenRouter request only when deterministic confidence is insufficient and policy permits; server-side validation against staged cells; mapping preview/correction and versioned profile reuse. Extend the existing policy/provider proof code—no second generic provider framework.
+Out of scope: canonical commit/dedup (S05), categorization/merchant/transfer logic (E03), custom provider settings (E04), broad bank-profile catalog.
+
+Acceptance: all admitted E00 fixtures map or request the independently expected targeted fields; no ordinary supported fixture requires manual column-by-column mapping; ambiguous numeric/date/currency/account cases cannot enter accepted money; malformed/injected/model output is rejected and falls back to manual mapping; account AI exclusion/policy revocation before dispatch or publication prevents use/result publication.
+Invariants: models never compute/authorize canonical money and never receive excluded accounts/raw files beyond the minimum permitted sample; deterministic validation owns amount/date/currency; permit version and mapping version are persisted; no silent provider/privacy fallback.
+Failure lifecycle: one provider attempt plus at most one retry for retryable status within the existing request budget; unavailable/denied AI keeps deterministic/manual path usable; retry reuses operation and reservation.
+UI/accessibility: Semantic table/select/labels, source coordinates, validation summary, focus to first blocking field, keyboard submit, no color-only confidence; nonblocking classifications wait for later stories.
+Data changes: Add versioned mapping proposal/profile and bounded provider reservation/usage rows scoped by workspace/import; no canonical transaction writes.
+Observability: Mapping path, validator reason codes, model/config version, token/cost metadata if available; no raw rows/prompts/responses in ordinary logs.
+Limits: maximum 50 sampled rows and 50 columns; one active mapping AI call/import and two/workspace; reserve a configured hard ceiling before dispatch (initial synthetic ceiling: 8k input + 2k output tokens, one retry sharing the same total reservation); unknown cost is unavailable, never zero.
+Verification: planned `npm run test:mapping` deterministic/injection/policy/live-stub suite; bounded live OpenRouter gate remains manual and synthetic; regress import, identity, policy, tenancy, job recovery and W1.
+Review focus: model output trusted as data, raw SQL/tool access, excluded data leakage, permit race, unbounded sampling/cost, mandatory AI/manual mapping and prompt logging.
+Rollout/rollback: Deterministic/manual paths ship independently; AI assistance feature-disabled unless compliant development config exists. Rollback disables AI and preserves mapping proposals/history.
+
+Execution record: unassigned; populate the standard fields when dependency-ready. Missing OpenRouter credential blocks only the manual live probe, not deterministic implementation/review.
 
 ## E02-S05 — Commit imports with multiplicity-safe duplicate review
 
-Status: Draft | Dependencies: E02-S04
+Status: Ready | Release: R1 | Epic: E02
+Dependencies: E02-S04
 
-Persist raw-to-canonical provenance and exact validated transactions atomically at documented batch boundaries; handle file reimports and overlapping statements. Acceptance: identical legitimate rows survive, same-file retry creates no effects, ambiguous overlaps stay staged outside totals, and partial failures expose precise accepted/review/failed counts. Do not deduplicate merely by equal amount/date/description.
+Outcome: Validated import rows become exact canonical/source records with provenance; retries and overlaps neither duplicate effects nor erase legitimate identical purchases or corrections.
+Contracts: Product §§6.2–8 and 16; architecture §§5–10, 20–23, 60–70, 216–218; E00-S03 exact fixtures.
+Scope: additive source/canonical transaction/provenance/review/audit schema required by this slice; deterministic chunk commit; stable source keys only when trustworthy; explicit match/new/pending-review/rejected decisions; resolution commands for link-existing/keep-distinct; exact batch summary and completion outbox.
+Out of scope: transfer/category/merchant/refund semantics (E03), import UX polish (S06), whole-import undo (later audit/undo slice), FX valuation.
+
+Acceptance: same-file/retry yields no extra canonical effect; two identical rows in one statement remain two observations/transactions; independently expected overlap rows become matched or pending review, never guessed; pending/rejected rows stay out of accepted totals; partial chunk failure leaves prior committed chunks/counts recoverable and final completion emits once only after fan-in.
+Invariants: exact money representation and DB constraints; append-only raw observations; canonical writes/audit/outbox/operation result share tenant transactions; fuzzy `(date,amount,description)` is never unique identity; correction/version checks prevent lost updates.
+Failure lifecycle: stable chunk IDs and `(import,row)` uniqueness; resume from committed checkpoints; retry resolutions by idempotency key; cancellation stops future chunks and reports accepted/review/failed counts honestly.
+UI/accessibility: API/read model exposes source coordinate, reason and resolution actions; S06 presents them.
+Data changes: Create only fields/tables needed for data_sources/imports/source_accounts/source observations/transactions/source links/review decisions/audit. Composite tenant FKs, FORCE RLS and measured indexes; expand-only migration, no destructive rollback after imports.
+Observability: Counts/state/duration/reason codes and operation IDs only; reconcile summary counts to exact DB rows in tests.
+Limits: deterministic chunks <=1,000 rows; direct resolution batch <=500 explicit IDs; 100k-row file ceiling inherited; commit/recovery thresholds measured at W2 exit, not promised here.
+Verification: planned `npm run test:import-commit` real-PG exact goldens for reimport/multiplicity/overlap/chunk death/concurrency/RLS, plus parser/mapping/jobs/commands/money/W1 regressions.
+Review focus: lossy dedup, floating money, partial transaction gaps, source overwrite, stale resolution, count drift, missing composite FK/RLS/index and completion-before-commit.
+Rollout/rollback: Read path remains feature-hidden until S06; stop import workers before rollback. Schema is retained once synthetic import history exists; forward-fix rather than destructive down migration.
+
+Execution record: unassigned; populate the standard fields when dependency-ready.
 
 ## E02-S06 — Complete import and review UX
 
-Status: Draft | Dependencies: E02-S05
+Status: Ready | Release: R1 | Epic: E02
+Dependencies: E02-S05
 
-Deliver multi-file/account upload, progress/cancel/retry, actionable blocking clarification and nonblocking category review, source/history view and completion events. Acceptance: one blocked file/row does not erase valid work; counts/totals agree; accessible errors link to source; ordinary users never encounter mandatory manual mapping. Completion event is durable and batch-scoped for later initial analysis.
+Outcome: A keyboard user can upload multiple CSV/XLSX files, follow durable progress, resolve only blocking ambiguities, review provenance/history, cancel/retry, and see an exact batch completion summary.
+Contracts: Product §§5.1, 6–8, 16, 30; architecture job/error/result contracts §§71–74, 77 and import workflow §216; existing zero-JS shell/accessibility baseline.
+Scope: server-rendered multi-file/account form, batch/import/job status pages, refresh/reconnect, cancel/retry, targeted mapper, duplicate resolutions, nonblocking review list, source/history detail, durable batch-scoped `import.completed` after all files reach terminal/review states.
+Out of scope: JS streaming framework, notifications outside the app, E03 categories/transfers/recurrence, deep-analysis trigger (E07), arbitrary file preview.
+
+Acceptance: multi-file upload preserves valid files/rows when another blocks/fails; displayed new/matched/pending/rejected/error counts equal authoritative rows; errors/review link to sanitized filename + source coordinate; refresh/logout/relogin reloads durable state; cancel/retry is idempotent; ordinary admitted fixture finishes without mandatory mapper; completion event emits once per accepted batch and carries references/counts only.
+Invariants: every action revalidates session/membership/RLS and optimistic version; staged ambiguity excluded from totals; no source bytes/rows in HTML logs or event payloads beyond authorized rendered values.
+Failure lifecycle: recoverable job errors retain user input and offer retry; permanent input errors explain supported formats; late/stale form submissions return conflict and fresh state; one blocked import does not delete siblings.
+UI/accessibility: Semantic headings/forms/tables, explicit labels/help/error association, keyboard-only journey, focus management, 44px targets, no color-only status, usable 320px width, polling fallback and reduced-motion-safe behavior.
+Data changes: Batch membership/completion-notice rows only if existing job/import schema cannot represent them; no parallel notification platform.
+Observability: Page/action/request IDs and aggregate state transitions; no filenames/finance values in operational logs.
+Limits: up to 10 files/batch within per-file limits; server-render/poll pages paginate at 100 rows; status polling no faster than 2 s; completion event payload <=4 KiB.
+Verification: planned `npm run test:import-ui` browser critical journey plus real-service import suites, axe/keyboard/manual 320px check, reconnect/cancel/race/cross-tenant probes; regress UI/W1/build.
+Review focus: unauthorized source access, totals including staged rows, inaccessible mapper/errors, lost partial work, duplicate completion, unbounded rendering/upload and client-only truth.
+Rollout/rollback: Feature flag remains off until S07 exit; rollback hides routes/stops new uploads while preserving history and job reads.
+
+Execution record: unassigned; populate the standard fields when dependency-ready.
 
 ## E02-S07 — Prove the integrated ingestion journey
 
-Status: Draft | Dependencies: E02-S06
+Status: Ready | Release: R1 | Epic: E02
+Dependencies: E02-S06
 
-Run representative CSV/XLSX batches, second/overlap imports and all recovery boundaries end-to-end; close ingestion defects. Acceptance: independently expected canonical data/provenance and review states match after browser retry, worker death and queue loss. Set supported file matrix and measured resource/latency limits from proof evidence; publish honest unsupported-format UX.
+Outcome: The merged W2 ingestion candidate proves the browser-to-PG journey—including second imports and failure recovery—and publishes the exact supported format/limit matrix needed before E03.
+Contracts: E02-S01–S06 acceptance, product §§5–8 and 16, architecture §§176–218 and 443–446, release tests §490; E00 import/durability proof oracles.
+Scope: integrated synthetic CSV/XLSX browser/system fixtures, independent expected canonical/provenance/review manifest, worker-kill/Redis-loss/cancel/retry runs, hostile upload set, two-tenant journey, measured limits, documentation/ledger closeout, and defect fixes only.
+Out of scope: new ingestion features, live bank sync, real customer files, E03 categorization/FX/transfers, public release.
+
+Acceptance: representative first + overlapping second import matches independent exact rows/counts/provenance; identical legitimate purchases survive; ambiguity remains visible/outside totals; browser retry, worker death at each checkpoint and Redis flush converge without loss/duplication; tenant swaps and hostile files fail closed; unsupported formats show honest actionable UX; merged-tree results reproduce from documented commands.
+Invariants: no real finance data/secrets; every acceptance binds to candidate/merge SHA; full W1 critical suite remains green; reviewer does not author fixes they approve.
+Failure lifecycle: Any defect returns the owning story to Changes requested; changed candidate reruns affected fault/browser checks and independent re-review; failed post-merge smoke pauses E03.
+UI/accessibility: Chromium critical journey plus keyboard/320px checks; supported-browser upload control sanity; artifact browser proof rerun only if shared CSP/server behavior changed.
+Data changes: No new schema unless a demonstrated integration defect requires the smallest additive fix and review.
+Observability: Record durations, peak parser memory, queue/reconcile/cancel latency, counts and redacted error codes; no row contents.
+Limits: exercise 1, 10 and 100k-row fixtures, 10-file batch, 20 MiB/100 MiB/60 s/256 MiB parser ceilings; declare measured p50/p95 and safe supported thresholds rather than inventing SLA.
+Verification: `npm ci`; full deterministic CI matrix; planned `npm run test:import-e2e`; scanner/storage integration; worker fault suite; deliberate failure; `npm run staging:smoke`; diff/secret hygiene; independent review and post-merge smoke on the actual candidate SHA.
+Review focus: oracle derived from implementation, skipped fault/browser/scanner gates, stale-SHA evidence, unsupported coverage claims, counts/provenance drift and W1 regressions.
+Rollout/rollback: Feature flag may enable only after pass on merged candidate; rollback disables ingestion entry points/workers and retains accepted data/history for forward recovery.
+
+Execution record: unassigned; populate the standard fields when dependency-ready.
 
 ## E03-S01 — Manage accounts, manual transactions and dated balances
 

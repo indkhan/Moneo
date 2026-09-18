@@ -11,7 +11,7 @@ import type { Pool } from "pg";
 import { createApp } from "../apps/web/src/server.ts";
 import { createAuthRouter, requestSession, type AuthConfig } from "../apps/web/src/auth.ts";
 import { createTenancyRouter } from "../apps/web/src/tenancy.ts";
-import { consumePermit, issuePermit, selectEligible, summarizeEligible } from "../apps/web/src/ai-policy.ts";
+import { consumePermit, issuePermit, selectEligible, setAccountExclusion, summarizeEligible } from "../apps/web/src/ai-policy.ts";
 import { createFakeProvider } from "../apps/web/src/ai-fake-provider.ts";
 import { ensureTestPool } from "./helpers/test-db.ts";
 import { startStubIssuer, STUB_CLIENT_ID, STUB_CLIENT_SECRET, type StubIssuer } from "./helpers/stub-issuer.ts";
@@ -212,6 +212,50 @@ describe("e01-s05 ai data policy", () => {
       const sent = await call("POST", `${base}/api/ai/test-dispatch`, cookie, { workspaceId, permitId: p.id });
       expect(sent.status).toBe(409);
     }
+  });
+
+  it("serializes exclusion changes with dispatch start", async () => {
+    const base = await startApp();
+    const { workspaceId, acctOut } = await setupWorkspace(base, "synthetic-pol-dispatch-race");
+    const userId = (await pool.query("SELECT id FROM users WHERE auth_subject = $1", ["synthetic-pol-dispatch-race"])).rows[0].id as string;
+    const claims = { userId, workspaceId };
+    const permit = await issuePermit(pool, claims, "dispatch-race");
+
+    let reachedInvalidation!: () => void;
+    let releaseInvalidation!: () => void;
+    const invalidationReached = new Promise<void>((resolve) => { reachedInvalidation = resolve; });
+    const invalidationRelease = new Promise<void>((resolve) => { releaseInvalidation = resolve; });
+    const writerPool = new Proxy(pool, {
+      get(target, property, receiver) {
+        if (property !== "connect") return Reflect.get(target, property, receiver);
+        return async () => {
+          const client = await target.connect();
+          const query = client.query.bind(client);
+          client.query = (async (...args: Parameters<typeof query>) => {
+            if (typeof args[0] === "string" && args[0].startsWith("UPDATE ai_dispatch_permits SET status = 'INVALIDATED'")) {
+              reachedInvalidation();
+              await invalidationRelease;
+            }
+            return query(...args);
+          }) as typeof client.query;
+          return client;
+        };
+      },
+    }) as Pool;
+
+    const exclusion = setAccountExclusion(writerPool, claims, userId, acctOut, true);
+    await invalidationReached; // writer holds the policy row after its version bump
+    let dispatchFinished = false;
+    const dispatch = consumePermit(pool, claims, permit.id).then(
+      () => { dispatchFinished = true; return undefined; },
+      (error: unknown) => { dispatchFinished = true; return error; },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const finishedBeforeWriterCommitted = dispatchFinished;
+    releaseInvalidation();
+    await exclusion;
+    expect(finishedBeforeWriterCommitted).toBe(false);
+    await expect(dispatch).resolves.toMatchObject({ code: "permit_invalidated" });
   });
 
   it("no-op exclusion changes neither bump the version nor invalidate permits", async () => {
