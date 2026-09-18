@@ -69,7 +69,8 @@ jobs:
             -c "CREATE DATABASE moneo_e01_w1 OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e02_jobs OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e02_recovery OWNER moneo_app;" \
-            -c "CREATE DATABASE moneo_e02_upload OWNER moneo_app;"
+            -c "CREATE DATABASE moneo_e02_upload OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_e02_mapping OWNER moneo_app;"
       - name: Start MinIO + ClamAV test services (synthetic only)
         run: |
           docker run -d --name ci-minio -p 9000:9000 \
@@ -120,6 +121,8 @@ jobs:
         run: npm run build:parser
       - name: Quarantine upload and bounded parse (real PG + MinIO + ClamAV)
         run: npm run test:upload
+      - name: Mapping inference and manual fallback (real PG, stub transport)
+        run: npm run test:mapping
       - name: Durable effects (real PG + Redis)
         run: npm run test:durable
       - name: Deliberate failure must exit nonzero

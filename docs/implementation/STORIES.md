@@ -506,8 +506,8 @@ Execution record:
 
 ## E02-S04 — Infer mappings with deterministic acceptance and manual fallback
 
-Status: Ready | Release: R1 | Epic: E02
-Dependencies: E02-S03, E01-S05, E00-S05
+Status: In progress | Release: R1 | Epic: E02
+Dependencies: E02-S03, E01-S05, E00-S05 (all Done)
 
 Outcome: Supported statement shapes map automatically; unresolved amount/date/currency/account fields ask only targeted questions, with a keyboard-usable manual mapper as fallback.
 Contracts: Product §§6.1, 7 and 16; architecture §§53, 74, 76, 190–192 and E00-S03/S05 plus E01-S05 policy permit.
@@ -525,7 +525,9 @@ Verification: planned `npm run test:mapping` deterministic/injection/policy/live
 Review focus: model output trusted as data, raw SQL/tool access, excluded data leakage, permit race, unbounded sampling/cost, mandatory AI/manual mapping and prompt logging.
 Rollout/rollback: Deterministic/manual paths ship independently; AI assistance feature-disabled unless compliant development config exists. Rollback disables AI and preserves mapping proposals/history.
 
-Execution record: unassigned; populate the standard fields when dependency-ready. The bounded synthetic OpenRouter gate passed 3/3 during W2 preparation; rerun it on the S04 candidate without exposing the ignored local credential.
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e02-s04-mapping`
+- Base SHA / implementation head SHA: base `2dfdbc64d231894c2b1a83a84a092cdb03ca02ac` /
 
 ## E02-S05 — Commit imports with multiplicity-safe duplicate review
 

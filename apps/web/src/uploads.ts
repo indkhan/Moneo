@@ -45,7 +45,7 @@ export type UploadProfile = {
   defaultCurrency?: string;
 };
 export type UploadProposal =
-  | { kind: "accepted"; rowNumber: number; observationId: string; amountMinor: string; currency: string; direction: "INFLOW" | "OUTFLOW"; effectiveDate: string; description: string; source: { sheet: string | null } }
+  | { kind: "accepted"; rowNumber: number; observationId: string; amountMinor: string; currency: string; direction: "INFLOW" | "OUTFLOW"; effectiveDate: string; description: string; raw: Record<string, string>; source: { sheet: string | null } }
   | { kind: "needs_review"; rowNumber: number; observationId: string; reasons: string[]; raw: Record<string, string>; source: { sheet: string | null } }
   | { kind: "rejected"; rowNumber: number; observationId: string; reasons: string[]; raw: Record<string, string>; source: { sheet: string | null } };
 export type UploadFileErrorCode =
@@ -235,6 +235,7 @@ export type ImportView = {
   rejectedCount: string | null;
   parsedRows: string;
   errorCode: string | null;
+  sourceColumns: string[] | null;
   jobId: string;
 };
 
@@ -248,6 +249,7 @@ export type ObservationView = {
   effectiveDate: string | null;
   description: string | null;
   reasons: unknown;
+  rawCells: Record<string, string> | null;
   sourceSheet: string | null;
 };
 
@@ -268,6 +270,7 @@ function rowToImportView(row: ImportRow, jobId: string): ImportView {
     rejectedCount: str(row["rejected_count"]),
     parsedRows: String(row["parsed_rows"]),
     errorCode: str(row["error_code"]),
+    sourceColumns: row["source_columns"] === null || row["source_columns"] === undefined ? null : (row["source_columns"] as unknown as string[]),
     jobId,
   };
 }
@@ -325,7 +328,7 @@ async function readImportTx(
   importId: string,
 ): Promise<{ row: ImportRow; jobId: string } | null> {
   const found = await client.query(
-    "SELECT workspace_id, id, data_source_id, file_name, parser_version, status, row_count, staged_count, review_count, rejected_count, parsed_rows, error_code FROM imports WHERE workspace_id = $1 AND id = $2",
+    "SELECT workspace_id, id, data_source_id, file_name, parser_version, status, row_count, staged_count, review_count, rejected_count, parsed_rows, error_code, source_columns FROM imports WHERE workspace_id = $1 AND id = $2",
     [workspaceId, importId],
   );
   if ((found.rowCount ?? 0) === 0) return null;
@@ -463,7 +466,7 @@ export async function listObservations(
       importId,
     ]);
     const rows = await client.query(
-      "SELECT row_no AS \"rowNo\", status, observation_id AS \"observationId\", amount_minor AS \"amountMinor\", currency, direction, effective_date AS \"effectiveDate\", description, reasons, source_sheet AS \"sourceSheet\" FROM parsed_observations WHERE workspace_id = $1 AND import_id = $2 ORDER BY row_no LIMIT $3 OFFSET $4",
+      "SELECT row_no AS \"rowNo\", status, observation_id AS \"observationId\", amount_minor AS \"amountMinor\", currency, direction, effective_date AS \"effectiveDate\", description, reasons, raw_cells AS \"rawCells\", source_sheet AS \"sourceSheet\" FROM parsed_observations WHERE workspace_id = $1 AND import_id = $2 ORDER BY row_no LIMIT $3 OFFSET $4",
       [claims.workspaceId, importId, limit, offset],
     );
     return {
@@ -483,6 +486,7 @@ export type ParserChildResult =
       ok: true;
       sheet: string | null;
       ignoredSheets: number;
+      header: string[];
       proposals: UploadProposal[];
       wallMs: number;
       heapUsedBytes: number;
@@ -577,10 +581,12 @@ export async function runParserChild(opts: {
       throw new ParserError("internal", true, "parser produced no result");
     }
     if (parsed["ok"] === true) {
+      const header = Array.isArray(parsed["header"]) ? (parsed["header"] as unknown[]).filter((h): h is string => typeof h === "string").slice(0, 50) : [];
       return {
         ok: true,
         sheet: (parsed["sheet"] as string | null) ?? null,
         ignoredSheets: Number(parsed["ignoredSheets"] ?? 0),
+        header,
         proposals: (parsed["proposals"] as UploadProposal[]) ?? [],
         wallMs: Number(parsed["wallMs"] ?? 0),
         heapUsedBytes: Number(parsed["heapUsedBytes"] ?? 0),
@@ -636,11 +642,11 @@ function cellTooLarge(value: unknown): boolean {
   return typeof value === "string" && Buffer.byteLength(value, "utf8") > MAX_CELL_BYTES;
 }
 
-function proposalTooLarge(UploadProposal: UploadProposal): boolean {
-  if (UploadProposal.kind === "accepted") {
-    return cellTooLarge(UploadProposal.description) || cellTooLarge(UploadProposal.amountMinor) || cellTooLarge(UploadProposal.effectiveDate);
+function proposalTooLarge(proposal: UploadProposal): boolean {
+  if (proposal.kind === "accepted") {
+    return cellTooLarge(proposal.description) || cellTooLarge(proposal.amountMinor) || cellTooLarge(proposal.effectiveDate);
   }
-  return Object.values(UploadProposal.kind === "needs_review" || UploadProposal.kind === "rejected" ? UploadProposal.raw : {}).some(cellTooLarge);
+  return Object.values(proposal.kind === "needs_review" || proposal.kind === "rejected" ? proposal.raw : {}).some(cellTooLarge);
 }
 
 export async function processParseJob(
@@ -752,6 +758,7 @@ export async function processParseJob(
   // PARSE: terminable credential-free child. Timeout/crash is transient
   // (stay RUNNING for reclaim); typed parser failures are permanent.
   let proposals: UploadProposal[];
+  let sourceHeader: string[] = [];
   try {
     const parsed = await runParserChild({
       parserChild: config.parserChild,
@@ -763,6 +770,7 @@ export async function processParseJob(
     });
     if (!parsed.ok) throw new ParserError(parsed.error.code, false, parsed.error.message);
     proposals = parsed.proposals;
+    sourceHeader = parsed.header;
   } catch (err) {
     if (err instanceof ParserError && !err.transient) {
       await fenced(async (client) => terminalReject(client, route, pick, loaded.importId, err.code));
@@ -776,38 +784,39 @@ export async function processParseJob(
   for (let at = loaded.checkpoint; at < proposals.length; at += OBSERVE_CHUNK_ROWS) {
     const chunk = proposals.slice(at, at + OBSERVE_CHUNK_ROWS);
     const persisted = await fenced(async (client) => {
-      for (const UploadProposal of chunk) {
-        const tooLarge = proposalTooLarge(UploadProposal);
-        if (UploadProposal.kind === "accepted" && !tooLarge) {
+      for (const proposal of chunk) {
+        const tooLarge = proposalTooLarge(proposal);
+        if (proposal.kind === "accepted" && !tooLarge) {
           await client.query(
-            "INSERT INTO parsed_observations (workspace_id, import_id, row_no, status, observation_id, amount_minor, currency, direction, effective_date, description, source_sheet) VALUES ($1, $2, $3, 'STAGED', $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (workspace_id, import_id, row_no) DO NOTHING",
+            "INSERT INTO parsed_observations (workspace_id, import_id, row_no, status, observation_id, amount_minor, currency, direction, effective_date, description, raw_cells, source_sheet) VALUES ($1, $2, $3, 'STAGED', $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (workspace_id, import_id, row_no) DO NOTHING",
             [
               route.workspaceId,
               loaded.importId,
-              UploadProposal.rowNumber,
-              UploadProposal.observationId,
-              UploadProposal.amountMinor,
-              UploadProposal.currency,
-              UploadProposal.direction,
-              UploadProposal.effectiveDate,
-              UploadProposal.description,
-              UploadProposal.source.sheet,
+              proposal.rowNumber,
+              proposal.observationId,
+              proposal.amountMinor,
+              proposal.currency,
+              proposal.direction,
+              proposal.effectiveDate,
+              proposal.description,
+              JSON.stringify(proposal.raw),
+              proposal.source.sheet,
             ],
           );
         } else {
-          const reasons = UploadProposal.kind === "accepted" ? ["cell-limit"] : UploadProposal.reasons;
-          const raw = UploadProposal.kind === "accepted" ? {} : UploadProposal.raw;
+          const reasons = proposal.kind === "accepted" ? ["cell-limit"] : proposal.reasons;
+          const raw = proposal.kind === "accepted" ? {} : proposal.raw;
           await client.query(
             "INSERT INTO parsed_observations (workspace_id, import_id, row_no, status, observation_id, reasons, raw_cells, source_sheet) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (workspace_id, import_id, row_no) DO NOTHING",
             [
               route.workspaceId,
               loaded.importId,
-              UploadProposal.rowNumber,
-              UploadProposal.kind === "needs_review" ? "NEEDS_REVIEW" : "REJECTED",
-              UploadProposal.observationId,
+              proposal.rowNumber,
+              proposal.kind === "needs_review" ? "NEEDS_REVIEW" : "REJECTED",
+              proposal.observationId,
               JSON.stringify(reasons),
               JSON.stringify(raw),
-              UploadProposal.source.sheet,
+              proposal.source.sheet,
             ],
           );
         }
@@ -854,8 +863,8 @@ export async function processParseJob(
       return { ok: false as const, reason: "stale_attempt" as const };
     }
     await client.query(
-      "UPDATE imports SET status = 'STAGED', completed_at = now(), row_count = $3, staged_count = $4, review_count = $5, rejected_count = $6, expires_at = now() + interval '30 days' WHERE workspace_id = $1 AND id = $2",
-      [route.workspaceId, loaded.importId, rows, staged, review, rejected],
+      "UPDATE imports SET status = 'STAGED', completed_at = now(), row_count = $3, staged_count = $4, review_count = $5, rejected_count = $6, expires_at = now() + interval '30 days', source_columns = $7 WHERE workspace_id = $1 AND id = $2",
+      [route.workspaceId, loaded.importId, rows, staged, review, rejected, JSON.stringify(sourceHeader)],
     );
     await client.query("UPDATE source_objects SET status = 'ACCEPTED' WHERE workspace_id = $1 AND import_id = $2", [route.workspaceId, loaded.importId]);
     await client.query(

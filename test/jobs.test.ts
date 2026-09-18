@@ -121,6 +121,10 @@ async function resultCount(userId: string, workspaceId: string, jobId: string): 
 
 beforeAll(async () => {
   pool = await ensureTestPool("E02-S01", "moneo_e02_jobs", [
+    "mapping_provider_usage",
+    "mapping_provider_reservations",
+    "mapping_proposals",
+    "mapping_profiles",
     "parsed_observations",
     "source_objects",
     "imports",

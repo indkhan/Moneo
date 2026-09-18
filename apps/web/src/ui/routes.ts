@@ -14,6 +14,8 @@ import { clearSessionCookie, revokeRequestSession } from "../auth.ts";
 import { readLimitedBody } from "../http-controls.ts";
 import { readMultipart } from "../multipart.ts";
 import { acceptUpload, listObservations, loadUploadConfig, MAX_UPLOAD_BYTES, readImport, UploadError } from "../uploads.ts";
+import { acceptMapping, listMappingProfiles, loadMappingSample, MappingError, proposeMapping, readCurrentMapping } from "../mapping.ts";
+import { liveMappingTransport, loadMappingProvider } from "../mapping-provider.ts";
 import { listWorkspaces, sessionClaims, TenantDenied, TenantInvalid, type SessionResolver } from "../tenancy.ts";
 import { errorPage, escapeHtml, page } from "./shell.ts";
 
@@ -415,7 +417,181 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
           title: "Import status",
           requestId,
           authed: true,
-          content: `<h2>${escapeHtml(viewed.fileName)}</h2><p>${stateLine}</p>${sampleRows}<p><a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p>`,
+          content: `<h2>${escapeHtml(viewed.fileName)}</h2><p>${stateLine}</p>${sampleRows}<p><a href="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(importStatusMatch[2])}/mapping">Map columns for this import</a> · <a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p>`,
+        }),
+      );
+      return true;
+    }
+
+    // E02-S04 manual mapper: semantic selects over the staged header, sample
+    // preview, validation summary with focus to the first blocking field,
+    // keyboard-native submit. AI assistance runs only via the propose step
+    // when configured; the form itself never calls a model.
+    const mapperMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/imports\/([A-Za-z0-9-]+)\/mapping$/);
+    if (mapperMatch && (method === "GET" || method === "POST")) {
+      const workspaceId = mapperMatch[1];
+      const importId = mapperMatch[2];
+      if (method === "POST" && !sameOrigin(req, config.appBaseUrl)) {
+        event("ui_denied:origin");
+        html(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: `/w/${workspaceId}`, requestId, authed: true }));
+        return true;
+      }
+      const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+      if (!resolved.session) {
+        if (method === "POST") req.resume();
+        html(res, 401, errorPage({ status: 401, heading: "Sign in required", message: "Log in to map imports.", back: "/", requestId, authed: false }));
+        return true;
+      }
+      if (!resolved.claim) {
+        if (method === "POST") req.resume();
+        event("ui_denied:workspace");
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace or import.", back: "/", requestId, authed: true }));
+        return true;
+      }
+      const failMapper = (status: number, heading: string, message: string): void => {
+        event("ui_mapping_denied");
+        html(res, status, errorPage({ status, heading, message, back: `/w/${workspaceId}`, requestId, authed: true }));
+      };
+      if (method === "POST") {
+        // urlencoded mapper forms (the file intake POST is multipart and
+        // lives on its own route; this form never carries bytes).
+        const form = await readFormBody(req).catch(() => null);
+        if (!form) {
+          failMapper(400, "Mapping failed", "The submission could not be read. Retry the form.");
+          return true;
+        }
+        const action = form.get("action") ?? "";
+        try {
+          if (action === "propose") {
+            const mode = form.get("mode") === "manual" ? "manual" : "auto";
+            const provider = mode === "manual" ? null : loadMappingProvider();
+            await proposeMapping(pool, resolved.claim, importId, {
+              transport: provider ? liveMappingTransport(provider) : null,
+              replace: form.get("replace") === "1",
+            });
+            event("ui_mapping_ok:propose");
+            res.writeHead(303, { Location: `/w/${workspaceId}/imports/${importId}/mapping` });
+            res.end();
+            return true;
+          }
+          if (action === "accept") {
+            const pick = (name: string): string | undefined => {
+              const value = form.get(name) ?? "";
+              return value === "" ? undefined : value;
+            };
+            const columns: Record<string, string> = {};
+            for (const role of ["date", "description", "amount", "debit", "credit", "currency"]) {
+              const value = pick(`col_${role}`);
+              if (value !== undefined) columns[role] = value;
+            }
+            const delimiter = pick("delimiter") ?? "";
+            if (delimiter !== "," && delimiter !== ";") {
+              failMapper(400, "Mapping failed", "The form submission could not be read. Retry the form.");
+              return true;
+            }
+            const profile = {
+              delimiter,
+              dateFormat: pick("dateFormat") ?? "iso",
+              amount: { kind: pick("kind") === "debit-credit" ? "debit-credit" : "signed", decimalSep: pick("decimalSep") ?? ".", thousandsSep: pick("thousandsSep") ?? "" },
+              columns,
+              ...(pick("defaultCurrency") ? { defaultCurrency: pick("defaultCurrency") } : {}),
+            };
+            await acceptMapping(pool, resolved.claim, importId, {
+              proposalId: form.get("proposalId") ?? "",
+              ...(pick("accountId") ? { accountId: pick("accountId") } : {}),
+              profile,
+              ...(pick("saveAs") ? { saveAs: pick("saveAs") } : {}),
+            });
+            event("ui_mapping_ok:accept");
+            res.writeHead(303, { Location: `/w/${workspaceId}/imports/${importId}/mapping?notice=accepted` });
+            res.end();
+            return true;
+          }
+          failMapper(400, "Mapping failed", "Unknown mapper action. Use the propose or accept form.");
+          return true;
+        } catch (err) {
+          if (err instanceof MappingError) {
+            const message =
+              err.code === "mapping_invalid" || err.code === "mapping_incomplete"
+                ? `The mapping needs attention: ${(err.questions ?? []).map((q) => `${q.field} (${q.reason})`).join(", ") || "check the highlighted fields"}.`
+                : err.code === "mapping_busy"
+                  ? "A mapping call is already running for this import. Wait, then refresh."
+                  : err.code === "permit_denied"
+                    ? `AI policy changed (${err.reason ?? "revoked"}). The model-assisted result was not published; correct manually below.`
+                    : "Check the values and retry.";
+            const status = err.code === "invalid_request" ? 400 : 409;
+            event("ui_mapping_denied");
+            html(res, status, errorPage({ status, heading: status === 400 ? "Mapping failed" : "Mapping conflict", message, back: `/w/${workspaceId}/imports/${importId}/mapping`, requestId, authed: true }));
+            return true;
+          }
+          if (err instanceof TenantDenied) {
+            failMapper(404, "Not found", "No such workspace or import.");
+            return true;
+          }
+          if (err instanceof TenantInvalid) {
+            failMapper(400, "Mapping failed", "Check the highlighted fields and retry.");
+            return true;
+          }
+          throw err;
+        }
+      }
+      // GET: render current proposal, questions, sample preview, forms.
+      const [current, sample, accounts, profiles] = await Promise.all([
+        readCurrentMapping(pool, resolved.claim, importId).catch(() => null),
+        loadMappingSample(pool, resolved.claim, importId).catch(() => null),
+        listAccountViews(pool, resolved.claim).catch(() => []),
+        listMappingProfiles(pool, resolved.claim).catch(() => []),
+      ]);
+      if (!sample) {
+        failMapper(404, "Not found", "No such workspace or import.");
+        return true;
+      }
+      const questions = current?.questions ?? [];
+      const blockedFirst = questions[0]?.field;
+      const autofocus = (field: string): string => (blockedFirst === field ? " autofocus" : "");
+      const optionList = (names: string[], selected: string | undefined): string =>
+        [`<option value="">—</option>`, ...names.map((n) => `<option value="${escapeHtml(n)}"${n === selected ? " selected" : ""}>${escapeHtml(n)}</option>`)].join("");
+      const profile = current?.profile;
+      const focusFor = (role: string): string => (role === "date" ? "date" : role === "amount" ? "amount" : role === "currency" ? "currency" : "columns");
+      const colSelect = (role: string, label: string): string =>
+        `<p><label for="map-${role}">${label}</label> <select id="map-${role}" name="col_${role}"${autofocus(focusFor(role))}>${optionList(sample.header, (profile?.columns as Record<string, string> | undefined)?.[role])}</select></p>`;
+      const previewRows = sample.rows.slice(0, 10);
+      const preview =
+        previewRows.length === 0
+          ? `<p>No staged rows to preview.</p>`
+          : `<table><caption>Sample staged rows (first ${previewRows.length})</caption><thead><tr><th scope="col">Row</th>${sample.header.slice(0, 8).map((h) => `<th scope="col">${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${previewRows
+              .map((cells, i) => `<tr><td>${i + 1}</td>${sample.header.slice(0, 8).map((h) => `<td>${escapeHtml(cells[h] ?? "")}</td>`).join("")}</tr>`)
+              .join("")}</tbody></table>`;
+      const questionList =
+        questions.length === 0
+          ? `<p>Validation: all mapped fields cohere with the staged sample.</p>`
+          : `<div class="alert" role="alert"><h2>Needs attention (${questions.length})</h2><ul>${questions.map((q) => `<li><strong>${escapeHtml(q.field)}</strong> — ${escapeHtml(q.reason)}${q.detail ? `: ${escapeHtml(q.detail)}` : ""}</li>`).join("")}</ul></div>`;
+      const savedList =
+        profiles.length === 0
+          ? `<p>No saved column profiles yet.</p>`
+          : `<ul>${profiles.slice(0, 10).map((p) => `<li>${escapeHtml(p.name)} v${escapeHtml(p.version)} (${escapeHtml(p.createdFrom)})</li>`).join("")}</ul>`;
+      const notice = query.get("notice") === "accepted" ? `<p>Mapping accepted.</p>` : ``;
+      html(
+        res,
+        200,
+        page({
+          title: "Map import columns",
+          requestId,
+          authed: true,
+          notice: notice || undefined,
+          content: `<h2>Map columns</h2>${questionList}${preview}
+            <form method="post" action="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(importId)}/mapping"><input type="hidden" name="action" value="propose"><p><label for="map-mode">Source</label> <select id="map-mode" name="mode"><option value="auto">Automatic (deterministic first, model only if needed)</option><option value="manual">Manual questions only</option></select></p><p><label><input type="checkbox" name="replace" value="1"> Replace the current proposal</label></p><p><button type="submit">Propose mapping</button></p></form>
+            <form method="post" action="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(importId)}/mapping"><input type="hidden" name="action" value="accept"><input type="hidden" name="proposalId" value="${escapeHtml(current?.id ?? "")}"><input type="hidden" name="delimiter" value="${escapeHtml(sample.parseDelimiter)}">${colSelect("date", "Date column")}${colSelect("description", "Description column")}${colSelect("amount", "Amount column")}${colSelect("debit", "Debit column")}${colSelect("credit", "Credit column")}${colSelect("currency", "Currency column")}
+            <p><label for="map-dateFormat">Date format</label> <select id="map-dateFormat" name="dateFormat"${autofocus("date")}>${["iso", "de", "us", "excel-serial"].map((f) => `<option${profile?.dateFormat === f ? " selected" : ""}>${f}</option>`).join("")}</select></p>
+            <p><label for="map-kind">Amount kind</label> <select id="map-kind" name="kind"><option${(profile?.amount as { kind?: string } | undefined)?.kind !== "debit-credit" ? " selected" : ""}>signed</option><option${(profile?.amount as { kind?: string } | undefined)?.kind === "debit-credit" ? " selected" : ""}>debit-credit</option></select></p>
+            <p><label for="map-decimalSep">Decimal separator</label> <select id="map-decimalSep" name="decimalSep"${autofocus("amount")}>${[".", ","].map((s) => `<option${(profile?.amount as { decimalSep?: string } | undefined)?.decimalSep === s ? " selected" : ""}>${s}</option>`).join("")}</select></p>
+            <p><label for="map-thousandsSep">Thousands separator</label> <select id="map-thousandsSep" name="thousandsSep"><option value="">none</option>${[".", ","].map((s) => `<option value="${s}"${(profile?.amount as { thousandsSep?: string } | undefined)?.thousandsSep === s ? " selected" : ""}>${s}</option>`).join("")}</select></p>
+            <p><label for="map-defaultCurrency">Default currency</label> <input id="map-defaultCurrency" name="defaultCurrency" maxlength="3" value="${escapeHtml(profile?.defaultCurrency ?? "")}"${autofocus("currency")}></p>
+            <p><label for="map-accountId">Account</label> <select id="map-accountId" name="accountId"${autofocus("account")}><option value="">Automatic</option>${accounts.map((a) => `<option value="${escapeHtml(a.id)}"${current?.accountId === a.id ? " selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}</select></p>
+            <p><label for="map-saveAs">Save profile as (optional)</label> <input id="map-saveAs" name="saveAs" maxlength="120"></p>
+            <p><button type="submit">Accept mapping</button></p></form>
+            <h3>Saved profiles</h3>${savedList}
+            <p><a href="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(importId)}">Back to import status</a></p>`,
         }),
       );
       return true;

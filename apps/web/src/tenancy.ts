@@ -13,6 +13,8 @@ import { CommandError, getAccountView, listAccountViews, renameAccount, validate
 import { acceptImportJob, JobError, readJob, validateAcceptInput } from "./jobs.ts";
 import { cancelJob } from "./job-recovery.ts";
 import { acceptUpload, listObservations, loadUploadConfig, MAX_UPLOAD_BYTES, readImport, UploadError } from "./uploads.ts";
+import { acceptMapping, listMappingProfiles, MappingError, mappingErrorBody, proposeMapping, readCurrentMapping } from "./mapping.ts";
+import { liveMappingTransport, loadMappingProvider } from "./mapping-provider.ts";
 import { readMultipart } from "./multipart.ts";
 import { consumePermit, getPolicy, issuePermit, PolicyError, setAccountExclusion, summarizeEligible } from "./ai-policy.ts";
 import { readLimitedBody } from "./http-controls.ts";
@@ -646,6 +648,107 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             }
             throw err;
           }
+          return true;
+        }
+        // E02-S04 mapping: propose (deterministic first, bounded model
+        // assistance when configured), accept with corrections, read current.
+        const mappingProposeMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/imports\/([A-Za-z0-9-]+)\/mapping$/);
+        if (mappingProposeMatch && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const resolved = await claims(req, mappingProposeMatch[1]);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          let body: { mode?: unknown; replace?: unknown };
+          try {
+            body = (await readJsonBody(req)) as { mode?: unknown; replace?: unknown };
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          if (body.mode !== undefined && body.mode !== "auto" && body.mode !== "manual") {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          try {
+            const provider = body.mode === "manual" ? null : loadMappingProvider();
+            const result = await proposeMapping(pool, resolved.claim, mappingProposeMatch[2], {
+              transport: provider ? liveMappingTransport(provider) : null,
+              ...(body.replace === true ? { replace: true as const } : {}),
+            });
+            tenantJson(res, result.replayed ? 200 : 201, { proposal: result.proposal, aiUsed: result.aiUsed, ...(result.fallback ? { fallback: result.fallback } : {}), replayed: result.replayed, requestId });
+          } catch (err) {
+            if (err instanceof MappingError) {
+              const mapped = mappingErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        const mappingReadMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/imports\/([A-Za-z0-9-]+)\/mapping$/);
+        if (mappingReadMatch && method === "GET") {
+          const resolved = await claims(req, mappingReadMatch[1]);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const current = await readCurrentMapping(pool, resolved.claim, mappingReadMatch[2]);
+          if (!current) tenantJson(res, 404, { error: "not_found" });
+          else tenantJson(res, 200, { proposal: current, requestId });
+          return true;
+        }
+        const mappingAcceptMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/imports\/([A-Za-z0-9-]+)\/mapping\/accept$/);
+        if (mappingAcceptMatch && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const resolved = await claims(req, mappingAcceptMatch[1]);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          let body: unknown;
+          try {
+            body = await readJsonBody(req);
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          try {
+            const result = await acceptMapping(pool, resolved.claim, mappingAcceptMatch[2], body as { proposalId: string });
+            tenantJson(res, 200, { ...result, requestId });
+          } catch (err) {
+            if (err instanceof MappingError) {
+              const mapped = mappingErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        const profilesMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/mapping-profiles$/);
+        if (profilesMatch && method === "GET") {
+          const resolved = await claims(req, profilesMatch[1]);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const name = query.get("name");
+          if (name !== null && (name.length < 1 || name.length > 120)) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          tenantJson(res, 200, { profiles: await listMappingProfiles(pool, resolved.claim, name ?? undefined), requestId });
           return true;
         }
       } catch (err) {

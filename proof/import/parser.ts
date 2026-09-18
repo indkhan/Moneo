@@ -83,6 +83,10 @@ export type AcceptedProposal = {
   effectiveDate: string;
   description: string;
   observationId: string;
+  // E02-S04 additive: logical header-name -> raw cell text, so downstream
+  // mapping can sample and re-validate without re-reading source bytes.
+  // Oracle tests ignore extra fields (comparable() picks fixed keys).
+  raw: Record<string, string>;
 };
 
 export type ReviewProposal = {
@@ -124,6 +128,8 @@ export type FileResult =
       sheet: string | null;
       ignoredSheets: number;
       proposals: Proposal[];
+      // E02-S04 additive: admitted header row for downstream mapping.
+      header: string[];
     }
   | { ok: false; error: { code: FileErrorCode; message: string } };
 
@@ -597,6 +603,7 @@ export function mapRowsToProposals(
         effectiveDate: dateParsed.iso,
         description,
         observationId: id,
+        raw,
       });
       return;
     }
@@ -640,6 +647,7 @@ export function mapRowsToProposals(
       effectiveDate: dateParsed.iso,
       description,
       observationId: id,
+      raw,
     });
   });
   return proposals;
@@ -843,7 +851,7 @@ export function parseImportFile(
         throw fileError("unsupported-schema", "CSV contains no rows; a header row is required.");
       }
       const proposals = mapRowsToProposals(table[0]!, table.slice(1), profile, filename, null, 2);
-      return { ok: true, sheet: null, ignoredSheets: 0, proposals };
+      return { ok: true, sheet: null, ignoredSheets: 0, proposals, header: [...table[0]!] };
     }
     if (lower.endsWith(".xlsx")) {
       return parseXlsxSync(bytes, filename, profile, lim);
@@ -906,7 +914,7 @@ function parseXlsxSync(
       throw fileError("unsupported-schema", "Worksheet header row is empty; a header row is required.");
     }
     const proposals = mapRowsToProposals(grid.header, grid.rows, profile, filename, name, 2, grid.formulaRows);
-    return { ok: true, sheet: name, ignoredSheets: sheetCount - 1, proposals };
+    return { ok: true, sheet: name, ignoredSheets: sheetCount - 1, proposals, header: [...grid.header] };
   } catch (e) {
     return { ok: false, error: asFileError(e) };
   }
