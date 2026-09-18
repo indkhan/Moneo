@@ -60,7 +60,7 @@ async function json(method: string, url: string, cookie: string, body?: unknown)
 beforeAll(async () => {
   // Own database: parallel vitest workers must not share a database with a
   // suite whose rollback test drops tables.
-  pool = await ensureTestPool("E01-S03", "moneo_e01_tenancy", ["background_job_attempts", "job_dispatch_index", "outbox_events", "background_job_results", "background_jobs", "ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
+  pool = await ensureTestPool("E01-S03", "moneo_e01_tenancy", ["parsed_observations", "source_objects", "imports", "data_sources", "background_job_attempts", "job_dispatch_index", "outbox_events", "background_job_results", "background_jobs", "ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
   stub = await startStubIssuer();
 }, 60_000);
 
@@ -218,14 +218,14 @@ describe("e01-s03 tenant ownership", () => {
     }
   });
 
-  it("migrations 006 then 005 then 004 then 003 then 002 roll back and re-apply on the suite database", async () => {
+  it("migrations 007 then 006 then 005 then 004 then 003 then 002 roll back and re-apply on the suite database", async () => {
     const { readFileSync } = await import("node:fs");
-    // Newest first: 006's attempts reference jobs, 005's jobs reference
-    // workspaces/command_operations, 004's exclusions reference accounts,
-    // and 002's rollback drops the accounts table that carries 003's
-    // version column, so newest-first while recorded — otherwise re-migrate
-    // never restores the dependent objects.
-    for (const file of ["006_job_recovery.rollback.sql", "005_jobs.rollback.sql", "004_ai_policy.rollback.sql", "003_commands.rollback.sql", "002_tenancy.rollback.sql"]) {
+    // Newest first: 007's staging tables reference workspaces/imports, 006's
+    // attempts reference jobs, 005's jobs reference workspaces/operations,
+    // 004's exclusions reference accounts, and 002's rollback drops the
+    // accounts table that carries 003's version column — newest-first while
+    // recorded, otherwise re-migrate never restores the dependents.
+    for (const file of ["007_uploads.rollback.sql", "006_job_recovery.rollback.sql", "005_jobs.rollback.sql", "004_ai_policy.rollback.sql", "003_commands.rollback.sql", "002_tenancy.rollback.sql"]) {
       const sql = readFileSync(`apps/web/migrations/${file}`, "utf8");
       const admin = await pool.connect();
       try {
@@ -241,14 +241,12 @@ describe("e01-s03 tenant ownership", () => {
         admin.release();
       }
     }
-    const gone = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations', 'ai_policies', 'ai_exclusions', 'ai_dispatch_permits', 'background_jobs', 'background_job_results', 'outbox_events', 'job_dispatch_index', 'background_job_attempts')");
+    const gone = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations', 'ai_policies', 'ai_exclusions', 'ai_dispatch_permits', 'background_jobs', 'background_job_results', 'outbox_events', 'job_dispatch_index', 'background_job_attempts', 'data_sources', 'imports', 'source_objects', 'parsed_observations')");
     expect((gone.rows[0] as { n: number }).n).toBe(0);
-    // Self-healing: the idempotent migrator restores the full shape,
-    // including 003's version column/journal, the 004 policy tables, the
-    // 005 job/outbox/dispatch tables and the 006 attempt history.
+    // Self-healing: the idempotent migrator restores the full shape.
     await migrate(pool, "apps/web/migrations");
-    const back = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations', 'ai_policies', 'ai_exclusions', 'ai_dispatch_permits', 'background_jobs', 'background_job_results', 'outbox_events', 'job_dispatch_index', 'background_job_attempts')");
-    expect((back.rows[0] as { n: number }).n).toBe(13);
+    const back = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations', 'ai_policies', 'ai_exclusions', 'ai_dispatch_permits', 'background_jobs', 'background_job_results', 'outbox_events', 'job_dispatch_index', 'background_job_attempts', 'data_sources', 'imports', 'source_objects', 'parsed_observations')");
+    expect((back.rows[0] as { n: number }).n).toBe(17);
     const versionCol = await pool.query("SELECT 1 FROM information_schema.columns WHERE table_name = 'accounts' AND column_name = 'version'");
     expect(versionCol.rowCount).toBe(1);
   });

@@ -283,6 +283,10 @@ async function reclaimAndFinish(jobId: string, workerId: string): Promise<"appli
 
 beforeAll(async () => {
   pool = await ensureTestPool("E02-S02", "moneo_e02_recovery", [
+    "parsed_observations",
+    "source_objects",
+    "imports",
+    "data_sources",
     "background_job_attempts",
     "job_dispatch_index",
     "outbox_events",
