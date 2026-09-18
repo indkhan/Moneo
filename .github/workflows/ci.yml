@@ -56,7 +56,8 @@ jobs:
             -c "CREATE DATABASE moneo_e01_commands OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e01_policy OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e01_ui OWNER moneo_app;" \
-            -c "CREATE DATABASE moneo_e01_w1 OWNER moneo_app;"
+            -c "CREATE DATABASE moneo_e01_w1 OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_e02_jobs OWNER moneo_app;"
       - name: Install (lockfile)
         run: npm ci
       - name: Typecheck
@@ -85,6 +86,8 @@ jobs:
         run: npm run test:http
       - name: W1 integrated exit demonstration
         run: npm run test:w1
+      - name: Durable jobs and outbox dispatch (real PG + Redis)
+        run: npm run test:jobs
       - name: Durable effects (real PG + Redis)
         run: npm run test:durable
       - name: Deliberate failure must exit nonzero

@@ -394,8 +394,8 @@ Execution record:
 
 ## E02-S01 — Persist accepted jobs and outbox dispatch
 
-Status: Ready | Release: R1 | Epic: E02
-Dependencies: E01-S05, E01-S06, E00-S04 (all Done; W1 Pass at `5730b03`)
+Status: In progress | Release: R1 | Epic: E02
+Dependencies: E01-S05, E01-S06, E00-S04 (all Done; W1 Pass at `5730b03`; audit closeout at `b000e36`; W2 base `6d95893` verified: typecheck + check + w1-exit green)
 
 Outcome: An authenticated workspace can accept one synthetic `imports.start` command and receive a durable job ID; PostgreSQL records the operation/job/outbox before BullMQ sees it, and duplicate delivery has one business effect.
 Contracts: Product Delivery baseline ingestion/jobs; architecture §§60–62, 67–69, 176–189 and 215; E00-S04 proven PG-outbox/BullMQ boundary; existing `apps/web/src/commands/accounts.ts`, `tenancy.ts`, `ai-policy.ts` and `proof/durable/` patterns.
@@ -419,9 +419,10 @@ Review focus: dual-write gaps, globally privileged workers, tenant leakage throu
 Rollout/rollback: Feature remains synthetic/internal; enable worker only after migration and app deploy. Disable worker/dispatcher first to roll back; preserve accepted PG rows unless this pre-data slice is explicitly reset.
 
 Execution record:
-- Assignee / branch / worktree:
-- Base SHA / implementation head SHA:
-- Tests: commands, environment, exit codes, result links:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e02-s01-jobs-outbox` (main worktree branch)
+- Base SHA / implementation head SHA: base `6d958934cbe9a097719e503e8e46e2e66a658016` / impl `pending-commit`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18, WSL Redis 8.4.2 (started via `redis-server --daemonize yes`), JOBS_REDIS_DB 14. `npm run typecheck` 0; `npm run test:jobs` 0 (8/8: 20-way duplicate-accept convergence + replay/incompatible/expired, dispatch crash windows, tenant isolation + discovery IDs, index schema guard + Redis-payload + posture + immutability, fairness cap, auth boundaries, Redis-loss rebuild, 100-job <30 s); `npm run test:durable` 0 (12/12, 100 cmds/252 ms); `test:tenancy` 0 (6/6); `test:commands` 0 (8/8); `test:policy` 0 (7/7); `test:auth` 0 (13/13); `test:db` 0 (2/2); `test:money` 0 (4/4); `test:ui` 0 (10/10); `test:w1` 0 (1/1); harness 1/1; `test:web` 0 (8/8); `test:http` 0 (1/1); `test:import` 0 (26/26); `test:identity` 0 (36/36); `npm run test:failure` exit 1 as intended; `npm run build:web` 0; `npm run build:worker` 0; `git diff --check` 0; tracked-file secret scan clean; no `.env` tracked.
+- Design note: first cut used SECURITY DEFINER discovery functions, but FORCE RLS correctly filters even owner-executed functions in app-owned dev/test DBs, so unscoped dispatch/discovery returned zero rows (5/8 tests failed). Replaced with ID-only `job_dispatch_index` (UUIDs + timestamps, no RLS — same rationale as the un-RLS'd users anchor), written atomically in the accept tx and retired at terminal state; every domain step re-enters withTenant with the recorded accepting member. Schema-guard test pins the ID-only shape. Per-migration maintenance (S05 precedent): older suites' truncate lists + tenancy rollback ordering extended for the four new tables.
 - Review: reviewer, reviewed SHA, findings, verdict:
 - Integration: current main SHA, tested candidate SHA, checks:
 - Merge SHA / post-merge smoke:
