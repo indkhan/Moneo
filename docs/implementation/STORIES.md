@@ -466,8 +466,8 @@ Execution record:
 
 ## E02-S03 — Upload, quarantine and parse bounded source files
 
-Status: Draft | Release: R1 | Epic: E02
-Dependencies: E02-S02, E00-S03
+Status: Ready | Release: R1 | Epic: E02
+Dependencies: E02-S02, E00-S03 (both Done; refined against merged `7a2ae4c`)
 
 Outcome: An authenticated user can submit CSV/XLSX into private quarantine and receive exact traceable parsed observations or a safe typed rejection through the durable job system.
 Contracts: Product §§6–8; architecture §§5–9, 181–183, 202, 216–218, 443–446 and 455–456; E00-S03 parser/fixture decision.
@@ -485,7 +485,23 @@ Verification: planned `npm run test:upload` real PG/object-store/scanner plus `n
 Review focus: direct serving, path/key traversal, unscanned promotion, credential inheritance, archive expansion, partial persistence, retention claims and scanner bypass.
 Rollout/rollback: Quarantine endpoint disabled by default until scanner/storage gates pass. Rollback stops uploads/jobs first and preserves quarantined/accepted metadata for controlled cleanup.
 
-Readiness blocker: select and test maintained digest-pinned private object-store and malware-scanner images without changing the production privacy boundary; then replace this line with the standard execution record and mark Ready.
+Readiness blocker: CLOSED by refinement below (storage + scanner selected, digest-pinned, exercised locally 2026-09-18); implementation may now be assigned.
+
+Refinement record (orchestrator, no product code changed):
+- Test object storage: `quay.io/minio/minio` server `RELEASE.2025-09-07T16-13-09Z` pinned by digest `sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e`; CLI `quay.io/minio/mc` pinned `sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727` (exercise tool only, not a service). Exercised disposable loopback container (`--name moneo-s03-minio-probe`, `127.0.0.1:9000/9001`, synthetic root creds, removed with `-v` after): `mb` quarantine bucket, `put` 74 B synthetic CSV, `ls`/`stat` (ETag `163a92e…`, `Content-Type: text/csv`), `get` roundtrip byte-identical (`Compare-Object` clean), `anonymous get` reports `private` (no public serving by default). Images were already present locally; digests re-verified with `docker inspect`.
+- Malware scanner: `clamav/clamav:stable` pinned `sha256:9cb27d7660bdf66e9878c832cb433dd8aa152cfbe16f3c2c0084c80b04ae22b4` (pulled 2026-09-18; `clamd --version` = ClamAV 1.5.4, daily DB auto-updated 28122→28126 at startup). Exercised disposable container (`--name moneo-s03-clamav-probe`, removed after): `clamdscan` clean synthetic CSV → `OK` exit 0; EICAR standard test file (safe industry vector, not malware) → `Eicar-Test-Signature FOUND` exit 1. No scanned bytes leave the container; only signature updates contact Cisco CDN.
+- Privacy rationale (smallest): both services run as local disposable loopback containers against synthetic fixtures only — no financial bytes reach any third party, so no new data processor is introduced and the production privacy boundary is unchanged. Production object storage / scanner choice, persistence, TLS and retention enforcement stay E08/deployment gates; S03 tests must reuse these (or newer, re-pinned) images with the same loopback+disposable discipline and must never point at shared/production buckets or external scanning websites (arch §§445–446).
+- Maintenance rationale (smallest): MinIO is the S3-compatible reference implementation (S3 API the app already targets per arch §367; Apache-2.0; weekly releases); ClamAV is Cisco's maintained open-source scanner (official `clamav/clamav` image, versioned DBs). Digest pins make test runs reproducible; bump tag+digest together with a re-run of the clean/EICAR probes (same commands as above). No SDK dependency is added for S03 exercise (`mc` CLI only); the app-side S3 client (if any) arrives with the S03 implementation slice, not this refinement.
+- Implementation binding: S03 must run these images (or explicitly re-pinned successors) in real PG/object-store/scanner integration (`npm run test:upload`); docs-only selection would not have sufficed — the put/get/private and OK/FOUND runs above are the gate evidence. No founder decision required (test-only, no product/boundary change).
+
+Execution record:
+- Assignee / branch / worktree:
+- Base SHA / implementation head SHA:
+- Tests: commands, environment, exit codes, result links:
+- Review: reviewer, reviewed SHA, findings, verdict:
+- Integration: current main SHA, tested candidate SHA, checks:
+- Merge SHA / post-merge smoke:
+- Remaining blockers or explicitly accepted nonblocking follow-up:
 
 ## E02-S04 — Infer mappings with deterministic acceptance and manual fallback
 
