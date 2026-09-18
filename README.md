@@ -30,6 +30,33 @@ temporary credential files after the run.
 
 The E00-S04 durable-effects proof is documented in [`proof/durable/README.md`](proof/durable/README.md). It needs local PostgreSQL and a local Redis 7+ (see that README for the disposable database/DB convention); run it with `npm run test:durable`. It fails closed when either service is missing.
 
+## E02 ingestion slice (uploads)
+
+Quarantine uploads need three local prerequisites besides PostgreSQL/Redis,
+all synthetic-only and fail-closed when absent:
+
+```powershell
+# 1. S3-compatible object storage (pinned test image, loopback, disposable):
+docker run -d --name moneo-minio -p 127.0.0.1:9000:9000 `
+  -e MINIO_ROOT_USER=moneo-test-only -e MINIO_ROOT_PASSWORD=moneo-test-only-secret-01 `
+  quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e server /data
+# 2. Malware scanner (pinned test image, loopback, disposable; first boot
+#    downloads signature databases and takes a few minutes):
+docker run -d --name moneo-clamav -p 127.0.0.1:3310:3310 `
+  clamav/clamav:stable@sha256:9cb27d7660bdf66e9878c832cb433dd8aa152cfbe16f3c2c0084c80b04ae22b4
+# 3. Local env (names only here; values stay in the ignored .env):
+#    UPLOADS_ENABLED=1 S3_ENDPOINT=http://127.0.0.1:9000 S3_REGION=us-east-1
+#    S3_ACCESS_KEY=<synthetic> S3_SECRET_KEY=<synthetic> S3_BUCKET=<test bucket>
+#    CLAMAV_HOST=127.0.0.1 CLAMAV_PORT=3310
+npm run build:parser   # compiles the worker-spawned bounded parser child
+npm run test:upload    # real PG + MinIO + clamd integration
+```
+
+Uploads stay disabled unless `UPLOADS_ENABLED=1` with all S3/scanner inputs
+present; the intake endpoint hides as 404 otherwise. Scanned bytes never
+leave the loopback scanner; quarantined bytes stay in the private bucket
+prefix under generated keys and are never served back.
+
 ## E01 application slice
 
 Copy `.env.example` to `.env` (ignored by Git) for machine-local synthetic

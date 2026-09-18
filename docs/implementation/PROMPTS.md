@@ -247,3 +247,99 @@ the same critical smoke passes locally, in CI and in synthetic staging. Record
 revision, environment, commands and results in STORIES.md. Stop at the W1 gate;
 do not begin E02, use real customer financial data, or publicly release.
 ```
+
+## Run W2 / E02 after the passed W1 exit
+
+```text
+Act as the Moneo implementation orchestrator and continue until W2/E02 is
+genuinely complete or a material product/trust-boundary decision blocks it.
+Do not stop merely after planning, scaffolding, one story, or an agent report.
+
+Before changing code, read AGENTS.md and all implementation documents required
+by docs/implementation/README.md. Read the Delivery baseline and the exact
+architecture sections referenced by each E02 story. Inspect Git, worktrees,
+running tasks, CI and the canonical STORIES.md ledger; verify the recorded E00/
+E01 audit and W1 pass against actual SHAs and checks. Preserve unrelated work.
+Never display, copy, commit or log `.env` values. The ignored local `.env`
+contains the development OpenRouter key; when a bounded synthetic live gate is
+required, load it with Node's native `--env-file=.env` mechanism and report only
+pass/fail, request counts and non-sensitive metadata.
+
+Implement E02-S01 through E02-S07 in dependency order. Use one short-lived
+story branch/worktree per story and keep main deployable. S01, S02 and S04-S07
+are Ready only when their dependencies are Done. S03 is Draft: before coding it,
+refine its existing ledger entry by selecting maintained digest-pinned private
+S3-compatible test storage and malware-scanner images, exercising them locally,
+and recording the smallest privacy/maintenance rationale. Do not change the
+production privacy boundary or mark S03 Ready from documentation alone.
+
+For every story, follow this complete loop without waiting for routine approval:
+1. Confirm dependencies and current main; record the base SHA and mark only that
+   story In progress in the canonical ledger.
+2. Trace the real callers and reuse existing E00/E01 code, migrations, command,
+   tenancy, policy, parser and durable-job proof patterns. Build the smallest
+   consumed vertical slice; prefer PostgreSQL constraints/transactions, Node
+   built-ins and already-pinned packages. Do not create a generic workflow DSL,
+   provider framework, repository layer, service tree, placeholder UI or R2/R3
+   capability.
+3. For nontrivial recovery, authorization, parsing, money or concurrency logic,
+   first demonstrate a failing acceptance/regression check, then the passing
+   implementation. Use real disposable PostgreSQL/Redis/object-store/scanner
+   services where the story requires them. Mocks cannot prove transaction,
+   fencing, RLS, queue-loss, quarantine or malware boundaries.
+4. Commit the focused candidate and explicitly delegate independent adversarial
+   review to a separate available agent/task. Give it the story, contracts,
+   base/head SHAs, full diff and relevant callers. The reviewer must not edit
+   what it approves. Implementer fixes findings, adds the smallest regression
+   check, and requests re-review of the new SHA. Never self-approve or reuse an
+   approval after the candidate changes.
+5. Fetch latest main, construct and test the actual integration candidate, then
+   merge only after required checks and current independent approval pass. Run
+   post-merge smoke and update the story's single execution record with actual
+   commands, exit codes, SHAs, review verdict, CI link, merge and remaining
+   limitations. A skipped/live-unavailable check is not a pass.
+6. Continue immediately to the next dependency-ready E02 story. If a gate fails,
+   diagnose and fix its root cause before dependent work. After two failed
+   fix/review cycles, split or replan the story in the same ledger instead of
+   weakening acceptance or looping blindly.
+
+Preserve these non-negotiable boundaries throughout W2:
+- PostgreSQL is durable truth; BullMQ is at-least-once transport. Accepted work,
+  outbox state, immutable results, attempt generations, checkpoints and fencing
+  must make duplicate delivery, worker death and complete Redis loss converge
+  without duplicate business effects.
+- Enforce membership, explicit workspace predicates, composite tenant keys and
+  FORCE RLS at every HTTP, worker, reconciliation and shared-function boundary.
+  Tenant-owned and nonexistent IDs must not become distinguishable or leak data.
+- Money stays exact; models never authorize or calculate canonical money. Raw
+  files/rows, secrets and excluded accounts never enter Redis, logs or model
+  context outside the story's minimum explicitly permitted synthetic sample.
+- Quarantine bytes are private and never directly served. Scanner/parser workers
+  receive no DB/model credentials. Signature, size, archive, formula, external
+  link, macro, bomb, timeout, memory and process-death cases fail closed.
+- Deterministic mapping comes first. OpenRouter is bounded assistance with a
+  strict schema, reservation, policy-version checks and validated output; outage,
+  malformed output or exclusion must leave the manual path usable.
+- Reimport/dedup preserves legitimate identical purchases and provenance. Fuzzy
+  date/amount/description equality is never identity. Staged/rejected ambiguity
+  never enters accepted totals.
+- Keep the server-rendered UI keyboard usable, labelled, responsive at 320 px,
+  explicit about errors/progress/cancel/retry, and durable across refresh/login.
+
+At E02-S07, run the actual W2 exit demonstration on the merged candidate: first
+and overlapping second synthetic CSV/XLSX imports; exact canonical, multiplicity,
+provenance and review counts from an independent oracle; worker death at each
+checkpoint; Redis loss; cancel/retry; hostile and unsupported uploads; two-tenant
+ID swaps; browser keyboard/320 px journey; scanner/storage integration; full W1
+critical regression; deliberate-failure gate; configured staging smoke; diff and
+tracked-secret hygiene. Measure the declared 1-row, 10-file and 100k-row/resource
+limits rather than inventing an SLA. Record the final merged SHA, environment,
+commands, durations and independent review in STORIES.md.
+
+Stop only after W2 is recorded Pass, or with one precise blocker that truly
+requires founder input. Do not begin E03, use real customer financial data,
+enable public ingestion, deploy publicly, or silently relax a failed gate.
+Your final response must state: integrated SHA, stories completed, exact checks
+and CI results, live-provider status, remaining limitations, and next eligible
+story. Claims without repository evidence do not count.
+```

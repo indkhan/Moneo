@@ -80,6 +80,7 @@ try {
         ok: true,
         sheet: parsed.sheet,
         ignoredSheets: parsed.ignoredSheets,
+        header: parsed.header,
         proposals,
         decisions,
       };
@@ -88,6 +89,7 @@ try {
         ok: true,
         sheet: parsed.sheet,
         ignoredSheets: parsed.ignoredSheets,
+        header: parsed.header,
         proposals: parsed.proposals,
       };
     }
