@@ -91,7 +91,9 @@ export class TxError extends Error {
     | "idempotency_reuse"
     | "idempotency_expired"
     | "undo_conflict"
-    | "unsupported_undo";
+    | "unsupported_undo"
+    | "limit_exceeded"
+    | "unsupported_operation";
   readonly currentVersion?: string;
   constructor(code: TxError["code"], currentVersion?: string) {
     super(code);
@@ -110,8 +112,12 @@ function checkUuid(value: unknown): string {
 }
 
 function checkName(value: unknown): string {
-  if (typeof value !== "string" || value.length < 1 || value.length > 100) throw new TenantInvalid();
-  return value;
+  // Trimmed and reject-empty: whitespace-only names are not names (tags
+  // already trim via normalizeTagName; categories match that boundary).
+  if (typeof value !== "string") throw new TenantInvalid();
+  const trimmed = value.trim();
+  if (trimmed.length < 1 || trimmed.length > 100) throw new TenantInvalid();
+  return trimmed;
 }
 
 function checkDate(value: unknown): string {
@@ -530,7 +536,7 @@ export async function createCategoryTx(client: PoolClient, claims: TenantClaims,
       if ((sys.rowCount ?? 0) === 0) throw new TxError("not_found");
     }
     const count = await client.query("SELECT COUNT(*) AS c FROM categories WHERE workspace_id = $1 AND archived_at IS NULL", [claims.workspaceId]);
-    if (Number((count.rows[0] as { c: string }).c) >= 500) throw new TxError("unsupported_undo");
+    if (Number((count.rows[0] as { c: string }).c) >= 500) throw new TxError("limit_exceeded");
     const id = uuidv7();
     let row: CategoryRow;
     try {
@@ -608,14 +614,22 @@ export async function createTagTx(client: PoolClient, claims: TenantClaims, acto
   const hash = requestHash({ command: TAGS_CREATE_COMMAND, workspaceId: input.workspaceId, normalized });
   return claimAndExecute(client, claims, actorId, TAGS_CREATE_COMMAND, input.idempotencyKey, hash, async (client, operationId) => {
     const count = await client.query("SELECT COUNT(*) AS c FROM tags WHERE workspace_id = $1 AND archived_at IS NULL", [claims.workspaceId]);
-    if (Number((count.rows[0] as { c: string }).c) >= 500) throw new TxError("unsupported_undo");
+    if (Number((count.rows[0] as { c: string }).c) >= 500) throw new TxError("limit_exceeded");
     const dupe = await client.query("SELECT id FROM tags WHERE workspace_id = $1 AND normalized_name = $2 AND archived_at IS NULL", [claims.workspaceId, normalized]);
     if ((dupe.rowCount ?? 0) > 0) throw new TxError("idempotency_reuse");
     const id = uuidv7();
-    const inserted = await client.query(
-      "INSERT INTO tags (workspace_id, id, name, normalized_name) VALUES ($1, $2, $3, $4) RETURNING workspace_id, id, name, normalized_name, archived_at, created_at",
-      [claims.workspaceId, id, input.name.trim(), normalized],
-    );
+    // B1: the SELECT pre-check races under concurrency; the partial unique
+    // index is the arbiter — map its violation to the same 409 contract.
+    let inserted;
+    try {
+      inserted = await client.query(
+        "INSERT INTO tags (workspace_id, id, name, normalized_name) VALUES ($1, $2, $3, $4) RETURNING workspace_id, id, name, normalized_name, archived_at, created_at",
+        [claims.workspaceId, id, input.name.trim(), normalized],
+      );
+    } catch (err) {
+      if ((err as { code?: string }).code === "23505") throw new TxError("idempotency_reuse");
+      throw err;
+    }
     const view = toTagView(inserted.rows[0] as TagRow);
     await insertAudit(client, claims, actorId, "tag", id, "create", null, view, operationId);
     await bumpRevision(client, claims.workspaceId);
@@ -726,7 +740,9 @@ export async function addTagTx(client: PoolClient, claims: TenantClaims, actorId
   const expected = await requireVersion(input.expectedVersion);
   const hash = requestHash({ command: ADD_TAG_COMMAND, workspaceId: input.workspaceId, kind: input.transactionKind, transactionId: input.transactionId, tagId: input.tagId, expectedVersion: input.expectedVersion });
   return claimAndExecute(client, claims, actorId, ADD_TAG_COMMAND, input.idempotencyKey, hash, async (client, operationId) => {
-    if (input.transactionKind !== "imported") throw new TxError("unsupported_undo");
+    // Tags attach to imported transactions only in R1: transaction_tags has
+    // no manual-transactions leg (documented limitation, honest 400).
+    if (input.transactionKind !== "imported") throw new TxError("unsupported_operation");
     await requireLiveTag(client, claims.workspaceId, input.tagId);
     const before = await readTransactionView(client, claims.workspaceId, input.transactionKind, input.transactionId);
     if (!before) throw new TxError("not_found");
@@ -734,9 +750,29 @@ export async function addTagTx(client: PoolClient, claims: TenantClaims, actorId
     const existing = await client.query("SELECT 1 FROM transaction_tags WHERE workspace_id = $1 AND transaction_id = $2 AND tag_id = $3", [claims.workspaceId, input.transactionId, input.tagId]);
     if ((existing.rowCount ?? 0) === 0) {
       const count = await client.query("SELECT COUNT(*) AS c FROM transaction_tags WHERE workspace_id = $1 AND transaction_id = $2", [claims.workspaceId, input.transactionId]);
-      if (Number((count.rows[0] as { c: string }).c) >= 20) throw new TxError("unsupported_undo");
-      await client.query("INSERT INTO transaction_tags (workspace_id, transaction_id, tag_id) VALUES ($1, $2, $3)", [claims.workspaceId, input.transactionId, input.tagId]);
-      await client.query("UPDATE transactions SET version = version + 1, updated_at = now() WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, input.transactionId]);
+      if (Number((count.rows[0] as { c: string }).c) >= 20) throw new TxError("limit_exceeded");
+      // A 23505 here means a concurrent adder won the same link between our
+      // check and insert — savepoint-guard it (a failed query would poison
+      // the transaction) and report the honest version conflict.
+      await client.query("SAVEPOINT tag_link");
+      try {
+        await client.query("INSERT INTO transaction_tags (workspace_id, transaction_id, tag_id) VALUES ($1, $2, $3)", [claims.workspaceId, input.transactionId, input.tagId]);
+        await client.query("RELEASE SAVEPOINT tag_link");
+      } catch (err) {
+        await client.query("ROLLBACK TO SAVEPOINT tag_link");
+        if ((err as { code?: string }).code === "23505") {
+          const current = await readTransactionView(client, claims.workspaceId, input.transactionKind, input.transactionId);
+          throw new TxError("version_mismatch", current?.version);
+        }
+        throw err;
+      }
+      // B2: atomic CAS on the version — concurrent adders on one version
+      // converge to exactly one winner instead of silently double-bumping.
+      const bumped = await client.query("UPDATE transactions SET version = version + 1, updated_at = now() WHERE workspace_id = $1 AND id = $2 AND version = $3", [claims.workspaceId, input.transactionId, expected.toString(10)]);
+      if ((bumped.rowCount ?? 0) === 0) {
+        const current = await readTransactionView(client, claims.workspaceId, input.transactionKind, input.transactionId);
+        throw new TxError("version_mismatch", current?.version);
+      }
     }
     const after = (await readTransactionView(client, claims.workspaceId, input.transactionKind, input.transactionId))!;
     await insertAudit(client, claims, actorId, "transaction", input.transactionId, "add_tag", before, after, operationId);
@@ -757,13 +793,17 @@ export async function removeTagTx(client: PoolClient, claims: TenantClaims, acto
   const expected = await requireVersion(input.expectedVersion);
   const hash = requestHash({ command: REMOVE_TAG_COMMAND, workspaceId: input.workspaceId, kind: input.transactionKind, transactionId: input.transactionId, tagId: input.tagId, expectedVersion: input.expectedVersion });
   return claimAndExecute(client, claims, actorId, REMOVE_TAG_COMMAND, input.idempotencyKey, hash, async (client, operationId) => {
-    if (input.transactionKind !== "imported") throw new TxError("unsupported_undo");
+    if (input.transactionKind !== "imported") throw new TxError("unsupported_operation");
     const before = await readTransactionView(client, claims.workspaceId, input.transactionKind, input.transactionId);
     if (!before) throw new TxError("not_found");
     if (BigInt(before.version) !== expected) throw new TxError("version_mismatch", before.version);
     const deleted = await client.query("DELETE FROM transaction_tags WHERE workspace_id = $1 AND transaction_id = $2 AND tag_id = $3", [claims.workspaceId, input.transactionId, input.tagId]);
     if ((deleted.rowCount ?? 0) > 0) {
-      await client.query("UPDATE transactions SET version = version + 1, updated_at = now() WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, input.transactionId]);
+      const bumped = await client.query("UPDATE transactions SET version = version + 1, updated_at = now() WHERE workspace_id = $1 AND id = $2 AND version = $3", [claims.workspaceId, input.transactionId, expected.toString(10)]);
+      if ((bumped.rowCount ?? 0) === 0) {
+        const current = await readTransactionView(client, claims.workspaceId, input.transactionKind, input.transactionId);
+        throw new TxError("version_mismatch", current?.version);
+      }
     }
     const after = (await readTransactionView(client, claims.workspaceId, input.transactionKind, input.transactionId))!;
     await insertAudit(client, claims, actorId, "transaction", input.transactionId, "remove_tag", before, after, operationId);
@@ -786,7 +826,9 @@ export async function correctTx(client: PoolClient, claims: TenantClaims, actorI
   return claimAndExecute(client, claims, actorId, CORRECT_COMMAND, input.idempotencyKey, hash, async (client, operationId) => {
     if (input.categoryId !== undefined && input.categoryId !== null) await requireLiveCategory(client, claims.workspaceId, input.categoryId);
     if (input.tagIds !== undefined) {
-      if (input.transactionKind !== "imported") throw new TxError("unsupported_undo");
+      // Tag replacement shares the imported-only transaction_tags leg (see
+      // addTagTx); manual corrections use category/field paths instead.
+      if (input.transactionKind !== "imported") throw new TxError("unsupported_operation");
       for (const tagId of input.tagIds) await requireLiveTag(client, claims.workspaceId, tagId);
     }
     let minor: bigint | null = null;
@@ -836,6 +878,9 @@ export async function correctTx(client: PoolClient, claims: TenantClaims, actorI
 }
 
 export async function correct(pool: Pool, claims: TenantClaims, actorId: string, raw: unknown): Promise<TransactionResult> {
+  // N6: HTTP validates once here; the *Tx variants trust typed input from
+  // their caller (same caveat as S04 renameAccountTx) — future AI/artifact
+  // adapters must pass validated input or call these wrappers, never raw SQL.
   const input = validateCorrectInput(raw);
   if (input.workspaceId !== claims.workspaceId) throw new TenantDenied();
   if (!isUuid(input.transactionId)) throw new TenantDenied();
@@ -860,7 +905,12 @@ export async function undoTx(client: PoolClient, claims: TenantClaims, actorId: 
       "SELECT entity_type, entity_id, before_state, after_state FROM audit_events WHERE workspace_id = $1 AND operation_id = $2 ORDER BY created_at",
       [claims.workspaceId, input.operationId],
     );
-    if ((audits.rowCount ?? 0) === 0) throw new TxError("not_found");
+    // N5: exactly one audit row per undoable operation is today's invariant;
+    // more than one means the operation shape changed — refuse, don't guess.
+    if ((audits.rowCount ?? 0) !== 1) {
+      if ((audits.rowCount ?? 0) === 0) throw new TxError("not_found");
+      throw new TxError("unsupported_undo");
+    }
     const audit = audits.rows[0] as { entity_type: string; entity_id: string; before_state: TransactionView; after_state: TransactionView };
     const kind: TransactionKind = audit.entity_type === "manual_transaction" ? "manual" : "imported";
     const before = audit.before_state as TransactionView;
@@ -868,6 +918,19 @@ export async function undoTx(client: PoolClient, claims: TenantClaims, actorId: 
     const current = await readTransactionView(client, claims.workspaceId, kind, audit.entity_id);
     if (!current) throw new TxError("not_found");
     if (current.version !== after.version) throw new TxError("undo_conflict", current.version);
+    // N1: undo must not resurrect archived taxonomy — restoring a category
+    // or tag that has since been archived would violate the forward-path
+    // liveness invariant, so the moved-on object conflicts instead.
+    if (before.categoryId !== null && before.categoryId !== undefined) {
+      const cat = await client.query("SELECT id FROM categories WHERE workspace_id = $1 AND id = $2 AND archived_at IS NULL", [claims.workspaceId, before.categoryId]);
+      if ((cat.rowCount ?? 0) === 0) throw new TxError("undo_conflict", current.version);
+    }
+    if (kind === "imported") {
+      for (const tagId of before.tagIds ?? []) {
+        const tag = await client.query("SELECT id FROM tags WHERE workspace_id = $1 AND id = $2 AND archived_at IS NULL", [claims.workspaceId, tagId]);
+        if ((tag.rowCount ?? 0) === 0) throw new TxError("undo_conflict", current.version);
+      }
+    }
     const table = tableFor(kind);
     const amountMinor = BigInt(before.amountMinor);
     const updated = await client.query(

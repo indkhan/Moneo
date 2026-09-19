@@ -265,6 +265,10 @@ function importCommitErrorBody(err: ImportCommitError): { status: number; body: 
 
 function txErrorBody(err: TxError): { status: number; body: unknown } {
   if (err.code === "not_found") return { status: 404, body: { error: "not_found" } };
+  // unsupported_operation is an honest 400 (wrong kind/shape for this
+  // command), never a version or undo conflict; unsupported_undo stays 409
+  // strictly for operations.undo on non-undoable operations.
+  if (err.code === "unsupported_operation") return { status: 400, body: { error: "invalid_request", reason: err.code } };
   if (err.code === "version_mismatch" || err.code === "undo_conflict") {
     return {
       status: 409,

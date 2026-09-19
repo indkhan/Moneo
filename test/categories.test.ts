@@ -515,6 +515,137 @@ describe("e03-s05 categories, tags, correction, audit, undo", () => {
     expect(moved.json.version).toBe("9007199254740994");
   });
 
+  it("converges concurrent duplicate tag creation without 503s (B1)", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e03-tagrace-a");
+    const results = await Promise.all(
+      Array.from({ length: 2 }, () =>
+        postJson(base, "/api/commands/tags.create", cookie, {
+          workspaceId,
+          name: "Racy",
+          idempotencyKey: randomUUID(),
+        }),
+      ),
+    );
+    expect(results.filter((r) => r.status === 200).length).toBe(1);
+    expect(results.filter((r) => r.status === 409).length).toBe(1);
+    for (const r of results) expect(r.status).not.toBe(503);
+    expect(results.find((r) => r.status === 409)!.json).toEqual({ error: "conflict", reason: "idempotency_reuse" });
+  });
+
+  it("converges parallel add_tag on one version to a single winner (B2)", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId, userId } = await setupWorkspace(base, "e03-addrace-a");
+    const accountId = await createAccount(base, cookie, workspaceId, "Cash");
+    const txId = await insertImportedTx(workspaceId, userId, accountId);
+    const tag = await postJson(base, "/api/commands/tags.create", cookie, {
+      workspaceId,
+      name: "Shared",
+      idempotencyKey: randomUUID(),
+    });
+    const tagId = (tag.json as { id: string }).id;
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        postJson(base, "/api/commands/transactions.add_tag", cookie, {
+          workspaceId,
+          transactionKind: "imported",
+          transactionId: txId,
+          tagId,
+          expectedVersion: "1",
+          idempotencyKey: randomUUID(),
+        }),
+      ),
+    );
+    expect(results.filter((r) => r.status === 200).length).toBe(1);
+    expect(results.filter((r) => r.status === 409).length).toBe(4);
+    for (const r of results) expect(r.status).not.toBe(503);
+    const view = await getJson(base, `/api/transactions/${txId}?workspaceId=${workspaceId}&kind=imported`, cookie);
+    expect(view.json).toMatchObject({ version: "2", tagIds: [tagId] });
+  });
+
+  it("refuses undo that would resurrect archived taxonomy (N1)", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId, userId } = await setupWorkspace(base, "e03-undoarch-a");
+    const accountId = await createAccount(base, cookie, workspaceId, "Cash");
+    const txId = await insertImportedTx(workspaceId, userId, accountId);
+    const cat = await postJson(base, "/api/commands/categories.create", cookie, {
+      workspaceId,
+      name: "Doomed",
+      idempotencyKey: randomUUID(),
+    });
+    const categoryId = (cat.json as { id: string }).id;
+    const assigned = await postJson(base, "/api/commands/transactions.set_category", cookie, {
+      workspaceId,
+      transactionKind: "imported",
+      transactionId: txId,
+      categoryId,
+      expectedVersion: "1",
+      idempotencyKey: randomUUID(),
+    });
+    expect(assigned.status).toBe(200);
+    const cleared = await postJson(base, "/api/commands/transactions.set_category", cookie, {
+      workspaceId,
+      transactionKind: "imported",
+      transactionId: txId,
+      categoryId: null,
+      expectedVersion: "2",
+      idempotencyKey: randomUUID(),
+    });
+    expect(cleared.status).toBe(200);
+    const archived = await postJson(base, "/api/commands/categories.archive", cookie, {
+      workspaceId,
+      categoryId,
+      idempotencyKey: randomUUID(),
+    });
+    expect(archived.status).toBe(200);
+    const undone = await postJson(base, "/api/commands/operations.undo", cookie, {
+      workspaceId,
+      operationId: (cleared.json as { operationId: string }).operationId,
+      idempotencyKey: randomUUID(),
+    });
+    expect(undone.status).toBe(409);
+    expect(undone.json.reason).toBe("undo_conflict");
+  });
+
+  it("rejects whitespace-only category names and manual-transaction tags honestly (B3/N3)", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e03-honest-a");
+    const blank = await postJson(base, "/api/commands/categories.create", cookie, {
+      workspaceId,
+      name: "   ",
+      idempotencyKey: randomUUID(),
+    });
+    expect(blank.status).toBe(400);
+    expect(blank.json).toEqual({ error: "invalid_request" });
+
+    const accountId = await createAccount(base, cookie, workspaceId, "Cash");
+    const manual = await postJson(base, "/api/commands/accounts.manual_transaction", cookie, {
+      workspaceId,
+      accountId,
+      amount: "10.00",
+      currency: "EUR",
+      direction: "OUTFLOW",
+      effectiveDate: "2024-02-01",
+      description: "Manual",
+      idempotencyKey: randomUUID(),
+    });
+    const tag = await postJson(base, "/api/commands/tags.create", cookie, {
+      workspaceId,
+      name: "ManualTag",
+      idempotencyKey: randomUUID(),
+    });
+    const manualTag = await postJson(base, "/api/commands/transactions.add_tag", cookie, {
+      workspaceId,
+      transactionKind: "manual",
+      transactionId: (manual.json as { id: string }).id,
+      tagId: (tag.json as { id: string }).id,
+      expectedVersion: "1",
+      idempotencyKey: randomUUID(),
+    });
+    expect(manualTag.status).toBe(400);
+    expect(manualTag.json).toEqual({ error: "invalid_request", reason: "unsupported_operation" });
+  });
+
   it("corrects manual transactions and preserves transfer classification across category edits", async () => {
     const base = await startApp();
     const { cookie, workspaceId } = await setupWorkspace(base, "e03-manual-a");
