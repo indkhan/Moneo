@@ -68,6 +68,15 @@ import {
   validateConfirmInput as validateRecurringConfirmInput,
   validateDismissInput as validateRecurringDismissInput,
 } from "./commands/recurring.ts";
+import {
+  createArtifactDraft,
+  submitArtifactBuild,
+  getArtifactVersion,
+  listArtifactVersions,
+  activateArtifactVersion,
+  getArtifact,
+  listArtifacts,
+} from "./commands/artifacts.ts";
 
 export class TenantDenied extends Error {
   constructor() {
@@ -1829,6 +1838,158 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             return true;
           }
           tenantJson(res, 200, { profiles: await listMappingProfiles(pool, resolved.claim, name ?? undefined), requestId });
+          return true;
+        }
+        // E05-S01 artifacts: create draft, submit build, read version, list versions, activate, list artifacts
+        if (path === "/api/artifacts" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown; name?: unknown; description?: unknown };
+          if (typeof body.workspaceId !== "string" || !isUuid(body.workspaceId)) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const resolved = await claims(req, body.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            tenantJson(res, 201, await withTenant(pool, resolved.claim, async (client) => createArtifactDraft(client, resolved.claim!, body.name as string, body.description as string | undefined)));
+          } catch (err) {
+            if (err instanceof TenantInvalid) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/artifacts" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          tenantJson(res, 200, { artifacts: await withTenant(pool, resolved.claim, async (client) => listArtifacts(client, resolved.claim!)), requestId });
+          return true;
+        }
+        const artifactMatch = path.match(/^\/api\/artifacts\/([A-Za-z0-9-]+)$/);
+        if (artifactMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const artifact = await withTenant(pool, resolved.claim, async (client) => getArtifact(client, resolved.claim!, artifactMatch[1]));
+          if (!artifact) tenantJson(res, 404, { error: "not_found" });
+          else tenantJson(res, 200, artifact);
+          return true;
+        }
+        if (path === "/api/artifacts/build" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown; artifactId?: unknown; source?: unknown; manifest?: unknown };
+          if (typeof body.workspaceId !== "string" || !isUuid(body.workspaceId) || typeof body.artifactId !== "string" || !isUuid(body.artifactId) || typeof body.source !== "object" || body.source === null || typeof body.manifest !== "object" || body.manifest === null) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const artifactId = body.artifactId as string;
+          const source = body.source as { html: string; css: string; js: string };
+          const manifest = body.manifest as { artifactSdkVersion: string; runtimeVersion: string; sourceSchemaVersion: string; stateSchemaVersion: string; requestedPermissions: string[]; approvedPermissions: string[]; entrypoints: { full: string; compact: string }; resourceBudget: Record<string, number>; sourceHash: string; buildHash: string; createdByAIRun?: string; createdByUser?: string };
+          const resolved = await claims(req, body.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            tenantJson(res, 201, await withTenant(pool, resolved.claim, async (client) => submitArtifactBuild(client, resolved.claim!, artifactId, source, manifest)));
+          } catch (err) {
+            if (err instanceof TenantInvalid) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        const versionMatch = path.match(/^\/api\/artifacts\/([A-Za-z0-9-]+)\/versions\/([A-Za-z0-9-]+)$/);
+        if (versionMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const version = await withTenant(pool, resolved.claim, async (client) => getArtifactVersion(client, resolved.claim!, versionMatch[1], versionMatch[2]));
+          if (!version) tenantJson(res, 404, { error: "not_found" });
+          else tenantJson(res, 200, version);
+          return true;
+        }
+        const versionsMatch = path.match(/^\/api\/artifacts\/([A-Za-z0-9-]+)\/versions$/);
+        if (versionsMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          tenantJson(res, 200, { versions: await withTenant(pool, resolved.claim, async (client) => listArtifactVersions(client, resolved.claim!, versionsMatch[1])), requestId });
+          return true;
+        }
+        const activateMatch = path.match(/^\/api\/artifacts\/([A-Za-z0-9-]+)\/activate$/);
+        if (activateMatch && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown; versionId?: unknown; expectedActiveVersionId?: unknown };
+          if (typeof body.workspaceId !== "string" || !isUuid(body.workspaceId) || typeof body.versionId !== "string" || !isUuid(body.versionId)) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const versionId = body.versionId as string;
+          const expectedActiveVersionId = body.expectedActiveVersionId as string | undefined;
+          const resolved = await claims(req, body.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await withTenant(pool, resolved.claim, async (client) => activateArtifactVersion(client, resolved.claim!, activateMatch[1], versionId, expectedActiveVersionId));
+            tenantJson(res, 200, result);
+          } catch (err) {
+            if (err instanceof TenantInvalid) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            if (err instanceof Error && err.message === "VERSION_MISMATCH") {
+              tenantJson(res, 409, { error: "conflict", reason: "version_mismatch" });
+              return true;
+            }
+            if (err instanceof Error && err.message === "VERSION_NOT_FOUND") {
+              tenantJson(res, 404, { error: "not_found" });
+              return true;
+            }
+            if (err instanceof Error && err.message === "VERSION_NOT_READY") {
+              tenantJson(res, 409, { error: "conflict", reason: "version_not_ready" });
+              return true;
+            }
+            if (err instanceof Error && err.message === "ARTIFACT_NOT_FOUND") {
+              tenantJson(res, 404, { error: "not_found" });
+              return true;
+            }
+            throw err;
+          }
           return true;
         }
       } catch (err) {
