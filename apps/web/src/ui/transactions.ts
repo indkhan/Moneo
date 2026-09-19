@@ -110,7 +110,14 @@ export async function handleTransactionRoutes(
       return true;
     }
     const filters = filterQuery(query);
-    const offset = Math.max(0, Number(query.get("offset") ?? "0") || 0);
+    // N1: strict offset parsing — garbage maps to a 400 like the API
+    // validator, never silently to page one.
+    const offsetRaw = query.get("offset");
+    if (offsetRaw !== null && !/^\d+$/.test(offsetRaw)) {
+      html(res, 400, errorPage({ status: 400, heading: "Invalid page", message: "The page offset is not valid. Return to the first page and retry.", back: `/w/${escapeHtml(workspaceId)}/transactions`, requestId, authed: true }));
+      return true;
+    }
+    const offset = offsetRaw === null ? 0 : Math.min(1_000_000, Number(offsetRaw));
     try {
       const [result, accounts, categories] = await Promise.all([
         listTransactions(pool, resolved.claim, { workspaceId, ...filters, offset }),
@@ -132,12 +139,12 @@ export async function handleTransactionRoutes(
       const rows =
         result.items.length === 0
           ? `<p>No transactions on this page.</p>`
-          : `<table><caption>Transactions (${escapeHtml(sortDir)}; selection applies to this page only)</caption><thead><tr><th scope="col">Select</th><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Account</th><th scope="col">Amount</th><th scope="col">Direction</th><th scope="col">Category</th><th scope="col">Detail</th></tr></thead><tbody>${result.items
+          : `<div style="overflow-x:auto"><table><caption>Transactions (${escapeHtml(sortDir)}; selection applies to this page only)</caption><thead><tr><th scope="col">Select</th><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Account</th><th scope="col">Amount</th><th scope="col">Direction</th><th scope="col">Category</th><th scope="col">Detail</th></tr></thead><tbody>${result.items
               .map(
                 (t) =>
                   `<tr><td><input type="checkbox" form="bulk-form" name="sel" value="${escapeHtml(t.kind)}:${escapeHtml(t.id)}:${escapeHtml(t.version)}" aria-label="Select ${escapeHtml(rowLabel(t))}"></td><td>${escapeHtml(t.effectiveDate)}</td><td>${escapeHtml(t.description)}</td><td>${escapeHtml(accountName.get(t.accountId) ?? t.accountId)}</td><td>${escapeHtml(fmtAmount(t))}</td><td>${escapeHtml(t.direction)}</td><td>${escapeHtml(t.categoryId ? (categoryName.get(t.categoryId) ?? t.categoryId) : "Uncategorized")}</td><td><a href="/w/${escapeHtml(workspaceId)}/transactions/${escapeHtml(t.id)}?kind=${escapeHtml(t.kind)}">Open</a></td></tr>`,
               )
-              .join("")}</tbody></table>`;
+              .join("")}</tbody></table></div>`;
       const pager = `<p>${total === 0 ? "" : `Showing ${from}–${to} of ${total}. `}
         ${offset > 0 ? `<a href="/w/${escapeHtml(workspaceId)}/transactions?${escapeHtml(withOffset(filters, Math.max(0, offset - result.limit)))}">Previous page</a>` : ""}
         ${offset + result.items.length < total ? ` <a href="/w/${escapeHtml(workspaceId)}/transactions?${escapeHtml(withOffset(filters, offset + result.limit))}">Next page</a>` : ""}</p>`;
@@ -154,7 +161,7 @@ export async function handleTransactionRoutes(
         <label>Search <input name="search" maxlength="100" value="${escapeHtml(filters.search ?? "")}"></label>
         <label>Sort <select name="sort">${option("date_desc", "Newest first", filters.sort ?? "date_desc")}${option("date_asc", "Oldest first", filters.sort)}</select></label>
         <button type="submit">Apply</button></p></form>`;
-      const bulkForm = `<form id="bulk-form" method="post" action="/w/${escapeHtml(workspaceId)}/transactions/bulk"><input type="hidden" name="idempotencyKey" value="${randomUUID()}"><p><label>Bulk category <select name="categoryId"><option value="">— choose —</option><option value="__clear__">Clear category</option>${categories.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`).join("")}</select></label> <button type="submit">Apply to selected</button></p></form>`;
+      const bulkForm = `<form id="bulk-form" method="post" action="/w/${escapeHtml(workspaceId)}/transactions/bulk"><input type="hidden" name="idempotencyKey" value="${randomUUID()}"><p><label>Bulk category <select name="categoryId"><option value="">— choose —</option><option value="__clear__">Clear category</option>${categories.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`).join("")}</select></label> <button type="submit">Apply to selected</button> <small>One kind (imported or manual) per batch.</small></p></form>`;
       const notice =
         query.get("notice") === "bulk-applied"
           ? `<div class="notice" role="status"><p>Bulk category update applied.</p></div>`
@@ -228,40 +235,40 @@ export async function handleTransactionRoutes(
       html(res, 400, errorPage({ status: 400, heading: "Bulk update failed", message: "Unknown category.", back: `/w/${workspaceId}/transactions`, requestId, authed: true }));
       return true;
     }
+    // B1: one UI batch covers exactly one kind. Mixed-kind selections are
+    // rejected up front (400) rather than executed as sequential per-kind
+    // transactions, which could half-apply and could not replay identically.
+    const kinds = new Set(parsed.map((i) => i.kind));
+    if (kinds.size > 1) {
+      event("ui_command_denied:bulk-mixed-kind");
+      html(res, 400, errorPage({ status: 400, heading: "One kind per batch", message: "Select imported or manual transactions in a single bulk update, not both. Split the selection and retry.", back: `/w/${workspaceId}/transactions`, requestId, authed: true }));
+      return true;
+    }
     try {
-      // Mixed-kind selections need one call per kind (documented S06
-      // limitation); the form key drives the first call so a double submit
-      // replays identically, and version conflicts surface per batch.
-      const groups = new Map<string, typeof parsed>();
-      for (const item of parsed) {
-        const list = groups.get(item.kind) ?? [];
-        list.push(item);
-        groups.set(item.kind, list);
-      }
-      let first = true;
-      for (const [kind, items] of groups) {
-        const input = {
-          workspaceId,
-          transactionKind: kind,
-          categoryId,
-          items: items.map((i) => ({ transactionId: i.id, expectedVersion: i.version })),
-          idempotencyKey: first ? idempotencyKey : randomUUID(),
-        };
-        first = false;
-        validateBulkSetCategoryInput(input);
-        await bulkSetCategoryCmd(pool, resolved.claim, resolved.claim.userId, input);
-      }
+      const kind = parsed[0].kind;
+      const input = {
+        workspaceId,
+        transactionKind: kind,
+        categoryId,
+        items: parsed.map((i) => ({ transactionId: i.id, expectedVersion: i.version })),
+        idempotencyKey,
+      };
+      validateBulkSetCategoryInput(input);
+      await bulkSetCategoryCmd(pool, resolved.claim, resolved.claim.userId, input);
       event("ui_command_ok:bulk");
       res.writeHead(303, { Location: `/w/${workspaceId}/transactions?notice=bulk-applied` });
       res.end();
       return true;
     } catch (err) {
+      // N2: not_found maps to the same 409 conflict shell as stale versions —
+      // the UI never distinguishes unknown categories/transactions from
+      // moved-on ones (uniform, no existence oracle).
       if (err instanceof TxError && (err.code === "version_mismatch" || err.code === "idempotency_reuse" || err.code === "idempotency_expired" || err.code === "not_found")) {
         event("ui_command_conflict:bulk");
         const detail = (err.detail as { items?: { transactionId: string; reason: string; currentVersion?: string }[] } | undefined)?.items ?? [];
         html(
           res,
-          err.code === "not_found" ? 404 : 409,
+          409,
           page({
             title: "Bulk update conflict",
             requestId,

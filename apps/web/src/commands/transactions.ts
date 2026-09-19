@@ -562,7 +562,7 @@ export async function createCategory(pool: Pool, claims: TenantClaims, actorId: 
   const input = validateCreateCategoryInput(raw);
   if (input.workspaceId !== claims.workspaceId) throw new TenantDenied();
   const outcome = await withTenant(pool, claims, (client) => createCategoryTx(client, claims, actorId, input));
-  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion);
+  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion, outcome.detail);
   return { view: outcome.result, operationId: outcome.operationId, replayed: outcome.replayed };
 }
 
@@ -587,7 +587,7 @@ export async function archiveCategory(pool: Pool, claims: TenantClaims, actorId:
   const input = validateArchiveCategoryInput(raw);
   if (input.workspaceId !== claims.workspaceId) throw new TenantDenied();
   const outcome = await withTenant(pool, claims, (client) => archiveCategoryTx(client, claims, actorId, input));
-  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion);
+  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion, outcome.detail);
   return { view: outcome.result, operationId: outcome.operationId, replayed: outcome.replayed };
 }
 
@@ -643,7 +643,7 @@ export async function createTag(pool: Pool, claims: TenantClaims, actorId: strin
   const input = validateCreateTagInput(raw);
   if (input.workspaceId !== claims.workspaceId) throw new TenantDenied();
   const outcome = await withTenant(pool, claims, (client) => createTagTx(client, claims, actorId, input));
-  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion);
+  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion, outcome.detail);
   return { view: outcome.result, operationId: outcome.operationId, replayed: outcome.replayed };
 }
 
@@ -668,7 +668,7 @@ export async function archiveTag(pool: Pool, claims: TenantClaims, actorId: stri
   const input = validateArchiveTagInput(raw);
   if (input.workspaceId !== claims.workspaceId) throw new TenantDenied();
   const outcome = await withTenant(pool, claims, (client) => archiveTagTx(client, claims, actorId, input));
-  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion);
+  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion, outcome.detail);
   return { view: outcome.result, operationId: outcome.operationId, replayed: outcome.replayed };
 }
 
@@ -734,7 +734,7 @@ export async function setCategory(pool: Pool, claims: TenantClaims, actorId: str
   if (!isUuid(input.transactionId)) throw new TenantDenied();
   if (input.categoryId !== null && !isUuid(input.categoryId)) throw new TenantDenied();
   const outcome = await withTenant(pool, claims, (client) => setCategoryTx(client, claims, actorId, input));
-  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion);
+  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion, outcome.detail);
   return { view: outcome.result, operationId: outcome.operationId, replayed: outcome.replayed };
 }
 
@@ -787,7 +787,7 @@ export async function addTag(pool: Pool, claims: TenantClaims, actorId: string, 
   const input = validateTagLinkInput(raw);
   if (input.workspaceId !== claims.workspaceId) throw new TenantDenied();
   const outcome = await withTenant(pool, claims, (client) => addTagTx(client, claims, actorId, input));
-  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion);
+  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion, outcome.detail);
   return { view: outcome.result, operationId: outcome.operationId, replayed: outcome.replayed };
 }
 
@@ -818,7 +818,7 @@ export async function removeTag(pool: Pool, claims: TenantClaims, actorId: strin
   const input = validateTagLinkInput(raw);
   if (input.workspaceId !== claims.workspaceId) throw new TenantDenied();
   const outcome = await withTenant(pool, claims, (client) => removeTagTx(client, claims, actorId, input));
-  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion);
+  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion, outcome.detail);
   return { view: outcome.result, operationId: outcome.operationId, replayed: outcome.replayed };
 }
 
@@ -887,7 +887,7 @@ export async function correct(pool: Pool, claims: TenantClaims, actorId: string,
   if (input.workspaceId !== claims.workspaceId) throw new TenantDenied();
   if (!isUuid(input.transactionId)) throw new TenantDenied();
   const outcome = await withTenant(pool, claims, (client) => correctTx(client, claims, actorId, input));
-  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion);
+  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion, outcome.detail);
   return { view: outcome.result, operationId: outcome.operationId, replayed: outcome.replayed };
 }
 
@@ -1070,7 +1070,7 @@ export async function undo(pool: Pool, claims: TenantClaims, actorId: string, ra
   const input = validateUndoInput(raw);
   if (input.workspaceId !== claims.workspaceId) throw new TenantDenied();
   const outcome = await withTenant(pool, claims, (client) => undoTx(client, claims, actorId, input));
-  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion);
+  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion, outcome.detail);
   return { view: outcome.result, operationId: outcome.operationId, replayed: outcome.replayed };
 }
 

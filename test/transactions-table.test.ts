@@ -349,6 +349,24 @@ describe("e03-s06 transaction table and drawer", () => {
     expect(still.json.version).toBe("2");
   });
 
+  it("rejects mixed-kind bulk selections instead of half-applying (B1)", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId, userId } = await setupWorkspace(base, "e03-bulkmix-a");
+    const acct = await createAccount(base, cookie, workspaceId, "Cash");
+    const imported = await insertImportedTx(workspaceId, userId, acct, { description: "Imp" });
+    const manualId = await createManualTx(base, cookie, workspaceId, acct, "Man");
+    const cat = (await postJson(base, "/api/commands/categories.create", cookie, { workspaceId, name: "Mix", idempotencyKey: randomUUID() })).json as { id: string };
+    const mixed = await postForm(base, `/w/${workspaceId}/transactions/bulk`, cookie, {
+      sel: [`imported:${imported}:1`, `manual:${manualId}:1`],
+      categoryId: cat.id,
+      idempotencyKey: randomUUID(),
+    });
+    expect(mixed.status).toBe(400);
+    expect(mixed.text).toContain("One kind per batch");
+    const untouched = await getJson(base, `/api/transactions/${imported}?workspaceId=${workspaceId}&kind=imported`, cookie);
+    expect(untouched.json).toMatchObject({ categoryId: null, version: "1" });
+  });
+
   it("converges a bulk batch racing a single correction to one winner", async () => {
     const base = await startApp();
     const { cookie, workspaceId, userId } = await setupWorkspace(base, "e03-bulkrace-a");
