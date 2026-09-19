@@ -327,7 +327,10 @@ describe("e03-s01 accounts, manual transactions, balance snapshots", () => {
       currency: "EUR",
       idempotencyKey: createKey,
     });
-    const accountId = (await postJson(base, "/api/accounts", cookie, { workspaceId, name: "Temp" })).json as { id: string };
+    // NOTE (E03-S08 exit): this must be a real account id so the request
+    // reaches amount parsing — passing the whole body object would 400 on
+    // the accountId shape instead of exercising precision.
+    const accountId = ((await postJson(base, "/api/accounts", cookie, { workspaceId, name: "Temp" })).json as { id: string }).id;
 
     // EUR with 3 decimal places should fail
     const bad = await postJson(base, "/api/commands/accounts.manual_transaction", cookie, {

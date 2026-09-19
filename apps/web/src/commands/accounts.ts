@@ -805,7 +805,14 @@ export async function updateAccount(
 }
 
 export async function manualTransactionTx(client: PoolClient, claims: TenantClaims, actorId: string, input: ManualTransactionInput): Promise<TxOutcome<ManualTransactionView>> {
-  const amountMinor = parseMinor(input.amount, input.currency);
+  // Money parse failures are malformed input (400 via TenantInvalid), never
+  // a 503: parse before claiming any journal row so retries stay safe.
+  let amountMinor: bigint;
+  try {
+    amountMinor = parseMinor(input.amount, input.currency);
+  } catch {
+    throw new TenantInvalid();
+  }
   const hash = manualTransactionRequestHash(input);
   return claimAndExecute(client, claims, actorId, MANUAL_TRANSACTION_COMMAND, input, hash, async (client, operationId) => {
     const id = uuidv7();
@@ -835,7 +842,12 @@ export async function manualTransaction(
 }
 
 export async function balanceSnapshotTx(client: PoolClient, claims: TenantClaims, actorId: string, input: BalanceSnapshotInput): Promise<TxOutcome<BalanceSnapshotView>> {
-  const amountMinor = parseSignedMinor(input.amount, input.currency);
+  let amountMinor: bigint;
+  try {
+    amountMinor = parseSignedMinor(input.amount, input.currency);
+  } catch {
+    throw new TenantInvalid();
+  }
   const hash = balanceSnapshotRequestHash(input);
   return claimAndExecute(client, claims, actorId, BALANCE_SNAPSHOT_COMMAND, input, hash, async (client, operationId) => {
     const account = await client.query("SELECT base_currency_code FROM accounts WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, input.accountId]);
@@ -889,7 +901,12 @@ export async function balanceSnapshot(
 }
 
 export async function balanceCorrectionTx(client: PoolClient, claims: TenantClaims, actorId: string, input: BalanceCorrectionInput): Promise<TxOutcome<BalanceAuditView>> {
-  const newAmountMinor = parseMinor(input.newAmount, input.currency);
+  let newAmountMinor: bigint;
+  try {
+    newAmountMinor = parseMinor(input.newAmount, input.currency);
+  } catch {
+    throw new TenantInvalid();
+  }
   const hash = balanceCorrectionRequestHash(input);
   return claimAndExecute(client, claims, actorId, BALANCE_CORRECTION_COMMAND, input, hash, async (client, operationId) => {
     const snapshot = await client.query("SELECT workspace_id, id, account_id, amount_minor, currency FROM balance_snapshots WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, input.snapshotId]);
