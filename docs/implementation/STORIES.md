@@ -1050,6 +1050,8 @@ Canonical refinement: [E04-S07](E04.md#e04-s07--qualify-grounded-ai-behavior-and
 
 Execution record (2026-09-19): development/live candidate is `nvidia/nemotron-3-super-120b-a12b:free`. The frozen independently expected 40-case matrix passes 40/40; the blind semantic live run (expected outputs/category labels withheld) passed 40/40 after one correctly reported unavailable provider response. The integrated exit uses the real `processChatJob` dispatch/tool/evidence/publication path, reconnect, Stop/retry and trusted confirmation, and verifies exact two-row usage (10 input/5 output tokens and cost 5 each) with no duplicate effect. Independent review requested changes at `a04c7cd`, `aea7656` and `0805864`, then passed with no blockers at `6a1518dcff909c645c7156f3d36789218d4a00b8`. Candidate verification: typecheck; chat 13/13; chat UI 9/9; policy 7/7; dispatch 16/16; tools 14/14; action 4/4; settings 1/1; eval 2/2; tenancy 6/6; E03 exit 11/11; transaction UI 8/8; web/worker builds; diff check clean. Synthetic data only; no secret was printed or committed.
 
+Integration: reviewed code plus docs-only closeout `2f75e93` merged locally with `--no-ff` as `1f9539c1bc93475a51e17c3d74ad0d97d9827005`. Post-merge `npm run check`, chat UI 9/9, action 4/4, eval 2/2, web/worker builds and configured staging build/health/rollback smoke all passed. E04-S04 through E04-S07 are Done; E04 is closed. Remote push/PR was not performed.
+
 ## E05-S01 — Productionize isolated build and artifact versions
 
 Status: Draft | Dependencies: E03-S08, E00-S02
