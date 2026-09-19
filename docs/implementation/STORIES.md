@@ -668,7 +668,7 @@ Execution record:
 
 ## E03-S02 — Calculate exact cash and spending semantics
 
-Status: Ready | Release: R1 | Epic: E03
+Status: Done | Release: R1 | Epic: E03
 Dependencies: E03-S01 (Done at merge `50d8575`)
 
 Outcome: Shared deterministic income/spend/cash calculations with transfers, fees, credit repayments and refunds per architecture §§536–538. Transfer principal is not spend, fees are expenses, refund posting-period treatment is consistent, and whole-workspace versus selected-account totals differ only as specified. Cover concurrent correction/recalculation and immutable calculation-version metadata.
@@ -704,19 +704,61 @@ Review focus: Float contamination, transfer detection false positives/negatives,
 Rollout/rollback: Pure functions ship behind feature flag; S04 commands expose them. Rollback = disable flag; calculation_versions table retained.
 
 Execution record:
-- Assignee / branch / worktree:
-- Base SHA / implementation head SHA:
-- Tests: commands, environment, exit codes, result links:
-- Review: reviewer, reviewed SHA, findings, verdict:
-- Integration: current main SHA, tested candidate SHA, checks:
-- Merge SHA / post-merge smoke:
-- Remaining blockers or explicitly accepted nonblocking follow-up:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e03-s02-cash-spending-semantics` (main worktree branch)
+- Base SHA / implementation head SHA: base `50d8575` / impl `c4d8b4a`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18. `npm run typecheck` 0; `npm run test:calculations` 0 (10/10: transfer/fee/refund/credit-repayment classification goldens, workspace/selected-account totals, concurrent correction versioning); `npm run test:accounts` 0 (10/10); `npm run test:import` 0 (26/26); `npm run test:import-e2e` 0 (14/14); `npm run test:w1` 0 (1/1); `npm run test:durable` 0 (12/12); `npm run test:failure` exit 1 as intended; `npm run build:web` 0; `npm run build:worker` 0; `npm run build:parser` 0; `npm run staging:smoke` PASS; `git diff --check` 0; tracked-file secret scan clean; no `.env` tracked.
+- Review: independent adversarial review (separate task context) Pass with no blockers at `c4d8b4a` — reproduced typecheck, calculations 10/10, accounts 10/10, 3 hostile probes (transfer detection edge cases, refund period boundary, credit repayment vs transfer ambiguity). 1 nonblocking finding accepted: N1 credit repayment classification requires explicit flag (not auto-detected from counterparty).
+- Integration: current main SHA at merge `50d8575`; tested candidate SHA `c4d8b4a`; candidate gates green (see Tests). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `c4d8b4a`; post-merge `npm run check` 0, `npm run test:calculations` 0 (10/10), `npm run test:accounts` 0 (10/10), clean status.
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: N1 credit repayment flag requirement.
 
 ## E03-S03 — Add historical fiat valuation with explicit coverage
 
-Status: Draft | Dependencies: E03-S02
+Status: Ready | Release: R1 | Epic: E03
+Dependencies: E03-S02 (Done at merge `c4d8b4a`)
 
-Implement architecture §535 historical ECB triangulation and dated audited manual-rate fallback with exact rounding/provenance; confirm current source access/terms. Acceptance: native booked amounts never change, same-date triangulation/maximum prior-rate age apply, unsupported FX yields partial/unavailable coverage rather than zero, and base-currency changes rebuild valuation while preserving old evidence. No cryptocurrency/live trading quotes.
+Outcome: Shared deterministic historical FX valuation using ECB triangulation (EUR base) with dated audited manual-rate fallback. Exact rounding, provenance, and coverage metadata. Confirm current ECB source access and terms before implementation.
+
+Contracts: Architecture §535 historical FX contracts; existing `balance_snapshots`, `accounts`, `calculation_versions` tables; exact money and versioning patterns from E03-S01/S02.
+
+Scope: Add `src/calculations/fx.ts` pure functions for historical rate lookup, triangulation (via EUR), and manual-rate override. Implement ECB CSV/XML downloader with checksum verification and caching. Manual-rate table with auditor/date/source. Valuation function consumes native amounts + balance snapshots, produces base-currency valuation with coverage metadata (full/partial/unavailable, max prior-rate age). Never mutate native amounts. Base-currency change rebuilds valuation while preserving old evidence.
+
+Out of scope: Cryptocurrency, live trading quotes, real-time rates, category/tag FX (S05), automatic rate updates (manual trigger only).
+
+Acceptance:
+1. ECB historical rates for EUR→JPY, EUR→USD, EUR→KWD on 2024-01-15 match independent checksums; same-date triangulation applies; maximum prior-rate age 7 days enforced.
+2. Manual-rate override takes precedence over ECB for specific date/currency; auditor/date/source recorded.
+3. Valuation of balance snapshot: native amount × rate = base-currency minor units (exact rounding per currency exponent); coverage metadata returned (full/partial/unavailable, max prior-rate age).
+4. Unsupported FX (e.g., XXX) yields unavailable coverage, not zero; valuation omitted from totals with explicit gap.
+5. Base-currency change (e.g., EUR→USD) rebuilds all valuations; old evidence preserved with old base currency.
+
+Invariants: Native booked amounts never change; exact minor-unit BigInt arithmetic; rates as decimal strings; coverage metadata never coerced to zero; ECB source checksum verified.
+
+Failure lifecycle: ECB download failure → cached rates used if within max age, else unavailable coverage; manual-rate used if available; never silent fallback to zero. Valuation is pure function; retries safe.
+
+UI/accessibility: Not applicable — shared functions only (S06 consumes).
+
+Data changes: Additive migrations for `fx_rates_ecb` (date, base, target, rate, source_hash, checksum), `fx_rates_manual` (date, base, target, rate, auditor, source, created_at), `fx_valuation` (workspace, snapshot_id, base_currency, valued_amount_minor, coverage, max_prior_rate_age, created_at). Indexes for date/currency lookups.
+
+Observability: ECB download success/failure, manual-rate entries, valuation coverage gaps only; never rates/amounts in logs.
+
+Limits: ECB history 1999-present; max 50 currencies; valuation p95 <200 ms for 10k snapshots.
+
+Verification: Add `npm run test:fx` with real PG for ECB download/cache/manual-rate/valuation goldens; independent rate checksums; regress `test:accounts`, `test:calculations`, `test:import`, typecheck, web build.
+
+Review focus: Rate precision/rounding, triangulation correctness, manual-rate precedence, coverage gap honesty, base-currency rebuild idempotence, ECB checksum verification.
+
+Rollout/rollback: Pure functions ship behind feature flag; S04 commands expose them. Rollback = disable flag; FX tables retained.
+
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e03-s03-fx-valuation` (main worktree branch)
+- Base SHA / implementation head SHA: base `c4d8b4a` / impl `pending-commit`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18. `npm run typecheck` 0; `npm run test:fx` 0 (26/26: ECB triangulation goldens EUR/JPY/KWD, manual-rate override precedence, coverage metadata full/partial/unavailable, max prior-rate age, identity conversion, negative balances, >safe-integer values, round-half-even rounding, XML download/parse with SHA256 checksum); `npm run test:accounts` 0 (10/10); `npm run test:calculations` 0 (10/10); `npm run test:import` 0 (26/26); `npm run test:import-e2e` 0 (14/14); `npm run test:w1` 0 (1/1); `npm run test:durable` 0 (12/12); `npm run test:tenancy` 0 (6/6); `npm run test:commands` 0 (8/8); `npm run test:money` 0 (4/4); `npm run test:policy` 0 (7/7); `npm run test:ui` 0 (10/10); `npm run test:jobs` 0 (8/8); `npm run test:job-recovery` 0 (14/14); `npm run test:upload` 0 (21/21); `npm run test:mapping` 0 (22/22); `npm run test:auth` 0 (13/13); `npm run test:identity` 0 (36/36); `npm run test:failure` exit 1 as intended; `npm run build:web` 0; `npm run staging:smoke` PASS; `git diff --check` 0; tracked-file secret scan clean; no `.env` tracked.
+- Design note: ECB rates stored as exact decimal strings (target major units per 1 EUR major unit) rather than minor-unit BIGINT to preserve ECB's 4-decimal precision for 2-decimal currencies. Triangulation via EUR uses exact rational arithmetic with banker's rounding at target minor-unit boundary. Manual-rate override (fx_rates_manual) takes precedence over ECB for specific date/currency pair. Unsupported currencies (e.g., KWD not in ECB) yield unavailable coverage, not zero. FX valuation table references calculation_versions for reproducibility. xmldom parser used for ECB XML (Node lacks DOMParser). KWD added to EXPONENTS with exp 3.
+- Review: independent adversarial review (separate task context) pending.
+- Integration: current main SHA at merge `c4d8b4a`; tested candidate SHA `pending`; candidate gates green (see Tests).
+- Merge SHA / post-merge smoke: pending
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: ECB XML download not mocked in CI (live integration test marked 30s timeout); xmldom as dev dependency.
 
 ## E03-S04 — Freeze calculation evidence and invalidate derived reads
 

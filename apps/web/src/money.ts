@@ -30,25 +30,50 @@ export function formatSignedDecimalBigint(value: bigint): string {
 }
 
 // ISO 4217 minor-unit exponents for the fiat codes touched by R1 fixtures.
-// Unknown codes are an explicit error, never a guessed exponent.
+// Unknown codes return undefined, never a guessed exponent.
 const EXPONENTS: Record<string, number> = {
+  // ECB reference currencies + R1 fixtures
   EUR: 2,
   USD: 2,
   GBP: 2,
   CHF: 2,
   JPY: 0,
   KWD: 3,
+  CZK: 2,
+  DKK: 2,
+  HUF: 2,
+  PLN: 2,
+  RON: 2,
+  SEK: 2,
+  ISK: 2,
+  NOK: 2,
+  TRY: 2,
+  AUD: 2,
+  BRL: 2,
+  CAD: 2,
+  CNY: 2,
+  HKD: 2,
+  IDR: 2,
+  ILS: 2,
+  INR: 2,
+  KRW: 0,
+  MXN: 2,
+  MYR: 2,
+  NZD: 2,
+  PHP: 2,
+  SGD: 2,
+  THB: 2,
+  ZAR: 2,
 };
 
-export function currencyExponent(code: string): number {
-  const exponent = EXPONENTS[code];
-  if (exponent === undefined) throw new Error("unknown_currency");
-  return exponent;
+export function currencyExponent(code: string): number | undefined {
+  return EXPONENTS[code];
 }
 
 /** Decimal major-unit string (e.g. "31.42") → minor units for the currency. Exact; rejects excess precision. */
 export function parseMinor(amount: string, currency: string): bigint {
   const exponent = currencyExponent(currency);
+  if (exponent === undefined) throw new Error("unknown_currency");
   if (typeof amount !== "string") throw new Error("not_decimal_string");
   const match = amount.match(/^([0-9]+)(?:\.([0-9]*))?$/);
   if (!match) throw new Error("not_decimal_string");
@@ -64,6 +89,7 @@ export function parseMinor(amount: string, currency: string): bigint {
 /** Signed decimal major-unit string (e.g. "-31.42" or "100.00") → signed minor units for the currency. Exact; rejects excess precision. */
 export function parseSignedMinor(amount: string, currency: string): bigint {
   const exponent = currencyExponent(currency);
+  if (exponent === undefined) throw new Error("unknown_currency");
   if (typeof amount !== "string") throw new Error("not_decimal_string");
   const match = amount.match(/^(-?)([0-9]+)(?:\.([0-9]*))?$/);
   if (!match) throw new Error("not_decimal_string");
@@ -79,6 +105,7 @@ export function parseSignedMinor(amount: string, currency: string): bigint {
 /** Minor units → canonical major-unit decimal string (e.g. 3142n EUR → "31.42"). */
 export function formatMinor(minor: bigint, currency: string): string {
   const exponent = currencyExponent(currency);
+  if (exponent === undefined) throw new Error("unknown_currency");
   if (minor < 0n || minor > MAX_I64) throw new Error("decimal_out_of_range");
   const digits = minor.toString(10).padStart(exponent + 1, "0");
   if (exponent === 0) return digits;

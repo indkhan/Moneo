@@ -354,7 +354,7 @@ export function validateCreateAccountInput(value: unknown): CreateAccountInput {
   if (typeof workspaceId !== "string" || !UUID_RE.test(workspaceId)) throw new TenantInvalid();
   if (typeof name !== "string" || name.length < 1 || name.length > 200) throw new TenantInvalid();
   if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) throw new TenantInvalid();
-  try { currencyExponent(currency); } catch { throw new TenantInvalid(); }
+  if (currencyExponent(currency) === undefined) throw new TenantInvalid();
   if (typeof idempotencyKey !== "string" || !UUID_RE.test(idempotencyKey)) throw new TenantInvalid();
   return { workspaceId, name, currency, idempotencyKey };
 }
@@ -386,7 +386,7 @@ export function validateManualTransactionInput(value: unknown): ManualTransactio
   if (typeof accountId !== "string" || !UUID_RE.test(accountId)) throw new TenantInvalid();
   if (typeof amount !== "string" || !POSITIVE_DECIMAL_RE.test(amount)) throw new TenantInvalid();
   if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) throw new TenantInvalid();
-  try { currencyExponent(currency); } catch { throw new TenantInvalid(); }
+  if (currencyExponent(currency) === undefined) throw new TenantInvalid();
   if (direction !== "INFLOW" && direction !== "OUTFLOW") throw new TenantInvalid();
   if (typeof effectiveDate !== "string" || !DATE_RE.test(effectiveDate)) throw new TenantInvalid();
   if (typeof description !== "string" || description.length < 1 || description.length > 500) throw new TenantInvalid();
@@ -407,7 +407,7 @@ export function validateBalanceSnapshotInput(value: unknown): BalanceSnapshotInp
   if (typeof asOfDate !== "string" || !DATE_RE.test(asOfDate)) throw new TenantInvalid();
   if (typeof amount !== "string" || !SIGNED_DECIMAL_RE.test(amount)) throw new TenantInvalid();
   if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) throw new TenantInvalid();
-  try { currencyExponent(currency); } catch { throw new TenantInvalid(); }
+  if (currencyExponent(currency) === undefined) throw new TenantInvalid();
   if (source !== undefined) {
     const allowedSources = ["manual", "import", "reconciliation"] as const;
     if (!allowedSources.includes(source as "manual" | "import" | "reconciliation")) throw new TenantInvalid();
@@ -436,7 +436,7 @@ export function validateBalanceCorrectionInput(value: unknown): BalanceCorrectio
   if (typeof snapshotId !== "string" || !UUID_RE.test(snapshotId)) throw new TenantInvalid();
   if (typeof newAmount !== "string" || !SIGNED_DECIMAL_RE.test(newAmount)) throw new TenantInvalid();
   if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) throw new TenantInvalid();
-  try { currencyExponent(currency); } catch { throw new TenantInvalid(); }
+  if (currencyExponent(currency) === undefined) throw new TenantInvalid();
   if (typeof reason !== "string" || reason.length < 1 || reason.length > 500) throw new TenantInvalid();
   if (typeof idempotencyKey !== "string" || !UUID_RE.test(idempotencyKey)) throw new TenantInvalid();
   return { workspaceId, snapshotId, newAmount, currency, reason, idempotencyKey };
