@@ -77,6 +77,8 @@ import {
   getArtifact,
   listArtifacts,
 } from "./commands/artifacts.ts";
+import { openArtifactSession, sendArtifactEvent, stopArtifactSession, restartArtifactSession, closeArtifactSession, getArtifactSession, getActiveSessionsCount, getArtifactExecutionsCount } from "./artifact-host.ts";
+import { type ArtifactSource, type ArtifactManifest } from "./artifact-contract.ts";
 
 export class TenantDenied extends Error {
   constructor() {
@@ -1990,6 +1992,158 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             }
             throw err;
           }
+          return true;
+        }
+        // E05-S02 artifact runtime: open/close session, send event, stop/restart
+        if (path === "/api/artifacts/sessions" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown; artifactId?: unknown; versionId?: unknown; initialState?: unknown; containerSelector?: unknown };
+          if (typeof body.workspaceId !== "string" || !isUuid(body.workspaceId) || typeof body.artifactId !== "string" || !isUuid(body.artifactId) || typeof body.versionId !== "string" || !isUuid(body.versionId)) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const artifactId = body.artifactId as string;
+          const versionId = body.versionId as string;
+          const resolved = await claims(req, body.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          // Get artifact version
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const claim = resolved.claim;
+          const version = await withTenant(pool, claim, async (client) => {
+            return getArtifactVersion(client, claim, artifactId, versionId);
+          });
+          if (!version || version.status !== "ready") {
+            tenantJson(res, 409, { error: "conflict", reason: "version_not_ready" });
+            return true;
+          }
+          // Get artifact source (would need to be stored/built)
+          // For now, use a minimal source - real impl would fetch from artifact_versions
+          const source = { html: `<section><div data-slot="chart"></div></section>`, css: "", js: `artifact.ui.render({ type: "chart", rows: [] });` };
+          const manifest = version.manifest as ArtifactManifest;
+          const sessionId = uuidv7();
+          try {
+            const session = openArtifactSession(
+              sessionId,
+              resolved.claim.workspaceId,
+              resolved.claim.userId,
+              artifactId,
+              versionId,
+              manifest.approvedPermissions,
+              source,
+              manifest,
+              (typeof body.initialState === "object" && body.initialState !== null ? body.initialState as Record<string, unknown> : {}),
+              document.body // In real impl, this would be a container element
+            );
+            tenantJson(res, 201, { sessionId, nonce: session.nonce, expiresAt: session.expiresAt.toISOString() });
+          } catch (err) {
+            if (err instanceof Error && err.message === "source_limit") {
+              tenantJson(res, 413, { error: "payload_too_large", reason: "source_limit" });
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        const sessionMatch = path.match(/^\/api\/artifacts\/sessions\/([A-Za-z0-9-]+)$/);
+        if (sessionMatch && method === "DELETE") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const sessionId = sessionMatch[1];
+          const existing = getArtifactSession(sessionId);
+          if (!existing) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          if (existing.userId !== (await claims(req, existing.workspaceId))?.claim?.userId) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          closeArtifactSession(sessionId);
+          tenantJson(res, 204, {});
+          return true;
+        }
+        const eventMatch = path.match(/^\/api\/artifacts\/sessions\/([A-Za-z0-9-]+)\/event$/);
+        if (eventMatch && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { action?: unknown; value?: unknown };
+          if (typeof body.action !== "string" || typeof body.value !== "string") {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const sessionId = eventMatch[1];
+          const existing = getArtifactSession(sessionId);
+          if (!existing) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const resolved = await claims(req, existing.workspaceId);
+          if (!resolved.claim || resolved.claim.userId !== existing.userId) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const ok = sendArtifactEvent(sessionId, body.action, body.value);
+          tenantJson(res, ok ? 200 : 409, ok ? {} : { error: "conflict", reason: "session_not_ready" });
+          return true;
+        }
+        const stopMatch = path.match(/^\/api\/artifacts\/sessions\/([A-Za-z0-9-]+)\/stop$/);
+        if (stopMatch && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const sessionId = stopMatch[1];
+          const existing = getArtifactSession(sessionId);
+          if (!existing) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const resolved = await claims(req, existing.workspaceId);
+          if (!resolved.claim || resolved.claim.userId !== existing.userId) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const ok = stopArtifactSession(sessionId);
+          tenantJson(res, ok ? 200 : 409, ok ? {} : { error: "conflict", reason: "session_not_ready" });
+          return true;
+        }
+        const restartMatch = path.match(/^\/api\/artifacts\/sessions\/([A-Za-z0-9-]+)\/restart$/);
+        if (restartMatch && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const sessionId = restartMatch[1];
+          const existing = getArtifactSession(sessionId);
+          if (!existing) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const resolved = await claims(req, existing.workspaceId);
+          if (!resolved.claim || resolved.claim.userId !== existing.userId) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const ok = restartArtifactSession(sessionId);
+          tenantJson(res, ok ? 200 : 409, ok ? {} : { error: "conflict", reason: "session_not_ready" });
           return true;
         }
       } catch (err) {

@@ -49,6 +49,7 @@
     "test:recurring": "vitest run test/recurring.test.ts",
     "test:e03-exit": "vitest run test/e03-exit.test.ts",
     "test:artifact-build": "vitest run test/artifact-build.test.ts",
+    "test:artifact-runtime": "playwright test --config test/artifact-runtime.config.mjs",
     "probe:mapping": "node --env-file=.env ./node_modules/vitest/vitest.mjs run test/mapping-live.test.ts",
     "test:auth:live": "vitest run test/auth-keycloak-live.test.ts",
     "build:web": "tsc -p apps/web/tsconfig.json",
@@ -60,14 +61,15 @@
     "check": "npm run typecheck && npm test && npm run test:web"
   },
   "dependencies": {
-    "bullmq": "6.3.6",
     "@xmldom/xmldom": "^0.9.12",
+    "bullmq": "6.3.6",
     "fflate": "0.8.3",
     "ioredis": "5.11.1",
     "pg": "8.23.0"
   },
   "devDependencies": {
     "@playwright/test": "1.62.0",
+    "@types/css-tree": "^3.2.0",
     "@types/node": "22.20.3",
     "@types/pg": "8.23.1",
     "@types/xmldom": "^0.1.34",
