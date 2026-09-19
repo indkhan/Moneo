@@ -355,7 +355,7 @@ function fmtDate(value: string | Date): string {
 
 // ---- idempotency journal (same table/pattern as accounts.ts) ----
 
-type StoredOp = {
+export type StoredOp = {
   operationId: string;
   status: string;
   requestHash: string;
@@ -364,9 +364,9 @@ type StoredOp = {
   expiresAt: string;
 };
 
-type TxOutcome<T> = { ok: true; result: T; operationId: string; replayed: boolean } | { ok: false; code: TxError["code"]; currentVersion?: string; detail?: unknown };
+export type TxOutcome<T> = { ok: true; result: T; operationId: string; replayed: boolean } | { ok: false; code: TxError["code"]; currentVersion?: string; detail?: unknown };
 
-async function claimAndExecute<T>(
+export async function claimAndExecute<T>(
   client: PoolClient,
   claims: TenantClaims,
   actorId: string,
@@ -466,7 +466,7 @@ async function claimAndExecute<T>(
   throw new Error("command_claim_unsettled");
 }
 
-async function insertAudit(
+export async function insertAudit(
   client: PoolClient,
   claims: TenantClaims,
   actorId: string,
@@ -486,7 +486,7 @@ async function insertAudit(
   return id;
 }
 
-async function bumpRevision(client: PoolClient, workspaceId: string): Promise<void> {
+export async function bumpRevision(client: PoolClient, workspaceId: string): Promise<void> {
   await client.query(
     "INSERT INTO workspace_data_revision (workspace_id, revision, updated_at) VALUES ($1, 1, now()) ON CONFLICT (workspace_id) DO UPDATE SET revision = workspace_data_revision.revision + 1, updated_at = now()",
     [workspaceId],

@@ -20,6 +20,7 @@ import { liveMappingTransport, loadMappingProvider } from "../mapping-provider.t
 import { listWorkspaces, sessionClaims, TenantDenied, TenantInvalid, type SessionResolver } from "../tenancy.ts";
 import { errorPage, escapeHtml, page } from "./shell.ts";
 import { handleTransactionRoutes } from "./transactions.ts";
+import { handleRecurringRoutes } from "./recurring.ts";
 
 export type UiConfig = {
   appBaseUrl: string;
@@ -883,6 +884,10 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
 
     // E03-S06 transaction table + drawer (shared reads, S05 commands).
     if (await handleTransactionRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
+      return true;
+    }
+    // E03-S07 recurring candidates + confirm/dismiss.
+    if (await handleRecurringRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
       return true;
     }
 
