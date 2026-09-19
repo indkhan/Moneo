@@ -21,6 +21,31 @@ import { readMultipart } from "./multipart.ts";
 import { consumePermit, getPolicy, issuePermit, PolicyError, setAccountExclusion, summarizeEligible } from "./ai-policy.ts";
 import { readLimitedBody } from "./http-controls.ts";
 import { createFakeProvider } from "./ai-fake-provider.ts";
+import {
+  TxError,
+  addTag as addTagCmd,
+  archiveCategory as archiveCategoryCmd,
+  archiveTag as archiveTagCmd,
+  correct as correctCmd,
+  createCategory as createCategoryCmd,
+  createTag as createTagCmd,
+  getTransaction,
+  listAudit,
+  listCategories,
+  listSystemCategories,
+  listTags,
+  removeTag as removeTagCmd,
+  setCategory as setCategoryCmd,
+  undo as undoCmd,
+  validateArchiveCategoryInput,
+  validateArchiveTagInput,
+  validateCorrectInput,
+  validateCreateCategoryInput,
+  validateCreateTagInput,
+  validateSetCategoryInput,
+  validateTagLinkInput,
+  validateUndoInput,
+} from "./commands/transactions.ts";
 
 export class TenantDenied extends Error {
   constructor() {
@@ -237,6 +262,18 @@ function importCommitErrorBody(err: ImportCommitError): { status: number; body: 
   if (err.code === "not_found") return { status: 404, body: { error: "not_found" } };
   return { status: 409, body: { error: "conflict", reason: err.code } };
 }
+
+function txErrorBody(err: TxError): { status: number; body: unknown } {
+  if (err.code === "not_found") return { status: 404, body: { error: "not_found" } };
+  if (err.code === "version_mismatch" || err.code === "undo_conflict") {
+    return {
+      status: 409,
+      body: err.currentVersion === undefined ? { error: "conflict", reason: err.code } : { error: "conflict", reason: err.code, currentVersion: err.currentVersion },
+    };
+  }
+  return { status: 409, body: { error: "conflict", reason: err.code } };
+}
+
 
 export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver): TenancyRouter {
   // Every route resolves the session first (uniform 401), then the user row,
@@ -461,6 +498,343 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             }
             throw err;
           }
+          return true;
+        }
+        // E03-S05 categories/tags/corrections/audit/undo. Every command
+        // revalidates session -> membership -> withTenant; foreign and
+        // missing ids share the uniform 404 body.
+        if (path === "/api/commands/categories.create" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: ReturnType<typeof validateCreateCategoryInput>;
+          try {
+            input = validateCreateCategoryInput(await readJsonBody(req));
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await createCategoryCmd(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof TxError) {
+              const mapped = txErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/commands/categories.archive" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: ReturnType<typeof validateArchiveCategoryInput>;
+          try {
+            input = validateArchiveCategoryInput(await readJsonBody(req));
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await archiveCategoryCmd(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof TxError) {
+              const mapped = txErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/categories" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          tenantJson(res, 200, { categories: await listCategories(pool, resolved.claim, query.get("includeArchived") === "1"), requestId });
+          return true;
+        }
+        if (path === "/api/system-categories" && method === "GET") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          tenantJson(res, 200, { categories: await listSystemCategories(pool), requestId });
+          return true;
+        }
+        if (path === "/api/commands/tags.create" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: ReturnType<typeof validateCreateTagInput>;
+          try {
+            input = validateCreateTagInput(await readJsonBody(req));
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await createTagCmd(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof TxError) {
+              const mapped = txErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/commands/tags.archive" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: ReturnType<typeof validateArchiveTagInput>;
+          try {
+            input = validateArchiveTagInput(await readJsonBody(req));
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await archiveTagCmd(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof TxError) {
+              const mapped = txErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/tags" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          tenantJson(res, 200, { tags: await listTags(pool, resolved.claim, query.get("includeArchived") === "1"), requestId });
+          return true;
+        }
+        if (path === "/api/commands/transactions.set_category" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: ReturnType<typeof validateSetCategoryInput>;
+          try {
+            input = validateSetCategoryInput(await readJsonBody(req));
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await setCategoryCmd(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof TxError) {
+              const mapped = txErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/commands/transactions.add_tag" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: ReturnType<typeof validateTagLinkInput>;
+          try {
+            input = validateTagLinkInput(await readJsonBody(req));
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await addTagCmd(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof TxError) {
+              const mapped = txErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/commands/transactions.remove_tag" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: ReturnType<typeof validateTagLinkInput>;
+          try {
+            input = validateTagLinkInput(await readJsonBody(req));
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await removeTagCmd(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof TxError) {
+              const mapped = txErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/commands/transactions.correct" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: ReturnType<typeof validateCorrectInput>;
+          try {
+            input = validateCorrectInput(await readJsonBody(req));
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await correctCmd(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof TxError) {
+              const mapped = txErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/commands/operations.undo" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: ReturnType<typeof validateUndoInput>;
+          try {
+            input = validateUndoInput(await readJsonBody(req));
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await undoCmd(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof TxError) {
+              const mapped = txErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        const txGetMatch = path.match(/^\/api\/transactions\/([A-Za-z0-9-]+)$/);
+        if (txGetMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const kind = query.get("kind") === "manual" ? "manual" : "imported";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const view = await getTransaction(pool, resolved.claim, kind, txGetMatch[1]);
+          if (!view) tenantJson(res, 404, { error: "not_found" });
+          else tenantJson(res, 200, view);
+          return true;
+        }
+        const auditMatch = path.match(/^\/api\/audit\/([A-Za-z0-9-]+)$/);
+        if (auditMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const entityType = query.get("entityType") ?? "transaction";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          tenantJson(res, 200, { audit: await listAudit(pool, resolved.claim, entityType, auditMatch[1]), requestId });
           return true;
         }
         // E03-S04 calculation evidence: bump calculation version
