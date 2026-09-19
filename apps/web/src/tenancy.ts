@@ -49,6 +49,13 @@ import {
   validateUndoInput,
 } from "./commands/transactions.ts";
 import { getTransactionEvidence, listTransactions } from "./transactions-query.ts";
+import {
+  confirm as confirmRecurringCmd,
+  dismiss as dismissRecurringCmd,
+  listRecurring,
+  validateConfirmInput as validateRecurringConfirmInput,
+  validateDismissInput as validateRecurringDismissInput,
+} from "./commands/recurring.ts";
 
 export class TenantDenied extends Error {
   constructor() {
@@ -907,6 +914,79 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           }
           try {
             const result = await bulkSetCategoryCmd(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof TxError) {
+              const mapped = txErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        // E03-S07 recurring candidates (pure detection + versioned overrides).
+        if (path === "/api/recurring" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          tenantJson(res, 200, { ...(await listRecurring(pool, resolved.claim)), requestId });
+          return true;
+        }
+        if (path === "/api/commands/recurring.confirm" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: ReturnType<typeof validateRecurringConfirmInput>;
+          try {
+            input = validateRecurringConfirmInput(await readJsonBody(req));
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await confirmRecurringCmd(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof TxError) {
+              const mapped = txErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/commands/recurring.dismiss" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: ReturnType<typeof validateRecurringDismissInput>;
+          try {
+            input = validateRecurringDismissInput(await readJsonBody(req));
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await dismissRecurringCmd(pool, resolved.claim, resolved.claim.userId, input);
             tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
           } catch (err) {
             if (err instanceof TxError) {
