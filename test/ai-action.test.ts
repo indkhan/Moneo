@@ -74,17 +74,27 @@ describe("e04-s05 trusted action confirmation", () => {
       await confirm.focus();
       await page.keyboard.press("Enter");
       await page.waitForURL(new RegExp(`/w/${workspaceId}/transactions\\?notice=ai-confirmed`));
+      expect(await page.getByText("recorded in the audit history").isVisible()).toBe(true);
+      await page.getByRole("button", { name: "Undo with compensating transaction" }).click();
+      await page.waitForURL(new RegExp(`/w/${workspaceId}/transactions\\?notice=undone`));
     } finally {
       await browser.close();
     }
-    const count = await withTenant(pool, { userId, workspaceId }, async (client) => Number((await client.query("SELECT count(*) AS n FROM manual_transactions WHERE workspace_id = $1", [workspaceId])).rows[0].n));
-    expect(count).toBe(1);
+    const rows = await withTenant(pool, { userId, workspaceId }, async (client) => ({
+      transactions: Number((await client.query("SELECT count(*) AS n FROM manual_transactions WHERE workspace_id = $1", [workspaceId])).rows[0].n),
+      audit: (await client.query("SELECT action, compensating_operation_id IS NOT NULL AS compensated FROM audit_events WHERE workspace_id = $1 ORDER BY created_at", [workspaceId])).rows,
+    }));
+    expect(rows).toEqual({ transactions: 2, audit: [{ action: "create", compensated: false }, { action: "undo", compensated: true }] });
   }, 15_000);
 
   it("rejects replay, tampering, expiry, and stale account or policy state", async () => {
     const { userId, workspaceId, accountId } = await setup();
     const claims = { userId, workspaceId };
     const payload = { accountId, amountMinor: "1234", currency: "EUR", direction: "OUTFLOW" as const, effectiveDate: "2026-09-19", description: "Synthetic" };
+    const guarded = await createProposal(pool, claims, userId, payload);
+    await expect(confirmProposal(pool, claims, randomUUID(), guarded.id, randomUUID())).rejects.toBeInstanceOf(Error);
+    const foreignWorkspaceId = (await setup()).workspaceId;
+    await expect(confirmProposal(pool, { userId, workspaceId: foreignWorkspaceId }, userId, guarded.id, randomUUID())).rejects.toBeInstanceOf(Error);
     const confirmed = await createProposal(pool, claims, userId, payload);
     await confirmProposal(pool, claims, userId, confirmed.id, randomUUID());
     await expect(confirmProposal(pool, claims, userId, confirmed.id, randomUUID())).rejects.toMatchObject({ code: "already_confirmed" });

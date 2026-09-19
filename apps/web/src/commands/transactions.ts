@@ -1037,7 +1037,8 @@ export async function bulkSetCategory(pool: Pool, claims: TenantClaims, actorId:
 
 // ---- undo ----
 
-const UNDOABLE = new Set([SET_CATEGORY_COMMAND, ADD_TAG_COMMAND, REMOVE_TAG_COMMAND, CORRECT_COMMAND]);
+const MANUAL_TRANSACTION_COMMAND = "accounts.manual_transaction";
+const UNDOABLE = new Set([SET_CATEGORY_COMMAND, ADD_TAG_COMMAND, REMOVE_TAG_COMMAND, CORRECT_COMMAND, MANUAL_TRANSACTION_COMMAND]);
 
 export async function undoTx(client: PoolClient, claims: TenantClaims, actorId: string, input: UndoInput): Promise<TxOutcome<TransactionView>> {
   const hash = requestHash({ command: UNDO_COMMAND, workspaceId: input.workspaceId, operationId: input.operationId });
@@ -1058,6 +1059,18 @@ export async function undoTx(client: PoolClient, claims: TenantClaims, actorId: 
       throw new TxError("unsupported_undo");
     }
     const audit = audits.rows[0] as { entity_type: string; entity_id: string; before_state: TransactionView; after_state: TransactionView };
+    if (commandName === MANUAL_TRANSACTION_COMMAND) {
+      const original = audit.after_state;
+      const inverseId = uuidv7();
+      await client.query(
+        "INSERT INTO manual_transactions (workspace_id, id, account_id, amount_minor, currency, direction, effective_date, description, actor_id, reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+        [claims.workspaceId, inverseId, original.accountId, original.amountMinor, original.currency, original.direction === "INFLOW" ? "OUTFLOW" : "INFLOW", original.effectiveDate, `Undo: ${original.description}`.slice(0, 500), actorId, `undo:${input.operationId}`],
+      );
+      const inverse = (await readTransactionView(client, claims.workspaceId, "manual", inverseId))!;
+      await insertAudit(client, claims, actorId, "manual_transaction", audit.entity_id, "undo", original, inverse, operationId, input.operationId);
+      await bumpRevision(client, claims.workspaceId);
+      return { view: inverse, operationId };
+    }
     const kind: TransactionKind = audit.entity_type === "manual_transaction" ? "manual" : "imported";
     const before = audit.before_state as TransactionView;
     const after = audit.after_state as TransactionView;

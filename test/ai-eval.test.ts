@@ -7,11 +7,10 @@ import { createApp } from "../apps/web/src/server.ts";
 import { createAuthRouter, requestSession, type AuthConfig } from "../apps/web/src/auth.ts";
 import { createTenancyRouter, withTenant } from "../apps/web/src/tenancy.ts";
 import { addEvalCase, createEvalRun, evaluateProtocolCase, finalizeEvalRun, runDeterministicProtocol, runLiveEvaluation, type EvalCategory } from "../apps/web/src/ai-eval.ts";
-import { cancelTurn, createThread, readActivity, retryTurn, sendTurn } from "../apps/web/src/chat.ts";
-import { createToolContext, executeTool } from "../apps/web/src/ai-tools.ts";
+import { cancelTurn, createThread, getThread, processChatJob, readActivity, retryTurn, sendTurn } from "../apps/web/src/chat.ts";
+import { balanceSnapshot } from "../apps/web/src/commands/accounts.ts";
 import { confirmProposal, createProposal } from "../apps/web/src/ai-action-proposals.ts";
 import { randomUUID } from "node:crypto";
-import { uuidv7 } from "../apps/web/src/ids.ts";
 import { ensureTestPool } from "./helpers/test-db.ts";
 import { startStubIssuer, STUB_CLIENT_ID, STUB_CLIENT_SECRET, type StubIssuer } from "./helpers/stub-issuer.ts";
 
@@ -72,14 +71,17 @@ describe("e04-s07 frozen deterministic evaluation", () => {
   it("runs the integrated chat, scoped tool, reconnect, Stop/retry and trusted-confirm path", async () => {
     const fx = await fixture();
     const claims = { userId: fx.userId, workspaceId: fx.workspaceId };
+    await balanceSnapshot(pool, claims, fx.userId, { workspaceId: fx.workspaceId, accountId: fx.accountId, asOfDate: "2026-09-19", amount: "100.00", currency: "EUR", idempotencyKey: randomUUID() });
     const thread = await createThread(pool, claims, fx.userId, { title: "Exit journey" });
     const sent = await sendTurn(pool, claims, fx.userId, { threadId: thread.id, body: "Show my balances", idempotencyKey: randomUUID() });
-    const attemptId = uuidv7();
-    await withTenant(pool, claims, (client) => client.query("INSERT INTO chat_attempts (workspace_id, id, turn_id, generation, status) VALUES ($1, $2, $3, 1, 'running')", [fx.workspaceId, attemptId, sent.assistantTurn.id]));
-    const tool = await executeTool(pool, await createToolContext(pool, claims), attemptId, 1, { name: "accounts.balances", args: { accountIds: [fx.accountId] } });
-    expect(tool.resultRows).toBeGreaterThanOrEqual(0);
-    await cancelTurn(pool, claims, sent.assistantTurn.id);
-    await retryTurn(pool, claims, fx.userId, { turnId: sent.assistantTurn.id, idempotencyKey: randomUUID() });
+    let calls = 0;
+    expect(await processChatJob(pool, sent.jobId, async () => ({ httpStatus: 200, bodyText: ++calls === 1 ? JSON.stringify({ tool_calls: [{ name: "accounts.balances", args: { accountIds: [fx.accountId] } }] }) : JSON.stringify({ final: "Balance evidence loaded." }), inputTokens: 10, outputTokens: 5, model: "double" }), { workerId: "e04-exit", leaseMs: 5000 })).toBe("applied");
+    const published = await getThread(pool, claims, thread.id);
+    const attempt = published!.attempts.find((item) => item.status === "published")!;
+    expect(attempt.evidenceIds).toHaveLength(1);
+    const stopped = await sendTurn(pool, claims, fx.userId, { threadId: thread.id, body: "Stop and retry", idempotencyKey: randomUUID() });
+    await cancelTurn(pool, claims, stopped.assistantTurn.id);
+    await retryTurn(pool, claims, fx.userId, { turnId: stopped.assistantTurn.id, idempotencyKey: randomUUID() });
     const activity = await readActivity(pool, claims, thread.id, 0, 100);
     expect(activity.events.map((event) => event.kind)).toEqual(expect.arrayContaining(["user-turn", "assistant-queued", "assistant-cancelled", "retry"]));
     const proposal = await createProposal(pool, claims, fx.userId, { accountId: fx.accountId, amountMinor: "250", currency: "EUR", direction: "OUTFLOW", effectiveDate: "2026-09-19", description: "Integrated synthetic" });
@@ -87,7 +89,14 @@ describe("e04-s07 frozen deterministic evaluation", () => {
     const first = await confirmProposal(pool, claims, fx.userId, proposal.id, key);
     const replay = await confirmProposal(pool, claims, fx.userId, proposal.id, key);
     expect(replay.operationId).toBe(first.operationId);
-    const counts = await withTenant(pool, claims, async (client) => ({ tx: Number((await client.query("SELECT count(*) AS n FROM manual_transactions WHERE workspace_id = $1", [fx.workspaceId])).rows[0].n), tools: Number((await client.query("SELECT count(*) AS n FROM chat_tool_calls WHERE workspace_id = $1 AND attempt_id = $2", [fx.workspaceId, attemptId])).rows[0].n) }));
-    expect(counts).toEqual({ tx: 1, tools: 1 });
+    const counts = await withTenant(pool, claims, async (client) => ({
+      tx: Number((await client.query("SELECT count(*) AS n FROM manual_transactions WHERE workspace_id = $1", [fx.workspaceId])).rows[0].n),
+      tools: Number((await client.query("SELECT count(*) AS n FROM chat_tool_calls WHERE workspace_id = $1 AND attempt_id = $2", [fx.workspaceId, attempt.id])).rows[0].n),
+      usage: (await client.query("SELECT status, input_tokens, output_tokens, reconciled_cost_minor::text AS cost FROM ai_dispatch_usage WHERE workspace_id = $1 ORDER BY created_at", [fx.workspaceId])).rows,
+    }));
+    expect(counts).toEqual({ tx: 1, tools: 1, usage: [
+      { status: "RECONCILED", input_tokens: 10, output_tokens: 5, cost: "5" },
+      { status: "RECONCILED", input_tokens: 10, output_tokens: 5, cost: "5" },
+    ] });
   });
 });

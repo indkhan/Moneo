@@ -823,6 +823,10 @@ export async function manualTransactionTx(client: PoolClient, claims: TenantClai
       [claims.workspaceId, id, input.accountId, amountMinor.toString(), input.currency, input.direction, input.effectiveDate, input.description, actorId, input.reference ?? null],
     );
     const view = rowToManualTransactionView(rows.rows[0] as { workspace_id: string; id: string; account_id: string; amount_minor: string; currency: string; direction: string; effective_date: string; description: string; balance_snapshot_id: string | null; actor_id: string; reference: string | null; created_at: string; updated_at: string });
+    await client.query(
+      "INSERT INTO audit_events (workspace_id, id, actor_type, actor_user_id, entity_type, entity_id, action, before_state, after_state, operation_id) VALUES ($1, $2, 'user', $3, 'manual_transaction', $4, 'create', NULL, $5, $6)",
+      [claims.workspaceId, uuidv7(), actorId, view.id, JSON.stringify(view), operationId],
+    );
     return { view, operationId };
   });
 }
