@@ -980,9 +980,14 @@ Execution record:
 
 ## E04-S02 — Persist chat and its worker-owned model loop
 
-Status: Ready | Dependencies: E04-S01, E02-S02
+Status: In progress | Dependencies: E04-S01, E02-S02
 
 Canonical refinement: [E04-S02](E04.md#e04-s02--persist-chat-and-its-worker-owned-model-loop).
+
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e04-s02-chat-loop` (main worktree branch)
+- Base SHA: `e4139091c1c1e2f70f3cf9943fc8cbb3f8a126c0` (E04-S01 Done)
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18, WSL Redis 8.4.2, own `moneo_e04_chat` DB + Redis DB 9. `npm run typecheck` 0; `npm run test:chat` 0 (12/12: accepted send + cursor reconnect with ordered pages, real BullMQ delivery + duplicate noop, SIGKILL after-claim and after-output with exactly one published turn and gen1-interrupted/gen2-published, same-key replay + clash 409, tenant uniformity + zero unscoped rows, cancel-before-dispatch + finished-cancel noop, retry as separate attempt with ordered activity, terminal 401 failed turn + FAILED_FINAL job, thread_busy + 3 sequential turns, Redis-loss rebuild via reconciler, oversize/cursor 400s); regression tenancy 6/6 (019 rollback chain, 41 tables), ai-dispatch 14/14, jobs 8/8, job-recovery 14/14; `test:failure` nonzero-as-intended; `build:web` 0; `build:worker` 0; `git diff --check` 0; secret scan clean; no `.env` tracked.
 
 ## E04-S03 — Expose scoped tools, evidence and dispatch revalidation
 

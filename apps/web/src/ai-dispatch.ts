@@ -628,6 +628,70 @@ export async function setDispatchBudget(pool: Pool, claims: TenantClaims, budget
   });
 }
 
+export type LiveChatConfig = { apiKey: string; baseUrl: string; model: string };
+
+/** Fail-closed loader: chat generation runs only with explicit live config.
+ * Without it the worker defers (stays RUNNING for the sweep), exactly like
+ * the upload-config deferral — never a silent fake in production. */
+export function loadChatTransportConfig(): LiveChatConfig | null {
+  if (process.env["CHAT_AI_ENABLED"] !== "1") return null;
+  const apiKey = process.env["OPENROUTER_API_KEY"];
+  if (!apiKey) return null;
+  return {
+    apiKey,
+    baseUrl: process.env["OPENROUTER_BASE_URL"] ?? "https://openrouter.ai/api/v1",
+    model: process.env["OPENROUTER_MODEL"] ?? "muse-spark-1.3",
+  };
+}
+
+/** Live OpenRouter chat transport for generation: key in the header only,
+ * 30 s cap, usage extracted from the envelope (null when absent — the
+ * dispatch then stays PENDING, never zero). Output text is returned to the
+ * caller for fenced persistence; it is never logged here. */
+export function liveChatTransport(config: LiveChatConfig): DispatchTransport {
+  return async (req, signal) => {
+    const controller = new AbortController();
+    const onAbort = () => controller.abort();
+    signal.addEventListener("abort", onAbort, { once: true });
+    const timeout = setTimeout(() => controller.abort(), DISPATCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: config.model, messages: [{ role: "user", content: req.requestText }], max_tokens: req.maxOutputTokens }),
+        signal: controller.signal,
+      });
+      const text = await res.text();
+      if (res.status < 200 || res.status >= 300) return { httpStatus: res.status, bodyText: null, inputTokens: null, outputTokens: null, model: config.model };
+      let content: string | null = null;
+      let inputTokens: number | null = null;
+      let outputTokens: number | null = null;
+      try {
+        const parsed = JSON.parse(text) as {
+          choices?: { message?: { content?: unknown } }[];
+          usage?: { prompt_tokens?: unknown; completion_tokens?: unknown };
+        };
+        const raw = parsed.choices?.[0]?.message?.content;
+        content = typeof raw === "string" ? raw : null;
+        if (typeof parsed.usage?.prompt_tokens === "number" && Number.isInteger(parsed.usage.prompt_tokens) && parsed.usage.prompt_tokens >= 0) {
+          inputTokens = parsed.usage.prompt_tokens;
+        }
+        if (typeof parsed.usage?.completion_tokens === "number" && Number.isInteger(parsed.usage.completion_tokens) && parsed.usage.completion_tokens >= 0) {
+          outputTokens = parsed.usage.completion_tokens;
+        }
+      } catch {
+        content = null;
+      }
+      return { httpStatus: res.status, bodyText: content, inputTokens, outputTokens, model: config.model };
+    } catch {
+      return { httpStatus: null, bodyText: null, inputTokens: null, outputTokens: null, model: config.model };
+    } finally {
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", onAbort);
+    }
+  };
+}
+
 export function dispatchErrorBody(err: DispatchError): { status: number; body: unknown } {
   switch (err.code) {
     case "budget_money":

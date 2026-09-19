@@ -19,6 +19,17 @@ import { acceptMapping, listMappingProfiles, MappingError, mappingErrorBody, pro
 import { liveMappingTransport, loadMappingProvider } from "./mapping-provider.ts";
 import { readMultipart } from "./multipart.ts";
 import { consumePermit, getPolicy, issuePermit, PolicyError, setAccountExclusion, summarizeEligible } from "./ai-policy.ts";
+import {
+  cancelTurn,
+  chatErrorBody,
+  ChatError,
+  createThread,
+  getThread,
+  listThreads,
+  readActivity,
+  retryTurn,
+  sendTurn,
+} from "./chat.ts";
 import { readLimitedBody } from "./http-controls.ts";
 import { createFakeProvider } from "./ai-fake-provider.ts";
 import {
@@ -1286,6 +1297,185 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             }
             if (err instanceof Error && err.message.startsWith("fake_provider_tripwire")) {
               tenantJson(res, 500, { error: "transport_tripwire" });
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        // E04-S02 persistent chat: threads/turns/activity are tenant-scoped;
+        // foreign or missing ids share one 404 body (no cross-tenant oracle).
+        if (path === "/api/chat/threads" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown; title?: unknown };
+          if (typeof body.workspaceId !== "string" || !isUuid(body.workspaceId)) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const resolved = await claims(req, body.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            tenantJson(res, 201, await createThread(pool, resolved.claim, resolved.claim.userId, { title: body.title }));
+          } catch (err) {
+            if (err instanceof TenantInvalid) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            if (err instanceof TenantDenied) {
+              tenantJson(res, 404, { error: "not_found" });
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/chat/threads" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          tenantJson(res, 200, { threads: await listThreads(pool, resolved.claim), requestId });
+          return true;
+        }
+        const threadMatch = path.match(/^\/api\/chat\/threads\/([A-Za-z0-9-]+)$/);
+        if (threadMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          try {
+            const view = await getThread(pool, resolved.claim, threadMatch[1]);
+            if (!view) tenantJson(res, 404, { error: "not_found" });
+            else tenantJson(res, 200, { ...view, requestId });
+          } catch (err) {
+            if (err instanceof TenantDenied) tenantJson(res, 404, { error: "not_found" });
+            else throw err;
+          }
+          return true;
+        }
+        const sendMatch = path.match(/^\/api\/chat\/threads\/([A-Za-z0-9-]+)\/send$/);
+        if (sendMatch && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown; body?: unknown; idempotencyKey?: unknown };
+          if (typeof body.workspaceId !== "string" || !isUuid(body.workspaceId)) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const resolved = await claims(req, body.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            tenantJson(res, 202, await sendTurn(pool, resolved.claim, resolved.claim.userId, { threadId: sendMatch[1], body: body.body, idempotencyKey: body.idempotencyKey }));
+          } catch (err) {
+            if (err instanceof ChatError) {
+              const mapped = chatErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            if (err instanceof TenantInvalid) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            if (err instanceof TenantDenied) {
+              tenantJson(res, 404, { error: "not_found" });
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        const activityMatch = path.match(/^\/api\/chat\/threads\/([A-Za-z0-9-]+)\/activity$/);
+        if (activityMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const after = query.get("after") ?? "0";
+          const limit = query.get("limit") ?? "100";
+          try {
+            tenantJson(res, 200, { ...(await readActivity(pool, resolved.claim, activityMatch[1], Number(after), Number(limit))), requestId });
+          } catch (err) {
+            if (err instanceof TenantInvalid) tenantJson(res, 400, { error: "invalid_request" });
+            else if (err instanceof TenantDenied) tenantJson(res, 404, { error: "not_found" });
+            else throw err;
+          }
+          return true;
+        }
+        const cancelMatch = path.match(/^\/api\/chat\/turns\/([A-Za-z0-9-]+)\/cancel$/);
+        if (cancelMatch && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown };
+          if (typeof body.workspaceId !== "string" || !isUuid(body.workspaceId)) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const resolved = await claims(req, body.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            tenantJson(res, 200, await cancelTurn(pool, resolved.claim, cancelMatch[1]));
+          } catch (err) {
+            if (err instanceof TenantDenied) tenantJson(res, 404, { error: "not_found" });
+            else throw err;
+          }
+          return true;
+        }
+        const retryMatch = path.match(/^\/api\/chat\/turns\/([A-Za-z0-9-]+)\/retry$/);
+        if (retryMatch && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown; idempotencyKey?: unknown };
+          if (typeof body.workspaceId !== "string" || !isUuid(body.workspaceId)) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const resolved = await claims(req, body.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            tenantJson(res, 200, await retryTurn(pool, resolved.claim, resolved.claim.userId, { turnId: retryMatch[1], idempotencyKey: body.idempotencyKey }));
+          } catch (err) {
+            if (err instanceof ChatError) {
+              const mapped = chatErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            if (err instanceof TenantInvalid) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            if (err instanceof TenantDenied) {
+              tenantJson(res, 404, { error: "not_found" });
               return true;
             }
             throw err;
