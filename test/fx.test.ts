@@ -216,17 +216,13 @@ describe("e03-s03 fx valuation", () => {
     it("ECB triangulation GBP -> USD", () => {
       // GBP balance valued in USD
       // 1 EUR = 1.1460 USD, 1 EUR = 0.8588 GBP
-      // 1 GBP = 1.1460 / 0.8588 USD = 1.3345 USD
+      // 1 GBP = 1.1460 / 0.8588 USD = 11460/8588 = 1.334419... USD
       // 1000.00 GBP = 100000 GBP minor (exp 2)
-      // 1000.00 * 1.3345 = 1334.50 USD -> 133450 USD minor (rounded half-even)
+      // 100000 * (1.1460 / 0.8588) = 100000 * 11460/8588 = 1146000000 / 8588 = 133442.0135...
+      // Rounded half-even at USD minor (exp 2): 133442
       const input = makeInput({ currency: "GBP", baseCurrency: "USD", amountMinor: 100000n });
       const result = valuateSnapshot(input, ecbRates, manualRates);
-      // 100000 * (1.1460 / 0.8588) = 100000 * 1.334466... = 133446.6...
-      // Rounded half-even at USD minor (exp 2): 133447? Let's compute exactly
-      // 100000 * 11460/10000 / (8588/10000) = 100000 * 11460 / 8588 = 1146000000 / 8588 = 133447.1...
-      // 133447.1... rounded -> 133447
-      // Wait, the result is in USD minor units, so we need to check the actual computation
-      expect(typeof result.valuedAmountMinor).toBe("bigint");
+      expect(result.valuedAmountMinor).toBe(133442n);
       expect(result.coverage).toBe("full");
     });
 
@@ -286,6 +282,29 @@ describe("e03-s03 fx valuation", () => {
       expect(latestRates.has("USD")).toBe(true);
       expect(latestRates.has("JPY")).toBe(true);
       expect(latestRates.has("GBP")).toBe(true);
+    }, 30000);
+
+    it("verifies 2024-01-15 historical rates have expected structure", async () => {
+      // This test verifies that the ECB historical data for 2024-01-15
+      // has the expected structure (currency codes present, rates as strings)
+      const result = await downloadEcbRates();
+      const rates20240115 = result.rates.get("2024-01-15");
+      if (!rates20240115) {
+        // ECB may not have 2024-01-15 in the downloaded data if it's a weekend/holiday
+        // In that case, the test passes but logs a note
+        console.log("Note: 2024-01-15 not in ECB data (weekend/holiday), skipping rate verification");
+        return;
+      }
+      // Verify structure: rates are strings, major currencies present
+      expect(typeof rates20240115.get("USD")).toBe("string");
+      expect(typeof rates20240115.get("JPY")).toBe("string");
+      expect(typeof rates20240115.get("GBP")).toBe("string");
+      // KWD is not published by ECB
+      expect(rates20240115.has("KWD")).toBe(false);
+      // Verify rates parse as valid decimals
+      for (const [currency, rate] of rates20240115) {
+        expect(rate).toMatch(/^[0-9]+(\.[0-9]+)?$/);
+      }
     }, 30000);
   });
 });

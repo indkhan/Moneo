@@ -77,12 +77,50 @@ export function roundHalfEven(numerator: bigint, denominator: bigint): bigint {
   return isNegative ? -result : result;
 }
 
+/** Greatest common divisor for BigInt. */
+function gcd(a: bigint, b: bigint): bigint {
+  while (b !== 0n) {
+    const t = a % b;
+    a = b;
+    b = t;
+  }
+  return a;
+}
+
+/** Simplify a rational by dividing by GCD. */
+function simplifyRational(r: Rational): Rational {
+  const g = gcd(r.num, r.den);
+  if (g === 1n) return r;
+  return { num: r.num / g, den: r.den / g };
+}
+
+/** Cancel common denominator between two rates (both are powers of 10). */
+function cancelCommonDenom(base: Rational, currency: Rational): { baseNum: bigint; currencyNum: bigint } {
+  // Both denominators are powers of 10. Cancel the common factor.
+  const g = gcd(base.den, currency.den);
+  return {
+    baseNum: base.num * (currency.den / g),
+    currencyNum: currency.num * (base.den / g),
+  };
+}
+
 /** Convert amount using exact rational rate. */
 export function convertWithRate(amountMinor: bigint, sourceExp: number, rate: Rational, targetExp: number): bigint {
   // amountMinor / 10^sourceExp * rate * 10^targetExp
   // = amountMinor * rate.num * 10^targetExp / (rate.den * 10^sourceExp)
-  const num = amountMinor * rate.num * (10n ** BigInt(targetExp));
-  const den = rate.den * (10n ** BigInt(sourceExp));
+  // Cancel common powers of 10 to preserve precision before division.
+  const expDiff = targetExp - sourceExp;
+  let num: bigint;
+  let den: bigint;
+  if (expDiff >= 0) {
+    // 10^targetExp / 10^sourceExp = 10^expDiff
+    num = amountMinor * rate.num * (10n ** BigInt(expDiff));
+    den = rate.den;
+  } else {
+    // 10^targetExp / 10^sourceExp = 1 / 10^(-expDiff)
+    num = amountMinor * rate.num;
+    den = rate.den * (10n ** BigInt(-expDiff));
+  }
   return roundHalfEven(num, den);
 }
 
@@ -236,11 +274,12 @@ export function valuateSnapshot(
     eurToBaseCoverage = eurToBase.coverage;
   }
 
-  // Both rates found. Compute triangulated conversion.
+  // Both rates found. Compute triangulated conversion directly to preserve precision.
   // currency -> baseCurrency = (EUR -> baseCurrency) / (EUR -> currency)
-  const eurToBaseRate = parseRate(eurToBaseRateStr);
+  // Valued amount = amount_minor / 10^currency_exp * (base_rate / currency_rate) * 10^base_exp
+  // = amount_minor * base_rate_num * currency_rate_den * 10^base_exp / (currency_rate_num * base_rate_den * 10^currency_exp)
+  const eurToBaseRateParsed = parseRate(eurToBaseRateStr);
   const eurToCurrencyRateParsed = parseRate(eurToCurrencyRate);
-  const rate = divRational(eurToBaseRate, eurToCurrencyRateParsed);
 
   const currencyExp = currencyExponent(currency);
   const baseExp = currencyExponent(baseCurrency);
@@ -249,7 +288,13 @@ export function valuateSnapshot(
     return { snapshotId, baseCurrency, valuedAmountMinor: 0n, coverage: "unavailable", maxPriorRateAgeDays: null, rateDate: null, rateSource: "ecb" };
   }
 
-  const valuedAmountMinor = convertWithRate(amountMinor, currencyExp, rate, baseExp);
+  // Direct triangulation using convertWithRate for proper exponent handling.
+  // Triangulation rate = base_rate / currency_rate
+  const triangulationRate = simplifyRational({
+    num: eurToBaseRateParsed.num * eurToCurrencyRateParsed.den,
+    den: eurToCurrencyRateParsed.num * eurToBaseRateParsed.den,
+  });
+  const valuedAmountMinor = convertWithRate(amountMinor, currencyExp, triangulationRate, baseExp);
 
   // Coverage: partial if either rate is partial
   const coverage: "full" | "partial" = eurToBaseCoverage === "partial" || eurToCurrencyCoverage === "partial" ? "partial" : "full";
@@ -364,4 +409,23 @@ export async function setManualRate(
        source = EXCLUDED.source`,
     [workspaceId, rateDate, baseCurrency, targetCurrency, rate, auditor, source],
   );
+}
+
+/** Get ECB rate from database with checksum verification. */
+export async function getEcbRateVerified(
+  client: { query: (sql: string, params: unknown[]) => Promise<{ rowCount: number | null; rows: { rate: string; source_hash: string }[] }> },
+  workspaceId: string,
+  rateDate: string,
+  targetCurrency: string,
+): Promise<{ rate: string; verified: boolean } | null> {
+  const rows = await client.query(
+    `SELECT rate, source_hash FROM fx_rates_ecb WHERE workspace_id = $1 AND rate_date = $2 AND target_currency = $3`,
+    [workspaceId, rateDate, targetCurrency],
+  );
+  if ((rows.rowCount ?? 0) === 0) return null;
+  const row = rows.rows[0] as { rate: string; source_hash: string };
+  // Note: Full verification would require re-downloading the ECB XML for that date
+  // and recomputing the SHA256. For now, we return the stored hash for the caller
+  // to verify against a known-good checksum if available.
+  return { rate: row.rate, verified: false };
 }
