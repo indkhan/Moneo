@@ -10,6 +10,7 @@ import { createTenancyRouter } from "../apps/web/src/tenancy.ts";
 import { withTenant } from "../apps/web/src/tenancy.ts";
 import { createUiRouter } from "../apps/web/src/ui/routes.ts";
 import { confirmProposal, createProposal } from "../apps/web/src/ai-action-proposals.ts";
+import { undo } from "../apps/web/src/commands/transactions.ts";
 import { ensureTestPool } from "./helpers/test-db.ts";
 import { startStubIssuer, STUB_CLIENT_ID, STUB_CLIENT_SECRET, type StubIssuer } from "./helpers/stub-issuer.ts";
 
@@ -114,5 +115,17 @@ describe("e04-s05 trusted action confirmation", () => {
     const stalePolicy = await createProposal(pool, claims, userId, payload);
     await withTenant(pool, claims, (client) => client.query("UPDATE ai_policies SET policy_version = policy_version + 1 WHERE workspace_id = $1", [workspaceId]));
     await expect(confirmProposal(pool, claims, userId, stalePolicy.id, randomUUID())).rejects.toMatchObject({ code: "version_mismatch" });
+  });
+
+  it("permits exactly one compensation across sequential and racing undo keys", async () => {
+    const { userId, workspaceId, accountId } = await setup();
+    const claims = { userId, workspaceId };
+    const proposal = await createProposal(pool, claims, userId, { accountId, amountMinor: "1234", currency: "EUR", direction: "OUTFLOW", effectiveDate: "2026-09-19", description: "Synthetic" });
+    const { operationId } = await confirmProposal(pool, claims, userId, proposal.id, randomUUID());
+    const raced = await Promise.allSettled(Array.from({ length: 4 }, () => undo(pool, claims, userId, { workspaceId, operationId, idempotencyKey: randomUUID() })));
+    expect(raced.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    await expect(undo(pool, claims, userId, { workspaceId, operationId, idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "undo_conflict" });
+    const count = await withTenant(pool, claims, async (client) => Number((await client.query("SELECT count(*) AS n FROM manual_transactions WHERE workspace_id = $1", [workspaceId])).rows[0].n));
+    expect(count).toBe(2);
   });
 });

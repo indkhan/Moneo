@@ -1043,7 +1043,7 @@ const UNDOABLE = new Set([SET_CATEGORY_COMMAND, ADD_TAG_COMMAND, REMOVE_TAG_COMM
 export async function undoTx(client: PoolClient, claims: TenantClaims, actorId: string, input: UndoInput): Promise<TxOutcome<TransactionView>> {
   const hash = requestHash({ command: UNDO_COMMAND, workspaceId: input.workspaceId, operationId: input.operationId });
   return claimAndExecute(client, claims, actorId, UNDO_COMMAND, input.idempotencyKey, hash, async (client, operationId) => {
-    const op = await client.query("SELECT command_name, status FROM command_operations WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, input.operationId]);
+    const op = await client.query("SELECT command_name, status FROM command_operations WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [claims.workspaceId, input.operationId]);
     if ((op.rowCount ?? 0) === 0) throw new TxError("not_found");
     const commandName = (op.rows[0] as { command_name: string }).command_name;
     if ((op.rows[0] as { status: string }).status !== "SUCCEEDED") throw new TxError("undo_conflict");
@@ -1060,6 +1060,8 @@ export async function undoTx(client: PoolClient, claims: TenantClaims, actorId: 
     }
     const audit = audits.rows[0] as { entity_type: string; entity_id: string; before_state: TransactionView; after_state: TransactionView };
     if (commandName === MANUAL_TRANSACTION_COMMAND) {
+      const prior = await client.query("SELECT 1 FROM audit_events WHERE workspace_id = $1 AND compensating_operation_id = $2 LIMIT 1", [claims.workspaceId, input.operationId]);
+      if ((prior.rowCount ?? 0) !== 0) throw new TxError("undo_conflict");
       const original = audit.after_state;
       const inverseId = uuidv7();
       await client.query(
