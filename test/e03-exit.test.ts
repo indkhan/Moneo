@@ -329,6 +329,8 @@ describe("e03-s08 financial-truth exit", () => {
     expect(response.json.base).toEqual({ incomeMinor: "0", spendMinor: "2750", cashMinor: "-2750", coverage: "full", unvaluedCount: "0" });
     expect(response.json.inputsHash).toMatch(/^[a-f0-9]{64}$/);
     expect(response.json.resultsHash).toMatch(/^[a-f0-9]{64}$/);
+    const invalidFeeDirection = await postJson(base, "/api/commands/transactions.correct", cookie, { workspaceId, transactionKind: "imported", transactionId: rows[2][0], expectedVersion: "2", amount: "2.50", currency: "EUR", direction: "INFLOW", idempotencyKey: randomUUID() });
+    expect(invalidFeeDirection.status).toBe(400);
     const stored = await getJson(base, `/api/calculations/version?workspaceId=${workspaceId}`, cookie);
     expect(stored.json).toMatchObject({ version: response.json.calculationVersion, inputsHash: response.json.inputsHash, resultsHash: response.json.resultsHash });
     const selected = await getJson(base, `/api/calculations/financial-summary?workspaceId=${workspaceId}&accountId=${eur}&dateTo=2024-02-03`, cookie);

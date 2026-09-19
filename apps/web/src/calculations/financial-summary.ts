@@ -35,10 +35,10 @@ export async function getFinancialSummary(pool: Pool, claims: TenantClaims, work
     const classified = legs.map((leg) => classifyLeg(leg, ids));
     const native = calculateWorkspaceTotals(classified, accounts).byCurrency;
 
-    const ecbRows = await client.query("SELECT rate_date, target_currency, rate FROM fx_rates_ecb WHERE workspace_id = $1 ORDER BY rate_date", [workspaceId]);
+    const ecbRows = await client.query("SELECT rate_date, target_currency, rate FROM fx_rates_ecb WHERE workspace_id = $1 ORDER BY rate_date, target_currency", [workspaceId]);
     const ecb = new Map<string, Map<string, string>>();
     for (const r of ecbRows.rows as { rate_date: string | Date; target_currency: string; rate: string }[]) { const d = date(r.rate_date); const m = ecb.get(d) ?? new Map(); m.set(r.target_currency.trim(), r.rate); ecb.set(d, m); }
-    const manualRows = await client.query("SELECT rate_date, base_currency, target_currency, rate FROM fx_rates_manual WHERE workspace_id = $1 ORDER BY rate_date", [workspaceId]);
+    const manualRows = await client.query("SELECT rate_date, base_currency, target_currency, rate FROM fx_rates_manual WHERE workspace_id = $1 ORDER BY rate_date, base_currency, target_currency", [workspaceId]);
     const manual = new Map<string, Map<string, Map<string, string>>>();
     for (const r of manualRows.rows as { rate_date: string | Date; base_currency: string; target_currency: string; rate: string }[]) { const d = date(r.rate_date); const byBase = manual.get(d) ?? new Map(); const targets = byBase.get(r.base_currency.trim()) ?? new Map(); targets.set(r.target_currency.trim(), r.rate); byBase.set(r.base_currency.trim(), targets); manual.set(d, byBase); }
 
@@ -56,7 +56,9 @@ export async function getFinancialSummary(pool: Pool, claims: TenantClaims, work
     const coverage = unvalued > 0n ? (income === 0n && spend === 0n ? "unavailable" : "partial") : partial ? "partial" : "full";
     const base = { incomeMinor: formatSignedDecimalBigint(income), spendMinor: formatSignedDecimalBigint(spend), cashMinor: formatSignedDecimalBigint(income - spend), coverage, unvaluedCount: unvalued.toString() } as const;
     const canonicalInputs = selectedRows.map((r) => ({ ...r, effective_date: date(r.effective_date), amount_minor: String(r.amount_minor), currency: r.currency.trim() }));
-    const inputsHash = sha({ baseCurrency, filter, accounts: [...accounts.entries()], rows: canonicalInputs, ecb: ecbRows.rows, manual: manualRows.rows });
+    const canonicalEcb = (ecbRows.rows as { rate_date: string | Date; target_currency: string; rate: string }[]).map((r) => ({ rateDate: date(r.rate_date), targetCurrency: r.target_currency.trim(), rate: r.rate }));
+    const canonicalManual = (manualRows.rows as { rate_date: string | Date; base_currency: string; target_currency: string; rate: string }[]).map((r) => ({ rateDate: date(r.rate_date), baseCurrency: r.base_currency.trim(), targetCurrency: r.target_currency.trim(), rate: r.rate }));
+    const inputsHash = sha({ baseCurrency, filter, accounts: [...accounts.entries()], rows: canonicalInputs, ecb: canonicalEcb, manual: canonicalManual });
     const resultsHash = sha({ base, native });
     const prior = await client.query("SELECT COALESCE(MAX(version), 0) AS version FROM calculation_versions WHERE workspace_id = $1", [workspaceId]);
     const calculationVersion = (BigInt((prior.rows[0] as { version: string }).version) + 1n).toString();

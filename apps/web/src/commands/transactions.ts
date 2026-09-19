@@ -865,8 +865,9 @@ export async function correctTx(client: PoolClient, claims: TenantClaims, actorI
     if (BigInt(before.version) !== expected) throw new TxError("version_mismatch", before.version);
     const table = tableFor(input.transactionKind);
     const resultingDirection = input.direction ?? before.direction;
-    if (input.financialKind === "FEE" && resultingDirection !== "OUTFLOW") throw new TenantInvalid();
-    if (input.financialKind === "REFUND" && resultingDirection !== "INFLOW") throw new TenantInvalid();
+    const resultingKind = input.financialKind ?? before.financialKind;
+    if (resultingKind === "FEE" && resultingDirection !== "OUTFLOW") throw new TenantInvalid();
+    if (resultingKind === "REFUND" && resultingDirection !== "INFLOW") throw new TenantInvalid();
     const sets: string[] = ["version = version + 1", "updated_at = now()"];
     const params: unknown[] = [claims.workspaceId, input.transactionId, expected.toString(10)];
     let idx = 4;
