@@ -248,6 +248,77 @@ revision, environment, commands and results in STORIES.md. Stop at the W1 gate;
 do not begin E02, use real customer financial data, or publicly release.
 ```
 
+## Run E04 end to end with Muse Spark 1.3
+
+```text
+Act as the Moneo E04 implementation orchestrator using Muse Spark 1.3. Continue
+until E04 is genuinely Done or a material product/trust-boundary/access blocker
+requires founder input. Do not stop after planning, scaffolding, one story, one
+agent report, or a green unit suite.
+
+First read AGENTS.md and docs/implementation/README.md, WORKFLOW.md, EPICS.md,
+STORIES.md, E04.md and the referenced product/architecture sections. Inspect
+Git, worktrees, running tasks and the actual committed tree. Preserve unrelated
+work and never read, print, copy or commit secret values or customer data.
+
+E03 is currently reopened. Before any E04 implementation, finish the recorded
+E03-S02/S04/S08 remediation: build one tenant-scoped production calculation
+boundary over canonical accepted imported/manual rows and persisted financial
+semantics; keep native currencies separate; value each row before any base-
+currency sum with explicit missing-FX coverage; compute and persist canonical
+input/result SHA-256 evidence server-side; expose one production read used by
+future tools; and replace hand-built TransactionLeg exit oracles with a real
+import/command/query journey. Add failing regressions first, use real disposable
+PostgreSQL, commit the candidate, delegate independent adversarial review to a
+separate reviewer, fix findings, obtain re-review on the changed SHA, test the
+latest-main candidate, merge, smoke, and update the ledger. Do not accept client-
+supplied evidence hashes or mark E03 Done from existing green tests.
+
+Once E03-S08 is genuinely Done, implement E04-S01 through E04-S07 strictly in
+dependency order from E04.md. Use one short-lived story branch/worktree per
+story. For every story: record base/assignee/status; implement the smallest
+complete vertical slice; add risk-appropriate red/green checks; commit; assign
+a separate non-editing reviewer the story/contracts/full diff and actual SHA;
+fix every blocker and request re-review; construct and test the candidate against
+latest main; merge only after current approval and required gates; run post-
+merge smoke; then record commands/results/review/candidate/merge SHAs in the one
+canonical STORIES.md ledger. Workers never merge main. Serialize shared schema,
+policy, chat and worker contracts; do not run dependent stories in parallel.
+
+Reuse existing tenancy, policy, command journal, durable jobs, recovery, money,
+FX, evidence and shared-query code. Prefer PostgreSQL constraints/transactions,
+Node built-ins and installed packages. Do not create a provider registry,
+repository/service layer, workflow DSL, speculative package tree, custom model
+picker, editable prompts, arbitrary SQL/network tools, external preview fetches,
+or R2/R3 placeholders. Models never perform authoritative arithmetic, receive
+SQL/credentials, expand their own capabilities, or assert user consent.
+
+Muse Spark 1.3 is the requested development/live-evaluation candidate. Keep the
+deterministic provider double in normal CI. Use the repository's existing
+OpenRouter development mechanism only for the bounded synthetic live gate in
+E04-S07; load the ignored local key through the documented native env-file path,
+never expose its value, enforce the predeclared call/time/cost caps, and record
+the exact provider model identifier returned/used. If Muse Spark 1.3 is missing,
+renamed, unavailable, rate-limited or fails the frozen rubric, report that fact
+and keep E04 blocked—do not silently substitute a model, relax thresholds, use
+real financial data, or claim production qualification. Production remains
+no-training/ZDR and is separately gated by E08-S03.
+
+After S07, run the complete E04 exit on the merged revision: full deterministic
+matrix, every E04 suite, E03 exit, builds, deliberate-failure nonzero gate,
+staging smoke, diff/secret hygiene, and the integrated browser journey covering
+send, durable worker recovery, scoped tools, exact evidence, reconnect, Stop,
+retry, exclusion/revocation, usage accounting, hostile markdown and trusted
+manual-transaction confirmation with replay/undo. Run the frozen live Muse Spark
+1.3 evaluation separately. Record pass/fail honestly, including unavailable
+live service. Mark E04 Done only when deterministic gates, independent review
+and required live threshold evidence are current at the actual merged SHA.
+
+Stop before E05. Do not deploy publicly or authorize real-customer use. Finish
+with the E04 merge SHA, exact checks, live model identifier/result, limitations,
+and the next dependency-ready story.
+```
+
 ## Run W2 / E02 after the passed W1 exit
 
 ```text
