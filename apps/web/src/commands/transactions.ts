@@ -95,10 +95,12 @@ export class TxError extends Error {
     | "limit_exceeded"
     | "unsupported_operation";
   readonly currentVersion?: string;
-  constructor(code: TxError["code"], currentVersion?: string) {
+  readonly detail?: unknown;
+  constructor(code: TxError["code"], currentVersion?: string, detail?: unknown) {
     super(code);
     this.code = code;
     this.currentVersion = currentVersion;
+    this.detail = detail;
   }
 }
 
@@ -358,11 +360,11 @@ type StoredOp = {
   status: string;
   requestHash: string;
   response: unknown;
-  error: { code: TxError["code"]; currentVersion?: string } | null;
+  error: { code: TxError["code"]; currentVersion?: string; detail?: unknown } | null;
   expiresAt: string;
 };
 
-type TxOutcome<T> = { ok: true; result: T; operationId: string; replayed: boolean } | { ok: false; code: TxError["code"]; currentVersion?: string };
+type TxOutcome<T> = { ok: true; result: T; operationId: string; replayed: boolean } | { ok: false; code: TxError["code"]; currentVersion?: string; detail?: unknown };
 
 async function claimAndExecute<T>(
   client: PoolClient,
@@ -388,7 +390,7 @@ async function claimAndExecute<T>(
       const resp = row.response as { view: T; operationId: string; replayed: boolean };
       return { ok: true, result: resp.view, operationId: resp.operationId, replayed: true };
     }
-    return { ok: false, code: row.error?.code ?? "version_mismatch", currentVersion: row.error?.currentVersion };
+    return { ok: false, code: row.error?.code ?? "version_mismatch", currentVersion: row.error?.currentVersion, detail: row.error?.detail };
   };
 
   const prior = await readOp();
@@ -433,11 +435,11 @@ async function claimAndExecute<T>(
         await client.query("ROLLBACK TO SAVEPOINT tx_execute");
         if (err instanceof TxError) {
           await client.query("UPDATE command_operations SET status = 'FAILED_FINAL', error_payload = $1, completed_at = now() WHERE workspace_id = $2 AND id = $3", [
-            JSON.stringify(err.currentVersion === undefined ? { code: err.code } : { code: err.code, currentVersion: err.currentVersion }),
+            JSON.stringify({ code: err.code, ...(err.currentVersion === undefined ? {} : { currentVersion: err.currentVersion }), ...(err.detail === undefined ? {} : { detail: err.detail }) }),
             claims.workspaceId,
             operationId,
           ]);
-          return { ok: false, code: err.code, currentVersion: err.currentVersion };
+          return { ok: false, code: err.code, currentVersion: err.currentVersion, detail: err.detail };
         }
         if ((err as { code?: string }).code === "23503") {
           await client.query("UPDATE command_operations SET status = 'FAILED_FINAL', error_payload = $1, completed_at = now() WHERE workspace_id = $2 AND id = $3", [
@@ -452,11 +454,11 @@ async function claimAndExecute<T>(
     } catch (err) {
       if (err instanceof TxError) {
         await client.query("UPDATE command_operations SET status = 'FAILED_FINAL', error_payload = $1, completed_at = now() WHERE workspace_id = $2 AND id = $3", [
-          JSON.stringify(err.currentVersion === undefined ? { code: err.code } : { code: err.code, currentVersion: err.currentVersion }),
+          JSON.stringify({ code: err.code, ...(err.currentVersion === undefined ? {} : { currentVersion: err.currentVersion }), ...(err.detail === undefined ? {} : { detail: err.detail }) }),
           claims.workspaceId,
           operationId,
         ]);
-        return { ok: false, code: err.code, currentVersion: err.currentVersion };
+        return { ok: false, code: err.code, currentVersion: err.currentVersion, detail: err.detail };
       }
       throw err;
     }
@@ -886,6 +888,116 @@ export async function correct(pool: Pool, claims: TenantClaims, actorId: string,
   if (!isUuid(input.transactionId)) throw new TenantDenied();
   const outcome = await withTenant(pool, claims, (client) => correctTx(client, claims, actorId, input));
   if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion);
+  return { view: outcome.result, operationId: outcome.operationId, replayed: outcome.replayed };
+}
+
+// ---- bulk set-category (E03-S06, all-or-nothing) ----
+
+export const BULK_SET_CATEGORY_COMMAND = "transactions.bulk_set_category";
+
+export type BulkSetCategoryInput = {
+  workspaceId: string;
+  transactionKind: TransactionKind;
+  categoryId: string | null;
+  items: { transactionId: string; expectedVersion: string }[];
+  idempotencyKey: string;
+};
+
+export type BulkSetCategoryResult = {
+  view: { updated: { transactionId: string; version: string }[] };
+  operationId: string;
+  replayed: boolean;
+};
+
+export function validateBulkSetCategoryInput(value: unknown): BulkSetCategoryInput {
+  if (typeof value !== "object" || value === null) throw new TenantInvalid();
+  const v = value as Record<string, unknown>;
+  for (const key of Object.keys(v)) {
+    if (!["workspaceId", "transactionKind", "categoryId", "items", "idempotencyKey"].includes(key)) throw new TenantInvalid();
+  }
+  if (!Array.isArray(v.items) || v.items.length < 1 || v.items.length > 100) throw new TenantInvalid();
+  const seen = new Set<string>();
+  const items: { transactionId: string; expectedVersion: string }[] = [];
+  for (const item of v.items) {
+    if (typeof item !== "object" || item === null) throw new TenantInvalid();
+    const row = item as Record<string, unknown>;
+    if (typeof row.transactionId !== "string" || !UUID_RE.test(row.transactionId)) throw new TenantInvalid();
+    if (typeof row.expectedVersion !== "string" || !/^[0-9]+$/.test(row.expectedVersion)) throw new TenantInvalid();
+    if (seen.has(row.transactionId)) throw new TenantInvalid();
+    seen.add(row.transactionId);
+    items.push({ transactionId: row.transactionId, expectedVersion: row.expectedVersion });
+  }
+  return {
+    workspaceId: checkUuid(v.workspaceId),
+    transactionKind: checkKind(v.transactionKind),
+    categoryId: v.categoryId === null ? null : checkUuid(v.categoryId),
+    items,
+    idempotencyKey: checkUuid(v.idempotencyKey),
+  };
+}
+
+export async function bulkSetCategoryTx(
+  client: PoolClient,
+  claims: TenantClaims,
+  actorId: string,
+  input: BulkSetCategoryInput,
+): Promise<TxOutcome<{ updated: { transactionId: string; version: string }[] }>> {
+  const sorted = [...input.items].sort((a, b) => (a.transactionId < b.transactionId ? -1 : 1));
+  const hash = requestHash({
+    command: BULK_SET_CATEGORY_COMMAND,
+    workspaceId: input.workspaceId,
+    kind: input.transactionKind,
+    categoryId: input.categoryId,
+    items: sorted,
+  });
+  return claimAndExecute(client, claims, actorId, BULK_SET_CATEGORY_COMMAND, input.idempotencyKey, hash, async (client, operationId) => {
+    if (input.categoryId !== null) await requireLiveCategory(client, claims.workspaceId, input.categoryId);
+    // Validate every item before writing any row: all-or-nothing.
+    const expectedById = new Map(sorted.map((i) => [i.transactionId, BigInt(i.expectedVersion)]));
+    const befores = new Map<string, TransactionView>();
+    const problems: { transactionId: string; reason: string; currentVersion?: string }[] = [];
+    for (const item of sorted) {
+      const before = await readTransactionView(client, claims.workspaceId, input.transactionKind, item.transactionId);
+      if (!before) {
+        problems.push({ transactionId: item.transactionId, reason: "not_found" });
+        continue;
+      }
+      if (BigInt(before.version) !== expectedById.get(item.transactionId)) {
+        problems.push({ transactionId: item.transactionId, reason: "version_mismatch", currentVersion: before.version });
+        continue;
+      }
+      befores.set(item.transactionId, before);
+    }
+    if (problems.length > 0) throw new TxError("version_mismatch", undefined, { items: problems });
+    const table = tableFor(input.transactionKind);
+    const updated: { transactionId: string; version: string }[] = [];
+    for (const item of sorted) {
+      const expected = expectedById.get(item.transactionId)!.toString(10);
+      const res = await client.query(`UPDATE ${table} SET category_id = $1, version = version + 1, updated_at = now() WHERE workspace_id = $2 AND id = $3 AND version = $4 RETURNING version`, [
+        input.categoryId,
+        claims.workspaceId,
+        item.transactionId,
+        expected,
+      ]);
+      if ((res.rowCount ?? 0) === 0) {
+        // Lost a race between validation and write: abort the whole batch.
+        const current = await readTransactionView(client, claims.workspaceId, input.transactionKind, item.transactionId);
+        throw new TxError("version_mismatch", undefined, { items: [{ transactionId: item.transactionId, reason: "version_mismatch", currentVersion: current?.version }] });
+      }
+      const after = (await readTransactionView(client, claims.workspaceId, input.transactionKind, item.transactionId))!;
+      await insertAudit(client, claims, actorId, input.transactionKind === "imported" ? "transaction" : "manual_transaction", item.transactionId, "set_category", befores.get(item.transactionId), after, operationId);
+      updated.push({ transactionId: item.transactionId, version: after.version });
+    }
+    await bumpRevision(client, claims.workspaceId);
+    return { view: { updated }, operationId };
+  });
+}
+
+export async function bulkSetCategory(pool: Pool, claims: TenantClaims, actorId: string, raw: unknown): Promise<BulkSetCategoryResult> {
+  const input = validateBulkSetCategoryInput(raw);
+  if (input.workspaceId !== claims.workspaceId) throw new TenantDenied();
+  const outcome = await withTenant(pool, claims, (client) => bulkSetCategoryTx(client, claims, actorId, input));
+  if (!outcome.ok) throw new TxError(outcome.code, outcome.currentVersion, outcome.detail);
   return { view: outcome.result, operationId: outcome.operationId, replayed: outcome.replayed };
 }
 

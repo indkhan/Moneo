@@ -19,6 +19,7 @@ import { acceptMapping, listMappingProfiles, loadMappingSample, MappingError, pr
 import { liveMappingTransport, loadMappingProvider } from "../mapping-provider.ts";
 import { listWorkspaces, sessionClaims, TenantDenied, TenantInvalid, type SessionResolver } from "../tenancy.ts";
 import { errorPage, escapeHtml, page } from "./shell.ts";
+import { handleTransactionRoutes } from "./transactions.ts";
 
 export type UiConfig = {
   appBaseUrl: string;
@@ -877,6 +878,11 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
             <p><a href="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(importId)}">Back to import status</a></p>`,
         }),
       );
+      return true;
+    }
+
+    // E03-S06 transaction table + drawer (shared reads, S05 commands).
+    if (await handleTransactionRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
       return true;
     }
 
