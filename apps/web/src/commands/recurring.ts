@@ -153,7 +153,7 @@ async function scanInputs(client: PoolClient, workspaceId: string): Promise<{ it
         ? `${r.effective_date.getUTCFullYear()}-${String(r.effective_date.getUTCMonth() + 1).padStart(2, "0")}-${String(r.effective_date.getUTCDate()).padStart(2, "0")}`
         : r.effective_date;
       const minor = BigInt(r.amount_minor) < 0n ? -BigInt(r.amount_minor) : BigInt(r.amount_minor);
-      items.push({ id: r.id, amountMinor: minor.toString(10), currency: r.currency.trim(), direction: r.direction as "INFLOW" | "OUTFLOW", effectiveDate: date, description: r.description });
+      items.push({ id: r.id, amountMinor: minor.toString(10), currency: r.currency.trim().toUpperCase(), direction: r.direction as "INFLOW" | "OUTFLOW", effectiveDate: date, description: r.description });
     }
   }
   return { items, truncated };
@@ -199,10 +199,25 @@ export async function confirmTx(client: PoolClient, claims: TenantClaims, actorI
     if (currentVersion !== expected) throw new TxError("version_mismatch", current ? current.version : "0");
     let view: OverrideView;
     if (!current) {
-      const inserted = await client.query(
-        "INSERT INTO recurring_overrides (workspace_id, id, fingerprint, status, kind, day_of_month) VALUES ($1, $2, $3, 'confirmed', $4, $5) RETURNING workspace_id, id, fingerprint, status, kind, day_of_month, version, created_at, updated_at",
-        [claims.workspaceId, uuidv7(), input.fingerprint, input.kind, input.dayOfMonth],
-      );
+      // B1: a concurrent first-time confirmer may win the PK between our
+      // read and insert — savepoint-guard the INSERT (a failed query would
+      // poison the transaction) and report the honest version conflict.
+      await client.query("SAVEPOINT recurring_override");
+      let inserted;
+      try {
+        inserted = await client.query(
+          "INSERT INTO recurring_overrides (workspace_id, id, fingerprint, status, kind, day_of_month) VALUES ($1, $2, $3, 'confirmed', $4, $5) RETURNING workspace_id, id, fingerprint, status, kind, day_of_month, version, created_at, updated_at",
+          [claims.workspaceId, uuidv7(), input.fingerprint, input.kind, input.dayOfMonth],
+        );
+        await client.query("RELEASE SAVEPOINT recurring_override");
+      } catch (err) {
+        await client.query("ROLLBACK TO SAVEPOINT recurring_override");
+        if ((err as { code?: string }).code === "23505") {
+          const latest = await readOverride(client, claims.workspaceId, input.fingerprint);
+          throw new TxError("version_mismatch", latest?.version);
+        }
+        throw err;
+      }
       view = toOverrideView(inserted.rows[0] as OverrideRow);
       await insertAudit(client, claims, actorId, "recurring_candidate", (inserted.rows[0] as OverrideRow).id, "confirm", null, view, operationId);
     } else {
@@ -245,10 +260,22 @@ export async function dismissTx(client: PoolClient, claims: TenantClaims, actorI
     if (currentVersion !== expected) throw new TxError("version_mismatch", current ? current.version : "0");
     let view: OverrideView;
     if (!current) {
-      const inserted = await client.query(
-        "INSERT INTO recurring_overrides (workspace_id, id, fingerprint, status) VALUES ($1, $2, $3, 'dismissed') RETURNING workspace_id, id, fingerprint, status, kind, day_of_month, version, created_at, updated_at",
-        [claims.workspaceId, uuidv7(), input.fingerprint],
-      );
+      await client.query("SAVEPOINT recurring_override");
+      let inserted;
+      try {
+        inserted = await client.query(
+          "INSERT INTO recurring_overrides (workspace_id, id, fingerprint, status) VALUES ($1, $2, $3, 'dismissed') RETURNING workspace_id, id, fingerprint, status, kind, day_of_month, version, created_at, updated_at",
+          [claims.workspaceId, uuidv7(), input.fingerprint],
+        );
+        await client.query("RELEASE SAVEPOINT recurring_override");
+      } catch (err) {
+        await client.query("ROLLBACK TO SAVEPOINT recurring_override");
+        if ((err as { code?: string }).code === "23505") {
+          const latest = await readOverride(client, claims.workspaceId, input.fingerprint);
+          throw new TxError("version_mismatch", latest?.version);
+        }
+        throw err;
+      }
       view = toOverrideView(inserted.rows[0] as OverrideRow);
       await insertAudit(client, claims, actorId, "recurring_candidate", (inserted.rows[0] as OverrideRow).id, "dismiss", null, view, operationId);
     } else {

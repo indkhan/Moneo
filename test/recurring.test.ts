@@ -317,6 +317,112 @@ describe("e03-s07 recurring candidates", () => {
     expect(dismissed.json).toMatchObject({ status: "dismissed", version: "1" });
   });
 
+  it("converges a wide first-confirm race to one winner with zero 503s (B1)", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId, userId } = await setupWorkspace(base, "e03-recur-race");
+    const acct = await createAccount(base, cookie, workspaceId, "Cash");
+    await seedRentSeries(workspaceId, userId, acct);
+    const rent = ((await getJson(base, `/api/recurring?workspaceId=${workspaceId}`, cookie)).json.candidates as { fingerprint: string; occurrences: number }[]).find((c) => c.occurrences === 3)!;
+    const results = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        postJson(base, "/api/commands/recurring.confirm", cookie, {
+          workspaceId,
+          fingerprint: rent.fingerprint,
+          kind: "expense",
+          dayOfMonth: 12,
+          expectedVersion: "0",
+          idempotencyKey: randomUUID(),
+        }),
+      ),
+    );
+    expect(results.filter((r) => r.status === 200).length).toBe(1);
+    expect(results.filter((r) => r.status === 409).length).toBe(11);
+    for (const r of results) expect(r.status).not.toBe(503);
+    for (const r of results.filter((x) => x.status === 409)) expect(r.json.currentVersion).toBe("1");
+  });
+
+  it("keeps exact versions beyond safe integer at JSON boundaries (B2)", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId, userId } = await setupWorkspace(base, "e03-recur-big");
+    const acct = await createAccount(base, cookie, workspaceId, "Cash");
+    await seedRentSeries(workspaceId, userId, acct);
+    const rent = ((await getJson(base, `/api/recurring?workspaceId=${workspaceId}`, cookie)).json.candidates as { fingerprint: string; occurrences: number }[]).find((c) => c.occurrences === 3)!;
+    await withTenant(pool, { userId, workspaceId }, async (client) => {
+      await client.query("INSERT INTO recurring_overrides (workspace_id, id, fingerprint, status, version) VALUES ($1, $2, $3, 'dismissed', $4)", [workspaceId, randomUUID(), rent.fingerprint, "9007199254740993"]);
+    });
+    const raw = await fetch(`${base}/api/recurring?workspaceId=${workspaceId}`, { headers: { cookie } }).then((r) => r.text());
+    expect(raw).toContain('"version":"9007199254740993"');
+    expect(raw).not.toMatch(/9007199254740993[^"]/);
+    const confirmed = await postJson(base, "/api/commands/recurring.confirm", cookie, {
+      workspaceId,
+      fingerprint: rent.fingerprint,
+      kind: "expense",
+      dayOfMonth: 12,
+      expectedVersion: "9007199254740993",
+      idempotencyKey: randomUUID(),
+    });
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.json.version).toBe("9007199254740994");
+  });
+
+  it("rejects incompatible key reuse and leaves genuine refund pairs unmarked (B3)", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId, userId } = await setupWorkspace(base, "e03-recur-reuse");
+    const acct = await createAccount(base, cookie, workspaceId, "Cash");
+    await seedRentSeries(workspaceId, userId, acct);
+    // Genuine opposite-direction pair: same description and amount, one
+    // OUTFLOW and one INFLOW — must stay two sparse singletons, never one
+    // pre-marked expense.
+    await withTenant(pool, { userId, workspaceId }, async (client) => {
+      for (const [date, direction] of [["2024-01-20", "OUTFLOW"], ["2024-01-21", "INFLOW"]] as const) {
+        await client.query(
+          "INSERT INTO transactions (workspace_id, id, account_id, amount_minor, currency, direction, effective_date, description, import_id, import_row_no, observation_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+          [workspaceId, randomUUID(), acct, "7777", "EUR", direction, date, "Refund tango", randomUUID(), Math.floor(Math.random() * 1e9), randomUUID()],
+        );
+      }
+    });
+    const listed = ((await getJson(base, `/api/recurring?workspaceId=${workspaceId}`, cookie)).json.candidates as {
+      fingerprint: string;
+      description: string;
+      status: string;
+      override: unknown;
+    }[]).filter((c) => c.description === "Refund tango");
+    expect(listed).toHaveLength(2);
+    for (const c of listed) {
+      expect(c).toMatchObject({ status: "sparse", override: null });
+      const attempt = await postJson(base, "/api/commands/recurring.confirm", cookie, {
+        workspaceId,
+        fingerprint: c.fingerprint,
+        kind: "expense",
+        dayOfMonth: 20,
+        expectedVersion: "0",
+        idempotencyKey: randomUUID(),
+      });
+      expect(attempt.status).toBe(404);
+    }
+    const rent = ((await getJson(base, `/api/recurring?workspaceId=${workspaceId}`, cookie)).json.candidates as { fingerprint: string; occurrences: number }[]).find((c) => c.occurrences === 3)!;
+    const key = randomUUID();
+    const first = await postJson(base, "/api/commands/recurring.confirm", cookie, {
+      workspaceId,
+      fingerprint: rent.fingerprint,
+      kind: "expense",
+      dayOfMonth: 12,
+      expectedVersion: "0",
+      idempotencyKey: key,
+    });
+    expect(first.status).toBe(200);
+    const reuse = await postJson(base, "/api/commands/recurring.confirm", cookie, {
+      workspaceId,
+      fingerprint: rent.fingerprint,
+      kind: "income",
+      dayOfMonth: 1,
+      expectedVersion: "0",
+      idempotencyKey: key,
+    });
+    expect(reuse.status).toBe(409);
+    expect(reuse.json.reason).toBe("idempotency_reuse");
+  });
+
   it("requires explicit kind for refund-like pairs and isolates tenants", async () => {
     const base = await startApp();
     const { cookie, workspaceId, userId } = await setupWorkspace(base, "e03-recur-d");

@@ -904,7 +904,7 @@ Failure lifecycle: Confirm/dismiss are single-tx journaled commands (terminal fa
 UI/accessibility: Native forms/labels, warnings as text, focus to errors, 320 px usable, keyboard-only, no color-only status, no JS.
 Data changes: `016_recurring.sql` additive (+rollback 016→015 order in the tenancy rollback chain); seed none. Rollback drops overrides only (pre-product: synthetic).
 Observability: Request/command IDs, counts, latency only; never descriptions/amounts in logs.
-Limits: Scan ≤2000 most-recent rows; candidates surfaced ≤200; day_of_month 1–28 (Feb-safe); confirm/dismiss p95 <500 ms locally.
+Limits: Scan ≤2000 most-recent rows per table (≤4000 combined; truncation flagged, never silent); candidates surfaced ≤200; day_of_month 1–28 (Feb-safe); confirm/dismiss p95 <500 ms locally.
 Verification: Add `npm run test:recurring` (real PG own DB: detection goldens incl. cadence tolerance + sparse + warnings, confirm/dismiss happy + stale + replay + race, no-booked-rows assertion, tenant isolation, >safe-integer version raw text). Extend UI journey coverage in the same suite (recurring page render + confirm/dismiss forms + conflict shell). Regress `test:transactions-table`, `test:categories`, `test:import-e2e`, `test:w1`, typecheck, web build; failure/diff/secret gates.
 Review focus: Fingerprint collisions/normalization gaps, transfer/refund silent-classification paths, write-on-read smuggling, confirmable-sparse bypass, booked-row fabrication, version canonicalization, RLS on overrides, unbounded scan, calendar creep.
 Rollout/rollback: Pre-release boundary; rollback = prior image + `016 rollback.sql` (synthetic overrides only). Known limitation: monthly/exact-amount only; day 29–31 schedules unsupported in R1 (documented, 400).
