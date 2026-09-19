@@ -19,8 +19,11 @@ import {
 import { sessionClaims, TenantDenied, TenantInvalid, type SessionResolver } from "../tenancy.ts";
 import { listAccountViews } from "../commands/accounts.ts";
 import { getFinancialSummary } from "../calculations/financial-summary.ts";
-import { summarizeEligible } from "../ai-policy.ts";
+import { getPolicy, summarizeEligible } from "../ai-policy.ts";
 import { readLimitedBody } from "../http-controls.ts";
+import { confirmProposal, getProposal, ProposalError } from "../ai-action-proposals.ts";
+import { formatMinor, parseDecimalBigint } from "../money.ts";
+import { getSettingsView } from "../ai-settings.ts";
 import { errorPage, escapeHtml, page } from "./shell.ts";
 
 export type ChatUiConfig = { appBaseUrl: string; sessionSecret: string };
@@ -47,11 +50,13 @@ function readFormBody(req: IncomingMessage): Promise<URLSearchParams> {
 }
 
 function sameOrigin(req: IncomingMessage, appBaseUrl: string): boolean {
+  if (req.headers["sec-fetch-site"] === "same-origin") return true;
   const allowed = new URL(appBaseUrl).origin;
+  const requestOrigins = typeof req.headers.host === "string" ? [`http://${req.headers.host}`, `https://${req.headers.host}`] : [];
   const origin = req.headers.origin;
   const referer = req.headers.referer;
-  if (typeof origin === "string") return origin === allowed;
-  if (typeof referer === "string") return referer === allowed || referer.startsWith(`${allowed}/`);
+  if (typeof origin === "string") return origin === allowed || requestOrigins.includes(origin);
+  if (typeof referer === "string") return [allowed, ...requestOrigins].some((candidate) => referer === candidate || referer.startsWith(`${candidate}/`));
   return false;
 }
 
@@ -109,7 +114,7 @@ function statusBadge(kind: string): string {
 }
 
 function contextChip(label: string, removable = false): string {
-  const rem = removable ? `<button type="submit" name="removeContext" value="" aria-label="Remove ${escapeHtml(label)}">x</button>` : "";
+  const rem = removable ? `<a href="?" aria-label="Remove ${escapeHtml(label)}">x</a>` : "";
   return `<span class="context-chip">${escapeHtml(label)}${rem}</span>`;
 }
 
@@ -153,6 +158,46 @@ export function createChatRouter(pool: Pool, resolveSession: SessionResolver, co
     }
     const claims = resolved.claim;
 
+    if (method === "POST" && !sameOrigin(req, config.appBaseUrl)) {
+      html(res, 403, errorPage({ status: 403, heading: "Request rejected", message: "Submit this form from Moneo.", back: `/w/${escapeHtml(workspaceId)}/chat`, requestId, authed: true }));
+      return true;
+    }
+
+    if (path === `/w/${workspaceId}/ai-settings` && method === "GET") {
+      const settings = await getSettingsView(pool, claims);
+      const accounts = await listAccountViews(pool, claims);
+      const policy = await getPolicy(pool, claims);
+      html(res, 200, page({ title: "Included AI settings", requestId, authed: true, content: `<h2>Included AI settings</h2><dl><dt>Policy version</dt><dd>${escapeHtml(settings.policyVersion)}</dd><dt>Route</dt><dd>${escapeHtml(settings.routeClass)}</dd><dt>Coverage</dt><dd>${escapeHtml(settings.coverage)}</dd><dt>Budget</dt><dd>${escapeHtml(settings.budget.moneyBudgetMinor)} minor units / ${escapeHtml(String(settings.budget.tokenBudget))} tokens</dd><dt>Reserved</dt><dd>${escapeHtml(settings.usage.reservedMoneyMinor)}</dd><dt>Reconciled</dt><dd>${escapeHtml(settings.usage.reconciledMoneyMinor)}</dd><dt>Pending or unknown</dt><dd>${escapeHtml(settings.usage.pendingMoneyMinor)} (${escapeHtml(String(settings.usage.pendingCount))} calls)</dd></dl><h3>Account inclusion</h3><ul>${accounts.map((account) => { const excluded = policy.excludedAccountIds.includes(account.id); return `<li>${escapeHtml(account.name)} — ${excluded ? "excluded" : "included"}<form method="post" action="/w/${escapeHtml(workspaceId)}/exclusions"><input type="hidden" name="accountId" value="${escapeHtml(account.id)}"><input type="hidden" name="excluded" value="${excluded ? "false" : "true"}"><input type="hidden" name="policyVersion" value="${escapeHtml(policy.policyVersion)}"><input type="hidden" name="returnTo" value="ai-settings"><button type="submit">${excluded ? "Include" : "Exclude"}</button></form></li>`; }).join("") || "<li>No accounts</li>"}</ul><h3>System prompt</h3><p>Version prompt-1. Product-managed and read-only; tenant data and credentials are not displayed.</p>` }));
+      return true;
+    }
+
+    const proposalMatch = path.match(new RegExp(`^/w/${workspaceId}/ai-actions/([A-Za-z0-9-]+)$`));
+    if (proposalMatch && method === "GET") {
+      const proposal = await getProposal(pool, claims, proposalMatch[1]);
+      if (!proposal) {
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such proposal.", back: `/w/${workspaceId}/chat`, requestId, authed: true }));
+        return true;
+      }
+      const p = proposal.payload;
+      const amount = formatMinor(parseDecimalBigint(p.amountMinor), p.currency);
+      html(res, 200, page({ title: "Confirm transaction", requestId, authed: true, content: `<dialog open aria-labelledby="proposal-title"><h2 id="proposal-title">Confirm transaction</h2><dl><dt>Account</dt><dd>${escapeHtml(p.accountId)}</dd><dt>Amount</dt><dd>${escapeHtml(amount)} ${escapeHtml(p.currency)}</dd><dt>Direction</dt><dd>${escapeHtml(p.direction)}</dd><dt>Date</dt><dd>${escapeHtml(p.effectiveDate)}</dd><dt>Description</dt><dd>${escapeHtml(p.description)}</dd></dl><form method="post" action="/w/${escapeHtml(workspaceId)}/ai-actions/${escapeHtml(proposal.id)}/confirm"><input type="hidden" name="idempotencyKey" value="${randomUUID()}"><button type="submit">Confirm transaction</button> <a href="/w/${escapeHtml(workspaceId)}/chat">Cancel</a></form></dialog>` }));
+      return true;
+    }
+
+    const confirmMatch = path.match(new RegExp(`^/w/${workspaceId}/ai-actions/([A-Za-z0-9-]+)/confirm$`));
+    if (confirmMatch && method === "POST") {
+      const form = await readFormBody(req).catch(() => null);
+      try {
+        const result = await confirmProposal(pool, claims, claims.userId, confirmMatch[1], form?.get("idempotencyKey") ?? "");
+        res.writeHead(303, { Location: `/w/${workspaceId}/transactions?notice=ai-confirmed&operationId=${result.operationId}` });
+        res.end();
+      } catch (err) {
+        const status = err instanceof ProposalError ? (err.code === "expired" ? 410 : err.code === "not_found" ? 404 : 409) : 400;
+        html(res, status, errorPage({ status, heading: "Confirmation failed", message: err instanceof ProposalError ? err.code : "invalid_request", back: `/w/${workspaceId}/chat`, requestId, authed: true }));
+      }
+      return true;
+    }
+
     // Chat thread list: /w/:workspaceId/chat
     if (path === `/w/${workspaceId}/chat` && method === "GET") {
       const threads = await listThreads(pool, claims);
@@ -189,11 +234,15 @@ export function createChatRouter(pool: Pool, resolveSession: SessionResolver, co
         }
         const activity = await readActivity(pool, claims, threadId, 0, 50);
         const accounts = await listAccountViews(pool, claims);
-        const [summary, eligible] = await Promise.all([
+        const [summary, eligible, policy] = await Promise.all([
           getFinancialSummary(pool, claims, workspaceId),
           summarizeEligible(pool, claims),
+          getPolicy(pool, claims),
         ]);
+        const requestedAccountId = query.get("accountId");
+        const contextAccount = requestedAccountId && !policy.excludedAccountIds.includes(requestedAccountId) ? accounts.find((account) => account.id === requestedAccountId) : undefined;
         const contextChips = [
+          ...(contextAccount ? [`Account: ${contextAccount.name}`] : []),
           `Coverage: ${eligible.coverage}`,
           `Policy: v${eligible.policyVersion}`,
           `${eligible.accountCount} eligible accounts`,
@@ -212,7 +261,7 @@ export function createChatRouter(pool: Pool, resolveSession: SessionResolver, co
                 <time datetime="${turn.createdAt}">${timeAgo(turn.createdAt)}</time>
               </header>
               <div class="turn-body">${bodyHtml}</div>
-              ${!isUser && turn.status === "running" ? `
+              ${!isUser && (turn.status === "queued" || turn.status === "running") ? `
                 <form method="post" action="/w/${escapeHtml(workspaceId)}/chat/${escapeHtml(threadId)}/stop" style="display:inline">
                   <button type="submit">Stop</button>
                 </form>
@@ -234,12 +283,13 @@ export function createChatRouter(pool: Pool, resolveSession: SessionResolver, co
           `).join("")}</ul>`;
 
         // Context chips
-        const contextHtml = contextChips.map((c) => contextChip(c, true)).join(" ");
+        const contextHtml = contextChips.map((c, index) => contextChip(c, index === 0 && contextAccount !== undefined)).join(" ");
 
         // Send form
         const sendForm = `
           <form method="post" action="/w/${escapeHtml(workspaceId)}/chat/${escapeHtml(threadId)}/send">
             <div class="context-bar">${contextHtml}</div>
+            ${contextAccount ? `<input type="hidden" name="accountId" value="${escapeHtml(contextAccount.id)}">` : ""}
             <textarea name="body" required maxlength="32768" placeholder="Ask about your finances..." rows="3"></textarea>
             <div class="form-actions">
               <input type="hidden" name="idempotencyKey" value="${randomUUID()}">
@@ -283,9 +333,17 @@ export function createChatRouter(pool: Pool, resolveSession: SessionResolver, co
       const threadId = sendMatch[1];
       const form = await readFormBody(req).catch(() => null);
       const body = form?.get("body") ?? "";
+      const accountId = form?.get("accountId");
       const idempotencyKey = form?.get("idempotencyKey") ?? randomUUID();
       try {
-        await sendTurn(pool, claims, claims.userId, { threadId, body, idempotencyKey });
+        let authorizedBody = body;
+        if (accountId) {
+          const [accounts, policy] = await Promise.all([listAccountViews(pool, claims), getPolicy(pool, claims)]);
+          const account = accounts.find((candidate) => candidate.id === accountId);
+          if (!account || policy.excludedAccountIds.includes(accountId)) throw new TenantDenied();
+          authorizedBody = `[Context account: ${account.name} (${account.id})]\n${body}`;
+        }
+        await sendTurn(pool, claims, claims.userId, { threadId, body: authorizedBody, idempotencyKey });
         res.writeHead(303, { Location: `/w/${escapeHtml(workspaceId)}/chat/${threadId}` });
         res.end();
       } catch (err) {

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS ai_action_proposals (
   payload JSONB NOT NULL,
   -- Version of the account at proposal time (for optimistic concurrency).
   account_version BIGINT NOT NULL,
+  policy_version BIGINT NOT NULL CONSTRAINT ai_action_proposals_policy_version_min CHECK (policy_version >= 1),
   -- Actor who proposed the action (the AI run / user session).
   proposed_by UUID NOT NULL REFERENCES users (id),
   -- Status: proposed -> confirmed | expired | cancelled.

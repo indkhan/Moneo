@@ -643,7 +643,7 @@ export function loadChatTransportConfig(): LiveChatConfig | null {
   return {
     apiKey,
     baseUrl: process.env["OPENROUTER_BASE_URL"] ?? "https://openrouter.ai/api/v1",
-    model: process.env["OPENROUTER_MODEL"] ?? "muse-spark-1.3",
+    model: process.env["OPENROUTER_MODEL"] ?? "nvidia/nemotron-3-super-120b-a12b:free",
   };
 }
 

@@ -8,8 +8,8 @@ import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { isUuid, uuidv7 } from "./ids.ts";
 import { TenantDenied, TenantInvalid, withTenant, type TenantClaims } from "./tenancy.ts";
-import { formatDecimalBigint, parseDecimalBigint } from "./money.ts";
-import { manualTransaction } from "./commands/accounts.ts";
+import { formatMinor, parseDecimalBigint } from "./money.ts";
+import { CommandError, manualTransactionTx } from "./commands/accounts.ts";
 
 export const PROPOSAL_TTL_MIN = 15;
 export const PROPOSAL_KIND = "create_manual_transaction";
@@ -23,6 +23,7 @@ export class ProposalError extends Error {
     | "payload_mismatch"
     | "account_mismatch"
     | "version_mismatch"
+    | "open_limit"
     | "invalid_payload";
   constructor(code: ProposalError["code"]) {
     super(code);
@@ -46,6 +47,7 @@ export type Proposal = {
   payloadHash: string;
   payload: ProposalPayload;
   accountVersion: string;
+  policyVersion: string;
   proposedBy: string;
   status: "proposed" | "confirmed" | "expired" | "cancelled";
   createdAt: string;
@@ -61,6 +63,7 @@ function rowToProposal(row: {
   payload_hash: string;
   payload: ProposalPayload;
   account_version: string;
+  policy_version: string;
   proposed_by: string;
   status: string;
   created_at: unknown;
@@ -75,6 +78,7 @@ function rowToProposal(row: {
     payloadHash: row.payload_hash,
     payload: row.payload as ProposalPayload,
     accountVersion: String(row.account_version),
+    policyVersion: String(row.policy_version),
     proposedBy: row.proposed_by,
     status: row.status as Proposal["status"],
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
@@ -85,7 +89,14 @@ function rowToProposal(row: {
 }
 
 export function payloadHash(payload: ProposalPayload): string {
-  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  return createHash("sha256").update(JSON.stringify({
+    accountId: payload.accountId,
+    amountMinor: payload.amountMinor,
+    currency: payload.currency,
+    direction: payload.direction,
+    effectiveDate: payload.effectiveDate,
+    description: payload.description,
+  })).digest("hex");
 }
 
 export async function createProposal(
@@ -95,6 +106,7 @@ export async function createProposal(
   payload: ProposalPayload,
 ): Promise<Proposal> {
   if (!isUuid(actorId)) throw new ProposalError("invalid_payload");
+  if (actorId !== claims.userId) throw new TenantDenied();
   if (!isUuid(payload.accountId)) throw new ProposalError("invalid_payload");
   if (typeof payload.amountMinor !== "string" || !/^\d+$/.test(payload.amountMinor)) throw new ProposalError("invalid_payload");
   if (payload.currency !== "EUR" && payload.currency !== "USD" && payload.currency !== "JPY" && payload.currency !== "GBP" && payload.currency !== "KWD") throw new ProposalError("invalid_payload");
@@ -109,16 +121,21 @@ export async function createProposal(
     );
     if ((account.rowCount ?? 0) === 0) throw new ProposalError("account_mismatch");
     const accountVersion = String((account.rows[0] as { version: string }).version);
+    await client.query("INSERT INTO ai_policies (workspace_id, policy_version) VALUES ($1, 1) ON CONFLICT (workspace_id) DO NOTHING", [claims.workspaceId]);
+    const policy = await client.query("SELECT policy_version FROM ai_policies WHERE workspace_id = $1 FOR UPDATE", [claims.workspaceId]);
+    const policyVersion = String((policy.rows[0] as { policy_version: string }).policy_version);
+    const open = await client.query("SELECT count(*)::int AS n FROM ai_action_proposals WHERE workspace_id = $1 AND proposed_by = $2 AND status = 'proposed' AND expires_at > now()", [claims.workspaceId, actorId]);
+    if (Number((open.rows[0] as { n: number }).n) >= 20) throw new ProposalError("open_limit");
 
     const id = uuidv7();
-    const hash = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+    const hash = payloadHash(payload);
     const expiresAt = new Date(Date.now() + PROPOSAL_TTL_MIN * 60 * 1000).toISOString();
 
     await client.query(
       `INSERT INTO ai_action_proposals
-       (workspace_id, id, kind, payload_hash, payload, account_version, proposed_by, status, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'proposed', $8)`,
-      [claims.workspaceId, id, PROPOSAL_KIND, hash, JSON.stringify(payload), accountVersion, actorId, expiresAt],
+       (workspace_id, id, kind, payload_hash, payload, account_version, policy_version, proposed_by, status, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'proposed', $9)`,
+      [claims.workspaceId, id, PROPOSAL_KIND, hash, JSON.stringify(payload), accountVersion, policyVersion, actorId, expiresAt],
     );
 
     return {
@@ -128,6 +145,7 @@ export async function createProposal(
       payloadHash: hash,
       payload,
       accountVersion,
+      policyVersion,
       proposedBy: actorId,
       status: "proposed",
       createdAt: new Date().toISOString(),
@@ -145,12 +163,12 @@ export async function confirmProposal(
   proposalId: string,
   idempotencyKey: string,
 ): Promise<{ proposal: Proposal; operationId: string }> {
-  if (!isUuid(actorId) || !isUuid(proposalId)) throw new TenantDenied();
+  if (!isUuid(actorId) || !isUuid(proposalId) || actorId !== claims.userId) throw new TenantDenied();
   if (typeof idempotencyKey !== "string" || idempotencyKey.length < 1 || idempotencyKey.length > 200) throw new TenantInvalid();
 
   return withTenant(pool, claims, async (client: PoolClient) => {
     const proposal = await client.query(
-      "SELECT * FROM ai_action_proposals WHERE workspace_id = $1 AND id = $2",
+      "SELECT * FROM ai_action_proposals WHERE workspace_id = $1 AND id = $2 FOR UPDATE",
       [claims.workspaceId, proposalId],
     );
     if ((proposal.rowCount ?? 0) === 0) throw new ProposalError("not_found");
@@ -160,6 +178,7 @@ export async function confirmProposal(
       payload_hash: string; 
       payload: any; 
       account_version: string; 
+      policy_version: string;
       proposed_by: string; 
       status: string; 
       expires_at: unknown; 
@@ -168,31 +187,39 @@ export async function confirmProposal(
       created_at: unknown;
       created_by: string;
     };
-    if (prop.status !== "proposed") throw new ProposalError(prop.status === "confirmed" ? "already_confirmed" : prop.status === "expired" ? "expired" : "cancelled");
+    if (prop.proposed_by !== actorId) throw new ProposalError("not_found");
+    if (prop.status === "confirmed") {
+      const replay = await client.query("SELECT command_operation_id, idempotency_key FROM ai_action_proposals WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, proposalId]);
+      const saved = replay.rows[0] as { command_operation_id: string; idempotency_key: string };
+      if (saved.idempotency_key !== idempotencyKey) throw new ProposalError("already_confirmed");
+      return { proposal: rowToProposal(proposal.rows[0] as Parameters<typeof rowToProposal>[0]), operationId: saved.command_operation_id };
+    }
+    if (prop.status !== "proposed") throw new ProposalError(prop.status === "expired" ? "expired" : "cancelled");
     if (new Date(prop.expires_at as string).getTime() <= Date.now()) throw new ProposalError("expired");
 
     const payload = prop.payload as { accountId: string; amountMinor: string; currency: string; direction: "INFLOW" | "OUTFLOW"; effectiveDate: string; description: string };
-    const hash = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+    const hash = payloadHash(payload);
     if (prop.payload_hash !== hash) throw new ProposalError("payload_mismatch");
 
     const account = await client.query("SELECT version FROM accounts WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, payload.accountId]);
     if ((account.rowCount ?? 0) === 0) throw new ProposalError("account_mismatch");
     const currentVersion = String((account.rows[0] as { version: string }).version);
     if (currentVersion !== prop.account_version) throw new ProposalError("version_mismatch");
+    const policy = await client.query("SELECT policy_version FROM ai_policies WHERE workspace_id = $1 FOR UPDATE", [claims.workspaceId]);
+    if ((policy.rowCount ?? 0) === 0 || String((policy.rows[0] as { policy_version: string }).policy_version) !== prop.policy_version) throw new ProposalError("version_mismatch");
 
     const manualInput = {
       workspaceId: claims.workspaceId,
       accountId: payload.accountId,
-      amount: payload.amountMinor,
+      amount: formatMinor(parseDecimalBigint(payload.amountMinor), payload.currency),
       currency: payload.currency,
       direction: payload.direction,
       effectiveDate: payload.effectiveDate,
       description: payload.description,
-      idempotencyKey: uuidv7(),
+      idempotencyKey,
     };
-    const result = await manualTransaction(pool, claims, claims.userId, manualInput);
-
-    const operationId = uuidv7();
+    const result = await manualTransactionTx(client, claims, claims.userId, manualInput);
+    if (!result.ok) throw new CommandError(result.code, result.currentVersion);
     await client.query("UPDATE ai_action_proposals SET status = 'confirmed', confirmed_by = $1, confirmed_at = now(), command_operation_id = $2, idempotency_key = $3 WHERE workspace_id = $4 AND id = $5", [
       actorId, result.operationId, idempotencyKey, claims.workspaceId, proposalId,
     ]);
@@ -205,6 +232,7 @@ export async function confirmProposal(
         payloadHash: prop.payload_hash,
         payload: prop.payload,
         accountVersion: prop.account_version,
+        policyVersion: prop.policy_version,
         proposedBy: prop.proposed_by,
         status: "confirmed",
         createdAt: (prop.created_at as unknown) instanceof Date ? (prop.created_at as Date).toISOString() : String(prop.created_at),
@@ -236,5 +264,6 @@ export function proposalErrorBody(err: ProposalError): { status: number; body: u
     case "account_mismatch": return { status: 409, body: { error: "account_mismatch" } };
     case "version_mismatch": return { status: 409, body: { error: "version_mismatch" } };
     case "invalid_payload": return { status: 400, body: { error: "invalid_payload" } };
+    case "open_limit": return { status: 429, body: { error: "open_limit" } };
   }
 }

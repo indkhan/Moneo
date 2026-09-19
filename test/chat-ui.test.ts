@@ -8,6 +8,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Pool } from "pg";
+import { chromium } from "@playwright/test";
 import { createApp } from "../apps/web/src/server.ts";
 import { createAuthRouter, requestSession, type AuthConfig } from "../apps/web/src/auth.ts";
 import { createTenancyRouter } from "../apps/web/src/tenancy.ts";
@@ -51,14 +52,14 @@ async function login(base: string, loginAs: string): Promise<string> {
   return done.headers.get("set-cookie")!.split(";")[0];
 }
 
-async function call(method: string, url: string, cookie: string, body?: unknown): Promise<{ status: number; text: string }> {
+async function call(method: string, url: string, cookie: string, body?: unknown): Promise<{ status: number; text: string; location: string | null }> {
   const res = await fetch(url, {
     method,
     redirect: "manual",
-    headers: { cookie, ...(body !== undefined ? { "Content-Type": "application/x-www-form-urlencoded" } : {}) },
+    headers: { cookie, ...(method === "POST" ? { Origin: new URL(url).origin } : {}), ...(body !== undefined ? { "Content-Type": "application/x-www-form-urlencoded" } : {}) },
     body: body !== undefined ? new URLSearchParams(body as Record<string, string>).toString() : undefined,
   });
-  return { status: res.status, text: await res.text() };
+  return { status: res.status, text: await res.text(), location: res.headers.get("location") };
 }
 
 async function setupWorkspace(base: string, sub: string, suffix: string): Promise<{ cookie: string; userId: string; workspaceId: string }> {
@@ -87,6 +88,55 @@ afterAll(async () => {
 });
 
 describe("e04-s04 chat UI", () => {
+  it("completes the 320px keyboard send and Stop journey in Chromium", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, `synthetic-chat-browser-${tag}`, "browser");
+    const created = await call("POST", `${base}/w/${workspaceId}/chat/new`, cookie, { title: "Browser journey" });
+    expect(created.status).toBe(303);
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const context = await browser.newContext({ viewport: { width: 320, height: 720 } });
+      const equals = cookie.indexOf("=");
+      await context.addCookies([{ name: cookie.slice(0, equals), value: cookie.slice(equals + 1), url: base }]);
+      const page = await context.newPage();
+      await page.goto(`${base}${created.location}`, { waitUntil: "domcontentloaded", timeout: 5_000 });
+      await page.getByPlaceholder("Ask about your finances...").focus();
+      await page.keyboard.type("Keyboard message");
+      await page.keyboard.press("Tab");
+      await Promise.all([page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 5_000 }), page.keyboard.press("Enter")]);
+      await page.getByRole("button", { name: "Stop" }).waitFor({ state: "visible", timeout: 5_000 });
+      await page.getByRole("button", { name: "Stop" }).focus();
+      await Promise.all([page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 5_000 }), page.keyboard.press("Enter")]);
+      await page.getByText("Cancelled", { exact: true }).waitFor({ state: "visible", timeout: 5_000 });
+    } finally {
+      await browser.close();
+    }
+  }, 20_000);
+
+  it("renders included-AI settings and usage", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, `synthetic-ai-settings-${tag}`, "settings");
+    const account = await (await fetch(`${base}/api/accounts`, { method: "POST", headers: { cookie, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, name: "Private" }) })).json() as { id: string };
+    const res = await call("GET", `${base}/w/${workspaceId}/ai-settings`, cookie);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain("Included AI settings");
+    expect(res.text).toContain("Pending or unknown");
+    expect(res.text).toContain("Policy version");
+    expect(res.text).toContain("Private");
+    const changed = await call("POST", `${base}/w/${workspaceId}/exclusions`, cookie, { accountId: account.id, excluded: "true", policyVersion: "1", returnTo: "ai-settings" });
+    expect(changed.status).toBe(303);
+    const stale = await call("POST", `${base}/w/${workspaceId}/exclusions`, cookie, { accountId: account.id, excluded: "false", policyVersion: "1", returnTo: "ai-settings" });
+    expect(stale.status).toBe(409);
+    expect(stale.text).toContain("Current policy version is 2");
+  });
+
+  it("rejects cross-origin form posts", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, `synthetic-chat-ui-csrf-${tag}`, "csrf");
+    const res = await fetch(`${base}/w/${workspaceId}/chat/new`, { method: "POST", redirect: "manual", headers: { cookie, Origin: "https://evil.invalid", "Content-Type": "application/x-www-form-urlencoded" }, body: "title=Owned" });
+    expect(res.status).toBe(403);
+  });
+
 it("renders thread list, creates thread, shows context chips, and sends a message", async () => {
     const base = await startApp();
     const { cookie, userId, workspaceId } = await setupWorkspace(base, `synthetic-chat-ui-${tag}`, "list");
@@ -104,19 +154,15 @@ it("renders thread list, creates thread, shows context chips, and sends a messag
       headers: { "Content-Type": "application/json", cookie },
       body: JSON.stringify({ workspaceId, title: "Test Chat" }),
     });
-    console.log("API CREATE RESPONSE:", apiCreateRes.status, await apiCreateRes.text());
     expect(apiCreateRes.status).toBe(201);
     const apiJson = await apiCreateRes.json();
     const apiThreadId = apiJson.id;
 
     // Now test the UI thread creation (should also work)
     const createRes = await call("POST", `${base}/w/${workspaceId}/chat/new`, cookie, { title: "Test Chat 2" });
-    console.log("UI CREATE RESPONSE STATUS:", createRes.status);
-    console.log("UI CREATE RESPONSE BODY:", createRes.text.slice(0, 500));
     expect(createRes.status).toBe(303);
-    const location = createRes.text.match(/Location: (\/w\/[A-Za-z0-9-]+\/chat\/[A-Za-z0-9-]+)/);
-    expect(location).toBeTruthy();
-    const uiThreadId = location![1].split("/")[3];
+    expect(createRes.location).toBeTruthy();
+    const uiThreadId = createRes.location!.split("/")[4];
 
     // View thread: shows context chips, empty activity, send form
     const viewRes = await call("GET", `${base}/w/${workspaceId}/chat/${uiThreadId}`, cookie);
@@ -146,7 +192,7 @@ it("renders thread list, creates thread, shows context chips, and sends a messag
 
     // Create thread
     const createRes = await call("POST", `${base}/w/${workspaceId}/chat/new`, cookie, { title: "Stop Test" });
-    const uiThreadId = (await call("GET", `${base}/w/${workspaceId}/chat`, cookie)).text.match(/chat\/([A-Za-z0-9-]+)/)![1];
+    const uiThreadId = createRes.location!.split("/")[4];
 
     // Send a message
     await call("POST", `${base}/w/${workspaceId}/chat/${uiThreadId}/send`, cookie, { body: "Stop me", idempotencyKey: randomUUID() });
@@ -181,7 +227,7 @@ it("renders thread list, creates thread, shows context chips, and sends a messag
     const claims = { userId, workspaceId };
 
     const createRes = await call("POST", `${base}/w/${workspaceId}/chat/new`, cookie, { title: "Markdown Test" });
-    const uiThreadId = (await call("GET", `${base}/w/${workspaceId}/chat`, cookie)).text.match(/chat\/([A-Za-z0-9-]+)/)![1];
+    const uiThreadId = createRes.location!.split("/")[4];
 
     // Send a message with malicious markdown
     await call("POST", `${base}/w/${workspaceId}/chat/${uiThreadId}/send`, cookie, {
@@ -194,11 +240,9 @@ it("renders thread list, creates thread, shows context chips, and sends a messag
     expect(viewRes.status).toBe(200);
     // Script tags escaped
     expect(viewRes.text).not.toContain("<script>");
-    expect(viewRes.text).toContain("<script>alert(1)</script>");
-    // javascript: links neutralized
-    expect(viewRes.text).not.toContain("javascript:");
-    // Image links converted to safe links
-    expect(viewRes.text).toContain("md-image-link");
+    expect(viewRes.text).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    // User text is escaped rather than interpreted as markdown.
+    expect(viewRes.text).not.toContain("href=\"javascript:");
     expect(viewRes.text).not.toContain("<img");
 
     // Activity feed endpoint returns HTML fragment
@@ -213,13 +257,17 @@ it("renders thread list, creates thread, shows context chips, and sends a messag
     const { cookie, userId, workspaceId } = await setupWorkspace(base, `synthetic-chat-ui-ctx-${tag}`, "ctx");
     const claims = { userId, workspaceId };
 
+    const account = await (await fetch(`${base}/api/accounts`, { method: "POST", headers: { cookie, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId, name: "Context account" }) })).json() as { id: string };
+
     const newRes = await call("POST", `${base}/w/${workspaceId}/chat/new`, cookie, { title: "Context Test" });
-    const uiThreadId = (await call("GET", `${base}/w/${workspaceId}/chat`, cookie)).text.match(/chat\/([A-Za-z0-9-]+)/)![1];
+    const uiThreadId = newRes.location!.split("/")[4];
 
     // View thread - context chips present
-    const viewRes = await call("GET", `${base}/w/${workspaceId}/chat/${uiThreadId}`, cookie);
+    const viewRes = await call("GET", `${base}/w/${workspaceId}/chat/${uiThreadId}?accountId=${account.id}`, cookie);
     expect(viewRes.status).toBe(200);
     expect(viewRes.text).toContain("context-chip");
+    expect(viewRes.text).toContain("Context account");
+    expect(viewRes.text).toContain(`name="accountId" value="${account.id}"`);
 
     // Send with context - the context is in the send form
     await call("POST", `${base}/w/${workspaceId}/chat/${uiThreadId}/send`, cookie, { body: "With context", idempotencyKey: randomUUID() });
@@ -234,7 +282,7 @@ it("renders thread list, creates thread, shows context chips, and sends a messag
     const claims = { userId, workspaceId };
 
     const createRes = await call("POST", `${base}/w/${workspaceId}/chat/new`, cookie, { title: "Reload Test" });
-    const uiThreadId = (await call("GET", `${base}/w/${workspaceId}/chat`, cookie)).text.match(/chat\/([A-Za-z0-9-]+)/)![1];
+    const uiThreadId = createRes.location!.split("/")[4];
 
     // Send a message
     await call("POST", `${base}/w/${workspaceId}/chat/${uiThreadId}/send`, cookie, { body: "Persist me", idempotencyKey: randomUUID() });
@@ -258,7 +306,7 @@ it("renders thread list, creates thread, shows context chips, and sends a messag
     const { cookie, workspaceId } = await setupWorkspace(base, `synthetic-chat-ui-hostile-${tag}`, "hostile");
 
     const createRes = await call("POST", `${base}/w/${workspaceId}/chat/new`, cookie, { title: "Hostile" });
-    const uiThreadId = (await call("GET", `${base}/w/${workspaceId}/chat`, cookie)).text.match(/chat\/([A-Za-z0-9-]+)/)![1];
+    const uiThreadId = createRes.location!.split("/")[4];
 
     // Send hostile markdown
     await call("POST", `${base}/w/${workspaceId}/chat/${uiThreadId}/send`, cookie, {
@@ -270,10 +318,9 @@ it("renders thread list, creates thread, shows context chips, and sends a messag
     expect(viewRes.status).toBe(200);
     // No script execution possible
     expect(viewRes.text).not.toContain("<script");
-    expect(viewRes.text).not.toContain("onerror=");
-    expect(viewRes.text).not.toContain("javascript:");
-    // Image converted to safe link
-    expect(viewRes.text).toContain("md-image-link");
+    expect(viewRes.text).not.toContain("<img src=x");
+    expect(viewRes.text).not.toContain("href=\"javascript:");
+    expect(viewRes.text).not.toContain("<img");
   });
 });
 
