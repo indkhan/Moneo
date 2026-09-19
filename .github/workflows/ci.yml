@@ -72,7 +72,8 @@ jobs:
             -c "CREATE DATABASE moneo_e02_upload OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e02_mapping OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e04_dispatch OWNER moneo_app;" \
-            -c "CREATE DATABASE moneo_e04_chat OWNER moneo_app;"
+            -c "CREATE DATABASE moneo_e04_chat OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_e04_tools OWNER moneo_app;"
       - name: Start MinIO + ClamAV test services (synthetic only)
         run: |
           docker run -d --name ci-minio -p 9000:9000 \
@@ -113,6 +114,8 @@ jobs:
         run: npm run test:ai-dispatch
       - name: Persistent chat and worker loop (real PG + Redis)
         run: npm run test:chat
+      - name: Scoped AI tools and evidence (real PG)
+        run: npm run test:ai-tools
       - name: Shell, telemetry and controls
         run: npm run test:ui
       - name: HTTP streaming limits
