@@ -15,7 +15,7 @@ import { createApp } from "../apps/web/src/server.ts";
 import { createAuthRouter, requestSession, type AuthConfig } from "../apps/web/src/auth.ts";
 import { createTenancyRouter, withTenant } from "../apps/web/src/tenancy.ts";
 import { setAccountExclusion } from "../apps/web/src/ai-policy.ts";
-import { balanceSnapshot, listBalanceSnapshots, manualTransaction } from "../apps/web/src/commands/accounts.ts";
+import { balanceSnapshot, createAccount, listBalanceSnapshots, manualTransaction } from "../apps/web/src/commands/accounts.ts";
 import { bumpWorkspaceRevision } from "../apps/web/src/calculations/evidence.ts";
 import { getTransactionEvidence, listTransactions } from "../apps/web/src/transactions-query.ts";
 import { getFinancialSummary } from "../apps/web/src/calculations/financial-summary.ts";
@@ -28,7 +28,7 @@ import {
   ToolError,
 } from "../apps/web/src/ai-tools.ts";
 import type { DispatchTransport } from "../apps/web/src/ai-dispatch.ts";
-import { claimChatGeneration, createThread, getThread, processChatJob, sendTurn } from "../apps/web/src/chat.ts";
+import { claimChatGeneration, createThread, getThread, processChatJob, publishTurnFenced, sendTurn } from "../apps/web/src/chat.ts";
 import { ensureTestPool } from "./helpers/test-db.ts";
 import { startStubIssuer, STUB_CLIENT_ID, STUB_CLIENT_SECRET, type StubIssuer } from "./helpers/stub-issuer.ts";
 
@@ -169,6 +169,60 @@ describe("e04-s03 scoped tools and evidence", () => {
     });
     expect(sums).toMatchObject({ n: 3, i: "100000", o: "7550" });
     expect(out.evidence.map((e) => e.kind)).toEqual(["transaction", "transaction", "transaction"]);
+  });
+
+  it("multi-account pages keep shared sort/limit/offset semantics exactly", async () => {
+    const base = await startApp();
+    const fx = await setupFixture(base, `synthetic-tools-page-${tag}`, "page");
+    const claims = { userId: fx.userId, workspaceId: fx.workspaceId };
+    // Interleaved dates across A/B: a per-account concatenation would order
+    // A,A,B,B; shared semantics order globally by date desc, id desc.
+    const tx = async (accountId: string, amount: string, direction: "INFLOW" | "OUTFLOW", date: string) =>
+      manualTransaction(pool, claims, fx.userId, { workspaceId: fx.workspaceId, accountId, amount, currency: "EUR", direction, effectiveDate: date, description: `page ${date}`, idempotencyKey: randomUUID() });
+    await tx(fx.acctA, "10.00", "INFLOW", "2024-02-01");
+    await tx(fx.acctA, "10.00", "OUTFLOW", "2024-02-10");
+    await tx(fx.acctB, "10.00", "OUTFLOW", "2024-02-05");
+    await tx(fx.acctB, "10.00", "INFLOW", "2024-02-15");
+    const ctx = await createToolContext(pool, claims);
+    const attempt = await newAttempt(fx, "page");
+    const page = (await executeTool(pool, ctx, attempt, 1, { name: "transactions.search", args: { accountIds: [fx.acctA, fx.acctB], sort: "date_desc", limit: 2, offset: 1 } })).result as {
+      items: { effectiveDate: string; accountId: string }[];
+      totals: { count: string; byCurrency: { currency: string; inflowMinor: string; outflowMinor: string }[] };
+    };
+    expect(page.items.map((i) => [i.effectiveDate, i.accountId])).toEqual([["2024-02-10", fx.acctA], ["2024-02-05", fx.acctB]]);
+    expect(page.totals).toMatchObject({ count: "4" });
+    expect(page.totals.byCurrency).toEqual([{ currency: "EUR", count: "4", inflowMinor: "2000", outflowMinor: "2000" }]);
+    // Unfiltered search defaults to the eligible set (never excluded rows).
+    await setAccountExclusion(pool, claims, fx.userId, fx.acctB, true, "synthetic");
+    const ctx2 = await createToolContext(pool, claims);
+    const attempt2 = await newAttempt(fx, "page2");
+    const all = (await executeTool(pool, ctx2, attempt2, 1, { name: "transactions.search", args: { limit: 50 } })).result as {
+      items: { accountId: string }[];
+      totals: { count: string };
+    };
+    expect(all.items.every((i) => i.accountId !== fx.acctB)).toBe(true);
+    expect(all.totals.count).toBe("2");
+  });
+
+  it("partial FX coverage stays partial, never unavailable or zero", async () => {
+    const base = await startApp();
+    const fx = await setupFixture(base, `synthetic-tools-fx-${tag}`, "fxgap");
+    const claims = { userId: fx.userId, workspaceId: fx.workspaceId };
+    const kwd = await createAccount(pool, claims, fx.userId, { workspaceId: fx.workspaceId, name: "kwd", currency: "KWD", idempotencyKey: randomUUID() });
+    await manualTransaction(pool, claims, fx.userId, { workspaceId: fx.workspaceId, accountId: kwd.view.id, amount: "5.000", currency: "KWD", direction: "INFLOW", effectiveDate: "2024-02-01", description: "kwd", idempotencyKey: randomUUID() });
+    await manualTransaction(pool, claims, fx.userId, { workspaceId: fx.workspaceId, accountId: fx.acctA, amount: "100.00", currency: "EUR", direction: "INFLOW", effectiveDate: "2024-02-01", description: "eur", idempotencyKey: randomUUID() });
+    const ctx = await createToolContext(pool, claims);
+    const totals = (await executeTool(pool, ctx, await newAttempt(fx, "fxgap"), 1, { name: "finance.totals", args: { accountIds: [fx.acctA, kwd.view.id] } })).result as {
+      coverage: string;
+      incomeMinor: string;
+      unvaluedCount: string;
+      perAccount: { accountId: string; coverage: string }[];
+    };
+    const byId = new Map(totals.perAccount.map((p) => [p.accountId, p]));
+    expect(byId.get(kwd.view.id)?.coverage).toBe("unavailable");
+    expect(totals.coverage).toBe("partial");
+    expect(totals.incomeMinor).toBe("10000");
+    expect(totals.unvaluedCount).toBe("1");
   });
 
   it("evidence, balances and totals match their shared reads exactly", async () => {
@@ -374,6 +428,65 @@ describe("e04-s03 scoped tools and evidence", () => {
     expect(mixed).toBe("TenantDenied");
     const unscoped = await pool.query("SELECT count(*)::int AS n FROM chat_tool_calls");
     expect((unscoped.rows[0] as { n: number }).n).toBe(0);
+  });
+
+  it("stale policy between final gate and publish aborts without landing text", async () => {
+    const base = await startApp();
+    const fx = await setupFixture(base, `synthetic-tools-pub-${tag}`, "pub");
+    await seedMoney(fx);
+    const claims = { userId: fx.userId, workspaceId: fx.workspaceId };
+    const ctx = await createToolContext(pool, claims);
+    const thread = await createThread(pool, claims, fx.userId, { title: "pub" });
+    const sent = await sendTurn(pool, claims, fx.userId, { threadId: thread.id, body: "race", idempotencyKey: randomUUID() });
+    const claimed = (await claimChatGeneration(pool, sent.jobId, { workerId: "tools-test", leaseMs: 30_000 }))!;
+    await setAccountExclusion(pool, claims, fx.userId, fx.acctB, true, "synthetic race");
+    const gated = await publishTurnFenced(pool, claimed.full, { attemptId: claimed.claim.attemptId, generation: claimed.claim.generation }, sent.assistantTurn.id, claimed.attemptId, "stale text", {
+      policyVersion: ctx.policyVersion,
+      revision: ctx.revision,
+    });
+    expect(gated).toEqual({ ok: false, stale: true });
+    const view = await getThread(pool, claims, thread.id);
+    // Untouched: still running, empty body, no published event.
+    expect(view!.turns.find((t) => t.id === sent.assistantTurn.id)).toMatchObject({ status: "running", body: "" });
+    const activity = await scoped(fx.userId, fx.workspaceId, async (client) => {
+      const r = await client.query("SELECT kind FROM chat_activity WHERE workspace_id = $1 AND thread_id = $2 ORDER BY seq", [fx.workspaceId, thread.id]);
+      return (r.rows as { kind: string }[]).map((row) => row.kind);
+    });
+    expect(activity).not.toContain("assistant-published");
+  });
+
+  it("production routes only when qualified, never by fallback", async () => {
+    const base = await startApp();
+    const fx = await setupFixture(base, `synthetic-tools-route-${tag}`, "route");
+    await seedMoney(fx);
+    const claims = { userId: fx.userId, workspaceId: fx.workspaceId };
+    const runOnce = async (): Promise<{ status: string; routes: string[] }> => {
+      const thread = (await (await fetch(`${base}/api/chat/threads`, { method: "POST", headers: { cookie: fx.cookie, "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: fx.workspaceId }) })).json()) as { id: string };
+      const send = (await (await fetch(`${base}/api/chat/threads/${thread.id}/send`, {
+        method: "POST",
+        headers: { cookie: fx.cookie, "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId: fx.workspaceId, body: "route?", idempotencyKey: randomUUID() }),
+      })).json()) as { assistantTurn: { id: string }; jobId: string };
+      const outcome = await processChatJob(pool, send.jobId, okTransport(["routed answer"], { count: 0 }), { workerId: "chat-test", leaseMs: 5000 });
+      const routes = await scoped(fx.userId, fx.workspaceId, async (client) => {
+        const r = await client.query("SELECT DISTINCT route AS route FROM ai_dispatch_reservations WHERE workspace_id = $1", [fx.workspaceId]);
+        return (r.rows as { route: string }[]).map((row) => row.route).sort();
+      });
+      return { status: outcome, routes };
+    };
+    const dev = await runOnce();
+    expect(dev.status).toBe("applied");
+    expect(dev.routes).toEqual(["development"]);
+    const saved = process.env["AI_PRODUCTION_QUALIFIED"];
+    process.env["AI_PRODUCTION_QUALIFIED"] = "1";
+    try {
+      const prod = await runOnce();
+      expect(prod.status).toBe("applied");
+      expect(prod.routes).toEqual(["development", "production"]);
+    } finally {
+      if (saved === undefined) delete process.env["AI_PRODUCTION_QUALIFIED"];
+      else process.env["AI_PRODUCTION_QUALIFIED"] = saved;
+    }
   });
 
   it("a tool-using generation publishes evidence-backed text with honest usage", async () => {

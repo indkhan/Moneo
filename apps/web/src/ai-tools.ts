@@ -16,7 +16,7 @@ import type { Pool, PoolClient } from "pg";
 import { isUuid, uuidv7 } from "./ids.ts";
 import { TenantDenied, TenantInvalid, withTenant, type TenantClaims } from "./tenancy.ts";
 import { issuePermit } from "./ai-policy.ts";
-import { executeReserved, reserveDispatch, DispatchError, type DispatchTransport } from "./ai-dispatch.ts";
+import { executeReserved, reserveDispatch, DispatchError, type DispatchRoute, type DispatchTransport } from "./ai-dispatch.ts";
 import { getTransactionEvidence, listTransactions, type TxListResult } from "./transactions-query.ts";
 import { listBalanceSnapshots } from "./commands/accounts.ts";
 import { getFinancialSummary } from "./calculations/financial-summary.ts";
@@ -81,7 +81,9 @@ async function liveRevision(client: PoolClient, workspaceId: string): Promise<st
 export async function createToolContext(pool: Pool, claims: TenantClaims): Promise<ToolContext> {
   return withTenant(pool, claims, async (client) => {
     const policyVersion = await livePolicyVersion(client, claims.workspaceId);
-    const known = await client.query("SELECT id FROM accounts WHERE workspace_id = $1", [claims.workspaceId]);
+    // Archived accounts are not AI-eligible: the authoritative summary
+    // scopes to non-archived, so the context must match (N1).
+    const known = await client.query("SELECT id FROM accounts WHERE workspace_id = $1 AND archived = false", [claims.workspaceId]);
     const excluded = await client.query("SELECT account_id AS id FROM ai_exclusions WHERE workspace_id = $1", [claims.workspaceId]);
     const excludedIds = new Set((excluded.rows as { id: string }[]).map((r) => r.id));
     const eligibleAccountIds = (known.rows as { id: string }[]).map((r) => r.id).filter((id) => !excludedIds.has(id)).sort();
@@ -145,6 +147,10 @@ function byteSize(value: unknown): number {
   return Buffer.byteLength(JSON.stringify(value), "utf8");
 }
 
+// Tool-call timeout backstop (N2): the race rejects at 10 s, but the timed
+// out query keeps running detached holding its pooled connection until PG
+// finishes it. Adapters are indexed single-scope reads, so this fires only
+// on genuine database distress; consider statement_cancel on next touch.
 async function withToolTimeout<T>(work: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -234,25 +240,49 @@ async function runSearch(pool: Pool, ctx: ToolContext, args: unknown): Promise<T
     filter.limit = 50;
   }
   if (v.offset !== undefined) {
-    if (!Number.isInteger(v.offset) || (v.offset as number) < 0) throw new ToolError("invalid_args");
+    // Tool bound (shared UI allows deeper pages): keeps per-account
+    // over-fetch bounded while remaining exact within the window.
+    if (!Number.isInteger(v.offset) || (v.offset as number) < 0 || (v.offset as number) > 1000) throw new ToolError("invalid_args");
     filter.offset = v.offset;
   }
-  // listTransactions accepts a single accountId; fan out per account so the
-  // authorized subset is exact and every row uses the shared read path.
-  const accountIds = (filter.accountIds as string[] | undefined) ?? [undefined];
+  const limit = (filter.limit as number) ?? 50;
+  const offset = (filter.offset as number) ?? 0;
+  // Account scope defaults to the run's eligible set (never the whole
+  // workspace: exclusions apply before aggregation). Wider-than-10 scopes
+  // must narrow first — the model gets a typed error it can act on.
+  const effectiveIds = ((filter.accountIds as string[] | undefined) ?? ctx.eligibleAccountIds).slice().sort();
+  if (effectiveIds.length > MAX_TOOL_ACCOUNTS) throw new ToolError("invalid_args");
+  if (effectiveIds.length === 0) {
+    const empty = { items: [], totals: { count: "0", byCurrency: [] } };
+    return { result: empty, evidence: [], resultRows: 0, resultBytes: byteSize(empty) };
+  }
+  // listTransactions accepts a single accountId: over-fetch limit+offset per
+  // account (the shared per-side pattern), merge, sort with the identical
+  // comparator, then slice — so multi-account pages match shared semantics
+  // exactly instead of concatenating per-account pages.
   const merged: TxListResult[] = [];
-  for (const accountId of accountIds) {
-    const single = { ...filter, ...(accountId === undefined ? {} : { accountId }) };
+  for (const accountId of effectiveIds) {
+    const single = { ...filter, accountId, limit: limit + offset, offset: 0 };
     delete (single as Record<string, unknown>).accountIds;
     merged.push(await withToolTimeout(listTransactions(pool, ctx.claims, single)));
   }
-  const items = merged.flatMap((m) => m.items).slice(0, MAX_TOOL_ROWS);
-  const totals = merged.length === 1 ? merged[0]!.totals : mergeTotals(merged.flatMap((m) => m.totals.byCurrency), merged.reduce((n, m) => n + Number(m.totals.count), 0));
-  const result = { items, totals };
+  const dir = filter.sort === "date_asc" ? 1 : -1;
+  const rows = merged
+    .flatMap((m) => m.items)
+    .sort((a, b) => {
+      if (a.effectiveDate !== b.effectiveDate) return dir === 1 ? (a.effectiveDate < b.effectiveDate ? -1 : 1) : a.effectiveDate < b.effectiveDate ? 1 : -1;
+      return dir === 1 ? (a.id < b.id ? -1 : 1) : a.id < b.id ? 1 : -1;
+    })
+    .slice(offset, offset + limit);
+  const totals = mergeTotals(
+    merged.flatMap((m) => m.totals.byCurrency),
+    merged.reduce((n, m) => n + Number(m.totals.count), 0),
+  );
+  const result = { items: rows, totals };
   const resultBytes = byteSize(result);
   if (resultBytes > MAX_TOOL_RESULT_BYTES) throw new ToolError("oversized");
-  const evidence: EvidenceRef[] = items.map((item) => ({ kind: "transaction" as const, id: item.id, label: `transaction ${item.kind} ${item.id}` }));
-  return { result, evidence, resultRows: items.length, resultBytes };
+  const evidence: EvidenceRef[] = rows.map((item) => ({ kind: "transaction" as const, id: item.id, label: `transaction ${item.kind} ${item.id}` }));
+  return { result, evidence, resultRows: rows.length, resultBytes };
 }
 
 function mergeTotals(byCurrency: { currency: string; count: string; inflowMinor: string; outflowMinor: string }[], count: number): TxListResult["totals"] {
@@ -266,7 +296,9 @@ function mergeTotals(byCurrency: { currency: string; count: string; inflowMinor:
   }
   return {
     count: String(count),
-    byCurrency: [...per.entries()].map(([currency, s]) => ({ currency, count: s.count.toString(10), inflowMinor: s.inflow.toString(10), outflowMinor: s.outflow.toString(10) })),
+    byCurrency: [...per.entries()]
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+      .map(([currency, s]) => ({ currency, count: s.count.toString(10), inflowMinor: s.inflow.toString(10), outflowMinor: s.outflow.toString(10) })),
   };
 }
 
@@ -340,7 +372,8 @@ async function runTotals(pool: Pool, ctx: ToolContext, args: unknown): Promise<T
   let income = 0n;
   let spend = 0n;
   let unvalued = 0n;
-  let coverage: "full" | "partial" | "unavailable" = "full";
+  let allUnavailable = true;
+  let seenGapped = false;
   let baseCurrency: string | null = null;
   const perAccount = [];
   const evidence: EvidenceRef[] = [];
@@ -351,11 +384,15 @@ async function runTotals(pool: Pool, ctx: ToolContext, args: unknown): Promise<T
     income += BigInt(summary.base.incomeMinor);
     spend += BigInt(summary.base.spendMinor);
     unvalued += BigInt(summary.base.unvaluedCount);
-    if (summary.base.coverage === "unavailable") coverage = "unavailable";
-    else if (summary.base.coverage === "partial" && coverage === "full") coverage = "partial";
+    // Joint coverage follows the summary's own semantics: unavailable only
+    // when every slice is unavailable and nothing valued at all, partial
+    // when any slice is gapped, full otherwise (N3).
+    if (summary.base.coverage !== "unavailable") allUnavailable = false;
+    if (summary.base.coverage !== "full") seenGapped = true;
     perAccount.push({ accountId, incomeMinor: summary.base.incomeMinor, spendMinor: summary.base.spendMinor, cashMinor: summary.base.cashMinor, coverage: summary.base.coverage, unvaluedCount: summary.base.unvaluedCount });
     evidence.push({ kind: "calculation" as const, id: `${summary.calculationVersion}:${summary.resultsHash.slice(0, 16)}`, label: `calculation v${summary.calculationVersion}` });
   }
+  const coverage: "full" | "partial" | "unavailable" = allUnavailable && income === 0n && spend === 0n ? "unavailable" : seenGapped ? "partial" : "full";
   const result = {
     baseCurrency,
     incomeMinor: income.toString(10),
@@ -508,7 +545,7 @@ ${TOOL_SCHEMAS}`;
 }
 
 export type LoopResult =
-  | { status: "ok"; finalText: string; steps: number; toolCalls: number; evidenceIds: string[]; dispatches: number }
+  | { status: "ok"; finalText: string; steps: number; toolCalls: number; evidenceIds: string[]; dispatches: number; policyVersion: string; revision: string }
   | { status: "stale" | "limit" | "aborted" | "failed" | "interrupted"; errorClass: string; steps: number; toolCalls: number; evidenceIds: string[]; dispatches: number };
 
 export type LoopCallbacks = {
@@ -533,6 +570,7 @@ export async function runToolLoop(
   turnKey: string,
   history: HistoryTurn[],
   transport: DispatchTransport,
+  opts: { route?: DispatchRoute } = {},
   callbacks: LoopCallbacks = {},
 ): Promise<LoopResult> {
   if (!isUuid(attemptId)) throw new TenantInvalid();
@@ -561,11 +599,15 @@ export async function runToolLoop(
     if (!permit) return { status: "interrupted", errorClass: "permit", ...base, steps: step - 1 };
     let reservationId: string;
     const requestText = transcriptText();
+    // The route is chosen by the caller (production only when qualified);
+    // this module never substitutes a training-permitted route (B2).
+    const dispatchRoute = opts.route ?? "development";
+    if (dispatchRoute !== "development" && dispatchRoute !== "production") throw new TenantInvalid();
     try {
       const reserved = await reserveDispatch(pool, ctx.claims, {
         idempotencyKey: `${turnKey}:step:${step}`,
         permitId: permit.id,
-        route: "development",
+        route: dispatchRoute,
         purpose: "chat-generation",
         requestText,
         inputEstimate: 2000,
@@ -595,13 +637,16 @@ export async function runToolLoop(
       // but an oversized blob: halt the run instead of publishing a slice.
       if (Buffer.byteLength(parsed.text, "utf8") > MAX_TOOL_FINAL_BYTES) return { status: "limit", errorClass: "oversized", ...base, steps: step };
       // Publication gate: policy/exclusion/revision drift during the final
-      // step blocks publication (the caller also fences the turn itself).
-      try {
-        await revalidateContext(pool, ctx);
-      } catch {
+      // step blocks publication. The snapshot travels with the result so the
+      // caller re-checks it inside the publish transaction itself (B3).
+      const gated = await withTenant(pool, ctx.claims, async (client) => ({
+        policyVersion: await livePolicyVersion(client, ctx.claims.workspaceId),
+        revision: await liveRevision(client, ctx.claims.workspaceId),
+      }));
+      if (gated.policyVersion !== ctx.policyVersion || gated.revision !== ctx.revision) {
         return { status: "stale", errorClass: "stale", ...base, steps: step };
       }
-      return { status: "ok", finalText: parsed.text, ...base, steps: step };
+      return { status: "ok", finalText: parsed.text, ...base, steps: step, policyVersion: gated.policyVersion, revision: gated.revision };
     }
     if (parsed.kind === "limit") return { status: "limit", errorClass: "step_limit", ...base, steps: step };
     if (base.toolCalls + parsed.calls.length > MAX_TOOL_CALLS_PER_RUN) return { status: "limit", errorClass: "step_limit", ...base, steps: step };

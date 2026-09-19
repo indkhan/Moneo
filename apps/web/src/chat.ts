@@ -16,7 +16,7 @@ import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { isUuid, uuidv7 } from "./ids.ts";
 import { TenantDenied, TenantInvalid, withTenant, type TenantClaims } from "./tenancy.ts";
-import { cancelDispatch, supersedeReservationTx, type DispatchTransport } from "./ai-dispatch.ts";
+import { cancelDispatch, productionQualified, supersedeReservationTx, type DispatchTransport } from "./ai-dispatch.ts";
 import { createToolContext, runToolLoop, type HistoryTurn, type LoopResult } from "./ai-tools.ts";
 import {
   cancelJob,
@@ -649,14 +649,23 @@ async function interruptTurnFenced(
   });
 }
 
-async function publishTurnFenced(
+/**
+ * Fenced terminal publish. When expected tool-run versions are supplied, the
+ * publish transaction itself re-reads the live policy version (locked,
+ * serializing with exclusion writers) and data revision: drift since the
+ * run's final gate aborts publication instead of landing stale tool-derived
+ * text (B3). The caller maps the stale outcome to an interrupted turn, so
+ * retry stays a visibly separate attempt.
+ */
+export async function publishTurnFenced(
   pool: Pool,
   route: JobRoute & { jobId: string },
   claim: Pick<Claim, "attemptId" | "generation">,
   turnId: string,
   attemptId: string,
   body: string,
-): Promise<{ ok: true } | { ok: false }> {
+  expected?: { policyVersion: string; revision: string },
+): Promise<{ ok: true } | { ok: false; stale?: true }> {
   return withTenant(pool, { userId: route.acceptedBy, workspaceId: route.workspaceId }, async (client) => {
     const guard = await fencedGuard(client, route, claim);
     if (!guard.ok) {
@@ -672,6 +681,14 @@ async function publishTurnFenced(
         ]);
       }
       return { ok: false as const };
+    }
+    if (expected !== undefined) {
+      await client.query("INSERT INTO ai_policies (workspace_id, policy_version) VALUES ($1, 1) ON CONFLICT (workspace_id) DO NOTHING", [route.workspaceId]);
+      const policy = await client.query("SELECT policy_version AS v FROM ai_policies WHERE workspace_id = $1 FOR UPDATE", [route.workspaceId]);
+      const liveVersion = (policy.rowCount ?? 0) === 0 ? "1" : String((policy.rows[0] as { v: string }).v);
+      const revision = await client.query("SELECT revision AS r FROM workspace_data_revision WHERE workspace_id = $1", [route.workspaceId]);
+      const liveRevision = (revision.rowCount ?? 0) === 0 ? "0" : String((revision.rows[0] as { r: string }).r);
+      if (liveVersion !== expected.policyVersion || liveRevision !== expected.revision) return { ok: false as const, stale: true as const };
     }
     if (Buffer.byteLength(body, "utf8") > CHAT_ASSISTANT_BODY_MAX_BYTES) {
       await markAttempt(client, route, claim.attemptId, "STALE");
@@ -866,7 +883,10 @@ export async function driveChatGeneration(
 
   let run: LoopResult;
   try {
-    run = await runToolLoop(pool, ctx, attemptId, `chat:${attemptId}`, history, recording, {
+    // Route selection restores the S01 invariant (B2): production only when
+    // qualified, never a silent fallback to the training-permitted route.
+    const dispatchRoute = productionQualified() ? "production" : "development";
+    run = await runToolLoop(pool, ctx, attemptId, `chat:${attemptId}`, history, recording, { route: dispatchRoute }, {
       onReservation: async (reservationId) => {
         await withTenant(pool, workerClaims, async (client) => {
           await client.query("UPDATE chat_attempts SET reservation_id = $3 WHERE workspace_id = $1 AND id = $2", [
@@ -893,9 +913,18 @@ export async function driveChatGeneration(
   if (run.status === "ok") {
     // Only this attempt's own final may publish: independent attempts are
     // never concatenated, and a generation without its own authoritative
-    // result settles ambiguously for a visibly separate retry.
-    const published = await publishTurnFenced(pool, full, pick, input.assistantTurnId, attemptId, run.finalText);
-    return published.ok ? "applied" : "duplicate-terminal-noop";
+    // result settles ambiguously for a visibly separate retry. A stale
+    // publish gate interrupts instead of duplicating or landing old text.
+    const published = await publishTurnFenced(pool, full, pick, input.assistantTurnId, attemptId, run.finalText, {
+      policyVersion: run.policyVersion,
+      revision: run.revision,
+    });
+    if (published.ok) return "applied";
+    if (published.stale) {
+      await interruptTurnFenced(pool, full, pick, input.assistantTurnId, attemptId);
+      return "applied";
+    }
+    return "duplicate-terminal-noop";
   }
   if (run.status === "failed") {
     await failTurnFenced(pool, full, pick, input.assistantTurnId, attemptId, run.errorClass);
