@@ -267,8 +267,12 @@ export async function reserveDispatch(pool: Pool, claims: TenantClaims, opts: Re
   const reserved = reservedCostFor(opts.inputEstimate, opts.outputCeiling);
 
   return withTenant(pool, claims, async (client) => {
-    // Idempotent claim first: a genuine replay converges before any budget
-    // or permit state is touched, so replay can never double-charge.
+    // Serialize the whole admission on the per-workspace budget row first:
+    // concurrent same-key claims then converge below instead of racing past
+    // the idempotency check into a raw unique violation (B1).
+    const budget = await lockedBudget(client, claims.workspaceId);
+    // Idempotent claim: a genuine replay converges before any permit or
+    // budget state is touched, so replay can never double-charge.
     const prior = await client.query("SELECT * FROM ai_dispatch_reservations WHERE workspace_id = $1 AND idempotency_key = $2", [
       claims.workspaceId,
       key,
@@ -278,7 +282,6 @@ export async function reserveDispatch(pool: Pool, claims: TenantClaims, opts: Re
       if (existing.request_hash !== hash) throw new DispatchError("idempotency_reuse");
       return rowToReservation(existing);
     }
-    const budget = await lockedBudget(client, claims.workspaceId);
     // Consume the permit inside the same transaction: the CAS to DISPATCHED
     // is fenced by the live policy version, so an exclusion committed
     // before this statement fails the dispatch closed.
@@ -291,7 +294,12 @@ export async function reserveDispatch(pool: Pool, claims: TenantClaims, opts: Re
     if (p.status === "INVALIDATED") throw new DispatchError("permit_invalid");
     if (p.status !== "QUEUED") throw new DispatchError("permit_invalid");
     if (new Date(p.e).getTime() <= Date.now()) throw new DispatchError("permit_expired");
-    const live = await currentPolicyVersion(client, claims.workspaceId);
+    // Lock the policy row with the permit (consumePermit's FOR UPDATE
+    // pattern): the stamped version and the snapshot come from one policy
+    // generation, so a concurrent exclusion cannot slip between them (N4).
+    await client.query("INSERT INTO ai_policies (workspace_id, policy_version) VALUES ($1, 1) ON CONFLICT (workspace_id) DO NOTHING", [claims.workspaceId]);
+    const lockedPolicy = await client.query("SELECT policy_version AS v FROM ai_policies WHERE workspace_id = $1 FOR UPDATE", [claims.workspaceId]);
+    const live = (lockedPolicy.rowCount ?? 0) === 0 ? await currentPolicyVersion(client, claims.workspaceId) : BigInt((lockedPolicy.rows[0] as { v: string }).v);
     if (BigInt(p.v) !== live) throw new DispatchError("permit_stale");
     const held = await heldTotals(client, claims.workspaceId);
     if (held.slots >= budget.concurrency) throw new DispatchError("budget_concurrency");
@@ -299,10 +307,30 @@ export async function reserveDispatch(pool: Pool, claims: TenantClaims, opts: Re
     if (held.tokens + opts.inputEstimate + opts.outputCeiling > budget.tokens) throw new DispatchError("budget_tokens");
     await client.query("UPDATE ai_dispatch_permits SET status = 'DISPATCHED' WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, opts.permitId]);
     const id = uuidv7();
-    const inserted = await client.query(
-      "INSERT INTO ai_dispatch_reservations (workspace_id, id, idempotency_key, permit_id, policy_version, route, purpose, status, reserved_cost_minor, input_estimate, output_ceiling, request_hash, attempt, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, 'RESERVED', $8, $9, $10, $11, 1, now() + ($12 || ' minutes')::interval) RETURNING *",
-      [claims.workspaceId, id, key, opts.permitId, live.toString(10), opts.route, purpose, reserved.toString(10), opts.inputEstimate, opts.outputCeiling, hash, String(DISPATCH_RESERVATION_TTL_MIN)],
-    );
+    // Savepoint-guarded claim: under READ COMMITTED two claims serialized on
+    // the budget lock still re-check the key above, but a same-key claim
+    // from a second connection (or a retried statement) must converge to
+    // the winner instead of surfacing a raw 23505 (B1).
+    await client.query("SAVEPOINT reserve_insert");
+    let inserted;
+    try {
+      inserted = await client.query(
+        "INSERT INTO ai_dispatch_reservations (workspace_id, id, idempotency_key, permit_id, policy_version, route, purpose, status, reserved_cost_minor, input_estimate, output_ceiling, request_hash, attempt, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, 'RESERVED', $8, $9, $10, $11, 1, now() + ($12 || ' minutes')::interval) RETURNING *",
+        [claims.workspaceId, id, key, opts.permitId, live.toString(10), opts.route, purpose, reserved.toString(10), opts.inputEstimate, opts.outputCeiling, hash, String(DISPATCH_RESERVATION_TTL_MIN)],
+      );
+    } catch (err) {
+      if ((err as { code?: string }).code !== "23505") throw err;
+      await client.query("ROLLBACK TO SAVEPOINT reserve_insert");
+      const winner = await client.query("SELECT * FROM ai_dispatch_reservations WHERE workspace_id = $1 AND idempotency_key = $2", [
+        claims.workspaceId,
+        key,
+      ]);
+      if ((winner.rowCount ?? 0) === 0) throw new DispatchError("idempotency_reuse");
+      const won = winner.rows[0] as Parameters<typeof rowToReservation>[0];
+      if (won.request_hash !== hash) throw new DispatchError("idempotency_reuse");
+      return rowToReservation(won);
+    }
+    await client.query("RELEASE SAVEPOINT reserve_insert");
     return rowToReservation(inserted.rows[0] as Parameters<typeof rowToReservation>[0]);
   });
 }
@@ -432,6 +460,16 @@ export async function executeReserved(
     const liveBeforeRetry = await withTenant(pool, claims, async (client) => currentPolicyVersion(client, claims.workspaceId));
     if (liveBeforeRetry.toString(10) !== current.reservation.policyVersion) {
       return withTenant(pool, claims, async (client) => {
+        // Fenced like every other settle path: a cancel that lands between
+        // the attempts owns the terminal state and must not be clobbered (B2).
+        const locked = await client.query("SELECT status FROM ai_dispatch_reservations WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [
+          claims.workspaceId,
+          reservationId,
+        ]);
+        if ((locked.rows[0] as { status: string }).status !== "RESERVED") {
+          const found = await client.query("SELECT * FROM ai_dispatch_reservations WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, reservationId]);
+          return { reservation: rowToReservation(found.rows[0] as Parameters<typeof rowToReservation>[0]), usage: await readUsage(client, claims.workspaceId, reservationId) };
+        }
         await settleReservation(client, claims.workspaceId, reservationId, "RELEASED", attempts, {
           usageStatus: "RELEASED",
           inputTokens: null,

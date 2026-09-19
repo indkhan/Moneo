@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS ai_dispatch_reservations (
   status TEXT NOT NULL CONSTRAINT ai_reservations_status CHECK (status IN ('RESERVED', 'RECONCILED', 'PENDING', 'RELEASED', 'CANCELLED')),
   reserved_cost_minor BIGINT NOT NULL CONSTRAINT ai_reservations_cost_min CHECK (reserved_cost_minor >= 0),
   input_estimate INTEGER NOT NULL CONSTRAINT ai_reservations_in_min CHECK (input_estimate >= 0),
-  output_ceiling INTEGER NOT NULL CONSTRAINT ai_reservations_out_range CHECK (output_ceiling BETWEEN 1 AND 8000),
+  output_ceiling INTEGER NOT NULL CONSTRAINT ai_reservations_out_range CHECK (output_ceiling BETWEEN 1 AND 4000),
   request_hash TEXT NOT NULL CONSTRAINT ai_reservations_hash_len CHECK (char_length(request_hash) = 64),
   attempt SMALLINT NOT NULL DEFAULT 1 CONSTRAINT ai_reservations_attempt_range CHECK (attempt BETWEEN 1 AND 2),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

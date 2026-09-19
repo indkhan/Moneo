@@ -368,6 +368,63 @@ describe("e04-s01 atomic dispatch budgets", () => {
     expect(clash).toBe("idempotency_reuse");
   });
 
+  it("same-key concurrent reserves converge on one reservation with typed errors only", async () => {
+    const base = await startApp();
+    const { userId, workspaceId } = await setupWorkspace(base, `synthetic-disp-samekey-${tag}`, "samekey");
+    const claims = { userId, workspaceId };
+    await setDispatchBudget(pool, claims, { moneyMinor: "1000000", tokens: 4000000, concurrency: 32 });
+    const key = randomUUID();
+    const permits = await Promise.all(Array.from({ length: 6 }, (_, i) => issuePermit(pool, claims, `samekey-${i}`)));
+    const results = await Promise.all(
+      permits.map((permit) =>
+        reserveDispatch(pool, claims, { idempotencyKey: key, permitId: permit.id, route: "development", purpose: "samekey", ...RESERVE_OPTS })
+          .then((r) => ({ ok: true as const, id: r.id }))
+          .catch((err: unknown) => ({ ok: false as const, code: (err as DispatchError).code ?? "untyped" })),
+      ),
+    );
+    const ids = new Set(results.filter((r) => r.ok).map((r) => (r as { id: string }).id));
+    expect(ids.size).toBe(1);
+    // No raw 23505/500 escapes: every outcome is the typed reservation.
+    expect(results.every((r) => r.ok)).toBe(true);
+    // Losers never consumed their permits: exactly the winner's permit is
+    // spent, the other five still dispatch (deterministic whichever won).
+    const after = await Promise.all(
+      permits.map((permit) =>
+        reserveDispatch(pool, claims, { idempotencyKey: randomUUID(), permitId: permit.id, route: "development", purpose: "samekey", ...RESERVE_OPTS })
+          .then(() => "reserved" as const)
+          .catch((err: unknown) => (err as DispatchError).code),
+      ),
+    );
+    expect(after.filter((a) => a === "reserved")).toHaveLength(5);
+    expect(after.filter((a) => a === "permit_invalid")).toHaveLength(1);
+  });
+
+  it("cancel between attempts wins over the retry-revocation settle", async () => {
+    const base = await startApp();
+    const { userId, workspaceId, acctB } = await setupWorkspace(base, `synthetic-disp-cancelrace-${tag}`, "cancelrace");
+    const claims = { userId, workspaceId };
+    const reserved = await reserveDispatch(pool, claims, {
+      idempotencyKey: randomUUID(),
+      permitId: (await issuePermit(pool, claims, "cancelrace-purpose")).id,
+      route: "development",
+      purpose: "cancelrace-purpose",
+      ...RESERVE_OPTS,
+    });
+    const calls = { count: 0 };
+    const transport: DispatchTransport = async () => {
+      calls.count += 1;
+      // Interleave inside the first attempt: revoke the policy and cancel
+      // before the retry-revocation path runs.
+      await setAccountExclusion(pool, claims, userId, acctB, true, "synthetic interleave");
+      await cancelDispatch(pool, claims, reserved.id);
+      return { httpStatus: null, bodyText: null, inputTokens: null, outputTokens: null, model: "double" };
+    };
+    const state = await executeReserved(pool, claims, reserved.id, transport, RESERVE_OPTS.requestText);
+    expect(calls.count).toBe(1);
+    expect(state.reservation.status).toBe("CANCELLED");
+    expect(state.usage).toMatchObject({ status: "RELEASED", errorClass: "cancelled" });
+  });
+
   it("cancel before dispatch prevents transport; cancel is idempotent and keeps accepted work", async () => {
     const base = await startApp();
     const { userId, workspaceId } = await setupWorkspace(base, `synthetic-disp-cancel-${tag}`, "cancel");
