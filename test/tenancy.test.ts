@@ -60,7 +60,7 @@ async function json(method: string, url: string, cookie: string, body?: unknown)
 beforeAll(async () => {
   // Own database: parallel vitest workers must not share a database with a
   // suite whose rollback test drops tables.
-  pool = await ensureTestPool("E01-S03", "moneo_e01_tenancy_v3", ["fx_valuation", "fx_rates_ecb", "fx_rates_manual", "manual_transactions", "balance_snapshots", "balance_audit", "mapping_provider_usage", "mapping_provider_reservations", "mapping_proposals", "mapping_profiles", "review_decisions", "source_links", "transactions", "import_commit_batches", "parsed_observations", "source_objects", "imports", "data_sources", "background_job_attempts", "job_dispatch_index", "outbox_events", "background_job_results", "background_jobs", "ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
+  pool = await ensureTestPool("E01-S03", "moneo_e01_tenancy_v4", ["workspace_data_revision", "calculation_versions", "fx_valuation", "fx_rates_ecb", "fx_rates_manual", "manual_transactions", "balance_snapshots", "balance_audit", "mapping_provider_usage", "mapping_provider_reservations", "mapping_proposals", "mapping_profiles", "review_decisions", "source_links", "transactions", "import_commit_batches", "parsed_observations", "source_objects", "imports", "data_sources", "background_job_attempts", "job_dispatch_index", "outbox_events", "background_job_results", "background_jobs", "ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
   stub = await startStubIssuer();
 }, 60_000);
 
@@ -229,7 +229,7 @@ describe("e01-s03 tenant ownership", () => {
     // 006 attempts reference jobs; 005 jobs reference workspaces/operations;
     // 004 exclusions reference accounts; 002 drops the accounts table carrying
     // 003's version column).
-    for (const file of ["012_fx_rates.rollback.sql", "011_calculation_versions.rollback.sql", "010_accounts_manual_balances.rollback.sql", "009_import_commit.rollback.sql", "008_mapping.rollback.sql", "007_uploads.rollback.sql", "006_job_recovery.rollback.sql", "005_jobs.rollback.sql", "004_ai_policy.rollback.sql", "003_commands.rollback.sql", "002_tenancy.rollback.sql"]) {
+    for (const file of ["013_calculation_evidence.rollback.sql", "012_fx_rates.rollback.sql", "011_calculation_versions.rollback.sql", "010_accounts_manual_balances.rollback.sql", "009_import_commit.rollback.sql", "008_mapping.rollback.sql", "007_uploads.rollback.sql", "006_job_recovery.rollback.sql", "005_jobs.rollback.sql", "004_ai_policy.rollback.sql", "003_commands.rollback.sql", "002_tenancy.rollback.sql"]) {
       const sql = readFileSync(`apps/web/migrations/${file}`, "utf8");
       const admin = await pool.connect();
       try {
