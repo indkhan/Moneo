@@ -306,6 +306,8 @@ export function validateCorrectInput(value: unknown): CorrectInput {
     input.financialKind = v.financialKind as FinancialKind;
     input.linkedAccountId = v.linkedAccountId === null || v.linkedAccountId === undefined ? null : checkUuid(v.linkedAccountId);
     if (["TRANSFER", "CREDIT_REPAYMENT"].includes(input.financialKind) !== (input.linkedAccountId !== null)) throw new TenantInvalid();
+    if (input.financialKind === "FEE" && v.direction !== undefined && v.direction !== "OUTFLOW") throw new TenantInvalid();
+    if (input.financialKind === "REFUND" && v.direction !== undefined && v.direction !== "INFLOW") throw new TenantInvalid();
   } else if (v.linkedAccountId !== undefined) throw new TenantInvalid();
   if (v.tagIds !== undefined) {
     if (!Array.isArray(v.tagIds) || v.tagIds.length > 20) throw new TenantInvalid();
@@ -862,6 +864,9 @@ export async function correctTx(client: PoolClient, claims: TenantClaims, actorI
     if (!before) throw new TxError("not_found");
     if (BigInt(before.version) !== expected) throw new TxError("version_mismatch", before.version);
     const table = tableFor(input.transactionKind);
+    const resultingDirection = input.direction ?? before.direction;
+    if (input.financialKind === "FEE" && resultingDirection !== "OUTFLOW") throw new TenantInvalid();
+    if (input.financialKind === "REFUND" && resultingDirection !== "INFLOW") throw new TenantInvalid();
     const sets: string[] = ["version = version + 1", "updated_at = now()"];
     const params: unknown[] = [claims.workspaceId, input.transactionId, expected.toString(10)];
     let idx = 4;
@@ -1074,8 +1079,8 @@ export async function undoTx(client: PoolClient, claims: TenantClaims, actorId: 
     const table = tableFor(kind);
     const amountMinor = BigInt(before.amountMinor);
     const updated = await client.query(
-      `UPDATE ${table} SET amount_minor = $1, currency = $2, direction = $3, effective_date = $4, description = $5, category_id = $6, version = version + 1, updated_at = now() WHERE workspace_id = $7 AND id = $8 AND version = $9 RETURNING version`,
-      [amountMinor.toString(10), before.currency, before.direction, before.effectiveDate, before.description, before.categoryId, claims.workspaceId, audit.entity_id, current.version],
+      `UPDATE ${table} SET amount_minor = $1, currency = $2, direction = $3, effective_date = $4, description = $5, category_id = $6, financial_kind = $7, linked_account_id = $8, version = version + 1, updated_at = now() WHERE workspace_id = $9 AND id = $10 AND version = $11 RETURNING version`,
+      [amountMinor.toString(10), before.currency, before.direction, before.effectiveDate, before.description, before.categoryId, before.financialKind, before.linkedAccountId, claims.workspaceId, audit.entity_id, current.version],
     );
     if ((updated.rowCount ?? 0) === 0) {
       const latest = await readTransactionView(client, claims.workspaceId, kind, audit.entity_id);

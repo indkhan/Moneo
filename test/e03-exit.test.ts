@@ -335,6 +335,22 @@ describe("e03-s08 financial-truth exit", () => {
     expect(selected.status).toBe(200);
     expect(selected.json.native).toEqual([expect.objectContaining({ currency: "EUR", spendMinor: "250", cashMinor: "-250", transferPrincipalMinor: "10000", refundMinor: "6000" })]);
     expect(selected.json.base).toEqual({ incomeMinor: "0", spendMinor: "250", cashMinor: "-250", coverage: "full", unvaluedCount: "0" });
+
+    const inflow = await seedTx(workspaceId, userId, eur, "100", "EUR", "INFLOW", "2024-02-06", "Semantic undo probe");
+    const badFee = await postJson(base, "/api/commands/transactions.correct", cookie, { workspaceId, transactionKind: "imported", transactionId: inflow, expectedVersion: "1", financialKind: "FEE", linkedAccountId: null, idempotencyKey: randomUUID() });
+    expect(badFee.status).toBe(400);
+    const refund = await postJson(base, "/api/commands/transactions.correct", cookie, { workspaceId, transactionKind: "imported", transactionId: inflow, expectedVersion: "1", financialKind: "REFUND", linkedAccountId: null, idempotencyKey: randomUUID() });
+    expect(refund.status).toBe(200);
+    const undone = await postJson(base, "/api/commands/operations.undo", cookie, { workspaceId, operationId: refund.json.operationId, idempotencyKey: randomUUID() });
+    expect(undone.status).toBe(200);
+    expect(undone.json).toMatchObject({ financialKind: "NORMAL", linkedAccountId: null });
+
+    const raced = await Promise.all(Array.from({ length: 5 }, () => getJson(base, `/api/calculations/financial-summary?workspaceId=${workspaceId}`, cookie)));
+    expect(raced.every((result) => result.status === 200)).toBe(true);
+    expect(new Set(raced.map((result) => result.json.calculationVersion)).size).toBe(5);
+    await withTenant(pool, { userId, workspaceId }, (client) => client.query("UPDATE fx_rates_ecb SET rate = '163.00' WHERE workspace_id = $1 AND target_currency = 'JPY'", [workspaceId]));
+    const changedRate = await getJson(base, `/api/calculations/financial-summary?workspaceId=${workspaceId}`, cookie);
+    expect(changedRate.json.inputsHash).not.toBe(response.json.inputsHash);
   });
 
   it("values FX with coverage honesty and untouched natives", async () => {

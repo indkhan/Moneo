@@ -229,7 +229,7 @@ describe("e01-s03 tenant ownership", () => {
     // 006 attempts reference jobs; 005 jobs reference workspaces/operations;
     // 004 exclusions reference accounts; 002 drops the accounts table carrying
     // 003's version column).
-    for (const file of ["016_recurring.rollback.sql", "015_audit_events.rollback.sql", "014_categories_tags.rollback.sql", "013_calculation_evidence.rollback.sql", "012_fx_rates.rollback.sql", "011_calculation_versions.rollback.sql", "010_accounts_manual_balances.rollback.sql", "009_import_commit.rollback.sql", "008_mapping.rollback.sql", "007_uploads.rollback.sql", "006_job_recovery.rollback.sql", "005_jobs.rollback.sql", "004_ai_policy.rollback.sql", "003_commands.rollback.sql", "002_tenancy.rollback.sql"]) {
+    for (const file of ["017_financial_semantics.rollback.sql", "016_recurring.rollback.sql", "015_audit_events.rollback.sql", "014_categories_tags.rollback.sql", "013_calculation_evidence.rollback.sql", "012_fx_rates.rollback.sql", "011_calculation_versions.rollback.sql", "010_accounts_manual_balances.rollback.sql", "009_import_commit.rollback.sql", "008_mapping.rollback.sql", "007_uploads.rollback.sql", "006_job_recovery.rollback.sql", "005_jobs.rollback.sql", "004_ai_policy.rollback.sql", "003_commands.rollback.sql", "002_tenancy.rollback.sql"]) {
       const sql = readFileSync(`apps/web/migrations/${file}`, "utf8");
       const admin = await pool.connect();
       try {

@@ -17,6 +17,7 @@ export async function getFinancialSummary(pool: Pool, claims: TenantClaims, work
   if (filter.accountId !== undefined && !isUuid(filter.accountId)) throw new TenantInvalid();
   for (const value of [filter.dateFrom, filter.dateTo]) if (value !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new TenantInvalid();
   return withTenant(pool, claims, async (client) => {
+    await client.query("LOCK TABLE transactions, manual_transactions, accounts, fx_rates_ecb, fx_rates_manual IN SHARE MODE");
     const workspace = await client.query("SELECT base_currency_code FROM workspaces WHERE id = $1 FOR UPDATE", [workspaceId]);
     if ((workspace.rowCount ?? 0) === 0) throw new TenantInvalid();
     const baseCurrency = (workspace.rows[0] as { base_currency_code: string }).base_currency_code.trim();
@@ -55,11 +56,11 @@ export async function getFinancialSummary(pool: Pool, claims: TenantClaims, work
     const coverage = unvalued > 0n ? (income === 0n && spend === 0n ? "unavailable" : "partial") : partial ? "partial" : "full";
     const base = { incomeMinor: formatSignedDecimalBigint(income), spendMinor: formatSignedDecimalBigint(spend), cashMinor: formatSignedDecimalBigint(income - spend), coverage, unvaluedCount: unvalued.toString() } as const;
     const canonicalInputs = selectedRows.map((r) => ({ ...r, effective_date: date(r.effective_date), amount_minor: String(r.amount_minor), currency: r.currency.trim() }));
-    const inputsHash = sha({ baseCurrency, filter, rows: canonicalInputs });
+    const inputsHash = sha({ baseCurrency, filter, accounts: [...accounts.entries()], rows: canonicalInputs, ecb: ecbRows.rows, manual: manualRows.rows });
     const resultsHash = sha({ base, native });
     const prior = await client.query("SELECT COALESCE(MAX(version), 0) AS version FROM calculation_versions WHERE workspace_id = $1", [workspaceId]);
     const calculationVersion = (BigInt((prior.rows[0] as { version: string }).version) + 1n).toString();
     await client.query("INSERT INTO calculation_versions (workspace_id, version, inputs_hash, results_hash) VALUES ($1, $2, $3, $4)", [workspaceId, calculationVersion, inputsHash, resultsHash]);
     return { baseCurrency, base, native, calculationVersion, inputsHash, resultsHash };
-  }, "REPEATABLE READ");
+  });
 }
