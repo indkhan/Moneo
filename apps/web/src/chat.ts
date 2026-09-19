@@ -21,6 +21,7 @@ import {
   executeReserved,
   productionQualified,
   reserveDispatch,
+  supersedeReservationTx,
   DispatchError,
   type DispatchTransport,
 } from "./ai-dispatch.ts";
@@ -283,7 +284,11 @@ async function sendTx(
     return { ok: false, code };
   };
 
-  const thread = await client.query("SELECT id FROM chat_threads WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, threadId]);
+  // Serialize admissions on the thread row: concurrent sends then observe the
+  // winner's assistant turn and fail typed thread_busy instead of racing
+  // into a raw unique violation (B1). The same lock makes the activity seq
+  // genuinely gapless per thread, as appendActivity assumes.
+  const thread = await client.query("SELECT id FROM chat_threads WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [claims.workspaceId, threadId]);
   if ((thread.rowCount ?? 0) === 0) return fail("not_found");
   const counted = await client.query("SELECT count(*)::int AS n FROM chat_turns WHERE workspace_id = $1 AND thread_id = $2", [claims.workspaceId, threadId]);
   if (((counted.rows[0] as { n: number }).n) + 2 > CHAT_MAX_TURNS) return fail("turn_limit");
@@ -436,6 +441,11 @@ export async function retryTurn(pool: Pool, claims: TenantClaims, actorId: strin
       input.turnId,
     ]);
     if ((turn.rowCount ?? 0) === 0) await fail("not_found");
+    // Serialize with concurrent sends/retries on the same thread (B1).
+    await client.query("SELECT id FROM chat_threads WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [
+      claims.workspaceId,
+      (turn.rows[0] as { thread_id: string }).thread_id,
+    ]);
     const row = rowToTurn(turn.rows[0] as Parameters<typeof rowToTurn>[0]);
     if (row.role !== "assistant" || row.status === "queued" || row.status === "running" || row.status === "completed") await fail("invalid_state");
     const busy = await client.query(
@@ -565,6 +575,9 @@ async function failTurnFenced(
   await withTenant(pool, { userId: route.acceptedBy, workspaceId: route.workspaceId }, async (client) => {
     const guard = await fencedGuard(client, route, claim);
     if (!guard.ok) {
+      // No turn/attempt transition here by design (N1): cancelTurn's
+      // finalize owns the cancelled state and both interleavings converge;
+      // only the job attempt row is marked.
       await markAttempt(client, route, claim.attemptId, guard.reason === "cancelled" ? "CANCELLED" : "STALE");
       return;
     }
@@ -744,6 +757,17 @@ export async function claimChatGeneration(
   // here means a live generation owns the turn, so this one stands down.
   const attemptId = uuidv7();
   const registered = await withTenant(pool, workerClaims, async (client) => {
+    // Supersede still-running rows from dead generations, and settle their
+    // reservations as PENDING-held in the same transaction: a dead RESERVED
+    // row must never leak its slot/money forever, nor be blindly released
+    // while mid-transport ambiguity is possible (B2).
+    const dead = await client.query("SELECT id, reservation_id FROM chat_attempts WHERE workspace_id = $1 AND turn_id = $2 AND status = 'running'", [
+      route.workspaceId,
+      input.assistantTurnId,
+    ]);
+    for (const row of dead.rows as { id: string; reservation_id: string | null }[]) {
+      if (row.reservation_id) await supersedeReservationTx(client, route.workspaceId, row.reservation_id);
+    }
     await client.query("UPDATE chat_attempts SET status = 'interrupted', completed_at = now() WHERE workspace_id = $1 AND turn_id = $2 AND status = 'running'", [
       route.workspaceId,
       input.assistantTurnId,
@@ -842,7 +866,9 @@ export async function driveChatGeneration(
   const recording: DispatchTransport = async (req, signal) => {
     const result = await transport(req, signal);
     if (result.bodyText !== null && result.httpStatus !== null && result.httpStatus >= 200 && result.httpStatus < 300) {
-      const text = result.bodyText.slice(0, CHAT_ASSISTANT_BODY_MAX_BYTES * 4);
+      // Slice at the publish cap: anything larger could never publish, so it
+      // must not linger as unpublishable attempt state (N2).
+      const text = result.bodyText.slice(0, CHAT_ASSISTANT_BODY_MAX_BYTES);
       await withTenant(pool, workerClaims, async (client) => {
         const live = await client.query("SELECT attempt_generation, status FROM background_jobs WHERE workspace_id = $1 AND id = $2", [
           route.workspaceId,

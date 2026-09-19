@@ -163,10 +163,13 @@ async function lockedBudget(client: PoolClient, workspaceId: string): Promise<Bu
 type HeldTotals = { money: bigint; tokens: number; slots: number };
 
 async function heldTotals(client: PoolClient, workspaceId: string): Promise<HeldTotals> {
-  // Active (RESERVED/PENDING) holds the full reservation; reconciled history
-  // counts at measured cost. RELEASED/CANCELLED hold nothing.
+  // Active (RESERVED/PENDING) holds money and tokens at the full reservation;
+  // reconciled history counts at measured cost. RELEASED/CANCELLED hold
+  // nothing. Concurrency slots count only RESERVED rows: a slot guards live
+  // provider calls in flight, and PENDING rows belong to dead generations
+  // that will never call again (their money/tokens stay held, honestly).
   const active = await client.query(
-    "SELECT reserved_cost_minor AS cost, input_estimate AS ie, output_ceiling AS oc FROM ai_dispatch_reservations WHERE workspace_id = $1 AND status IN ('RESERVED', 'PENDING')",
+    "SELECT reserved_cost_minor AS cost, input_estimate AS ie, output_ceiling AS oc, status FROM ai_dispatch_reservations WHERE workspace_id = $1 AND status IN ('RESERVED', 'PENDING')",
     [workspaceId],
   );
   const done = await client.query(
@@ -176,10 +179,10 @@ async function heldTotals(client: PoolClient, workspaceId: string): Promise<Held
   let money = 0n;
   let tokens = 0;
   let slots = 0;
-  for (const r of active.rows as { cost: string; ie: number; oc: number }[]) {
+  for (const r of active.rows as { cost: string; ie: number; oc: number; status: string }[]) {
     money += BigInt(r.cost);
     tokens += r.ie + r.oc;
-    slots += 1;
+    if (r.status === "RESERVED") slots += 1;
   }
   for (const r of done.rows as { cost: string | null; ie: number | null; oc: number | null }[]) {
     if (r.cost !== null) money += BigInt(r.cost);
@@ -690,6 +693,28 @@ export function liveChatTransport(config: LiveChatConfig): DispatchTransport {
       signal.removeEventListener("abort", onAbort);
     }
   };
+}
+
+/**
+ * Supersede a dead generation's reservation inside the caller's transaction
+ * (E04-S02 worker-loop discharge of the S01 expiry note). A still-RESERVED
+ * row may hide mid-transport ambiguity, so it is never released: it becomes
+ * PENDING with the full reservation held and a superseded error class, and
+ * its concurrency slot is freed (slots guard live calls only). Terminal
+ * rows are untouched. Idempotent.
+ */
+export async function supersedeReservationTx(client: PoolClient, workspaceId: string, reservationId: string): Promise<void> {
+  const locked = await client.query("SELECT status FROM ai_dispatch_reservations WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [
+    workspaceId,
+    reservationId,
+  ]);
+  if ((locked.rowCount ?? 0) === 0) return;
+  if ((locked.rows[0] as { status: string }).status !== "RESERVED") return;
+  await client.query("UPDATE ai_dispatch_reservations SET status = 'PENDING' WHERE workspace_id = $1 AND id = $2", [workspaceId, reservationId]);
+  await client.query(
+    "INSERT INTO ai_dispatch_usage (workspace_id, id, reservation_id, status, input_tokens, output_tokens, reconciled_cost_minor, error_class, model) VALUES ($1, $2, $3, 'PENDING', NULL, NULL, NULL, 'superseded', 'superseded') ON CONFLICT (workspace_id, reservation_id) DO NOTHING",
+    [workspaceId, uuidv7(), reservationId],
+  );
 }
 
 export function dispatchErrorBody(err: DispatchError): { status: number; body: unknown } {

@@ -281,6 +281,21 @@ describe("e04-s02 persistent chat and worker loop", () => {
     expect(page2.events.map((e) => e.kind)).toEqual(["assistant-running", "assistant-published"]);
   });
 
+  it("concurrent sends admit exactly one generation with typed busy errors only", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, `synthetic-chat-b1-${tag}`, "b1");
+    const thread = (await call("POST", `${base}/api/chat/threads`, cookie, { workspaceId })).json as { id: string };
+    const results = await Promise.all(
+      [0, 1, 2, 3].map((i) => call("POST", `${base}/api/chat/threads/${thread.id}/send`, cookie, { workspaceId, body: `racer ${i}`, idempotencyKey: randomUUID() })),
+    );
+    const won = results.filter((r) => r.status === 202);
+    const busy = results.filter((r) => r.status === 409 && (r.json as { error?: string }).error === "thread_busy");
+    expect(won).toHaveLength(1);
+    expect(busy).toHaveLength(3);
+    // No raw 500 escapes: every outcome is a typed success or busy conflict.
+    for (const r of results) expect([202, 409]).toContain(r.status);
+  });
+
   it("real BullMQ delivery completes the turn; duplicate redelivery is a noop", async () => {
     const base = await startApp();
     const { cookie, userId, workspaceId } = await setupWorkspace(base, `synthetic-chat-q-${tag}`, "q");
@@ -335,6 +350,13 @@ describe("e04-s02 persistent chat and worker loop", () => {
     expect(assistants).toHaveLength(1);
     expect(assistants[0]).toMatchObject({ status: "completed", body: "recovered answer" });
     expect(view!.attempts.map((a) => `${a.generation}:${a.status}`).sort()).toEqual(["1:interrupted", "2:published"]);
+    // The dead generation reserved nothing (killed before dispatch): only the
+    // recovery's reconciled reservation remains, never a leaked RESERVED row.
+    const leaked = await scoped(userId, workspaceId, async (client) => {
+      const r = await client.query("SELECT status FROM ai_dispatch_reservations WHERE workspace_id = $1", [workspaceId]);
+      return (r.rows as { status: string }[]).map((row) => row.status).sort();
+    });
+    expect(leaked).toEqual(["RECONCILED"]);
   });
 
   it("SIGKILL after output publishes exactly once with the recovered text only", async () => {
@@ -358,6 +380,13 @@ describe("e04-s02 persistent chat and worker loop", () => {
     // dead attempt's bytes are never concatenated or promoted.
     expect(assistants[0]).toMatchObject({ status: "completed", body: "live generation text" });
     expect(view!.attempts.map((a) => `${a.generation}:${a.status}`).sort()).toEqual(["1:interrupted", "2:published"]);
+    // The dead generation's RESERVED reservation settles PENDING-held at
+    // supersede time: its slot is freed but the money stays honestly held.
+    const held = await scoped(userId, workspaceId, async (client) => {
+      const r = await client.query("SELECT status FROM ai_dispatch_reservations WHERE workspace_id = $1", [workspaceId]);
+      return (r.rows as { status: string }[]).map((row) => row.status).sort();
+    });
+    expect(held).toEqual(["PENDING", "RECONCILED"]);
   });
 
   it("same-key replay converges on one turn pair and one job", async () => {
