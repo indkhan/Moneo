@@ -825,6 +825,17 @@ export async function removeTag(pool: Pool, claims: TenantClaims, actorId: strin
 export async function correctTx(client: PoolClient, claims: TenantClaims, actorId: string, input: CorrectInput): Promise<TxOutcome<TransactionView>> {
   const expected = await requireVersion(input.expectedVersion);
   const hash = requestHash({ command: CORRECT_COMMAND, workspaceId: input.workspaceId, kind: input.transactionKind, transactionId: input.transactionId, amount: input.amount ?? null, currency: input.currency ?? null, direction: input.direction ?? null, effectiveDate: input.effectiveDate ?? null, description: input.description ?? null, categoryId: input.categoryId === undefined ? "UNCHANGED" : input.categoryId, tagIds: input.tagIds ?? "UNCHANGED", expectedVersion: input.expectedVersion });
+  // Money parse happens before the journal claim: malformed amounts are a
+  // 400 (TenantInvalid), and no journal row is consumed by a doomed command.
+  let minor: bigint | null = null;
+  if (input.amount !== undefined) {
+    try {
+      minor = parseMinor(input.amount, input.currency!);
+    } catch {
+      throw new TenantInvalid();
+    }
+    if (minor <= 0n) throw new TenantInvalid();
+  }
   return claimAndExecute(client, claims, actorId, CORRECT_COMMAND, input.idempotencyKey, hash, async (client, operationId) => {
     if (input.categoryId !== undefined && input.categoryId !== null) await requireLiveCategory(client, claims.workspaceId, input.categoryId);
     if (input.tagIds !== undefined) {
@@ -832,11 +843,6 @@ export async function correctTx(client: PoolClient, claims: TenantClaims, actorI
       // addTagTx); manual corrections use category/field paths instead.
       if (input.transactionKind !== "imported") throw new TxError("unsupported_operation");
       for (const tagId of input.tagIds) await requireLiveTag(client, claims.workspaceId, tagId);
-    }
-    let minor: bigint | null = null;
-    if (input.amount !== undefined) {
-      minor = parseMinor(input.amount, input.currency!);
-      if (minor <= 0n) throw new TenantInvalid();
     }
     const before = await readTransactionView(client, claims.workspaceId, input.transactionKind, input.transactionId);
     if (!before) throw new TxError("not_found");

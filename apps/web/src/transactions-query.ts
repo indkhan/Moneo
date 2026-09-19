@@ -307,10 +307,12 @@ export async function getTransactionEvidence(pool: Pool, claims: TenantClaims, k
       kind,
       id,
       source,
-      audit: (audit.rows as { id: string; action: string; created_at: string; operation_id: string | null; compensating_operation_id: string | null }[]).map((a) => ({
+      audit: (audit.rows as { id: string; action: string; created_at: string | Date; operation_id: string | null; compensating_operation_id: string | null }[]).map((a) => ({
         id: a.id,
         action: a.action,
-        createdAt: a.created_at,
+        // pg returns timestamptz as Date: serialize at the boundary so every
+        // consumer (JSON + HTML escaping) always sees a string.
+        createdAt: a.created_at instanceof Date ? a.created_at.toISOString() : a.created_at,
         operationId: a.operation_id,
         compensatingOperationId: a.compensating_operation_id,
       })),
