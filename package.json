@@ -26,6 +26,7 @@
     "test:policy": "vitest run test/ai-policy.test.ts",
     "test:ai-dispatch": "vitest run test/ai-dispatch.test.ts",
     "test:chat": "vitest run test/chat.test.ts",
+    "test:ai-tools": "vitest run test/ai-tools.test.ts",
     "test:ui": "vitest run test/ui-shell.test.ts",
     "test:http": "vitest run test/http-body.test.ts",
     "test:w1": "vitest run test/w1-exit.test.ts",

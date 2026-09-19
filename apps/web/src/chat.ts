@@ -16,16 +16,8 @@ import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { isUuid, uuidv7 } from "./ids.ts";
 import { TenantDenied, TenantInvalid, withTenant, type TenantClaims } from "./tenancy.ts";
-import {
-  cancelDispatch,
-  executeReserved,
-  productionQualified,
-  reserveDispatch,
-  supersedeReservationTx,
-  DispatchError,
-  type DispatchTransport,
-} from "./ai-dispatch.ts";
-import { issuePermit } from "./ai-policy.ts";
+import { cancelDispatch, supersedeReservationTx, type DispatchTransport } from "./ai-dispatch.ts";
+import { createToolContext, runToolLoop, type HistoryTurn, type LoopResult } from "./ai-tools.ts";
 import {
   cancelJob,
   claimAttempt,
@@ -799,10 +791,10 @@ export async function claimChatGeneration(
 }
 
 /**
- * Drive one claimed generation: fresh permit + S01 dispatch -> fenced
- * publish. Every generation dispatches fresh (new reservation): a death
- * after dispatch publishes at most one turn, the dead attempt is marked
- * interrupted, and retry is always a visibly separate attempt.
+ * Drive one claimed generation through the S03 model/tool loop to a fenced
+ * publish. Every step dispatches fresh under S01 (new reservation, policy
+ * rechecked); a death anywhere publishes at most one turn, the dead attempt
+ * is marked interrupted, and retry is always a visibly separate attempt.
  */
 export async function driveChatGeneration(
   pool: Pool,
@@ -819,47 +811,32 @@ export async function driveChatGeneration(
     return "deferred";
   }
 
-  // Fresh permit per generation: policy/exclusion/version state is
-  // revalidated at dispatch, never inherited from send time.
-  let permitId: string;
-  try {
-    permitId = (await issuePermit(pool, workerClaims, "chat-generation")).id;
-  } catch {
+  // History for the prompt: completed turns only, in order. The pending user
+  // turn is always included; interrupted/failed generations contribute no
+  // text (their bytes were never authoritative).
+  const view = await getThread(pool, workerClaims, input.threadId);
+  if (!view) {
     await interruptTurnFenced(pool, full, pick, input.assistantTurnId, attemptId);
     return "applied";
   }
-  const dispatchRoute = productionQualified() ? "production" : "development";
-  let reservationId: string;
-  try {
-    const reserved = await reserveDispatch(pool, workerClaims, {
-      idempotencyKey: `chat:${attemptId}`,
-      permitId,
-      route: dispatchRoute,
-      purpose: "chat-generation",
-      requestText: `chat-generation:${input.threadId}:${input.assistantTurnId}`,
-      inputEstimate: 2000,
-      outputCeiling: 2000,
-    });
-    reservationId = reserved.id;
-  } catch (err) {
-    if (err instanceof DispatchError) {
-      await failTurnFenced(pool, full, pick, input.assistantTurnId, attemptId, err.code);
-      return "applied";
-    }
-    throw err;
+  const history = view.turns
+    .filter((t) => t.status === "completed" && t.body.length > 0)
+    .map((t) => ({ role: t.role, body: t.body }));
+  const ctx = await createToolContext(pool, workerClaims).catch(() => null);
+  if (!ctx) {
+    await interruptTurnFenced(pool, full, pick, input.assistantTurnId, attemptId);
+    return "applied";
   }
   await withTenant(pool, workerClaims, async (client) => {
-    const version = await client.query("SELECT policy_version AS v FROM ai_policies WHERE workspace_id = $1", [route.workspaceId]);
-    await client.query("UPDATE chat_attempts SET reservation_id = $3, policy_version = $4 WHERE workspace_id = $1 AND id = $2", [
+    await client.query("UPDATE chat_attempts SET reservation_id = NULL, policy_version = $3 WHERE workspace_id = $1 AND id = $2", [
       route.workspaceId,
       attemptId,
-      reservationId,
-      (version.rowCount ?? 0) === 0 ? "1" : ((version.rows[0] as { v: string }).v as string),
+      ctx.policyVersion,
     ]);
   });
   await heartbeatAttempt(pool, full, claim.attemptId);
 
-  // Recording transport: persist the final message onto this attempt before
+  // Recording transport: persist each step's output onto this attempt before
   // S01 settles, so this generation publishes its own authoritative result.
   // Fenced by the live generation: a superseded worker persists nothing,
   // and recovery always dispatches fresh under a new attempt.
@@ -887,36 +864,46 @@ export async function driveChatGeneration(
     return result;
   };
 
-  let state;
+  let run: LoopResult;
   try {
-    state = await executeReserved(pool, workerClaims, reservationId, recording, `chat-generation:${input.threadId}:${input.assistantTurnId}`);
+    run = await runToolLoop(pool, ctx, attemptId, `chat:${attemptId}`, history, recording, {
+      onReservation: async (reservationId) => {
+        await withTenant(pool, workerClaims, async (client) => {
+          await client.query("UPDATE chat_attempts SET reservation_id = $3 WHERE workspace_id = $1 AND id = $2", [
+            route.workspaceId,
+            attemptId,
+            reservationId,
+          ]);
+        });
+      },
+      isLive: async () => {
+        const live = await withTenant(pool, workerClaims, async (client) => {
+          const found = await client.query("SELECT status FROM chat_turns WHERE workspace_id = $1 AND id = $2", [route.workspaceId, input.assistantTurnId]);
+          return (found.rows[0] as { status: string } | undefined)?.status;
+        });
+        return live === "queued" || live === "running";
+      },
+    });
   } catch {
     await interruptTurnFenced(pool, full, pick, input.assistantTurnId, attemptId);
     return "applied";
   }
   await heartbeatAttempt(pool, full, claim.attemptId);
 
-  if (state.reservation.status === "RECONCILED") {
-    // Only this attempt's own output may publish: independent attempts are
+  if (run.status === "ok") {
+    // Only this attempt's own final may publish: independent attempts are
     // never concatenated, and a generation without its own authoritative
     // result settles ambiguously for a visibly separate retry.
-    const output = await withTenant(pool, workerClaims, async (client) => {
-      const own = await client.query("SELECT output_text FROM chat_attempts WHERE workspace_id = $1 AND id = $2", [route.workspaceId, attemptId]);
-      return (own.rows[0] as { output_text: string | null } | undefined)?.output_text ?? null;
-    });
-    if (output) {
-      const published = await publishTurnFenced(pool, full, pick, input.assistantTurnId, attemptId, output);
-      return published.ok ? "applied" : "duplicate-terminal-noop";
-    }
-    await interruptTurnFenced(pool, full, pick, input.assistantTurnId, attemptId);
+    const published = await publishTurnFenced(pool, full, pick, input.assistantTurnId, attemptId, run.finalText);
+    return published.ok ? "applied" : "duplicate-terminal-noop";
+  }
+  if (run.status === "failed") {
+    await failTurnFenced(pool, full, pick, input.assistantTurnId, attemptId, run.errorClass);
     return "applied";
   }
-  if (state.reservation.status === "RELEASED") {
-    await failTurnFenced(pool, full, pick, input.assistantTurnId, attemptId, state.usage?.errorClass ?? "released");
-    return "applied";
-  }
-  // PENDING (unknown/ambiguous usage): no authoritative result for this
-  // generation; retry starts a visibly separate attempt.
+  // stale/limit/aborted/interrupted: no authoritative result for this
+  // generation; policy/revision drift already blocks publication, and retry
+  // starts a visibly separate attempt.
   await interruptTurnFenced(pool, full, pick, input.assistantTurnId, attemptId);
   return "applied";
 }

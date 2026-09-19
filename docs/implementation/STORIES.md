@@ -995,9 +995,14 @@ Execution record:
 
 ## E04-S03 — Expose scoped tools, evidence and dispatch revalidation
 
-Status: Ready | Dependencies: E04-S02, E03-S04
+Status: In progress | Dependencies: E04-S02, E03-S04
 
 Canonical refinement: [E04-S03](E04.md#e04-s03--expose-scoped-tools-evidence-and-dispatch-revalidation).
+
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e04-s03-ai-tools` (main worktree branch)
+- Base SHA: `14c1dc49012f961ad95aa9bbe88ebbd6a89a2695` (E04-S02 Done)
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18, own `moneo_e04_tools` DB. `npm run typecheck` 0; `npm run test:ai-tools` 0 (10/10: search identical to shared query + independent SQL sums, evidence/balances/totals exact incl. cutoff honesty, malformed/unknown/denied typed with error rows and zero executions, exclusion-drift loop halts stale with no publication and no leaked RESERVED, revision-drift direct stale, abstention verbatim + no fabrication, 9-call cap with zero tool rows, foreign denial + zero unscoped rows, tool-using e2e with 2 RECONCILED dispatches, parse/prompt units); regression chat 13/13 (tool-loop refactor intact), ai-dispatch 15/15, tenancy 6/6 (020 rollback chain, 42 tables), e03-exit 11/11; `test:failure` nonzero-as-intended; `build:web` 0; `build:worker` 0; `git diff --check` 0; secret scan clean; no `.env` tracked.
 
 ## E04-S04 — Deliver contextual chat, activity and Stop
 
