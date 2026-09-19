@@ -103,33 +103,36 @@ describe("e03-s02 cash/spend/income calculations", () => {
       makeLeg({ accountId: "acc-a", direction: "OUTFLOW", amountMinor: 5000n, description: "Groceries" }),
       // Transfer A->B (both owned)
       makeLeg({ accountId: "acc-a", direction: "OUTFLOW", amountMinor: 10000n, counterpartyAccountId: "acc-b", description: "Transfer to B" }),
-      makeLeg({ accountId: "acc-b", direction: "INFLOW", amountMinor: 10000n, counterpartyAccountId: "acc-a", description: "Transfer from A" }),
+      makeLeg({ accountId: "acc-b", currency: "USD", direction: "INFLOW", amountMinor: 10000n, counterpartyAccountId: "acc-a", description: "Transfer from A" }),
       // Fee on transfer
       makeLeg({ accountId: "acc-a", direction: "OUTFLOW", amountMinor: 200n, isFee: true, counterpartyAccountId: "acc-b", description: "Transfer fee" }),
       // Refund
       makeLeg({ accountId: "acc-a", direction: "INFLOW", amountMinor: 1000n, isRefund: true, description: "Refund" }),
       // Credit repayment C->A
-      makeLeg({ accountId: "acc-c", direction: "OUTFLOW", amountMinor: 20000n, isCreditRepayment: true, counterpartyAccountId: "acc-a", description: "Credit repayment" }),
+      makeLeg({ accountId: "acc-c", currency: "JPY", direction: "OUTFLOW", amountMinor: 20000n, isCreditRepayment: true, counterpartyAccountId: "acc-a", description: "Credit repayment" }),
       makeLeg({ accountId: "acc-a", direction: "INFLOW", amountMinor: 20000n, isCreditRepayment: true, counterpartyAccountId: "acc-c", description: "Credit repayment" }),
     ];
 
     const classified = legs.map(l => classifyLeg(l, ownedAccountIds));
     const totals = calculateWorkspaceTotals(classified, ownedAccounts);
+    const eur = totals.byCurrency.find((total) => total.currency === "EUR")!;
 
     // Income: 100000 (salary) — credit repayment in is not income
-    expect(totals.incomeMinor).toBe("100000");
+    expect(eur.incomeMinor).toBe("100000");
     // Spend: 5000 (groceries) + 200 (fee) - 1000 (refund reduces spend) = 4200
-    expect(totals.spendMinor).toBe("4200");
+    expect(eur.spendMinor).toBe("4200");
     // Cash: 100000 - 4200 = 95800
-    expect(totals.cashMinor).toBe("95800");
+    expect(eur.cashMinor).toBe("95800");
     // Transfer principal: 10000 (A out) + 10000 (B in) = 20000
-    expect(totals.transferPrincipalMinor).toBe("20000");
+    expect(eur.transferPrincipalMinor).toBe("10000");
+    expect(totals.byCurrency.find((total) => total.currency === "USD")!.transferPrincipalMinor).toBe("10000");
     // Transfer fee: 200
-    expect(totals.transferFeeMinor).toBe("200");
+    expect(eur.transferFeeMinor).toBe("200");
     // Refund: 1000
-    expect(totals.refundMinor).toBe("1000");
+    expect(eur.refundMinor).toBe("1000");
     // Credit repayment: 20000 (C out) + 20000 (A in) = 40000
-    expect(totals.creditRepaymentMinor).toBe("40000");
+    expect(eur.creditRepaymentMinor).toBe("20000");
+    expect(totals.byCurrency.find((total) => total.currency === "JPY")!.creditRepaymentMinor).toBe("20000");
   });
 
   it("calculates per-account totals", () => {
@@ -138,7 +141,7 @@ describe("e03-s02 cash/spend/income calculations", () => {
       makeLeg({ accountId: "acc-a", direction: "OUTFLOW", amountMinor: 5000n, description: "Groceries" }),
       // Transfer A->B (both legs)
       makeLeg({ accountId: "acc-a", direction: "OUTFLOW", amountMinor: 10000n, counterpartyAccountId: "acc-b", description: "Transfer to B" }),
-      makeLeg({ accountId: "acc-b", direction: "INFLOW", amountMinor: 10000n, counterpartyAccountId: "acc-a", description: "Transfer from A" }),
+      makeLeg({ accountId: "acc-b", currency: "USD", direction: "INFLOW", amountMinor: 10000n, counterpartyAccountId: "acc-a", description: "Transfer from A" }),
       makeLeg({ accountId: "acc-a", direction: "OUTFLOW", amountMinor: 200n, isFee: true, counterpartyAccountId: "acc-b", description: "Transfer fee" }),
     ];
 
@@ -160,46 +163,56 @@ describe("e03-s02 cash/spend/income calculations", () => {
     expect(accB.spendMinor).toBe("0");
     expect(accB.cashMinor).toBe("0");
     expect(accB.transferPrincipalMinor).toBe("10000");
+
+    const spendOnly = calculateAccountTotals(
+      [classifyLeg(makeLeg({ accountId: "acc-b", currency: "USD", direction: "OUTFLOW", amountMinor: 100n }), ownedAccountIds)],
+      ownedAccounts,
+    );
+    expect(spendOnly[0]!.cashMinor).toBe("-100");
+    expect(() => calculateAccountTotals(
+      [classifyLeg(makeLeg({ accountId: "acc-b", currency: "EUR", direction: "OUTFLOW", amountMinor: 100n }), ownedAccountIds)],
+      ownedAccounts,
+    )).toThrow("account_currency_mismatch");
   });
 
   it("handles minor units correctly in totals", () => {
     const eurLeg = makeLeg({ accountId: "acc-a", direction: "INFLOW", amountMinor: 1234n }); // 12.34 EUR
-    const jpyLeg = makeLeg({ accountId: "acc-a", direction: "OUTFLOW", amountMinor: 50000n }); // 50000 JPY
-    const kwdLeg = makeLeg({ accountId: "acc-a", direction: "INFLOW", amountMinor: 1234n }); // 1.234 KWD
+    const jpyLeg = makeLeg({ accountId: "acc-c", currency: "JPY", direction: "OUTFLOW", amountMinor: 50000n });
+    const kwdLeg = makeLeg({ accountId: "acc-b", currency: "USD", direction: "INFLOW", amountMinor: 1234n });
 
     const classified = [eurLeg, jpyLeg, kwdLeg].map(l => classifyLeg(l, ownedAccountIds));
     const totals = calculateWorkspaceTotals(classified, ownedAccounts);
 
-    // Amounts are formatted by currency in display layer; here we verify minor units
-    // Income: 1234 (EUR) + 1234 (KWD) = 2468
-    // Spend: 50000 (JPY)
-    expect(totals.incomeMinor).toBe("2468");
-    expect(totals.spendMinor).toBe("50000");
+    expect(totals.byCurrency).toEqual([
+      expect.objectContaining({ currency: "EUR", incomeMinor: "1234", spendMinor: "0" }),
+      expect.objectContaining({ currency: "JPY", incomeMinor: "0", spendMinor: "50000" }),
+      expect.objectContaining({ currency: "USD", incomeMinor: "1234", spendMinor: "0" }),
+    ]);
   });
 
   it("selected-account totals differ from workspace totals only by excluded accounts", () => {
     const legs: TransactionLeg[] = [
       makeLeg({ accountId: "acc-a", direction: "INFLOW", amountMinor: 100000n }),
-      makeLeg({ accountId: "acc-b", direction: "OUTFLOW", amountMinor: 5000n }),
+      makeLeg({ accountId: "acc-b", currency: "USD", direction: "OUTFLOW", amountMinor: 5000n }),
     ];
 
     const classified = legs.map(l => classifyLeg(l, ownedAccountIds));
 
     // Workspace totals (all owned accounts)
     const workspaceTotals = calculateWorkspaceTotals(classified, ownedAccounts);
-    expect(workspaceTotals.incomeMinor).toBe("100000");
-    expect(workspaceTotals.spendMinor).toBe("5000");
+    expect(workspaceTotals.byCurrency).toEqual([
+      expect.objectContaining({ currency: "EUR", incomeMinor: "100000", spendMinor: "0" }),
+      expect.objectContaining({ currency: "USD", incomeMinor: "0", spendMinor: "5000" }),
+    ]);
 
     // Selected account (acc-a only)
     const selectedAccounts = new Map<string, { currency: string }>([["acc-a", { currency: "EUR" }]]);
     const selectedTotals = calculateWorkspaceTotals(classified, selectedAccounts);
-    expect(selectedTotals.incomeMinor).toBe("100000");
-    expect(selectedTotals.spendMinor).toBe("0");
+    expect(selectedTotals.byCurrency).toEqual([expect.objectContaining({ currency: "EUR", incomeMinor: "100000", spendMinor: "0" })]);
 
     // Selected account (acc-b only)
     const selectedAccountsB = new Map<string, { currency: string }>([["acc-b", { currency: "USD" }]]);
     const selectedTotalsB = calculateWorkspaceTotals(classified, selectedAccountsB);
-    expect(selectedTotalsB.incomeMinor).toBe("0");
-    expect(selectedTotalsB.spendMinor).toBe("5000");
+    expect(selectedTotalsB.byCurrency).toEqual([expect.objectContaining({ currency: "USD", incomeMinor: "0", spendMinor: "5000" })]);
   });
 });

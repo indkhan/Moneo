@@ -668,7 +668,7 @@ Execution record:
 
 ## E03-S02 — Calculate exact cash and spending semantics
 
-Status: Done | Release: R1 | Epic: E03
+Status: Changes requested | Release: R1 | Epic: E03
 Dependencies: E03-S01 (Done at merge `50d8575`)
 
 Outcome: Shared deterministic income/spend/cash calculations with transfers, fees, credit repayments and refunds per architecture §§536–538. Transfer principal is not spend, fees are expenses, refund posting-period treatment is consistent, and whole-workspace versus selected-account totals differ only as specified. Cover concurrent correction/recalculation and immutable calculation-version metadata.
@@ -762,7 +762,7 @@ Execution record:
 
 ## E03-S04 — Freeze calculation evidence and invalidate derived reads
 
-Status: Done | Release: R1 | Epic: E03
+Status: Changes requested | Release: R1 | Epic: E03
 Dependencies: E03-S03 (Done at merge `53270b4`)
 
 Add reproducible immutable calculation inputs/results/revisions, consistent capture and coarse workspace-data revision invalidation for consumed queries. Acceptance: a concurrent correction cannot produce a mixed-version snapshot, historical evidence reproduces its recorded values under current authorization, and revision changes refresh queries without model calls. Do not hold a DB transaction over provider I/O or build a dependency graph.
@@ -921,7 +921,7 @@ Rollout/rollback: Pre-release boundary; rollback = prior image + `016 rollback.s
 
 ## E03-S08 — Verify the financial truth slice
 
-Status: Done | Release: R1 | Epic: E03
+Status: Changes requested | Release: R1 | Epic: E03
 Dependencies: E03-S07 (Done at merge `97db078`)
 
 Run independent cross-currency/cross-account goldens and table/import/correction/undo flows against actual shared queries. Acceptance: JSON boundaries retain exact values including >safe integer, selected-account transfers/fees/refunds/FX/balance cutoff agree with independent expectations, and a second import updates reads without breaking provenance. Record dataset size and query latency targets before execution.
@@ -956,11 +956,11 @@ Execution record:
 - Merge SHA / post-merge smoke: `9740a09`; post-merge `npm run check` 0, `test:e03-exit` 11/11, `staging:smoke` PASS, clean status. Remote push/PR not performed (local-only merges per E00 precedent).
 - Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: exit workspaces smaller than the Ready-target row count (breadth via component suites); N1 typing normalization pending; provider qualification status below.
 
-## E03 exit — Pass
+## E03 exit — Changes requested
 
-**E03 exit: Pass** at merged revision `9740a09`. E03-S01 through E03-S08 are Done with independent review current at every merge SHA; the exit demonstration (11/11) plus the full deterministic matrix, builds, deliberate-failure gate, staging smoke, diff and secret hygiene are green on the merged tree. No E04 work started; no real-customer data; no public release; no live-provider qualification claimed.
+**E03 exit: Changes requested** after an independent current-tree audit on 2026-09-19. The deterministic matrix remains green, but the audit found that the calculation exit oracle added raw minor units across currencies, negative per-account cash used an unsigned formatter, calculation evidence stored placeholders, and transfer/refund/fee/repayment totals had no production caller over canonical rows. The audit-fix branch closes the first two defects with red/green tests and currency-grouped totals; evidence and production-boundary findings remain blocking. E04-S01 is not dependency-ready until a reviewed server-owned calculation boundary loads canonical tenant rows, values before cross-currency aggregation with coverage, computes/stores reproducible hashes, and is exercised end to end without hand-built semantic flags. No E04 implementation started; no real-customer data; no public release; no live-provider qualification claimed.
 Provider qualification status: deterministic ECB-shaped fixtures only. The S03 live-ECB download probe remains a bounded manual check (30 s timeout, accepted S03 limitation), not a qualification; production FX sourcing/refresh remains an E08/deployment gate. Live OpenRouter gates stay bounded/manual per E00-S05 precedent; no training/ZDR downgrade.
-Next dependency-ready story: **E04-S01** (dependencies E03-S08 Done, E02-S04 Done) — requires STORY-TEMPLATE refinement against the merged tree before assignment.
+Next work: remediate and re-review **E03-S02/S04/S08**. **E04-S01 is blocked** because E03-S08 is not Done.
 
 ## E04-S01 — Enforce provider policy and atomic usage budgets
 

@@ -322,19 +322,23 @@ describe("e03-s08 financial-truth exit", () => {
     expect(classified.map((c) => c.classification)).toEqual(["transfer_principal", "transfer_principal", "transfer_fee", "spend", "refund", "credit_repayment", "spend"]);
     const totals = calculateWorkspaceTotals(classified, ownedMap);
     // Independent: spend = 250 (fee) + 6000 (groceries) - 6000 (refund) + 2500 (manual) = 2750.
-    expect(totals).toMatchObject({
+    expect(totals.byCurrency).toEqual([
+      expect.objectContaining({
+        currency: "EUR",
       incomeMinor: "0",
       spendMinor: "2750",
       cashMinor: "-2750",
-      transferPrincipalMinor: "26200",
+        transferPrincipalMinor: "10000",
       transferFeeMinor: "250",
       refundMinor: "6000",
       creditRepaymentMinor: "20000",
-    });
+      }),
+      expect.objectContaining({ currency: "JPY", transferPrincipalMinor: "16200" }),
+    ]);
     // Selected-account view differs only as specified: EUR legs alone.
     const eurOnly = calculateWorkspaceTotals(classified.filter((c) => c.accountId === eur), ownedMap);
-    expect(eurOnly.transferPrincipalMinor).toBe("10000");
-    expect(eurOnly.spendMinor).toBe("2750");
+    expect(eurOnly.byCurrency[0]!.transferPrincipalMinor).toBe("10000");
+    expect(eurOnly.byCurrency[0]!.spendMinor).toBe("2750");
   });
 
   it("values FX with coverage honesty and untouched natives", async () => {

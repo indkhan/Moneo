@@ -258,12 +258,11 @@ export async function bumpCalculationVersionTx(
     );
     const nextVersion = ((current.rows[0] as { version: string })?.version ? BigInt((current.rows[0] as { version: string }).version) : 0n) + 1n;
 
-    // For E03-S04, we don't compute inputs/results here; the command just bumps the version.
-    // The actual inputs/results are computed by the calculation functions and stored when calculations are run.
-    // This command creates a new version entry; inputs/results hashes can be updated by the calculation functions.
+    // This legacy command is not authoritative calculation evidence; E03
+    // remains blocked until the server calculation boundary supplies hashes.
     const versionStr = nextVersion.toString(10);
-    const inputsHash = "pending"; // Placeholder; updated by calculation functions
-    const resultsHash = "pending"; // Placeholder; updated by calculation functions
+    const inputsHash = "pending";
+    const resultsHash = "pending";
 
     await client.query(
       "INSERT INTO calculation_versions (workspace_id, version, inputs_hash, results_hash) VALUES ($1, $2, $3, $4)",

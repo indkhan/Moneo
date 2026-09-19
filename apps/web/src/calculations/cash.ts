@@ -6,6 +6,7 @@
 // - Credit repayment: transfer when both accounts owned
 // - Owned accounts determined by workspace_id + account_id presence in accounts table
 
+import { createHash } from "node:crypto";
 import { formatDecimalBigint, formatSignedDecimalBigint } from "../money.ts";
 
 export type OwnedAccount = { workspaceId: string; accountId: string; currency: string };
@@ -30,7 +31,8 @@ export type ClassifiedLeg = TransactionLeg & {
   signedAmountMinor: bigint; // positive for income, negative for spend
 };
 
-export type WorkspaceTotals = {
+export type CurrencyTotals = {
+  currency: string;
   incomeMinor: string; // decimal string
   spendMinor: string; // decimal string (positive)
   cashMinor: string; // decimal string (signed: income - spend)
@@ -38,7 +40,10 @@ export type WorkspaceTotals = {
   transferFeeMinor: string; // decimal string
   refundMinor: string; // decimal string (positive amount refunded)
   creditRepaymentMinor: string; // decimal string
-  calculationVersion: string;
+};
+
+export type WorkspaceTotals = {
+  byCurrency: CurrencyTotals[];
   inputsHash: string;
   resultsHash: string;
 };
@@ -68,14 +73,7 @@ type AccountTotalsInternal = {
 };
 
 function sha256(input: string): string {
-  // Simplified for pure TS; in production use node:crypto
-  // This is a placeholder - real implementation uses node:crypto
-  let hash = 0;
-  for (let i = 0; i < input.length; i++) {
-    hash = ((hash << 5) - hash) + input.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(16);
+  return createHash("sha256").update(input).digest("hex");
 }
 
 /** Classify a single transaction leg based on ownership and metadata. */
@@ -133,53 +131,62 @@ export function calculateWorkspaceTotals(
   // Filter to only legs belonging to owned accounts
   const ownedLegs = legs.filter(l => ownedAccounts.has(l.accountId));
 
-  let incomeMinor = 0n;
-  let spendMinor = 0n;
-  let transferPrincipalMinor = 0n;
-  let transferFeeMinor = 0n;
-  let refundMinor = 0n;
-  let creditRepaymentMinor = 0n;
+  const totals = new Map<string, Omit<AccountTotalsInternal, "accountId">>();
 
   for (const leg of ownedLegs) {
+    const currency = ownedAccounts.get(leg.accountId)!.currency;
+    if (currency !== leg.currency) throw new Error("account_currency_mismatch");
+    const total = totals.get(currency) ?? {
+      currency,
+      incomeMinor: 0n,
+      spendMinor: 0n,
+      cashMinor: 0n,
+      transferPrincipalMinor: 0n,
+      transferFeeMinor: 0n,
+      refundMinor: 0n,
+      creditRepaymentMinor: 0n,
+    };
+    totals.set(currency, total);
     switch (leg.classification) {
       case "income":
-        incomeMinor += leg.amountMinor;
+        total.incomeMinor += leg.amountMinor;
         break;
       case "spend":
-        spendMinor += leg.amountMinor;
+        total.spendMinor += leg.amountMinor;
         break;
       case "transfer_principal":
-        transferPrincipalMinor += leg.amountMinor;
+        total.transferPrincipalMinor += leg.amountMinor;
         break;
       case "transfer_fee":
-        transferFeeMinor += leg.amountMinor;
-        spendMinor += leg.amountMinor; // Fees are expenses
+        total.transferFeeMinor += leg.amountMinor;
+        total.spendMinor += leg.amountMinor;
         break;
       case "refund":
-        refundMinor += leg.amountMinor;
-        spendMinor -= leg.amountMinor; // Refund reduces spend
+        total.refundMinor += leg.amountMinor;
+        total.spendMinor -= leg.amountMinor;
         break;
       case "credit_repayment":
-        creditRepaymentMinor += leg.amountMinor;
+        total.creditRepaymentMinor += leg.amountMinor;
         break;
     }
+    total.cashMinor = total.incomeMinor - total.spendMinor;
   }
 
-  const cashMinor = incomeMinor - spendMinor;
-
-  // Build canonical inputs/results for hashing
-  const inputs = ownedLegs.map(l => `${l.accountId}:${l.amountMinor}:${l.direction}:${l.classification}`).sort().join("|");
-  const results = `${incomeMinor}|${spendMinor}|${cashMinor}|${transferPrincipalMinor}|${transferFeeMinor}|${refundMinor}|${creditRepaymentMinor}`;
+  const byCurrency = Array.from(totals.values()).sort((a, b) => a.currency.localeCompare(b.currency)).map((total) => ({
+    currency: total.currency,
+    incomeMinor: formatDecimalBigint(total.incomeMinor),
+    spendMinor: formatSignedDecimalBigint(total.spendMinor),
+    cashMinor: formatSignedDecimalBigint(total.cashMinor),
+    transferPrincipalMinor: formatDecimalBigint(total.transferPrincipalMinor),
+    transferFeeMinor: formatDecimalBigint(total.transferFeeMinor),
+    refundMinor: formatDecimalBigint(total.refundMinor),
+    creditRepaymentMinor: formatDecimalBigint(total.creditRepaymentMinor),
+  }));
+  const inputs = ownedLegs.map(l => `${l.accountId}:${l.currency}:${l.amountMinor}:${l.direction}:${l.classification}`).sort().join("|");
+  const results = JSON.stringify(byCurrency);
 
   return {
-    incomeMinor: formatDecimalBigint(incomeMinor),
-    spendMinor: formatDecimalBigint(spendMinor),
-    cashMinor: formatSignedDecimalBigint(cashMinor),
-    transferPrincipalMinor: formatDecimalBigint(transferPrincipalMinor),
-    transferFeeMinor: formatDecimalBigint(transferFeeMinor),
-    refundMinor: formatDecimalBigint(refundMinor),
-    creditRepaymentMinor: formatDecimalBigint(creditRepaymentMinor),
-    calculationVersion: "1", // Placeholder; real version from calculation_versions table
+    byCurrency,
     inputsHash: sha256(inputs),
     resultsHash: sha256(results),
   };
@@ -195,6 +202,7 @@ export function calculateAccountTotals(
   for (const leg of legs) {
     if (!ownedAccounts.has(leg.accountId)) continue;
     const acc = ownedAccounts.get(leg.accountId)!;
+    if (acc.currency !== leg.currency) throw new Error("account_currency_mismatch");
     let totals = accountMap.get(leg.accountId);
     if (!totals) {
       totals = {
@@ -241,7 +249,7 @@ export function calculateAccountTotals(
     currency: t.currency,
     incomeMinor: formatDecimalBigint(t.incomeMinor),
     spendMinor: formatDecimalBigint(t.spendMinor),
-    cashMinor: formatDecimalBigint(t.cashMinor),
+    cashMinor: formatSignedDecimalBigint(t.cashMinor),
     transferPrincipalMinor: formatDecimalBigint(t.transferPrincipalMinor),
     transferFeeMinor: formatDecimalBigint(t.transferFeeMinor),
     refundMinor: formatDecimalBigint(t.refundMinor),
