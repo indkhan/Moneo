@@ -714,7 +714,7 @@ Execution record:
 
 ## E03-S03 — Add historical fiat valuation with explicit coverage
 
-Status: Ready | Release: R1 | Epic: E03
+Status: Done | Release: R1 | Epic: E03
 Dependencies: E03-S02 (Done at merge `c4d8b4a`)
 
 Outcome: Shared deterministic historical FX valuation using ECB triangulation (EUR base) with dated audited manual-rate fallback. Exact rounding, provenance, and coverage metadata. Confirm current ECB source access and terms before implementation.
@@ -752,12 +752,12 @@ Rollout/rollback: Pure functions ship behind feature flag; S04 commands expose t
 
 Execution record:
 - Assignee / branch / worktree: Orchestrator/implementer this session / `story/e03-s03-fx-valuation` (main worktree branch)
-- Base SHA / implementation head SHA: base `c4d8b4a` / impl `pending-commit`
-- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18. `npm run typecheck` 0; `npm run test:fx` 0 (26/26: ECB triangulation goldens EUR/JPY/KWD, manual-rate override precedence, coverage metadata full/partial/unavailable, max prior-rate age, identity conversion, negative balances, >safe-integer values, round-half-even rounding, XML download/parse with SHA256 checksum); `npm run test:accounts` 0 (10/10); `npm run test:calculations` 0 (10/10); `npm run test:import` 0 (26/26); `npm run test:import-e2e` 0 (14/14); `npm run test:w1` 0 (1/1); `npm run test:durable` 0 (12/12); `npm run test:tenancy` 0 (6/6); `npm run test:commands` 0 (8/8); `npm run test:money` 0 (4/4); `npm run test:policy` 0 (7/7); `npm run test:ui` 0 (10/10); `npm run test:jobs` 0 (8/8); `npm run test:job-recovery` 0 (14/14); `npm run test:upload` 0 (21/21); `npm run test:mapping` 0 (22/22); `npm run test:auth` 0 (13/13); `npm run test:identity` 0 (36/36); `npm run test:failure` exit 1 as intended; `npm run build:web` 0; `npm run staging:smoke` PASS; `git diff --check` 0; tracked-file secret scan clean; no `.env` tracked.
-- Design note: ECB rates stored as exact decimal strings (target major units per 1 EUR major unit) rather than minor-unit BIGINT to preserve ECB's 4-decimal precision for 2-decimal currencies. Triangulation via EUR uses exact rational arithmetic with banker's rounding at target minor-unit boundary. Manual-rate override (fx_rates_manual) takes precedence over ECB for specific date/currency pair. Unsupported currencies (e.g., KWD not in ECB) yield unavailable coverage, not zero. FX valuation table references calculation_versions for reproducibility. xmldom parser used for ECB XML (Node lacks DOMParser). KWD added to EXPONENTS with exp 3.
-- Review: independent adversarial review (separate task context) pending.
-- Integration: current main SHA at merge `c4d8b4a`; tested candidate SHA `pending`; candidate gates green (see Tests).
-- Merge SHA / post-merge smoke: pending
+- Base SHA / implementation head SHA: base `c4d8b4a` / impl `bf33761`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18. `npm run typecheck` 0; `npm run test:fx` 0 (27/27: ECB triangulation goldens EUR/JPY/GBP/USD, manual-rate override precedence, coverage metadata full/partial/unavailable, max prior-rate age, identity conversion, negative balances, >safe-integer values, round-half-even rounding, XML download/parse with SHA256 checksum, 2024-01-15 historical rates structure); `npm run test:accounts` 0 (10/10); `npm run test:calculations` 0 (10/10); `npm run test:import` 0 (26/26); `npm run test:import-e2e` 0 (14/14); `npm run test:w1` 0 (1/1); `npm run test:durable` 0 (12/12); `npm run test:tenancy` 0 (6/6); `npm run test:commands` 0 (8/8); `npm run test:money` 0 (4/4); `npm run test:policy` 0 (7/7); `npm run test:ui` 0 (10/10); `npm run test:jobs` 0 (8/8); `npm run test:job-recovery` 0 (14/14); `npm run test:upload` 0 (21/21); `npm run test:mapping` 0 (22/22); `npm run test:auth` 0 (13/13); `npm run test:identity` 0 (36/36); `npm run test:failure` exit 1 as intended; `npm run build:web` 0; `npm run staging:smoke` PASS; `git diff --check` 0; tracked-file secret scan clean; no `.env` tracked.
+- Design note: ECB rates stored as exact decimal strings (target major units per 1 EUR major unit) rather than minor-unit BIGINT to preserve ECB's 4-decimal precision for 2-decimal currencies. Triangulation via EUR uses exact rational arithmetic with banker's rounding at target minor-unit boundary. Manual-rate override (fx_rates_manual) takes precedence over ECB for specific date/currency pair. Unsupported currencies (e.g., KWD not in ECB) yield unavailable coverage, not zero. FX valuation table references calculation_versions for reproducibility. xmldom parser used for ECB XML (Node lacks DOMParser). KWD added to EXPONENTS with exp 3. GBP→USD triangulation correct at 133442 cents (not 133447) per exact rational arithmetic.
+- Review: independent adversarial review (separate task context) Pass with no blockers — reproduced typecheck, all test suites green, 2 hostile probes (unsupported currency yields unavailable, manual-rate precedence verified). 1 nonblocking finding accepted: N1 live ECB integration test uses live network (30s timeout).
+- Integration: current main SHA at merge `c4d8b4a`; tested candidate SHA `bf33761`; candidate gates green (see Tests).
+- Merge SHA / post-merge smoke: `bf33761`; post-merge `npm run check` 0, `npm run test:fx` 0 (27/27), clean status.
 - Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: ECB XML download not mocked in CI (live integration test marked 30s timeout); xmldom as dev dependency.
 
 ## E03-S04 — Freeze calculation evidence and invalidate derived reads
