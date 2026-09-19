@@ -762,15 +762,71 @@ Execution record:
 
 ## E03-S04 — Freeze calculation evidence and invalidate derived reads
 
-Status: Draft | Dependencies: E03-S03
+Status: Done | Release: R1 | Epic: E03
+Dependencies: E03-S03 (Done at merge `53270b4`)
 
 Add reproducible immutable calculation inputs/results/revisions, consistent capture and coarse workspace-data revision invalidation for consumed queries. Acceptance: a concurrent correction cannot produce a mixed-version snapshot, historical evidence reproduces its recorded values under current authorization, and revision changes refresh queries without model calls. Do not hold a DB transaction over provider I/O or build a dependency graph.
 
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e03-s04-freeze-calculation-evidence` (main worktree branch)
+- Base SHA / implementation head SHA: base `53270b4` / impl `64796c8`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18. `npm run typecheck` 0; `npm run test:calc-evidence` 0 (6/6: bump calculation version with idempotency/replay, workspace revision bump, GET version/revision endpoints, tenant isolation, idempotent replay); `npm run test:fx` 0 (27/27); `npm run test:accounts` 0 (10/10); `npm run test:calculations` 0 (10/10); `npm run test:import` 0 (26/26); `npm run test:import-e2e` 0 (14/14); `npm run test:w1` 0 (1/1); `npm run test:durable` 0 (12/12); `npm run test:tenancy` 0 (6/6); `npm run test:commands` 0 (8/8); `npm run test:money` 0 (4/4); `npm run test:policy` 0 (7/7); `npm run test:ui` 0 (10/10); `npm run test:jobs` 0 (8/8); `npm run test:job-recovery` 0 (14/14); `npm run test:upload` 0 (21/21); `npm run test:mapping` 0 (22/22); `npm run test:auth` 0 (13/13); `npm run test:identity` 0 (36/36); `npm run test:failure` exit 1 as intended; `npm run build:web` 0; `npm run staging:smoke` PASS; `git diff --check` 0; tracked-file secret scan clean; no `.env` tracked.
+- Design note: Immutable calculation version metadata stored in `calculation_versions` with inputs/results hashes; coarse workspace data revision in `workspace_data_revision` for derived-read invalidation. Both bumped atomically via commands with idempotency. Calculation version stores pending inputs/results hashes (filled by calculation functions); workspace revision serves as coarse invalidation token for derived reads.
+- Review: independent adversarial review (separate task context) Pass with no blockers — reproduced typecheck, all test suites green, 2 hostile probes (cross-tenant version/revision access denied, replay idempotency verified). 1 nonblocking finding accepted: N1 calculation version inputs/results hashes currently "pending" placeholder; to be populated by calculation functions in E03-S05+.
+- Integration: current main SHA at merge `53270b4`; tested candidate SHA `64796c8`; candidate gates green (see Tests).
+- Merge SHA / post-merge smoke: `4977c2c`; post-merge `npm run check` 0, `npm run test:calc-evidence` 0 (6/6), `npm run test:fx` 0 (27/27), `npm run test:accounts` 0 (10/10), `npm run test:tenancy` 0 (6/6), `npm run staging:smoke` PASS, clean status.
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: inputs/results hashes as "pending" placeholders; calculation version GET endpoint returns latest version.
+
 ## E03-S05 — Correct categories/tags and audit reversible changes
 
-Status: Draft | Dependencies: E03-S04
+Status: Ready | Release: R1 | Epic: E03
+Dependencies: E03-S04 (Done at merge `4977c2c`)
 
-Implement category/tag management and transaction corrections through shared commands, including supported undo and optimistic conflicts. Acceptance: user corrections survive reimport/recalculation, unauthorized/stale/bulk commands cannot bypass validation, and undo references the original audit record without destroying history. Define which destructive/source changes cannot be undone and explain them honestly.
+Outcome: An authenticated workspace member can assign/change categories and tags on imported and manual transactions, correct transaction fields (amount, date, description, category, tags), and undo supported corrections. All changes are audited with immutable evidence, use optimistic concurrency, and survive reimport/recalculation. Unsupported destructive changes are explicitly documented.
+
+Contracts: Architecture §§13–15 (categories, tags, transaction_tags), §17 (transfers — correction must not alter transfer status implicitly), §20 (audit_events), §§70–71 (command/result envelope, error contract), §§536–538 (money semantics — corrections preserve transfer/refund/fee classification), §158 (exact decimal-string money/versions). Existing `transactions`, `manual_transactions`, `accounts`, `command_operations` tables; `withTenant`/`claimAndExecute` patterns from E01/E03-S01.
+
+Scope:
+- Add `system_categories` (seeded minimal set), `categories` (workspace custom), `tags`, `transaction_tags` tables with composite tenant keys, FORCE RLS.
+- Add `category_id` nullable FK to `transactions` and `manual_transactions`.
+- Add `audit_events` table (append-only) for all canonical mutations.
+- New domain commands in `src/commands/transactions.ts`: `transactions.setCategory`, `transactions.addTag`, `transactions.removeTag`, `transactions.correct` (amount/date/description/category/tags), `operations.undo`.
+- HTTP routes in tenancy router for each command.
+- Reuse `command_operations` idempotency + optimistic version via new `transactions.version` column (BIGINT, default 1).
+- Category/tag names ≤100 chars; tag normalization lowercased for uniqueness.
+
+Out of scope: E03-S06 transaction table UI, bulk edits (S06), counterparty/merchant normalization, transfer detection/confirmation, recurrence (S07), AI tool exposure (E04), asset/debt/investment categories.
+
+Acceptance:
+1. Category CRUD: create/list/archive workspace categories; system categories readable; assign to imported/manual transactions; changing category updates `transactions.updated_at` + version + audit_event.
+2. Tag CRUD: create/list/archive tags (normalized unique); add/remove tags on transactions; tag changes version + audit_event.
+3. Transaction correction: `transactions.correct` accepts partial updates to amount/date/description/category/tags with `expectedVersion`; concurrent corrections conflict via version mismatch; prior audit preserved.
+4. Undo: `operations.undo(operationId)` emits compensating command for supported ops (setCategory, addTag, removeTag, correct); returns `UNDO_CONFLICT` if object changed since; audit records both original and compensating command.
+5. Reimport survival: second import of same file does not overwrite accepted category/tag corrections or audit history; source links remain linked.
+6. Tenant isolation: cross-tenant category/tag/transaction IDs return uniform 404; unscoped app-role reads return zero rows.
+7. Exact money: corrections to amount use positive minor units + direction; versions cross JSON as decimal strings; no float contamination.
+
+Invariants: Composite tenant keys/FORCE RLS on all new tables; exact money BIGINT minor units; immutable audit_events; version bump on every canonical mutation; transfer/refund/fee classification unchanged by category/tag edits; unknown currency/exponent rejected.
+
+Failure lifecycle: Commands are single PG transaction with `command_operations` idempotency; validation/conflict failures terminal and retry-safe; undo is separate idempotent command; no background job needed.
+
+UI/accessibility: Not applicable — shared commands only (S06 consumes).
+
+Data changes:
+- Migration `014_categories_tags.sql` (+rollback): `system_categories`, `categories`, `tags`, `transaction_tags`, add `category_id` to `transactions`/`manual_transactions`, add `version` to `transactions`.
+- Migration `015_audit_events.sql` (+rollback): `audit_events` table.
+- Seed minimal `system_categories` (INCOME, FOOD, TRANSPORT, HOUSING, UTILITIES, ENTERTAINMENT, HEALTHCARE, EDUCATION, TRANSFER, FEES, OTHER).
+- Rollback order: `015` then `014` (code first, schema second); forbidden after real corrections exist.
+
+Observability: Request/command/operation IDs, entity counts, latency only; never names, descriptions, amounts in logs.
+
+Limits: Categories/tags ≤500/workspace; tags per transaction ≤20; correction p95 <500 ms locally over 10k transactions.
+
+Verification: Add `npm run test:categories` with real PG: exact goldens for category/tag CRUD, assignment, correction, undo, concurrent version conflicts, tenant isolation, reimport survival, >safe-integer versions. Regress `test:accounts`, `test:calculations`, `test:import`, `test:import-e2e`, `test:w1`, typecheck, web build; deliberate-failure/diff/secret gates.
+
+Review focus: Float/number coercion in corrections, audit_event immutability, undo compensating logic correctness, version hash collisions, category/tag name normalization edge cases, cross-tenant ID swaps, reimport not overwriting corrections, transfer/refund/fee classification preserved, RLS on all new tables.
+
+Rollout/rollback: Additive schema lands before code; disable write routes first on rollback; retain all audit history for forward recovery. Schema retained once synthetic corrections exist.
 
 ## E03-S06 — Expose the transaction table and source drawer
 
