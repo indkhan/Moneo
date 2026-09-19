@@ -995,7 +995,7 @@ Execution record:
 
 ## E04-S03 — Expose scoped tools, evidence and dispatch revalidation
 
-Status: In progress | Dependencies: E04-S02, E03-S04
+Status: Done | Dependencies: E04-S02, E03-S04
 
 Canonical refinement: [E04-S03](E04.md#e04-s03--expose-scoped-tools-evidence-and-dispatch-revalidation).
 
@@ -1004,6 +1004,8 @@ Execution record:
 - Base SHA / heads: base `14c1dc49012f961ad95aa9bbe88ebbd6a89a2695` (E04-S02 Done); impl `e0b2d5e`; fix/reviewed `22df9dd`
 - Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18, own `moneo_e04_tools` DB. `npm run typecheck` 0; `npm run test:ai-tools` 0 (14/14: search identical to shared query + independent SQL sums + multi-account page golden incl. unfiltered exclusion + >10 scope behavior, evidence/balances/totals exact incl. cutoff honesty, malformed/unknown/denied typed with error rows and zero executions, exclusion-drift loop halts stale with no publication and no leaked RESERVED, revision-drift direct stale, abstention verbatim + no fabrication, 9-call cap with zero tool rows, foreign denial + zero unscoped rows, tool-using e2e with 2 RECONCILED dispatches, parse/prompt units, partial FX coverage golden, stale publish gate rejection, production route selection); regression chat 13/13 (tool-loop refactor intact), ai-dispatch 15/15, tenancy 6/6 (020 rollback chain, 42 tables), e03-exit 11/11; `test:failure` nonzero-as-intended; `build:web` 0; `build:worker` 0; `git diff --check` 0; secret scan clean; no `.env` tracked.
 - Review: independent adversarial review (separate task) Changes requested at `e0b2d5e` with three reproduced blockers — B1 multi-account search fan-out breaking shared sort/limit/offset, B2 route hardcoded development (S01 no-fallback regression), B3 stale-publication TOCTOU between final revalidate and publishTurnFenced — plus 4 nonblocking notes. Fix `22df9dd`: multi-account over-fetch + merge + shared comparator + slice, route selected via opts + productionQualified() check, publishTurnFenced exported with expected-versions gate (policy row FOR UPDATE + revision read in fenced tx), eligible query filters archived=false (N1), joint coverage recomputed per summary semantics (N3), withToolTimeout documents detached-query (N2); new regression tests: interleaved-date page + exclusion + >10 scope, KWD/EUR partial coverage, stale publish + production route selection. Re-review Pass at `22df9dd` (typecheck + all regression suites + builds green).
+- Integration: local main at base `14c1dc4` unchanged; origin/main stale (local-only merges per E00 precedent); merge-base == base; candidate == reviewed `22df9dd` plus docs-only ledger delta (empty non-docs diff); full candidate gates green (see Tests). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `fa74e72fcc41a2b37a3f096a74332300b6fb2044`; post-merge `npm run check` 0, `test:ai-tools` 14/14, `test:chat` 13/13, `staging:smoke` PASS, clean status. Remote push/PR not performed (local-only merges per E00 precedent).
 
 ## E04-S04 — Deliver contextual chat, activity and Stop
 
