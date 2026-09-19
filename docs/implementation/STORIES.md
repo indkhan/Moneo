@@ -1054,45 +1054,45 @@ Integration: reviewed code plus docs-only closeout `2f75e93` merged locally with
 
 ## E05-S01 — Productionize isolated build and artifact versions
 
-Status: Draft | Dependencies: E03-S08, E00-S02
+Status: Ready | Dependencies: E03-S08, E00-S02
 
-Persist tenant-owned artifact source/immutable versions and isolated validation/build jobs using the proven sandbox design. Acceptance: builders have no customer finance credentials, code/source/resource bounds apply, invalid build never replaces the active version, and foreign version IDs cannot be read/activated. Use synthetic build previews and the actual bounded compiler path; no arbitrary package installs.
+Canonical refinement: [E05-S01](E05.md#e05-s01--persist-isolated-artifact-builds-and-immutable-versions).
 
 ## E05-S02 — Run the trusted renderer and terminable VM
 
-Status: Draft | Dependencies: E05-S01
+Status: Ready | Dependencies: E05-S01
 
-Integrate separate-site runtime, exact CSP/worker assets, sanitized render protocol, execution/message/memory bounds and clear termination errors. Acceptance: hostile E00 cases continue to pass against deployed configuration in supported browsers; generated content cannot acquire host DOM/network/navigation credentials. Enforce resource limits across multiple open artifacts, not only one isolated demo.
+Canonical refinement: [E05-S02](E05.md#e05-s02--run-the-trusted-renderer-and-terminable-vm).
 
 ## E05-S03 — Supply a scoped live Finance SDK
 
-Status: Draft | Dependencies: E05-S02, E03-S04
+Status: Ready | Dependencies: E05-S02, E03-S04
 
-Issue server-authorized runtime grants for a small read-only SDK backed by shared queries/evidence and data revisions. Acceptance: live refresh on second import requires no model call, token/account/policy revocation stops reads/publication, forged cross-tenant/query capabilities fail, and private values never enter build logs. Document the supported API/subset, query bounds and coverage semantics.
+Canonical refinement: [E05-S03](E05.md#e05-s03--supply-a-scoped-live-finance-sdk).
 
 ## E05-S04 — Persist local state with atomic version activation and revert
 
-Status: Draft | Dependencies: E05-S03
+Status: Ready | Dependencies: E05-S03
 
-Implement bounded artifact-local state, version compatibility/migrations and atomic active code/state transitions. Acceptance: reload restores state, two tabs cannot silently overwrite newer versions, failed migration retains prior working code/state, and revert selects a compatible pair rather than pairing old code with arbitrary new state. Tenant/policy checks apply to all state endpoints.
+Canonical refinement: [E05-S04](E05.md#e05-s04--persist-local-state-with-atomic-activation-and-revert).
 
 ## E05-S05 — Add the manual editor and compact/full artifact views
 
-Status: Draft | Dependencies: E05-S04
+Status: Ready | Dependencies: E05-S04
 
-Deliver editable HTML/CSS/JS, validate/preview/publish errors, version history/revert and compact/full render modes with keyboard support. Acceptance: editing a chart/control works with explicit supported-API guidance; invalid changes preserve the active artifact; view-only users cannot mutate; expensive loops remain stoppable. No IDE, browser compatibility layer or arbitrary npm support.
+Canonical refinement: [E05-S05](E05.md#e05-s05--add-the-manual-editor-and-compactfull-artifact-views).
 
 ## E05-S06 — Generate and edit artifacts through contextual AI
 
-Status: Draft | Dependencies: E05-S05, E04-S07
+Status: Ready | Dependencies: E05-S05, E04-S07
 
-Use the existing chat/tool loop to create/propose bounded artifact changes against an explicit version; validation/build/publish goes through the same path as manual edits. Acceptance: stale edits surface conflicts, unsupported code fails safely, prompt injection cannot elevate grants, and financial write controls use E04's trusted confirmation if offered. AI cannot fabricate consent; state/version rollback remains intact.
+Canonical refinement: [E05-S06](E05.md#e05-s06--generate-and-edit-artifacts-through-contextual-ai).
 
 ## E05-S07 — Verify hostile and live artifact journeys
 
-Status: Draft | Dependencies: E05-S06
+Status: Ready | Dependencies: E05-S06
 
-Run chart/scenario creation, manual and AI edits, reopen/revert, second-import refresh, failed migration and multi-artifact resource attacks. Acceptance: supported-browser deployed tests preserve host responsiveness, no forbidden network/DOM access occurs, exclusion/revocation affects open views, and failed versions retain the working one. Record measured caps and unresolved launch blockers for E08 independent review.
+Canonical refinement: [E05-S07](E05.md#e05-s07--verify-hostile-and-live-artifact-journeys-and-close-e05).
 
 ## E06-S01 — Model explicit daily projection inputs
 

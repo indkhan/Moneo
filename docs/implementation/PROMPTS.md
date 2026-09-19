@@ -36,6 +36,101 @@ when a material product/trust-boundary decision or required missing access
 prevents correct progress.
 ```
 
+## Run E05 end to end after the passed E04 exit
+
+```text
+Act as the Moneo E05 implementation orchestrator. Continue until E05-S01 through
+E05-S07 are genuinely Done and the E05 exit passes, or stop only for a material
+product/trust-boundary/access decision that requires founder input. Do not stop
+after planning, scaffolding, one story, an implementer report or green unit tests.
+
+First read AGENTS.md; docs/implementation/README.md, WORKFLOW.md, EPICS.md,
+STORIES.md and E05.md; the product Delivery baseline and artifact §§36–47; and
+architecture §§83–123 plus every referenced shared contract. Inspect actual Git,
+worktrees, tasks, migrations and committed code. Verify the recorded E04 closeout
+on main rather than trusting its label. Preserve unrelated work. Never print,
+copy, commit or place `.env`, credentials, source code or synthetic finance
+payloads in logs beyond the minimum redacted test evidence.
+
+Implement E05-S01, S02, S03, S04, S05, S06 and S07 strictly in dependency order,
+one short-lived `story/e05-s##-*` branch/worktree at a time. Do not implement a
+dependent story before its predecessor is merged and post-merge smoke passes.
+For every story, execute this complete loop:
+
+1. Re-read its canonical E05.md entry, verify dependencies Done, inspect current
+   main and real callers, record assignee/branch/base SHA and mark only that story
+   In progress in STORIES.md.
+2. Add the smallest risk-reproducing failing acceptance check first for isolation,
+   authorization, concurrency, state/version, recovery or money behavior. Reuse
+   E00's QuickJS/Worker/CSP proof, E03 shared finance/evidence queries, E04 policy,
+   tools/chat/usage/confirmation, PostgreSQL RLS, durable jobs and command journal.
+3. Implement only the story's consumed vertical slice. Commit a focused candidate
+   and run every named story check with real PostgreSQL/Redis/browser processes
+   where required. A mock cannot prove RLS, fencing, browser isolation, termination,
+   atomic activation, revocation or recovery.
+4. Explicitly delegate independent adversarial review of the committed base→head
+   diff and relevant contracts/callers to a separate non-editing reviewer task.
+   The implementer fixes every blocker and adds the smallest regression. Request
+   re-review of every changed SHA; never self-approve or reuse stale approval.
+5. Rebase/merge against latest main in an isolated candidate, rerun affected E00,
+   E03, E04 and story gates, then merge only after current Pass. Run post-merge
+   smoke and record actual base/head/review/candidate/merge SHAs, commands/results,
+   rollback and limitations in the single STORIES.md ledger.
+6. Continue immediately to the next dependency-ready E05 story. After two failed
+   fix/review cycles, diagnose and split/replan in the same ledger; do not weaken
+   acceptance, delete tests or loop blindly.
+
+Preserve these non-negotiable boundaries:
+
+- Artifact source is only artifact.html/css/js/manifest. No arbitrary npm, CDN,
+  dynamic import, filesystem, network, DOM emulation or browser compatibility layer.
+- Generated JS runs from source only in QuickJS/WASM inside a dedicated terminable
+  Worker. It never runs in the main app or trusted renderer DOM realm. Preview and
+  published modes use the same separate-origin sandbox, CSP, Permissions Policy,
+  exact-origin nonce-bound MessageChannel and schema validation.
+- Enforce the limits frozen in E05.md. Generated code has no Window, document,
+  location, fetch/XHR/WebSocket, cookies/storage, credentials, eval/Function or
+  unrestricted worker authority. Aggregate limits cover several open artifacts.
+- Runtime grants are server-derived and bound to user/workspace/artifact/version,
+  immutable permissions, policy/data revision and expiry. Every RPC rechecks grant,
+  tenant, exclusion, quota and freshness before query and publication. Unknown or
+  forged methods/IDs fail closed and remain indistinguishable from missing.
+- Finance SDK R1 is the small read-only aggregate subset in E05.md. Exact money and
+  versions are decimal strings; shared backend queries/evidence remain authoritative.
+  Raw descriptions/rows, SQL, credentials and provider keys never enter artifacts.
+- Artifact-local state is bounded JSON in PostgreSQL with expected versions. Code,
+  schema and compatible migrated state activate atomically. Failure preserves the
+  last working pair; revert never combines old code with arbitrary newer state.
+- Manual and AI edits use the identical build, sandbox, permission and activation
+  path. Models may propose source but cannot activate, broaden grants, calculate
+  authoritative money or assert consent. Canonical writes remain trusted-host
+  actions through normal command/audit/undo; do not add a general write SDK.
+- Normal second-import refresh uses current shared queries and zero model calls.
+  AI live qualification is bounded synthetic evidence reported separately from
+  deterministic CI. Provider outage/unparseable output is unavailable, not a pass.
+- Keep E05 hidden until S07. Do not begin E06/E07, dashboard pinning, export/share,
+  scheduled AI refresh, public deployment, real-customer data or E08 production
+  qualification.
+
+At E05-S07 run the merged E05 exit exactly as refined: create/publish a chart;
+manual edit; AI-edit the same artifact into an interactive local-state scenario;
+preview, compact/full, reopen and compatible revert; second overlapping import
+refresh with zero AI usage; exclusion/session/policy revocation; Stop/restart;
+failed build and failed state migration; process-death/retry convergence; exact
+dispatch/build/activity evidence; and every architecture §120 hostile class plus
+multi-artifact resource attacks in Chromium, Firefox and WebKit. Verify host and
+a good artifact remain responsive and Stop completes under one second. Run all
+`test:artifact-*` suites, retained E00 artifact proof, E03 exit, E04 critical
+suites, typecheck, web/worker builds, deliberate-failure nonzero gate, configured
+staging build/health/rollback smoke, diff check and tracked-secret scan. Run any
+bounded live Nemotron-free artifact evaluation separately with synthetic data.
+
+Mark E05 stories Done only from committed, independently reviewed, integrated and
+post-smoke evidence at the actual SHAs. Record measured caps, browser/runtime/model
+versions and honest limitations. Finish with the E05 merge SHA, exact checks and
+results, live-provider status, known E08 blockers and the next eligible story.
+```
+
 ## Continue — everyday prompt
 
 ```text
