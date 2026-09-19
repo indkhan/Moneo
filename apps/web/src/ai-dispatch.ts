@@ -163,10 +163,13 @@ async function lockedBudget(client: PoolClient, workspaceId: string): Promise<Bu
 type HeldTotals = { money: bigint; tokens: number; slots: number };
 
 async function heldTotals(client: PoolClient, workspaceId: string): Promise<HeldTotals> {
-  // Active (RESERVED/PENDING) holds the full reservation; reconciled history
-  // counts at measured cost. RELEASED/CANCELLED hold nothing.
+  // Active (RESERVED/PENDING) holds money and tokens at the full reservation;
+  // reconciled history counts at measured cost. RELEASED/CANCELLED hold
+  // nothing. Concurrency slots count only RESERVED rows: a slot guards live
+  // provider calls in flight, and PENDING rows belong to dead generations
+  // that will never call again (their money/tokens stay held, honestly).
   const active = await client.query(
-    "SELECT reserved_cost_minor AS cost, input_estimate AS ie, output_ceiling AS oc FROM ai_dispatch_reservations WHERE workspace_id = $1 AND status IN ('RESERVED', 'PENDING')",
+    "SELECT reserved_cost_minor AS cost, input_estimate AS ie, output_ceiling AS oc, status FROM ai_dispatch_reservations WHERE workspace_id = $1 AND status IN ('RESERVED', 'PENDING')",
     [workspaceId],
   );
   const done = await client.query(
@@ -176,10 +179,10 @@ async function heldTotals(client: PoolClient, workspaceId: string): Promise<Held
   let money = 0n;
   let tokens = 0;
   let slots = 0;
-  for (const r of active.rows as { cost: string; ie: number; oc: number }[]) {
+  for (const r of active.rows as { cost: string; ie: number; oc: number; status: string }[]) {
     money += BigInt(r.cost);
     tokens += r.ie + r.oc;
-    slots += 1;
+    if (r.status === "RESERVED") slots += 1;
   }
   for (const r of done.rows as { cost: string | null; ie: number | null; oc: number | null }[]) {
     if (r.cost !== null) money += BigInt(r.cost);
@@ -626,6 +629,92 @@ export async function setDispatchBudget(pool: Pool, claims: TenantClaims, budget
     );
     return { moneyBudgetMinor: formatDecimalBigint(money), tokenBudget: budget.tokens, concurrencyLimit: budget.concurrency };
   });
+}
+
+export type LiveChatConfig = { apiKey: string; baseUrl: string; model: string };
+
+/** Fail-closed loader: chat generation runs only with explicit live config.
+ * Without it the worker defers (stays RUNNING for the sweep), exactly like
+ * the upload-config deferral — never a silent fake in production. */
+export function loadChatTransportConfig(): LiveChatConfig | null {
+  if (process.env["CHAT_AI_ENABLED"] !== "1") return null;
+  const apiKey = process.env["OPENROUTER_API_KEY"];
+  if (!apiKey) return null;
+  return {
+    apiKey,
+    baseUrl: process.env["OPENROUTER_BASE_URL"] ?? "https://openrouter.ai/api/v1",
+    model: process.env["OPENROUTER_MODEL"] ?? "muse-spark-1.3",
+  };
+}
+
+/** Live OpenRouter chat transport for generation: key in the header only,
+ * 30 s cap, usage extracted from the envelope (null when absent — the
+ * dispatch then stays PENDING, never zero). Output text is returned to the
+ * caller for fenced persistence; it is never logged here. */
+export function liveChatTransport(config: LiveChatConfig): DispatchTransport {
+  return async (req, signal) => {
+    const controller = new AbortController();
+    const onAbort = () => controller.abort();
+    signal.addEventListener("abort", onAbort, { once: true });
+    const timeout = setTimeout(() => controller.abort(), DISPATCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: config.model, messages: [{ role: "user", content: req.requestText }], max_tokens: req.maxOutputTokens }),
+        signal: controller.signal,
+      });
+      const text = await res.text();
+      if (res.status < 200 || res.status >= 300) return { httpStatus: res.status, bodyText: null, inputTokens: null, outputTokens: null, model: config.model };
+      let content: string | null = null;
+      let inputTokens: number | null = null;
+      let outputTokens: number | null = null;
+      try {
+        const parsed = JSON.parse(text) as {
+          choices?: { message?: { content?: unknown } }[];
+          usage?: { prompt_tokens?: unknown; completion_tokens?: unknown };
+        };
+        const raw = parsed.choices?.[0]?.message?.content;
+        content = typeof raw === "string" ? raw : null;
+        if (typeof parsed.usage?.prompt_tokens === "number" && Number.isInteger(parsed.usage.prompt_tokens) && parsed.usage.prompt_tokens >= 0) {
+          inputTokens = parsed.usage.prompt_tokens;
+        }
+        if (typeof parsed.usage?.completion_tokens === "number" && Number.isInteger(parsed.usage.completion_tokens) && parsed.usage.completion_tokens >= 0) {
+          outputTokens = parsed.usage.completion_tokens;
+        }
+      } catch {
+        content = null;
+      }
+      return { httpStatus: res.status, bodyText: content, inputTokens, outputTokens, model: config.model };
+    } catch {
+      return { httpStatus: null, bodyText: null, inputTokens: null, outputTokens: null, model: config.model };
+    } finally {
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", onAbort);
+    }
+  };
+}
+
+/**
+ * Supersede a dead generation's reservation inside the caller's transaction
+ * (E04-S02 worker-loop discharge of the S01 expiry note). A still-RESERVED
+ * row may hide mid-transport ambiguity, so it is never released: it becomes
+ * PENDING with the full reservation held and a superseded error class, and
+ * its concurrency slot is freed (slots guard live calls only). Terminal
+ * rows are untouched. Idempotent.
+ */
+export async function supersedeReservationTx(client: PoolClient, workspaceId: string, reservationId: string): Promise<void> {
+  const locked = await client.query("SELECT status FROM ai_dispatch_reservations WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [
+    workspaceId,
+    reservationId,
+  ]);
+  if ((locked.rowCount ?? 0) === 0) return;
+  if ((locked.rows[0] as { status: string }).status !== "RESERVED") return;
+  await client.query("UPDATE ai_dispatch_reservations SET status = 'PENDING' WHERE workspace_id = $1 AND id = $2", [workspaceId, reservationId]);
+  await client.query(
+    "INSERT INTO ai_dispatch_usage (workspace_id, id, reservation_id, status, input_tokens, output_tokens, reconciled_cost_minor, error_class, model) VALUES ($1, $2, $3, 'PENDING', NULL, NULL, NULL, 'superseded', 'superseded') ON CONFLICT (workspace_id, reservation_id) DO NOTHING",
+    [workspaceId, uuidv7(), reservationId],
+  );
 }
 
 export function dispatchErrorBody(err: DispatchError): { status: number; body: unknown } {

@@ -368,6 +368,56 @@ describe("e04-s01 atomic dispatch budgets", () => {
     expect(clash).toBe("idempotency_reuse");
   });
 
+  it("supersede settles dead reservations PENDING-held: slot freed, money held", async () => {
+    const { withTenant } = await import("../apps/web/src/tenancy.ts");
+    const { supersedeReservationTx } = await import("../apps/web/src/ai-dispatch.ts");
+    const base = await startApp();
+    const sub = `synthetic-disp-sup-${tag}`;
+    const { userId: u, workspaceId } = await setupWorkspace(base, sub, "sup");
+    const claims = { userId: u, workspaceId };
+    await setDispatchBudget(pool, claims, { moneyMinor: "1000000", tokens: 4000000, concurrency: 1 });
+    const first = await reserveDispatch(pool, claims, {
+      idempotencyKey: randomUUID(),
+      permitId: (await issuePermit(pool, claims, "sup-first")).id,
+      route: "development",
+      purpose: "sup-first",
+      ...RESERVE_OPTS,
+    });
+    const blocked = await reserveDispatch(pool, claims, {
+      idempotencyKey: randomUUID(),
+      permitId: (await issuePermit(pool, claims, "sup-second")).id,
+      route: "development",
+      purpose: "sup-second",
+      ...RESERVE_OPTS,
+    }).then(() => null).catch((e: unknown) => (e as DispatchError).code);
+    expect(blocked).toBe("budget_concurrency");
+    await withTenant(pool, claims, async (client) => supersedeReservationTx(client, workspaceId, first.id));
+    const after = await readDispatch(pool, claims, first.id);
+    expect(after.reservation.status).toBe("PENDING");
+    expect(after.usage).toMatchObject({ status: "PENDING", reconciledCostMinor: null, errorClass: "superseded" });
+    // Slot freed: the queued dispatch is admitted; money still held.
+    const admitted = await reserveDispatch(pool, claims, {
+      idempotencyKey: randomUUID(),
+      permitId: (await issuePermit(pool, claims, "sup-second")).id,
+      route: "development",
+      purpose: "sup-second",
+      ...RESERVE_OPTS,
+    });
+    expect(admitted.status).toBe("RESERVED");
+    await withTenant(pool, claims, async (client) => supersedeReservationTx(client, workspaceId, first.id));
+    const stable = await readDispatch(pool, claims, first.id);
+    expect(stable.usage?.errorClass).toBe("superseded");
+    await setDispatchBudget(pool, claims, { moneyMinor: "20", tokens: 4000000, concurrency: 32 });
+    const held = await reserveDispatch(pool, claims, {
+      idempotencyKey: randomUUID(),
+      permitId: (await issuePermit(pool, claims, "sup-held")).id,
+      route: "development",
+      purpose: "sup-held",
+      ...RESERVE_OPTS,
+    }).then(() => null).catch((e: unknown) => (e as DispatchError).code);
+    expect(held).toBe("budget_money");
+  });
+
   it("same-key concurrent reserves converge on one reservation with typed errors only", async () => {
     const base = await startApp();
     const { userId, workspaceId } = await setupWorkspace(base, `synthetic-disp-samekey-${tag}`, "samekey");

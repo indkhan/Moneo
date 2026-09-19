@@ -15,6 +15,8 @@ import { createPool } from "../../web/src/db.ts";
 import { dispatchOutbox, jobsQueue, processImportJob, readJob, resolveJobRoute, startJobsWorker, type JobPayload } from "../../web/src/jobs.ts";
 import { parseLeaseMsEnv } from "../../web/src/job-recovery.ts";
 import { loadUploadConfig, processParseJob } from "../../web/src/uploads.ts";
+import { processChatJob } from "../../web/src/chat.ts";
+import { liveChatTransport, loadChatTransportConfig, type DispatchTransport } from "../../web/src/ai-dispatch.ts";
 
 export type WorkerService = {
   pool: Pool;
@@ -58,6 +60,16 @@ export function createWorkerService(opts: { databaseUrl: string; redisUrl: strin
           outcome = await processParseJob(pool, job.data.backgroundJobId, uploadConfig, invocation);
         } else if (jobType === "imports.start") {
           outcome = await processImportJob(pool, job.data.backgroundJobId, invocation);
+        } else if (jobType === "chat.generate") {
+          const chatConfig = loadChatTransportConfig();
+          if (!chatConfig) {
+            // No provider transport configured: stay RUNNING for the sweep
+            // to redeliver once configured (upload-config deferral shape).
+            console.log(JSON.stringify({ event: "job_deferred", reason: "chat_transport_missing" }));
+            return "chat-transport-missing-deferred";
+          }
+          const transport: DispatchTransport = liveChatTransport(chatConfig);
+          outcome = await processChatJob(pool, job.data.backgroundJobId, transport, invocation);
         } else {
           // Unknown job types never run a foreign effect: complete the
           // transport record without touching PG truth (unreachable today

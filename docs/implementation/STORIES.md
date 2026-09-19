@@ -980,9 +980,18 @@ Execution record:
 
 ## E04-S02 — Persist chat and its worker-owned model loop
 
-Status: Ready | Dependencies: E04-S01, E02-S02
+Status: In progress | Dependencies: E04-S01, E02-S02
 
 Canonical refinement: [E04-S02](E04.md#e04-s02--persist-chat-and-its-worker-owned-model-loop).
+
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e04-s02-chat-loop` (main worktree branch)
+- Base SHA / heads: base `e4139091c1c1e2f70f3cf9943fc8cbb3f8a126c0` (E04-S01 Done); impl `c232949`; fix/reviewed `1c9e73f`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18, WSL Redis 8.4.2, own `moneo_e04_chat` DB + Redis DB 9. `npm run typecheck` 0; `npm run test:chat` 0 (12/12: accepted send + cursor reconnect with ordered pages, real BullMQ delivery + duplicate noop, SIGKILL after-claim and after-output with exactly one published turn and gen1-interrupted/gen2-published, same-key replay + clash 409, tenant uniformity + zero unscoped rows, cancel-before-dispatch + finished-cancel noop, retry as separate attempt with ordered activity, terminal 401 failed turn + FAILED_FINAL job, thread_busy + 3 sequential turns, Redis-loss rebuild via reconciler, oversize/cursor 400s); regression tenancy 6/6 (019 rollback chain, 41 tables), ai-dispatch 14/14, jobs 8/8, job-recovery 14/14; `test:failure` nonzero-as-intended; `build:web` 0; `build:worker` 0; `git diff --check` 0; secret scan clean; no `.env` tracked.
+- Review: independent adversarial review (separate task) Changes requested at `c232949` with two reproduced blockers — B1 concurrent sends escaping thread_busy into raw 23505/500 (no thread lock in sendTx), B2 dead generations' RESERVED reservations leaking slots/money forever (5 crashes brick the workspace; the S01-expiry note discharged nowhere) — plus 5 nonblocking notes. Fix `1c9e73f`: FOR UPDATE thread lock in sendTx/retryTurn, supersedeReservationTx (dead RESERVED → PENDING-held + superseded class, same tx as the interrupt marking) wired into claimChatGeneration, slots counting only RESERVED rows (PENDING money/tokens still held), recording slice aligned to the 64 KiB publish cap (N2), N1 asymmetry documented; barrier + supersede + SIGKILL-state regression tests. Re-review Pass at `1c9e73f` (chat 13/13, dispatch 15/15, tenancy/jobs/recovery/policy green, both builds, diff-check clean). Accepted lows: publish-cap slice in UTF-16 units (fail-safe STALE, never duplicate); duplicate-claim interrupt marking is observability-only (predicated turn write + job fence hold single publication).
+- Integration: local main at base `e413909` unchanged; origin/main stale (local-only merges per E00 precedent); merge-base == base; candidate == reviewed `1c9e73f` plus docs-only ledger delta (empty non-docs diff); full candidate gates green (see Tests + typecheck/builds). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `PENDING_MERGE`; post-merge `npm run check` + `test:chat` + `test:ai-dispatch` + `staging:smoke` to record.
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: 200-turn cap + >safe-integer versions covered by guard code + review (no live 200-turn run); 30 s transport timeout firing untested (scripted transports resolve immediately); live provider/production route unqualified (S07 owns the bounded live gate); N3 retry-key convergence poll asymmetry, N4 job-SUCCEEDED/turn-interrupted monitor overcount, N5 retry generations restart at 1 (documented in review).
 
 ## E04-S03 — Expose scoped tools, evidence and dispatch revalidation
 
