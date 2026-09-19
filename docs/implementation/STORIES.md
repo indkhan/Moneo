@@ -880,7 +880,7 @@ Execution record:
 
 ## E03-S07 — Confirm basic recurring transactions
 
-Status: Ready | Release: R1 | Epic: E03
+Status: Done | Release: R1 | Epic: E03
 Dependencies: E03-S06 (Done at merge `1c7c393`)
 
 Outcome: An authenticated workspace member sees deterministic recurring candidates derived from booked transactions, and can confirm (as explicit expense/income with a monthly schedule) or dismiss them; confirmations are audited, versioned and idempotent, and never fabricate booked rows.
@@ -905,15 +905,45 @@ UI/accessibility: Native forms/labels, warnings as text, focus to errors, 320 px
 Data changes: `016_recurring.sql` additive (+rollback 016→015 order in the tenancy rollback chain); seed none. Rollback drops overrides only (pre-product: synthetic).
 Observability: Request/command IDs, counts, latency only; never descriptions/amounts in logs.
 Limits: Scan ≤2000 most-recent rows per table (≤4000 combined; truncation flagged, never silent); candidates surfaced ≤200; day_of_month 1–28 (Feb-safe); confirm/dismiss p95 <500 ms locally.
+
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e03-s07-recurring` (main worktree branch)
+- Base SHA / heads: base `122f522`; impl `373bdf4`; fix/reviewed `222d67d`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18. `npm run typecheck` 0; `npm run test:recurring` 0 (8/8 on own `moneo_e03_recurring` DB: monthly candidate + sparse + sparse-confirm 404, confirm/replay/stale + no-booked-rows + assumption label + audit, 5-way race + sparse dismiss, refund-like explicit-kind + tenant isolation, page + forms + conflict + day-400, 12-way race zero 503s, >safe-integer raw text + `...994`, key-reuse 409 + genuine INFLOW/OUTFLOW sparse pair); regression tenancy 6/6 (016 chain + 34 tables), transactions-table 8/8, categories 13/13, ui 10/10, import-e2e 14/14; `test:failure` exit 1 as intended; `build:web` 0; `git diff --check` 0; secret scan clean; no `.env` tracked. Notable debug: `audit_events.entity_id` is UUID-typed but fingerprints are 64-hex — added stable `id UUID` to `recurring_overrides` for audit linkage (016 unmerged at the time, safe); unscoped audit count returns 0 by RLS design (asserted in-tenant instead); stale `moneo_e03_recurring` DB (pre-id shape) dropped/recreated (disposable).
+- Design note: pure `src/recurring.ts` (normalize + fingerprint + monthly ±3d chain) with overrides-only persistence; liveness rechecked inside confirm/dismiss tx; day 1–28; per-table scan ≤2000 flagged; currency upper-cased at scan.
+- Review: independent adversarial review (separate task) Changes requested at `373bdf4` — B1 concurrent first-confirm INSERT race → 503 + poisoned op row (reproduced 15-way), B2 missing >safe-integer evidence, B3 missing key-reuse + genuine refund-pair evidence — plus 8 nonblocking notes. Fix `222d67d` (savepoint-guarded override INSERTs → version_mismatch, bigint/reuse/refund tests, Limits restatement, currency normalization). Re-review Pass at `222d67d` (8/8 x3 runs + 15-way scratch repro zero 503s, unknown-fp 404, day-31 400).
+- Integration: `git fetch origin main` — remote stale per precedent; local main at base `122f522` unchanged; merge-base == base; candidate == reviewed `222d67d`; candidate gates green (recurring 8/8, transactions-table 8/8, import-e2e 14/14, failure-gate 1, build:web, diff-check). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `97db078`; post-merge `npm run check` 0, `test:recurring` 8/8, clean status. Remote push/PR not performed (local-only merges per E00 precedent).
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: per-table scan cap (story restated); unscoped-count tripwire precedent; newest-spelling display; re-dismiss bumps; dismiss shares confirm's guard with confirm-only wide-race test.
 Verification: Add `npm run test:recurring` (real PG own DB: detection goldens incl. cadence tolerance + sparse + warnings, confirm/dismiss happy + stale + replay + race, no-booked-rows assertion, tenant isolation, >safe-integer version raw text). Extend UI journey coverage in the same suite (recurring page render + confirm/dismiss forms + conflict shell). Regress `test:transactions-table`, `test:categories`, `test:import-e2e`, `test:w1`, typecheck, web build; failure/diff/secret gates.
 Review focus: Fingerprint collisions/normalization gaps, transfer/refund silent-classification paths, write-on-read smuggling, confirmable-sparse bypass, booked-row fabrication, version canonicalization, RLS on overrides, unbounded scan, calendar creep.
 Rollout/rollback: Pre-release boundary; rollback = prior image + `016 rollback.sql` (synthetic overrides only). Known limitation: monthly/exact-amount only; day 29–31 schedules unsupported in R1 (documented, 400).
 
 ## E03-S08 — Verify the financial truth slice
 
-Status: Draft | Dependencies: E03-S07
+Status: Ready | Release: R1 | Epic: E03
+Dependencies: E03-S07 (Done at merge `97db078`)
 
 Run independent cross-currency/cross-account goldens and table/import/correction/undo flows against actual shared queries. Acceptance: JSON boundaries retain exact values including >safe integer, selected-account transfers/fees/refunds/FX/balance cutoff agree with independent expectations, and a second import updates reads without breaking provenance. Record dataset size and query latency targets before execution.
+
+Outcome: The merged E03 candidate proves the integrated financial-truth exit: independently calculated multi-account fixtures flow through the actual shared queries, commands, FX valuation, table/bulk/recurring journeys and a second import without losing provenance or user corrections, with dataset size and query latency declared and measured.
+Contracts: Product Delivery baseline financial-truth rows; architecture §§535–538 (money/FX/transfer/refund semantics), §158 (decimal strings), §§70–71 (errors); RLS/tenancy/policy/audit contracts; E03-S01–S07 acceptance plus E02 ingestion and W1 critical suites. Live ECB qualification stays separate from deterministic fixtures (fail-closed, S03 precedent) — this exit asserts no live-provider qualification.
+Scope: New `test/e03-exit.test.ts` integrated demonstration (own `moneo_e03_exit` DB, one app + stub issuer + real PG) plus defect fixes only. No new product features; no schema changes unless a demonstrated integration defect requires the smallest additive fix with review. Coverage, all against actual shared code with independently computed expectations: EUR (2)/JPY (0)/KWD (3) exponent/rounding goldens; >safe-integer values at every JSON boundary touched; missing/zero/negative/stale balances with as-of cutoff reads; cross-account vs selected-account totals (transfer principal excluded, fees expense, refunds negative spend, credit repayment transfer when both owned); historical FX valuation with triangulated fixtures, prior-rate age, partial/unavailable (never zero) coverage and untouched natives; correction + category/tag + audit + supported undo; table filtering/pagination/bulk + source evidence; recurring confirm/dismiss with warnings and no booked fabrication; second import updating reads without overwriting corrections/provenance; tenant swaps, replays, races, version conflicts; full E02 ingestion and W1 regressions on the merged tree.
+Out of scope: E04 AI/artifacts, E06 projections, live ECB/provider qualification, production data, public release.
+Acceptance:
+1. Given the exit fixture (declared in the suite header), when the exit suite runs, then every golden equals its independently computed expectation exactly (decimal strings, no floats): exponents/rounding, safe-integer-plus values, per-currency totals, FX valuations with coverage, cutoff balances.
+2. Given the same fixture, when corrected/bulk-edited/undone then reimported, then reads update, provenance and user corrections survive, audit chains link, and conflicts behave (409 + currentVersion, single winners).
+3. Given tenant-B and nonexistent identifiers across accounts/transactions/balances/table/recurring, then responses are uniform (no cross-tenant oracle) and unscoped reads return zero rows.
+4. Given the declared dataset and latency targets below, when measured locally, then results are recorded honestly (pass or explicit limitation); no invented SLA.
+Invariants: All E03 invariants hold end to end (decimal-string boundaries; native canonical; snapshots-not-sums with distinguishable unknown/zero/negative/stale; transfer/refund/fee/credit semantics; FORCE RLS everywhere; audited versioned retry-safe corrections; immutable reproducible evidence; shared-query reads only; labelled keyboard-safe 320 px UI states).
+Failure lifecycle: Any defect returns the owning story to Changes requested (no deferral into E04); changed candidates rerun affected checks + re-review; failed post-merge smoke pauses E04.
+UI/accessibility: Critical table/drawer/recurring journeys re-exercised through the server UI (plus existing ui-shell coverage); keyboard/labels/focus/320 px states asserted structurally.
+Data changes: None planned. Smallest additive fix only for demonstrated defects, with review.
+Observability: Request/command IDs, counts, latencies only; no financial payloads in logs. Exit record declares dataset size + measured latencies.
+Limits: Exit dataset: 2 workspaces (A under test + B probes), 4 accounts (EUR/JPY/KWD/USD), ~40 booked rows, dated snapshots, ECB-style + manual FX rows, categories/tags, one recurring series. Targets (local, measured not promised): list p95 <500 ms, correction/bulk/confirm p95 <500 ms, full exit suite <120 s.
+Verification: `npm run test:e03-exit` (new) + `npm run typecheck` + full deterministic matrix (`test`, `test:web`, `test:import`, `test:identity`, `test:auth`, `test:db`, `test:tenancy`, `test:commands`, `test:money`, `test:policy`, `test:ui`, `test:http`, `test:jobs`, `test:job-recovery`, `test:upload`, `test:mapping`, `test:import-e2e`, `test:accounts`, `test:calculations`, `test:fx`, `test:calc-evidence`, `test:categories`, `test:transactions-table`, `test:recurring`, `test:w1`) + `test:failure` nonzero + `build:web/worker/parser` + `staging:smoke` + `git diff --check` + tracked-file secret scan. No `.env` read/printed/committed.
+Review focus: Oracles derived from implementation (must be independently computed), skipped gates, stale-SHA evidence, unsupported coverage claims, count/provenance drift, W1/E02 regressions, secret hygiene.
+Rollout/rollback: No schema; exit suite is test-only. E04 may start only after this exit records Pass on the merged candidate.
 
 ## E04-S01 — Enforce provider policy and atomic usage budgets
 
