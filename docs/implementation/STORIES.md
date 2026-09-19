@@ -840,7 +840,7 @@ Execution record:
 
 ## E03-S06 — Expose the transaction table and source drawer
 
-Status: Ready | Release: R1 | Epic: E03
+Status: Done | Release: R1 | Epic: E03
 Dependencies: E03-S05 (Done at merge `501dc29`)
 
 Outcome: An authenticated workspace member can page/filter/sort imported and manual transactions through one shared read module, open a transaction drawer with source evidence and audit history, and apply selected bulk category edits; UI totals always match the shared query semantics.
@@ -868,11 +868,46 @@ Verification: Add `npm run test:transactions-table` (real PG own DB: filter/sort
 Review focus: Filter predicate bypass (account scope escape, tag join leaking cross-workspace rows, search injection via LIKE wildcards — escape them), totals predicate drift from row predicates, bulk partial-write paths, N+1 query fan-out on evidence, unescaped interpolation in new shell templates, log/filename leakage, version-string canonicalization, saved-view/framework creep.
 Rollout/rollback: Ship behind existing pre-release boundary; rollback = prior image (no schema change). Known limitation: bulk is imported-kind and manual-kind per call (mixed-kind batches need two calls — documented, not silent).
 
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e03-s06-transaction-table` (main worktree branch)
+- Base SHA / heads: base `6ad9183`; impl `07d252e`; fix/reviewed `cb65e1c`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18. `npm run typecheck` 0; `npm run test:transactions-table` 0 (8/8 on own `moneo_e03_txtable` DB: exact per-currency totals vs independent SQL + page non-overlap + wildcard escaping + UI/API parity + no-script, foreign-ID uniformity + zero unscoped rows, bulk stale→409 per-item detail + zero writes + fresh retry + identical replay, bulk-vs-single race single winner v2, imported MATCHED + manual evidence + drawer render, >safe-integer versions + drawer 409 preserved input + fresh 303, a11y structure + empty-bulk 400, mixed-kind bulk 400 + untouched); regression ui 10/10, categories 13/13, accounts 10/10, tenancy 6/6, commands 8/8, import-e2e 14/14, w1 1/1; `test:failure` exit 1 as intended; `build:web` 0; `git diff --check` 0; secret scan clean; no `.env` tracked.
+- Design note: `src/transactions-query.ts` is the single read source (HTTP + UI + future AI/artifact); totals GROUP BY currency from the same predicates (mixed-currency sums would lie); per-side limit+offset merge in JS with date+id tiebreak; `transactions.bulk_set_category` all-or-nothing (validate-all → predicated per-row writes, race abort, one journal row, per-item audits, one revision bump); UI selection per-page only (stated); mixed-kind bulk rejected 400 (atomicity/replay honesty).
+- Review: independent adversarial review (separate task) Changes requested at `07d252e` with one reproduced blocker — B1 UI mixed-kind bulk split into sequential per-kind transactions (non-atomic, non-replayable, false copy) — plus 7 nonblocking notes. Fix `cb65e1c` (single-kind-only 400 gate + hint, uniform 409 incl. not_found, strict offset 400, detail propagation, overflow wrapper; mixed-kind rejection test). Re-review Pass at `cb65e1c` (8/8 + ui/categories green, races re-probed, detail-leak assessed clean).
+- Integration: `git fetch origin main` — remote stale per precedent; local main at base `6ad9183` unchanged; merge-base == base; candidate == reviewed `cb65e1c`; candidate gates green (transactions-table 8/8, import-e2e 14/14, w1, failure-gate 1, build:web, diff-check). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `1c7c393`; post-merge `npm run check` 0, `test:transactions-table` 8/8, clean status. Remote push/PR not performed (local-only merges per E00 precedent).
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: N3 drawer conflict preserves description only (selects reset — bounded exception); N6 per-side limit+offset fan-out (correct, keyset pagination later); N7 `Number(totals.count)` display-only; pre-existing same-key-edited-resubmit 409 copy nuance.
+
 ## E03-S07 — Confirm basic recurring transactions
 
-Status: Draft | Dependencies: E03-S06
+Status: Ready | Release: R1 | Epic: E03
+Dependencies: E03-S06 (Done at merge `1c7c393`)
 
-Propose simple recurring candidates from available data and let the user confirm/correct/dismiss their amount/date assumptions. Acceptance: sparse history is labeled, transfers/refunds do not silently become recurring expense, confirmation is audited and idempotent, and future schedule assumptions are distinguishable from booked transactions. No full recurring-calendar product.
+Outcome: An authenticated workspace member sees deterministic recurring candidates derived from booked transactions, and can confirm (as explicit expense/income with a monthly schedule) or dismiss them; confirmations are audited, versioned and idempotent, and never fabricate booked rows.
+Contracts: Architecture §§536–538 (transfer/refund/fee semantics — stored rows carry no transfer flags, so detection never auto-classifies); §158 (decimal strings); §§70–71 (command envelope); existing `transactions`/`manual_transactions` tables, `command_operations` journal, `audit_events`, `workspace_data_revision`, `withTenant`/RLS, zero-JS shell conventions.
+Scope:
+- Pure module `src/recurring.ts`: `detectCandidates(items)` groups imported+manual rows by normalized description + exact amount_minor + currency + direction; 2+ occurrences with monthly cadence (±3 days) → `candidate`, singletons → `sparse` (dismissible only, never confirmable); every candidate carries `warnings` (e.g. `verify-not-transfer`: stored rows carry no counterparty flags, so transfer/refund exclusion is an explicit user confirmation, never silent auto-classification) and a deterministic fingerprint `sha256(norm|amount|currency|direction|monthly)`.
+- Migration `016_recurring.sql` (+rollback): `recurring_overrides` (workspace_id, fingerprint TEXT, status `proposed|confirmed|dismissed`, kind `expense|income|null`, day_of_month nullable, version BIGINT default 1, created/updated; composite PK, FORCE RLS). No booked-row generation — overrides only.
+- Domain commands in `src/commands/recurring.ts` (reusing exported journal/audit/revision helpers from `commands/transactions.ts`): `recurring.confirm` (requires status confirmable, explicit kind + day 1–28, expectedVersion; recomputes fingerprint liveness: candidate vanished → `not_found`), `recurring.dismiss` (candidate or sparse). Both bump revision + audit; idempotent replay identical.
+- HTTP: `GET /api/recurring` (pure compute + LEFT JOIN overrides, bounded scan ≤2000 recent rows), `POST /api/commands/recurring.confirm`, `POST /api/commands/recurring.dismiss`.
+- UI: `GET /w/:id/recurring` (candidate table with warnings text, confirm form with kind/day selects + per-render key, dismiss buttons) + two POSTs with same-origin gates, conflict shells with fresh retry, 303 notices.
+Out of scope: Full calendar/scheduling engine, automatic transaction generation (E06 consumes assumptions), amount-drift tolerance beyond exact minor units, weekly/yearly cadences, merchant normalization, AI suggestions.
+Acceptance:
+1. Given three monthly exact-amount rows (e.g. rent 800.00 EUR outflow on Jan 12/Feb 11/Mar 12) plus a singleton, when listing, then one `candidate` (occurrences 3, warnings include verify-not-transfer) and one `sparse`; the singleton cannot be confirmed (409/400) but can be dismissed.
+2. Given a confirmed candidate, when re-listing, then status `confirmed` with kind/day shown as "assumption — not a booked transaction"; booked row count is unchanged; audit holds confirm + revision bumped.
+3. Given confirm at version `"1"` replayed with the same key, when replayed, then identical result with no version bump; reused key with different kind/day → 409; stale version → 409 with currentVersion; two concurrent confirms → exactly one winner.
+4. Given two equal-amount opposite-direction rows (refund-like) or same-description transfer-like pair, when listed, then candidates still require explicit kind confirmation (never pre-marked expense) and the UI warning names the transfer/refund check.
+5. Given foreign fingerprints/versions, when confirming, then uniform 404; unscoped reads return zero override rows.
+6. Given fingerprints beyond safe integer? Not applicable (hex strings); versions remain decimal strings with raw-text exactness asserted past safe integer via seeded version.
+Invariants: Detection pure (no writes on read); overrides scoped by workspace + withTenant + FORCE RLS; money exact; no booked mutation; unknown never zero; confirmations reference candidate fingerprints, never invented rows.
+Failure lifecycle: Confirm/dismiss are single-tx journaled commands (terminal failures retry-safe); candidate-vanished races → not_found with no write; oversized scans capped at 2000 rows (documented truncation, not silent sampling — count returned).
+UI/accessibility: Native forms/labels, warnings as text, focus to errors, 320 px usable, keyboard-only, no color-only status, no JS.
+Data changes: `016_recurring.sql` additive (+rollback 016→015 order in the tenancy rollback chain); seed none. Rollback drops overrides only (pre-product: synthetic).
+Observability: Request/command IDs, counts, latency only; never descriptions/amounts in logs.
+Limits: Scan ≤2000 most-recent rows; candidates surfaced ≤200; day_of_month 1–28 (Feb-safe); confirm/dismiss p95 <500 ms locally.
+Verification: Add `npm run test:recurring` (real PG own DB: detection goldens incl. cadence tolerance + sparse + warnings, confirm/dismiss happy + stale + replay + race, no-booked-rows assertion, tenant isolation, >safe-integer version raw text). Extend UI journey coverage in the same suite (recurring page render + confirm/dismiss forms + conflict shell). Regress `test:transactions-table`, `test:categories`, `test:import-e2e`, `test:w1`, typecheck, web build; failure/diff/secret gates.
+Review focus: Fingerprint collisions/normalization gaps, transfer/refund silent-classification paths, write-on-read smuggling, confirmable-sparse bypass, booked-row fabrication, version canonicalization, RLS on overrides, unbounded scan, calendar creep.
+Rollout/rollback: Pre-release boundary; rollback = prior image + `016 rollback.sql` (synthetic overrides only). Known limitation: monthly/exact-amount only; day 29–31 schedules unsupported in R1 (documented, 400).
 
 ## E03-S08 — Verify the financial truth slice
 
