@@ -136,7 +136,7 @@ export function createApp(auth?: AuthDelegate | null, tenancy?: AuthDelegate | n
           }
           if (await tenancy.handle(req, res, path, method, query, requestId)) return;
         }
-        if (path === "/" || path === "/index.html" || path === "/w" || path.startsWith("/w/") || path === "/logout") {
+        if (path === "/" || path === "/index.html" || path === "/w" || path.startsWith("/w/") || path === "/logout" || path === "/chat" || path.startsWith("/chat/")) {
           if (options.ui) {
             if (await options.ui.handle(req, res, path, method, query, requestId)) return;
           }

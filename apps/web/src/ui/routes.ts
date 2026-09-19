@@ -21,6 +21,7 @@ import { listWorkspaces, sessionClaims, TenantDenied, TenantInvalid, type Sessio
 import { errorPage, escapeHtml, page } from "./shell.ts";
 import { handleTransactionRoutes } from "./transactions.ts";
 import { handleRecurringRoutes } from "./recurring.ts";
+import { createChatRouter } from "./chat.ts";
 
 export type UiConfig = {
   appBaseUrl: string;
@@ -62,6 +63,7 @@ function sameOrigin(req: IncomingMessage, appBaseUrl: string): boolean {
 export function createUiRouter(pool: Pool, resolveSession: SessionResolver, config: UiConfig): {
   handle: (req: IncomingMessage, res: ServerResponse, path: string, method: string, query: URLSearchParams, requestId?: string) => Promise<boolean>;
 } {
+  const chatRouter = createChatRouter(pool, resolveSession, { appBaseUrl: config.appBaseUrl, sessionSecret: config.sessionSecret });
   const event = config.onEvent ?? (() => {});
 
   async function shell(
@@ -888,6 +890,10 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
     }
     // E03-S07 recurring candidates + confirm/dismiss.
     if (await handleRecurringRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
+      return true;
+    }
+    // E04-S04 chat UI (context, activity, Stop/retry).
+    if (await chatRouter.handle(req, res, path, method, query, requestId)) {
       return true;
     }
 
