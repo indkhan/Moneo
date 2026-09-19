@@ -26,6 +26,7 @@ import {
   addTag as addTagCmd,
   archiveCategory as archiveCategoryCmd,
   archiveTag as archiveTagCmd,
+  bulkSetCategory as bulkSetCategoryCmd,
   correct as correctCmd,
   createCategory as createCategoryCmd,
   createTag as createTagCmd,
@@ -39,6 +40,7 @@ import {
   undo as undoCmd,
   validateArchiveCategoryInput,
   validateArchiveTagInput,
+  validateBulkSetCategoryInput,
   validateCorrectInput,
   validateCreateCategoryInput,
   validateCreateTagInput,
@@ -46,6 +48,7 @@ import {
   validateTagLinkInput,
   validateUndoInput,
 } from "./commands/transactions.ts";
+import { getTransactionEvidence, listTransactions } from "./transactions-query.ts";
 
 export class TenantDenied extends Error {
   constructor() {
@@ -272,7 +275,12 @@ function txErrorBody(err: TxError): { status: number; body: unknown } {
   if (err.code === "version_mismatch" || err.code === "undo_conflict") {
     return {
       status: 409,
-      body: err.currentVersion === undefined ? { error: "conflict", reason: err.code } : { error: "conflict", reason: err.code, currentVersion: err.currentVersion },
+      body: {
+        error: "conflict",
+        reason: err.code,
+        ...(err.currentVersion === undefined ? {} : { currentVersion: err.currentVersion }),
+        ...(err.detail === undefined ? {} : { detail: err.detail }),
+      },
     };
   }
   return { status: 409, body: { error: "conflict", reason: err.code } };
@@ -827,6 +835,87 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           const view = await getTransaction(pool, resolved.claim, kind, txGetMatch[1]);
           if (!view) tenantJson(res, 404, { error: "not_found" });
           else tenantJson(res, 200, view);
+          return true;
+        }
+        // E03-S06 shared transaction list: filters/sort/page + totals from
+        // the same predicates (transactions-query.ts is the single source;
+        // the UI below consumes these same functions, never its own SQL).
+        if (path === "/api/transactions" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          try {
+            const result = await listTransactions(pool, resolved.claim, {
+              workspaceId,
+              kind: query.get("kind") ?? "all",
+              ...(query.get("accountId") ? { accountId: query.get("accountId")! } : {}),
+              ...(query.get("categoryId") ? { categoryId: query.get("categoryId")! } : {}),
+              ...(query.get("uncategorized") ? { uncategorized: query.get("uncategorized")! } : {}),
+              ...(query.get("tagId") ? { tagId: query.get("tagId")! } : {}),
+              ...(query.get("direction") ? { direction: query.get("direction")! } : {}),
+              ...(query.get("dateFrom") ? { dateFrom: query.get("dateFrom")! } : {}),
+              ...(query.get("dateTo") ? { dateTo: query.get("dateTo")! } : {}),
+              ...(query.get("search") ? { search: query.get("search")! } : {}),
+              ...(query.get("sort") ? { sort: query.get("sort")! } : {}),
+              ...(query.get("limit") ? { limit: query.get("limit")! } : {}),
+              ...(query.get("offset") ? { offset: query.get("offset")! } : {}),
+            });
+            tenantJson(res, 200, { ...result, requestId });
+          } catch (err) {
+            if (err instanceof TenantInvalid) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        const txEvidenceMatch = path.match(/^\/api\/transactions\/([A-Za-z0-9-]+)\/evidence$/);
+        if (txEvidenceMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const kind = query.get("kind") === "manual" ? "manual" : "imported";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const evidence = await getTransactionEvidence(pool, resolved.claim, kind, txEvidenceMatch[1]);
+          if (!evidence) tenantJson(res, 404, { error: "not_found" });
+          else tenantJson(res, 200, { ...evidence, requestId });
+          return true;
+        }
+        if (path === "/api/commands/transactions.bulk_set_category" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: ReturnType<typeof validateBulkSetCategoryInput>;
+          try {
+            input = validateBulkSetCategoryInput(await readJsonBody(req));
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await bulkSetCategoryCmd(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof TxError) {
+              const mapped = txErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
           return true;
         }
         const auditMatch = path.match(/^\/api\/audit\/([A-Za-z0-9-]+)$/);

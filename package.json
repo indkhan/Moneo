@@ -37,6 +37,7 @@
     "test:fx": "vitest run test/fx.test.ts",
     "test:calc-evidence": "vitest run test/calc-evidence.test.ts",
     "test:categories": "vitest run test/categories.test.ts",
+    "test:transactions-table": "vitest run test/transactions-table.test.ts",
     "probe:mapping": "node --env-file=.env ./node_modules/vitest/vitest.mjs run test/mapping-live.test.ts",
     "test:auth:live": "vitest run test/auth-keycloak-live.test.ts",
     "build:web": "tsc -p apps/web/tsconfig.json",
