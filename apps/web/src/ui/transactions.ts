@@ -19,6 +19,7 @@ import {
   listCategories,
   listTags,
   setCategory as setCategoryCmd,
+  undo as undoCmd,
   validateBulkSetCategoryInput,
 } from "../commands/transactions.ts";
 import { TenantDenied, TenantInvalid, sessionClaims, type SessionResolver } from "../tenancy.ts";
@@ -53,6 +54,7 @@ function sameOrigin(req: IncomingMessage, appBaseUrl: string): boolean {
   const allowed = new URL(appBaseUrl).origin;
   const origin = req.headers.origin;
   const referer = req.headers.referer;
+  if (req.headers["sec-fetch-site"] === "same-origin") return true;
   if (typeof origin === "string") return origin === allowed;
   if (typeof referer === "string") return referer === allowed || referer.startsWith(`${allowed}/`);
   return false;
@@ -167,6 +169,10 @@ export async function handleTransactionRoutes(
           ? `<div class="notice" role="status"><p>Bulk category update applied.</p></div>`
           : query.get("notice") === "corrected"
             ? `<div class="notice" role="status"><p>Transaction updated.</p></div>`
+            : query.get("notice") === "ai-confirmed" && isUuid(query.get("operationId") ?? "")
+              ? `<div class="notice" role="status"><p>AI-proposed transaction confirmed. Operation ${escapeHtml(query.get("operationId")!)} is recorded in the audit history.</p><form method="post" action="/w/${escapeHtml(workspaceId)}/transactions/undo"><input type="hidden" name="operationId" value="${escapeHtml(query.get("operationId")!)}"><input type="hidden" name="idempotencyKey" value="${randomUUID()}"><button type="submit">Undo with compensating transaction</button></form></div>`
+              : query.get("notice") === "undone"
+                ? `<div class="notice" role="status"><p>Compensating transaction recorded.</p></div>`
             : "";
       html(
         res,
@@ -182,6 +188,19 @@ export async function handleTransactionRoutes(
       }
       throw err;
     }
+  }
+
+  const undoMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/transactions\/undo$/);
+  if (undoMatch && method === "POST") {
+    const workspaceId = undoMatch[1];
+    if (!sameOrigin(req, config.appBaseUrl)) return false;
+    const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+    if (!resolved.claim) return false;
+    const form = await readFormBody(req).catch(() => null);
+    await undoCmd(pool, resolved.claim, resolved.claim.userId, { workspaceId, operationId: form?.get("operationId"), idempotencyKey: form?.get("idempotencyKey") });
+    res.writeHead(303, { Location: `/w/${workspaceId}/transactions?notice=undone` });
+    res.end();
+    return true;
   }
 
   const drawerMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/transactions\/([A-Za-z0-9-]+)$/);

@@ -28,7 +28,7 @@ export type EligibleSelection = {
 };
 
 export class PolicyError extends Error {
-  readonly code: "unknown_account" | "permit_stale" | "permit_consumed" | "permit_expired" | "permit_invalidated";
+  readonly code: "unknown_account" | "version_mismatch" | "permit_stale" | "permit_consumed" | "permit_expired" | "permit_invalidated";
   constructor(code: PolicyError["code"]) {
     super(code);
     this.code = code;
@@ -54,6 +54,7 @@ export async function setAccountExclusion(
   accountId: string,
   excluded: boolean,
   reason?: string,
+  expectedVersion?: string,
 ): Promise<PolicyState> {
   if (!isUuid(accountId)) throw new TenantInvalid();
   if (reason !== undefined && (typeof reason !== "string" || reason.length < 1 || reason.length > 200)) throw new TenantInvalid();
@@ -62,7 +63,8 @@ export async function setAccountExclusion(
     if ((owned.rowCount ?? 0) === 0) throw new PolicyError("unknown_account");
     // Serialize writers per workspace so versions never skip or duplicate.
     await client.query("INSERT INTO ai_policies (workspace_id, policy_version) VALUES ($1, 1) ON CONFLICT (workspace_id) DO NOTHING", [claims.workspaceId]);
-    await client.query("SELECT policy_version FROM ai_policies WHERE workspace_id = $1 FOR UPDATE", [claims.workspaceId]);
+    const locked = await client.query("SELECT policy_version FROM ai_policies WHERE workspace_id = $1 FOR UPDATE", [claims.workspaceId]);
+    if (expectedVersion !== undefined && String((locked.rows[0] as { policy_version: string }).policy_version) !== expectedVersion) throw new PolicyError("version_mismatch");
     const already = await client.query("SELECT 1 FROM ai_exclusions WHERE workspace_id = $1 AND account_id = $2", [claims.workspaceId, accountId]);
     if (((already.rowCount ?? 0) > 0) === excluded) {
       // No-op change: same state must not bump the version or invalidate

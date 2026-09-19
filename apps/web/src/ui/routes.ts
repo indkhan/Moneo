@@ -21,6 +21,7 @@ import { listWorkspaces, sessionClaims, TenantDenied, TenantInvalid, type Sessio
 import { errorPage, escapeHtml, page } from "./shell.ts";
 import { handleTransactionRoutes } from "./transactions.ts";
 import { handleRecurringRoutes } from "./recurring.ts";
+import { createChatRouter } from "./chat.ts";
 
 export type UiConfig = {
   appBaseUrl: string;
@@ -51,17 +52,20 @@ function readFormBody(req: IncomingMessage): Promise<URLSearchParams> {
 }
 
 function sameOrigin(req: IncomingMessage, appBaseUrl: string): boolean {
+  if (req.headers["sec-fetch-site"] === "same-origin") return true;
   const allowed = new URL(appBaseUrl).origin;
+  const requestOrigins = typeof req.headers.host === "string" ? [`http://${req.headers.host}`, `https://${req.headers.host}`] : [];
   const origin = req.headers.origin;
   const referer = req.headers.referer;
-  if (typeof origin === "string") return origin === allowed;
-  if (typeof referer === "string") return referer === allowed || referer.startsWith(`${allowed}/`);
+  if (typeof origin === "string") return origin === allowed || requestOrigins.includes(origin);
+  if (typeof referer === "string") return [allowed, ...requestOrigins].some((candidate) => referer === candidate || referer.startsWith(`${candidate}/`));
   return false;
 }
 
 export function createUiRouter(pool: Pool, resolveSession: SessionResolver, config: UiConfig): {
   handle: (req: IncomingMessage, res: ServerResponse, path: string, method: string, query: URLSearchParams, requestId?: string) => Promise<boolean>;
 } {
+  const chatRouter = createChatRouter(pool, resolveSession, { appBaseUrl: config.appBaseUrl, sessionSecret: config.sessionSecret });
   const event = config.onEvent ?? (() => {});
 
   async function shell(
@@ -257,16 +261,23 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
       const form = await readFormBody(req).catch(() => null);
       const accountId = form?.get("accountId") ?? "";
       const excluded = form?.get("excluded") === "true";
+      const expectedPolicyVersion = form?.get("policyVersion") ?? undefined;
       if (!isUuid(accountId)) {
         html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such account.", back: `/w/${workspaceId}`, requestId, authed: true }));
         return true;
       }
       try {
-        const state = await setAccountExclusion(pool, resolved.claim, resolved.claim.userId, accountId, excluded);
-        res.writeHead(303, { Location: `/w/${workspaceId}?notice=exclusion-updated&policyVersion=${encodeURIComponent(state.policyVersion)}` });
+        const state = await setAccountExclusion(pool, resolved.claim, resolved.claim.userId, accountId, excluded, undefined, expectedPolicyVersion);
+        const destination = form?.get("returnTo") === "ai-settings" ? `/w/${workspaceId}/ai-settings` : `/w/${workspaceId}`;
+        res.writeHead(303, { Location: `${destination}?notice=exclusion-updated&policyVersion=${encodeURIComponent(state.policyVersion)}` });
         res.end();
         return true;
       } catch (err) {
+        if (err instanceof PolicyError && err.code === "version_mismatch") {
+          const current = await getPolicy(pool, resolved.claim);
+          html(res, 409, errorPage({ status: 409, heading: "Settings conflict", message: `AI settings changed. Current policy version is ${current.policyVersion}. Review and retry.`, back: `/w/${workspaceId}/ai-settings`, requestId, authed: true }));
+          return true;
+        }
         if (err instanceof PolicyError || err instanceof TenantDenied) {
           event("ui_denied:exclusion");
           html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace or account.", back: `/w/${workspaceId}`, requestId, authed: true }));
@@ -888,6 +899,10 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
     }
     // E03-S07 recurring candidates + confirm/dismiss.
     if (await handleRecurringRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
+      return true;
+    }
+    // E04-S04 chat UI (context, activity, Stop/retry).
+    if (await chatRouter.handle(req, res, path, method, query, requestId)) {
       return true;
     }
 

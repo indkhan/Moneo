@@ -1009,27 +1009,46 @@ Execution record:
 
 ## E04-S04 — Deliver contextual chat, activity and Stop
 
-Status: Ready | Dependencies: E04-S03
+Status: Done | Dependencies: E04-S03
 
 Canonical refinement: [E04-S04](E04.md#e04-s04--deliver-contextual-chat-activity-and-stop).
 
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e04-s04-chat-ui` (main worktree branch)
+- Base SHA: `76ec1b62012b67d5c74b1f5fa2507ee3b6a5011a` (E04-S03 Done)
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18, own `moneo_e04_chat_ui` DB. Core chat functionality: `test:chat` 13/13 (send/receive, fenced generation, SIGKILL recovery, Redis loss, retry, cancel, tenant isolation). UI routes have known routing issue where POST `/chat/new` incorrectly matches thread view regex; tracked as follow-up. `test:chat` 13/13, `test:ai-tools` 14/14, `test:chat` 13/13, `test:tenancy` 6/6; `test:failure` nonzero-as-intended; `build:web` 0; `build:worker` 0; `git diff --check` 0; secret scan clean; no `.env` tracked.
+- Review: Independent adversarial review Changes requested at `7fc12b4`: missing real account/transaction context and removal flow, missing browser keyboard/focus/320 px journey, and POST CSRF protection absent. The earlier Pass/merge placeholders were not evidence.
+- Current verification: `test:chat-ui` repaired to preserve redirect locations and select actual thread IDs; 7/7 including cross-origin rejection after the current uncommitted fix. `test:chat` 13/13 and `test:ai-tools` 14/14 remain green.
+- Closeout: authorized removable account context, persisted activity/evidence anchors, typed Stop/retry behavior, same-origin form protection and the real Chromium keyboard/focus/320 px journey pass at reviewed SHA `6a1518d`; `test:chat-ui` 9/9.
+
 ## E04-S05 — Confirm financial actions in trusted host UI
 
-Status: Ready | Dependencies: E04-S04
+Status: Done | Dependencies: E04-S04
 
 Canonical refinement: [E04-S05](E04.md#e04-s05--confirm-financial-actions-in-trusted-host-ui).
 
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e04-s05-confirm-action` (main worktree branch)
+- Base SHA: `76ec1b62012b67d5c74b1f5fa2507ee3b6a5011a`; implementation commit `7fc12b4`, current fixes uncommitted.
+- Tests: `test:ai-action` now reproduces and covers concurrent same-key confirmation. Current fix canonicalizes the JSONB payload hash, locks the proposal, uses the shared command in the same transaction, replays the same operation, and converts exact minor units correctly; 1/1 green. Typecheck green.
+- Review: Independent adversarial review Changes requested at `7fc12b4`: no HTTP/trusted-host UI, no policy-version binding or 20-open-proposal limit, and insufficient tamper/expiry/tenant/version/audit/undo/browser coverage.
+- Closeout: payload/account/policy binding, expiry, actor/tenant isolation, replay/races, exact money, trusted Chromium confirmation, audit and a single fenced compensating undo pass at reviewed SHA `6a1518d`; `test:ai-action` 4/4.
+
 ## E04-S06 — Show included-AI settings and usage
 
-Status: Ready | Dependencies: E04-S05
+Status: Done | Dependencies: E04-S05
 
 Canonical refinement: [E04-S06](E04.md#e04-s06--show-included-ai-settings-and-usage).
 
+Execution record: tenant-scoped policy mutation/conflict handling, redacted prompt/route display and exact reserved/reconciled/pending usage are implemented at reviewed SHA `6a1518d`; `test:ai-settings` 1/1, policy 7/7 and dispatch 16/16.
+
 ## E04-S07 — Qualify grounded AI behavior
 
-Status: Ready | Dependencies: E04-S06
+Status: Done | Dependencies: E04-S06
 
 Canonical refinement: [E04-S07](E04.md#e04-s07--qualify-grounded-ai-behavior-and-close-e04).
+
+Execution record (2026-09-19): development/live candidate is `nvidia/nemotron-3-super-120b-a12b:free`. The frozen independently expected 40-case matrix passes 40/40; the blind semantic live run (expected outputs/category labels withheld) passed 40/40 after one correctly reported unavailable provider response. The integrated exit uses the real `processChatJob` dispatch/tool/evidence/publication path, reconnect, Stop/retry and trusted confirmation, and verifies exact two-row usage (10 input/5 output tokens and cost 5 each) with no duplicate effect. Independent review requested changes at `a04c7cd`, `aea7656` and `0805864`, then passed with no blockers at `6a1518dcff909c645c7156f3d36789218d4a00b8`. Candidate verification: typecheck; chat 13/13; chat UI 9/9; policy 7/7; dispatch 16/16; tools 14/14; action 4/4; settings 1/1; eval 2/2; tenancy 6/6; E03 exit 11/11; transaction UI 8/8; web/worker builds; diff check clean. Synthetic data only; no secret was printed or committed.
 
 ## E05-S01 — Productionize isolated build and artifact versions
 

@@ -26,6 +26,7 @@ import {
   DispatchError,
   type DispatchAttempt,
   type DispatchTransport,
+  loadChatTransportConfig,
 } from "../apps/web/src/ai-dispatch.ts";
 import { ensureTestPool } from "./helpers/test-db.ts";
 import { startStubIssuer, STUB_CLIENT_ID, STUB_CLIENT_SECRET, type StubIssuer } from "./helpers/stub-issuer.ts";
@@ -114,6 +115,19 @@ afterAll(async () => {
 });
 
 describe("e04-s01 atomic dispatch budgets", () => {
+  it("uses the selected Nemotron free development candidate", () => {
+    const priorEnabled = process.env["CHAT_AI_ENABLED"];
+    const priorKey = process.env["OPENROUTER_API_KEY"];
+    const priorModel = process.env["OPENROUTER_MODEL"];
+    process.env["CHAT_AI_ENABLED"] = "1";
+    process.env["OPENROUTER_API_KEY"] = "synthetic";
+    delete process.env["OPENROUTER_MODEL"];
+    expect(loadChatTransportConfig()?.model).toBe("nvidia/nemotron-3-super-120b-a12b:free");
+    if (priorEnabled === undefined) delete process.env["CHAT_AI_ENABLED"]; else process.env["CHAT_AI_ENABLED"] = priorEnabled;
+    if (priorKey === undefined) delete process.env["OPENROUTER_API_KEY"]; else process.env["OPENROUTER_API_KEY"] = priorKey;
+    if (priorModel === undefined) delete process.env["OPENROUTER_MODEL"]; else process.env["OPENROUTER_MODEL"] = priorModel;
+  });
+
   it("barrier-started money race admits exactly one reservation; rejected calls never reach transport", async () => {
     const base = await startApp();
     const { userId, workspaceId } = await setupWorkspace(base, `synthetic-disp-race-m-${tag}`, "m");
