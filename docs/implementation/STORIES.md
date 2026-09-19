@@ -964,9 +964,13 @@ Next dependency-ready story: **E04-S01**. Its canonical refinement is Ready in [
 
 ## E04-S01 — Enforce provider policy and atomic usage budgets
 
-Status: Ready | Dependencies: E03-S08, E02-S04
+Status: In progress | Dependencies: E03-S08, E02-S04
 
 Canonical refinement: [E04-S01](E04.md#e04-s01--enforce-provider-policy-and-atomic-usage-budgets). Specified but blocked until E03-S08 is Done.
+
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e04-s01-ai-dispatch` (main worktree branch)
+- Base SHA: `e6fd1488c07629b6838e4f569b22c08b450f7c52` (E03 exit Pass; E03-S08 Done, E03 audit remediation merged)
 
 ## E04-S02 — Persist chat and its worker-owned model loop
 
