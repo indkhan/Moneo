@@ -12,6 +12,7 @@ import type { Session } from "./session-store.ts";
 import { CommandError, getAccountView, listAccountViews, renameAccount, validateRenameInput, createAccount as createAccountCmd, validateCreateAccountInput, updateAccount, validateUpdateAccountInput, manualTransaction, validateManualTransactionInput, balanceSnapshot, validateBalanceSnapshotInput, balanceCorrection, validateBalanceCorrectionInput, listManualTransactions, listBalanceSnapshots, getBalanceSnapshot, listBalanceAudit } from "./commands/accounts.ts";
 import { acceptImportJob, JobError, readJob, validateAcceptInput } from "./jobs.ts";
 import { cancelJob } from "./job-recovery.ts";
+import { bumpCalculationVersion, bumpWorkspaceRevision, getCalculationVersion, getWorkspaceRevision, validateBumpCalculationVersionInput, validateBumpWorkspaceRevisionInput, bumpCalculationVersionInputSchema, bumpWorkspaceRevisionInputSchema, BUMP_CALCULATION_VERSION_COMMAND, BUMP_WORKSPACE_REVISION_COMMAND } from "./calculations/evidence.ts";
 import { acceptUpload, listObservations, loadUploadConfig, MAX_UPLOAD_BYTES, readImport, UploadError } from "./uploads.ts";
 import { acceptImportCommitJob, ImportCommitError, readImportCommitStatus } from "./import-commit.ts";
 import { acceptMapping, listMappingProfiles, MappingError, mappingErrorBody, proposeMapping, readCurrentMapping } from "./mapping.ts";
@@ -460,6 +461,84 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             }
             throw err;
           }
+          return true;
+        }
+        // E03-S04 calculation evidence: bump calculation version
+        if (path === "/api/commands/calculations.bump_version" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const input = validateBumpCalculationVersionInput(await readJsonBody(req));
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await bumpCalculationVersion(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof CommandError) {
+              const mapped = commandErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        // E03-S04 calculation evidence: bump workspace revision
+        if (path === "/api/commands/workspace.bump_revision" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const input = validateBumpWorkspaceRevisionInput(await readJsonBody(req));
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await bumpWorkspaceRevision(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof CommandError) {
+              const mapped = commandErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        // E03-S04 calculation evidence: get calculation version
+        if (path === "/api/calculations/version" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const version = await getCalculationVersion(pool, resolved.claim);
+          if (!version) tenantJson(res, 404, { error: "not_found" });
+          else tenantJson(res, 200, version);
+          return true;
+        }
+        // E03-S04 calculation evidence: get workspace revision
+        if (path === "/api/workspace/revision" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const revision = await getWorkspaceRevision(pool, resolved.claim);
+          if (!revision) tenantJson(res, 404, { error: "not_found" });
+          else tenantJson(res, 200, revision);
           return true;
         }
         // Manual transactions list for an account
