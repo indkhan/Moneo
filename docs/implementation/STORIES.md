@@ -964,7 +964,7 @@ Next dependency-ready story: **E04-S01**. Its canonical refinement is Ready in [
 
 ## E04-S01 — Enforce provider policy and atomic usage budgets
 
-Status: In progress | Dependencies: E03-S08, E02-S04
+Status: Done | Dependencies: E03-S08, E02-S04
 
 Canonical refinement: [E04-S01](E04.md#e04-s01--enforce-provider-policy-and-atomic-usage-budgets). Specified but blocked until E03-S08 is Done.
 
@@ -975,7 +975,7 @@ Execution record:
 - Design note: `apps/web/src/ai-dispatch.ts` is the one shared server dispatch (no provider registry): reserveDispatch admits in a single tx (permit CAS fenced by locked policy version + route + concurrency/money/token budgets + idempotent key claim); executeReserved rechecks the version, runs at most 2 attempts (second only with zero provider output, 30 s cap each), reconciles RECONCILED (exact decimal-string cost from measured tokens at the synthetic per-mille rate) / PENDING (unknown held at full reservation, never zero) / RELEASED (documented terminal classes incl. revoked/cancelled-before-dispatch). Synthetic cost rate (€0.01/1k input + €0.04/1k output minor units) keeps the €10 default budget meaningful; production rates arrive with route qualification. No HTTP routes yet (typed DispatchError + dispatchErrorBody for later UI); no callers beyond tests.
 - Review: independent adversarial review (separate task) Changes requested at `2a675fb` with two reproduced blockers — B1 same-key concurrent reserve escaping into raw 23505 (check ran before the budget lock), B2 between-attempts revocation settle unfenced (clobbered cancel) — plus 7 nonblocking notes. Fix `6d17874`: budget lock before idempotency check + savepoint-guarded claim with converge-or-reuse, fenced retry-revocation settle, FOR UPDATE policy lock (N4), DB ceiling aligned to 4000 (N6), same-key convergence + cancel-interleaved regression tests. Re-review Pass at `6d17874` (14/14 x3 runs + isolated new tests, typecheck/policy/tenancy/jobs/recovery green, diff-check clean).
 - Integration: local main at base `e6fd148` unchanged; origin/main stale (local-only merges per E00 precedent); merge-base == base; candidate == reviewed `6d17874` plus docs-only ledger delta (empty non-docs diff); full candidate gates green (see Tests). Merged with `--no-ff`.
-- Merge SHA / post-merge smoke: `PENDING_MERGE`; post-merge `npm run check` + `test:ai-dispatch` + `staging:smoke` to record.
+- Merge SHA / post-merge smoke: `5f6700aaa41ab1f1323ca2fe084a52bae7648624`; post-merge `npm run check` 0, `test:ai-dispatch` 14/14, `staging:smoke` PASS (health/readiness/rollback/restore), clean status. Remote push/PR not performed (local-only merges per E00 precedent).
 - Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted per re-review: N1 reconciled cost is measured truth with admission-time budgets (no post-hoc cap); N2 non-2xx-with-output stays terminal RELEASED per acceptance 2/4; N3 reservation `expires_at` enforcement is an E04-S02 worker-loop dependency; N5 rollback guard comment-only pre-release; N7 real 30 s timeout firing untested (scripted transports resolve immediately); Low-1 savepoint sits after the permit update (unreachable under budget-lock serialization — loser permits survive per test); Low-2 rowCount guard alignment on next touch.
 
 ## E04-S02 — Persist chat and its worker-owned model loop
