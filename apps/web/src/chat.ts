@@ -70,6 +70,7 @@ export type AttemptView = {
   turnId: string;
   generation: number;
   status: "running" | "published" | "interrupted" | "failed" | "cancelled";
+  evidenceIds: string[];
 };
 export type ActivityEvent = {
   seq: string;
@@ -183,18 +184,19 @@ export async function getThread(pool: Pool, claims: TenantClaims, threadId: stri
       [claims.workspaceId, threadId],
     );
     const attempts = await client.query(
-      "SELECT a.workspace_id, a.id, a.turn_id, a.generation, a.status FROM chat_attempts a JOIN chat_turns t ON t.workspace_id = a.workspace_id AND t.id = a.turn_id WHERE a.workspace_id = $1 AND t.thread_id = $2 ORDER BY a.created_at ASC, a.id ASC",
+      "SELECT a.workspace_id, a.id, a.turn_id, a.generation, a.status, COALESCE((SELECT jsonb_agg(value) FROM chat_tool_calls c CROSS JOIN LATERAL jsonb_array_elements_text(c.evidence_ids) value WHERE c.workspace_id = a.workspace_id AND c.attempt_id = a.id), '[]'::jsonb) AS evidence_ids FROM chat_attempts a JOIN chat_turns t ON t.workspace_id = a.workspace_id AND t.id = a.turn_id WHERE a.workspace_id = $1 AND t.thread_id = $2 ORDER BY a.created_at ASC, a.id ASC",
       [claims.workspaceId, threadId],
     );
     return {
       thread: rowToThread(thread.rows[0] as Parameters<typeof rowToThread>[0]),
       turns: (turns.rows as Parameters<typeof rowToTurn>[0][]).map(rowToTurn),
-      attempts: (attempts.rows as { workspace_id: string; id: string; turn_id: string; generation: number; status: string }[]).map((r) => ({
+      attempts: (attempts.rows as { workspace_id: string; id: string; turn_id: string; generation: number; status: string; evidence_ids: string[] }[]).map((r) => ({
         workspaceId: r.workspace_id,
         id: r.id,
         turnId: r.turn_id,
         generation: r.generation,
         status: r.status as AttemptView["status"],
+        evidenceIds: r.evidence_ids,
       })),
     };
   });

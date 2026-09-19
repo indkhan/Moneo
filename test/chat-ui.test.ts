@@ -323,8 +323,3 @@ it("renders thread list, creates thread, shows context chips, and sends a messag
     expect(viewRes.text).not.toContain("<img");
   });
 });
-
-
-
-
-

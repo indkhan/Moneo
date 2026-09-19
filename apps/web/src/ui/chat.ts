@@ -253,14 +253,16 @@ export function createChatRouter(pool: Pool, resolveSession: SessionResolver, co
           const isUser = turn.role === "user";
           const badge = isUser ? "" : statusBadge(turn.status);
           const bodyHtml = isUser ? escapeHtml(turn.body) : renderMarkdown(turn.body);
+          const evidence = view.attempts.filter((attempt) => attempt.turnId === turn.id).flatMap((attempt) => attempt.evidenceIds);
           return `
-            <article class="turn ${turn.role}">
+            <article id="turn-${escapeHtml(turn.id)}" class="turn ${turn.role}">
               <header>
                 <strong>${isUser ? "You" : "Assistant"}</strong>
                 ${badge}
                 <time datetime="${turn.createdAt}">${timeAgo(turn.createdAt)}</time>
               </header>
               <div class="turn-body">${bodyHtml}</div>
+              ${evidence.length ? `<p class="evidence"><strong>Evidence:</strong> ${evidence.map((ref) => `<a id="evidence-${escapeHtml(ref)}" href="#evidence-${escapeHtml(ref)}">${escapeHtml(ref)}</a>`).join(", ")}</p>` : ""}
               ${!isUser && (turn.status === "queued" || turn.status === "running") ? `
                 <form method="post" action="/w/${escapeHtml(workspaceId)}/chat/${escapeHtml(threadId)}/stop" style="display:inline">
                   <button type="submit">Stop</button>
@@ -368,7 +370,9 @@ export function createChatRouter(pool: Pool, resolveSession: SessionResolver, co
             await cancelTurn(pool, claims, runningTurn.id);
           }
         }
-      } catch { /* ignore */ }
+      } catch (err) {
+        if (!(err instanceof TenantDenied)) throw err;
+      }
       res.writeHead(303, { Location: `/w/${escapeHtml(workspaceId)}/chat/${threadId}` });
       res.end();
       return true;

@@ -6,7 +6,7 @@ import type { Pool } from "pg";
 import { createApp } from "../apps/web/src/server.ts";
 import { createAuthRouter, requestSession, type AuthConfig } from "../apps/web/src/auth.ts";
 import { createTenancyRouter, withTenant } from "../apps/web/src/tenancy.ts";
-import { addEvalCase, createEvalRun, finalizeEvalRun, runDeterministicProtocol, type EvalCategory } from "../apps/web/src/ai-eval.ts";
+import { addEvalCase, createEvalRun, evaluateProtocolCase, finalizeEvalRun, runDeterministicProtocol, runLiveEvaluation, type EvalCategory } from "../apps/web/src/ai-eval.ts";
 import { cancelTurn, createThread, readActivity, retryTurn, sendTurn } from "../apps/web/src/chat.ts";
 import { createToolContext, executeTool } from "../apps/web/src/ai-tools.ts";
 import { confirmProposal, createProposal } from "../apps/web/src/ai-action-proposals.ts";
@@ -49,11 +49,21 @@ afterAll(async () => {
 describe("e04-s07 frozen deterministic evaluation", () => {
   it("runs the predeclared 40-case category matrix and persists a 100% protocol summary", async () => {
     const claims = await fixture();
-    const run = await createEvalRun(pool, claims, "deterministic-double", "development");
+    const run = await createEvalRun(pool, claims, "deterministic-double:free", "development");
     const counts: Array<[EvalCategory, number]> = [["numerical_grounding", 12], ["evidence_completeness", 8], ["abstention_missing_coverage", 6], ["exclusions_tenant_hostile", 6], ["tool_selection", 4], ["action_consent", 4]];
-    for (const [category, count] of counts) for (let i = 0; i < count; i++) await addEvalCase(pool, claims, run.id, { category, input: { synthetic: true, index: i }, expectedOutput: { category, index: i, allowed: true } });
-    const result = await runDeterministicProtocol(pool, claims, run.id, async ({ expectedOutput }) => expectedOutput);
+    for (const [category, count] of counts) for (let i = 0; i < count; i++) {
+      const input = category === "numerical_grounding" ? { values: [String(i + 1), "10"] } : category === "evidence_completeness" ? { evidenceIds: ["a", "b"], required: 2 } : category === "abstention_missing_coverage" ? { coverage: "partial" } : category === "exclusions_tenant_hostile" ? { authorized: false, excluded: true } : category === "tool_selection" ? { intent: i % 2 ? "totals" : "search" } : { hostConfirmed: false };
+      const expectedOutput = category === "numerical_grounding" ? { totalMinor: String(i + 11), delegated: true } : category === "evidence_completeness" ? { complete: true } : category === "abstention_missing_coverage" ? { answer: "UNAVAILABLE" } : category === "exclusions_tenant_hostile" ? { answer: "REFUSE" } : category === "tool_selection" ? { tool: i % 2 ? "finance.totals" : "transactions.search" } : { answer: "HOST_CONFIRMATION_REQUIRED" };
+      await addEvalCase(pool, claims, run.id, { category, input, expectedOutput });
+    }
+    const result = await runDeterministicProtocol(pool, claims, run.id, async ({ category, input }) => evaluateProtocolCase(category, input));
     expect(result).toEqual({ passed: 40, failed: 0, total: 40 });
+    const live = await runLiveEvaluation(pool, claims, run.id, async (request) => {
+      const input = JSON.parse(request.requestText) as Record<string, unknown>;
+      const category = input.values ? "numerical_grounding" : input.evidenceIds ? "evidence_completeness" : input.coverage ? "abstention_missing_coverage" : "authorized" in input ? "exclusions_tenant_hostile" : input.intent ? "tool_selection" : "action_consent";
+      return { httpStatus: 200, bodyText: JSON.stringify(evaluateProtocolCase(category, input)), inputTokens: 10, outputTokens: 5, model: request.model };
+    });
+    expect(live).toEqual({ completed: true, callsMade: 40, costMinor: 0 });
     await finalizeEvalRun(pool, claims, run.id);
     const summary = await withTenant(pool, claims, (client) => client.query("SELECT total_cases, passed_cases, failed_cases, overall_score::text AS score FROM ai_eval_summaries WHERE workspace_id = $1 AND run_id = $2", [claims.workspaceId, run.id]));
     expect(summary.rows[0]).toEqual({ total_cases: 40, passed_cases: 40, failed_cases: 0, score: "1.0000" });

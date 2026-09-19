@@ -3,6 +3,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Pool } from "pg";
+import { chromium } from "playwright";
 import { createApp } from "../apps/web/src/server.ts";
 import { createAuthRouter, requestSession, type AuthConfig } from "../apps/web/src/auth.ts";
 import { createTenancyRouter } from "../apps/web/src/tenancy.ts";
@@ -62,12 +63,46 @@ describe("e04-s05 trusted action confirmation", () => {
   it("renders and confirms through a trusted host form", async () => {
     const { base, cookie, userId, workspaceId, accountId } = await setup();
     const proposal = await createProposal(pool, { userId, workspaceId }, userId, { accountId, amountMinor: "1234", currency: "EUR", direction: "OUTFLOW", effectiveDate: "2026-09-19", description: "Synthetic" });
-    const view = await fetch(`${base}/w/${workspaceId}/ai-actions/${proposal.id}`, { headers: { cookie } });
-    expect(view.status).toBe(200);
-    const body = await view.text();
-    expect(body).toContain("12.34 EUR");
-    expect(body).toContain("Confirm transaction");
-    const confirmed = await fetch(`${base}/w/${workspaceId}/ai-actions/${proposal.id}/confirm`, { method: "POST", redirect: "manual", headers: { cookie, Origin: base, "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ idempotencyKey: randomUUID() }) });
-    expect(confirmed.status).toBe(303);
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const context = await browser.newContext();
+      await context.addCookies([{ name: cookie.split("=")[0], value: cookie.split("=").slice(1).join("="), url: base }]);
+      const page = await context.newPage();
+      await page.goto(`${base}/w/${workspaceId}/ai-actions/${proposal.id}`);
+      expect(await page.getByText("12.34 EUR").isVisible()).toBe(true);
+      const confirm = page.getByRole("button", { name: "Confirm transaction" });
+      await confirm.focus();
+      await page.keyboard.press("Enter");
+      await page.waitForURL(new RegExp(`/w/${workspaceId}/transactions\\?notice=ai-confirmed`));
+    } finally {
+      await browser.close();
+    }
+    const count = await withTenant(pool, { userId, workspaceId }, async (client) => Number((await client.query("SELECT count(*) AS n FROM manual_transactions WHERE workspace_id = $1", [workspaceId])).rows[0].n));
+    expect(count).toBe(1);
+  }, 15_000);
+
+  it("rejects replay, tampering, expiry, and stale account or policy state", async () => {
+    const { userId, workspaceId, accountId } = await setup();
+    const claims = { userId, workspaceId };
+    const payload = { accountId, amountMinor: "1234", currency: "EUR", direction: "OUTFLOW" as const, effectiveDate: "2026-09-19", description: "Synthetic" };
+    const confirmed = await createProposal(pool, claims, userId, payload);
+    await confirmProposal(pool, claims, userId, confirmed.id, randomUUID());
+    await expect(confirmProposal(pool, claims, userId, confirmed.id, randomUUID())).rejects.toMatchObject({ code: "already_confirmed" });
+
+    const tampered = await createProposal(pool, claims, userId, payload);
+    await withTenant(pool, claims, (client) => client.query("UPDATE ai_action_proposals SET payload = jsonb_set(payload, '{amountMinor}', '\"9999\"') WHERE workspace_id = $1 AND id = $2", [workspaceId, tampered.id]));
+    await expect(confirmProposal(pool, claims, userId, tampered.id, randomUUID())).rejects.toMatchObject({ code: "payload_mismatch" });
+
+    const expired = await createProposal(pool, claims, userId, payload);
+    await withTenant(pool, claims, (client) => client.query("UPDATE ai_action_proposals SET expires_at = now() - interval '1 second' WHERE workspace_id = $1 AND id = $2", [workspaceId, expired.id]));
+    await expect(confirmProposal(pool, claims, userId, expired.id, randomUUID())).rejects.toMatchObject({ code: "expired" });
+
+    const staleAccount = await createProposal(pool, claims, userId, payload);
+    await withTenant(pool, claims, (client) => client.query("UPDATE accounts SET version = version + 1 WHERE workspace_id = $1 AND id = $2", [workspaceId, accountId]));
+    await expect(confirmProposal(pool, claims, userId, staleAccount.id, randomUUID())).rejects.toMatchObject({ code: "version_mismatch" });
+
+    const stalePolicy = await createProposal(pool, claims, userId, payload);
+    await withTenant(pool, claims, (client) => client.query("UPDATE ai_policies SET policy_version = policy_version + 1 WHERE workspace_id = $1", [workspaceId]));
+    await expect(confirmProposal(pool, claims, userId, stalePolicy.id, randomUUID())).rejects.toMatchObject({ code: "version_mismatch" });
   });
 });

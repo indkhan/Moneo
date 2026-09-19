@@ -172,17 +172,17 @@ export async function confirmProposal(
       [claims.workspaceId, proposalId],
     );
     if ((proposal.rowCount ?? 0) === 0) throw new ProposalError("not_found");
-    const prop = proposal.rows[0] as { 
-      id: string; 
-      kind: string; 
-      payload_hash: string; 
-      payload: any; 
-      account_version: string; 
+    const prop = proposal.rows[0] as {
+      id: string;
+      kind: string;
+      payload_hash: string;
+      payload: any;
+      account_version: string;
       policy_version: string;
-      proposed_by: string; 
-      status: string; 
-      expires_at: unknown; 
-      confirmed_by: string | null; 
+      proposed_by: string;
+      status: string;
+      expires_at: unknown;
+      confirmed_by: string | null;
       confirmed_at: string | null;
       created_at: unknown;
       created_by: string;
@@ -225,7 +225,7 @@ export async function confirmProposal(
     ]);
 
     return {
-      proposal: { 
+      proposal: {
         workspaceId: claims.workspaceId,
         id: prop.id,
         kind: prop.kind,
