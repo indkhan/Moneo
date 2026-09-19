@@ -26,6 +26,7 @@ export const UNDO_COMMAND = "operations.undo";
 const REPLAY_RETENTION_DAYS = 30;
 
 export type TransactionKind = "imported" | "manual";
+export type FinancialKind = "NORMAL" | "TRANSFER" | "FEE" | "REFUND" | "CREDIT_REPAYMENT";
 
 export type CategoryView = {
   workspaceId: string;
@@ -62,6 +63,8 @@ export type TransactionView = {
   categoryId: string | null;
   tagIds: string[];
   version: string;
+  financialKind: FinancialKind;
+  linkedAccountId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -264,6 +267,8 @@ export type CorrectInput = {
   description?: string;
   categoryId?: string | null;
   tagIds?: string[];
+  financialKind?: FinancialKind;
+  linkedAccountId?: string | null;
   idempotencyKey: string;
 };
 
@@ -271,7 +276,7 @@ export function validateCorrectInput(value: unknown): CorrectInput {
   if (typeof value !== "object" || value === null) throw new TenantInvalid();
   const v = value as Record<string, unknown>;
   for (const key of Object.keys(v)) {
-    if (!["workspaceId", "transactionKind", "transactionId", "expectedVersion", "amount", "currency", "direction", "effectiveDate", "description", "categoryId", "tagIds", "idempotencyKey"].includes(key)) throw new TenantInvalid();
+    if (!["workspaceId", "transactionKind", "transactionId", "expectedVersion", "amount", "currency", "direction", "effectiveDate", "description", "categoryId", "tagIds", "financialKind", "linkedAccountId", "idempotencyKey"].includes(key)) throw new TenantInvalid();
   }
   const input: CorrectInput = {
     workspaceId: checkUuid(v.workspaceId),
@@ -296,6 +301,12 @@ export function validateCorrectInput(value: unknown): CorrectInput {
     input.description = v.description;
   }
   if (v.categoryId !== undefined) input.categoryId = v.categoryId === null ? null : checkUuid(v.categoryId);
+  if (v.financialKind !== undefined) {
+    if (!["NORMAL", "TRANSFER", "FEE", "REFUND", "CREDIT_REPAYMENT"].includes(v.financialKind as string)) throw new TenantInvalid();
+    input.financialKind = v.financialKind as FinancialKind;
+    input.linkedAccountId = v.linkedAccountId === null || v.linkedAccountId === undefined ? null : checkUuid(v.linkedAccountId);
+    if (["TRANSFER", "CREDIT_REPAYMENT"].includes(input.financialKind) !== (input.linkedAccountId !== null)) throw new TenantInvalid();
+  } else if (v.linkedAccountId !== undefined) throw new TenantInvalid();
   if (v.tagIds !== undefined) {
     if (!Array.isArray(v.tagIds) || v.tagIds.length > 20) throw new TenantInvalid();
     const seen = new Set<string>();
@@ -312,6 +323,7 @@ export function validateCorrectInput(value: unknown): CorrectInput {
     input.description === undefined &&
     input.categoryId === undefined &&
     input.tagIds === undefined
+    && input.financialKind === undefined
   ) {
     throw new TenantInvalid();
   }
@@ -496,11 +508,11 @@ export async function bumpRevision(client: PoolClient, workspaceId: string): Pro
 async function readTransactionView(client: PoolClient, workspaceId: string, kind: TransactionKind, id: string): Promise<TransactionView | null> {
   const table = tableFor(kind);
   const rows = await client.query(
-    `SELECT workspace_id, id, account_id, amount_minor, currency, direction, effective_date, description, category_id, version, created_at, updated_at FROM ${table} WHERE workspace_id = $1 AND id = $2`,
+    `SELECT workspace_id, id, account_id, amount_minor, currency, direction, effective_date, description, category_id, version, financial_kind, linked_account_id, created_at, updated_at FROM ${table} WHERE workspace_id = $1 AND id = $2`,
     [workspaceId, id],
   );
   if ((rows.rowCount ?? 0) === 0) return null;
-  const r = rows.rows[0] as { workspace_id: string; id: string; account_id: string; amount_minor: string; currency: string; direction: string; effective_date: string | Date; description: string; category_id: string | null; version: string; created_at: string; updated_at: string };
+  const r = rows.rows[0] as { workspace_id: string; id: string; account_id: string; amount_minor: string; currency: string; direction: string; effective_date: string | Date; description: string; category_id: string | null; version: string; financial_kind: FinancialKind; linked_account_id: string | null; created_at: string; updated_at: string };
   let tagIds: string[] = [];
   if (kind === "imported") {
     const tags = await client.query("SELECT tag_id FROM transaction_tags WHERE workspace_id = $1 AND transaction_id = $2 ORDER BY tag_id", [workspaceId, id]);
@@ -519,6 +531,8 @@ async function readTransactionView(client: PoolClient, workspaceId: string, kind
     categoryId: r.category_id,
     tagIds,
     version: formatDecimalBigint(BigInt(r.version)),
+    financialKind: r.financial_kind,
+    linkedAccountId: r.linked_account_id,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -824,7 +838,7 @@ export async function removeTag(pool: Pool, claims: TenantClaims, actorId: strin
 
 export async function correctTx(client: PoolClient, claims: TenantClaims, actorId: string, input: CorrectInput): Promise<TxOutcome<TransactionView>> {
   const expected = await requireVersion(input.expectedVersion);
-  const hash = requestHash({ command: CORRECT_COMMAND, workspaceId: input.workspaceId, kind: input.transactionKind, transactionId: input.transactionId, amount: input.amount ?? null, currency: input.currency ?? null, direction: input.direction ?? null, effectiveDate: input.effectiveDate ?? null, description: input.description ?? null, categoryId: input.categoryId === undefined ? "UNCHANGED" : input.categoryId, tagIds: input.tagIds ?? "UNCHANGED", expectedVersion: input.expectedVersion });
+  const hash = requestHash({ command: CORRECT_COMMAND, workspaceId: input.workspaceId, kind: input.transactionKind, transactionId: input.transactionId, amount: input.amount ?? null, currency: input.currency ?? null, direction: input.direction ?? null, effectiveDate: input.effectiveDate ?? null, description: input.description ?? null, categoryId: input.categoryId === undefined ? "UNCHANGED" : input.categoryId, tagIds: input.tagIds ?? "UNCHANGED", financialKind: input.financialKind ?? "UNCHANGED", linkedAccountId: input.financialKind === undefined ? "UNCHANGED" : input.linkedAccountId, expectedVersion: input.expectedVersion });
   // Money parse happens before the journal claim: malformed amounts are a
   // 400 (TenantInvalid), and no journal row is consumed by a doomed command.
   let minor: bigint | null = null;
@@ -866,6 +880,14 @@ export async function correctTx(client: PoolClient, claims: TenantClaims, actorI
     if (input.categoryId !== undefined) {
       sets.push(`category_id = $${idx++}`);
       params.push(input.categoryId);
+    }
+    if (input.financialKind !== undefined) {
+      if (input.linkedAccountId !== null) {
+        const linked = await client.query("SELECT 1 FROM accounts WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, input.linkedAccountId]);
+        if ((linked.rowCount ?? 0) === 0) throw new TxError("not_found");
+      }
+      sets.push(`financial_kind = $${idx++}`, `linked_account_id = $${idx++}`);
+      params.push(input.financialKind, input.linkedAccountId);
     }
     const updated = await client.query(`UPDATE ${table} SET ${sets.join(", ")} WHERE workspace_id = $1 AND id = $2 AND version = $3 RETURNING version`, params);
     if ((updated.rowCount ?? 0) === 0) {

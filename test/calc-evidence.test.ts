@@ -91,7 +91,7 @@ afterAll(async () => {
 });
 
 describe("e03-s04 calculation evidence and workspace revision", () => {
-  it("bumps calculation version and returns new version with hashes", async () => {
+  it("rejects client-triggered calculation versions", async () => {
     const base = await startApp();
     const { cookie, workspaceId } = await setupWorkspace(base, "e04-calc-a");
     const key = randomUUID();
@@ -99,42 +99,22 @@ describe("e03-s04 calculation evidence and workspace revision", () => {
       workspaceId,
       idempotencyKey: key,
     });
-    expect(bumped.status).toBe(200);
-    expect(bumped.json).toMatchObject({
-      workspaceId,
-      version: "1",
-      inputsHash: "pending",
-      resultsHash: "pending",
-      replayed: false,
-    });
-    expect(typeof (bumped.json as { operationId: string }).operationId).toBe("string");
-    expect(typeof (bumped.json as { createdAt: string }).createdAt).toBe("string");
-    // Replay returns identical result
-    const replay = await postJson(base, "/api/commands/calculations.bump_version", cookie, {
-      workspaceId,
-      idempotencyKey: key,
-    });
-    expect(replay.status).toBe(200);
-    expect(replay.json).toMatchObject({ replayed: true });
-    expect((replay.json as { operationId: string }).operationId).toBe((bumped.json as { operationId: string }).operationId);
+    expect(bumped.status).toBe(400);
   });
 
   it("returns current calculation version via GET", async () => {
     const base = await startApp();
     const { cookie, workspaceId } = await setupWorkspace(base, "e04-calc-b");
-    // First bump to create version
-    await postJson(base, "/api/commands/calculations.bump_version", cookie, {
-      workspaceId,
-      idempotencyKey: randomUUID(),
-    });
+    const calculated = await getJson(base, `/api/calculations/financial-summary?workspaceId=${workspaceId}`, cookie);
+    expect(calculated.status).toBe(200);
     // Read version
     const version = await getJson(base, `/api/calculations/version?workspaceId=${workspaceId}`, cookie);
     expect(version.status).toBe(200);
     expect(version.json).toMatchObject({
       workspaceId,
       version: "1",
-      inputsHash: "pending",
-      resultsHash: "pending",
+      inputsHash: (calculated.json as { inputsHash: string }).inputsHash,
+      resultsHash: (calculated.json as { resultsHash: string }).resultsHash,
     });
     expect(typeof (version.json as { createdAt: string }).createdAt).toBe("string");
   });
@@ -208,7 +188,7 @@ describe("e03-s04 calculation evidence and workspace revision", () => {
     expect(readRev.status).toBe(404);
   });
 
-  it("idempotency replay returns same operationId", async () => {
+  it("does not create evidence from repeated client bump requests", async () => {
     const base = await startApp();
     const { cookie, workspaceId } = await setupWorkspace(base, "e04-idempotent");
     const key = randomUUID();
@@ -216,19 +196,13 @@ describe("e03-s04 calculation evidence and workspace revision", () => {
       workspaceId,
       idempotencyKey: key,
     });
-    expect(first.status).toBe(200);
-    const opId1 = (first.json as { operationId: string }).operationId;
-    // Replay with same key
+    expect(first.status).toBe(400);
     const replay = await postJson(base, "/api/commands/calculations.bump_version", cookie, {
       workspaceId,
       idempotencyKey: key,
     });
-    expect(replay.status).toBe(200);
-    expect((replay.json as { replayed: boolean }).replayed).toBe(true);
-    expect((replay.json as { operationId: string }).operationId).toBe(opId1);
-    // Version should still be 1 (no new version created on replay)
+    expect(replay.status).toBe(400);
     const version = await getJson(base, `/api/calculations/version?workspaceId=${workspaceId}`, cookie);
-    expect(version.status).toBe(200);
-    expect(version.json).toMatchObject({ version: "1" });
+    expect(version.status).toBe(404);
   });
 });

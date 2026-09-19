@@ -24,7 +24,6 @@ import type { Session } from "../apps/web/src/session-store.ts";
 import { createTenancyRouter, withTenant } from "../apps/web/src/tenancy.ts";
 import { createUiRouter } from "../apps/web/src/ui/routes.ts";
 import { formatMinor, parseMinor } from "../apps/web/src/money.ts";
-import { calculateWorkspaceTotals, classifyLeg, type TransactionLeg } from "../apps/web/src/calculations/cash.ts";
 import { valuateSnapshot } from "../apps/web/src/calculations/fx.ts";
 import { ensureTestPool } from "./helpers/test-db.ts";
 import { startStubIssuer, STUB_CLIENT_ID, STUB_CLIENT_SECRET, type StubIssuer } from "./helpers/stub-issuer.ts";
@@ -304,41 +303,38 @@ describe("e03-s08 financial-truth exit", () => {
 
   it("classifies transfers, fees, refunds and repayments with exact totals", async () => {
     const base = await startApp();
-    const { cookie, workspaceId } = await setupWorkspace(base, "e03-exit-cash");
+    const { cookie, workspaceId, userId } = await setupWorkspace(base, "e03-exit-cash");
     const eur = await createAccount(base, cookie, workspaceId, "Operating", "EUR");
     const jpy = await createAccount(base, cookie, workspaceId, "Tokyo", "JPY");
-    const owned = new Set([eur, jpy]);
-    const legs: TransactionLeg[] = [
-      { accountId: eur, amountMinor: 10000n, currency: "EUR", direction: "OUTFLOW", effectiveDate: "2024-02-01", description: "Transfer to Tokyo", source: "imported", counterpartyAccountId: jpy },
-      { accountId: jpy, amountMinor: 16200n, currency: "JPY", direction: "INFLOW", effectiveDate: "2024-02-01", description: "Transfer from Operating", source: "imported", counterpartyAccountId: eur },
-      { accountId: eur, amountMinor: 250n, currency: "EUR", direction: "OUTFLOW", effectiveDate: "2024-02-01", description: "Transfer fee", source: "imported", isFee: true },
-      { accountId: eur, amountMinor: 6000n, currency: "EUR", direction: "OUTFLOW", effectiveDate: "2024-02-02", description: "Groceries", source: "imported" },
-      { accountId: eur, amountMinor: 6000n, currency: "EUR", direction: "INFLOW", effectiveDate: "2024-02-03", description: "Grocery refund", source: "imported", isRefund: true },
-      { accountId: eur, amountMinor: 20000n, currency: "EUR", direction: "OUTFLOW", effectiveDate: "2024-02-04", description: "Card repayment", source: "manual", counterpartyAccountId: jpy, isCreditRepayment: true },
-      { accountId: eur, amountMinor: 2500n, currency: "EUR", direction: "OUTFLOW", effectiveDate: "2024-02-05", description: "Manual book", source: "manual" },
-    ];
-    const ownedMap = new Map([[eur, { currency: "EUR" }], [jpy, { currency: "JPY" }]]);
-    const classified = legs.map((l) => classifyLeg(l, owned));
-    expect(classified.map((c) => c.classification)).toEqual(["transfer_principal", "transfer_principal", "transfer_fee", "spend", "refund", "credit_repayment", "spend"]);
-    const totals = calculateWorkspaceTotals(classified, ownedMap);
-    // Independent: spend = 250 (fee) + 6000 (groceries) - 6000 (refund) + 2500 (manual) = 2750.
-    expect(totals.byCurrency).toEqual([
-      expect.objectContaining({
-        currency: "EUR",
-      incomeMinor: "0",
-      spendMinor: "2750",
-      cashMinor: "-2750",
-        transferPrincipalMinor: "10000",
-      transferFeeMinor: "250",
-      refundMinor: "6000",
-      creditRepaymentMinor: "20000",
-      }),
+    const rows = [
+      [await seedTx(workspaceId, userId, eur, "10000", "EUR", "OUTFLOW", "2024-02-01", "Transfer to Tokyo"), "TRANSFER", jpy],
+      [await seedTx(workspaceId, userId, jpy, "16200", "JPY", "INFLOW", "2024-02-01", "Transfer from Operating"), "TRANSFER", eur],
+      [await seedTx(workspaceId, userId, eur, "250", "EUR", "OUTFLOW", "2024-02-01", "Transfer fee"), "FEE", null],
+      [await seedTx(workspaceId, userId, eur, "6000", "EUR", "OUTFLOW", "2024-02-02", "Groceries"), "NORMAL", null],
+      [await seedTx(workspaceId, userId, eur, "6000", "EUR", "INFLOW", "2024-02-03", "Grocery refund"), "REFUND", null],
+      [await seedTx(workspaceId, userId, eur, "20000", "EUR", "OUTFLOW", "2024-02-04", "Card repayment"), "CREDIT_REPAYMENT", jpy],
+      [await seedTx(workspaceId, userId, eur, "2500", "EUR", "OUTFLOW", "2024-02-05", "Manual book"), "NORMAL", null],
+    ] as const;
+    for (const [transactionId, financialKind, linkedAccountId] of rows) {
+      const corrected = await postJson(base, "/api/commands/transactions.correct", cookie, { workspaceId, transactionKind: "imported", transactionId, expectedVersion: "1", financialKind, linkedAccountId, idempotencyKey: randomUUID() });
+      expect(corrected.status).toBe(200);
+    }
+    await withTenant(pool, { userId, workspaceId }, (client) => client.query("INSERT INTO fx_rates_ecb (workspace_id, rate_date, target_currency, rate, source_hash, checksum) VALUES ($1, '2024-02-01', 'JPY', '162.00', 'fixture', 'fixture')", [workspaceId]));
+    const response = await getJson(base, `/api/calculations/financial-summary?workspaceId=${workspaceId}`, cookie);
+    expect(response.status).toBe(200);
+    expect(response.json.native).toEqual([
+      expect.objectContaining({ currency: "EUR", spendMinor: "2750", cashMinor: "-2750", transferPrincipalMinor: "10000", transferFeeMinor: "250", refundMinor: "6000", creditRepaymentMinor: "20000" }),
       expect.objectContaining({ currency: "JPY", transferPrincipalMinor: "16200" }),
     ]);
-    // Selected-account view differs only as specified: EUR legs alone.
-    const eurOnly = calculateWorkspaceTotals(classified.filter((c) => c.accountId === eur), ownedMap);
-    expect(eurOnly.byCurrency[0]!.transferPrincipalMinor).toBe("10000");
-    expect(eurOnly.byCurrency[0]!.spendMinor).toBe("2750");
+    expect(response.json.base).toEqual({ incomeMinor: "0", spendMinor: "2750", cashMinor: "-2750", coverage: "full", unvaluedCount: "0" });
+    expect(response.json.inputsHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(response.json.resultsHash).toMatch(/^[a-f0-9]{64}$/);
+    const stored = await getJson(base, `/api/calculations/version?workspaceId=${workspaceId}`, cookie);
+    expect(stored.json).toMatchObject({ version: response.json.calculationVersion, inputsHash: response.json.inputsHash, resultsHash: response.json.resultsHash });
+    const selected = await getJson(base, `/api/calculations/financial-summary?workspaceId=${workspaceId}&accountId=${eur}&dateTo=2024-02-03`, cookie);
+    expect(selected.status).toBe(200);
+    expect(selected.json.native).toEqual([expect.objectContaining({ currency: "EUR", spendMinor: "250", cashMinor: "-250", transferPrincipalMinor: "10000", refundMinor: "6000" })]);
+    expect(selected.json.base).toEqual({ incomeMinor: "0", spendMinor: "250", cashMinor: "-250", coverage: "full", unvaluedCount: "0" });
   });
 
   it("values FX with coverage honesty and untouched natives", async () => {

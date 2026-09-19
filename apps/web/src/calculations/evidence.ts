@@ -249,41 +249,8 @@ export async function bumpCalculationVersionTx(
   actorId: string,
   input: BumpCalculationVersionInput,
 ): Promise<TxOutcome<CalculationVersionView>> {
-  const hash = bumpCalculationVersionRequestHash(input);
-  return claimAndExecute(client, claims, actorId, BUMP_CALCULATION_VERSION_COMMAND, input, hash, async (client, operationId) => {
-    // Get current version
-    const current = await client.query(
-      "SELECT version, inputs_hash, results_hash FROM calculation_versions WHERE workspace_id = $1 ORDER BY version DESC LIMIT 1",
-      [claims.workspaceId],
-    );
-    const nextVersion = ((current.rows[0] as { version: string })?.version ? BigInt((current.rows[0] as { version: string }).version) : 0n) + 1n;
-
-    // This legacy command is not authoritative calculation evidence; E03
-    // remains blocked until the server calculation boundary supplies hashes.
-    const versionStr = nextVersion.toString(10);
-    const inputsHash = "pending";
-    const resultsHash = "pending";
-
-    await client.query(
-      "INSERT INTO calculation_versions (workspace_id, version, inputs_hash, results_hash) VALUES ($1, $2, $3, $4)",
-      [claims.workspaceId, nextVersion, inputsHash, resultsHash],
-    );
-
-    // Also bump workspace data revision
-    await client.query(
-      "INSERT INTO workspace_data_revision (workspace_id, revision, updated_at) VALUES ($1, $2, now()) ON CONFLICT (workspace_id) DO UPDATE SET revision = EXCLUDED.revision, updated_at = now()",
-      [claims.workspaceId, nextVersion],
-    );
-
-    const view: CalculationVersionView = {
-      workspaceId: claims.workspaceId,
-      version: versionStr,
-      inputsHash,
-      resultsHash,
-      createdAt: new Date().toISOString(),
-    };
-    return { view, operationId };
-  });
+  void client; void claims; void actorId; void input;
+  throw new TenantInvalid();
 }
 
 export async function bumpCalculationVersion(
