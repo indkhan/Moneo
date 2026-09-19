@@ -230,6 +230,9 @@ beforeAll(async () => {
     savedEnv[name] = process.env[name];
   }
   pool = await ensureTestPool("E02-S03", "moneo_e02_upload", [
+    "manual_transactions",
+    "balance_snapshots",
+    "balance_audit",
     "mapping_provider_usage",
     "mapping_provider_reservations",
     "mapping_proposals",

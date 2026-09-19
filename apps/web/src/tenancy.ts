@@ -9,7 +9,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Pool, PoolClient } from "pg";
 import { isUuid, uuidv7 } from "./ids.ts";
 import type { Session } from "./session-store.ts";
-import { CommandError, getAccountView, listAccountViews, renameAccount, validateRenameInput } from "./commands/accounts.ts";
+import { CommandError, getAccountView, listAccountViews, renameAccount, validateRenameInput, createAccount as createAccountCmd, validateCreateAccountInput, updateAccount, validateUpdateAccountInput, manualTransaction, validateManualTransactionInput, balanceSnapshot, validateBalanceSnapshotInput, balanceCorrection, validateBalanceCorrectionInput, listManualTransactions, listBalanceSnapshots, getBalanceSnapshot, listBalanceAudit } from "./commands/accounts.ts";
 import { acceptImportJob, JobError, readJob, validateAcceptInput } from "./jobs.ts";
 import { cancelJob } from "./job-recovery.ts";
 import { acceptUpload, listObservations, loadUploadConfig, MAX_UPLOAD_BYTES, readImport, UploadError } from "./uploads.ts";
@@ -335,6 +335,203 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             }
             throw err;
           }
+          return true;
+        }
+        if (path === "/api/commands/accounts.create" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const input = validateCreateAccountInput(await readJsonBody(req));
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await createAccountCmd(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof CommandError) {
+              const mapped = commandErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/commands/accounts.update" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const input = validateUpdateAccountInput(await readJsonBody(req));
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await updateAccount(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof CommandError) {
+              const mapped = commandErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/commands/accounts.manual_transaction" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const input = validateManualTransactionInput(await readJsonBody(req));
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await manualTransaction(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof CommandError) {
+              const mapped = commandErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/commands/accounts.balance_snapshot" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const input = validateBalanceSnapshotInput(await readJsonBody(req));
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await balanceSnapshot(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof CommandError) {
+              const mapped = commandErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        if (path === "/api/commands/accounts.balance_correction" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const input = validateBalanceCorrectionInput(await readJsonBody(req));
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await balanceCorrection(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof CommandError) {
+              const mapped = commandErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        // Manual transactions list for an account
+        const manualTxMatch = path.match(/^\/api\/accounts\/([A-Za-z0-9-]+)\/manual_transactions$/);
+        if (manualTxMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          // Check if account exists in workspace
+          const accountExists = await withTenant(pool, resolved.claim, async (client) => {
+            const r = await client.query("SELECT 1 FROM accounts WHERE workspace_id = $1 AND id = $2", [resolved.claim!.workspaceId, manualTxMatch[1]]);
+            return (r.rowCount ?? 0) > 0;
+          });
+          if (!accountExists) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const limit = query.get("limit") ? Number(query.get("limit")!) : 100;
+          const offset = query.get("offset") ? Number(query.get("offset")!) : 0;
+          tenantJson(res, 200, { transactions: await listManualTransactions(pool, resolved.claim, manualTxMatch[1], limit, offset), requestId });
+          return true;
+        }
+        // Balance snapshots list for an account
+        const balanceSnapMatch = path.match(/^\/api\/accounts\/([A-Za-z0-9-]+)\/balance_snapshots$/);
+        if (balanceSnapMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          // Check if account exists in workspace
+          const accountExists = await withTenant(pool, resolved.claim, async (client) => {
+            const r = await client.query("SELECT 1 FROM accounts WHERE workspace_id = $1 AND id = $2", [resolved.claim!.workspaceId, balanceSnapMatch[1]]);
+            return (r.rowCount ?? 0) > 0;
+          });
+          if (!accountExists) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const limit = query.get("limit") ? Number(query.get("limit")!) : 100;
+          const offset = query.get("offset") ? Number(query.get("offset")!) : 0;
+          tenantJson(res, 200, { snapshots: await listBalanceSnapshots(pool, resolved.claim, balanceSnapMatch[1], limit, offset), requestId });
+          return true;
+        }
+        // Get a specific balance snapshot
+        const balanceSnapGetMatch = path.match(/^\/api\/balance_snapshots\/([A-Za-z0-9-]+)$/);
+        if (balanceSnapGetMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const snapshot = await getBalanceSnapshot(pool, resolved.claim, balanceSnapGetMatch[1]);
+          if (!snapshot) tenantJson(res, 404, { error: "not_found" });
+          else tenantJson(res, 200, snapshot);
+          return true;
+        }
+        // Balance audit for a snapshot
+        const balanceAuditMatch = path.match(/^\/api\/balance_snapshots\/([A-Za-z0-9-]+)\/audit$/);
+        if (balanceAuditMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          tenantJson(res, 200, { audit: await listBalanceAudit(pool, resolved.claim, balanceAuditMatch[1]), requestId });
           return true;
         }
         if (path === "/api/ai/exclusions" && method === "PUT") {

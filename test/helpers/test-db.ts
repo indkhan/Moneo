@@ -5,8 +5,11 @@
 // least-privilege app URL, creation uses the migration URL.
 
 import { readFileSync } from "node:fs";
-import { Pool } from "pg";
+import { Pool, types } from "pg";
 import { createPool, migrate, withDatabase } from "../../apps/web/src/db.ts";
+
+// Parse DATE (OID 1082) as string in YYYY-MM-DD format to avoid timezone issues
+types.setTypeParser(1082, (val: string) => val);
 
 export function env(story: string, name: string): string {
   let value = process.env[name];
@@ -56,9 +59,9 @@ export async function ensureTestPool(story: string, dbName: string, truncate: st
   }
   const pool = createPool(withDatabase(appUrl, dbName));
   await migrate(pool, "apps/web/migrations");
-  // One statement: TRUNCATE refuses single tables that participate in FKs.
+  // One statement with CASCADE: handles FK dependencies between test tables.
   const targets = truncate.filter((table) => /^[a-z_]+$/.test(table));
   if (targets.length !== truncate.length) throw new Error(`${story} refused: unsafe truncate target.`);
-  if (targets.length > 0) await pool.query(`TRUNCATE ${targets.join(", ")}`);
+  if (targets.length > 0) await pool.query(`TRUNCATE ${targets.join(", ")} CASCADE`);
   return pool;
 }

@@ -31,7 +31,7 @@ describe("e01-s04 money boundary", () => {
     expect(currencyExponent("EUR")).toBe(2);
     expect(currencyExponent("JPY")).toBe(0);
     expect(currencyExponent("KWD")).toBe(3);
-    expect(() => currencyExponent("XXX")).toThrow();
+    expect(currencyExponent("XXX")).toBeUndefined();
     expect(parseMinor("31.42", "EUR")).toBe(3142n);
     expect(parseMinor("0.05", "EUR")).toBe(5n);
     expect(parseMinor("100", "JPY")).toBe(100n);

@@ -60,7 +60,7 @@ async function json(method: string, url: string, cookie: string, body?: unknown)
 beforeAll(async () => {
   // Own database: parallel vitest workers must not share a database with a
   // suite whose rollback test drops tables.
-  pool = await ensureTestPool("E01-S03", "moneo_e01_tenancy_v2", ["mapping_provider_usage", "mapping_provider_reservations", "mapping_proposals", "mapping_profiles", "review_decisions", "source_links", "transactions", "import_commit_batches", "parsed_observations", "source_objects", "imports", "data_sources", "background_job_attempts", "job_dispatch_index", "outbox_events", "background_job_results", "background_jobs", "ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
+  pool = await ensureTestPool("E01-S03", "moneo_e01_tenancy_v3", ["fx_valuation", "fx_rates_ecb", "fx_rates_manual", "manual_transactions", "balance_snapshots", "balance_audit", "mapping_provider_usage", "mapping_provider_reservations", "mapping_proposals", "mapping_profiles", "review_decisions", "source_links", "transactions", "import_commit_batches", "parsed_observations", "source_objects", "imports", "data_sources", "background_job_attempts", "job_dispatch_index", "outbox_events", "background_job_results", "background_jobs", "ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
   stub = await startStubIssuer();
 }, 60_000);
 
@@ -89,10 +89,13 @@ describe("e01-s03 tenant ownership", () => {
     expect(acctB.status).toBe(201);
 
     // Lists are scoped.
-    const listA = await json("GET", `${base}/api/accounts?workspaceId=${wsA.body.id}`, cookieA);
-    expect(listA.body).toEqual({ accounts: [{ workspaceId: wsA.body.id, id: acctA.body.id, name: "Checking A", version: "1" }] });
-    const listWSA = await json("GET", `${base}/api/workspaces`, cookieA);
-    expect((listWSA.body as { workspaces: { id: string }[] }).workspaces.map((w) => w.id)).toEqual([wsA.body.id]);
+    const listA = await json("GET", `${base}/api/accounts?workspaceId=${wsA.body.id}`, cookieA) as { status: number; body: { accounts: { workspaceId: string; id: string; name: string; version: string; currency: string; archived: boolean; source: "manual" | "import"; createdAt: string; updatedAt: string }[] } };
+    expect(listA.body.accounts).toHaveLength(1);
+    expect(listA.body.accounts[0]).toMatchObject({ workspaceId: wsA.body.id, id: acctA.body.id, name: "Checking A", version: "1", currency: "EUR", archived: false, source: "manual" });
+    expect(typeof listA.body.accounts[0].createdAt).toBe("string");
+    expect(typeof listA.body.accounts[0].updatedAt).toBe("string");
+    const listWSA = await json("GET", `${base}/api/workspaces`, cookieA) as { status: number; body: { workspaces: { id: string }[] } };
+    expect(listWSA.body.workspaces.map((w) => w.id)).toEqual([wsA.body.id]);
 
     // Tenant-swapped IDs are indistinguishable from missing IDs.
     const swapped = await json("GET", `${base}/api/accounts/${acctB.body.id}?workspaceId=${wsA.body.id}`, cookieA);
@@ -221,12 +224,12 @@ describe("e01-s03 tenant ownership", () => {
   it("migrations 009 then 008 then 007 then 006 then 005 then 004 then 003 then 002 roll back and re-apply on the suite database", async () => {
     const { readFileSync } = await import("node:fs");
     // Newest first while recorded, otherwise re-migrate never restores the
-    // dependents (009 import commit references imports/observations; 008 mapping
+    // dependents (010 accounts manual balances references accounts; 009 import commit references imports/observations; 008 mapping
     // tables reference imports; 007 staging references workspaces/imports;
     // 006 attempts reference jobs; 005 jobs reference workspaces/operations;
     // 004 exclusions reference accounts; 002 drops the accounts table carrying
     // 003's version column).
-    for (const file of ["009_import_commit.rollback.sql", "008_mapping.rollback.sql", "007_uploads.rollback.sql", "006_job_recovery.rollback.sql", "005_jobs.rollback.sql", "004_ai_policy.rollback.sql", "003_commands.rollback.sql", "002_tenancy.rollback.sql"]) {
+    for (const file of ["012_fx_rates.rollback.sql", "011_calculation_versions.rollback.sql", "010_accounts_manual_balances.rollback.sql", "009_import_commit.rollback.sql", "008_mapping.rollback.sql", "007_uploads.rollback.sql", "006_job_recovery.rollback.sql", "005_jobs.rollback.sql", "004_ai_policy.rollback.sql", "003_commands.rollback.sql", "002_tenancy.rollback.sql"]) {
       const sql = readFileSync(`apps/web/migrations/${file}`, "utf8");
       const admin = await pool.connect();
       try {
@@ -244,12 +247,12 @@ describe("e01-s03 tenant ownership", () => {
     }
     // Rollbacks don't clear schema_migrations; clear it so migrate re-applies.
     await pool.query("TRUNCATE schema_migrations");
-    const gone = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations', 'ai_policies', 'ai_exclusions', 'ai_dispatch_permits', 'background_jobs', 'background_job_results', 'outbox_events', 'job_dispatch_index', 'background_job_attempts', 'data_sources', 'imports', 'source_objects', 'parsed_observations', 'mapping_profiles', 'mapping_proposals', 'mapping_provider_reservations', 'mapping_provider_usage', 'transactions', 'source_links', 'review_decisions', 'import_commit_batches')");
+    const gone = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations', 'ai_policies', 'ai_exclusions', 'ai_dispatch_permits', 'background_jobs', 'background_job_results', 'outbox_events', 'job_dispatch_index', 'background_job_attempts', 'data_sources', 'imports', 'source_objects', 'parsed_observations', 'mapping_profiles', 'mapping_proposals', 'mapping_provider_reservations', 'mapping_provider_usage', 'transactions', 'source_links', 'review_decisions', 'import_commit_batches', 'manual_transactions', 'balance_snapshots', 'balance_audit')");
     expect((gone.rows[0] as { n: number }).n).toBe(0);
     // Self-healing: the idempotent migrator restores the full shape.
     await migrate(pool, "apps/web/migrations");
-    const back = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations', 'ai_policies', 'ai_exclusions', 'ai_dispatch_permits', 'background_jobs', 'background_job_results', 'outbox_events', 'job_dispatch_index', 'background_job_attempts', 'data_sources', 'imports', 'source_objects', 'parsed_observations', 'mapping_profiles', 'mapping_proposals', 'mapping_provider_reservations', 'mapping_provider_usage', 'transactions', 'source_links', 'review_decisions', 'import_commit_batches')");
-    expect((back.rows[0] as { n: number }).n).toBe(25);
+    const back = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations', 'ai_policies', 'ai_exclusions', 'ai_dispatch_permits', 'background_jobs', 'background_job_results', 'outbox_events', 'job_dispatch_index', 'background_job_attempts', 'data_sources', 'imports', 'source_objects', 'parsed_observations', 'mapping_profiles', 'mapping_proposals', 'mapping_provider_reservations', 'mapping_provider_usage', 'transactions', 'source_links', 'review_decisions', 'import_commit_batches', 'manual_transactions', 'balance_snapshots', 'balance_audit')");
+    expect((back.rows[0] as { n: number }).n).toBe(28);
     const versionCol = await pool.query("SELECT 1 FROM information_schema.columns WHERE table_name = 'accounts' AND column_name = 'version'");
     expect(versionCol.rowCount).toBe(1);
   });

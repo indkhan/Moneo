@@ -171,7 +171,14 @@ beforeAll(async () => {
   for (const name of ["UPLOADS_ENABLED", "S3_ENDPOINT", "S3_REGION", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET", "CLAMAV_HOST", "CLAMAV_PORT", "PARSER_CHILD"]) {
     savedEnv[name] = process.env[name];
   }
-  pool = await ensureTestPool("E02-S07", "moneo_e02_w2", [
+  pool = await ensureTestPool("E02-S07", "moneo_e02_w2_v2", [
+    "fx_valuation",
+    "fx_rates_ecb",
+    "fx_rates_manual",
+    "calculation_versions",
+    "manual_transactions",
+    "balance_snapshots",
+    "balance_audit",
     "mapping_provider_usage",
     "mapping_provider_reservations",
     "mapping_proposals",
