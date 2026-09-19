@@ -958,51 +958,51 @@ Execution record:
 
 ## E03 exit — Pass
 
-**E03 exit: Pass** at merged revision `9740a09`. E03-S01 through E03-S08 are Done with independent review current at every merge SHA; the exit demonstration (11/11) plus the full deterministic matrix, builds, deliberate-failure gate, staging smoke, diff and secret hygiene are green on the merged tree. No E04 work started; no real-customer data; no public release; no live-provider qualification claimed.
+**E03 exit: Pass** after audit remediation at reviewed SHA `da9c545f7bed6fe9ed9337d0252293d1a83fca5b`. The repair persists versioned financial semantics on canonical imported/manual rows, restores them on undo, validates fee/refund direction and linked-account ownership, exposes a tenant-scoped account/date-filtered production summary, values each contributing row before cross-currency aggregation with explicit coverage, and stores server-computed canonical SHA-256 evidence including account and FX inputs. Client-created calculation evidence is rejected. Five concurrent summaries allocate unique versions; migration 017 rollback is in the real rollback matrix. Independent review: Changes requested at `2c43e43` and `383787c`; all findings fixed; Pass at `0bb0f28`, then current-SHA packaging revalidation Pass at `da9c545`. Full deterministic matrix and all three builds passed on the repair candidate; deliberate-failure exited 1 as intended. Initial staging smoke exposed `@xmldom/xmldom` as a dev-only runtime dependency; root-caused and moved without version change, then fresh staging smoke passed health, readiness, rollback and restore. No real-customer data, public release or live-provider qualification is claimed.
 Provider qualification status: deterministic ECB-shaped fixtures only. The S03 live-ECB download probe remains a bounded manual check (30 s timeout, accepted S03 limitation), not a qualification; production FX sourcing/refresh remains an E08/deployment gate. Live OpenRouter gates stay bounded/manual per E00-S05 precedent; no training/ZDR downgrade.
-Next dependency-ready story: **E04-S01** (dependencies E03-S08 Done, E02-S04 Done) — requires STORY-TEMPLATE refinement against the merged tree before assignment.
+Next dependency-ready story: **E04-S01**. Its canonical refinement is Ready in [E04.md](E04.md); implementation must begin from current main after integrating this reviewed repair.
 
 ## E04-S01 — Enforce provider policy and atomic usage budgets
 
-Status: Draft | Dependencies: E03-S08, E02-S04
+Status: Ready | Dependencies: E03-S08, E02-S04
 
-Extend the existing mapping transport/reservation path to shared model calls with explicit development/production routes, bounded output/retries, timeouts and cost reconciliation. Acceptance: simultaneous requests cannot exceed authorized budget/concurrency; unknown usage remains reserved/pending rather than zero; no training/ZDR downgrade fallback for production; revoked policy blocks later dispatch. No generic multi-provider plugin system.
+Canonical refinement: [E04-S01](E04.md#e04-s01--enforce-provider-policy-and-atomic-usage-budgets). Specified but blocked until E03-S08 is Done.
 
 ## E04-S02 — Persist chat and its worker-owned model loop
 
-Status: Draft | Dependencies: E04-S01, E02-S02
+Status: Ready | Dependencies: E04-S01, E02-S02
 
-Implement threads/turns/activity and a durable worker loop from the first model request; web transport subscribes/reconnects. Acceptance: reconnect resumes saved state, worker death/retry does not concatenate independent generations or duplicate tool effects, and separate users cannot read events/turns. Define partial-output display and model retry boundaries explicitly.
+Canonical refinement: [E04-S02](E04.md#e04-s02--persist-chat-and-its-worker-owned-model-loop).
 
 ## E04-S03 — Expose scoped tools, evidence and dispatch revalidation
 
-Status: Draft | Dependencies: E04-S02, E03-S04
+Status: Ready | Dependencies: E04-S02, E03-S04
 
-Adapt shared read/domain functions into bounded model tools with current tenant/account/policy context and frozen evidence references. Acceptance: the model has no SQL/database access; prompt injection cannot expand capabilities; excluded data cannot enter aggregates/context or new calls; policy-version changes block stale publication while honestly accounting for already-dispatched work. Test corrupted tool arguments and unsupported questions.
+Canonical refinement: [E04-S03](E04.md#e04-s03--expose-scoped-tools-evidence-and-dispatch-revalidation).
 
 ## E04-S04 — Deliver contextual chat, activity and Stop
 
-Status: Draft | Dependencies: E04-S03
+Status: Ready | Dependencies: E04-S03
 
-Build persistent chat panel, explicit context/coverage, evidence navigation, activity and Stop/retry. Acceptance: user sees what is running, stopping halts future tools/publication within stated bounds, reconnect does not hide completed evidence, and malicious markdown/links/images cannot exfiltrate data. Context from account/transaction/artifact remains permission-checked. No external preview fetching.
+Canonical refinement: [E04-S04](E04.md#e04-s04--deliver-contextual-chat-activity-and-stop).
 
 ## E04-S05 — Confirm financial actions in trusted host UI
 
-Status: Draft | Dependencies: E04-S04
+Status: Ready | Dependencies: E04-S04
 
-Support one explicitly bounded write action using the shared command path and host-owned confirmation bound to payload, version, expiry and actor. Acceptance: model text/tool arguments cannot assert consent, replay/tampering/conflicts fail safely, and retry commits at most once with audit/undo where supported. Extend to additional R1 actions only as required; no external money movement.
+Canonical refinement: [E04-S05](E04.md#e04-s05--confirm-financial-actions-in-trusted-host-ui).
 
 ## E04-S06 — Show included-AI settings and usage
 
-Status: Draft | Dependencies: E04-S05
+Status: Ready | Dependencies: E04-S05
 
-Expose account AI exclusions, read-only active prompt/version, model/usage/cost and limits/errors in settings. Acceptance: changes affect queued/new work through existing policy gates, unknown cost is visibly pending, provider errors are actionable, and displayed prompts exclude secrets. No custom keys/models/editable prompts in R1.
+Canonical refinement: [E04-S06](E04.md#e04-s06--show-included-ai-settings-and-usage).
 
 ## E04-S07 — Qualify grounded AI behavior
 
-Status: Draft | Dependencies: E04-S06
+Status: Ready | Dependencies: E04-S06
 
-Create versioned synthetic evaluations for mapping, numerical grounding, evidence completeness, abstention, tools, exclusions and hostile input. Acceptance: independently expected factual/numeric claims and unauthorized-action tests pass the predeclared rubric; live candidate model/route scores are recorded separately from deterministic CI. Set minimum sample/thresholds before running; a free model that fails is not automatically production-qualified.
+Canonical refinement: [E04-S07](E04.md#e04-s07--qualify-grounded-ai-behavior-and-close-e04).
 
 ## E05-S01 — Productionize isolated build and artifact versions
 

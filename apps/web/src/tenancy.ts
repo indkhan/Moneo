@@ -49,6 +49,7 @@ import {
   validateUndoInput,
 } from "./commands/transactions.ts";
 import { getTransactionEvidence, listTransactions } from "./transactions-query.ts";
+import { getFinancialSummary } from "./calculations/financial-summary.ts";
 import {
   confirm as confirmRecurringCmd,
   dismiss as dismissRecurringCmd,
@@ -73,11 +74,11 @@ export class TenantInvalid extends Error {
 export type TenantClaims = { userId: string; workspaceId: string };
 
 /** Run work as a verified member of the workspace. Throws TenantDenied for non-members. */
-export async function withTenant<T>(pool: Pool, claims: TenantClaims, work: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withTenant<T>(pool: Pool, claims: TenantClaims, work: (client: PoolClient) => Promise<T>, isolation?: "REPEATABLE READ"): Promise<T> {
   if (!isUuid(claims.userId) || !isUuid(claims.workspaceId)) throw new TenantDenied();
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await client.query(isolation ? `BEGIN ISOLATION LEVEL ${isolation}` : "BEGIN");
     await client.query("SELECT set_config('app.current_user', $1, true), set_config('app.current_workspace', $2, true)", [
       claims.userId,
       claims.workspaceId,
@@ -1060,6 +1061,13 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             }
             throw err;
           }
+          return true;
+        }
+        if (path === "/api/calculations/financial-summary" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) { denied(res, resolved.session !== null); return true; }
+          tenantJson(res, 200, await getFinancialSummary(pool, resolved.claim, workspaceId, { accountId: query.get("accountId") ?? undefined, dateFrom: query.get("dateFrom") ?? undefined, dateTo: query.get("dateTo") ?? undefined }));
           return true;
         }
         // E03-S04 calculation evidence: get calculation version
