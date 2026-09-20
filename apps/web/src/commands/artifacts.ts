@@ -45,11 +45,12 @@ export async function createArtifactDraft(
     claims: TenantClaims,
     name: string,
     description?: string,
+    opts?: { aiRunId?: string },
 ): Promise<{ artifactId: string }> {
     const artifactId = randomUUID();
     await client.query(
-        `INSERT INTO artifacts (workspace_id, id, name, description) VALUES ($1, $2, $3, $4)`,
-        [claims.workspaceId, artifactId, name, description ?? null],
+        `INSERT INTO artifacts (workspace_id, id, name, description, ai_run_id) VALUES ($1, $2, $3, $4, $5)`,
+        [claims.workspaceId, artifactId, name, description ?? null, opts?.aiRunId ?? null],
     );
     return { artifactId };
 }
@@ -60,15 +61,16 @@ export async function submitArtifactBuild(
     artifactId: string,
     source: { html: string; css: string; js: string },
     manifest: ArtifactManifest,
+    opts?: { aiRunId?: string },
 ): Promise<{ versionId: string }> {
     const sourceHash = hashSource(source.html, source.css, source.js);
     const buildHash = hashBuild(manifest, sourceHash);
 
     const versionId = randomUUID();
     await client.query(
-        `INSERT INTO artifact_versions (workspace_id, id, artifact_id, manifest, source_hash, build_hash, status, source_html, source_css, source_js)
-         VALUES ($1, $2, $3, $4, $5, $6, 'building', $7, $8, $9)`,
-        [claims.workspaceId, versionId, artifactId, JSON.stringify(manifest), sourceHash, buildHash, source.html, source.css, source.js],
+        `INSERT INTO artifact_versions (workspace_id, id, artifact_id, manifest, source_hash, build_hash, status, source_html, source_css, source_js, ai_run_id)
+         VALUES ($1, $2, $3, $4, $5, $6, 'building', $7, $8, $9, $10)`,
+        [claims.workspaceId, versionId, artifactId, JSON.stringify(manifest), sourceHash, buildHash, source.html, source.css, source.js, opts?.aiRunId ?? null],
     );
 
     return { versionId };
