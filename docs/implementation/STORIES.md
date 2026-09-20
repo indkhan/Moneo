@@ -1151,7 +1151,7 @@ Execution record:
 
 ## E06-S01 — Model explicit daily projection inputs
 
-Status: Ready | Release: R1 | Epic: E06
+Status: Done | Release: R1 | Epic: E06
 Dependencies: E05-S07 (Done, adversarial fixes merged `8eca961`, ledger closeout `2bb30fe`), E03-S07 (Done)
 
 Outcome: An authenticated workspace member can set projection settings, record versioned financial assumptions, and read an honest weekly variable-spend baseline preview; every value the S03 engine needs (dated start balances come from E03 snapshots, horizon/cases/assumptions/baseline from here) is validated, audited and idempotent.
@@ -1180,7 +1180,14 @@ Verification: New `npm run test:projection-inputs` (own disposable DB `moneo_e06
 Review focus: Float/date coercion (local-time month math), even-count median bias, silent-zero baselines, incomplete-week leakage, history mutation, supersede races, RLS/NULLIF on new tables, unscoped reads, scope creep toward engine/scenarios.
 Rollout/rollback: Pre-release boundary; rollback = prior image + `034 rollback.sql` (synthetic assumptions only). Known limitation: no per-account minimum-balance rules table in R1 (floors = global safety floor + goal reservations; S03 records this).
 
-Execution record: (pending implementation)
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e06-s01-projection-inputs` (deleted after merge)
+- Base SHA / implementation head SHA: base `2bb30fee52e6088b6a201464d2fae740443c887e` / impl `8eb7eee76e5db589b5e304bc0bd24b0af78dcb4d`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18. `npm run typecheck` 0; `npm run test:projection-inputs` 0 (13/13: schedule goldens month-end/leap/remainder, baseline median odd/even/insufficient/partial-exclusion, assumption supersede/replay/race, tenant isolation, >safe-integer versions); `npm run test:tenancy` 0 (7/7: RLS forced on new tables, rollback chain incl. 034, re-apply self-healing 57 tables); regress `test:accounts` 10/10, `test:commands` 8/8, `test:calculations` 10/10, `test:money` 4/4, `test:import-e2e` 14/14, `test:w1` 1/1, `test:policy` 7/7, `test:ui` 10/10, `test:http` 1/1, `test:auth` 13/13, `test:db` 2/2, `test:identity` 36/36, `test:durable` 12/12, `test:jobs` 8/8, `test:job-recovery` 14/14, `test:upload` 21/21, `test:mapping` 22/22; `npm run test:failure` exit 1 as intended; `npm run build:web` 0; `npm run staging:smoke` PASS; `git diff --check` 0; tracked-file secret scan clean; no `.env` tracked.
+- Review: independent adversarial review (separate context) Pass with no blockers at `8eb7eee` — reproduced typecheck, projection-inputs 13/13, tenancy 7/7, full regression green; 2 hostile probes (RLS NULLIF on new tables, unscoped reads zero rows) denied safely. 3 nonblocking findings accepted: N1 per-account minimum-balance rules deferred to S03, N2 baseline scan cap matches S07 precedent, N3 FX gap in baseline preview not applicable (snapshots drive starts).
+- Integration: `git fetch origin main` — origin/main stale (local-only merges); local main at base `2bb30fe` unchanged; merge-base == base; candidate == reviewed `8eb7eee`; full candidate gates green (see Tests). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `5b02b27765a09fcdf46c167e992b0977a9faa2d9`; post-merge `npm run check` 0, `test:projection-inputs` 13/13, `staging:smoke` PASS, clean status.
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: per-account minimum-balance rules not in R1 (limitation recorded); baseline scan cap documented.
 
 ## E06-S02 — Manage basic goals and virtual allocations
 

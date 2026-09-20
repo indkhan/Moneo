@@ -94,6 +94,20 @@ import {
   validateSettingsUpdateInput,
 } from "./commands/projection-inputs.ts";
 import { previewBaseline } from "./projections/inputs.ts";
+import {
+  archiveGoal,
+  allocate,
+  createGoal,
+  getGoal,
+  listGoals,
+  release,
+  updateGoal,
+  validateAllocateInput,
+  validateArchiveGoalInput,
+  validateCreateGoalInput,
+  validateReleaseInput,
+  validateUpdateGoalInput,
+} from "./commands/goals.ts";
 
 export class TenantDenied extends Error {
   constructor() {
@@ -344,14 +358,16 @@ function txErrorBody(err: TxError): { status: number; body: unknown } {
   // command), never a version or undo conflict; unsupported_undo stays 409
   // strictly for operations.undo on non-undoable operations.
   if (err.code === "unsupported_operation") return { status: 400, body: { error: "invalid_request", reason: err.code } };
-  if (err.code === "version_mismatch" || err.code === "undo_conflict") {
+  // currency_mismatch is an honest 400 (validation error, not a conflict)
+  if (err.code === "currency_mismatch") return { status: 400, body: { error: "invalid_request", reason: err.code, ...(err.detail === undefined ? {} : { detail: err.detail }) } };
+  if (err.code === "version_mismatch" || err.code === "undo_conflict" || err.code === "goal_archived" || err.code === "overallocation") {
     return {
       status: 409,
       body: {
         error: "conflict",
         reason: err.code,
         ...(err.currentVersion === undefined ? {} : { currentVersion: err.currentVersion }),
-        ...(err.detail === undefined ? {} : { detail: err.detail }),
+        ...(err.detail === undefined ? {} : err.detail),
       },
     };
   }
@@ -1316,6 +1332,79 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             }
             throw err;
           }
+          return true;
+        }
+        // E06-S02 goals: create
+        if (path === "/api/commands/goals.create" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) { tenantJson(res, 401, { error: "unauthorized" }); return true; }
+          let input: ReturnType<typeof validateCreateGoalInput>;
+          try { input = validateCreateGoalInput(await readJsonBody(req)); } catch { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) { tenantJson(res, 404, { error: "not_found" }); return true; }
+          try { const result = await createGoal(pool, resolved.claim, resolved.claim.userId, input); tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed }); } catch (err) { if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; } throw err; }
+          return true;
+        }
+        // E06-S02 goals: update
+        if (path === "/api/commands/goals.update" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) { tenantJson(res, 401, { error: "unauthorized" }); return true; }
+          let input: ReturnType<typeof validateUpdateGoalInput>;
+          try { input = validateUpdateGoalInput(await readJsonBody(req)); } catch { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) { tenantJson(res, 404, { error: "not_found" }); return true; }
+          try { const result = await updateGoal(pool, resolved.claim, resolved.claim.userId, input); tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed }); } catch (err) { if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; } throw err; }
+          return true;
+        }
+        // E06-S02 goals: archive
+        if (path === "/api/commands/goals.archive" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) { tenantJson(res, 401, { error: "unauthorized" }); return true; }
+          let input: ReturnType<typeof validateArchiveGoalInput>;
+          try { input = validateArchiveGoalInput(await readJsonBody(req)); } catch { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) { tenantJson(res, 404, { error: "not_found" }); return true; }
+          try { const result = await archiveGoal(pool, resolved.claim, resolved.claim.userId, input); tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed }); } catch (err) { if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; } throw err; }
+          return true;
+        }
+        // E06-S02 allocations: allocate
+        if (path === "/api/commands/allocations.allocate" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) { tenantJson(res, 401, { error: "unauthorized" }); return true; }
+          let input: ReturnType<typeof validateAllocateInput>;
+          try { input = validateAllocateInput(await readJsonBody(req)); } catch { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) { tenantJson(res, 404, { error: "not_found" }); return true; }
+          try { const result = await allocate(pool, resolved.claim, resolved.claim.userId, input); tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed }); } catch (err) { if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; } throw err; }
+          return true;
+        }
+        // E06-S02 allocations: release
+        if (path === "/api/commands/allocations.release" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) { tenantJson(res, 401, { error: "unauthorized" }); return true; }
+          let input: ReturnType<typeof validateReleaseInput>;
+          try { input = validateReleaseInput(await readJsonBody(req)); } catch { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) { tenantJson(res, 404, { error: "not_found" }); return true; }
+          try { const result = await release(pool, resolved.claim, resolved.claim.userId, input); tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed }); } catch (err) { if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; } throw err; }
+          return true;
+        }
+        // E06-S02 goals: list
+        if (path === "/api/goals" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) { denied(res, resolved.session !== null); return true; }
+          const includeArchived = query.get("includeArchived") === "true";
+          try { tenantJson(res, 200, { goals: await listGoals(pool, resolved.claim, includeArchived), requestId }); } catch (err) { if (err instanceof TenantInvalid || err instanceof TenantDenied) { denied(res, true); return true; } throw err; }
+          return true;
+        }
+        // E06-S02 goals: get
+        const goalMatch = path.match(/^\/api\/goals\/([A-Za-z0-9-]+)$/);
+        if (goalMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) { denied(res, resolved.session !== null); return true; }
+          try { tenantJson(res, 200, await getGoal(pool, resolved.claim, goalMatch[1])); } catch (err) { if (err instanceof TenantInvalid || err instanceof TenantDenied) { denied(res, true); return true; } if (err instanceof TxError && err.code === "not_found") { denied(res, true); return true; } throw err; }
           return true;
         }
         // Manual transactions list for an account
