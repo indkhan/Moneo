@@ -10,6 +10,10 @@ import { isUuid } from "../ids.ts";
 import { CommandError, renameAccount, validateRenameInput } from "../commands/accounts.ts";
 import { getPolicy, PolicyError, setAccountExclusion, summarizeEligible } from "../ai-policy.ts";
 import { getAccountView, listAccountViews } from "../commands/accounts.ts";
+import { createArtifactDraft, submitArtifactBuild, getArtifactVersion, listArtifactVersions, activateArtifactVersion, getArtifact, listArtifacts } from "../commands/artifacts.ts";
+import { getArtifactState } from "../commands/artifact-state.ts";
+import { openArtifactSession, sendArtifactEvent, stopArtifactSession, restartArtifactSession, closeArtifactSession, getArtifactSession, getActiveSessionsCount, getArtifactExecutionsCount } from "../artifact-host.ts";
+import { type ArtifactSource, type ArtifactManifest } from "../artifact-contract.ts";
 import { clearSessionCookie, revokeRequestSession } from "../auth.ts";
 import { readLimitedBody } from "../http-controls.ts";
 import { readMultipart } from "../multipart.ts";
@@ -22,6 +26,7 @@ import { errorPage, escapeHtml, page } from "./shell.ts";
 import { handleTransactionRoutes } from "./transactions.ts";
 import { handleRecurringRoutes } from "./recurring.ts";
 import { createChatRouter } from "./chat.ts";
+import { handleArtifactRoutes } from "./artifact-editor.ts";
 
 export type UiConfig = {
   appBaseUrl: string;
@@ -893,6 +898,11 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
       return true;
     }
 
+// E05-S05 Artifact editor UI routes
+    if (await handleArtifactRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
+      return true;
+    }
+ 
     // E03-S06 transaction table + drawer (shared reads, S05 commands).
     if (await handleTransactionRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
       return true;

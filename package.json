@@ -50,6 +50,7 @@
     "test:e03-exit": "vitest run test/e03-exit.test.ts",
     "test:artifact-build": "vitest run test/artifact-build.test.ts",
     "test:artifact-runtime": "playwright test --config test/artifact-runtime.config.mjs",
+    "test:artifact-ui": "vitest run test/artifact-ui.test.ts",
     "probe:mapping": "node --env-file=.env ./node_modules/vitest/vitest.mjs run test/mapping-live.test.ts",
     "test:auth:live": "vitest run test/auth-keycloak-live.test.ts",
     "build:web": "tsc -p apps/web/tsconfig.json",
