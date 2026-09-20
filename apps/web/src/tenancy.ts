@@ -61,6 +61,8 @@ import {
 } from "./commands/transactions.ts";
 import { getTransactionEvidence, listTransactions } from "./transactions-query.ts";
 import { getFinancialSummary, getSpendingByCategory, getCashflow, getBalances, getTransactionSummary } from "./calculations/financial-summary.ts";
+import { getArtifactState, patchArtifactState, getArtifactStateSnapshot, createStateSnapshot, applyStateMigration, revertArtifactState } from "./commands/artifact-state.ts";
+import type { ArtifactStatePatch, MigrationOperation } from "./commands/artifact-state.ts";
 import {
   confirm as confirmRecurringCmd,
   dismiss as dismissRecurringCmd,
@@ -2219,6 +2221,137 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           } catch (error) {
             tenantJson(res, 500, { error: "rpc_failed", message: error instanceof Error ? error.message : "unknown" });
           }
+          return true;
+        }
+        // E05-S04 Artifact state endpoints
+        if (path === "/api/artifacts/state" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const artifactId = query.get("artifactId") ?? "";
+          if (!isUuid(workspaceId) || !isUuid(artifactId)) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const state = await withTenant(pool, resolved.claim, async (client) => getArtifactState(client, resolved.claim!, artifactId));
+          if (!state) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          tenantJson(res, 200, { state: state.state, schemaVersion: state.schemaVersion, versionId: state.versionId, updatedAt: state.updatedAt });
+          return true;
+        }
+        if (path === "/api/artifacts/state" && method === "PATCH") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown; artifactId?: unknown; patches?: unknown; expectedVersion?: unknown };
+          if (!body.workspaceId || !isUuid(body.workspaceId as string) || !body.artifactId || !isUuid(body.artifactId as string) || !Array.isArray(body.patches) || typeof body.expectedVersion !== "number") {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const workspaceId = body.workspaceId as string;
+          const artifactId = body.artifactId as string;
+          const patches = body.patches as ArtifactStatePatch[];
+          const expectedVersion = body.expectedVersion as number;
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await withTenant(pool, resolved.claim, async (client) => patchArtifactState(client, resolved.claim!, artifactId, patches, expectedVersion));
+            tenantJson(res, 200, { state: result.state, schemaVersion: result.schemaVersion });
+          } catch (err) {
+            if (err instanceof Error && err.message === "VERSION_MISMATCH") {
+              tenantJson(res, 409, { error: "conflict", reason: "version_mismatch" });
+              return true;
+            }
+            if (err instanceof Error && (err.message === "state_too_large" || err.message === "state_must_be_object" || err.message === "state_depth_exceeded" || err.message === "state_key_limit_exceeded" || err.message === "invalid_op" || err.message === "path_not_found" || err.message === "path_exists")) {
+              tenantJson(res, 400, { error: "invalid_request", reason: err.message });
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        const stateSnapshotMatch = path.match(/^\/api\/artifacts\/state\/snapshots\/([A-Za-z0-9-]+)$/);
+        if (stateSnapshotMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          if (!workspaceId || !isUuid(workspaceId)) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const artifactId = stateSnapshotMatch[1];
+          const snapshot = await withTenant(pool, resolved.claim, async (client) => getArtifactStateSnapshot(client, resolved.claim!, artifactId, stateSnapshotMatch[1]));
+          if (!snapshot) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          tenantJson(res, 200, { id: snapshot.id, state: snapshot.state, schemaVersion: snapshot.schemaVersion, createdAt: snapshot.createdAt });
+          return true;
+        }
+        const migrateMatch = path.match(/^\/api\/artifacts\/([A-Za-z0-9-]+)\/state\/migrate$/);
+        if (migrateMatch && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown; fromVersionId?: unknown; toVersionId?: unknown; operations?: unknown };
+          if (!body.workspaceId || !isUuid(body.workspaceId as string) || !body.fromVersionId || !isUuid(body.fromVersionId as string) || !body.toVersionId || !isUuid(body.toVersionId as string) || !Array.isArray(body.operations)) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const artifactId = migrateMatch[1];
+          const operations = body.operations as MigrationOperation[];
+          const resolved = await claims(req, body.workspaceId as string);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const result = await withTenant(pool, resolved.claim, async (client) => applyStateMigration(client, resolved.claim!, artifactId, body.fromVersionId as string, body.toVersionId as string, operations));
+          if (!result.success) {
+            tenantJson(res, 409, { error: "migration_failed", reason: result.error });
+            return true;
+          }
+          tenantJson(res, 200, { state: result.state });
+          return true;
+        }
+        const revertMatch = path.match(/^\/api\/artifacts\/([A-Za-z0-9-]+)\/state\/revert$/);
+        if (revertMatch && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown; snapshotId?: unknown };
+          if (!body.workspaceId || !isUuid(body.workspaceId as string) || !body.snapshotId || !isUuid(body.snapshotId as string)) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const artifactId = revertMatch[1];
+          const resolved = await claims(req, body.workspaceId as string);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const result = await withTenant(pool, resolved.claim, async (client) => revertArtifactState(client, resolved.claim!, artifactId, body.snapshotId as string));
+          if (!result.success) {
+            tenantJson(res, 409, { error: "revert_failed", reason: result.error });
+            return true;
+          }
+          tenantJson(res, 200, { state: result.state });
           return true;
         }
       } catch (err) {
