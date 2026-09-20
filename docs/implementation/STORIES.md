@@ -1107,9 +1107,16 @@ Execution record:
 
 ## E05-S06 — Generate and edit artifacts through contextual AI
 
-Status: Ready | Dependencies: E05-S05, E04-S07
+Status: Done | Dependencies: E05-S05, E04-S07
 
 Canonical refinement: [E05-S06](E05.md#e05-s06--generate-and-edit-artifacts-through-contextual-ai).
+
+Execution record:
+- Branch `story/e05-s06-artifact-ai`, head `686db21` (base `bc01c1a`). Migration 031 (`artifact_ai_proposals` with request-hash idempotency, `ai_run_id` linkage on artifacts/versions → dispatch reservations, `chat_threads.artifact_id` context link, `artifact-proposed/failed` activity kinds); `artifact-ai.ts` with builder/reviewer capability configs, strict four-file output validation, idempotent create/edit tools bound to artifact/base/policy revision, one-repair-pass flow reusing S01 dispatch budgets + S05 build/settle (never activates); `test:artifact-ai` (12/12: chat draft without activation, same-artifact edit as one new version, replay convergence, repair-then-success, double-malformed failure, stale permit/base denial, permission-expansion + hostile-approval containment with zero finance writes, outage-as-unavailable with 2-call cap, dispatch cancel without transport, tool validation/replay/stale/denied paths, output-validator units, thread linkage).
+- Also fixed 027 (S01 migration narrowed `background_jobs_type`, dropping `chat.generate` — extended to keep it; same for its rollback) after `test:ai-tools` caught it on the pre-existing tools DB.
+- Tests: typecheck 0; `test:artifact-ai` 12/12; `test:ai-dispatch` 16/16; `test:ai-tools` 14/14; `test:chat` 13/13; `test:policy` 7/7; `test:tenancy` 6/6 (rollback chain now 031→002, 55 tables); artifact-build 10/10; artifact-ui 6/6; e03-exit 11/11; commands 8/8.
+- Tenancy rollback investigation (recorded honestly): the new 031 FK-validation step failed deterministically as `uuid: ""` across several runs sharing one DB name while migration 031 and the test's rollback list were being edited mid-flight; isolated fresh-DB replays of the identical rollback→re-apply sequence passed, and the suite has passed 3× consecutively since the lists converged (030/031 rollbacks + proposals in truncate/count lists, fresh v12). Exact PG-internal trigger not isolated; migration 031 itself is idempotent and verified clean on fresh DBs.
+- Limitations: bounded live-model qualification is a separate manual gate (no creds in CI; provider outage is reported unavailable, never a pass); chat activity surfacing uses new activity kinds readable via existing `readActivity` (no chat-UI redesign in this slice).
 
 ## E05-S07 — Verify hostile and live artifact journeys
 
