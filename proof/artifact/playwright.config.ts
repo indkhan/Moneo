@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: ".",
-  testMatch: "artifact.spec.ts",
+  testMatch: ["artifact.spec.ts", "hostile-matrix.spec.ts"],
   timeout: 30_000,
   workers: 1,
   reporter: "line",

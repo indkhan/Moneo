@@ -229,7 +229,7 @@ beforeAll(async () => {
   for (const name of ["UPLOADS_ENABLED", "S3_ENDPOINT", "S3_REGION", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET", "CLAMAV_HOST", "CLAMAV_PORT", "PARSER_CHILD"]) {
     savedEnv[name] = process.env[name];
   }
-  pool = await ensureTestPool("E02-S03", "moneo_e02_upload", [
+pool = await ensureTestPool("E02-S03", "moneo_e02_upload_v3", [
     "manual_transactions",
     "balance_snapshots",
     "balance_audit",
@@ -259,7 +259,10 @@ beforeAll(async () => {
     "workspaces",
     "users",
     "app_sessions",
-  ]);
+    "artifact_build_attempts",
+    "artifact_versions",
+    "artifacts",
+]);
   stub = await startStubIssuer();
   appDbUrl = env("E02-S03", "DATABASE_URL");
   // Hydrate S3/scanner names from the ignored local .env the same way

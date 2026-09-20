@@ -2,8 +2,8 @@
 // semantics (links/buttons/forms), strict escaping of every interpolated
 // value. No <script> tag may ever appear in output (suite-grepped).
 
-export function escapeHtml(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+export function escapeHtml(value: unknown): string {
+  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 }
 
 const STYLE = [

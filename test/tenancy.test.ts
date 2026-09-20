@@ -60,7 +60,7 @@ async function json(method: string, url: string, cookie: string, body?: unknown)
 beforeAll(async () => {
   // Own database: parallel vitest workers must not share a database with a
   // suite whose rollback test drops tables.
-  pool = await ensureTestPool("E01-S03", "moneo_e01_tenancy_v4", ["recurring_overrides", "transaction_tags", "audit_events", "tags", "categories", "workspace_data_revision", "calculation_versions", "fx_valuation", "fx_rates_ecb", "fx_rates_manual", "manual_transactions", "balance_snapshots", "balance_audit", "mapping_provider_usage", "mapping_provider_reservations", "mapping_proposals", "mapping_profiles", "review_decisions", "source_links", "transactions", "import_commit_batches", "parsed_observations", "source_objects", "imports", "data_sources", "background_job_attempts", "job_dispatch_index", "outbox_events", "background_job_results", "background_jobs", "ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions"]);
+  pool = await ensureTestPool("E01-S03", "moneo_e01_tenancy_v12", ["recurring_overrides", "transaction_tags", "audit_events", "tags", "categories", "workspace_data_revision", "calculation_versions", "fx_valuation", "fx_rates_ecb", "fx_rates_manual", "manual_transactions", "balance_snapshots", "balance_audit", "mapping_provider_usage", "mapping_provider_reservations", "mapping_proposals", "mapping_profiles", "review_decisions", "source_links", "transactions", "import_commit_batches", "parsed_observations", "source_objects", "imports", "data_sources", "background_job_attempts", "job_dispatch_index", "outbox_events", "background_job_results", "background_jobs", "ai_dispatch_permits", "ai_exclusions", "ai_policies", "command_operations", "accounts", "workspace_members", "workspaces", "users", "app_sessions", "artifact_build_attempts", "artifact_versions", "artifacts", "artifact_runtime_grants", "artifact_sdk_access_events", "artifact_state", "artifact_state_snapshots", "artifact_state_migrations", "artifact_ai_proposals"]);
   stub = await startStubIssuer();
 }, 60_000);
 
@@ -220,40 +220,50 @@ describe("e01-s03 tenant ownership", () => {
       expect(row.forced).toBe(true);
     }
   });
-
-  it("migrations 023 down to 002 roll back and re-apply on the suite database", async () => {
-    const { readFileSync } = await import("node:fs");
-    // Newest first while recorded, otherwise re-migrate never restores the
-    // dependents (010 accounts manual balances references accounts; 009 import commit references imports/observations; 008 mapping
-    // tables reference imports; 007 staging references workspaces/imports;
-    // 006 attempts reference jobs; 005 jobs reference workspaces/operations;
-    // 004 exclusions reference accounts; 002 drops the accounts table carrying
-    // 003's version column).
-    for (const file of ["024_e04_completion.rollback.sql", "023_ai_eval.rollback.sql", "022_ai_settings_usage.rollback.sql", "021_ai_action_proposals.rollback.sql", "020_ai_tools.rollback.sql", "019_chat.rollback.sql", "018_ai_dispatch.rollback.sql", "017_financial_semantics.rollback.sql", "016_recurring.rollback.sql", "015_audit_events.rollback.sql", "014_categories_tags.rollback.sql", "013_calculation_evidence.rollback.sql", "012_fx_rates.rollback.sql", "011_calculation_versions.rollback.sql", "010_accounts_manual_balances.rollback.sql", "009_import_commit.rollback.sql", "008_mapping.rollback.sql", "007_uploads.rollback.sql", "006_job_recovery.rollback.sql", "005_jobs.rollback.sql", "004_ai_policy.rollback.sql", "003_commands.rollback.sql", "002_tenancy.rollback.sql"]) {
-      const sql = readFileSync(`apps/web/migrations/${file}`, "utf8");
-      const admin = await pool.connect();
-      try {
-        await admin.query("BEGIN");
-        await admin.query(sql);
-        await admin.query("COMMIT");
-      } catch (err) {
+  it("migrations 031 down to 002 roll back and re-apply on the suite database", async () => {
+      const { readFileSync } = await import("node:fs");
+      // Newest first while recorded, otherwise re-migrate never restores the
+      // dependents (010 accounts manual balances references accounts; 009 import commit references
+      // imports/observations; 008 mapping
+      // tables reference imports; 007 staging references workspaces/imports;
+      // 006 attempts reference jobs; 005 jobs reference workspaces/operations;
+      // 004 exclusions reference accounts; 002 drops the accounts table carrying
+      // 003's version column). Also roll back 029 artifact state, 028 artifact SDK, 027 artifact build job, 026 artifacts so re-migration is clean.
+      for (const file of ["031_artifact_ai.rollback.sql", "030_artifact_source.rollback.sql", "029_artifact_state.rollback.sql", "028_artifact_sdk.rollback.sql", "027_artifact_build_job.rollback.sql", "026_artifacts.rollback.sql", "024_e04_completion.rollback.sql", "023_ai_eval.rollback.sql", "022_ai_settings_usage.rollback.sql", "021_ai_action_proposals.rollback.sql", "020_ai_tools.rollback.sql", "019_chat.rollback.sql", "018_ai_dispatch.rollback.sql", "017_financial_semantics.rollback.sql", "016_recurring.rollback.sql", "015_audit_events.rollback.sql", "014_categories_tags.rollback.sql", "013_calculation_evidence.rollback.sql", "012_fx_rates.rollback.sql", "011_calculation_versions.rollback.sql", "010_accounts_manual_balances.rollback.sql", "009_import_commit.rollback.sql", "008_mapping.rollback.sql", "007_uploads.rollback.sql", "006_job_recovery.rollback.sql", "005_jobs.rollback.sql", "004_ai_policy.rollback.sql", "003_commands.rollback.sql", "002_tenancy.rollback.sql"]) {
+        const sql = readFileSync(`apps/web/migrations/${file}`, "utf8");
+        const admin = await pool.connect();
         try {
-          await admin.query("ROLLBACK");
-        } catch { /* preserve */ }
-        throw err;
-      } finally {
-        admin.release();
+          await admin.query("BEGIN");
+          await admin.query(sql);
+          await admin.query("COMMIT");
+        } catch (err) {
+          try {
+            await admin.query("ROLLBACK");
+          } catch { /* preserve */ }
+          throw err;
+        } finally {
+          admin.release();
+        }
       }
-    }
-    // Rollbacks don't clear schema_migrations; clear it so migrate re-applies.
-    await pool.query("TRUNCATE schema_migrations");
-    const gone = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations', 'ai_policies', 'ai_exclusions', 'ai_dispatch_permits', 'ai_dispatch_budgets', 'ai_dispatch_reservations', 'ai_dispatch_usage', 'chat_threads', 'chat_turns', 'chat_attempts', 'chat_activity', 'chat_tool_calls', 'ai_action_proposals', 'ai_eval_runs', 'ai_eval_cases', 'ai_eval_summaries', 'background_jobs', 'background_job_results', 'outbox_events', 'job_dispatch_index', 'background_job_attempts', 'data_sources', 'imports', 'source_objects', 'parsed_observations', 'mapping_profiles', 'mapping_proposals', 'mapping_provider_reservations', 'mapping_provider_usage', 'transactions', 'source_links', 'review_decisions', 'import_commit_batches', 'manual_transactions', 'balance_snapshots', 'balance_audit', 'system_categories', 'categories', 'tags', 'transaction_tags', 'audit_events', 'recurring_overrides')");
-    expect((gone.rows[0] as { n: number }).n).toBe(0);
-    // Self-healing: the idempotent migrator restores the full shape.
-    await migrate(pool, "apps/web/migrations");
-    const back = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations', 'ai_policies', 'ai_exclusions', 'ai_dispatch_permits', 'ai_dispatch_budgets', 'ai_dispatch_reservations', 'ai_dispatch_usage', 'chat_threads', 'chat_turns', 'chat_attempts', 'chat_activity', 'chat_tool_calls', 'ai_action_proposals', 'ai_eval_runs', 'ai_eval_cases', 'ai_eval_summaries', 'background_jobs', 'background_job_results', 'outbox_events', 'job_dispatch_index', 'background_job_attempts', 'data_sources', 'imports', 'source_objects', 'parsed_observations', 'mapping_profiles', 'mapping_proposals', 'mapping_provider_reservations', 'mapping_provider_usage', 'transactions', 'source_links', 'review_decisions', 'import_commit_batches', 'manual_transactions', 'balance_snapshots', 'balance_audit', 'system_categories', 'categories', 'tags', 'transaction_tags', 'audit_events', 'recurring_overrides')");
-    expect((back.rows[0] as { n: number }).n).toBe(46);
-    const versionCol = await pool.query("SELECT 1 FROM information_schema.columns WHERE table_name = 'accounts' AND column_name = 'version'");
-    expect(versionCol.rowCount).toBe(1);
-  });
+      // Rollbacks don't clear schema_migrations; clear it so migrate re-applies.
+      await pool.query("TRUNCATE schema_migrations");
+      // After rolling back to 002 (including 031 artifact AI, 030 source, 029 state, 028 SDK, 027 job, 026 artifacts rollbacks), no tenant tables remain.
+      const gone = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations', 'ai_policies', 'ai_exclusions', 'ai_dispatch_permits', 'ai_dispatch_budgets', 'ai_dispatch_reservations', 'ai_dispatch_usage', 'chat_threads', 'chat_turns', 'chat_attempts', 'chat_activity', 'chat_tool_calls', 'ai_action_proposals', 'ai_eval_runs', 'ai_eval_cases', 'ai_eval_summaries', 'background_jobs', 'background_job_results', 'outbox_events', 'job_dispatch_index', 'background_job_attempts', 'data_sources', 'imports', 'source_objects', 'parsed_observations', 'mapping_profiles', 'mapping_proposals', 'mapping_provider_reservations', 'mapping_provider_usage', 'transactions', 'source_links', 'review_decisions', 'import_commit_batches', 'manual_transactions', 'balance_snapshots', 'balance_audit', 'system_categories', 'categories', 'tags', 'transaction_tags', 'audit_events', 'recurring_overrides', 'artifacts', 'artifact_versions', 'artifact_build_attempts', 'artifact_runtime_grants', 'artifact_sdk_access_events', 'artifact_state', 'artifact_state_snapshots', 'artifact_state_migrations', 'artifact_ai_proposals')");
+      expect((gone.rows[0] as { n: number }).n).toBe(0);
+      // Self-healing: the idempotent migrator restores the full shape (46 base + 5 artifact + 3 state + 1 AI proposal = 55).
+      try {
+        const preCols = await pool.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'artifacts' ORDER BY ordinal_position");
+        const preN = await pool.query("SELECT count(*)::int AS n FROM artifacts");
+        // eslint-disable-next-line no-console
+        console.log(`[tenancy-debug] pre-reapply artifacts cols=${JSON.stringify(preCols.rows)} rows=${preN.rows[0].n}`);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.log(`[tenancy-debug] pre-reapply inspect failed: ${(e as Error).message}`);
+      }
+      await migrate(pool, "apps/web/migrations");
+      const back = await pool.query("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('users', 'workspaces', 'workspace_members', 'accounts', 'command_operations', 'ai_policies', 'ai_exclusions', 'ai_dispatch_permits', 'ai_dispatch_budgets', 'ai_dispatch_reservations', 'ai_dispatch_usage', 'chat_threads', 'chat_turns', 'chat_attempts', 'chat_activity', 'chat_tool_calls', 'ai_action_proposals', 'ai_eval_runs', 'ai_eval_cases', 'ai_eval_summaries', 'background_jobs', 'background_job_results', 'outbox_events', 'job_dispatch_index', 'background_job_attempts', 'data_sources', 'imports', 'source_objects', 'parsed_observations', 'mapping_profiles', 'mapping_proposals', 'mapping_provider_reservations', 'mapping_provider_usage', 'transactions', 'source_links', 'review_decisions', 'import_commit_batches', 'manual_transactions', 'balance_snapshots', 'balance_audit', 'system_categories', 'categories', 'tags', 'transaction_tags', 'audit_events', 'recurring_overrides', 'artifacts', 'artifact_versions', 'artifact_build_attempts', 'artifact_runtime_grants', 'artifact_sdk_access_events', 'artifact_state', 'artifact_state_snapshots', 'artifact_state_migrations', 'artifact_ai_proposals')");
+      expect((back.rows[0] as { n: number }).n).toBe(55);
+      const versionCol = await pool.query("SELECT 1 FROM information_schema.columns WHERE table_name = 'accounts' AND column_name = 'version'");
+      expect(versionCol.rowCount).toBe(1);
+    });
 });

@@ -65,3 +65,11 @@ export async function ensureTestPool(story: string, dbName: string, truncate: st
   if (targets.length > 0) await pool.query(`TRUNCATE ${targets.join(", ")} CASCADE`);
   return pool;
 }
+
+/** Return a superuser pool for the given test database (bypasses RLS for setup). */
+export async function ensureTestMigrationPool(story: string, dbName: string): Promise<Pool> {
+  const appUrl = env(story, "DATABASE_URL");
+  const setupUrl = migrationUrl(story, appUrl);
+  const pool = new Pool({ connectionString: withDatabase(setupUrl, dbName), connectionTimeoutMillis: 8000 });
+  return pool;
+}
