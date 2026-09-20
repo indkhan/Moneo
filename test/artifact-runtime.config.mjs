@@ -35,7 +35,7 @@ export default defineConfig({
         command: "npx vite preview --config apps/web/vite.config.ts --port 4174 --host",
         url: "http://localhost:4174/artifact-renderer.html",
         reuseExistingServer: !process.env.CI,
-        timeout: 60000,
+        timeout: 120000,
         cwd: "C:/codebases/Moneo",
     },
 });

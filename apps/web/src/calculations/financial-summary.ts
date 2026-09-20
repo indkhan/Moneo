@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Pool } from "pg";
-import { formatSignedDecimalBigint } from "../money.ts";
+import { formatSignedDecimalBigint, formatDecimalBigint } from "../money.ts";
 import { TenantInvalid, withTenant, type TenantClaims } from "../tenancy.ts";
 import { isUuid } from "../ids.ts";
 import { calculateWorkspaceTotals, classifyLeg, type TransactionLeg } from "./cash.ts";
@@ -64,5 +64,112 @@ export async function getFinancialSummary(pool: Pool, claims: TenantClaims, work
     const calculationVersion = (BigInt((prior.rows[0] as { version: string }).version) + 1n).toString();
     await client.query("INSERT INTO calculation_versions (workspace_id, version, inputs_hash, results_hash) VALUES ($1, $2, $3, $4)", [workspaceId, calculationVersion, inputsHash, resultsHash]);
     return { baseCurrency, base, native, calculationVersion, inputsHash, resultsHash };
+  });
+}
+
+// E05-S03 Finance SDK functions for artifact runtime
+
+export async function getSpendingByCategory(
+  pool: Pool,
+  claims: TenantClaims,
+  filter: { dateFrom?: string; dateTo?: string; accountIds?: string[] } = {}
+): Promise<Array<{ label: string; amount: string }>> {
+  if (filter.accountIds !== undefined && !filter.accountIds.every(isUuid)) throw new TenantInvalid();
+  for (const value of [filter.dateFrom, filter.dateTo]) if (value !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new TenantInvalid();
+  return withTenant(pool, claims, async (client) => {
+    let query = `SELECT COALESCE(c.name, 'Uncategorized') AS label, SUM(t.amount_minor)::text AS amount
+      FROM transactions t
+      LEFT JOIN categories c ON c.workspace_id = t.workspace_id AND c.id = t.category_id
+      WHERE t.workspace_id = $1`;
+    const params: unknown[] = [claims.workspaceId];
+    let paramIdx = 2;
+    if (filter.dateFrom) { query += ` AND t.effective_date >= $${paramIdx++}`; params.push(filter.dateFrom); }
+    if (filter.dateTo) { query += ` AND t.effective_date <= $${paramIdx++}`; params.push(filter.dateTo); }
+    if (filter.accountIds) {
+      const placeholders = filter.accountIds.map(() => `$${paramIdx++}`).join(",");
+      query += ` AND t.account_id IN (${placeholders})`;
+      params.push(...filter.accountIds);
+    }
+    query += ` GROUP BY label ORDER BY amount DESC`;
+    const rows = await client.query(query, params);
+    return rows.rows as Array<{ label: string; amount: string }>;
+  });
+}
+
+export async function getCashflow(
+  pool: Pool,
+  claims: TenantClaims,
+  filter: { dateFrom?: string; dateTo?: string; accountIds?: string[] } = {}
+): Promise<Array<{ date: string; inflow: string; outflow: string }>> {
+  if (filter.accountIds !== undefined && !filter.accountIds.every(isUuid)) throw new TenantInvalid();
+  for (const value of [filter.dateFrom, filter.dateTo]) if (value !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new TenantInvalid();
+  return withTenant(pool, claims, async (client) => {
+    let query = `SELECT effective_date, 
+      SUM(CASE WHEN direction = 'INFLOW' THEN amount_minor ELSE 0 END)::text AS inflow,
+      SUM(CASE WHEN direction = 'OUTFLOW' THEN amount_minor ELSE 0 END)::text AS outflow
+      FROM transactions WHERE workspace_id = $1`;
+    const params: unknown[] = [claims.workspaceId];
+    let paramIdx = 2;
+    if (filter.dateFrom) { query += ` AND effective_date >= $${paramIdx++}`; params.push(filter.dateFrom); }
+    if (filter.dateTo) { query += ` AND effective_date <= $${paramIdx++}`; params.push(filter.dateTo); }
+    if (filter.accountIds) {
+      const placeholders = filter.accountIds.map(() => `$${paramIdx++}`).join(",");
+      query += ` AND account_id IN (${placeholders})`;
+      params.push(...filter.accountIds);
+    }
+    query += ` GROUP BY effective_date ORDER BY effective_date`;
+    const rows = await client.query(query, params);
+    return rows.rows as Array<{ date: string; inflow: string; outflow: string }>;
+  });
+}
+
+export async function getBalances(
+  pool: Pool,
+  claims: TenantClaims,
+  filter: { accountIds?: string[] } = {}
+): Promise<Array<{ accountId: string; amount: string; currency: string }>> {
+  if (filter.accountIds !== undefined && !filter.accountIds.every(isUuid)) throw new TenantInvalid();
+  return withTenant(pool, claims, async (client) => {
+    let query = `SELECT DISTINCT ON (b.account_id) b.account_id, b.amount_minor, b.currency
+      FROM balance_snapshots b
+      JOIN accounts a ON a.workspace_id = b.workspace_id AND a.id = b.account_id
+      WHERE b.workspace_id = $1 AND a.archived = false`;
+    const params: unknown[] = [claims.workspaceId];
+    let paramIdx = 2;
+    if (filter.accountIds) {
+      const placeholders = filter.accountIds.map(() => `$${paramIdx++}`).join(",");
+      query += ` AND b.account_id IN (${placeholders})`;
+      params.push(...filter.accountIds);
+    }
+    query += ` ORDER BY b.account_id, b.observed_at DESC`;
+    const rows = await client.query(query, params);
+    return rows.rows.map((r) => ({ accountId: r.account_id, amount: formatDecimalBigint(BigInt(r.amount_minor)), currency: r.currency })) as Array<{ accountId: string; amount: string; currency: string }>;
+  });
+}
+
+export async function getTransactionSummary(
+  pool: Pool,
+  claims: TenantClaims,
+  filter: { dateFrom?: string; dateTo?: string; accountIds?: string[]; direction?: string } = {}
+): Promise<Array<{ date: string; amount: string; currency: string; direction: string; description: string }>> {
+  if (filter.accountIds !== undefined && !filter.accountIds.every(isUuid)) throw new TenantInvalid();
+  if (filter.direction !== undefined && !["INFLOW", "OUTFLOW"].includes(filter.direction)) throw new TenantInvalid();
+  for (const value of [filter.dateFrom, filter.dateTo]) if (value !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new TenantInvalid();
+  return withTenant(pool, claims, async (client) => {
+    let query = `SELECT effective_date, amount_minor, currency, direction, description
+      FROM transactions WHERE workspace_id = $1`;
+    const params: unknown[] = [claims.workspaceId];
+    let paramIdx = 2;
+    if (filter.dateFrom) { query += ` AND effective_date >= $${paramIdx++}`; params.push(filter.dateFrom); }
+    if (filter.dateTo) { query += ` AND effective_date <= $${paramIdx++}`; params.push(filter.dateTo); }
+    if (filter.accountIds) {
+      const placeholders = filter.accountIds.map(() => `$${paramIdx++}`).join(",");
+      query += ` AND account_id IN (${placeholders})`;
+      params.push(...filter.accountIds);
+    }
+    if (filter.direction) { query += ` AND direction = $${paramIdx++}`; params.push(filter.direction); }
+    query += ` ORDER BY effective_date DESC LIMIT 500`;
+    const rows = await client.query(query, params);
+    return rows.rows.map((r) => ({ date: r.effective_date, amount: formatDecimalBigint(BigInt(r.amount_minor)), currency: r.currency, direction: r.direction, description: r.description })) as Array<{ date: string; amount: string; currency: string; direction: string; description: string }>;
   });
 }

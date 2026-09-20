@@ -57,12 +57,15 @@ export type RuntimeMessage =
     | { type: "patch"; value: unknown; protocol: number; nonce: string }
     | { type: "state"; value: Record<string, unknown>; protocol: number; nonce: string }
     | { type: "status"; value: string; protocol: number; nonce: string }
-    | { type: "stop"; protocol: number; nonce: string };
+    | { type: "stop"; protocol: number; nonce: string }
+    | { type: "rpc_request"; value: { method: string; args: unknown; requestId: string }; protocol: number; nonce: string }
+    | { type: "rpc_response"; value: { requestId: string; result?: unknown; error?: string }; protocol: number; nonce: string };
 
 export type HostMessage =
     | { type: "start"; protocol: number; nonce: string; source: ArtifactSource; state: Record<string, unknown>; finance: Record<string, unknown>; manifest: ArtifactManifest }
     | { type: "event"; value: unknown; protocol: number; nonce: string }
-    | { type: "stop"; protocol: number; nonce: string };
+    | { type: "stop"; protocol: number; nonce: string }
+    | { type: "rpc_response"; value: { requestId: string; result?: unknown; error?: string }; protocol: number; nonce: string };
 
 export type AllowedPermissions =
     | "balances.read"

@@ -60,7 +60,7 @@ import {
   validateUndoInput,
 } from "./commands/transactions.ts";
 import { getTransactionEvidence, listTransactions } from "./transactions-query.ts";
-import { getFinancialSummary } from "./calculations/financial-summary.ts";
+import { getFinancialSummary, getSpendingByCategory, getCashflow, getBalances, getTransactionSummary } from "./calculations/financial-summary.ts";
 import {
   confirm as confirmRecurringCmd,
   dismiss as dismissRecurringCmd,
@@ -2144,6 +2144,81 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           }
           const ok = restartArtifactSession(sessionId);
           tenantJson(res, ok ? 200 : 409, ok ? {} : { error: "conflict", reason: "session_not_ready" });
+          return true;
+        }
+        // E05-S03 Finance SDK RPC endpoint
+        if (path === "/api/artifacts/sdk/rpc" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { sessionId?: unknown; method?: unknown; args?: unknown };
+          if (typeof body.sessionId !== "string" || typeof body.method !== "string" || body.args === undefined) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const sessionId = body.sessionId;
+          const existing = getArtifactSession(sessionId);
+          if (!existing) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const resolved = await claims(req, existing.workspaceId);
+          if (!resolved.claim || resolved.claim.userId !== existing.userId) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          if (existing.status !== "ready") {
+            tenantJson(res, 409, { error: "conflict", reason: "session_not_ready" });
+            return true;
+          }
+          const method = body.method as string;
+          const args = body.args as unknown;
+          const permissionMap: Record<string, string> = {
+            "spendingByCategory": "analytics.spending_by_category",
+            "cashflow": "analytics.cashflow",
+            "getBalances": "balances.read",
+            "transactionSummary": "transactions.summary.read",
+          };
+          const requiredPermission = permissionMap[method];
+          if (requiredPermission && !existing.approvedPermissions.includes(requiredPermission)) {
+            tenantJson(res, 403, { error: "permission_denied", requiredPermission });
+            return true;
+          }
+          // Log access event
+          const claim = resolved.claim!;
+          await withTenant(pool, claim, async (client) => {
+            const grant = await client.query(
+              `SELECT id FROM artifact_runtime_grants WHERE workspace_id = $1 AND session_id = $2`,
+              [claim.workspaceId, sessionId],
+            );
+            if ((grant.rowCount ?? 0) > 0) {
+              await client.query(
+                `INSERT INTO artifact_sdk_access_events (workspace_id, id, grant_id, method, args_json, result_rows, result_bytes, duration_ms, status) VALUES ($1, $2, $3, $4, $5, 0, 0, 0, 'ok')`,
+                [claim.workspaceId, uuidv7(), grant.rows[0].id, method, JSON.stringify(args)],
+              );
+            }
+          });
+          // Dispatch to the appropriate Finance SDK function
+          let result: unknown;
+          try {
+            if (method === "spendingByCategory") {
+              result = await getSpendingByCategory(pool, claim, args as { dateFrom?: string; dateTo?: string; accountIds?: string[] });
+            } else if (method === "cashflow") {
+              result = await getCashflow(pool, claim, args as { dateFrom?: string; dateTo?: string; accountIds?: string[] });
+            } else if (method === "getBalances") {
+              result = await getBalances(pool, claim, args as { accountIds?: string[] });
+            } else if (method === "transactionSummary") {
+              result = await getTransactionSummary(pool, claim, args as { dateFrom?: string; dateTo?: string; accountIds?: string[]; direction?: string });
+            } else {
+              tenantJson(res, 400, { error: "invalid_method" });
+              return true;
+            }
+            tenantJson(res, 200, { result });
+          } catch (error) {
+            tenantJson(res, 500, { error: "rpc_failed", message: error instanceof Error ? error.message : "unknown" });
+          }
           return true;
         }
       } catch (err) {

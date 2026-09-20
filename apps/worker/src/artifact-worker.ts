@@ -1,5 +1,5 @@
 import { getQuickJS, shouldInterruptAfterDeadline, type QuickJSContext, type QuickJSHandle, type QuickJSRuntime } from "quickjs-emscripten";
-import { ARTIFACT_LIMITS, ARTIFACT_PROTOCOL, type StartMessage, type RuntimeMessage, type HostMessage, type ArtifactManifest, RUNTIME_PERMISSIONS } from "../../web/src/artifact-contract.ts";
+import { ARTIFACT_LIMITS, ARTIFACT_PROTOCOL, type StartMessage, type RuntimeMessage, type HostMessage, type ArtifactManifest } from "../../web/src/artifact-contract.ts";
 
 let vm: QuickJSContext | undefined;
 let runtime: QuickJSRuntime | undefined;
@@ -9,10 +9,13 @@ let messageCount = 0;
 let windowStart = performance.now();
 let executionTimer: ReturnType<typeof setTimeout> | undefined;
 
+let sdkCallCount = 0;
+let sdkCallWindowStart = performance.now();
+
+const pendingRpcCalls = new Map<string, { resolve: (value: unknown) => void; reject: (reason: string) => void }>();
+
 function disposeHandle(handle: QuickJSHandle | undefined): void {
-    try {
-        handle?.dispose();
-    } catch { /* ignore */ }
+    try { handle?.dispose(); } catch { }
 }
 
 function createObject(values: Record<string, string | number | boolean | null | undefined>): QuickJSHandle {
@@ -55,142 +58,83 @@ function validateSdkMessage(type: "render" | "patch", value: unknown): boolean {
 
 function publish(type: "render" | "patch", handle?: QuickJSHandle): void {
     const value = handle ? vm!.dump(handle) : undefined;
-    if (!validateSdkMessage(type, value)) {
-        throw new Error("invalid_sdk_message");
-    }
-    const msg: RuntimeMessage = { type, value, protocol: ARTIFACT_PROTOCOL, nonce: startMessage.nonce };
-    self.postMessage(msg);
+    if (!validateSdkMessage(type, value)) throw new Error("invalid_sdk_message");
+    self.postMessage({ type, value, protocol: ARTIFACT_PROTOCOL, nonce: startMessage.nonce });
 }
 
 function publishState(state: Record<string, unknown>): void {
-    const msg: RuntimeMessage = { type: "state", value: state, protocol: ARTIFACT_PROTOCOL, nonce: startMessage.nonce };
-    self.postMessage(msg);
+    self.postMessage({ type: "state", value: state, protocol: ARTIFACT_PROTOCOL, nonce: startMessage.nonce });
 }
 
 function publishStatus(status: string): void {
-    const msg: RuntimeMessage = { type: "status", value: status, protocol: ARTIFACT_PROTOCOL, nonce: startMessage.nonce };
-    self.postMessage(msg);
+    self.postMessage({ type: "status", value: status, protocol: ARTIFACT_PROTOCOL, nonce: startMessage.nonce });
+}
+
+function publishRpcRequest(method: string, args: unknown, requestId: string): void {
+    self.postMessage({ type: "rpc_request", value: { method, args, requestId }, protocol: ARTIFACT_PROTOCOL, nonce: startMessage.nonce });
 }
 
 function armExecutionLimit(): void {
     if (executionTimer) clearTimeout(executionTimer);
-    executionTimer = setTimeout(() => {
-        terminateWorker("terminated");
-    }, ARTIFACT_LIMITS.executionMs);
+    executionTimer = setTimeout(() => terminateWorker("terminated"), ARTIFACT_LIMITS.executionMs);
 }
 
 function terminateWorker(status: string): void {
     if (executionTimer) clearTimeout(executionTimer);
     publishStatus(status);
-    vm = undefined;
-    runtime = undefined;
-    self.close();
+    vm = undefined; runtime = undefined; self.close();
+}
+
+function checkSdkCallRateLimit(): boolean {
+    const now = performance.now();
+    if (now - sdkCallWindowStart >= 60000) { sdkCallWindowStart = now; sdkCallCount = 0; }
+    if (++sdkCallCount > ARTIFACT_LIMITS.maxSdkCallsPerMinute) return false;
+    if (sdkCallCount > ARTIFACT_LIMITS.maxSdkCallsPerSession) return false;
+    return true;
 }
 
 function installSdk(message: StartMessage): void {
     localState = { ...message.state };
-    const artifact = vm!.newObject();
-    const ui = vm!.newObject();
-    const state = vm!.newObject();
-    const finance = vm!.newObject();
-
-    const render = vm!.newFunction("render", (value: QuickJSHandle) => {
-        publish("render", value);
-    });
-    const patch = vm!.newFunction("patch", (value: QuickJSHandle) => {
-        publish("patch", value);
-    });
-    const get = vm!.newFunction("get", () => {
-        return createObject(localState as Record<string, string | number | boolean | null>);
-    });
-    const set = vm!.newFunction("set", (value: QuickJSHandle) => {
-        const candidate = vm!.dump(value);
-        if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
-            throw new Error("invalid_state_patch");
-        }
-        if (Object.keys(candidate).length > ARTIFACT_LIMITS.maxStateKeys) {
-            throw new Error("state_key_limit");
-        }
-        localState = { ...localState, ...candidate };
-        publishState(localState);
+    const artifact = vm!.newObject(), ui = vm!.newObject(), state = vm!.newObject(), finance = vm!.newObject();
+    const render = vm!.newFunction("render", (v: QuickJSHandle) => publish("render", v));
+    const patch = vm!.newFunction("patch", (v: QuickJSHandle) => publish("patch", v));
+    const get = vm!.newFunction("get", () => createObject(localState as Record<string, string | number | boolean | null>));
+    const set = vm!.newFunction("set", (v: QuickJSHandle) => {
+        const c = vm!.dump(v);
+        if (!c || typeof c !== "object" || Array.isArray(c)) throw new Error("invalid_state_patch");
+        if (Object.keys(c).length > ARTIFACT_LIMITS.maxStateKeys) throw new Error("state_key_limit");
+        localState = { ...localState, ...c }; publishState(localState);
     });
 
-    const spendingByCategory = vm!.newFunction("spendingByCategory", () => {
-        const categories = message.finance.categories as Array<{ label: string; amount: string }> ?? [];
-        const rows = vm!.newArray();
-        categories.forEach((row, index) => {
-            const item = createObject({ label: row.label, amount: row.amount });
-            vm!.setProp(rows, index, item);
-            disposeHandle(item);
+    const createRpcFunction = (method: string) => vm!.newFunction(method, (argsHandle: QuickJSHandle) => {
+        if (!checkSdkCallRateLimit()) throw new Error("sdk_call_rate_exceeded");
+        const requestId = crypto.randomUUID();
+        const args = vm!.dump(argsHandle);
+        publishRpcRequest(method, args, requestId);
+        const thenable = vm!.newObject();
+        const then = vm!.newFunction("then", (onFulfilled: QuickJSHandle, onRejected: QuickJSHandle | undefined) => {
+            const rid = crypto.randomUUID();
+            pendingRpcCalls.set(rid, {
+                resolve: (val: unknown) => { try { vm!.callFunction(onFulfilled, vm!.undefined, createObject(val as Record<string, string | number | boolean | null>)); } catch {} },
+                reject: (reason: string) => { if (onRejected) { try { vm!.callFunction(onRejected, vm!.undefined, vm!.newString(reason)); } catch {} } },
+            });
+            vm!.setProp(thenable, "then", then); if (then) disposeHandle(then); return thenable;
         });
-        return rows;
     });
 
-    const cashflow = vm!.newFunction("cashflow", () => {
-        const data = message.finance.cashflow as Array<{ date: string; inflow: string; outflow: string }> ?? [];
-        const rows = vm!.newArray();
-        data.forEach((row, index) => {
-            const item = createObject({ date: row.date, inflow: row.inflow, outflow: row.outflow });
-            vm!.setProp(rows, index, item);
-            disposeHandle(item);
-        });
-        return rows;
-    });
+    const spendingByCategory = createRpcFunction("spendingByCategory");
+    const cashflow = createRpcFunction("cashflow");
+    const getBalances = createRpcFunction("getBalances");
+    const transactionSummary = createRpcFunction("transactionSummary");
 
-    const getBalances = vm!.newFunction("getBalances", () => {
-        const data = message.finance.balances as Array<{ accountId: string; amount: string; currency: string }> ?? [];
-        const rows = vm!.newArray();
-        data.forEach((row, index) => {
-            const item = createObject({ accountId: row.accountId, amount: row.amount, currency: row.currency });
-            vm!.setProp(rows, index, item);
-            disposeHandle(item);
-        });
-        return rows;
-    });
-
-    const transactionSummary = vm!.newFunction("transactionSummary", () => {
-        const data = message.finance.transactionSummary as Array<{ date: string; amount: string; currency: string; direction: string; description: string }> ?? [];
-        const rows = vm!.newArray();
-        data.forEach((row, index) => {
-            const item = createObject({ date: row.date, amount: row.amount, currency: row.currency, direction: row.direction, description: row.description });
-            vm!.setProp(rows, index, item);
-            disposeHandle(item);
-        });
-        return rows;
-    });
-
-    vm!.setProp(ui, "render", render);
-    vm!.setProp(ui, "patch", patch);
-    vm!.setProp(state, "get", get);
-    vm!.setProp(state, "set", set);
+    vm!.setProp(ui, "render", render); vm!.setProp(ui, "patch", patch);
+    vm!.setProp(state, "get", get); vm!.setProp(state, "set", set);
     vm!.setProp(finance, "spendingByCategory", spendingByCategory);
-    vm!.setProp(finance, "cashflow", cashflow);
-    vm!.setProp(finance, "getBalances", getBalances);
-    vm!.setProp(finance, "transactionSummary", transactionSummary);
-    vm!.setProp(artifact, "ui", ui);
-    vm!.setProp(artifact, "state", state);
-    vm!.setProp(artifact, "finance", finance);
-    vm!.setProp(vm!.global, "artifact", artifact);
-
+    vm!.setProp(finance, "cashflow", cashflow); vm!.setProp(finance, "getBalances", getBalances); vm!.setProp(finance, "transactionSummary", transactionSummary);
+    vm!.setProp(artifact, "ui", ui); vm!.setProp(artifact, "state", state); vm!.setProp(artifact, "finance", finance); vm!.setProp(vm!.global, "artifact", artifact);
     [render, patch, get, set, spendingByCategory, cashflow, getBalances, transactionSummary, ui, state, finance, artifact].forEach(disposeHandle);
 
-    vm!.evalCode(`
-        Object.freeze(artifact.ui);
-        Object.freeze(artifact.state);
-        Object.freeze(artifact.finance);
-        Object.freeze(artifact);
-        globalThis.eval = undefined;
-        globalThis.Function = undefined;
-        globalThis.fetch = undefined;
-        globalThis.XMLHttpRequest = undefined;
-        globalThis.WebSocket = undefined;
-        globalThis.navigator = undefined;
-        globalThis.window = undefined;
-        globalThis.document = undefined;
-        globalThis.localStorage = undefined;
-        globalThis.sessionStorage = undefined;
-        globalThis.indexedDB = undefined;
-    `);
+    vm!.evalCode(`Object.freeze(artifact.ui);Object.freeze(artifact.state);Object.freeze(artifact.finance);Object.freeze(artifact);globalThis.eval=undefined;globalThis.Function=undefined;globalThis.fetch=undefined;globalThis.XMLHttpRequest=undefined;globalThis.WebSocket=undefined;globalThis.navigator=undefined;globalThis.window=undefined;globalThis.document=undefined;globalThis.localStorage=undefined;globalThis.sessionStorage=undefined;globalThis.indexedDB=undefined;`);
 }
 
 async function run(message: StartMessage): Promise<void> {
@@ -208,47 +152,28 @@ async function run(message: StartMessage): Promise<void> {
 
 function checkRateLimit(data: unknown): boolean {
     const now = performance.now();
-    if (now - windowStart >= 1000) {
-        windowStart = now;
-        messageCount = 0;
-    }
+    if (now - windowStart >= 1000) { windowStart = now; messageCount = 0; }
     if (++messageCount > ARTIFACT_LIMITS.messagesPerSecond) return false;
-    const byteSize = new TextEncoder().encode(JSON.stringify(data)).byteLength;
-    if (byteSize > ARTIFACT_LIMITS.messageBytes) return false;
+    if (new TextEncoder().encode(JSON.stringify(data)).byteLength > ARTIFACT_LIMITS.messageBytes) return false;
     return true;
 }
 
 self.onmessage = async (event: MessageEvent<HostMessage>) => {
     const data = event.data;
     try {
-        if (data.type === "start") {
-            await run(data);
-            return;
-        }
+        if (data.type === "start") { await run(data); return; }
         if (!vm) return;
-
-        if (!checkRateLimit(data) || data.protocol !== ARTIFACT_PROTOCOL || data.nonce !== startMessage.nonce) {
-            terminateWorker("terminated");
-            return;
-        }
-
+        if (!checkRateLimit(data) || data.protocol !== ARTIFACT_PROTOCOL || data.nonce !== startMessage.nonce) { terminateWorker("terminated"); return; }
         if (data.type === "event") {
             armExecutionLimit();
-            const handler = vm.getProp(vm.global, "onEvent");
-            const eventObj = createObject(data.value as Record<string, string | number | boolean | null>);
-            try {
-                vm.callFunction(handler, vm.undefined, eventObj);
-            } finally {
-                disposeHandle(handler);
-                disposeHandle(eventObj);
-            }
+            const h = vm.getProp(vm.global, "onEvent"); const eo = createObject(data.value as Record<string, string | number | boolean | null>);
+            try { vm.callFunction(h, vm.undefined, eo); } finally { disposeHandle(h); disposeHandle(eo); }
             publishStatus("ready");
-        } else if (data.type === "stop") {
-            terminateWorker("stopped");
+        } else if (data.type === "stop") { terminateWorker("stopped"); }
+        else if (data.type === "rpc_response") {
+            const { requestId, result, error } = data.value as { requestId: string; result?: unknown; error?: string };
+            const p = pendingRpcCalls.get(requestId);
+            if (p) { pendingRpcCalls.delete(requestId); if (error) p.reject(error); else p.resolve(result); }
         }
-    } catch (error) {
-        const msg = error instanceof Error ? error.message.slice(0, 200) : "runtime";
-        const status = /interrupted/i.test(msg) ? "terminated" : `rejected:${msg}`;
-        publishStatus(status);
-    }
+    } catch (e) { const m = e instanceof Error ? e.message.slice(0, 200) : "runtime"; publishStatus(/interrupted/i.test(m) ? "terminated" : `rejected:${m}`); }
 };

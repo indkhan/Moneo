@@ -1,4 +1,4 @@
-import { ARTIFACT_LIMITS, ARTIFACT_PROTOCOL, type ArtifactSource, type ArtifactManifest, type RuntimeMessage, RENDERER_ORIGIN } from "./artifact-contract.ts";
+import { ARTIFACT_LIMITS, ARTIFACT_PROTOCOL, type ArtifactSource, type ArtifactManifest, RENDERER_ORIGIN } from "./artifact-contract.ts";
 
 export interface ArtifactSession {
     sessionId: string;
@@ -36,7 +36,54 @@ function createIframe(): HTMLIFrameElement {
 }
 
 function getRendererUrl(nonce: string): string {
-    return `${RENDERER_ORIGIN}/artifact-renderer.html?session=${encodeURIComponent(nonce)}#${nonce}`;
+    return RENDERER_ORIGIN + "/artifact-renderer.html?session=" + encodeURIComponent(nonce) + "#" + nonce;
+}
+
+async function handleRpcRequest(session: ArtifactSession, method: string, args: unknown, requestId: string): Promise<void> {
+    const permissionMap: Record<string, string> = {
+        "spendingByCategory": "analytics.spending_by_category",
+        "cashflow": "analytics.cashflow",
+        "getBalances": "balances.read",
+        "transactionSummary": "transactions.summary.read",
+    };
+    const requiredPermission = permissionMap[method];
+    if (requiredPermission && !session.approvedPermissions.includes(requiredPermission)) {
+        const sessionPort = sessions.get(session.sessionId)?.port;
+        if (sessionPort) {
+            sessionPort.postMessage({ type: "rpc_response", value: { requestId, error: "permission_denied" }, protocol: ARTIFACT_PROTOCOL, nonce: session.nonce });
+        }
+        return;
+    }
+
+    try {
+        const response = await fetch("/api/artifacts/sdk/rpc", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+                sessionId: session.sessionId,
+                method,
+                args,
+            }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            const sessionPort = sessions.get(session.sessionId)?.port;
+            if (sessionPort) {
+                sessionPort.postMessage({ type: "rpc_response", value: { requestId, error: result.error || "rpc_failed" }, protocol: ARTIFACT_PROTOCOL, nonce: session.nonce });
+            }
+        } else {
+            const sessionPort = sessions.get(session.sessionId)?.port;
+            if (sessionPort) {
+                sessionPort.postMessage({ type: "rpc_response", value: { requestId, result }, protocol: ARTIFACT_PROTOCOL, nonce: session.nonce });
+            }
+        }
+    } catch (error) {
+        const sessionPort = sessions.get(session.sessionId)?.port;
+        if (sessionPort) {
+            sessionPort.postMessage({ type: "rpc_response", value: { requestId, error: error instanceof Error ? error.message : "network_error" }, protocol: ARTIFACT_PROTOCOL, nonce: session.nonce });
+        }
+    }
 }
 
 export function openArtifactSession(
@@ -59,7 +106,7 @@ export function openArtifactSession(
     }
 
     const nonce = generateNonce();
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min session
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
     const iframe = createIframe();
     container.appendChild(iframe);
@@ -96,7 +143,7 @@ export function openArtifactSession(
     const channel = new MessageChannel();
     session.port = channel.port1;
 
-    channel.port1.onmessage = ({ data }) => {
+    channel.port1.onmessage = async ({ data }) => {
         const current = sessions.get(sessionId);
         if (!current || data.nonce !== current.nonce || data.protocol !== 1 || byteSize(data) > ARTIFACT_LIMITS.messageBytes) return;
 
@@ -111,6 +158,10 @@ export function openArtifactSession(
                 current.status = data.value;
                 setTimeout(() => cleanupSession(sessionId), 100);
             }
+        }
+        if (data.type === "rpc_request") {
+            const { method, args, requestId } = data.value as { method: string; args: unknown; requestId: string };
+            await handleRpcRequest(current, method, args, requestId);
         }
     };
 
@@ -165,7 +216,6 @@ export function restartArtifactSession(sessionId: string): boolean {
     try {
         session.port?.postMessage({ type: "stop", protocol: 1, nonce: session.nonce });
     } catch { }
-    // Reopen with same source/state
     openArtifactSession(
         sessionId,
         session.workspaceId,

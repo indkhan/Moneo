@@ -16,6 +16,8 @@ const allowedAttributes = new Set(["data-slot", "data-action", "type", "min", "m
 const allowedCss = new Set(["font", "padding", "color", "font-size", "width", "display", "align-items", "gap", "height", "background", "min-width", "max-width", "margin", "border", "border-radius", "box-sizing", "flex", "flex-direction", "justify-content", "overflow", "text-align", "line-height", "font-weight", "font-family", "cursor", "pointer-events", "transition", "transform", "opacity", "visibility", "position", "top", "left", "right", "bottom", "z-index"]);
 const byteSize = (value: unknown): number => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 
+const pendingRpcRequests = new Map<string, { resolve: (value: unknown) => void; reject: (reason: string) => void }>();
+
 function sanitizeHtml(source: string): string {
     const doc = new DOMParser().parseFromString(source, "text/html");
     for (const element of [...doc.body.querySelectorAll("*")]) {
@@ -124,19 +126,49 @@ function handleMessage(data: RuntimeMessage): void {
     } else if (data.type === "status") {
         clearTimeout(executionTimer);
         port.postMessage(data);
+    } else if (data.type === "rpc_response") {
+        const { requestId, result, error } = data.value as { requestId: string; result?: unknown; error?: string };
+        const pending = pendingRpcRequests.get(requestId);
+        if (pending) {
+            pendingRpcRequests.delete(requestId);
+            if (error) {
+                pending.reject(error);
+            } else {
+                pending.resolve(result);
+            }
+        }
     }
+}
+
+function sendRpcRequest(method: string, args: unknown): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+        const requestId = crypto.randomUUID();
+        pendingRpcRequests.set(requestId, { resolve, reject });
+        port.postMessage({ type: "rpc_request", value: { method, args, requestId }, protocol: ARTIFACT_PROTOCOL, nonce });
+        // Timeout after 30 seconds
+        setTimeout(() => {
+            if (pendingRpcRequests.has(requestId)) {
+                pendingRpcRequests.delete(requestId);
+                reject(new Error("rpc_timeout"));
+            }
+        }, 30000);
+    });
 }
 
 window.addEventListener("message", (event) => {
     if (event.source !== parent || event.origin !== "http://localhost:4173" || event.data?.type !== "connect" || event.data?.protocol !== ARTIFACT_PROTOCOL || event.data?.nonce !== nonce || event.ports.length !== 1 || port) return;
     port = event.ports[0];
-    port.onmessage = ({ data: reply }: { data: { type: "start" | "stop"; protocol: number; nonce: string; source?: ArtifactSource; state?: Record<string, unknown>; finance?: Record<string, unknown>; manifest?: ArtifactManifest } }) => {
+    port.onmessage = ({ data: reply }: { data: { type: "start" | "stop" | "rpc_response"; protocol: number; nonce: string; source?: ArtifactSource; state?: Record<string, unknown>; finance?: Record<string, unknown>; manifest?: ArtifactManifest; value?: { requestId: string; result?: unknown; error?: string } } }) => {
         if (!checkRateLimit(reply)) {
             stop("terminated");
             return;
         }
         if (reply.type === "stop") {
             stop("stopped");
+            return;
+        }
+        if (reply.type === "rpc_response") {
+            handleMessage(reply as RuntimeMessage);
             return;
         }
         if (reply.type !== "start") return;
@@ -150,7 +182,16 @@ window.addEventListener("message", (event) => {
             worker = new Worker("/artifact-worker.js", { type: "module" });
             worker.onmessage = ({ data: workerData }: { data: RuntimeMessage }) => {
                 if (checkRateLimit(workerData)) {
-                    handleMessage(workerData);
+                    if (workerData.type === "rpc_request") {
+                        // Forward RPC request to host
+                        const { method, args, requestId } = workerData.value as { method: string; args: unknown; requestId: string };
+                        sendRpcRequest(method, args).then(
+                            result => port.postMessage({ type: "rpc_response", value: { requestId, result }, protocol: ARTIFACT_PROTOCOL, nonce }),
+                            error => port.postMessage({ type: "rpc_response", value: { requestId, error: error.message }, protocol: ARTIFACT_PROTOCOL, nonce })
+                        );
+                    } else {
+                        handleMessage(workerData);
+                    }
                 }
             };
             worker.onerror = () => stop("rejected");
