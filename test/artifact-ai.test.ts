@@ -496,6 +496,14 @@ describe("e05-s06 contextual AI artifact proposals", () => {
     expect(replay).toEqual(first);
     expect(await proposalCount(claims, first.artifactId)).toBe(1);
 
+    // E05 adversarial fix: same key + different bytes must conflict, not
+    // silently replay the prior draft.
+    await expect(artifactCreateDraftTool(pool, ctx, userId, {
+      ...args,
+      js: 'artifact.ui.render({ type: "chart", rows: [] });\n// diverged',
+    })).rejects.toThrow();
+    expect(await proposalCount(claims, first.artifactId)).toBe(1);
+
     // Stale policy version in tool args fails closed.
     await expect(artifactProposeEditTool(pool, ctx, userId, {
       artifactId: first.artifactId,
@@ -520,6 +528,24 @@ describe("e05-s06 contextual AI artifact proposals", () => {
       policyVersion: ctx.policyVersion,
     })).rejects.toThrow();
 
+    // E05 adversarial fix: same edit key + different bytes conflicts.
+    const editKey = randomUUID();
+    const editArgs = {
+      artifactId: first.artifactId,
+      baseVersionId: first.versionId,
+      html: SCENARIO_OUTPUT.html,
+      css: SCENARIO_OUTPUT.css,
+      js: SCENARIO_OUTPUT.js,
+      manifest: SCENARIO_OUTPUT.manifest,
+      idempotencyKey: editKey,
+      policyVersion: ctx.policyVersion,
+    };
+    await artifactProposeEditTool(pool, ctx, userId, editArgs);
+    await expect(artifactProposeEditTool(pool, ctx, userId, {
+      ...editArgs,
+      js: `${SCENARIO_OUTPUT.js}\n// diverged`,
+    })).rejects.toThrow();
+
     // Malformed tool output is rejected before any write.
     await expect(artifactCreateDraftTool(pool, ctx, userId, {
       name: "Bad tool chart",
@@ -529,7 +555,8 @@ describe("e05-s06 contextual AI artifact proposals", () => {
       manifest: {},
       idempotencyKey: randomUUID(),
     })).rejects.toThrow();
-    expect(await proposalCount(claims, first.artifactId)).toBe(1);
+    // One draft version + one edit version; diverged replays added none.
+    expect(await proposalCount(claims, first.artifactId)).toBe(2);
   });
 
   it("output validator rejects malformed, hostile and expanded payloads", () => {

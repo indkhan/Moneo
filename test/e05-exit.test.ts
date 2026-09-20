@@ -776,11 +776,10 @@ describe("e05-s07 exit journey", () => {
   });
 
   it("SDK burst stays correct and bounded; no server-side flood state accrues", async () => {
-    // ARTIFACT_LIMITS caps SDK calls worker-side (8/session); the server leg
-    // is stateless per call (grant recheck + read). A 60-call burst must stay
-    // correct without accruing permits, usage or sessions. There is no
-    // server-side RPC rate cap by design (documented limit); abuse fails
-    // closed at the grant gate, floods are absorbed as plain reads.
+    // ARTIFACT_LIMITS caps SDK calls worker-side (8 outstanding, 60/minute)
+    // and server-side on the session record (same limits; 61st call in a
+    // window 429s). A 60-call burst must stay correct without accruing
+    // permits, usage or sessions; floods past the window fail closed 429.
     const base = appServers.length > 0 ? `http://127.0.0.1:${(appServers[appServers.length - 1].address() as AddressInfo).port}` : await startApp();
     const cookie = await login(base, `synthetic-e05-exit-burst-${tag}`);
     const wsRes = await postJson(base, "/api/workspaces", cookie, { name: `Exit Burst WS ${tag}`, baseCurrency: "EUR" });
@@ -814,6 +813,10 @@ describe("e05-s07 exit journey", () => {
     }
     expect(Date.now() - started).toBeLessThan(30_000);
     expect(await usageLedger(claims)).toEqual(usageBefore);
+    // The 61st call in the same window fails closed 429 (server-side cap).
+    const over = await postJson(base, "/api/artifacts/sdk/rpc", cookie, { sessionId, method: "spendingByCategory", args: {} });
+    expect(over.status).toBe(429);
+    expect(over.json).toMatchObject({ error: "rate_limited" });
     const grants = await withTenant(pool, claims, (client) => client.query("SELECT count(*)::int AS n FROM artifact_runtime_grants WHERE workspace_id = $1 AND user_id = $2", [workspaceId, userId]));
     expect((grants.rows[0] as { n: number }).n).toBe(1);
   });

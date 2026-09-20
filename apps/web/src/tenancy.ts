@@ -366,11 +366,11 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
 
   return {
     handle: async (req, res, path, method, query, requestId = "uncontrolled") => {
-      // JSON routes (POST/PUT) read the body via readJsonBody, the sole
+      // JSON routes (POST/PUT/PATCH) read the body via readJsonBody, the sole
       // "data" listener — discarding here first would eat the body and hang
       // the reader waiting for "end" (S03 drain lesson). Everything else
       // discards up front so sockets stay reusable.
-      if (method !== "POST" && method !== "PUT") req.resume();
+      if (method !== "POST" && method !== "PUT" && method !== "PATCH") req.resume();
       req.on("error", () => {});
       try {
         if (path === "/api/workspaces" && method === "GET") {
@@ -1911,9 +1911,40 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           tenantJson(res, 200, { artifacts: await withTenant(pool, resolved.claim, async (client) => listArtifacts(client, resolved.claim!)), requestId });
           return true;
         }
+        // E05-S04 artifact state read. Placed before the generic artifact
+        // detail route: "/api/artifacts/state" would otherwise match
+        // /^\/api\/artifacts\/([A-Za-z0-9-]+)$/ with id "state" and 500 on
+        // the UUID cast (found by the E05 adversarial review).
+        if (path === "/api/artifacts/state" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const artifactId = query.get("artifactId") ?? "";
+          if (!isUuid(workspaceId) || !isUuid(artifactId)) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const state = await withTenant(pool, resolved.claim, async (client) => getArtifactState(client, resolved.claim!, artifactId));
+          if (!state) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          tenantJson(res, 200, { state: state.state, schemaVersion: state.schemaVersion, versionId: state.versionId, updatedAt: state.updatedAt });
+          return true;
+        }
         const artifactMatch = path.match(/^\/api\/artifacts\/([A-Za-z0-9-]+)$/);
+        // E05 adversarial fix: validate the id shape (a non-UUID segment
+        // such as "state" previously fell through to SQL and escaped as a
+        // 22P02 500). The state GET lives above so it is never shadowed.
         if (artifactMatch && method === "GET") {
           const workspaceId = query.get("workspaceId") ?? "";
+          if (!isUuid(artifactMatch[1])) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
           const resolved = await claims(req, workspaceId);
           if (!resolved.claim) {
             denied(res, resolved.session !== null);
@@ -1950,6 +1981,17 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
               tenantJson(res, 400, { error: "invalid_request" });
               return true;
             }
+            // E05 adversarial fix: foreign artifactIds previously escaped as
+            // FK 500s (cross-tenant oracle); attacker-chosen manifests could
+            // lodge permissions outside the runtime allowlist.
+            if (err instanceof Error && err.message === "ARTIFACT_NOT_FOUND") {
+              tenantJson(res, 404, { error: "not_found" });
+              return true;
+            }
+            if (err instanceof Error && err.message === "INVALID_PERMISSIONS") {
+              tenantJson(res, 400, { error: "invalid_request", reason: "invalid_permissions" });
+              return true;
+            }
             throw err;
           }
           return true;
@@ -1957,6 +1999,12 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
         const versionMatch = path.match(/^\/api\/artifacts\/([A-Za-z0-9-]+)\/versions\/([A-Za-z0-9-]+)$/);
         if (versionMatch && method === "GET") {
           const workspaceId = query.get("workspaceId") ?? "";
+          // E05 adversarial fix round 2: non-UUID path segments must 400, not
+          // escape as UUID-cast 500s (same class as the detail route).
+          if (!isUuid(versionMatch[1]) || !isUuid(versionMatch[2])) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
           const resolved = await claims(req, workspaceId);
           if (!resolved.claim) {
             denied(res, resolved.session !== null);
@@ -1970,6 +2018,10 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
         const versionsMatch = path.match(/^\/api\/artifacts\/([A-Za-z0-9-]+)\/versions$/);
         if (versionsMatch && method === "GET") {
           const workspaceId = query.get("workspaceId") ?? "";
+          if (!isUuid(versionsMatch[1])) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
           const resolved = await claims(req, workspaceId);
           if (!resolved.claim) {
             denied(res, resolved.session !== null);
@@ -1985,20 +2037,46 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             tenantJson(res, 401, { error: "unauthorized" });
             return true;
           }
-          const body = (await readJsonBody(req)) as { workspaceId?: unknown; versionId?: unknown; expectedActiveVersionId?: unknown };
+          // E05 adversarial fix round 2: the path artifact id reaches SQL —
+          // validate its shape like every other id on this route.
+          if (!isUuid(activateMatch[1])) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown; versionId?: unknown; expectedActiveVersionId?: unknown; migration?: unknown };
           if (typeof body.workspaceId !== "string" || !isUuid(body.workspaceId) || typeof body.versionId !== "string" || !isUuid(body.versionId)) {
             tenantJson(res, 400, { error: "invalid_request" });
             return true;
           }
           const versionId = body.versionId as string;
           const expectedActiveVersionId = body.expectedActiveVersionId as string | undefined;
+          // E05 adversarial fix: S04 requires code/state activation to commit
+          // atomically. Callers may bundle a bounded state migration that
+          // targets the version being activated; it runs in the same tenant
+          // transaction so a crash cannot leave new code on old state.
+          let migration: { fromVersionId: string; toVersionId: string; operations: MigrationOperation[] } | undefined;
+          if (body.migration !== undefined) {
+            const m = body.migration as { fromVersionId?: unknown; toVersionId?: unknown; operations?: unknown };
+            if (!isUuid(m.fromVersionId as string) || !isUuid(m.toVersionId as string) || !Array.isArray(m.operations) || (m.toVersionId as string) !== versionId) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            migration = { fromVersionId: m.fromVersionId as string, toVersionId: m.toVersionId as string, operations: m.operations as MigrationOperation[] };
+          }
           const resolved = await claims(req, body.workspaceId);
           if (!resolved.claim) {
             tenantJson(res, 404, { error: "not_found" });
             return true;
           }
           try {
-            const result = await withTenant(pool, resolved.claim, async (client) => activateArtifactVersion(client, resolved.claim!, activateMatch[1], versionId, expectedActiveVersionId));
+            const result = await withTenant(pool, resolved.claim, async (client) => {
+              const activated = await activateArtifactVersion(client, resolved.claim!, activateMatch[1], versionId, expectedActiveVersionId);
+              if (migration) {
+                const migrated = await applyStateMigration(client, resolved.claim!, activateMatch[1], migration.fromVersionId, migration.toVersionId, migration.operations);
+                if (!migrated.success) throw new Error(`MIGRATION_FAILED:${migrated.error ?? "unknown"}`);
+              }
+              return activated;
+            });
             tenantJson(res, 200, result);
           } catch (err) {
             if (err instanceof TenantInvalid) {
@@ -2019,6 +2097,10 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             }
             if (err instanceof Error && err.message === "ARTIFACT_NOT_FOUND") {
               tenantJson(res, 404, { error: "not_found" });
+              return true;
+            }
+            if (err instanceof Error && err.message.startsWith("MIGRATION_FAILED:")) {
+              tenantJson(res, 409, { error: "migration_failed", reason: err.message.slice("MIGRATION_FAILED:".length) });
               return true;
             }
             throw err;
@@ -2059,9 +2141,22 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           }
           const manifest = version.manifest as ArtifactManifest;
           const sessionId = uuidv7();
+          // E05 adversarial fix: unbounded initialState bypassed the 64 KiB
+          // state cap enforced on patch/snapshot/migrate.
+          const rawInitial = (typeof body.initialState === "object" && body.initialState !== null ? body.initialState as Record<string, unknown> : {});
+          if (Buffer.byteLength(JSON.stringify(rawInitial), "utf8") > ARTIFACT_LIMITS.maxStateBytes) {
+            tenantJson(res, 400, { error: "invalid_request", reason: "state_too_large" });
+            return true;
+          }
           try {
             const opened = await withTenant(pool, claim, async (client) => {
               await enforceSessionBudget(client, claim.workspaceId, claim.userId);
+              // E05 adversarial fix: archived artifacts must not mint live
+              // grants — list views hide them, but the session door did not.
+              const arch = await client.query(`SELECT archived_at FROM artifacts WHERE workspace_id = $1 AND id = $2`, [claim.workspaceId, artifactId]);
+              if ((arch.rowCount ?? 0) === 0 || (arch.rows[0] as { archived_at: string | null }).archived_at !== null) {
+                throw new Error("SOURCE_UNAVAILABLE");
+              }
               const source = await getArtifactVersionSource(client, claim, artifactId, versionId);
               if (!source) throw new Error("SOURCE_UNAVAILABLE");
               const basis = await readGrantBasis(client, claim.workspaceId);
@@ -2074,7 +2169,7 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
                 approvedPermissions: manifest.approvedPermissions,
                 source,
                 manifest,
-                initialState: (typeof body.initialState === "object" && body.initialState !== null ? body.initialState as Record<string, unknown> : {}),
+                initialState: rawInitial,
               });
               await client.query(
                 `INSERT INTO artifact_runtime_grants (workspace_id, id, artifact_id, artifact_version_id, user_id, session_id, permissions, data_revision, policy_revision, expires_at)
@@ -2244,6 +2339,12 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             if ((found.rowCount ?? 0) === 0) return { ok: false as const, reason: "grant_expired" };
             const grant = found.rows[0] as { id: string; permissions: string[]; policy_revision: string; data_revision: string; expires_at: string };
             if (new Date(grant.expires_at).getTime() <= Date.now()) return { ok: false as const, reason: "grant_expired" };
+            // E05 adversarial fix: an archived artifact's open grants stay
+            // callable until expiry otherwise. Deny uniformly as missing.
+            const arch = await client.query(`SELECT archived_at FROM artifacts WHERE workspace_id = $1 AND id = $2`, [claim.workspaceId, existing.artifactId]);
+            if ((arch.rowCount ?? 0) === 0 || (arch.rows[0] as { archived_at: string | null }).archived_at !== null) {
+              return { ok: false as const, reason: "archived" };
+            }
             const basis = await readGrantBasis(client, claim.workspaceId);
             if (String(grant.policy_revision) !== basis.policyVersion || String(grant.data_revision) !== basis.dataRevision) {
               return { ok: false as const, reason: "grant_stale" };
@@ -2270,6 +2371,8 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             } else if (gate.reason === "grant_stale") {
               await logAccess("revoked", "grant_stale", 0, 0, Date.now());
               tenantJson(res, 409, { error: "conflict", reason: "grant_stale" });
+            } else if (gate.reason === "archived") {
+              tenantJson(res, 404, { error: "not_found" });
             } else {
               tenantJson(res, 409, { error: "conflict", reason: "grant_expired" });
             }
@@ -2277,6 +2380,27 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           }
           // Dispatch to the appropriate Finance SDK function
           const startedAt = Date.now();
+          // E05 adversarial fix: the 8-outstanding / 60-per-minute SDK caps
+          // lived only in the worker, bypassable by any session-id holder.
+          // Enforce the same ARTIFACT_LIMITS counters server-side on the
+          // session record (single-instance posture, same as S06 controls).
+          const windowNow = Date.now();
+          if (!existing.rpcWindowStart || windowNow - existing.rpcWindowStart >= 60_000) {
+            existing.rpcWindowStart = windowNow;
+            existing.rpcWindowCount = 0;
+          }
+          if ((existing.rpcWindowCount ?? 0) >= ARTIFACT_LIMITS.maxSdkCallsPerMinute) {
+            await logAccess("denied", "rate_limited", 0, 0, startedAt);
+            tenantJson(res, 429, { error: "rate_limited" });
+            return true;
+          }
+          if ((existing.rpcOutstanding ?? 0) >= ARTIFACT_LIMITS.maxSdkCallsPerSession) {
+            await logAccess("denied", "rate_limited", 0, 0, startedAt);
+            tenantJson(res, 429, { error: "rate_limited" });
+            return true;
+          }
+          existing.rpcWindowCount = (existing.rpcWindowCount ?? 0) + 1;
+          existing.rpcOutstanding = (existing.rpcOutstanding ?? 0) + 1;
           let result: unknown;
           try {
             if (method === "spendingByCategory") {
@@ -2291,6 +2415,7 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             const resultBytes = Buffer.byteLength(JSON.stringify(result), "utf8");
             // E05-S07: oversized results never cross to the artifact session.
             if (resultBytes > ARTIFACT_LIMITS.maxResultBytes) {
+              existing.rpcOutstanding = Math.max(0, (existing.rpcOutstanding ?? 1) - 1);
               await logAccess("denied", "result_too_large", 0, resultBytes, startedAt);
               tenantJson(res, 413, { error: "result_too_large" });
               return true;
@@ -2298,37 +2423,22 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             const resultRows = Array.isArray((result as { groups?: unknown[]; points?: unknown[]; balances?: unknown[]; rows?: unknown[] }).groups ?? (result as { points?: unknown[] }).points ?? (result as { balances?: unknown[] }).balances ?? (result as { rows?: unknown[] }).rows)
               ? (((result as { groups?: unknown[] }).groups ?? (result as { points?: unknown[] }).points ?? (result as { balances?: unknown[] }).balances ?? (result as { rows?: unknown[] }).rows) as unknown[]).length
               : 0;
+            // E05 adversarial fix round 2 (B2): release the slot before the
+            // access log — if logAccess throws, the increment is still undone.
+            existing.rpcOutstanding = Math.max(0, (existing.rpcOutstanding ?? 1) - 1);
             await logAccess("ok", null, resultRows, resultBytes, startedAt);
             tenantJson(res, 200, { result });
           } catch (error) {
             // Detail stays server-side in the access log; the session gets a
             // typed error only (no driver/SQL text crosses to artifact code).
+            existing.rpcOutstanding = Math.max(0, (existing.rpcOutstanding ?? 1) - 1);
             await logAccess("error", error instanceof Error ? error.message.slice(0, 120) : "unknown", 0, 0, startedAt);
             tenantJson(res, 500, { error: "rpc_failed" });
           }
           return true;
         }
-        // E05-S04 Artifact state endpoints
-        if (path === "/api/artifacts/state" && method === "GET") {
-          const workspaceId = query.get("workspaceId") ?? "";
-          const artifactId = query.get("artifactId") ?? "";
-          if (!isUuid(workspaceId) || !isUuid(artifactId)) {
-            tenantJson(res, 400, { error: "invalid_request" });
-            return true;
-          }
-          const resolved = await claims(req, workspaceId);
-          if (!resolved.claim) {
-            tenantJson(res, 404, { error: "not_found" });
-            return true;
-          }
-          const state = await withTenant(pool, resolved.claim, async (client) => getArtifactState(client, resolved.claim!, artifactId));
-          if (!state) {
-            tenantJson(res, 404, { error: "not_found" });
-            return true;
-          }
-          tenantJson(res, 200, { state: state.state, schemaVersion: state.schemaVersion, versionId: state.versionId, updatedAt: state.updatedAt });
-          return true;
-        }
+        // E05-S04 Artifact state endpoints (PATCH/snapshots/migrate/revert;
+        // the GET reader lives above, ahead of the generic detail route).
         if (path === "/api/artifacts/state" && method === "PATCH") {
           const session = await resolveSession(req);
           if (!session) {
@@ -2357,6 +2467,16 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
               tenantJson(res, 409, { error: "conflict", reason: "version_mismatch" });
               return true;
             }
+            // E05 adversarial fix: foreign artifactIds previously escaped as
+            // FK 500s; version-less artifacts get an explicit conflict.
+            if (err instanceof Error && err.message === "ARTIFACT_NOT_FOUND") {
+              tenantJson(res, 404, { error: "not_found" });
+              return true;
+            }
+            if (err instanceof Error && err.message === "NO_VERSION_STATE") {
+              tenantJson(res, 409, { error: "conflict", reason: "no_version_state" });
+              return true;
+            }
             if (err instanceof Error && (err.message === "state_too_large" || err.message === "state_must_be_object" || err.message === "state_depth_exceeded" || err.message === "state_key_limit_exceeded" || err.message === "invalid_op" || err.message === "path_not_found" || err.message === "path_exists")) {
               tenantJson(res, 400, { error: "invalid_request", reason: err.message });
               return true;
@@ -2365,10 +2485,15 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           }
           return true;
         }
+        // E05 adversarial fix: the snapshot GET previously passed the path id
+        // as BOTH artifactId and snapshotId, so it could only ever 404.
+        // Address snapshots by path id, scoped to the query artifact.
         const stateSnapshotMatch = path.match(/^\/api\/artifacts\/state\/snapshots\/([A-Za-z0-9-]+)$/);
         if (stateSnapshotMatch && method === "GET") {
           const workspaceId = query.get("workspaceId") ?? "";
-          if (!workspaceId || !isUuid(workspaceId)) {
+          const artifactId = query.get("artifactId") ?? "";
+          const snapshotId = stateSnapshotMatch[1];
+          if (!isUuid(workspaceId) || !isUuid(artifactId) || !isUuid(snapshotId)) {
             tenantJson(res, 400, { error: "invalid_request" });
             return true;
           }
@@ -2377,8 +2502,7 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             tenantJson(res, 404, { error: "not_found" });
             return true;
           }
-          const artifactId = stateSnapshotMatch[1];
-          const snapshot = await withTenant(pool, resolved.claim, async (client) => getArtifactStateSnapshot(client, resolved.claim!, artifactId, stateSnapshotMatch[1]));
+          const snapshot = await withTenant(pool, resolved.claim, async (client) => getArtifactStateSnapshot(client, resolved.claim!, artifactId, snapshotId));
           if (!snapshot) {
             tenantJson(res, 404, { error: "not_found" });
             return true;
@@ -2386,11 +2510,62 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           tenantJson(res, 200, { id: snapshot.id, state: snapshot.state, schemaVersion: snapshot.schemaVersion, createdAt: snapshot.createdAt });
           return true;
         }
+        // E05 adversarial fix: snapshots were unreachable via HTTP
+        // (createStateSnapshot had no route), so revert had no live path.
+        // Snapshot the current state document, anchored to its version.
+        const snapshotCreateMatch = path.match(/^\/api\/artifacts\/([A-Za-z0-9-]+)\/state\/snapshots$/);
+        if (snapshotCreateMatch && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          // E05 adversarial fix round 2: path id shape validated (B1 class).
+          if (!isUuid(snapshotCreateMatch[1])) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown };
+          if (!body.workspaceId || !isUuid(body.workspaceId as string)) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const artifactId = snapshotCreateMatch[1];
+          const resolved = await claims(req, body.workspaceId as string);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const created = await withTenant(pool, resolved.claim, async (client) => {
+              const state = await getArtifactState(client, resolved.claim!, artifactId);
+              if (!state) throw new Error("STATE_NOT_FOUND");
+              return createStateSnapshot(client, resolved.claim!, artifactId, state.versionId, state.schemaVersion, state.state);
+            });
+            tenantJson(res, 201, { id: created.id });
+          } catch (err) {
+            if (err instanceof Error && err.message === "STATE_NOT_FOUND") {
+              tenantJson(res, 404, { error: "not_found" });
+              return true;
+            }
+            if (err instanceof Error && (err.message === "state_too_large" || err.message === "state_must_be_object" || err.message === "state_depth_exceeded" || err.message === "state_key_limit_exceeded")) {
+              tenantJson(res, 400, { error: "invalid_request", reason: err.message });
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
         const migrateMatch = path.match(/^\/api\/artifacts\/([A-Za-z0-9-]+)\/state\/migrate$/);
         if (migrateMatch && method === "POST") {
           const session = await resolveSession(req);
           if (!session) {
             tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          // E05 adversarial fix round 2: path id shape validated (B1 class).
+          if (!isUuid(migrateMatch[1])) {
+            tenantJson(res, 400, { error: "invalid_request" });
             return true;
           }
           const body = (await readJsonBody(req)) as { workspaceId?: unknown; fromVersionId?: unknown; toVersionId?: unknown; operations?: unknown };
@@ -2420,6 +2595,11 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             tenantJson(res, 401, { error: "unauthorized" });
             return true;
           }
+          // E05 adversarial fix round 2: path id shape validated (B1 class).
+          if (!isUuid(revertMatch[1])) {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
           const body = (await readJsonBody(req)) as { workspaceId?: unknown; snapshotId?: unknown };
           if (!body.workspaceId || !isUuid(body.workspaceId as string) || !body.snapshotId || !isUuid(body.snapshotId as string)) {
             tenantJson(res, 400, { error: "invalid_request" });
@@ -2433,6 +2613,12 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           }
           const result = await withTenant(pool, resolved.claim, async (client) => revertArtifactState(client, resolved.claim!, artifactId, body.snapshotId as string));
           if (!result.success) {
+            // E05 adversarial fix: a missing artifact must read as missing,
+            // not as a revert conflict (no cross-tenant oracle).
+            if (result.error === "artifact_not_found") {
+              tenantJson(res, 404, { error: "not_found" });
+              return true;
+            }
             tenantJson(res, 409, { error: "revert_failed", reason: result.error });
             return true;
           }

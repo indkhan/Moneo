@@ -214,13 +214,43 @@ describe("e01-s03 tenant ownership", () => {
   it("app role is least-privilege and RLS is forced", async () => {
     const role = await pool.query("SELECT current_user AS u, rolsuper AS super, rolbypassrls AS bypass FROM pg_roles WHERE rolname = current_user");
     expect(role.rows[0]).toMatchObject({ super: false, bypass: false });
-    const forced = await pool.query("SELECT relname, relforcerowsecurity AS forced FROM pg_class WHERE relname IN ('workspaces', 'workspace_members', 'accounts')");
-    expect(forced.rows).toHaveLength(3);
+    const forced = await pool.query("SELECT relname, relforcerowsecurity AS forced FROM pg_class WHERE relname IN ('workspaces', 'workspace_members', 'accounts', 'artifacts', 'artifact_versions', 'artifact_build_attempts', 'artifact_runtime_grants', 'artifact_sdk_access_events', 'artifact_state', 'artifact_state_snapshots', 'artifact_state_migrations', 'artifact_ai_proposals')");
+    expect(forced.rows).toHaveLength(12);
     for (const row of forced.rows as { relname: string; forced: boolean }[]) {
       expect(row.forced).toBe(true);
     }
   });
-  it("migrations 031 down to 002 roll back and re-apply on the suite database", async () => {
+  it("artifact tables fail closed under empty context and isolate tenants", async () => {
+    const base = await startApp();
+    const cookieA = await login(base, "synthetic-artifact-rls-a");
+    const cookieB = await login(base, "synthetic-artifact-rls-b");
+    const wsA = ((await json("POST", `${base}/api/workspaces`, cookieA, { name: "RA", baseCurrency: "EUR" })).body as { id: string }).id;
+    const wsB = ((await json("POST", `${base}/api/workspaces`, cookieB, { name: "RB", baseCurrency: "USD" })).body as { id: string }).id;
+    const userA = (await pool.query("SELECT id FROM users WHERE auth_subject = $1", ["synthetic-artifact-rls-a"])).rows[0].id as string;
+    const userB = (await pool.query("SELECT id FROM users WHERE auth_subject = $1", ["synthetic-artifact-rls-b"])).rows[0].id as string;
+    const artId = randomUUID();
+    await withTenant(pool, { userId: userA, workspaceId: wsA }, async (client: PoolClient) => {
+      await client.query(`INSERT INTO artifacts (workspace_id, id, name) VALUES ($1, $2, 'probe')`, [wsA, artId]);
+    });
+    // Tenant B sees zero rows for A's artifact, even with an explicit predicate.
+    await withTenant(pool, { userId: userB, workspaceId: wsB }, async (client: PoolClient) => {
+      const direct = await client.query(`SELECT id FROM artifacts WHERE workspace_id = $1 AND id = $2`, [wsA, artId]);
+      expect(direct.rowCount).toBe(0);
+      const all = await client.query(`SELECT count(*)::int AS n FROM artifacts`);
+      expect((all.rows[0] as { n: number }).n).toBe(0);
+    });
+    // Empty/unset context fails closed to zero rows (NULLIF guard), not 22P02.
+    const bare = await pool.connect();
+    try {
+      for (const table of ["artifacts", "artifact_versions", "artifact_build_attempts", "artifact_runtime_grants", "artifact_sdk_access_events", "artifact_state", "artifact_state_snapshots", "artifact_state_migrations", "artifact_ai_proposals"]) {
+        const r = await bare.query(`SELECT count(*)::int AS n FROM ${table}`);
+        expect((r.rows[0] as { n: number }).n).toBe(0);
+      }
+    } finally {
+      bare.release();
+    }
+  });
+  it("migrations 033 down to 002 roll back and re-apply on the suite database", async () => {
       const { readFileSync } = await import("node:fs");
       // Newest first while recorded, otherwise re-migrate never restores the
       // dependents (010 accounts manual balances references accounts; 009 import commit references
@@ -229,7 +259,7 @@ describe("e01-s03 tenant ownership", () => {
       // 006 attempts reference jobs; 005 jobs reference workspaces/operations;
       // 004 exclusions reference accounts; 002 drops the accounts table carrying
       // 003's version column). Also roll back 029 artifact state, 028 artifact SDK, 027 artifact build job, 026 artifacts so re-migration is clean.
-      for (const file of ["031_artifact_ai.rollback.sql", "030_artifact_source.rollback.sql", "029_artifact_state.rollback.sql", "028_artifact_sdk.rollback.sql", "027_artifact_build_job.rollback.sql", "026_artifacts.rollback.sql", "024_e04_completion.rollback.sql", "023_ai_eval.rollback.sql", "022_ai_settings_usage.rollback.sql", "021_ai_action_proposals.rollback.sql", "020_ai_tools.rollback.sql", "019_chat.rollback.sql", "018_ai_dispatch.rollback.sql", "017_financial_semantics.rollback.sql", "016_recurring.rollback.sql", "015_audit_events.rollback.sql", "014_categories_tags.rollback.sql", "013_calculation_evidence.rollback.sql", "012_fx_rates.rollback.sql", "011_calculation_versions.rollback.sql", "010_accounts_manual_balances.rollback.sql", "009_import_commit.rollback.sql", "008_mapping.rollback.sql", "007_uploads.rollback.sql", "006_job_recovery.rollback.sql", "005_jobs.rollback.sql", "004_ai_policy.rollback.sql", "003_commands.rollback.sql", "002_tenancy.rollback.sql"]) {
+      for (const file of ["033_artifact_rls_nullif.rollback.sql", "032_background_job_types.rollback.sql", "031_artifact_ai.rollback.sql", "030_artifact_source.rollback.sql", "029_artifact_state.rollback.sql", "028_artifact_sdk.rollback.sql", "027_artifact_build_job.rollback.sql", "026_artifacts.rollback.sql", "025_ai_eval_cases.rollback.sql", "024_e04_completion.rollback.sql", "023_ai_eval.rollback.sql", "022_ai_settings_usage.rollback.sql", "021_ai_action_proposals.rollback.sql", "020_ai_tools.rollback.sql", "019_chat.rollback.sql", "018_ai_dispatch.rollback.sql", "017_financial_semantics.rollback.sql", "016_recurring.rollback.sql", "015_audit_events.rollback.sql", "014_categories_tags.rollback.sql", "013_calculation_evidence.rollback.sql", "012_fx_rates.rollback.sql", "011_calculation_versions.rollback.sql", "010_accounts_manual_balances.rollback.sql", "009_import_commit.rollback.sql", "008_mapping.rollback.sql", "007_uploads.rollback.sql", "006_job_recovery.rollback.sql", "005_jobs.rollback.sql", "004_ai_policy.rollback.sql", "003_commands.rollback.sql", "002_tenancy.rollback.sql"]) {
         const sql = readFileSync(`apps/web/migrations/${file}`, "utf8");
         const admin = await pool.connect();
         try {

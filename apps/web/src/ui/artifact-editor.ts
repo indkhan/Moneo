@@ -275,6 +275,11 @@ export async function handleArtifactRoutes(
   if (detailMatch && method === "GET") {
     const workspaceId = detailMatch[1];
     const artifactId = detailMatch[2];
+    // E05 adversarial fix round 2: malformed ids 404, never UUID-cast 500.
+    if (!isUuid(artifactId)) {
+      errorShell(res, 404, "Not found", "No such workspace or artifact.", "/", requestId);
+      return true;
+    }
     const tab = query.get("tab") ?? "preview";
     const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
     if (!resolved.session) {
@@ -507,6 +512,11 @@ export async function handleArtifactRoutes(
   if (publishMatch && method === "POST") {
     const workspaceId = publishMatch[1];
     const artifactId = publishMatch[2];
+    // E05 adversarial fix round 2: malformed ids 404, never UUID-cast 500.
+    if (!isUuid(artifactId)) {
+      errorShell(res, 404, "Not found", "No such workspace or artifact.", "/", requestId);
+      return true;
+    }
     if (!uiSameOrigin(req, config.appBaseUrl)) {
       event("ui_denied:origin");
       uiHtml(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: "/w/" + workspaceId + "/artifacts/" + artifactId + "?tab=code", requestId, authed: true }));
@@ -658,6 +668,11 @@ export async function handleArtifactRoutes(
   if (renameMatch && method === "POST") {
     const workspaceId = renameMatch[1];
     const artifactId = renameMatch[2];
+    // E05 adversarial fix round 2: malformed ids 404, never UUID-cast 500.
+    if (!isUuid(artifactId)) {
+      errorShell(res, 404, "Not found", "No such workspace or artifact.", "/", requestId);
+      return true;
+    }
     if (!uiSameOrigin(req, config.appBaseUrl)) {
       event("ui_denied:origin");
       uiHtml(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: "/w/" + workspaceId + "/artifacts/" + artifactId + "?tab=preview", requestId, authed: true }));
@@ -704,6 +719,11 @@ export async function handleArtifactRoutes(
   if (activateMatch && method === "POST") {
     const workspaceId = activateMatch[1];
     const artifactId = activateMatch[2];
+    // E05 adversarial fix round 2: malformed ids 404, never UUID-cast 500.
+    if (!isUuid(artifactId)) {
+      errorShell(res, 404, "Not found", "No such workspace or artifact.", "/", requestId);
+      return true;
+    }
     if (!uiSameOrigin(req, config.appBaseUrl)) {
       event("ui_denied:origin");
       uiHtml(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: "/w/" + workspaceId + "/artifacts/" + artifactId + "?tab=versions", requestId, authed: true }));
@@ -745,6 +765,11 @@ export async function handleArtifactRoutes(
     const workspaceId = viewMatch[1];
     const artifactId = viewMatch[2];
     const versionId = viewMatch[3];
+    // E05 adversarial fix round 2: malformed ids 404, never UUID-cast 500.
+    if (!isUuid(artifactId) || !isUuid(versionId)) {
+      errorShell(res, 404, "Not found", "No such workspace, artifact or version.", "/", requestId);
+      return true;
+    }
     const mode = viewMatch[4];
     const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
     if (!resolved.session) {
