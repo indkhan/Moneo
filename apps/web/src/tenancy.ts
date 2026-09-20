@@ -79,8 +79,10 @@ import {
   getArtifact,
   listArtifacts,
 } from "./commands/artifacts.ts";
-import { openArtifactSession, sendArtifactEvent, stopArtifactSession, restartArtifactSession, closeArtifactSession, getArtifactSession, getActiveSessionsCount, getArtifactExecutionsCount } from "./artifact-host.ts";
-import { type ArtifactSource, type ArtifactManifest } from "./artifact-contract.ts";
+import { createSessionRecord, sendArtifactEvent, stopArtifactSession, restartArtifactSession, closeArtifactSession, getArtifactSession, getActiveSessionsCount, getArtifactExecutionsCount } from "./artifact-host.ts";
+import { getArtifactVersionSource } from "./commands/artifacts.ts";
+import { readGrantBasis } from "./artifact-ai.ts";
+import { ARTIFACT_LIMITS, type ArtifactSource, type ArtifactManifest } from "./artifact-contract.ts";
 
 export class TenantDenied extends Error {
   constructor() {
@@ -96,6 +98,33 @@ export class TenantInvalid extends Error {
 }
 
 export type TenantClaims = { userId: string; workspaceId: string };
+
+/** Too many concurrent artifact previews for one user in one workspace. */
+export class SessionLimitError extends Error {
+  constructor() {
+    super("session_limit");
+  }
+}
+
+/**
+ * E05-S07 session budget, shared by the API and editor preview paths so the
+ * multi-artifact limit cannot be bypassed through either door. Counts live
+ * grants and reaps expired ones (with their in-memory records) inside the
+ * caller's transaction, immediately before the new grant insert. Residual
+ * check-then-insert race under true concurrency is accepted: worst case one
+ * extra 30-minute grant, fail-closed everywhere else.
+ */
+export async function enforceSessionBudget(client: PoolClient, workspaceId: string, userId: string): Promise<void> {
+  const live = await client.query(
+    "SELECT count(*)::int AS n FROM artifact_runtime_grants WHERE workspace_id = $1 AND user_id = $2 AND expires_at > now()",
+    [workspaceId, userId],
+  );
+  if ((live.rows[0] as { n: number }).n >= ARTIFACT_LIMITS.maxOpenSessionsPerUser) throw new SessionLimitError();
+  const reaped = await client.query("DELETE FROM artifact_runtime_grants WHERE workspace_id = $1 AND expires_at <= now() RETURNING session_id", [
+    workspaceId,
+  ]);
+  for (const row of reaped.rows as Array<{ session_id: string }>) closeArtifactSession(row.session_id);
+}
 
 /** Run work as a verified member of the workspace. Throws TenantDenied for non-members. */
 export async function withTenant<T>(pool: Pool, claims: TenantClaims, work: (client: PoolClient) => Promise<T>, isolation?: "REPEATABLE READ"): Promise<T> {
@@ -2028,28 +2057,44 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             tenantJson(res, 409, { error: "conflict", reason: "version_not_ready" });
             return true;
           }
-          // Get artifact source (would need to be stored/built)
-          // For now, use a minimal source - real impl would fetch from artifact_versions
-          const source = { html: `<section><div data-slot="chart"></div></section>`, css: "", js: `artifact.ui.render({ type: "chart", rows: [] });` };
           const manifest = version.manifest as ArtifactManifest;
           const sessionId = uuidv7();
           try {
-            const session = openArtifactSession(
-              sessionId,
-              resolved.claim.workspaceId,
-              resolved.claim.userId,
-              artifactId,
-              versionId,
-              manifest.approvedPermissions,
-              source,
-              manifest,
-              (typeof body.initialState === "object" && body.initialState !== null ? body.initialState as Record<string, unknown> : {}),
-              document.body // In real impl, this would be a container element
-            );
-            tenantJson(res, 201, { sessionId, nonce: session.nonce, expiresAt: session.expiresAt.toISOString() });
+            const opened = await withTenant(pool, claim, async (client) => {
+              await enforceSessionBudget(client, claim.workspaceId, claim.userId);
+              const source = await getArtifactVersionSource(client, claim, artifactId, versionId);
+              if (!source) throw new Error("SOURCE_UNAVAILABLE");
+              const basis = await readGrantBasis(client, claim.workspaceId);
+              const session = createSessionRecord({
+                sessionId,
+                workspaceId: claim.workspaceId,
+                userId: claim.userId,
+                artifactId,
+                artifactVersionId: versionId,
+                approvedPermissions: manifest.approvedPermissions,
+                source,
+                manifest,
+                initialState: (typeof body.initialState === "object" && body.initialState !== null ? body.initialState as Record<string, unknown> : {}),
+              });
+              await client.query(
+                `INSERT INTO artifact_runtime_grants (workspace_id, id, artifact_id, artifact_version_id, user_id, session_id, permissions, data_revision, policy_revision, expires_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now() + interval '30 minutes')`,
+                [claim.workspaceId, uuidv7(), artifactId, versionId, claim.userId, sessionId, manifest.approvedPermissions, basis.dataRevision, basis.policyVersion],
+              );
+              return session;
+            });
+            tenantJson(res, 201, { sessionId, nonce: opened.nonce, expiresAt: opened.expiresAt.toISOString() });
           } catch (err) {
             if (err instanceof Error && err.message === "source_limit") {
               tenantJson(res, 413, { error: "payload_too_large", reason: "source_limit" });
+              return true;
+            }
+            if (err instanceof Error && err.message === "SOURCE_UNAVAILABLE") {
+              tenantJson(res, 404, { error: "not_found" });
+              return true;
+            }
+            if (err instanceof SessionLimitError) {
+              tenantJson(res, 429, { error: "session_limit" });
               return true;
             }
             throw err;
@@ -2069,10 +2114,14 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             tenantJson(res, 404, { error: "not_found" });
             return true;
           }
-          if (existing.userId !== (await claims(req, existing.workspaceId))?.claim?.userId) {
+          const owner = await claims(req, existing.workspaceId);
+          if (!owner.claim || existing.userId !== owner.claim.userId) {
             tenantJson(res, 404, { error: "not_found" });
             return true;
           }
+          await withTenant(pool, owner.claim, async (client) => {
+            await client.query(`UPDATE artifact_runtime_grants SET expires_at = now() WHERE workspace_id = $1 AND session_id = $2`, [owner.claim!.workspaceId, sessionId]);
+          });
           closeArtifactSession(sessionId);
           tenantJson(res, 204, {});
           return true;
@@ -2171,10 +2220,7 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             tenantJson(res, 404, { error: "not_found" });
             return true;
           }
-          if (existing.status !== "ready") {
-            tenantJson(res, 409, { error: "conflict", reason: "session_not_ready" });
-            return true;
-          }
+          const claim = resolved.claim;
           const method = body.method as string;
           const args = body.args as unknown;
           const permissionMap: Record<string, string> = {
@@ -2183,26 +2229,54 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             "getBalances": "balances.read",
             "transactionSummary": "transactions.summary.read",
           };
-          const requiredPermission = permissionMap[method];
-          if (requiredPermission && !existing.approvedPermissions.includes(requiredPermission)) {
-            tenantJson(res, 403, { error: "permission_denied", requiredPermission });
+          if (!(method in permissionMap)) {
+            tenantJson(res, 400, { error: "invalid_method" });
             return true;
           }
-          // Log access event
-          const claim = resolved.claim!;
-          await withTenant(pool, claim, async (client) => {
-            const grant = await client.query(
-              `SELECT id FROM artifact_runtime_grants WHERE workspace_id = $1 AND session_id = $2`,
+          const requiredPermission = permissionMap[method];
+          // Grant is the server authority: expiry, policy/data freshness and
+          // permission are rechecked on every call before any query runs.
+          const gate = await withTenant(pool, claim, async (client) => {
+            const found = await client.query(
+              `SELECT id, permissions, policy_revision, data_revision, expires_at FROM artifact_runtime_grants WHERE workspace_id = $1 AND session_id = $2`,
               [claim.workspaceId, sessionId],
             );
-            if ((grant.rowCount ?? 0) > 0) {
-              await client.query(
-                `INSERT INTO artifact_sdk_access_events (workspace_id, id, grant_id, method, args_json, result_rows, result_bytes, duration_ms, status) VALUES ($1, $2, $3, $4, $5, 0, 0, 0, 'ok')`,
-                [claim.workspaceId, uuidv7(), grant.rows[0].id, method, JSON.stringify(args)],
-              );
+            if ((found.rowCount ?? 0) === 0) return { ok: false as const, reason: "grant_expired" };
+            const grant = found.rows[0] as { id: string; permissions: string[]; policy_revision: string; data_revision: string; expires_at: string };
+            if (new Date(grant.expires_at).getTime() <= Date.now()) return { ok: false as const, reason: "grant_expired" };
+            const basis = await readGrantBasis(client, claim.workspaceId);
+            if (String(grant.policy_revision) !== basis.policyVersion || String(grant.data_revision) !== basis.dataRevision) {
+              return { ok: false as const, reason: "grant_stale" };
             }
+            if (!grant.permissions.includes(requiredPermission) || !existing.approvedPermissions.includes(requiredPermission)) {
+              return { ok: false as const, reason: "permission_denied", grantId: grant.id };
+            }
+            return { ok: true as const, grantId: grant.id };
           });
+          async function logAccess(status: string, errorClass: string | null, rows: number, bytes: number, startedAt: number): Promise<void> {
+            await withTenant(pool, claim, async (client) => {
+              const found = await client.query(`SELECT id FROM artifact_runtime_grants WHERE workspace_id = $1 AND session_id = $2`, [claim.workspaceId, sessionId]);
+              if ((found.rowCount ?? 0) === 0) return;
+              await client.query(
+                `INSERT INTO artifact_sdk_access_events (workspace_id, id, grant_id, method, args_json, result_rows, result_bytes, duration_ms, status, error_class) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+                [claim.workspaceId, uuidv7(), (found.rows[0] as { id: string }).id, method, JSON.stringify(args).slice(0, 4000), rows, bytes, Date.now() - startedAt, status, errorClass],
+              );
+            });
+          }
+          if (!gate.ok) {
+            if (gate.reason === "permission_denied") {
+              await logAccess("denied", "permission_denied", 0, 0, Date.now());
+              tenantJson(res, 403, { error: "permission_denied", requiredPermission });
+            } else if (gate.reason === "grant_stale") {
+              await logAccess("revoked", "grant_stale", 0, 0, Date.now());
+              tenantJson(res, 409, { error: "conflict", reason: "grant_stale" });
+            } else {
+              tenantJson(res, 409, { error: "conflict", reason: "grant_expired" });
+            }
+            return true;
+          }
           // Dispatch to the appropriate Finance SDK function
+          const startedAt = Date.now();
           let result: unknown;
           try {
             if (method === "spendingByCategory") {
@@ -2211,15 +2285,26 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
               result = await getCashflow(pool, claim, args as { dateFrom?: string; dateTo?: string; accountIds?: string[] });
             } else if (method === "getBalances") {
               result = await getBalances(pool, claim, args as { accountIds?: string[] });
-            } else if (method === "transactionSummary") {
-              result = await getTransactionSummary(pool, claim, args as { dateFrom?: string; dateTo?: string; accountIds?: string[]; direction?: string });
             } else {
-              tenantJson(res, 400, { error: "invalid_method" });
+              result = await getTransactionSummary(pool, claim, args as { dateFrom?: string; dateTo?: string; accountIds?: string[]; direction?: string });
+            }
+            const resultBytes = Buffer.byteLength(JSON.stringify(result), "utf8");
+            // E05-S07: oversized results never cross to the artifact session.
+            if (resultBytes > ARTIFACT_LIMITS.maxResultBytes) {
+              await logAccess("denied", "result_too_large", 0, resultBytes, startedAt);
+              tenantJson(res, 413, { error: "result_too_large" });
               return true;
             }
+            const resultRows = Array.isArray((result as { groups?: unknown[]; points?: unknown[]; balances?: unknown[]; rows?: unknown[] }).groups ?? (result as { points?: unknown[] }).points ?? (result as { balances?: unknown[] }).balances ?? (result as { rows?: unknown[] }).rows)
+              ? (((result as { groups?: unknown[] }).groups ?? (result as { points?: unknown[] }).points ?? (result as { balances?: unknown[] }).balances ?? (result as { rows?: unknown[] }).rows) as unknown[]).length
+              : 0;
+            await logAccess("ok", null, resultRows, resultBytes, startedAt);
             tenantJson(res, 200, { result });
           } catch (error) {
-            tenantJson(res, 500, { error: "rpc_failed", message: error instanceof Error ? error.message : "unknown" });
+            // Detail stays server-side in the access log; the session gets a
+            // typed error only (no driver/SQL text crosses to artifact code).
+            await logAccess("error", error instanceof Error ? error.message.slice(0, 120) : "unknown", 0, 0, startedAt);
+            tenantJson(res, 500, { error: "rpc_failed" });
           }
           return true;
         }

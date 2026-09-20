@@ -16,8 +16,6 @@ const allowedAttributes = new Set(["data-slot", "data-action", "type", "min", "m
 const allowedCss = new Set(["font", "padding", "color", "font-size", "width", "display", "align-items", "gap", "height", "background", "min-width", "max-width", "margin", "border", "border-radius", "box-sizing", "flex", "flex-direction", "justify-content", "overflow", "text-align", "line-height", "font-weight", "font-family", "cursor", "pointer-events", "transition", "transform", "opacity", "visibility", "position", "top", "left", "right", "bottom", "z-index"]);
 const byteSize = (value: unknown): number => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 
-const pendingRpcRequests = new Map<string, { resolve: (value: unknown) => void; reject: (reason: string) => void }>();
-
 function sanitizeHtml(source: string): string {
     const doc = new DOMParser().parseFromString(source, "text/html");
     for (const element of [...doc.body.querySelectorAll("*")]) {
@@ -127,32 +125,13 @@ function handleMessage(data: RuntimeMessage): void {
         clearTimeout(executionTimer);
         port.postMessage(data);
     } else if (data.type === "rpc_response") {
-        const { requestId, result, error } = data.value as { requestId: string; result?: unknown; error?: string };
-        const pending = pendingRpcRequests.get(requestId);
-        if (pending) {
-            pendingRpcRequests.delete(requestId);
-            if (error) {
-                pending.reject(error);
-            } else {
-                pending.resolve(result);
-            }
+        // Forward host API results to the worker with the original request id.
+        try {
+            worker?.postMessage(data);
+        } catch {
+            // Worker already terminated; drop the late response.
         }
     }
-}
-
-function sendRpcRequest(method: string, args: unknown): Promise<unknown> {
-    return new Promise((resolve, reject) => {
-        const requestId = crypto.randomUUID();
-        pendingRpcRequests.set(requestId, { resolve, reject });
-        port.postMessage({ type: "rpc_request", value: { method, args, requestId }, protocol: ARTIFACT_PROTOCOL, nonce });
-        // Timeout after 30 seconds
-        setTimeout(() => {
-            if (pendingRpcRequests.has(requestId)) {
-                pendingRpcRequests.delete(requestId);
-                reject(new Error("rpc_timeout"));
-            }
-        }, 30000);
-    });
 }
 
 window.addEventListener("message", (event) => {
@@ -181,18 +160,18 @@ window.addEventListener("message", (event) => {
             document.head.append(style);
             worker = new Worker("/artifact-worker.js", { type: "module" });
             worker.onmessage = ({ data: workerData }: { data: RuntimeMessage }) => {
-                if (checkRateLimit(workerData)) {
-                    if (workerData.type === "rpc_request") {
-                        // Forward RPC request to host
-                        const { method, args, requestId } = workerData.value as { method: string; args: unknown; requestId: string };
-                        sendRpcRequest(method, args).then(
-                            result => port.postMessage({ type: "rpc_response", value: { requestId, result }, protocol: ARTIFACT_PROTOCOL, nonce }),
-                            error => port.postMessage({ type: "rpc_response", value: { requestId, error: error.message }, protocol: ARTIFACT_PROTOCOL, nonce })
-                        );
-                    } else {
-                        handleMessage(workerData);
-                    }
+                if (!checkRateLimit(workerData)) {
+                    stop("terminated");
+                    return;
                 }
+                // Finance RPCs travel verbatim to the host page, which calls
+                // the authenticated backend and returns rpc_response with the
+                // same request id. The worker resolves its own pending call.
+                if (workerData.type === "rpc_request") {
+                    port.postMessage(workerData);
+                    return;
+                }
+                handleMessage(workerData);
             };
             worker.onerror = () => stop("rejected");
             worker.postMessage(reply);

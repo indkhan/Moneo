@@ -11,6 +11,8 @@ import { isUuid } from "../ids.ts";
 import {
   withTenant,
   sessionClaims,
+  enforceSessionBudget,
+  SessionLimitError,
   TenantDenied,
   TenantInvalid,
   type SessionResolver,
@@ -29,7 +31,10 @@ import {
 } from "../commands/artifacts.ts";
 import { getArtifactState } from "../commands/artifact-state.ts";
 import { validateArtifactSource } from "../artifact-validate.ts";
+import { readGrantBasis } from "../artifact-ai.ts";
+import { createSessionRecord } from "../artifact-host.ts";
 import { readLimitedBody } from "../http-controls.ts";
+import { uuidv7 } from "../ids.ts";
 import { errorPage, escapeHtml, page } from "./shell.ts";
 import { RENDERER_ORIGIN } from "../artifact-contract.ts";
 
@@ -767,9 +772,51 @@ export async function handleArtifactRoutes(
     const stateRow = await withTenant(pool, claim, (client) =>
       import("../commands/artifact-state.ts").then((m) => m.getArtifactState(client, claim, artifactId)),
     );
+    // Server session + grant: the browser attaches the iframe; every finance
+    // RPC is rechecked against this grant (expiry, policy/data freshness,
+    // permissions) before any query runs. The session budget is enforced
+    // inside the creation transaction via the shared helper (same gate as
+    // POST /api/artifacts/sessions, so neither door bypasses the other).
+    let opened: { sessionId: string; nonce: string };
+    try {
+      opened = await withTenant(pool, claim, async (client) => {
+        await enforceSessionBudget(client, claim.workspaceId, claim.userId);
+        const sessionId = uuidv7();
+      const contractManifest = {
+        ...version.manifest,
+        createdAt: version.createdAt,
+      } as import("../artifact-contract.ts").ArtifactManifest;
+      const session = createSessionRecord({
+        sessionId,
+        workspaceId: claim.workspaceId,
+        userId: claim.userId,
+        artifactId,
+        artifactVersionId: versionId,
+        approvedPermissions: (version.manifest.approvedPermissions ?? []) as string[],
+        source,
+        manifest: contractManifest,
+        initialState: (stateRow?.state ?? {}) as Record<string, unknown>,
+      });
+      const basis = await readGrantBasis(client, claim.workspaceId);
+      await client.query(
+        `INSERT INTO artifact_runtime_grants (workspace_id, id, artifact_id, artifact_version_id, user_id, session_id, permissions, data_revision, policy_revision, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now() + interval '30 minutes')`,
+        [claim.workspaceId, uuidv7(), artifactId, versionId, claim.userId, sessionId, version.manifest.approvedPermissions ?? [], basis.dataRevision, basis.policyVersion],
+      );
+      return session;
+      });
+    } catch (err) {
+      if (err instanceof SessionLimitError) {
+        event("ui_artifact_denied:session_limit");
+        uiHtml(res, 429, errorPage({ status: 429, heading: "Too many open previews", message: "Close a preview (Stop) before opening another.", back: "/w/" + workspaceId + "/artifacts/" + artifactId + "?tab=preview", requestId, authed: true }));
+        return true;
+      }
+      throw err;
+    }
     const width = mode === "compact" ? "320" : "800";
     const height = mode === "compact" ? "240" : "600";
-    const nonce = randomUUID();
+    const nonce = opened.nonce;
+    const sessionId = opened.sessionId;
     const iframeSrc = RENDERER_ORIGIN + "/artifact-renderer.html?session=" + encodeURIComponent(nonce);
     const manifestJson = JSON.stringify(version.manifest).replace(/</g, "\\u003c");
     const sourceJson = JSON.stringify(source).replace(/</g, "\\u003c");
@@ -837,6 +884,15 @@ export async function handleArtifactRoutes(
           "if(d.type==='status'){setStatus('Preview: '+d.value);}" +
           "if(d.type==='status'&&d.value==='ready'&&!stopped){" +
           "channel.port1.postMessage({type:'start',protocol:1,nonce:nonce,source:source,state:state,finance:{categories:[],cashflow:[],balances:[],transactionSummary:[]},manifest:manifest});" +
+          "}" +
+          "if(d.type==='rpc_request'&&!stopped){" +
+          "var r=d.value||{};" +
+          "fetch('/api/artifacts/sdk/rpc',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({sessionId:" +
+          JSON.stringify(sessionId) +
+          ",method:r.method,args:r.args})}).then(function(resp){return resp.json().then(function(body){return {ok:resp.ok,body:body};});}).then(function(out){" +
+          "if(out.ok){channel.port1.postMessage({type:'rpc_response',value:{requestId:r.requestId,result:out.body.result},protocol:1,nonce:nonce});}" +
+          "else{channel.port1.postMessage({type:'rpc_response',value:{requestId:r.requestId,error:(out.body&&out.body.error)||'rpc_failed'},protocol:1,nonce:nonce});}" +
+          "}).catch(function(err){channel.port1.postMessage({type:'rpc_response',value:{requestId:r.requestId,error:String(err&&err.message||err)},protocol:1,nonce:nonce});});" +
           "}" +
           "};" +
           "setStatus('Preview connected; starting sandbox…');" +

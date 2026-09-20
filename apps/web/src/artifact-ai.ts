@@ -141,6 +141,11 @@ async function liveDataRevision(client: PoolClient, workspaceId: string): Promis
   return String((rows.rows[0] as { r: string }).r);
 }
 
+/** Current policy + data basis for runtime-grant issuance and RPC freshness. */
+export async function readGrantBasis(client: PoolClient, workspaceId: string): Promise<{ policyVersion: string; dataRevision: string }> {
+  return { policyVersion: await livePolicyVersion(client, workspaceId), dataRevision: await liveDataRevision(client, workspaceId) };
+}
+
 export type ArtifactAiInput =
   | { kind: "create"; name: string; description?: string; instruction: string; idempotencyKey: string; permitId: string; threadId?: string }
   | { kind: "edit"; artifactId: string; baseVersionId: string; instruction: string; idempotencyKey: string; permitId: string; threadId?: string };

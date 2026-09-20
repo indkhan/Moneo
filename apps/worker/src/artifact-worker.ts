@@ -12,7 +12,7 @@ let executionTimer: ReturnType<typeof setTimeout> | undefined;
 let sdkCallCount = 0;
 let sdkCallWindowStart = performance.now();
 
-const pendingRpcCalls = new Map<string, { resolve: (value: unknown) => void; reject: (reason: string) => void }>();
+const pendingRpcCalls = new Map<string, Array<{ resolve: (value: unknown) => void; reject: (reason: string) => void }>>();
 
 function disposeHandle(handle: QuickJSHandle | undefined): void {
     try { handle?.dispose(); } catch { }
@@ -82,6 +82,19 @@ function armExecutionLimit(): void {
 function terminateWorker(status: string): void {
     if (executionTimer) clearTimeout(executionTimer);
     publishStatus(status);
+    // Settle nothing: every pending callback pair was dup()ed and must be
+    // released exactly once even though its result will never arrive. The
+    // whole QuickJS heap is discarded with the runtime right after.
+    for (const handlers of pendingRpcCalls.values()) {
+        for (const h of handlers) {
+            try {
+                h.reject("terminated");
+            } catch {
+                // Release below still runs; rejection delivery is best-effort.
+            }
+        }
+    }
+    pendingRpcCalls.clear();
     vm = undefined; runtime = undefined; self.close();
 }
 
@@ -111,15 +124,50 @@ function installSdk(message: StartMessage): void {
         const requestId = crypto.randomUUID();
         const args = vm!.dump(argsHandle);
         publishRpcRequest(method, args, requestId);
+        // Thenable wired to THIS request: results arrive as JSON strings the
+        // artifact code parses (nested results cannot cross as flat handles).
+        // Native argument handles die with the call scope, so the callbacks
+        // are dup()ed here and disposed exactly once when the RPC settles;
+        // without the dup every finance call would never resolve
+        // (QuickJSUseAfterFree swallowed by the settle guard).
         const thenable = vm!.newObject();
         const then = vm!.newFunction("then", (onFulfilled: QuickJSHandle, onRejected: QuickJSHandle | undefined) => {
-            const rid = crypto.randomUUID();
-            pendingRpcCalls.set(rid, {
-                resolve: (val: unknown) => { try { vm!.callFunction(onFulfilled, vm!.undefined, createObject(val as Record<string, string | number | boolean | null>)); } catch {} },
-                reject: (reason: string) => { if (onRejected) { try { vm!.callFunction(onRejected, vm!.undefined, vm!.newString(reason)); } catch {} } },
+            const keptFulfilled = onFulfilled.dup();
+            const keptRejected = onRejected?.dup();
+            const release = (): void => {
+                disposeHandle(keptFulfilled);
+                disposeHandle(keptRejected);
+            };
+            // Promise-like fan-out: every .then() registers without
+            // orphaning earlier handlers; each dup()ed pair is released
+            // exactly once when the RPC settles below.
+            const handlers = pendingRpcCalls.get(requestId) ?? [];
+            handlers.push({
+                resolve: (val: unknown) => {
+                    try {
+                        vm!.callFunction(keptFulfilled, vm!.undefined, vm!.newString(JSON.stringify(val ?? null)));
+                    } catch {
+                        // VM gone or callback threw: the artifact run is over;
+                        // the renderer surfaces the terminal status instead.
+                    } finally {
+                        release();
+                    }
+                },
+                reject: (reason: string) => {
+                    try {
+                        if (keptRejected) vm!.callFunction(keptRejected, vm!.undefined, vm!.newString(String(reason)));
+                    } catch {
+                        // Same terminal-status path as a failed resolve.
+                    } finally {
+                        release();
+                    }
+                },
             });
-            vm!.setProp(thenable, "then", then); if (then) disposeHandle(then); return thenable;
+            pendingRpcCalls.set(requestId, handlers);
         });
+        vm!.setProp(thenable, "then", then);
+        disposeHandle(then);
+        return thenable;
     });
 
     const spendingByCategory = createRpcFunction("spendingByCategory");
@@ -172,8 +220,14 @@ self.onmessage = async (event: MessageEvent<HostMessage>) => {
         } else if (data.type === "stop") { terminateWorker("stopped"); }
         else if (data.type === "rpc_response") {
             const { requestId, result, error } = data.value as { requestId: string; result?: unknown; error?: string };
-            const p = pendingRpcCalls.get(requestId);
-            if (p) { pendingRpcCalls.delete(requestId); if (error) p.reject(error); else p.resolve(result); }
+            const handlers = pendingRpcCalls.get(requestId);
+            if (handlers) {
+                pendingRpcCalls.delete(requestId);
+                for (const h of handlers) {
+                    if (error) h.reject(error);
+                    else h.resolve(result);
+                }
+            }
         }
     } catch (e) { const m = e instanceof Error ? e.message.slice(0, 200) : "runtime"; publishStatus(/interrupted/i.test(m) ? "terminated" : `rejected:${m}`); }
 };

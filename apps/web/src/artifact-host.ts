@@ -16,7 +16,7 @@ export interface ArtifactSession {
     source: ArtifactSource;
     manifest: ArtifactManifest;
     status: "loading" | "connected" | "ready" | "terminated" | "stopped" | "rejected";
-    iframe: HTMLIFrameElement;
+    iframe?: HTMLIFrameElement;
 }
 
 const sessions = new Map<string, ArtifactSession>();
@@ -86,6 +86,47 @@ async function handleRpcRequest(session: ArtifactSession, method: string, args: 
     }
 }
 
+export type SessionRecordInput = {
+    sessionId: string;
+    workspaceId: string;
+    userId: string;
+    artifactId: string;
+    artifactVersionId: string;
+    approvedPermissions: string[];
+    source: ArtifactSource;
+    manifest: ArtifactManifest;
+    initialState: Record<string, unknown>;
+};
+
+/** Server-safe session record: no DOM. The browser attaches the iframe. */
+export function createSessionRecord(input: SessionRecordInput): ArtifactSession {
+    const existing = sessions.get(input.sessionId);
+    if (existing) {
+        existing.iframe?.remove();
+        existing.port?.close();
+        existing.worker?.terminate();
+    }
+    const sourceSize = byteSize(input.source.html) + byteSize(input.source.css) + byteSize(input.source.js);
+    if (sourceSize > ARTIFACT_LIMITS.sourceBytes) throw new Error("source_limit");
+    const session: ArtifactSession = {
+        sessionId: input.sessionId,
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        artifactId: input.artifactId,
+        artifactVersionId: input.artifactVersionId,
+        approvedPermissions: input.approvedPermissions,
+        openedAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        nonce: generateNonce(),
+        state: { ...input.initialState },
+        source: { ...input.source },
+        manifest: { ...input.manifest },
+        status: "loading",
+    };
+    sessions.set(input.sessionId, session);
+    return session;
+}
+
 export function openArtifactSession(
     sessionId: string,
     workspaceId: string,
@@ -98,44 +139,12 @@ export function openArtifactSession(
     initialState: Record<string, unknown>,
     container: HTMLElement
 ): ArtifactSession {
-    const existing = sessions.get(sessionId);
-    if (existing) {
-        existing.iframe.remove();
-        existing.port?.close();
-        existing.worker?.terminate();
-    }
-
-    const nonce = generateNonce();
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    const session = createSessionRecord({ sessionId, workspaceId, userId, artifactId, artifactVersionId, approvedPermissions, source, manifest, initialState });
+    const nonce = session.nonce;
 
     const iframe = createIframe();
     container.appendChild(iframe);
-
-    const session: ArtifactSession = {
-        sessionId,
-        workspaceId,
-        userId,
-        artifactId,
-        artifactVersionId,
-        approvedPermissions,
-        openedAt: new Date(),
-        expiresAt,
-        nonce,
-        state: { ...initialState },
-        source: { ...source },
-        manifest: { ...manifest },
-        status: "loading",
-        iframe,
-    };
-
-    sessions.set(sessionId, session);
-
-    const sourceSize = byteSize(source.html) + byteSize(source.css) + byteSize(source.js);
-    if (sourceSize > ARTIFACT_LIMITS.sourceBytes) {
-        session.status = "rejected";
-        iframe.remove();
-        throw new Error("source_limit");
-    }
+    session.iframe = iframe;
 
     iframe.src = getRendererUrl(nonce);
     session.status = "loading";
@@ -216,6 +225,8 @@ export function restartArtifactSession(sessionId: string): boolean {
     try {
         session.port?.postMessage({ type: "stop", protocol: 1, nonce: session.nonce });
     } catch { }
+    const container = session.iframe?.parentElement;
+    if (!container) return false;
     openArtifactSession(
         sessionId,
         session.workspaceId,
@@ -226,7 +237,7 @@ export function restartArtifactSession(sessionId: string): boolean {
         session.source,
         session.manifest,
         session.state,
-        session.iframe.parentElement!
+        container
     );
     return true;
 }
@@ -236,7 +247,7 @@ export function closeArtifactSession(sessionId: string): void {
     if (!session) return;
     session.port?.close();
     session.worker?.terminate();
-    session.iframe.remove();
+    session.iframe?.remove();
     sessions.delete(sessionId);
 }
 
@@ -249,7 +260,7 @@ function cleanupSession(sessionId: string): void {
     if (!session) return;
     session.port?.close();
     session.worker?.terminate();
-    session.iframe.remove();
+    session.iframe?.remove();
     sessions.delete(sessionId);
 }
 

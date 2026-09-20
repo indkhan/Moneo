@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { formatSignedDecimalBigint, formatDecimalBigint } from "../money.ts";
 import { TenantInvalid, withTenant, type TenantClaims } from "../tenancy.ts";
 import { isUuid } from "../ids.ts";
@@ -69,30 +69,63 @@ export async function getFinancialSummary(pool: Pool, claims: TenantClaims, work
 
 // E05-S03 Finance SDK functions for artifact runtime
 
+export type SdkCoverage = {
+  coverage: "full" | "partial";
+  excludedAccounts: number;
+  revision: string;
+};
+
+async function sdkScope(client: PoolClient, workspaceId: string): Promise<{ excluded: Set<string>; revision: string }> {
+  const excluded = await client.query("SELECT account_id AS id FROM ai_exclusions WHERE workspace_id = $1", [workspaceId]);
+  const revision = await client.query("SELECT revision AS r FROM workspace_data_revision WHERE workspace_id = $1", [workspaceId]);
+  return {
+    excluded: new Set((excluded.rows as { id: string }[]).map((r) => r.id)),
+    revision: (revision.rowCount ?? 0) === 0 ? "0" : String((revision.rows[0] as { r: string }).r),
+  };
+}
+
 export async function getSpendingByCategory(
   pool: Pool,
   claims: TenantClaims,
   filter: { dateFrom?: string; dateTo?: string; accountIds?: string[] } = {}
-): Promise<Array<{ label: string; amount: string }>> {
+): Promise<{ groups: Array<{ label: string; amount: string }>; coverage: "full" | "partial"; excludedAccounts: number; revision: string }> {
   if (filter.accountIds !== undefined && !filter.accountIds.every(isUuid)) throw new TenantInvalid();
   for (const value of [filter.dateFrom, filter.dateTo]) if (value !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new TenantInvalid();
   return withTenant(pool, claims, async (client) => {
-    let query = `SELECT COALESCE(c.name, 'Uncategorized') AS label, SUM(t.amount_minor)::text AS amount
-      FROM transactions t
+    const scope = await sdkScope(client, claims.workspaceId);
+    // Both canonical tables, minus AI-excluded accounts (exclusions apply
+    // before aggregation; manual rows are always Uncategorized).
+    let query = `SELECT COALESCE(c.name, 'Uncategorized') AS label, COALESCE(SUM(t.amount_minor), 0)::text AS amount
+      FROM (
+        SELECT amount_minor, category_id, workspace_id, account_id, effective_date FROM transactions WHERE workspace_id = $1
+        UNION ALL
+        SELECT amount_minor, NULL AS category_id, workspace_id, account_id, effective_date FROM manual_transactions WHERE workspace_id = $1
+      ) t
       LEFT JOIN categories c ON c.workspace_id = t.workspace_id AND c.id = t.category_id
-      WHERE t.workspace_id = $1`;
+      LEFT JOIN ai_exclusions x ON x.workspace_id = t.workspace_id AND x.account_id = t.account_id
+      WHERE x.account_id IS NULL`;
+    // Both UNION legs bind the same $1; a duplicate second parameter makes
+    // PostgreSQL reject the statement (registers as requiring 1 parameter).
     const params: unknown[] = [claims.workspaceId];
     let paramIdx = 2;
     if (filter.dateFrom) { query += ` AND t.effective_date >= $${paramIdx++}`; params.push(filter.dateFrom); }
     if (filter.dateTo) { query += ` AND t.effective_date <= $${paramIdx++}`; params.push(filter.dateTo); }
     if (filter.accountIds) {
+      for (const id of filter.accountIds) {
+        if (scope.excluded.has(id)) return { groups: [], coverage: "partial" as const, excludedAccounts: scope.excluded.size, revision: scope.revision };
+      }
       const placeholders = filter.accountIds.map(() => `$${paramIdx++}`).join(",");
       query += ` AND t.account_id IN (${placeholders})`;
       params.push(...filter.accountIds);
     }
-    query += ` GROUP BY label ORDER BY amount DESC`;
+    query += ` GROUP BY label ORDER BY label`;
     const rows = await client.query(query, params);
-    return rows.rows as Array<{ label: string; amount: string }>;
+    return {
+      groups: rows.rows as Array<{ label: string; amount: string }>,
+      coverage: scope.excluded.size > 0 ? "partial" : "full",
+      excludedAccounts: scope.excluded.size,
+      revision: scope.revision,
+    };
   });
 }
 
@@ -100,26 +133,42 @@ export async function getCashflow(
   pool: Pool,
   claims: TenantClaims,
   filter: { dateFrom?: string; dateTo?: string; accountIds?: string[] } = {}
-): Promise<Array<{ date: string; inflow: string; outflow: string }>> {
+): Promise<{ points: Array<{ date: string; inflow: string; outflow: string }>; coverage: "full" | "partial"; excludedAccounts: number; revision: string }> {
   if (filter.accountIds !== undefined && !filter.accountIds.every(isUuid)) throw new TenantInvalid();
   for (const value of [filter.dateFrom, filter.dateTo]) if (value !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new TenantInvalid();
   return withTenant(pool, claims, async (client) => {
-    let query = `SELECT effective_date, 
-      SUM(CASE WHEN direction = 'INFLOW' THEN amount_minor ELSE 0 END)::text AS inflow,
-      SUM(CASE WHEN direction = 'OUTFLOW' THEN amount_minor ELSE 0 END)::text AS outflow
-      FROM transactions WHERE workspace_id = $1`;
+    const scope = await sdkScope(client, claims.workspaceId);
+    let query = `SELECT effective_date,
+      COALESCE(SUM(CASE WHEN direction = 'INFLOW' THEN amount_minor ELSE 0 END), 0)::text AS inflow,
+      COALESCE(SUM(CASE WHEN direction = 'OUTFLOW' THEN amount_minor ELSE 0 END), 0)::text AS outflow
+      FROM (
+        SELECT amount_minor, direction, effective_date, account_id, workspace_id FROM transactions WHERE workspace_id = $1
+        UNION ALL
+        SELECT amount_minor, direction, effective_date, account_id, workspace_id FROM manual_transactions WHERE workspace_id = $1
+      ) t
+      LEFT JOIN ai_exclusions x ON x.workspace_id = t.workspace_id AND x.account_id = t.account_id
+      WHERE x.account_id IS NULL`;
+    // Both UNION legs bind the same $1 (see getSpendingByCategory).
     const params: unknown[] = [claims.workspaceId];
     let paramIdx = 2;
     if (filter.dateFrom) { query += ` AND effective_date >= $${paramIdx++}`; params.push(filter.dateFrom); }
     if (filter.dateTo) { query += ` AND effective_date <= $${paramIdx++}`; params.push(filter.dateTo); }
     if (filter.accountIds) {
+      for (const id of filter.accountIds) {
+        if (scope.excluded.has(id)) return { points: [], coverage: "partial" as const, excludedAccounts: scope.excluded.size, revision: scope.revision };
+      }
       const placeholders = filter.accountIds.map(() => `$${paramIdx++}`).join(",");
       query += ` AND account_id IN (${placeholders})`;
       params.push(...filter.accountIds);
     }
     query += ` GROUP BY effective_date ORDER BY effective_date`;
     const rows = await client.query(query, params);
-    return rows.rows as Array<{ date: string; inflow: string; outflow: string }>;
+    return {
+      points: rows.rows as Array<{ date: string; inflow: string; outflow: string }>,
+      coverage: scope.excluded.size > 0 ? "partial" : "full",
+      excludedAccounts: scope.excluded.size,
+      revision: scope.revision,
+    };
   });
 }
 
@@ -127,23 +176,34 @@ export async function getBalances(
   pool: Pool,
   claims: TenantClaims,
   filter: { accountIds?: string[] } = {}
-): Promise<Array<{ accountId: string; amount: string; currency: string }>> {
+): Promise<{ balances: Array<{ accountId: string; amount: string; currency: string }>; coverage: "full" | "partial"; excludedAccounts: number; revision: string }> {
   if (filter.accountIds !== undefined && !filter.accountIds.every(isUuid)) throw new TenantInvalid();
   return withTenant(pool, claims, async (client) => {
+    const scope = await sdkScope(client, claims.workspaceId);
     let query = `SELECT DISTINCT ON (b.account_id) b.account_id, b.amount_minor, b.currency
       FROM balance_snapshots b
       JOIN accounts a ON a.workspace_id = b.workspace_id AND a.id = b.account_id
-      WHERE b.workspace_id = $1 AND a.archived = false`;
+      LEFT JOIN ai_exclusions x ON x.workspace_id = b.workspace_id AND x.account_id = b.account_id
+      WHERE b.workspace_id = $1 AND a.archived = false AND x.account_id IS NULL`;
     const params: unknown[] = [claims.workspaceId];
     let paramIdx = 2;
     if (filter.accountIds) {
+      for (const id of filter.accountIds) {
+        if (scope.excluded.has(id)) return { balances: [], coverage: "partial" as const, excludedAccounts: scope.excluded.size, revision: scope.revision };
+      }
       const placeholders = filter.accountIds.map(() => `$${paramIdx++}`).join(",");
       query += ` AND b.account_id IN (${placeholders})`;
       params.push(...filter.accountIds);
     }
-    query += ` ORDER BY b.account_id, b.observed_at DESC`;
+    // Latest as-of date wins; created_at breaks same-date ties deterministically.
+    query += ` ORDER BY b.account_id, b.as_of_date DESC, b.created_at DESC`;
     const rows = await client.query(query, params);
-    return rows.rows.map((r) => ({ accountId: r.account_id, amount: formatDecimalBigint(BigInt(r.amount_minor)), currency: r.currency })) as Array<{ accountId: string; amount: string; currency: string }>;
+    return {
+      balances: rows.rows.map((r) => ({ accountId: r.account_id, amount: formatDecimalBigint(BigInt(r.amount_minor)), currency: r.currency })) as Array<{ accountId: string; amount: string; currency: string }>,
+      coverage: scope.excluded.size > 0 ? "partial" : "full",
+      excludedAccounts: scope.excluded.size,
+      revision: scope.revision,
+    };
   });
 }
 
@@ -151,18 +211,29 @@ export async function getTransactionSummary(
   pool: Pool,
   claims: TenantClaims,
   filter: { dateFrom?: string; dateTo?: string; accountIds?: string[]; direction?: string } = {}
-): Promise<Array<{ date: string; amount: string; currency: string; direction: string; description: string }>> {
+): Promise<{ rows: Array<{ id: string; date: string; amount: string; currency: string; direction: string; description: string }>; coverage: "full" | "partial"; excludedAccounts: number; revision: string }> {
   if (filter.accountIds !== undefined && !filter.accountIds.every(isUuid)) throw new TenantInvalid();
   if (filter.direction !== undefined && !["INFLOW", "OUTFLOW"].includes(filter.direction)) throw new TenantInvalid();
   for (const value of [filter.dateFrom, filter.dateTo]) if (value !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new TenantInvalid();
   return withTenant(pool, claims, async (client) => {
-    let query = `SELECT effective_date, amount_minor, currency, direction, description
-      FROM transactions WHERE workspace_id = $1`;
+    const scope = await sdkScope(client, claims.workspaceId);
+    let query = `SELECT id, effective_date, amount_minor, currency, direction, description
+      FROM (
+        SELECT id, effective_date, amount_minor, currency, direction, description, account_id, workspace_id FROM transactions WHERE workspace_id = $1
+        UNION ALL
+        SELECT id, effective_date, amount_minor, currency, direction, description, account_id, workspace_id FROM manual_transactions WHERE workspace_id = $1
+      ) t
+      LEFT JOIN ai_exclusions x ON x.workspace_id = t.workspace_id AND x.account_id = t.account_id
+      WHERE x.account_id IS NULL`;
+    // Both UNION legs bind the same $1 (see getSpendingByCategory).
     const params: unknown[] = [claims.workspaceId];
     let paramIdx = 2;
     if (filter.dateFrom) { query += ` AND effective_date >= $${paramIdx++}`; params.push(filter.dateFrom); }
     if (filter.dateTo) { query += ` AND effective_date <= $${paramIdx++}`; params.push(filter.dateTo); }
     if (filter.accountIds) {
+      for (const id of filter.accountIds) {
+        if (scope.excluded.has(id)) return { rows: [], coverage: "partial" as const, excludedAccounts: scope.excluded.size, revision: scope.revision };
+      }
       const placeholders = filter.accountIds.map(() => `$${paramIdx++}`).join(",");
       query += ` AND account_id IN (${placeholders})`;
       params.push(...filter.accountIds);
@@ -170,6 +241,11 @@ export async function getTransactionSummary(
     if (filter.direction) { query += ` AND direction = $${paramIdx++}`; params.push(filter.direction); }
     query += ` ORDER BY effective_date DESC LIMIT 500`;
     const rows = await client.query(query, params);
-    return rows.rows.map((r) => ({ date: r.effective_date, amount: formatDecimalBigint(BigInt(r.amount_minor)), currency: r.currency, direction: r.direction, description: r.description })) as Array<{ date: string; amount: string; currency: string; direction: string; description: string }>;
+    return {
+      rows: rows.rows.map((r) => ({ id: r.id, date: r.effective_date, amount: formatDecimalBigint(BigInt(r.amount_minor)), currency: r.currency, direction: r.direction, description: r.description })) as Array<{ id: string; date: string; amount: string; currency: string; direction: string; description: string }>,
+      coverage: scope.excluded.size > 0 ? "partial" : "full",
+      excludedAccounts: scope.excluded.size,
+      revision: scope.revision,
+    };
   });
 }

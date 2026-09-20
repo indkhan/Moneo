@@ -16,6 +16,13 @@ export const ARTIFACT_LIMITS = {
     maxStateDepth: 8,
 } as const;
 
+// Amount representations across the boundary (E05-S07):
+// - Finance SDK results carry exact minor-unit decimal strings ("150000" for
+//   EUR 1500.00, "4200" for JPY 4200); groups may mix currencies, so no FX is
+//   applied and cross-currency sums are integrity totals, not money.
+// - Chart rows require major-unit strings matching /^-?\d+\.\d{2}$/.
+// Artifact code converts with the row currency's exponent (formatMinor);
+// rows that do not parse are skipped by the renderer, never coerced.
 export const ARTIFACT_PROTOCOL = 1;
 
 export const RENDERER_ORIGIN = "http://127.0.0.1:4174";
