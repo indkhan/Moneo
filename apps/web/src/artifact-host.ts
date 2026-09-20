@@ -17,6 +17,14 @@ export interface ArtifactSession {
     manifest: ArtifactManifest;
     status: "loading" | "connected" | "ready" | "terminated" | "stopped" | "rejected";
     iframe?: HTMLIFrameElement;
+    // E05 adversarial fix: server-side SDK call accounting. The worker-side
+    // 8-outstanding / 60-per-minute limits are bypassable by any holder of
+    // the session id (e.g. curl), so the server enforces the same
+    // ARTIFACT_LIMITS counters on the session record. Single-instance
+    // posture, same as the S06 rate controls: counters reset on restart.
+    rpcOutstanding?: number;
+    rpcWindowStart?: number;
+    rpcWindowCount?: number;
 }
 
 const sessions = new Map<string, ArtifactSession>();

@@ -146,6 +146,7 @@ type SnapshotRow = {
     id: string;
     state: Record<string, unknown>;
     schema_version: number;
+    version_id: string;
     created_at: string;
 };
 
@@ -175,6 +176,26 @@ export async function patchArtifactState(
     patches: ArtifactStatePatch[],
     expectedVersion: number,
 ): Promise<{ state: Record<string, unknown>; schemaVersion: number }> {
+    // E05 adversarial fix: the first-insert path previously stored a fresh
+    // randomUUID() as version_id, which always violates the FK to
+    // artifact_versions — and a foreign artifactId surfaced as a 500. Resolve
+    // the artifact first (404 when foreign/missing) and anchor new state to
+    // the active version (falling back to the latest version when nothing is
+    // active yet; 409 when the artifact has no versions at all).
+    const owner = await client.query(`SELECT active_version_id FROM artifacts WHERE workspace_id = $1 AND id = $2`, [
+        claims.workspaceId,
+        artifactId,
+    ]);
+    if ((owner.rowCount ?? 0) === 0) throw new Error("ARTIFACT_NOT_FOUND");
+    let anchorVersionId = (owner.rows[0] as { active_version_id: string | null }).active_version_id;
+    if (!anchorVersionId) {
+        const latest = await client.query(
+            `SELECT id FROM artifact_versions WHERE workspace_id = $1 AND artifact_id = $2 ORDER BY created_at DESC LIMIT 1`,
+            [claims.workspaceId, artifactId],
+        );
+        if ((latest.rowCount ?? 0) === 0) throw new Error("NO_VERSION_STATE");
+        anchorVersionId = (latest.rows[0] as { id: string }).id;
+    }
     const result = await client.query(
         `SELECT state, schema_version FROM artifact_state WHERE workspace_id = $1 AND artifact_id = $2 FOR UPDATE`,
         [claims.workspaceId, artifactId],
@@ -196,16 +217,33 @@ export async function patchArtifactState(
     validateStateSize(state);
     validateStateSchema(state);
 
+    // E05 adversarial fix: updates previously rewrote the same schema_version,
+    // so concurrent patches never conflicted despite the expected-version
+    // contract (S04: two tabs, one winner). Every committed patch bumps.
     if ((result.rowCount ?? 0) > 0) {
+        const nextVersion = schemaVersion + 1;
         await client.query(
             `UPDATE artifact_state SET state = $1, schema_version = $2, updated_at = now() WHERE workspace_id = $3 AND artifact_id = $4`,
-            [JSON.stringify(state), schemaVersion, claims.workspaceId, artifactId],
+            [JSON.stringify(state), nextVersion, claims.workspaceId, artifactId],
         );
+        return { state, schemaVersion: nextVersion };
+    // E05 adversarial fix round 2 (B3): concurrent first-inserts both see
+    // rowCount 0 and collide on PK (workspace_id, artifact_id). Converge the
+    // loser to a typed version conflict instead of a raw 23505 500.
     } else {
-        await client.query(
-            `INSERT INTO artifact_state (workspace_id, artifact_id, version_id, schema_version, state) VALUES ($1, $2, $3, $4, $5)`,
-            [claims.workspaceId, artifactId, randomUUID(), schemaVersion, JSON.stringify(state)],
-        );
+        try {
+            await client.query(
+                `INSERT INTO artifact_state (workspace_id, artifact_id, version_id, schema_version, state) VALUES ($1, $2, $3, $4, $5)`,
+                [claims.workspaceId, artifactId, anchorVersionId, schemaVersion, JSON.stringify(state)],
+            );
+        } catch (err) {
+            if (err instanceof Error && (err as { code?: string }).code === "23505") throw new Error("VERSION_MISMATCH");
+            // Anchor deleted between the existence check and the insert
+            // (artifact or version dropped concurrently): fail closed as
+            // missing rather than escaping as a raw 23503 500.
+            if (err instanceof Error && (err as { code?: string }).code === "23503") throw new Error("ARTIFACT_NOT_FOUND");
+            throw err;
+        }
     }
     return { state, schemaVersion };
 }
@@ -215,8 +253,8 @@ export async function getArtifactStateSnapshot(
     claims: TenantClaims,
     artifactId: string,
     snapshotId?: string,
-): Promise<{ id: string; state: Record<string, unknown>; schemaVersion: number; createdAt: string } | null> {
-    let query = `SELECT id, state, schema_version, created_at FROM artifact_state_snapshots WHERE workspace_id = $1 AND artifact_id = $2`;
+): Promise<{ id: string; state: Record<string, unknown>; schemaVersion: number; versionId: string; createdAt: string } | null> {
+    let query = `SELECT id, state, schema_version, version_id, created_at FROM artifact_state_snapshots WHERE workspace_id = $1 AND artifact_id = $2`;
     const params: (string | UUID)[] = [claims.workspaceId, artifactId];
     if (snapshotId) {
         query += ` AND id = $3`;
@@ -226,7 +264,7 @@ export async function getArtifactStateSnapshot(
     const result = await client.query(query, params);
     if ((result.rowCount ?? 0) === 0) return null;
     const row = result.rows[0] as SnapshotRow;
-    return { id: row.id, state: row.state, schemaVersion: row.schema_version, createdAt: row.created_at };
+    return { id: row.id, state: row.state, schemaVersion: row.schema_version, versionId: row.version_id, createdAt: row.created_at };
 }
 
 export async function createStateSnapshot(
@@ -237,6 +275,11 @@ export async function createStateSnapshot(
     schemaVersion: number,
     state: Record<string, unknown>,
 ): Promise<{ id: string }> {
+    // E05 adversarial fix: snapshots bypassed the 64 KiB / keys / depth caps
+    // enforced on patch/migrate, so oversized state could enter via
+    // snapshot→revert. Validate on the way in.
+    validateStateSize(state);
+    validateStateSchema(state);
     const id = randomUUID();
     await client.query(
         `INSERT INTO artifact_state_snapshots (workspace_id, id, artifact_id, version_id, schema_version, state) VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -271,7 +314,7 @@ export async function applyStateMigration(
     );
 
     const stateResult = await client.query(
-        `SELECT state, schema_version FROM artifact_state WHERE workspace_id = $1 AND artifact_id = $2`,
+        `SELECT state, schema_version FROM artifact_state WHERE workspace_id = $1 AND artifact_id = $2 FOR UPDATE`,
         [claims.workspaceId, artifactId],
     );
     if ((stateResult.rowCount ?? 0) === 0) {
@@ -315,14 +358,30 @@ export async function revertArtifactState(
     if (!snapshot) return { success: false, error: "snapshot_not_found" };
 
     const stateResult = await client.query(
-        `SELECT version_id FROM artifact_state WHERE workspace_id = $1 AND artifact_id = $2`,
+        `SELECT version_id FROM artifact_state WHERE workspace_id = $1 AND artifact_id = $2 FOR UPDATE`,
         [claims.workspaceId, artifactId],
     );
     if ((stateResult.rowCount ?? 0) === 0) return { success: false, error: "state_not_found" };
 
+    // E05 adversarial fix: revert previously restored any snapshot's state
+    // while keeping the current version_id, so old code could run against
+    // arbitrary newer state (and vice versa). The snapshot must belong to the
+    // currently active version — code revert goes through version activation,
+    // and the pair stays coherent. The version_id is carried from the
+    // snapshot so the row never straddles two versions.
+    const owner = await client.query(`SELECT active_version_id FROM artifacts WHERE workspace_id = $1 AND id = $2`, [
+        claims.workspaceId,
+        artifactId,
+    ]);
+    if ((owner.rowCount ?? 0) === 0) return { success: false, error: "artifact_not_found" };
+    const activeVersionId = (owner.rows[0] as { active_version_id: string | null }).active_version_id;
+    if (snapshot.versionId !== activeVersionId) {
+        return { success: false, error: "incompatible_snapshot" };
+    }
+
     await client.query(
-        `UPDATE artifact_state SET state = $1, schema_version = $2, updated_at = now() WHERE workspace_id = $3 AND artifact_id = $4`,
-        [JSON.stringify(snapshot.state), snapshot.schemaVersion, claims.workspaceId, artifactId],
+        `UPDATE artifact_state SET state = $1, schema_version = $2, version_id = $3, updated_at = now() WHERE workspace_id = $4 AND artifact_id = $5`,
+        [JSON.stringify(snapshot.state), snapshot.schemaVersion, snapshot.versionId, claims.workspaceId, artifactId],
     );
 
     return { success: true, state: snapshot.state };

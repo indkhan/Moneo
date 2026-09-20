@@ -7,11 +7,12 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { createApp } from "../apps/web/src/server.ts";
 import { createAuthRouter, requestSession, type AuthConfig } from "../apps/web/src/auth.ts";
 import type { Session } from "../apps/web/src/session-store.ts";
-import { createTenancyRouter } from "../apps/web/src/tenancy.ts";
+import { createTenancyRouter, withTenant } from "../apps/web/src/tenancy.ts";
+import { getArtifactSession } from "../apps/web/src/artifact-host.ts";
 import { createUiRouter } from "../apps/web/src/ui/routes.ts";
 import { ensureTestPool } from "./helpers/test-db.ts";
 import { startStubIssuer, STUB_CLIENT_ID, STUB_CLIENT_SECRET, type StubIssuer } from "./helpers/stub-issuer.ts";
@@ -433,5 +434,311 @@ describe("e05-s05 artifact editor", () => {
 
     const anon = await fetch(`${base}/w/${wsA}/artifacts`, { redirect: "manual" });
     expect(anon.status).toBe(401);
+  });
+});
+
+describe("e05 adversarial fixes: state, snapshots, build gates, archived grants, quotas", () => {
+  async function postJson(base: string, path: string, cookie: string, body: unknown): Promise<{ status: number; json: any }> {
+    const res = await fetch(`${base}${path}`, {
+      method: "POST",
+      headers: { cookie, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, json: await res.json() };
+  }
+
+  async function getJson(base: string, path: string, cookie: string): Promise<{ status: number; json: any }> {
+    const res = await fetch(`${base}${path}`, { headers: { cookie } });
+    return { status: res.status, json: await res.json() };
+  }
+
+  async function patchJson(base: string, path: string, cookie: string, body: unknown): Promise<{ status: number; json: any }> {
+    const res = await fetch(`${base}${path}`, {
+      method: "PATCH",
+      headers: { cookie, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, json: await res.json() };
+  }
+
+  async function publish(base: string, cookie: string, ws: string, artifactId: string, expectedBase: string, js = VALID.js): Promise<string> {
+    const before = new Set((await apiListVersions(base, cookie, ws, artifactId)).map((v) => v.versionId));
+    const r = await postForm(base, `/w/${ws}/artifacts/${artifactId}/versions`, cookie, {
+      html: VALID.html,
+      css: VALID.css,
+      js,
+      manifest: VALID.manifest,
+      expectedBaseVersionId: expectedBase,
+      action: "publish",
+    });
+    expect(r.status).toBe(303);
+    const after = await apiListVersions(base, cookie, ws, artifactId);
+    const fresh = after.find((v) => !before.has(v.versionId) && v.status === "ready");
+    expect(fresh).toBeTruthy();
+    return fresh!.versionId;
+  }
+
+  async function activate(base: string, cookie: string, ws: string, artifactId: string, versionId: string, expectedActive: string): Promise<void> {
+    const r = await postForm(base, `/w/${ws}/artifacts/${artifactId}/activate`, cookie, {
+      versionId,
+      expectedActiveVersionId: expectedActive,
+    });
+    expect(r.status).toBe(303);
+  }
+
+  it("state patch first-insert works, bumps versions, and snapshots round-trip with compatible revert", async () => {
+    const base = await startApp();
+    const cookie = await login(base, "synthetic-artifact-fix-a");
+    const ws = await setupWorkspace(base, cookie, "State WS");
+    const artifactId = await apiCreateDraft(base, cookie, ws, "Stateful");
+    const v1 = await publish(base, cookie, ws, artifactId, "");
+    await activate(base, cookie, ws, artifactId, v1, "");
+
+    // First patch creates the row anchored to the active version (FK-safe).
+    const p1 = await patchJson(base, "/api/artifacts/state", cookie, {
+      workspaceId: ws,
+      artifactId,
+      patches: [{ op: "add", path: "months", value: 6 }],
+      expectedVersion: 1,
+    });
+    expect(p1.status).toBe(200);
+    expect(p1.json).toMatchObject({ state: { months: 6 }, schemaVersion: 1 });
+
+    // Second patch bumps the version; stale replays conflict.
+    const p2 = await patchJson(base, "/api/artifacts/state", cookie, {
+      workspaceId: ws,
+      artifactId,
+      patches: [{ op: "replace", path: "months", value: 3 }],
+      expectedVersion: 1,
+    });
+    expect(p2.status).toBe(200);
+    expect(p2.json.schemaVersion).toBe(2);
+    const stale = await patchJson(base, "/api/artifacts/state", cookie, {
+      workspaceId: ws,
+      artifactId,
+      patches: [{ op: "replace", path: "months", value: 9 }],
+      expectedVersion: 1,
+    });
+    expect(stale.status).toBe(409);
+
+    // Snapshot the current state, mutate, then revert to the snapshot.
+    const snap = await postJson(base, `/api/artifacts/${artifactId}/state/snapshots`, cookie, { workspaceId: ws });
+    expect(snap.status).toBe(201);
+    const snapshotId = snap.json.id as string;
+    const got = await getJson(base, `/api/artifacts/state/snapshots/${snapshotId}?workspaceId=${ws}&artifactId=${artifactId}`, cookie);
+    expect(got.status).toBe(200);
+    expect(got.json.state).toMatchObject({ months: 3 });
+    const unknownSnap = await getJson(base, `/api/artifacts/state/snapshots/${randomUUID()}?workspaceId=${ws}&artifactId=${artifactId}`, cookie);
+    expect(unknownSnap.status).toBe(404);
+    // Snapshot ids are not interchangeable with artifact ids.
+    const swapped = await getJson(base, `/api/artifacts/state/snapshots/${snapshotId}?workspaceId=${ws}&artifactId=${randomUUID()}`, cookie);
+    expect(swapped.status).toBe(404);
+
+    const p3 = await patchJson(base, "/api/artifacts/state", cookie, {
+      workspaceId: ws,
+      artifactId,
+      patches: [{ op: "replace", path: "months", value: 12 }],
+      expectedVersion: 2,
+    });
+    expect(p3.status).toBe(200);
+    const reverted = await postJson(base, `/api/artifacts/${artifactId}/state/revert`, cookie, { workspaceId: ws, snapshotId });
+    expect(reverted.status).toBe(200);
+    expect(reverted.json.state).toMatchObject({ months: 3 });
+
+    // Foreign artifact ids read as missing, never 500.
+    const foreign = await patchJson(base, "/api/artifacts/state", cookie, {
+      workspaceId: ws,
+      artifactId: randomUUID(),
+      patches: [{ op: "add", path: "x", value: 1 }],
+      expectedVersion: 1,
+    });
+    expect(foreign.status).toBe(404);
+
+    // A draft with no versions has no anchor for state.
+    const bare = await apiCreateDraft(base, cookie, ws, "Versionless");
+    const noVersion = await patchJson(base, "/api/artifacts/state", cookie, {
+      workspaceId: ws,
+      artifactId: bare,
+      patches: [{ op: "add", path: "x", value: 1 }],
+      expectedVersion: 1,
+    });
+    expect(noVersion.status).toBe(409);
+    expect(noVersion.json).toMatchObject({ reason: "no_version_state" });
+  });
+
+  it("concurrent first patches converge without 500s", async () => {
+    const base = await startApp();
+    const cookie = await login(base, "synthetic-artifact-fix-a2");
+    const ws = await setupWorkspace(base, cookie, "Race WS");
+    const artifactId = await apiCreateDraft(base, cookie, ws, "Racy");
+    const v1 = await publish(base, cookie, ws, artifactId, "");
+    await activate(base, cookie, ws, artifactId, v1, "");
+
+    // Five concurrent first-inserts: exactly one row can win; losers get a
+    // typed 409 (version_mismatch via the 23505 race guard), never a 500.
+    // (If the writes serialize, later writers see version 1 and match — also
+    // fine; the invariant is no 500 and a coherent final document.)
+    const attempts = await Promise.all(
+      [1, 2, 3, 4, 5].map((n) =>
+        patchJson(base, "/api/artifacts/state", cookie, {
+          workspaceId: ws,
+          artifactId,
+          patches: [{ op: "add", path: `slot${n}`, value: n }],
+          expectedVersion: 1,
+        }),
+      ),
+    );
+    for (const a of attempts) expect([200, 409]).toContain(a.status);
+    expect(attempts.some((a) => a.status === 200)).toBe(true);
+    const final = await getJson(base, `/api/artifacts/state?workspaceId=${ws}&artifactId=${artifactId}`, cookie);
+    expect(final.status).toBe(200);
+    expect(typeof final.json.state).toBe("object");
+  });
+
+  it("build rejects foreign artifacts and expanded permissions", async () => {
+    const base = await startApp();
+    const cookie = await login(base, "synthetic-artifact-fix-b");
+    const ws = await setupWorkspace(base, cookie, "Build gate WS");
+    const manifest = JSON.parse(VALID.manifest) as Record<string, unknown>;
+    const source = { html: VALID.html, css: VALID.css, js: VALID.js };
+
+    const foreign = await postJson(base, "/api/artifacts/build", cookie, {
+      workspaceId: ws,
+      artifactId: randomUUID(),
+      source,
+      manifest,
+    });
+    expect(foreign.status).toBe(404);
+
+    const expanded = await postJson(base, "/api/artifacts/build", cookie, {
+      workspaceId: ws,
+      artifactId: await apiCreateDraft(base, cookie, ws, "Victim"),
+      source,
+      manifest: { ...manifest, approvedPermissions: ["balances.read", "transactions.raw.read"] },
+    });
+    expect(expanded.status).toBe(400);
+    expect(expanded.json).toMatchObject({ reason: "invalid_permissions" });
+
+    const ok = await postJson(base, "/api/artifacts/build", cookie, {
+      workspaceId: ws,
+      artifactId: await apiCreateDraft(base, cookie, ws, "Legit"),
+      source,
+      manifest,
+    });
+    expect(ok.status).toBe(201);
+    expect(typeof ok.json.versionId).toBe("string");
+  });
+
+  it("archived artifacts cannot open sessions or serve RPC", async () => {
+    const base = await startApp();
+    const cookie = await login(base, "synthetic-artifact-fix-c");
+    const ws = await setupWorkspace(base, cookie, "Archive WS");
+    const artifactId = await apiCreateDraft(base, cookie, ws, "Archivable");
+    const v1 = await publish(base, cookie, ws, artifactId, "");
+    await activate(base, cookie, ws, artifactId, v1, "");
+
+    const opened = await postJson(base, "/api/artifacts/sessions", cookie, { workspaceId: ws, artifactId, versionId: v1 });
+    expect(opened.status).toBe(201);
+    const liveRpc = await postJson(base, "/api/artifacts/sdk/rpc", cookie, { sessionId: opened.json.sessionId, method: "spendingByCategory", args: {} });
+    expect(liveRpc.status).toBe(200);
+
+    // Oversized initial state is rejected before a grant exists.
+    const fat = await postJson(base, "/api/artifacts/sessions", cookie, {
+      workspaceId: ws,
+      artifactId,
+      versionId: v1,
+      initialState: { blob: "x".repeat(70 * 1024) },
+    });
+    expect(fat.status).toBe(400);
+
+    // Archive directly (no archive UI exists yet; the gate must hold anyway).
+    const userId = (await pool.query("SELECT id FROM users WHERE auth_subject = $1", ["synthetic-artifact-fix-c"])).rows[0].id as string;
+    await withTenant(pool, { userId, workspaceId: ws }, async (client: PoolClient) => {
+      await client.query(`UPDATE artifacts SET archived_at = now() WHERE workspace_id = $1 AND id = $2`, [ws, artifactId]);
+    });
+
+    const reopened = await postJson(base, "/api/artifacts/sessions", cookie, { workspaceId: ws, artifactId, versionId: v1 });
+    expect(reopened.status).toBe(404);
+    const deadRpc = await postJson(base, "/api/artifacts/sdk/rpc", cookie, { sessionId: opened.json.sessionId, method: "spendingByCategory", args: {} });
+    expect(deadRpc.status).toBe(404);
+  });
+
+  it("server enforces per-session SDK quotas", async () => {
+    const base = await startApp();
+    const cookie = await login(base, "synthetic-artifact-fix-d");
+    const ws = await setupWorkspace(base, cookie, "Quota WS");
+    const artifactId = await apiCreateDraft(base, cookie, ws, "Metered");
+    const v1 = await publish(base, cookie, ws, artifactId, "");
+    await activate(base, cookie, ws, artifactId, v1, "");
+    const opened = await postJson(base, "/api/artifacts/sessions", cookie, { workspaceId: ws, artifactId, versionId: v1 });
+    expect(opened.status).toBe(201);
+    const sessionId = opened.json.sessionId as string;
+    const rpc = () => postJson(base, "/api/artifacts/sdk/rpc", cookie, { sessionId, method: "spendingByCategory", args: {} });
+
+    const session = getArtifactSession(sessionId);
+    expect(session).toBeTruthy();
+    // Exhaust the per-minute window: the next call is refused.
+    session!.rpcWindowStart = Date.now();
+    session!.rpcWindowCount = 60;
+    const capped = await rpc();
+    expect(capped.status).toBe(429);
+    expect(capped.json).toMatchObject({ error: "rate_limited" });
+    // Exhaust outstanding slots: refused while full, served once freed.
+    session!.rpcWindowStart = Date.now();
+    session!.rpcWindowCount = 0;
+    session!.rpcOutstanding = 8;
+    const busy = await rpc();
+    expect(busy.status).toBe(429);
+    session!.rpcOutstanding = 0;
+    const served = await rpc();
+    expect(served.status).toBe(200);
+  });
+
+  it("activate with a bundled migration commits the pair and failed migration rolls back activation", async () => {
+    const base = await startApp();
+    const cookie = await login(base, "synthetic-artifact-fix-e");
+    const ws = await setupWorkspace(base, cookie, "Pair WS");
+    const artifactId = await apiCreateDraft(base, cookie, ws, "Paired");
+    const v1 = await publish(base, cookie, ws, artifactId, "");
+    await activate(base, cookie, ws, artifactId, v1, "");
+    const seeded = await patchJson(base, "/api/artifacts/state", cookie, {
+      workspaceId: ws,
+      artifactId,
+      patches: [{ op: "add", path: "months", value: 6 }],
+      expectedVersion: 1,
+    });
+    expect(seeded.status).toBe(200);
+    const snap = await postJson(base, `/api/artifacts/${artifactId}/state/snapshots`, cookie, { workspaceId: ws });
+    expect(snap.status).toBe(201);
+
+    const v2 = await publish(base, cookie, ws, artifactId, v1, `${VALID.js}\n// v2`);
+    // Combined activate + rename-months migration commits atomically.
+    const paired = await postJson(base, `/api/artifacts/${artifactId}/activate`, cookie, {
+      workspaceId: ws,
+      versionId: v2,
+      expectedActiveVersionId: v1,
+      migration: { fromVersionId: v1, toVersionId: v2, operations: [{ type: "rename", path: "months", newPath: "period" }] },
+    });
+    expect(paired.status).toBe(200);
+    const state = await getJson(base, `/api/artifacts/state?workspaceId=${ws}&artifactId=${artifactId}`, cookie);
+    expect(state.status).toBe(200);
+    expect(state.json.state).toMatchObject({ period: 6 });
+
+    // A stale v1-era snapshot no longer matches the active v2 code.
+    const staleRevert = await postJson(base, `/api/artifacts/${artifactId}/state/revert`, cookie, { workspaceId: ws, snapshotId: snap.json.id });
+    expect(staleRevert.status).toBe(409);
+    expect(staleRevert.json).toMatchObject({ reason: "incompatible_snapshot" });
+
+    // A failing bundled migration rolls back the activation with it.
+    const v3 = await publish(base, cookie, ws, artifactId, v2, `${VALID.js}\n// v3`);
+    const failed = await postJson(base, `/api/artifacts/${artifactId}/activate`, cookie, {
+      workspaceId: ws,
+      versionId: v3,
+      expectedActiveVersionId: v2,
+      migration: { fromVersionId: v2, toVersionId: v3, operations: [{ type: "rename", path: "nope.missing", newPath: "x" }] },
+    });
+    expect(failed.status).toBe(409);
+    const art = await apiGetArtifact(base, cookie, ws, artifactId);
+    expect(art.activeVersionId).toBe(v2);
   });
 });

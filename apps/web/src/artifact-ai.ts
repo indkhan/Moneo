@@ -465,12 +465,16 @@ export async function artifactCreateDraftTool(
     if (!(RUNTIME_PERMISSIONS as readonly string[]).includes(p)) throw new ToolError("denied");
   }
   return withTenant(pool, ctx.claims, async (client) => {
-    const existing = await client.query("SELECT artifact_id, version_id, status FROM artifact_ai_proposals WHERE workspace_id = $1 AND idempotency_key = $2", [
+    const existing = await client.query("SELECT artifact_id, version_id, status, request_hash FROM artifact_ai_proposals WHERE workspace_id = $1 AND idempotency_key = $2", [
       ctx.claims.workspaceId,
       idempotencyKey,
     ]);
     if ((existing.rowCount ?? 0) > 0) {
-      const row = existing.rows[0] as { artifact_id: string | null; version_id: string | null; status: string };
+      // E05 adversarial fix round 2 (B4): the hash covers every request byte
+      // including description, so same key + different bytes conflicts.
+      const row = existing.rows[0] as { artifact_id: string | null; version_id: string | null; status: string; request_hash: string };
+      const keyHash = requestHash({ kind: "create", name, description, html: checked.value.html, css: checked.value.css, js: checked.value.js, manifest: checked.value.manifest });
+      if (row.request_hash !== keyHash) throw new ToolError("invalid_args");
       if (row.status === "proposed" && row.artifact_id && row.version_id) return { artifactId: row.artifact_id, versionId: row.version_id };
       throw new ToolError("invalid_args");
     }
@@ -480,7 +484,7 @@ export async function artifactCreateDraftTool(
     await settleArtifactVersion(client, ctx.claims, created.artifactId, submitted.versionId, { ok: true });
     await client.query(
       `INSERT INTO artifact_ai_proposals (workspace_id, idempotency_key, request_hash, artifact_id, version_id, kind, status, ai_run_id, thread_id) VALUES ($1, $2, $3, $4, $5, 'create', 'proposed', $6, NULL)`,
-      [ctx.claims.workspaceId, idempotencyKey, requestHash({ kind: "create", name, html: checked.value.html, css: checked.value.css, js: checked.value.js, manifest: checked.value.manifest }), created.artifactId, submitted.versionId, ctx.runId],
+      [ctx.claims.workspaceId, idempotencyKey, requestHash({ kind: "create", name, description, html: checked.value.html, css: checked.value.css, js: checked.value.js, manifest: checked.value.manifest }), created.artifactId, submitted.versionId, ctx.runId],
     );
     return { artifactId: created.artifactId, versionId: submitted.versionId };
   });
@@ -515,12 +519,16 @@ export async function artifactProposeEditTool(
     for (const p of (checked.value.manifest.approvedPermissions ?? []) as string[]) {
       if (!baseApproved.includes(p)) throw new ToolError("denied");
     }
-    const existing = await client.query("SELECT artifact_id, version_id, status FROM artifact_ai_proposals WHERE workspace_id = $1 AND idempotency_key = $2", [
+    const existing = await client.query("SELECT artifact_id, version_id, status, request_hash FROM artifact_ai_proposals WHERE workspace_id = $1 AND idempotency_key = $2", [
       ctx.claims.workspaceId,
       idempotencyKey,
     ]);
     if ((existing.rowCount ?? 0) > 0) {
-      const row = existing.rows[0] as { artifact_id: string | null; version_id: string | null; status: string };
+      // E05 adversarial fix: same key + different bytes must conflict, not
+      // silently replay the prior edit.
+      const row = existing.rows[0] as { artifact_id: string | null; version_id: string | null; status: string; request_hash: string };
+      const keyHash = requestHash({ kind: "edit", artifactId, baseVersionId, html: checked.value.html, css: checked.value.css, js: checked.value.js, manifest: checked.value.manifest });
+      if (row.request_hash !== keyHash) throw new ToolError("invalid_args");
       if (row.status === "proposed" && row.artifact_id && row.version_id) return { artifactId: row.artifact_id, versionId: row.version_id };
       throw new ToolError("invalid_args");
     }

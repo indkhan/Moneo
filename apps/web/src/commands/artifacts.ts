@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { withTenant, type TenantClaims } from "../tenancy.ts";
+import { RUNTIME_PERMISSIONS } from "../artifact-contract.ts";
 
 export type ArtifactManifest = {
     artifactSdkVersion: string;
@@ -63,6 +64,19 @@ export async function submitArtifactBuild(
     manifest: ArtifactManifest,
     opts?: { aiRunId?: string },
 ): Promise<{ versionId: string }> {
+    // E05 adversarial fix: the build route accepts attacker-controlled source
+    // and manifest, so the domain layer — not just the editor UI — must own
+    // the two security-relevant gates. Source _content_ (syntax, sanitizer)
+    // still settles to ready/failed via the build worker; only the
+    // authorization-relevant facts are rejected up front.
+    const owner = await client.query(`SELECT 1 FROM artifacts WHERE workspace_id = $1 AND id = $2`, [
+        claims.workspaceId,
+        artifactId,
+    ]);
+    if ((owner.rowCount ?? 0) === 0) throw new Error("ARTIFACT_NOT_FOUND");
+    for (const p of manifest.approvedPermissions ?? []) {
+        if (!(RUNTIME_PERMISSIONS as readonly string[]).includes(p)) throw new Error("INVALID_PERMISSIONS");
+    }
     const sourceHash = hashSource(source.html, source.css, source.js);
     const buildHash = hashBuild(manifest, sourceHash);
 

@@ -1,5 +1,5 @@
 // E02-S03 quarantine upload + bounded parse: real PostgreSQL
-// (`moneo_e02_upload`, fails closed), real MinIO object storage (loopback,
+// (`moneo_e02_upload_v3`, fails closed), real MinIO object storage (loopback,
 // disposable bucket) and real clamd (loopback) — never mocks for the
 // quarantine/scan/parse boundaries. Exact expectations reuse the E00-S03
 // manifest oracle values (utf8-bom-quoted, basic-xlsx, formula-xlsx,
@@ -668,7 +668,7 @@ describe("e02-s03 quarantine upload and bounded parse", () => {
     const base = await startApp();
     const { cookie, workspaceId, userId } = await setupWorkspace(base, "synthetic-up-o");
     const service = createWorkerService({
-      databaseUrl: withDatabase(appDbUrl, "moneo_e02_upload"),
+      databaseUrl: withDatabase(appDbUrl, "moneo_e02_upload_v3"),
       redisUrl,
       leaseMs: 5000,
       workerId: "e02-s03-probe",
