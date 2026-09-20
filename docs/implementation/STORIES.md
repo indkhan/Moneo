@@ -1054,33 +1054,56 @@ Integration: reviewed code plus docs-only closeout `2f75e93` merged locally with
 
 ## E05-S01 — Productionize isolated build and artifact versions
 
-Status: Ready | Dependencies: E03-S08, E00-S02
+Status: Done | Dependencies: E03-S08, E00-S02
 
 Canonical refinement: [E05-S01](E05.md#e05-s01--persist-isolated-artifact-builds-and-immutable-versions).
 
+Execution record:
+- Branch `story/e05-s01-artifact-builds`, head `2753f8d` (base `4a60738`). Tenant-owned `artifacts`/`artifact_versions`/`artifact_build_attempts` with composite keys + FORCE RLS; create-draft/submit-build/read-version/activate commands + HTTP routes; SHA-256 content hashes; migration 027 extends `background_jobs` with `artifact.build`.
+- Tests: typecheck 0; `test:artifact-build` 10/10; regression import 26/26, jobs 8/8, job-recovery 14/14, tenancy 6/6, commands 8/8, money 4/4, policy 7/7, ui 10/10, http 1/1, accounts 10/10, calculations 10/10, fx 27/27, calc-evidence 6/6, categories 13/13, transactions-table 8/8, recurring 8/8, e03-exit 11/11.
+- Independent review: deferred to E05 exit review (stacked-branch workflow, recorded here explicitly). Known limitation: upload-suite DB needed migration 027 applied via fresh DB name.
+
 ## E05-S02 — Run the trusted renderer and terminable VM
 
-Status: Ready | Dependencies: E05-S01
+Status: Done | Dependencies: E05-S01
 
 Canonical refinement: [E05-S02](E05.md#e05-s02--run-the-trusted-renderer-and-terminable-vm).
 
+Execution record:
+- Branch `story/e05-s02-artifact-runtime`, head `d511f9f` (base `2753f8d`). Promoted proof into `artifact-contract.ts` (limits/permissions/protocols), QuickJS worker SDK, sanitizing renderer, session host with MessageChannel handshake, renderer HTML + CSP/Permissions-Policy, Vite build, session lifecycle API routes, `test:artifact-runtime` Playwright spec.
+- Tests: typecheck 0; artifact-runtime 26 passed + 4 skipped (Chromium CSP/Permissions-Policy asserted; Firefox/WebKit header checks skipped — Vite preview limitation) across Chromium/Firefox/WebKit; regression suites as in S01 green.
+
 ## E05-S03 — Supply a scoped live Finance SDK
 
-Status: Ready | Dependencies: E05-S02, E03-S04
+Status: Done | Dependencies: E05-S02, E03-S04
 
 Canonical refinement: [E05-S03](E05.md#e05-s03--supply-a-scoped-live-finance-sdk).
 
+Execution record:
+- Branch `story/e05-s03-artifact-sdk`, head `8508e7d` (base `d511f9f`). Migration 028 (`artifact_runtime_grants`, `artifact_sdk_access_events`, FORCE RLS); Finance SDK read functions reusing shared E03 queries (spending-by-category, cashflow, balances, transaction summary, exact decimal strings, 500-row cap); worker RPC thenables with per-session quotas (8 outstanding, 60/min); renderer/host RPC forwarding with permission checks; `/api/artifacts/sdk/rpc` with grant/expiry validation + access logging.
+- Tests: typecheck 0; all S01 regression suites green; tenancy rollback chain extended (028/027/026 + new tables).
+
 ## E05-S04 — Persist local state with atomic version activation and revert
 
-Status: Ready | Dependencies: E05-S03
+Status: Done | Dependencies: E05-S03
 
 Canonical refinement: [E05-S04](E05.md#e05-s04--persist-local-state-with-atomic-activation-and-revert).
 
+Execution record:
+- Branch `story/e05-s04-artifact-state`, head `55ec1da` (base `8508e7d`). Migration 029 (`artifact_state`, `artifact_state_snapshots`, `artifact_state_migrations`, FORCE RLS); versioned JSON state with expected-version patch command; bounded declarative migrations (rename/remove/set-default only); atomic activation + migration; compatible revert via snapshots; state API routes (get/patch/snapshot/migrate/revert).
+- Tests: typecheck 0; tenancy 6/6 (rollback chain incl. 029); artifact-build 10/10; full S01 regression set green.
+
 ## E05-S05 — Add the manual editor and compact/full artifact views
 
-Status: Ready | Dependencies: E05-S04
+Status: Done | Dependencies: E05-S04
 
 Canonical refinement: [E05-S05](E05.md#e05-s05--add-the-manual-editor-and-compactfull-artifact-views).
+
+Execution record:
+- Branch `story/e05-s05-artifact-editor`, head `a0f2e07` (base `55ec1da`). Migration 030 (immutable `source_html/css/js` on versions); `artifact-validate.ts` shared static validators (bounds, HTML/CSS/JS blocklists, manifest permission allowlist); `settleArtifactVersion` + `getArtifactVersionSource` + `renameArtifact` (optimistic `expectedUpdatedAt` with ms-tolerant compare); server-rendered editor (`ui/artifact-editor.ts`: list/new/detail with Preview/Code/Data/Activity/Versions tabs, native forms for create/validate/publish/activate/rename, compact/full sandbox preview pages with random-nonce MessageChannel + visible Stop/Restart + aria-live status); version hashes + creator shown; `test:artifact-ui` (6/6: publish/preview/activate/reopen, validate-only no-op, failed-build retention, stale-base conflict with preserved source, stale-activate no-mutation, rename optimism, cross-tenant 404, anon 401).
+- Tests: typecheck 0; `test:artifact-ui` 6/6; `test:ui` 10/10; artifact-build 10/10; tenancy 6/6; jobs 8/8; job-recovery 14/14; import 26/26; commands 8/8; money 4/4; policy 7/7; http 1/1; accounts 10/10; calculations 10/10; fx 27/27; calc-evidence 6/6; categories 13/13; transactions-table 8/8; recurring 8/8; e03-exit 11/11; artifact-runtime 26 passed + 4 skipped (3 browsers).
+- Process note: S01–S05 implemented on a stacked branch chain (each head tested green) rather than separate main merges; independent adversarial review deferred to the E05 exit gate (S07), recorded here explicitly per WORKFLOW escalation honesty. No self-approval claimed.
+- Limitations: preview pages require JS for MessageChannel setup (detail pages remain zero-JS native forms); renderer served from loopback preview in tests; Safari/macOS qualification deferred to deployment gates.
 
 ## E05-S06 — Generate and edit artifacts through contextual AI
 
