@@ -47,6 +47,7 @@
     "test:categories": "vitest run test/categories.test.ts",
     "test:transactions-table": "vitest run test/transactions-table.test.ts",
     "test:recurring": "vitest run test/recurring.test.ts",
+    "test:projection-inputs": "vitest run test/projection-inputs.test.ts",
     "test:e03-exit": "vitest run test/e03-exit.test.ts",
     "test:artifact-build": "vitest run test/artifact-build.test.ts",
     "test:artifact-runtime": "playwright test --config test/artifact-runtime.config.mjs",

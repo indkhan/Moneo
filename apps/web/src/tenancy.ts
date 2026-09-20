@@ -83,6 +83,17 @@ import { createSessionRecord, sendArtifactEvent, stopArtifactSession, restartArt
 import { getArtifactVersionSource } from "./commands/artifacts.ts";
 import { readGrantBasis } from "./artifact-ai.ts";
 import { ARTIFACT_LIMITS, type ArtifactSource, type ArtifactManifest } from "./artifact-contract.ts";
+import {
+  archiveAssumption,
+  readAssumptions,
+  readProjectionSettings,
+  setAssumption,
+  updateProjectionSettings,
+  validateArchiveAssumptionInput,
+  validateSetAssumptionInput,
+  validateSettingsUpdateInput,
+} from "./commands/projection-inputs.ts";
+import { previewBaseline } from "./projections/inputs.ts";
 
 export class TenantDenied extends Error {
   constructor() {
@@ -1147,6 +1158,164 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           const revision = await getWorkspaceRevision(pool, resolved.claim);
           if (!revision) tenantJson(res, 404, { error: "not_found" });
           else tenantJson(res, 200, revision);
+          return true;
+        }
+        // E06-S01 projection inputs: update settings
+        if (path === "/api/commands/projection.settings.update" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: ReturnType<typeof validateSettingsUpdateInput>;
+          try {
+            input = validateSettingsUpdateInput(await readJsonBody(req));
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await updateProjectionSettings(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof TxError) {
+              const mapped = txErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        // E06-S01 projection inputs: set assumption
+        if (path === "/api/commands/assumptions.set" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: ReturnType<typeof validateSetAssumptionInput>;
+          try {
+            input = validateSetAssumptionInput(await readJsonBody(req));
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await setAssumption(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof TxError) {
+              const mapped = txErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        // E06-S01 projection inputs: archive assumption
+        if (path === "/api/commands/assumptions.archive" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          let input: ReturnType<typeof validateArchiveAssumptionInput>;
+          try {
+            input = validateArchiveAssumptionInput(await readJsonBody(req));
+          } catch {
+            tenantJson(res, 400, { error: "invalid_request" });
+            return true;
+          }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await archiveAssumption(pool, resolved.claim, resolved.claim.userId, input);
+            tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed });
+          } catch (err) {
+            if (err instanceof TxError) {
+              const mapped = txErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        // E06-S01 projection inputs: read settings
+        if (path === "/api/projection/settings" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          try {
+            tenantJson(res, 200, await readProjectionSettings(pool, resolved.claim, workspaceId));
+          } catch (err) {
+            if (err instanceof TenantInvalid || err instanceof TenantDenied) {
+              denied(res, true);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        // E06-S01 projection inputs: list assumptions
+        if (path === "/api/projection/assumptions" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const status = query.get("status") ?? "ACTIVE";
+          try {
+            tenantJson(res, 200, {
+              assumptions: await readAssumptions(pool, resolved.claim, workspaceId, status as "ACTIVE"),
+              requestId,
+            });
+          } catch (err) {
+            if (err instanceof TenantInvalid || err instanceof TenantDenied) {
+              denied(res, true);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        // E06-S01 projection inputs: baseline preview
+        if (path === "/api/projection/baseline" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const today = query.get("today") ?? new Date().toISOString().slice(0, 10);
+          try {
+            tenantJson(res, 200, await previewBaseline(pool, resolved.claim, today));
+          } catch (err) {
+            if (err instanceof TenantInvalid || err instanceof TenantDenied) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            throw err;
+          }
           return true;
         }
         // Manual transactions list for an account
