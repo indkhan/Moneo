@@ -95,6 +95,11 @@ import {
 } from "./commands/projection-inputs.ts";
 import { previewBaseline } from "./projections/inputs.ts";
 import {
+  getProjectionRun,
+  runProjection,
+  validateRunProjectionInput,
+} from "./projections/engine.ts";
+import {
   archiveGoal,
   allocate,
   createGoal,
@@ -1332,6 +1337,26 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             }
             throw err;
           }
+          return true;
+        }
+        // E06-S03 projection: run
+        if (path === "/api/projection/run" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) { tenantJson(res, 401, { error: "unauthorized" }); return true; }
+          let input: ReturnType<typeof validateRunProjectionInput>;
+          try { input = validateRunProjectionInput(await readJsonBody(req)); } catch { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) { tenantJson(res, 404, { error: "not_found" }); return true; }
+          try { const result = await runProjection(pool, resolved.claim, resolved.claim.userId, input); tenantJson(res, 200, result); } catch (err) { if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; } throw err; }
+          return true;
+        }
+        // E06-S03 projection: get run
+        const runMatch = path.match(/^\/api\/projection\/runs\/([A-Za-z0-9-]+)$/);
+        if (runMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) { denied(res, resolved.session !== null); return true; }
+          try { tenantJson(res, 200, await getProjectionRun(pool, resolved.claim, runMatch[1])); } catch (err) { if (err instanceof TenantInvalid || err instanceof TenantDenied) { denied(res, true); return true; } throw err; }
           return true;
         }
         // E06-S02 goals: create

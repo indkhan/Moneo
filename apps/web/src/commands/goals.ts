@@ -264,7 +264,7 @@ function releaseHash(input: AllocationReleaseInput): string {
   return createHashObj({ command: ALLOCATION_RELEASE_COMMAND, workspaceId: input.workspaceId, goalId: input.goalId, accountId: input.accountId, amountMinor: input.amountMinor });
 }
 
-async function toGoalView(client: PoolClient, workspaceId: string, goalId: string): Promise<GoalView> {
+export async function toGoalView(client: PoolClient, workspaceId: string, goalId: string): Promise<GoalView> {
   const goalRow = await client.query("SELECT * FROM goals WHERE workspace_id = $1 AND id = $2", [workspaceId, goalId]);
   const row = goalRow.rows[0] as Record<string, unknown> | undefined;
   if (!row) throw new TxError("not_found");
@@ -291,7 +291,7 @@ async function getAccountCurrency(client: PoolClient, workspaceId: string, accou
   return row.rows[0] ? String(row.rows[0].base_currency_code) : null;
 }
 
-async function getAccountSpendableCapacity(client: PoolClient, workspaceId: string, accountId: string): Promise<bigint> {
+export async function getAccountSpendableCapacity(client: PoolClient, workspaceId: string, accountId: string): Promise<bigint> {
   const snap = await client.query(
     `SELECT amount_minor FROM balance_snapshots WHERE workspace_id = $1 AND account_id = $2 AND currency = (SELECT base_currency_code FROM accounts WHERE workspace_id = $1 AND id = $2) AND amount_minor > 0 ORDER BY as_of_date DESC LIMIT 1`,
     [workspaceId, accountId],
@@ -300,7 +300,7 @@ async function getAccountSpendableCapacity(client: PoolClient, workspaceId: stri
   return BigInt(String(snap.rows[0].amount_minor));
 }
 
-async function getAccountTotalAllocated(client: PoolClient, workspaceId: string, accountId: string): Promise<bigint> {
+export async function getAccountTotalAllocated(client: PoolClient, workspaceId: string, accountId: string): Promise<bigint> {
   const row = await client.query("SELECT COALESCE(SUM(amount_minor), 0)::text AS total FROM goal_allocations WHERE workspace_id = $1 AND account_id = $2", [workspaceId, accountId]);
   return BigInt(String(row.rows[0]?.total ?? "0"));
 }
