@@ -12,6 +12,7 @@ import type { Pool, PoolClient } from "pg";
 import { isUuid, uuidv7 } from "../ids.ts";
 import { currencyExponent, formatDecimalBigint, parseDecimalBigint, parseMinor } from "../money.ts";
 import { TenantDenied, TenantInvalid, withTenant, type TenantClaims } from "../tenancy.ts";
+import { ALLOCATION_ALLOCATE_COMMAND, ALLOCATION_RELEASE_COMMAND, type AllocationView } from "./goals.ts";
 
 export const CATEGORIES_CREATE_COMMAND = "categories.create";
 export const CATEGORIES_ARCHIVE_COMMAND = "categories.archive";
@@ -85,7 +86,7 @@ export type AuditView = {
 export type CategoryResult = { view: CategoryView; operationId: string; replayed: boolean };
 export type TagResult = { view: TagView; operationId: string; replayed: boolean };
 export type TransactionResult = { view: TransactionView; operationId: string; replayed: boolean };
-export type UndoResult = { view: TransactionView; operationId: string; replayed: boolean };
+export type UndoResult = { view: TransactionView | AllocationView; operationId: string; replayed: boolean };
 
 export class TxError extends Error {
   readonly code:
@@ -96,7 +97,10 @@ export class TxError extends Error {
     | "undo_conflict"
     | "unsupported_undo"
     | "limit_exceeded"
-    | "unsupported_operation";
+    | "unsupported_operation"
+    | "currency_mismatch"
+    | "goal_archived"
+    | "overallocation";
   readonly currentVersion?: string;
   readonly detail?: unknown;
   constructor(code: TxError["code"], currentVersion?: string, detail?: unknown) {
@@ -1038,11 +1042,11 @@ export async function bulkSetCategory(pool: Pool, claims: TenantClaims, actorId:
 // ---- undo ----
 
 const MANUAL_TRANSACTION_COMMAND = "accounts.manual_transaction";
-const UNDOABLE = new Set([SET_CATEGORY_COMMAND, ADD_TAG_COMMAND, REMOVE_TAG_COMMAND, CORRECT_COMMAND, MANUAL_TRANSACTION_COMMAND]);
+const UNDOABLE = new Set([SET_CATEGORY_COMMAND, ADD_TAG_COMMAND, REMOVE_TAG_COMMAND, CORRECT_COMMAND, MANUAL_TRANSACTION_COMMAND, ALLOCATION_ALLOCATE_COMMAND, ALLOCATION_RELEASE_COMMAND]);
 
-export async function undoTx(client: PoolClient, claims: TenantClaims, actorId: string, input: UndoInput): Promise<TxOutcome<TransactionView>> {
+export async function undoTx(client: PoolClient, claims: TenantClaims, actorId: string, input: UndoInput): Promise<TxOutcome<TransactionView | AllocationView>> {
   const hash = requestHash({ command: UNDO_COMMAND, workspaceId: input.workspaceId, operationId: input.operationId });
-  return claimAndExecute(client, claims, actorId, UNDO_COMMAND, input.idempotencyKey, hash, async (client, operationId) => {
+  return claimAndExecute<TransactionView | AllocationView>(client, claims, actorId, UNDO_COMMAND, input.idempotencyKey, hash, async (client, operationId) => {
     const op = await client.query("SELECT command_name, status FROM command_operations WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [claims.workspaceId, input.operationId]);
     if ((op.rowCount ?? 0) === 0) throw new TxError("not_found");
     const commandName = (op.rows[0] as { command_name: string }).command_name;
@@ -1058,11 +1062,36 @@ export async function undoTx(client: PoolClient, claims: TenantClaims, actorId: 
       if ((audits.rowCount ?? 0) === 0) throw new TxError("not_found");
       throw new TxError("unsupported_undo");
     }
-    const audit = audits.rows[0] as { entity_type: string; entity_id: string; before_state: TransactionView; after_state: TransactionView };
+    const audit = audits.rows[0] as { entity_type: string; entity_id: string; before_state: unknown; after_state: unknown };
+    if (commandName === ALLOCATION_ALLOCATE_COMMAND || commandName === ALLOCATION_RELEASE_COMMAND) {
+      const prior = await client.query("SELECT 1 FROM audit_events WHERE workspace_id = $1 AND compensating_operation_id = $2 LIMIT 1", [claims.workspaceId, input.operationId]);
+      if ((prior.rowCount ?? 0) !== 0) throw new TxError("undo_conflict");
+      const before = audit.before_state as { amountMinor: string } | null;
+      const after = audit.after_state as { amountMinor: string };
+      const alloc = await client.query("SELECT * FROM goal_allocations WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [claims.workspaceId, audit.entity_id]);
+      const current = alloc.rows[0] as { workspace_id: string; goal_id: string; account_id: string; amount_minor: string; currency_code: string; version: string } | undefined;
+      if (!current) throw new TxError("not_found");
+      if (commandName === ALLOCATION_ALLOCATE_COMMAND) {
+        if (before === null) {
+          await client.query("DELETE FROM goal_allocations WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, audit.entity_id]);
+        } else {
+          await client.query("UPDATE goal_allocations SET amount_minor = $1, version = version + 1, updated_at = now() WHERE workspace_id = $2 AND id = $3", [before.amountMinor, claims.workspaceId, audit.entity_id]);
+        }
+      } else {
+        if (before === null) throw new TxError("undo_conflict");
+        await client.query("UPDATE goal_allocations SET amount_minor = $1, version = version + 1, updated_at = now() WHERE workspace_id = $2 AND id = $3", [before.amountMinor, claims.workspaceId, audit.entity_id]);
+      }
+      const goalAfter = await client.query("SELECT version FROM goals WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, current.goal_id]);
+    const goalVersion = String(goalAfter.rows[0]?.version ?? "0");
+    const view = { workspaceId: claims.workspaceId, id: audit.entity_id, goalId: current.goal_id, accountId: current.account_id, amountMinor: before === null ? "0" : before.amountMinor, currency: current.currency_code, version: (BigInt(current.version) + 1n).toString(), goalVersion, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      await insertAudit(client, claims, actorId, "goal_allocation", audit.entity_id, "undo", after, view, operationId, input.operationId);
+      await bumpRevision(client, claims.workspaceId);
+      return { view, operationId };
+    }
     if (commandName === MANUAL_TRANSACTION_COMMAND) {
       const prior = await client.query("SELECT 1 FROM audit_events WHERE workspace_id = $1 AND compensating_operation_id = $2 LIMIT 1", [claims.workspaceId, input.operationId]);
       if ((prior.rowCount ?? 0) !== 0) throw new TxError("undo_conflict");
-      const original = audit.after_state;
+      const original = audit.after_state as TransactionView;
       const inverseId = uuidv7();
       await client.query(
         "INSERT INTO manual_transactions (workspace_id, id, account_id, amount_minor, currency, direction, effective_date, description, actor_id, reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
