@@ -78,11 +78,13 @@ export type AllowedPermissions =
     | "balances.read"
     | "analytics.cashflow"
     | "analytics.spending_by_category"
-    | "transactions.summary.read";
+    | "transactions.summary.read"
+    | "forecast.read";
 
 export const RUNTIME_PERMISSIONS: AllowedPermissions[] = [
     "balances.read",
     "analytics.cashflow",
     "analytics.spending_by_category",
     "transactions.summary.read",
+    "forecast.read",
 ];

@@ -3,6 +3,7 @@
 
 import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
+import { isUuid, uuidv7 } from "../ids.ts";
 import { currencyExponent } from "../money.ts";
 import { classifyLeg } from "../calculations/cash.ts";
 import { lookupEcbRate, lookupManualRate, parseRate, convertWithRate, valuateSnapshot } from "../calculations/fx.ts";
@@ -439,6 +440,63 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
   const horizonDays = input.horizonDays ?? settings.horizonDays;
   const assumptions = await listAssumptions(client, wsId, "ACTIVE");
 
+  // Scenario deltas (S04): flat overrides applied on top of the baseline
+  // model. Missing or archived scenarios read as not_found (uniform).
+  const scenarioReplacements = new Map<string, Record<string, unknown>>();
+  const scenarioOneTimes: ComputeTimelineInput["oneTimes"] = [];
+  const scenarioRecurrings: ComputeTimelineInput["recurrings"] = [];
+  const scenarioIncomes: ComputeTimelineInput["incomes"] = [];
+  const scenarioGoalDisplay: { goalId: string; targetAmountMinor?: string; targetDate?: string }[] = [];
+  let scenarioRef: string | null = null;
+  if (input.scenarioId !== undefined) {
+    const srow = await client.query("SELECT id, version, status FROM scenarios WHERE workspace_id = $1 AND id = $2", [wsId, input.scenarioId]);
+    const s = srow.rows[0] as { id: string; version: string; status: string } | undefined;
+    if (!s || s.status !== "ACTIVE") throw new TxError("not_found");
+    const orows = await client.query("SELECT id, override_type, effective_from, effective_to, payload, version FROM scenario_overrides WHERE workspace_id = $1 AND scenario_id = $2 ORDER BY created_at, id", [wsId, input.scenarioId]);
+    const refs: string[] = [];
+    for (const r of orows.rows as { id: string; override_type: string; effective_from: unknown; effective_to: unknown; payload: unknown; version: string }[]) {
+      // Stored payloads were validated at write time; corrupt rows fail
+      // closed as invalid input, never as engine 500s.
+      try {
+        const p = (r.payload ?? {}) as Record<string, unknown>;
+        refs.push(`${String(r.id)}:${String(r.version)}`);
+        const from = r.effective_from === null ? null : String(r.effective_from).slice(0, 10);
+        const to = r.effective_to === null ? null : String(r.effective_to).slice(0, 10);
+        void from; void to;
+      switch (String(r.override_type)) {
+        case "ONE_TIME_EXPENSE":
+          scenarioOneTimes.push({ assumptionId: `scenario:${String(r.id)}`, amountMinor: BigInt(String(p.amountMinor)), currency: String(p.currency), direction: "OUTFLOW", date: String(p.date), accountId: p.accountId === undefined ? undefined : String(p.accountId), description: p.description === undefined ? undefined : String(p.description) });
+          break;
+        case "ONE_TIME_INCOME":
+          scenarioOneTimes.push({ assumptionId: `scenario:${String(r.id)}`, amountMinor: BigInt(String(p.amountMinor)), currency: String(p.currency), direction: "INFLOW", date: String(p.date), accountId: p.accountId === undefined ? undefined : String(p.accountId), description: p.description === undefined ? undefined : String(p.description) });
+          break;
+        case "RECURRING_EXPENSE_CHANGE":
+          scenarioRecurrings.push({ assumptionId: `scenario:${String(r.id)}`, amountMinor: BigInt(String(p.amountMinor)), currency: String(p.currency), cadence: "MONTHLY", dayOfMonth: Number(p.dayOfMonth), direction: p.direction === "INFLOW" ? "INFLOW" : "OUTFLOW", accountId: p.accountId === undefined ? undefined : String(p.accountId) });
+          break;
+        case "INCOME_CHANGE":
+          scenarioIncomes.push({ assumptionId: `scenario:${String(r.id)}`, amountMinor: BigInt(String(p.amountMinor)), currency: String(p.currency), cadence: "MONTHLY", dayOfMonth: Number(p.dayOfMonth), accountId: p.accountId === undefined ? undefined : String(p.accountId) });
+          break;
+        case "GOAL_TARGET_CHANGE":
+          scenarioGoalDisplay.push({ goalId: String(p.goalId), targetAmountMinor: String(p.targetAmountMinor) });
+          break;
+        case "GOAL_DATE_CHANGE":
+          scenarioGoalDisplay.push({ goalId: String(p.goalId), targetDate: String(p.targetDate) });
+          break;
+        case "ASSUMPTION_OVERRIDE":
+          scenarioReplacements.set(String(p.assumptionId), p.value as Record<string, unknown>);
+          refs.push(`replace:${String(p.assumptionId)}`);
+          break;
+        default:
+          throw new TenantInvalid();
+      }
+      } catch (err) {
+        if (err instanceof TenantInvalid) throw err;
+        throw new TenantInvalid();
+      }
+    }
+    scenarioRef = `${String(s.id)}:${String(s.version)}:${refs.sort().join(",")}`;
+  }
+
   const accts = await client.query("SELECT id, base_currency_code AS currency FROM accounts WHERE workspace_id = $1 AND archived = FALSE ORDER BY id", [wsId]);
   const accountIds = (accts.rows as { id: string }[]).map((r) => String(r.id));
   const accountCurrency = new Map<string, string>((accts.rows as { id: string; currency: string }[]).map((r) => [String(r.id), String(r.currency)]));
@@ -513,14 +571,14 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
     confirmedByFp.set(String(r.fingerprint), { kind: r.kind === "income" ? "income" : "expense", dayOfMonth: Number(r.day_of_month) });
   }
 
-  // Partition assumptions.
+  // Partition assumptions (scenario ASSUMPTION_OVERRIDE swaps a row's value).
   const incomes: ComputeTimelineInput["incomes"] = [];
   const recurrings: ComputeTimelineInput["recurrings"] = [];
   const oneTimes: ComputeTimelineInput["oneTimes"] = [];
   let variableWeekly: ComputeTimelineInput["variableWeekly"] = null;
   const missingCommitments: string[] = [];
   for (const a of assumptions) {
-    const v = a.value as Record<string, unknown>;
+    const v = (scenarioReplacements.get(a.id) ?? a.value) as Record<string, unknown>;
     if (a.assumptionType === "EXPECTED_INCOME") {
       incomes.push({ assumptionId: a.id, amountMinor: BigInt(String(v.amountMinor)), currency: String(v.currency), cadence: String(v.cadence) as "MONTHLY" | "WEEKLY" | "ONE_TIME", dayOfMonth: v.dayOfMonth === undefined ? undefined : Number(v.dayOfMonth), date: v.date === undefined ? undefined : String(v.date), accountId: v.accountId === undefined ? undefined : String(v.accountId) });
     } else if (a.assumptionType === "EXPECTED_RECURRING_AMOUNT") {
@@ -539,6 +597,10 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
       variableWeekly = { assumptionId: a.id, amountMinor: BigInt(String(v.amountMinor)), currency: String(v.currency) };
     }
   }
+  // Scenario deltas append after baseline partition (same shapes, same rules).
+  for (const e of scenarioIncomes) incomes.push(e);
+  for (const e of scenarioRecurrings) recurrings.push(e);
+  for (const e of scenarioOneTimes) oneTimes.push(e);
 
   // Linked recurring schedules (fingerprint -> confirmed override + amount center).
   // A fingerprint claimed by both an explicit schedule and a confirmed
@@ -626,6 +688,7 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
     holds: "not-applicable/no-feed (R1 has no pending-hold feed)",
     variableSpend: variableWeekly ? "assumption" : variableBaselineStatus,
     missingCommitments,
+    scenarioGoalDisplay,
   };
   let fxPartial = false;
   for (const id of accountIds) {
@@ -705,6 +768,7 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
     .digest("hex");
   const canonical = {
     settingsVersion: settings.version, horizonDays, baseCurrency, spendingAccountId: input.spendingAccountId ?? null, scenarioId: input.scenarioId ?? null,
+    scenarioRef,
     assumptions: assumptions.map((a) => `${a.id}:${a.version}`).sort(),
     goals: goalRows.rows.map((r: { id: string }) => String(r.id)).sort(),
     allocations: (allocRows.rows as { goal_id: string; account_id: string; amount_minor: string }[]).map((r) => `${String(r.goal_id)}:${String(r.account_id)}:${String(r.amount_minor)}`).sort(),
@@ -988,6 +1052,119 @@ export async function runProjection(pool: Pool, claims: TenantClaims, actorId: s
     operationId: outcome.operationId,
     replayed: outcome.replayed,
   };
+}
+
+export type ProjectionEvaluation = {
+  inputHash: string;
+  coverage: Record<string, unknown>;
+  horizonStart: string;
+  horizonDays: number;
+  baseCurrency: string;
+  points: ProjectionPointView[];
+  events: ProjectionEventView[];
+  ats: ATSView;
+};
+
+const SDK_MAX_POINTS = 500;
+
+/**
+ * Artifact SDK projection read: the shared read-only evaluation with a
+ * bounded point window. Grant, freshness, quota and permission checks live
+ * with the caller (tenancy RPC gate + worker caps); this function only
+ * validates shapes and truncates. Throws TenantInvalid on malformed args.
+ */
+export async function runSdkProjection(
+  pool: Pool,
+  claim: TenantClaims,
+  args: unknown,
+): Promise<{ horizonStart: string; horizonDays: number; baseCurrency: string; inputHash: string; coverage: Record<string, unknown>; ats: ATSView; points: { caseName: string; scope: string; pointDate: string; amountMinor: string; currencyCode: string }[]; truncated: boolean }> {
+  if (typeof args !== "object" || args === null || Array.isArray(args)) throw new TenantInvalid();
+  const v = args as Record<string, unknown>;
+  for (const key of Object.keys(v)) {
+    if (!["horizonDays", "spendingAccountId", "scenarioId"].includes(key)) throw new TenantInvalid();
+  }
+  if (v.horizonDays !== undefined && (!Number.isInteger(v.horizonDays) || (v.horizonDays as number) < 1 || (v.horizonDays as number) > 120)) throw new TenantInvalid();
+  if (v.spendingAccountId !== undefined && (typeof v.spendingAccountId !== "string" || !isUuid(v.spendingAccountId))) throw new TenantInvalid();
+  if (v.scenarioId !== undefined && (typeof v.scenarioId !== "string" || !isUuid(v.scenarioId))) throw new TenantInvalid();
+  const evaluated = await evaluateProjection(pool, claim, {
+    horizonDays: v.horizonDays as number | undefined,
+    spendingAccountId: v.spendingAccountId as string | undefined,
+    scenarioId: v.scenarioId as string | undefined,
+  });
+  const points = evaluated.points.slice(0, SDK_MAX_POINTS);
+  return {
+    horizonStart: evaluated.horizonStart,
+    horizonDays: evaluated.horizonDays,
+    baseCurrency: evaluated.baseCurrency,
+    inputHash: evaluated.inputHash,
+    coverage: evaluated.coverage,
+    ats: evaluated.ats,
+    points: points.map((p) => ({ caseName: p.caseName, scope: p.scope, pointDate: p.pointDate, amountMinor: p.amountMinor, currencyCode: p.currencyCode })),
+    truncated: evaluated.points.length > SDK_MAX_POINTS,
+  };
+}
+
+/**
+ * Read-only shared evaluation consumed by chat tools, artifact SDK reads,
+ * scenario comparison and saved-scenario reopen. Same resolve+compute as
+ * persisted runs, but writes nothing: no journal row, no run row, no audit.
+ * Callers needing evidence persistence use runProjection instead.
+ */
+export async function evaluateProjection(
+  pool: Pool,
+  claims: TenantClaims,
+  opts: { horizonDays?: number; spendingAccountId?: string; scenarioId?: string },
+): Promise<ProjectionEvaluation> {
+  if (opts.horizonDays !== undefined && (!Number.isInteger(opts.horizonDays) || opts.horizonDays < 1 || opts.horizonDays > 365)) throw new TenantInvalid();
+  if (opts.spendingAccountId !== undefined && !isUuid(opts.spendingAccountId)) throw new TenantInvalid();
+  if (opts.scenarioId !== undefined && !isUuid(opts.scenarioId)) throw new TenantInvalid();
+  return withTenant(pool, claims, async (client) => {
+    const { inputHash, resolved } = await resolveInputs(client, claims, {
+      workspaceId: claims.workspaceId,
+      horizonDays: opts.horizonDays,
+      spendingAccountId: opts.spendingAccountId,
+      scenarioId: opts.scenarioId,
+      idempotencyKey: "00000000-0000-0000-0000-000000000000",
+    });
+    const { points, events, ats } = computeTimeline(resolved);
+    const atsView: ATSView =
+      ats.status === "AVAILABLE"
+        ? { status: "AVAILABLE", amountMinor: ats.amountMinor.toString(), limitingDay: ats.limitingDay, limitingAccount: ats.limitingAccount }
+        : ats.status === "SHORTFALL"
+          ? { status: "SHORTFALL", amountMinor: "0", shortfallMinor: ats.shortfallMinor?.toString(), shortfallDate: ats.shortfallDate, limitingDay: ats.limitingDay, limitingAccount: ats.limitingAccount }
+          : { status: "UNAVAILABLE", amountMinor: "0", reasons: ats.reasons };
+    return {
+      inputHash,
+      coverage: { ...resolved.coverageNotes, accounts: resolved.accounts.map((a) => ({ accountId: a.id, currency: a.currency, snapshotId: a.snapshotId, snapshotDate: a.snapshotDate, fx: a.fx })) },
+      horizonStart: resolved.horizonStart,
+      horizonDays: resolved.horizonDays,
+      baseCurrency: resolved.baseCurrency,
+      points: points.map((pt) => ({
+        workspaceId: claims.workspaceId,
+        runId: "evaluation",
+        caseName: pt.caseName,
+        scope: pt.scope,
+        pointDate: pt.pointDate,
+        amountMinor: pt.amountMinor.toString(),
+        currencyCode: pt.currencyCode,
+      })),
+      events: events.map((ev) => ({
+        workspaceId: claims.workspaceId,
+        id: "evaluation",
+        runId: "evaluation",
+        eventDate: ev.eventDate,
+        eventType: ev.eventType,
+        direction: ev.direction,
+        amountMinor: ev.amountMinor?.toString() ?? null,
+        currencyCode: ev.currencyCode,
+        accountScope: ev.accountScope,
+        label: ev.label,
+        sourceRefs: ev.sourceRefs,
+        createdAt: new Date().toISOString(),
+      })),
+      ats: atsView,
+    };
+  });
 }
 
 type GetProjectionRunResult = {

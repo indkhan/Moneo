@@ -95,10 +95,27 @@ import {
 } from "./commands/projection-inputs.ts";
 import { previewBaseline } from "./projections/inputs.ts";
 import {
+  evaluateProjection,
   getProjectionRun,
   runProjection,
+  runSdkProjection,
   validateRunProjectionInput,
 } from "./projections/engine.ts";
+import {
+  addOverride,
+  archiveScenario,
+  compareScenarios,
+  createScenario,
+  getScenario,
+  listScenarios,
+  removeOverride,
+  updateScenario,
+  validateAddOverrideInput,
+  validateArchiveScenarioInput,
+  validateCreateScenarioInput,
+  validateRemoveOverrideInput,
+  validateUpdateScenarioInput,
+} from "./projections/scenarios.ts";
 import {
   archiveGoal,
   allocate,
@@ -1398,6 +1415,119 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           }
           return true;
         }
+        // E06-S04 scenarios: compare baseline vs flat scenario deltas
+        if (path === "/api/projection/compare" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) { tenantJson(res, 401, { error: "unauthorized" }); return true; }
+          let input: { workspaceId?: unknown; scenarioId?: unknown; horizonDays?: unknown; spendingAccountId?: unknown };
+          try { input = (await readJsonBody(req)) as { workspaceId?: unknown; scenarioId?: unknown; horizonDays?: unknown; spendingAccountId?: unknown }; } catch { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+          if (typeof input.workspaceId !== "string") { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) { tenantJson(res, 404, { error: "not_found" }); return true; }
+          try {
+            const result = await compareScenarios(pool, resolved.claim, {
+              workspaceId: input.workspaceId,
+              scenarioId: input.scenarioId as string,
+              horizonDays: input.horizonDays as number | undefined,
+              spendingAccountId: input.spendingAccountId as string | undefined,
+            });
+            tenantJson(res, 200, {
+              baselineInputHash: result.baselineInputHash,
+              scenarioInputHash: result.scenarioInputHash,
+              horizonStart: result.horizonStart,
+              horizonDays: result.horizonDays,
+              baseCurrency: result.baseCurrency,
+              baselineAts: result.baselineAts,
+              scenarioAts: result.scenarioAts,
+              goalDisplay: result.goalDisplay,
+              deltas: result.deltas.map((d) => ({ case_name: d.caseName, scope: d.scope, point_date: d.pointDate, baseline_minor: d.baselineMinor, scenario_minor: d.scenarioMinor, delta_minor: d.deltaMinor, currency: d.currency })),
+              baselinePoints: result.baselinePoints.map((p) => ({ case_name: p.caseName, scope: p.scope, point_date: p.pointDate, amount_minor: p.amountMinor, currency: p.currency })),
+              scenarioPoints: result.scenarioPoints.map((p) => ({ case_name: p.caseName, scope: p.scope, point_date: p.pointDate, amount_minor: p.amountMinor, currency: p.currency })),
+            });
+          } catch (err) {
+            if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; }
+            if (err instanceof TenantInvalid || err instanceof TenantDenied) { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+            throw err;
+          }
+          return true;
+        }
+        // E06-S04 scenarios: create
+        if (path === "/api/commands/scenarios.create" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) { tenantJson(res, 401, { error: "unauthorized" }); return true; }
+          let input: ReturnType<typeof validateCreateScenarioInput>;
+          try { input = validateCreateScenarioInput(await readJsonBody(req)); } catch { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) { tenantJson(res, 404, { error: "not_found" }); return true; }
+          try { const result = await createScenario(pool, resolved.claim, resolved.claim.userId, input); tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed }); } catch (err) { if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; } throw err; }
+          return true;
+        }
+        // E06-S04 scenarios: update
+        if (path === "/api/commands/scenarios.update" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) { tenantJson(res, 401, { error: "unauthorized" }); return true; }
+          let input: ReturnType<typeof validateUpdateScenarioInput>;
+          try { input = validateUpdateScenarioInput(await readJsonBody(req)); } catch { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) { tenantJson(res, 404, { error: "not_found" }); return true; }
+          try { const result = await updateScenario(pool, resolved.claim, resolved.claim.userId, input); tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed }); } catch (err) { if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; } throw err; }
+          return true;
+        }
+        // E06-S04 scenarios: archive
+        if (path === "/api/commands/scenarios.archive" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) { tenantJson(res, 401, { error: "unauthorized" }); return true; }
+          let input: ReturnType<typeof validateArchiveScenarioInput>;
+          try { input = validateArchiveScenarioInput(await readJsonBody(req)); } catch { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) { tenantJson(res, 404, { error: "not_found" }); return true; }
+          try { const result = await archiveScenario(pool, resolved.claim, resolved.claim.userId, input); tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed }); } catch (err) { if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; } throw err; }
+          return true;
+        }
+        // E06-S04 scenario overrides: add
+        if (path === "/api/commands/scenario-overrides.add" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) { tenantJson(res, 401, { error: "unauthorized" }); return true; }
+          let input: ReturnType<typeof validateAddOverrideInput>;
+          try { input = validateAddOverrideInput(await readJsonBody(req)); } catch { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) { tenantJson(res, 404, { error: "not_found" }); return true; }
+          try { const result = await addOverride(pool, resolved.claim, resolved.claim.userId, input); tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed }); } catch (err) { if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; } throw err; }
+          return true;
+        }
+        // E06-S04 scenario overrides: remove
+        if (path === "/api/commands/scenario-overrides.remove" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) { tenantJson(res, 401, { error: "unauthorized" }); return true; }
+          let input: ReturnType<typeof validateRemoveOverrideInput>;
+          try { input = validateRemoveOverrideInput(await readJsonBody(req)); } catch { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+          const resolved = await claims(req, input.workspaceId);
+          if (!resolved.claim) { tenantJson(res, 404, { error: "not_found" }); return true; }
+          try { const result = await removeOverride(pool, resolved.claim, resolved.claim.userId, input); tenantJson(res, 200, { ...result.view, operationId: result.operationId, replayed: result.replayed }); } catch (err) { if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; } throw err; }
+          return true;
+        }
+        // E06-S04 scenarios: list
+        if (path === "/api/scenarios" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) { denied(res, resolved.session !== null); return true; }
+          try { tenantJson(res, 200, { scenarios: await listScenarios(pool, resolved.claim, query.get("includeArchived") === "true"), requestId }); } catch (err) { if (err instanceof TenantInvalid || err instanceof TenantDenied) { denied(res, true); return true; } throw err; }
+          return true;
+        }
+        // E06-S04 scenarios: get with overrides
+        const scenarioMatch = path.match(/^\/api\/scenarios\/([A-Za-z0-9-]+)$/);
+        if (scenarioMatch && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) { denied(res, resolved.session !== null); return true; }
+          if (!isUuid(scenarioMatch[1])) { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+          try { tenantJson(res, 200, await getScenario(pool, resolved.claim, scenarioMatch[1])); } catch (err) {
+            if (err instanceof TenantInvalid || err instanceof TenantDenied) { denied(res, true); return true; }
+            if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; }
+            throw err;
+          }
+          return true;
+        }
         // E06-S02 goals: create
         if (path === "/api/commands/goals.create" && method === "POST") {
           const session = await resolveSession(req);
@@ -2645,6 +2775,7 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
             "cashflow": "analytics.cashflow",
             "getBalances": "balances.read",
             "transactionSummary": "transactions.summary.read",
+            "projection": "forecast.read",
           };
           if (!(method in permissionMap)) {
             tenantJson(res, 400, { error: "invalid_method" });
@@ -2731,6 +2862,8 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
               result = await getCashflow(pool, claim, args as { dateFrom?: string; dateTo?: string; accountIds?: string[] });
             } else if (method === "getBalances") {
               result = await getBalances(pool, claim, args as { accountIds?: string[] });
+            } else if (method === "projection") {
+              result = await runSdkProjection(pool, claim, args);
             } else {
               result = await getTransactionSummary(pool, claim, args as { dateFrom?: string; dateTo?: string; accountIds?: string[]; direction?: string });
             }

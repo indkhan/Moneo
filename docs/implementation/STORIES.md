@@ -1231,7 +1231,7 @@ Execution record:
 
 ## E06-S03 — Compute case projections and Available to Spend
 
-Status: In progress | Release: R1 | Epic: E06
+Status: Done | Release: R1 | Epic: E06
 Dependencies: E06-S02 (Ready above; must be Done before S03 implementation starts)
 
 Outcome: One shared deterministic engine computes daily per-account and total cash series for Expected/Conservative/Optimistic cases plus an Available to Spend result under the conservative case; every surface (later UI, chat, artifacts) consumes these shared queries and returns identical authoritative results for identical inputs.
@@ -1260,11 +1260,18 @@ Verification: New `npm run test:projections` (own DB `moneo_e06_projection`): mo
 Review focus: Float in daily math, TOTAL/scopes drift, fungibility assumptions, floor double-count (modeled outflow also floored), FX future-rate use, silent-zero coverage, run mutation, hash canonicalization gaps, per-account check bypass.
 Rollout/rollback: Pre-release boundary; rollback = prior image + `036 rollback.sql` (synthetic runs only).
 
-Execution record: (pending implementation)
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e06-s03-engine-complete` (deleted after merge) / main worktree branch
+- Base SHA / heads: base `f27f3b9adb8eb60a8f124faff63dbb6ad308dd8f`; impl/reviewed `b2a269c5ba708c7ee1984ee4fc6e3d314f218855`; fix `e94267b29715bb984118cb5c02faa4d5401ea1ba`; golden-add/reviewed `bf3db6f2a95ffcc7c8ffc78448172d3e28f8ef1a`
+- Tests: Windows 11, Node v22.23.2/npm 10.9.8, local PG18, disposable loopback MinIO RELEASE.2025-09-07 + ClamAV 1.5.4 + container Redis 7-alpine (pinned CI digest) on 127.0.0.1. `npm run typecheck` 0; `test:projections` 0 (15/15 on own `moneo_e06_projection` DB: month-end/leap exact, case bps, scheduled-transfer parity all 3 cases, hash idempotence + immutability, horizon-start boundary golden, ATS available/shortfall/unavailable/missing_fx/missing_commitments/funding_gap, wording gate, incompatible-reuse, tenant uniformity, >safe-integer versions); regression projection-inputs 13/13, goals 6/6, tenancy 7/7, transactions-table 8/8, accounts 10/10, calculations 10/10, fx 27/27, calc-evidence 6/6, categories 13/13, recurring 8/8, import-e2e 14/14, mapping 22/22, jobs 8/8, job-recovery 14/14, durable 12/12, w1 1/1, e03-exit 11/11, ai-dispatch 16/16, chat 13/13, chat-ui 9/9, ai-tools 14/14, ai-action 4/4, ai-eval 2/2, ai-settings 1/1, artifact-build 10/10, artifact-ui 12/12, artifact-ai 12/12, e05-exit 9/9, policy 7/7, ui 10/10, auth 13/13, db 2/2, http 1/1, web 8/8, identity 36/36, import 26/26, harness 1/1, money 4/4; artifact-runtime Chromium+Firefox 18 passed (WebKit launch fails with host-validation exit 0xC0E90002, E00-recorded environment condition, no artifact code touched); e05-matrix 14 passed Chromium+Firefox, 7 WebKit env failures same cause; `build:web/worker/parser` 0; `test:failure` nonzero-as-intended; `staging:smoke` PASS; `git diff --check` 0; tracked-file secret scan clean; no `.env` tracked.
+- Review: independent adversarial review (separate task) Changes requested at `b2a269c` with 7 reproduced blockers (B1 transfer scaling, B2 hash coverage, B3 start boundary, B4 archived-goal reservations, B5 FX silence, B6 GET shape/errors, B7 DATE parity) plus 13 nonblocking notes. Fix `e94267b`: case-neutral transfers + booked actuals, booked/FX/override hash folding, exclusive reconcile boundary, ACTIVE-goal reservation join, strict missing_fx, GET uuid/txError/shape unify, prod DATE parser, shared baseline median, no-spendable reason, symmetric transfers, wording gate, 365-day run cap, savepoint-guarded run insert, 6 new goldens. Re-review Pass with one requested item (B3 boundary golden); golden added at `bf3db6f` (test-only delta, 15/15 green) and merged with the finding recorded here.
+- Integration: `git fetch origin main` — origin/main stale (local-only merges); local main at base `f27f3b9` unchanged; merge-base == base; candidate == reviewed `bf3db6f`; full candidate gates green (see Tests). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `41a57d1608e90058618a61696ad71f3f1fbe85a6`; post-merge `npm run check` 0, projections/goals/inputs/tenancy 41/41, clean status. Remote push/PR not performed (local-only merges per E00 precedent).
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: N2 txErrorBody nesting kept (E03 contract wins; goals test reads nested detail); N3 scope-key format change, synthetic-only tables; N5 savingsIncluded recorded but unenforced (no account-type data in R1); N8 settings allow 730 while runs cap at 365 (preference vs execution cap); N9 minor dead code (unused validators/imports); WebKit browser launch fails on this host (environmental, E00-recorded); live ECB/OpenRouter gates stay bounded/manual; no-spendable-accounts reason untested (no golden fixture).
 
 ## E06-S04 — Compare flat what-if scenarios
 
-Status: Ready | Release: R1 | Epic: E06
+Status: In progress | Release: R1 | Epic: E06
 Dependencies: E06-S03 (Ready above; must be Done before S04 implementation starts)
 
 Outcome: A keyboard user can manage goals/projections/scenarios in server-rendered UI, save flat what-if scenarios as deltas, compare scenario vs baseline over the same horizon, and get identical authoritative numbers through chat tools and artifact SDK reads; scenario edits never mutate booked data.
