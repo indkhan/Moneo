@@ -337,8 +337,47 @@ describe("e06-s03 projection engine", () => {
     }
   });
 
-  it("identical inputs return the same run id with byte-identical points", async () => {
+  it("snapshot-before-start with a booking on the start day counts exactly once", async () => {
     const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e06-proj-boundary");
+    const accountA = await createAccount(base, cookie, workspaceId, "A");
+    const accountB = await createAccount(base, cookie, workspaceId, "B");
+    await createSnapshot(base, cookie, workspaceId, accountA, "1000.00");
+    // B's later snapshot anchors the horizon start at 2026-01-10.
+    const snapB = await postJson(base, "/api/commands/accounts.balance_snapshot", cookie, {
+      workspaceId,
+      accountId: accountB,
+      asOfDate: "2026-01-10",
+      amount: "500.00",
+      currency: "EUR",
+      idempotencyKey: randomUUID(),
+    });
+    expect(snapB.status).toBe(200);
+    // Booking on A dated exactly the start day: forward-reconcile must skip it
+    // (strict <) while the day-0 replay includes it (>=) — counted once.
+    const booked = await postJson(base, "/api/commands/accounts.manual_transaction", cookie, {
+      workspaceId,
+      accountId: accountA,
+      amount: "200.00",
+      currency: "EUR",
+      direction: "INFLOW",
+      effectiveDate: "2026-01-10",
+      description: "Boundary pay",
+      idempotencyKey: randomUUID(),
+    });
+    expect(booked.status).toBe(200);
+
+    const run = await runProjection(base, cookie, workspaceId, 30);
+    expect(run.status).toBe(200);
+    const runJson = run.json as { points: { case_name: string; scope: string; point_date: string; amount_minor: string }[] };
+    const at = (scope: string, date: string) =>
+      BigInt(runJson.points.find((p) => p.case_name === "EXPECTED" && p.scope === scope && p.point_date === date)!.amount_minor);
+    expect(at(accountA, "2026-01-10")).toBe(120000n);
+    expect(at(accountB, "2026-01-10")).toBe(50000n);
+    expect(at("TOTAL", "2026-01-10")).toBe(170000n);
+  });
+
+  it("identical inputs return the same run id with byte-identical points", async () => {    const base = await startApp();
     const { cookie, workspaceId } = await setupWorkspace(base, "e06-proj-idem");
     const accountId = await createAccount(base, cookie, workspaceId, "Cash");
     await createSnapshot(base, cookie, workspaceId, accountId, "1000.00");
