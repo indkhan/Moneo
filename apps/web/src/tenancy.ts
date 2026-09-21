@@ -1374,7 +1374,28 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           const workspaceId = query.get("workspaceId") ?? "";
           const resolved = await claims(req, workspaceId);
           if (!resolved.claim) { denied(res, resolved.session !== null); return true; }
-          try { tenantJson(res, 200, await getProjectionRun(pool, resolved.claim, runMatch[1])); } catch (err) { if (err instanceof TenantInvalid || err instanceof TenantDenied) { denied(res, true); return true; } throw err; }
+          if (!isUuid(runMatch[1])) { tenantJson(res, 400, { error: "invalid_request" }); return true; }
+          try {
+            const result = await getProjectionRun(pool, resolved.claim, runMatch[1]);
+            // Same snake_case shape as POST /api/projection/run (one contract).
+            tenantJson(res, 200, {
+              runId: result.run.runId,
+              method: result.run.method,
+              engineVersion: result.run.engineVersion,
+              horizonStart: result.run.horizonStart,
+              horizonEnd: result.run.horizonEnd,
+              baseCurrency: result.run.baseCurrency,
+              inputHash: result.run.inputHash,
+              coverage: result.run.coverage,
+              points: result.points.map((p) => ({ case_name: p.caseName, scope: p.scope, point_date: p.pointDate, amount_minor: p.amountMinor, currency: p.currencyCode })),
+              events: result.events.map((e) => ({ event_date: e.eventDate, event_type: e.eventType, direction: e.direction, amount_minor: e.amountMinor, currency: e.currencyCode, account_scope: e.accountScope, label: e.label })),
+              ats: result.ats,
+            });
+          } catch (err) {
+            if (err instanceof TenantInvalid || err instanceof TenantDenied) { denied(res, true); return true; }
+            if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; }
+            throw err;
+          }
           return true;
         }
         // E06-S02 goals: create

@@ -8,7 +8,7 @@ import { classifyLeg } from "../calculations/cash.ts";
 import { lookupEcbRate, lookupManualRate, parseRate, convertWithRate, valuateSnapshot } from "../calculations/fx.ts";
 import { expandMonthly, distributeDaily, daysInMonth } from "./schedule.ts";
 import { buildWeeklyBaseline } from "./baseline.ts";
-import { getProjectionSettings, listAssumptions, previewBaseline } from "./inputs.ts";
+import { getProjectionSettings, listAssumptions, pastIsoWeeks, previewBaseline } from "./inputs.ts";
 import { getAccountTotalAllocated } from "../commands/goals.ts";
 import { fingerprintFor, normalizeDescription } from "../recurring.ts";
 import { TenantDenied, TenantInvalid, withTenant, type TenantClaims } from "../tenancy.ts";
@@ -47,6 +47,7 @@ type ComputeTimelineInput = {
   bookedByAccountDay: Map<string, Map<string, bigint>>;
   missingCommitments: string[];
   coverageNotes: Record<string, unknown>;
+  fxByCurrency: Record<string, { num: string; den: string } | null>;
   spendingAccountId?: string;
 };
 
@@ -89,7 +90,9 @@ export function validateRunProjectionInput(value: unknown): ProjectionRunInput {
   for (const key of Object.keys(v)) {
     if (!["workspaceId", "horizonDays", "spendingAccountId", "scenarioId", "idempotencyKey"].includes(key)) throw new TenantInvalid();
   }
-  if (v.horizonDays !== undefined && (!Number.isInteger(v.horizonDays) || (v.horizonDays as number) < 1 || (v.horizonDays as number) > 730)) throw new TenantInvalid();
+  // R1 read cap: horizons beyond 365 days are rejected (UI aggregates there;
+  // longer custom horizons arrive only with a measured follow-up).
+  if (v.horizonDays !== undefined && (!Number.isInteger(v.horizonDays) || (v.horizonDays as number) < 1 || (v.horizonDays as number) > 365)) throw new TenantInvalid();
   if (v.spendingAccountId !== undefined && (typeof v.spendingAccountId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.spendingAccountId))) throw new TenantInvalid();
   if (v.scenarioId !== undefined && (typeof v.scenarioId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.scenarioId))) throw new TenantInvalid();
   return {
@@ -204,7 +207,7 @@ function applyCaseBps(amount: bigint, caseName: keyof typeof CASE_BPS, isIncome:
  * TOTAL always equals the sum of account scopes; transfers move scopes only.
  */
 function computeTimeline(resolved: ComputeTimelineInput): ComputeTimelineResult {
-  type DayEvent = { date: string; type: string; direction: "INFLOW" | "OUTFLOW"; amountMinor: bigint; currency: string; accountId: string | null; label: string; sourceRefs: Record<string, unknown> };
+  type DayEvent = { date: string; type: string; direction: "INFLOW" | "OUTFLOW"; amountMinor: bigint; currency: string; accountId: string | null; label: string; sourceRefs: Record<string, unknown>; caseNeutral?: boolean };
   const startDt = new Date(`${resolved.horizonStart}T00:00:00Z`);
   const endDt = new Date(startDt.getTime() + resolved.horizonDays * 86400000);
   const endStr = isoDay(endDt);
@@ -237,7 +240,11 @@ function computeTimeline(resolved: ComputeTimelineInput): ComputeTimelineResult 
   }
   for (const rec of resolved.recurrings) {
     const dir = rec.direction;
-    if (rec.cadence === "MONTHLY" && rec.dayOfMonth !== undefined) {
+    if (rec.date !== undefined && rec.cadence === undefined) {
+      // Single dated occurrence (no cadence): one event, never a schedule.
+      if (!inHorizon(rec.date)) continue;
+      base.push({ date: rec.date, type: "RECURRING_PAYMENT", direction: dir, amountMinor: BigInt(rec.amountMinor), currency: rec.currency, accountId: rec.accountId ?? null, label: `dated recurring ${dir === "INFLOW" ? "inflow" : "payment"} ${rec.currency}`, sourceRefs: { assumptionId: (rec as { assumptionId?: string }).assumptionId ?? null } });
+    } else if (rec.cadence === "MONTHLY" && rec.dayOfMonth !== undefined) {
       for (const d of expandMonthly(rec.dayOfMonth, resolved.horizonStart, isoDay(new Date(endDt.getTime() - 86400000)))) {
         if (!inHorizon(d)) continue;
         base.push({ date: d, type: "RECURRING_PAYMENT", direction: dir, amountMinor: BigInt(rec.amountMinor), currency: rec.currency, accountId: rec.accountId ?? null, label: `recurring ${dir === "INFLOW" ? "inflow" : "payment"} ${rec.currency}`, sourceRefs: { assumptionId: (rec as { assumptionId?: string }).assumptionId ?? null } });
@@ -260,8 +267,11 @@ function computeTimeline(resolved: ComputeTimelineInput): ComputeTimelineResult 
   for (const ot of resolved.oneTimes) {
     if (!inHorizon(ot.date)) continue;
     if (ot.toAccountId && ot.direction === "OUTFLOW") {
-      base.push({ date: ot.date, type: "TRANSFER", direction: "OUTFLOW", amountMinor: BigInt(ot.amountMinor), currency: ot.currency, accountId: ot.accountId ?? null, label: `scheduled transfer out ${ot.currency}`, sourceRefs: { assumptionId: (ot as { assumptionId?: string }).assumptionId ?? null, toAccountId: ot.toAccountId } });
-      base.push({ date: ot.date, type: "TRANSFER", direction: "INFLOW", amountMinor: BigInt(ot.amountMinor), currency: ot.currency, accountId: ot.toAccountId, label: `scheduled transfer in ${ot.currency}`, sourceRefs: { assumptionId: (ot as { assumptionId?: string }).assumptionId ?? null, fromAccountId: ot.accountId ?? null } });
+      base.push({ date: ot.date, type: "TRANSFER", direction: "OUTFLOW", amountMinor: BigInt(ot.amountMinor), currency: ot.currency, accountId: ot.accountId ?? null, label: `scheduled transfer out ${ot.currency}`, sourceRefs: { assumptionId: (ot as { assumptionId?: string }).assumptionId ?? null, toAccountId: ot.toAccountId }, caseNeutral: true });
+      base.push({ date: ot.date, type: "TRANSFER", direction: "INFLOW", amountMinor: BigInt(ot.amountMinor), currency: ot.currency, accountId: ot.toAccountId, label: `scheduled transfer in ${ot.currency}`, sourceRefs: { assumptionId: (ot as { assumptionId?: string }).assumptionId ?? null, fromAccountId: ot.accountId ?? null }, caseNeutral: true });
+    } else if (ot.toAccountId && ot.direction === "INFLOW") {
+      base.push({ date: ot.date, type: "TRANSFER", direction: "OUTFLOW", amountMinor: BigInt(ot.amountMinor), currency: ot.currency, accountId: ot.toAccountId, label: `scheduled transfer out ${ot.currency}`, sourceRefs: { assumptionId: (ot as { assumptionId?: string }).assumptionId ?? null, toAccountId: ot.accountId ?? null }, caseNeutral: true });
+      base.push({ date: ot.date, type: "TRANSFER", direction: "INFLOW", amountMinor: BigInt(ot.amountMinor), currency: ot.currency, accountId: ot.accountId ?? null, label: `scheduled transfer in ${ot.currency}`, sourceRefs: { assumptionId: (ot as { assumptionId?: string }).assumptionId ?? null, fromAccountId: ot.toAccountId }, caseNeutral: true });
     } else {
       base.push({ date: ot.date, type: "PLANNED_EVENT", direction: ot.direction, amountMinor: BigInt(ot.amountMinor), currency: ot.currency, accountId: ot.accountId ?? null, label: `one-time ${ot.direction === "INFLOW" ? "income" : "expense"} ${ot.currency}`, sourceRefs: { assumptionId: (ot as { assumptionId?: string }).assumptionId ?? null } });
     }
@@ -286,45 +296,72 @@ function computeTimeline(resolved: ComputeTimelineInput): ComputeTimelineResult 
   const singleDefault = spendable.length === 1 ? spendable[0]!.id : null;
   const dated = base.map((e) => ({ ...e, accountId: e.accountId ?? singleDefault }));
 
-  // Booked legs inside the horizon move their own account scope (directional).
+  // Booked legs inside the horizon move their own account scope (directional,
+  // case-neutral: history does not vary by assumption case).
   for (const [acct, byDay] of resolved.bookedByAccountDay) {
     for (const [day, net] of byDay) {
       if (!inHorizon(day) || net === 0n) continue;
-      dated.push({ date: day, type: "PLANNED_EVENT", direction: net > 0n ? "INFLOW" : "OUTFLOW", amountMinor: net > 0n ? net : -net, currency: spendable.find((a) => a.id === acct)?.currency ?? resolved.baseCurrency, accountId: acct, label: "booked movement", sourceRefs: { basis: "booked" } });
+      dated.push({ date: day, type: "PLANNED_EVENT", direction: net > 0n ? "INFLOW" : "OUTFLOW", amountMinor: net > 0n ? net : -net, currency: spendable.find((a) => a.id === acct)?.currency ?? resolved.baseCurrency, accountId: acct, label: "booked movement", sourceRefs: { basis: "booked" }, caseNeutral: true });
     }
   }
 
   // Accumulate per account per case; TOTAL is the exact sum of scopes.
+  // Transfers and booked actuals are case-neutral (history and explicitly
+  // scheduled movements do not vary by case); assumption amounts scale.
+  // Persisted events are case-neutral with unscaled amounts.
   const points: ComputeTimelineResult["points"] = [];
   const events: ComputeTimelineResult["events"] = [];
+  for (const e of dated) {
+    events.push({ eventDate: e.date, eventType: e.type, direction: e.direction, amountMinor: e.amountMinor, currencyCode: e.currency, accountScope: e.accountId ?? "TOTAL", label: e.label, sourceRefs: e.sourceRefs });
+  }
   for (const c of cases) {
     const perAcct = new Map<string, bigint>();
     for (const a of spendable) perAcct.set(a.id, a.startMinor);
+    const totalOnlyCumulative = new Map<string, bigint>();
     for (let i = 0; i < resolved.horizonDays; i++) {
       const d = isoDay(new Date(startDt.getTime() + i * 86400000));
       for (const e of dated) {
         if (e.date !== d) continue;
         const isIncome = e.direction === "INFLOW";
-        const scaled = scaleFor(e.amountMinor, c, isIncome);
+        const scaled = e.caseNeutral ? e.amountMinor : scaleFor(e.amountMinor, c, isIncome);
         const signed = isIncome ? scaled : -scaled;
         if (e.accountId && perAcct.has(e.accountId)) {
           perAcct.set(e.accountId, perAcct.get(e.accountId)! + signed);
         } else {
-          // TOTAL-level (unattributed multi-account): split nothing; accrue to TOTAL only.
-          perAcct.set(`__total_only__${d}`, (perAcct.get(`__total_only__${d}`) ?? 0n) + signed);
+          // TOTAL-level (unattributed multi-account): cumulative, converted below.
+          totalOnlyCumulative.set(e.currency, (totalOnlyCumulative.get(e.currency) ?? 0n) + signed);
         }
-        events.push({ eventDate: d, eventType: e.type, direction: e.direction, amountMinor: scaled, currencyCode: e.currency, accountScope: e.accountId ?? "TOTAL", label: `${e.label} [${c}]`, sourceRefs: e.sourceRefs });
       }
       let total = 0n;
+      let dayFxGap = false;
+      const toBase = (amount: bigint, currency: string): bigint | null => {
+        if (currency === resolved.baseCurrency) return amount;
+        const r = resolved.fxByCurrency[currency];
+        if (!r) return null;
+        const srcExp = currencyExponent(currency);
+        const baseExp = currencyExponent(resolved.baseCurrency);
+        if (srcExp === undefined || baseExp === undefined) return null;
+        return convertWithRate(amount, srcExp, { num: BigInt(r.num), den: BigInt(r.den) }, baseExp);
+      };
       for (const a of spendable) {
         const bal = perAcct.get(a.id)!;
-        total += bal;
         points.push({ caseName: c, scope: a.id, pointDate: d, amountMinor: bal, currencyCode: a.currency });
+        const conv = toBase(bal, a.currency);
+        if (conv === null) dayFxGap = true;
+        else total += conv;
       }
-      for (const [k, v] of perAcct) {
-        if (k.startsWith(`__total_only__${d}`)) total += v;
+      // TOTAL-only flows (unattributed multi-account variable spend) accrue
+      // cumulatively here, converted at the held-flat rate; unconvertible ones gap.
+      for (const [cur, amt] of totalOnlyCumulative) {
+        const conv = toBase(amt, cur);
+        if (conv === null) dayFxGap = true;
+        else total += conv;
       }
       points.push({ caseName: c, scope: "TOTAL", pointDate: d, amountMinor: total, currencyCode: resolved.baseCurrency });
+      if (dayFxGap) {
+        const s = ((resolved as unknown as { _fxGapDays?: Set<string> })._fxGapDays ??= new Set<string>());
+        s.add(d);
+      }
     }
   }
 
@@ -339,6 +376,13 @@ function computeTimeline(resolved: ComputeTimelineInput): ComputeTimelineResult 
 
   if (resolved.missingCommitments.length > 0) {
     return { points, events, ats: { status: "UNAVAILABLE", amountMinor: 0n, reasons: ["missing_commitments"] } };
+  }
+  if (spendable.length === 0) {
+    return { points, events, ats: { status: "UNAVAILABLE", amountMinor: 0n, reasons: ["no_spendable_accounts"] } };
+  }
+  const fxGapDays = (resolved as unknown as { _fxGapDays?: Set<string> })._fxGapDays;
+  if (fxGapDays && fxGapDays.size > 0) {
+    return { points, events, ats: { status: "UNAVAILABLE", amountMinor: 0n, reasons: ["missing_fx"] } };
   }
   const noSnapshotAccts = spendable.filter((a) => a.snapshotId === null).map((a) => a.id);
   if (noSnapshotAccts.length > 0) {
@@ -455,9 +499,9 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
     manualRates.get(d)!.get(String(r.base_currency))!.set(String(r.target_currency), String(r.rate));
   }
 
-  // Goals + reservations.
+  // Goals + reservations (ACTIVE goals only: archiving releases headroom).
   const goalRows = await client.query("SELECT id, version FROM goals WHERE workspace_id = $1 AND status = 'ACTIVE'", [wsId]);
-  const allocRows = await client.query("SELECT goal_id, account_id, amount_minor, currency_code, version FROM goal_allocations WHERE workspace_id = $1", [wsId]);
+  const allocRows = await client.query("SELECT a.goal_id, a.account_id, a.amount_minor, a.currency_code, a.version FROM goal_allocations a JOIN goals g ON g.workspace_id = a.workspace_id AND g.id = a.goal_id WHERE a.workspace_id = $1 AND g.status = 'ACTIVE'", [wsId]);
   const goalReservations = (allocRows.rows as { goal_id: string; account_id: string; amount_minor: string; currency_code: string }[]).map((r) => ({
     goalId: String(r.goal_id), accountId: String(r.account_id), amountMinor: BigInt(String(r.amount_minor)), currency: String(r.currency_code),
   }));
@@ -497,11 +541,17 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
   }
 
   // Linked recurring schedules (fingerprint -> confirmed override + amount center).
+  // A fingerprint claimed by both an explicit schedule and a confirmed
+  // override uses the explicit schedule only (never double-counted).
+  const scheduledFps = new Set(
+    recurrings.filter((r) => typeof r.fingerprint === "string").map((r) => r.fingerprint as string),
+  );
   const recurringLinked: ComputeTimelineInput["recurringLinked"] = [];
   for (const a of assumptions) {
     if (a.assumptionType !== "EXPECTED_RECURRING_AMOUNT") continue;
     const v = a.value as Record<string, unknown>;
     if (v.cadence !== undefined || typeof v.fingerprint !== "string") continue;
+    if (scheduledFps.has(v.fingerprint)) continue;
     const ov = confirmedByFp.get(v.fingerprint);
     if (!ov) continue;
     const matched = bookedRows.filter((b) => fingerprintFor(normalizeDescription(b.description), b.amountMinor.toString(), b.currency, b.direction) === v.fingerprint);
@@ -515,7 +565,9 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
     recurringLinked.push({ fingerprint: v.fingerprint, dayOfMonth: ov.dayOfMonth, kind: ov.kind, amountCenterMinor: center, currency: String(v.currency), accountId: modal ?? accountIds[0] ?? "" });
   }
 
-  // Variable baseline median when no explicit assumption (S01 preview logic, light).
+  // Variable baseline median when no explicit assumption. Reuses the shared
+  // S01 baseline module; completeness mirrors the preview reader (past weeks
+  // only, pending-review weeks and open-import windows never complete).
   let variableBaselineMedian: bigint | null = null;
   let variableBaselineStatus: ComputeTimelineInput["variableBaselineStatus"] = "assumed-zero-no-baseline";
   let variableCurrency = baseCurrency;
@@ -538,11 +590,29 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
       if (!w) continue;
       spendByWeek.set(w, (spendByWeek.get(w) ?? 0n) + b.amountMinor);
     }
-    const weeks = [...spendByWeek.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).slice(-(settings.baselineWeeks + 1), -1);
-    if (weeks.length >= settings.baselineWeeks) {
-      const vals = weeks.map(([, s]) => s).sort((a, b2) => (a < b2 ? -1 : a > b2 ? 1 : 0));
-      const mid = Math.floor(vals.length / 2);
-      variableBaselineMedian = vals.length % 2 === 1 ? vals[mid]! : (vals[mid - 1]! + vals[mid]!) / 2n;
+    const pendingDays = new Set<string>(
+      (await client.query(
+        `SELECT t.effective_date AS d FROM source_links s JOIN transactions t ON t.workspace_id = s.workspace_id AND t.id = s.target_transaction_id WHERE s.workspace_id = $1 AND s.status = 'PENDING_REVIEW'`,
+        [wsId],
+      )).rows.map((r: { d: unknown }) => String(r.d).slice(0, 10)),
+    );
+    const openImports = await client.query(
+      "SELECT COUNT(*)::int AS n FROM imports WHERE workspace_id = $1 AND status IN ('UPLOAD_REGISTERED', 'SCANNING', 'PARSING', 'STAGED') AND created_at >= now() - interval '30 days'",
+      [wsId],
+    );
+    const hasOpenImports = Number((openImports.rows[0] as { n: number }).n) > 0;
+    const weekStarts = pastIsoWeeks(horizonStart, Math.min(settings.baselineWeeks + 1, 52));
+    const baselineWeeks = weekStarts.map(({ start, end }) => {
+      let complete = end < horizonStart;
+      if (complete && hasOpenImports) complete = false;
+      if (complete) for (const d of pendingDays) {
+        if (d >= start && d <= end) { complete = false; break; }
+      }
+      return { start, complete, spendMinor: spendByWeek.get(start) ?? 0n };
+    });
+    const built = buildWeeklyBaseline(baselineWeeks, settings.baselineWeeks);
+    if (built.status === "ok" && built.medianMinor !== null) {
+      variableBaselineMedian = built.medianMinor;
       variableBaselineStatus = "ok";
       variableCurrency = baseCurrency;
     }
@@ -565,7 +635,7 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
     if (snap) {
       startMinor = snap.amountMinor;
       const fwd = bookedByAccountDay.get(id);
-      if (fwd) for (const [day, net] of fwd) if (day > snap.date && day <= horizonStart) startMinor += net;
+      if (fwd) for (const [day, net] of fwd) if (day > snap.date && day < horizonStart) startMinor += net;
     }
     type FxState = { coverage: "full" | "partial" | "unavailable"; rateDate: string | null; rateSource: string | null; triangNum: string | null; triangDen: string | null };
     let fx: FxState = { coverage: "full", rateDate: horizonStart, rateSource: "identity", triangNum: null, triangDen: null };
@@ -601,12 +671,47 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
   if (fxPartial) coverageNotes.fx = "partial (unvalued accounts excluded from TOTAL)";
   void getAccountTotalAllocated;
 
+  // Held-flat conversion ratios for every non-base currency in play
+  // (accounts, variable spend, assumptions). Missing ratio => FX gap.
+  const fxByCurrency: Record<string, { num: string; den: string } | null> = {};
+  {
+    const needed = new Set<string>();
+    for (const a of accounts) if (a.currency !== baseCurrency) needed.add(a.currency);
+    if (variableWeekly && variableWeekly.currency !== baseCurrency) needed.add(variableWeekly.currency);
+    for (const r of recurrings) if (r.currency !== baseCurrency) needed.add(r.currency);
+    for (const o of oneTimes) if (o.currency !== baseCurrency) needed.add(o.currency);
+    for (const i of incomes) if (i.currency !== baseCurrency) needed.add(i.currency);
+    for (const cur of needed) {
+      const manual = lookupManualRate(manualRates, cur, baseCurrency, horizonStart);
+      if (manual) {
+        const r = parseRate(manual.rate);
+        fxByCurrency[cur] = { num: r.num.toString(), den: r.den.toString() };
+        continue;
+      }
+      const legX = cur === "EUR" ? { rate: "1", rateDate: horizonStart } : lookupEcbRate(ecbRates, cur, horizonStart, 7);
+      const legB = baseCurrency === "EUR" ? { rate: "1", rateDate: horizonStart } : lookupEcbRate(ecbRates, baseCurrency, horizonStart, 7);
+      if (legX && legB) {
+        const rx = parseRate(legX.rate);
+        const rb = parseRate(legB.rate);
+        fxByCurrency[cur] = { num: (rb.num * rx.den).toString(), den: (rx.num * rb.den).toString() };
+      } else {
+        fxByCurrency[cur] = null;
+      }
+    }
+  }
+
+  const bookedFingerprint = createHash("sha256")
+    .update(bookedRows.map((b) => `${b.accountId}:${b.amountMinor.toString()}:${b.currency}:${b.direction}:${b.date}:${b.description}`).sort().join("|"))
+    .digest("hex");
   const canonical = {
     settingsVersion: settings.version, horizonDays, baseCurrency, spendingAccountId: input.spendingAccountId ?? null, scenarioId: input.scenarioId ?? null,
     assumptions: assumptions.map((a) => `${a.id}:${a.version}`).sort(),
     goals: goalRows.rows.map((r: { id: string }) => String(r.id)).sort(),
     allocations: (allocRows.rows as { goal_id: string; account_id: string; amount_minor: string }[]).map((r) => `${String(r.goal_id)}:${String(r.account_id)}:${String(r.amount_minor)}`).sort(),
     snapshots: [...snapByAccount.entries()].map(([k, s]) => `${k}:${s.id}:${s.date}:${s.amountMinor.toString()}`).sort(),
+    booked: `${bookedRows.length}:${bookedFingerprint}`,
+    fx: Object.entries(fxByCurrency).map(([k, v]) => `${k}:${v ? `${v.num}/${v.den}` : "missing"}`).sort(),
+    overrides: [...confirmedByFp.entries()].map(([k, v]) => `${k}:${v.kind}:${v.dayOfMonth}`).sort(),
   };
   const inputHash = createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
   return {
@@ -616,7 +721,7 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
       floorMinor: BigInt(settings.safetyFloorMinor),
       settingsVersion: settings.version, baselineWeeks: settings.baselineWeeks,
       accounts, incomes, recurrings, oneTimes, variableWeekly, variableBaselineMedian, variableBaselineStatus, variableCurrency,
-      goalReservations, recurringLinked, bookedByAccountDay, missingCommitments, coverageNotes,
+      goalReservations, recurringLinked, bookedByAccountDay, missingCommitments, coverageNotes, fxByCurrency,
       spendingAccountId: input.spendingAccountId,
     },
   };
@@ -710,13 +815,45 @@ const result: ProjectionRunResult = {
     };
     const coverageJson = { ...resolved.coverageNotes, accounts: resolved.accounts.map((a) => ({ accountId: a.id, currency: a.currency, snapshotId: a.snapshotId, snapshotDate: a.snapshotDate, fx: a.fx })) };
 
-    // Persist run
+    // Persist run (savepoint-guarded: a concurrent identical run may win the
+    // UNIQUE(workspace, input_hash, scenario) race; the loser converges by
+    // re-reading the winner instead of 500ing).
     const runId = (await import("../ids.ts")).uuidv7();
-    await client.query(
-      `INSERT INTO projection_runs (workspace_id, id, method, engine_version, scenario_id, horizon_start, horizon_end, base_currency, input_hash, inputs, coverage, status)
-       VALUES ($1, $2, 'SCENARIO_CASES', 'e06-r1.0', $3, $4, $5, $6, $7, $8, $9, 'ACTIVE')`,
-      [claims.workspaceId, runId, input.scenarioId ?? null, horizonStartStr, horizonEndStr, resolved.baseCurrency, inputHash, JSON.stringify(inputsJson), JSON.stringify(coverageJson)],
-    );
+    await client.query("SAVEPOINT projection_run_insert");
+    try {
+      await client.query(
+        `INSERT INTO projection_runs (workspace_id, id, method, engine_version, scenario_id, horizon_start, horizon_end, base_currency, input_hash, inputs, coverage, status)
+         VALUES ($1, $2, 'SCENARIO_CASES', 'e06-r1.0', $3, $4, $5, $6, $7, $8, $9, 'ACTIVE')`,
+        [claims.workspaceId, runId, input.scenarioId ?? null, horizonStartStr, horizonEndStr, resolved.baseCurrency, inputHash, JSON.stringify(inputsJson), JSON.stringify(coverageJson)],
+      );
+    } catch (err) {
+      if ((err as { code?: string }).code !== "23505") throw err;
+      await client.query("ROLLBACK TO SAVEPOINT projection_run_insert");
+      const winner = await client.query(
+        "SELECT * FROM projection_runs WHERE workspace_id = $1 AND input_hash = $2 AND (scenario_id = $3 OR (scenario_id IS NULL AND $3 IS NULL))",
+        [claims.workspaceId, inputHash, input.scenarioId ?? null],
+      );
+      const wrow = winner.rows[0] as Record<string, unknown> | undefined;
+      if (!wrow) throw err;
+      const wview: ProjectionRunView = {
+        workspaceId: claims.workspaceId,
+        runId: String(wrow.id),
+        method: String(wrow.method),
+        engineVersion: String(wrow.engine_version),
+        scenarioId: wrow.scenario_id === null ? null : String(wrow.scenario_id),
+        horizonStart: String(wrow.horizon_start),
+        horizonEnd: String(wrow.horizon_end),
+        baseCurrency: String(wrow.base_currency),
+        inputHash: String(wrow.input_hash),
+        inputs: wrow.inputs as Record<string, unknown>,
+        coverage: wrow.coverage as Record<string, unknown>,
+        status: String(wrow.status) as "ACTIVE" | "SUPERSEDED",
+        createdAt: String(wrow.created_at),
+      };
+      await insertAudit(client, claims, actorId, "projection_run", String(wrow.id), "replay", null, { runId: String(wrow.id), inputHash }, operationId);
+      await bumpRevision(client, claims.workspaceId);
+      return { view: wview, points: [], events: [], ats: ((wrow.inputs as { ats?: ATSView }).ats ?? { status: "UNAVAILABLE", amountMinor: "0", reasons: ["missing_evidence"] }) as ATSView, operationId, replayed: true };
+    }
 
     // Persist points
     for (const pt of points) {

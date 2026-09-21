@@ -327,6 +327,14 @@ describe("e06-s03 projection engine", () => {
     expect(at(checkingId, "2026-01-10")).toBe(100000n - 20000n);
     expect(at(savingsId, "2026-01-10")).toBe(50000n + 20000n);
     expect(at("TOTAL", "2026-01-10")).toBe(150000n);
+    // Transfers are case-neutral: all three cases agree exactly.
+    for (const c of ["CONSERVATIVE", "OPTIMISTIC"]) {
+      const atc = (scope: string, date: string) =>
+        BigInt(runJson.points.find((p) => p.case_name === c && p.scope === scope && p.point_date === date)!.amount_minor);
+      expect(atc(checkingId, "2026-01-10")).toBe(80000n);
+      expect(atc(savingsId, "2026-01-10")).toBe(70000n);
+      expect(atc("TOTAL", "2026-01-10")).toBe(150000n);
+    }
   });
 
   it("identical inputs return the same run id with byte-identical points", async () => {
@@ -339,6 +347,21 @@ describe("e06-s03 projection engine", () => {
     const second = (await runProjection(base, cookie, workspaceId, 30)).json as { runId: string; points: unknown[] };
     expect(second.runId).toBe(first.runId);
     expect(JSON.stringify(second.points)).toBe(JSON.stringify(first.points));
+  });
+});
+
+describe("e06-s03 projection wording", () => {
+  it("never uses probability or safety-guarantee wording in code or responses", async () => {
+    const { readFileSync } = await import("node:fs");
+    // Word boundaries: safetyFloorMinor / confidence must NOT match.
+    const banned = [/\bguarantee[sd]?\b/i, /\bprobabilit\w*\b/i, /\bP10\b/, /\bP50\b/, /\bP90\b/, /\b90%\s*safe\b/i, /\bsafe\b/i, /\bcalibrat\w*\b/i];
+    for (const file of ["apps/web/src/projections/engine.ts", "apps/web/src/projections/inputs.ts", "apps/web/src/projections/schedule.ts", "apps/web/src/projections/baseline.ts"]) {
+      const text = readFileSync(file, "utf8");
+      for (const re of banned) {
+        const at = text.search(re);
+        expect(at, `${file} contains banned wording ${re}`).toBe(-1);
+      }
+    }
   });
 });
 
@@ -429,5 +452,105 @@ describe("e06-s03 Available to Spend", () => {
     const runJson = run.json as { ats: { status: string; reasons: string[] } };
     expect(runJson.ats.status).toBe("UNAVAILABLE");
     expect(runJson.ats.reasons).toContain("funding_gap");
+  });
+
+  it("UNAVAILABLE with missing_fx when a contributing currency has no rate", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e06-ats-fx");
+    // KWD account: exact-money supported (exp 3) but absent from ECB reference rates.
+    const kwd = await postJson(base, "/api/commands/accounts.create", cookie, {
+      workspaceId,
+      name: "KWD Cash",
+      currency: "KWD",
+      idempotencyKey: randomUUID(),
+    });
+    expect(kwd.status).toBe(200);
+    const kwdId = (kwd.json as { id: string }).id;
+    const snap = await postJson(base, "/api/commands/accounts.balance_snapshot", cookie, {
+      workspaceId,
+      accountId: kwdId,
+      asOfDate: "2026-01-01",
+      amount: "100.000",
+      currency: "KWD",
+      idempotencyKey: randomUUID(),
+    });
+    expect(snap.status).toBe(200);
+    await updateSettings(base, cookie, workspaceId, { horizonDays: 30 });
+
+    const run = await runProjection(base, cookie, workspaceId, 30, kwdId);
+    expect(run.status).toBe(200);
+    const runJson = run.json as { ats: { status: string; reasons: string[] } };
+    expect(runJson.ats.status).toBe("UNAVAILABLE");
+    expect(runJson.ats.reasons).toContain("missing_fx");
+  });
+
+  it("UNAVAILABLE with missing_commitments for unlinkable fingerprint assumptions", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e06-ats-commit");
+    const accountId = await createAccount(base, cookie, workspaceId, "Cash");
+    await createSnapshot(base, cookie, workspaceId, accountId, "1000.00");
+    // Fingerprint-only with no confirmed recurring override: unschedulable.
+    const linked = await setAssumption(base, cookie, workspaceId, "EXPECTED_RECURRING_AMOUNT", {
+      amountMinor: "50000",
+      currency: "EUR",
+      fingerprint: "f".repeat(64),
+    });
+    expect(linked.status).toBe(200);
+
+    const run = await runProjection(base, cookie, workspaceId, 30, accountId);
+    expect(run.status).toBe(200);
+    const runJson = run.json as { ats: { status: string; reasons: string[] } };
+    expect(runJson.ats.status).toBe("UNAVAILABLE");
+    expect(runJson.ats.reasons).toContain("missing_commitments");
+  });
+
+  it("same idempotency key with different params is a 409 reuse conflict", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e06-proj-reuse");
+    const accountId = await createAccount(base, cookie, workspaceId, "Cash");
+    await createSnapshot(base, cookie, workspaceId, accountId, "1000.00");
+    const key = randomUUID();
+    const first = await postJson(base, "/api/projection/run", cookie, { workspaceId, horizonDays: 30, idempotencyKey: key });
+    expect(first.status).toBe(200);
+    const clash = await postJson(base, "/api/projection/run", cookie, { workspaceId, horizonDays: 60, idempotencyKey: key });
+    expect(clash.status).toBe(409);
+  });
+
+  it("tenant-B run ids are indistinguishable from missing; unscoped reads return zero rows", async () => {
+    const base = await startApp();
+    const a = await setupWorkspace(base, "e06-proj-tenant-a");
+    const b = await setupWorkspace(base, "e06-proj-tenant-b");
+    const accountId = await createAccount(base, a.cookie, a.workspaceId, "Cash");
+    await createSnapshot(base, a.cookie, a.workspaceId, accountId, "1000.00");
+    const run = (await runProjection(base, a.cookie, a.workspaceId, 30)).json as { runId: string };
+    const foreign = await getJson(base, `/api/projection/runs/${run.runId}?workspaceId=${b.workspaceId}`, b.cookie);
+    expect(foreign.status).toBe(404);
+    const missing = await getJson(base, `/api/projection/runs/${randomUUID()}?workspaceId=${a.workspaceId}`, a.cookie);
+    expect(missing.status).toBe(404);
+    expect((foreign.json as { error: string }).error).toBe((missing.json as { error: string }).error);
+    const unscopedRuns = await pool.query("SELECT COUNT(*)::int AS n FROM projection_runs");
+    expect(Number((unscopedRuns.rows[0] as { n: number }).n)).toBe(0);
+    const unscopedPoints = await pool.query("SELECT COUNT(*)::int AS n FROM projection_points");
+    expect(Number((unscopedPoints.rows[0] as { n: number }).n)).toBe(0);
+  });
+
+  it("new inputs create a new run while the old run stays byte-identical", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e06-proj-immut");
+    const accountId = await createAccount(base, cookie, workspaceId, "Cash");
+    await createSnapshot(base, cookie, workspaceId, accountId, "1000.00");
+    const first = (await runProjection(base, cookie, workspaceId, 30)).json as { runId: string; points: unknown[] };
+    await setAssumption(base, cookie, workspaceId, "EXPECTED_INCOME", {
+      amountMinor: "100000",
+      currency: "EUR",
+      cadence: "MONTHLY",
+      dayOfMonth: 1,
+    });
+    const second = (await runProjection(base, cookie, workspaceId, 30)).json as { runId: string; points: unknown[] };
+    expect(second.runId).not.toBe(first.runId);
+    const reopened = (await getJson(base, `/api/projection/runs/${first.runId}?workspaceId=${workspaceId}`, cookie)).json as { points: { case_name: string; scope: string; point_date: string }[] };
+    const order = (p: { case_name: string; scope: string; point_date: string }) => `${p.case_name}|${p.scope}|${p.point_date}`;
+    const sortPoints = (ps: unknown[]) => [...(ps as { case_name: string; scope: string; point_date: string }[])].sort((x, y) => (order(x) < order(y) ? -1 : 1));
+    expect(JSON.stringify(sortPoints(reopened.points))).toBe(JSON.stringify(sortPoints(first.points)));
   });
 });
