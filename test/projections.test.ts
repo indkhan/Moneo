@@ -125,11 +125,12 @@ async function setAssumption(base: string, cookie: string, workspaceId: string, 
     idempotencyKey: randomUUID(),
   });
 }
-async function updateSettings(base: string, cookie: string, workspaceId: string, 
+async function updateSettings(base: string, cookie: string, workspaceId: string,
 settings: { horizonDays?: number; baselineWeeks?: number; safetyFloorMinor?: string; savingsIncluded?: boolean }): Promise<{ status: number; json: unknown }> {
+  const current = (await getJson(base, `/api/projection/settings?workspaceId=${workspaceId}`, cookie)).json as { version: string };
   return postJson(base, "/api/commands/projection.settings.update", cookie, {
     workspaceId,
-    expectedVersion: "1",
+    expectedVersion: current.version,
     ...settings,
     idempotencyKey: randomUUID(),
   });
@@ -189,42 +190,59 @@ describe("e06-s03 projection engine", () => {
     const accountId = await createAccount(base, cookie, workspaceId, "Cash");
     await createSnapshot(base, cookie, workspaceId, accountId, "1000.00");
 
-    // Monthly rent on day 31: Jan 31, Feb 28 (2026 not leap), Mar 31, Apr 30
-    await setAssumption(base, cookie, workspaceId, "EXPECTED_RECURRING_AMOUNT", {
+    // Monthly rent on day 31: Jan 31, Feb 28 (2026 not leap), Mar 31.
+    // Case bps apply uniformly to assumption amounts (S03 contract).
+    const rent = await setAssumption(base, cookie, workspaceId, "EXPECTED_RECURRING_AMOUNT", {
       amountMinor: "80000",
       currency: "EUR",
+      cadence: "MONTHLY",
+      dayOfMonth: 31,
+      direction: "OUTFLOW",
       fingerprint: "a".repeat(64),
     });
+    expect(rent.status).toBe(200);
 
-    // Leap-day annual on Feb 29: 2024-02-29 -> 2025-02-28, 2026-02-28
-    await setAssumption(base, cookie, workspaceId, "EXPECTED_RECURRING_AMOUNT", {
+    // Yearly Feb-29 annual: 2026-02-28 in a non-leap year.
+    const annual = await setAssumption(base, cookie, workspaceId, "EXPECTED_RECURRING_AMOUNT", {
       amountMinor: "12000",
       currency: "EUR",
+      cadence: "YEARLY",
+      month: 2,
+      dayOfMonth: 29,
+      direction: "OUTFLOW",
       fingerprint: "b".repeat(64),
     });
+    expect(annual.status).toBe(200);
 
     const run = await runProjection(base, cookie, workspaceId, 120);
     expect(run.status).toBe(200);
     const runJson = run.json as { runId: string; points: { case_name: string; scope: string; point_date: string; amount_minor: string }[] };
     const points = runJson.points;
+    expect(runJson.runId).toBeDefined();
 
-    // Find TOTAL scope points for CONSERVATIVE case
+    // EXPECTED is unscaled; CONSERVATIVE scales expenses x1.1.
+    const expectedTotal = points.filter((p) => p.case_name === "EXPECTED" && p.scope === "TOTAL");
     const conservativeTotal = points.filter((p) => p.case_name === "CONSERVATIVE" && p.scope === "TOTAL");
-    
-    // Jan 31 rent: -80000
+
+    const jan31exp = expectedTotal.find((p) => p.point_date === "2026-01-31");
+    expect(jan31exp).toBeDefined();
+    expect(BigInt(jan31exp!.amount_minor)).toBe(100000n - 80000n);
     const jan31 = conservativeTotal.find((p) => p.point_date === "2026-01-31");
     expect(jan31).toBeDefined();
-    expect(BigInt(jan31!.amount_minor)).toBe(100000n - 80000n); // 1000 - 800 = 200 EUR = 20000
+    expect(BigInt(jan31!.amount_minor)).toBe(100000n - 88000n);
 
-    // Feb 28 (2026 not leap): rent -80000 + leap annual -12000
     const feb28 = conservativeTotal.find((p) => p.point_date === "2026-02-28");
     expect(feb28).toBeDefined();
-    expect(BigInt(feb28!.amount_minor)).toBe(20000n - 80000n - 12000n); // 200 - 800 - 120 = -720 EUR = -72000
+    expect(BigInt(feb28!.amount_minor)).toBe(12000n - 88000n - 13200n);
 
-    // Mar 31 rent
     const mar31 = conservativeTotal.find((p) => p.point_date === "2026-03-31");
     expect(mar31).toBeDefined();
-    expect(BigInt(mar31!.amount_minor)).toBe(-72000n - 80000n); // -1520 EUR = -152000
+    expect(BigInt(mar31!.amount_minor)).toBe(-89200n - 88000n);
+
+    // TOTAL equals the single account scope exactly.
+    const acctJan31 = points.find((p) => p.case_name === "CONSERVATIVE" && p.scope === accountId && p.point_date === "2026-01-31");
+    expect(acctJan31).toBeDefined();
+    expect(BigInt(acctJan31!.amount_minor)).toBe(BigInt(jan31!.amount_minor));
   });
 
   it("case bps: conservative income 90%, expense 110%; optimistic 110%, 90%", async () => {
@@ -233,18 +251,23 @@ describe("e06-s03 projection engine", () => {
     const accountId = await createAccount(base, cookie, workspaceId, "Cash");
     await createSnapshot(base, cookie, workspaceId, accountId, "1000.00");
 
-    // Monthly income €1000 on 1st, monthly expense €500 on 15th
-    await setAssumption(base, cookie, workspaceId, "EXPECTED_INCOME", {
+    // Monthly income EUR 1000 on the 1st, monthly expense EUR 500 on the 15th.
+    const income = await setAssumption(base, cookie, workspaceId, "EXPECTED_INCOME", {
       amountMinor: "100000",
       currency: "EUR",
       cadence: "MONTHLY",
       dayOfMonth: 1,
     });
-    await setAssumption(base, cookie, workspaceId, "EXPECTED_RECURRING_AMOUNT", {
+    expect(income.status).toBe(200);
+    const expense = await setAssumption(base, cookie, workspaceId, "EXPECTED_RECURRING_AMOUNT", {
       amountMinor: "50000",
       currency: "EUR",
+      cadence: "MONTHLY",
+      dayOfMonth: 15,
+      direction: "OUTFLOW",
       fingerprint: "c".repeat(64),
     });
+    expect(expense.status).toBe(200);
 
     const run = await runProjection(base, cookie, workspaceId, 60);
     expect(run.status).toBe(200);
@@ -255,18 +278,67 @@ describe("e06-s03 projection engine", () => {
     const day1Expected = points.find((p) => p.case_name === "EXPECTED" && p.scope === "TOTAL" && p.point_date === "2026-01-01");
     const day1Conservative = points.find((p) => p.case_name === "CONSERVATIVE" && p.scope === "TOTAL" && p.point_date === "2026-01-01");
     const day1Optimistic = points.find((p) => p.case_name === "OPTIMISTIC" && p.scope === "TOTAL" && p.point_date === "2026-01-01");
+    expect(day1Expected).toBeDefined();
+    expect(day1Conservative).toBeDefined();
+    expect(day1Optimistic).toBeDefined();
     expect(BigInt(day1Expected!.amount_minor)).toBe(100000n + 100000n); // 1000 + 1000 = 2000
-    expect(BigInt(day1Conservative!.amount_minor)).toBe(90000n + 100000n); // 900 + 1000 = 1900
-    expect(BigInt(day1Optimistic!.amount_minor)).toBe(110000n + 100000n); // 1100 + 1000 = 2100
+    expect(BigInt(day1Conservative!.amount_minor)).toBe(100000n + 90000n); // 900 + 1000 = 1900
+    expect(BigInt(day1Optimistic!.amount_minor)).toBe(100000n + 110000n); // 1100 + 1000 = 2100
 
     // Day 15: expense -50000 -> conservative -55000, optimistic -45000
     const day15Expected = points.find((p) => p.case_name === "EXPECTED" && p.scope === "TOTAL" && p.point_date === "2026-01-15");
     const day15Conservative = points.find((p) => p.case_name === "CONSERVATIVE" && p.scope === "TOTAL" && p.point_date === "2026-01-15");
     const day15Optimistic = points.find((p) => p.case_name === "OPTIMISTIC" && p.scope === "TOTAL" && p.point_date === "2026-01-15");
+    expect(day15Expected).toBeDefined();
+    expect(day15Conservative).toBeDefined();
+    expect(day15Optimistic).toBeDefined();
     const before15 = BigInt(points.find((p) => p.case_name === "EXPECTED" && p.scope === "TOTAL" && p.point_date === "2026-01-14")!.amount_minor);
+    const before15cons = BigInt(points.find((p) => p.case_name === "CONSERVATIVE" && p.scope === "TOTAL" && p.point_date === "2026-01-14")!.amount_minor);
+    const before15opt = BigInt(points.find((p) => p.case_name === "OPTIMISTIC" && p.scope === "TOTAL" && p.point_date === "2026-01-14")!.amount_minor);
     expect(BigInt(day15Expected!.amount_minor)).toBe(before15 - 50000n);
-    expect(BigInt(day15Conservative!.amount_minor)).toBe(before15 - 55000n);
-    expect(BigInt(day15Optimistic!.amount_minor)).toBe(before15 - 45000n);
+    expect(BigInt(day15Conservative!.amount_minor)).toBe(before15cons - 55000n);
+    expect(BigInt(day15Optimistic!.amount_minor)).toBe(before15opt - 45000n);
+  });
+
+  it("explicitly scheduled inter-account transfer moves scopes but not TOTAL", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e06-proj-transfer");
+    const checkingId = await createAccount(base, cookie, workspaceId, "Checking");
+    const savingsId = await createAccount(base, cookie, workspaceId, "Savings");
+    await createSnapshot(base, cookie, workspaceId, checkingId, "1000.00");
+    await createSnapshot(base, cookie, workspaceId, savingsId, "500.00");
+
+    const transfer = await setAssumption(base, cookie, workspaceId, "ONE_TIME_EXPECTED_EXPENSE", {
+      amountMinor: "20000",
+      currency: "EUR",
+      direction: "OUTFLOW",
+      date: "2026-01-10",
+      accountId: checkingId,
+      toAccountId: savingsId,
+      description: "monthly savings move",
+    });
+    expect(transfer.status).toBe(200);
+
+    const run = await runProjection(base, cookie, workspaceId, 30);
+    expect(run.status).toBe(200);
+    const runJson = run.json as { points: { case_name: string; scope: string; point_date: string; amount_minor: string }[] };
+    const at = (scope: string, date: string) =>
+      BigInt(runJson.points.find((p) => p.case_name === "EXPECTED" && p.scope === scope && p.point_date === date)!.amount_minor);
+    expect(at(checkingId, "2026-01-10")).toBe(100000n - 20000n);
+    expect(at(savingsId, "2026-01-10")).toBe(50000n + 20000n);
+    expect(at("TOTAL", "2026-01-10")).toBe(150000n);
+  });
+
+  it("identical inputs return the same run id with byte-identical points", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e06-proj-idem");
+    const accountId = await createAccount(base, cookie, workspaceId, "Cash");
+    await createSnapshot(base, cookie, workspaceId, accountId, "1000.00");
+
+    const first = (await runProjection(base, cookie, workspaceId, 30)).json as { runId: string; points: unknown[] };
+    const second = (await runProjection(base, cookie, workspaceId, 30)).json as { runId: string; points: unknown[] };
+    expect(second.runId).toBe(first.runId);
+    expect(JSON.stringify(second.points)).toBe(JSON.stringify(first.points));
   });
 });
 
@@ -292,21 +364,27 @@ describe("e06-s03 Available to Spend", () => {
     const { cookie, workspaceId } = await setupWorkspace(base, "e06-ats-shortfall");
     const accountId = await createAccount(base, cookie, workspaceId, "Checking");
     await createSnapshot(base, cookie, workspaceId, accountId, "100.00");
-    // Large recurring expense that exhausts balance
-    await setAssumption(base, cookie, workspaceId, "EXPECTED_RECURRING_AMOUNT", {
+    // Monthly EUR 200 expense on the 5th exhausts the EUR 100 balance.
+    const expense = await setAssumption(base, cookie, workspaceId, "EXPECTED_RECURRING_AMOUNT", {
       amountMinor: "20000",
       currency: "EUR",
+      cadence: "MONTHLY",
+      dayOfMonth: 5,
+      direction: "OUTFLOW",
+      accountId,
       fingerprint: "d".repeat(64),
     });
-    await updateSettings(base, cookie, workspaceId, { horizonDays: 10 });
+    expect(expense.status).toBe(200);
+    const settings = await updateSettings(base, cookie, workspaceId, { horizonDays: 10 });
+    expect(settings.status).toBe(200);
 
     const run = await runProjection(base, cookie, workspaceId, 10, accountId);
     expect(run.status).toBe(200);
     const runJson = run.json as { ats: { status: string; amountMinor: string; shortfallMinor: string; shortfallDate: string } };
     expect(runJson.ats.status).toBe("SHORTFALL");
     expect(runJson.ats.amountMinor).toBe("0");
-    expect(BigInt(runJson.ats.shortfallMinor)).toBeGreaterThan(0n);
-    expect(runJson.ats.shortfallDate).toBeDefined();
+    expect(BigInt(runJson.ats.shortfallMinor)).toBe(12000n);
+    expect(runJson.ats.shortfallDate).toBe("2026-01-05");
   });
 
   it("UNAVAILABLE when required balance snapshot missing", async () => {
@@ -330,13 +408,20 @@ describe("e06-s03 Available to Spend", () => {
     const savingsId = await createAccount(base, cookie, workspaceId, "Savings");
     await createSnapshot(base, cookie, workspaceId, checkingId, "100.00");
     await createSnapshot(base, cookie, workspaceId, savingsId, "5000.00");
-    // Large expense on checking that exceeds its balance
-    await setAssumption(base, cookie, workspaceId, "EXPECTED_RECURRING_AMOUNT", {
+    // Monthly EUR 200 expense on the 5th of the checking account exhausts it
+    // while the workspace total stays positive: a funding gap, not fungible cash.
+    const expense = await setAssumption(base, cookie, workspaceId, "EXPECTED_RECURRING_AMOUNT", {
       amountMinor: "20000",
       currency: "EUR",
+      cadence: "MONTHLY",
+      dayOfMonth: 5,
+      direction: "OUTFLOW",
+      accountId: checkingId,
       fingerprint: "e".repeat(64),
     });
-    await updateSettings(base, cookie, workspaceId, { horizonDays: 30, savingsIncluded: true });
+    expect(expense.status).toBe(200);
+    const gapSettings = await updateSettings(base, cookie, workspaceId, { horizonDays: 30, savingsIncluded: true });
+    expect(gapSettings.status).toBe(200);
 
     // No spendingAccountId provided -> aggregate headroom only when all constraints hold
     const run = await runProjection(base, cookie, workspaceId, 30);

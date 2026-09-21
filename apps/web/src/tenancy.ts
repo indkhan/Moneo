@@ -372,7 +372,7 @@ function txErrorBody(err: TxError): { status: number; body: unknown } {
         error: "conflict",
         reason: err.code,
         ...(err.currentVersion === undefined ? {} : { currentVersion: err.currentVersion }),
-        ...(err.detail === undefined ? {} : err.detail),
+        ...(err.detail === undefined ? {} : { detail: err.detail }),
       },
     };
   }
@@ -1347,7 +1347,25 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           try { input = validateRunProjectionInput(await readJsonBody(req)); } catch { tenantJson(res, 400, { error: "invalid_request" }); return true; }
           const resolved = await claims(req, input.workspaceId);
           if (!resolved.claim) { tenantJson(res, 404, { error: "not_found" }); return true; }
-          try { const result = await runProjection(pool, resolved.claim, resolved.claim.userId, input); tenantJson(res, 200, result); } catch (err) { if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; } throw err; }
+          try {
+            const result = await runProjection(pool, resolved.claim, resolved.claim.userId, input);
+            // HTTP shape: snake_case series points (stable contract), top-level run id + ATS.
+            tenantJson(res, 200, {
+              runId: result.view.runId,
+              method: result.view.method,
+              engineVersion: result.view.engineVersion,
+              horizonStart: result.view.horizonStart,
+              horizonEnd: result.view.horizonEnd,
+              baseCurrency: result.view.baseCurrency,
+              inputHash: result.view.inputHash,
+              coverage: result.view.coverage,
+              points: result.points.map((p) => ({ case_name: p.caseName, scope: p.scope, point_date: p.pointDate, amount_minor: p.amountMinor, currency: p.currencyCode })),
+              events: result.events.map((e) => ({ event_date: e.eventDate, event_type: e.eventType, direction: e.direction, amount_minor: e.amountMinor, currency: e.currencyCode, account_scope: e.accountScope, label: e.label })),
+              ats: result.ats,
+              operationId: result.operationId,
+              replayed: result.replayed,
+            });
+          } catch (err) { if (err instanceof TxError) { const mapped = txErrorBody(err); tenantJson(res, mapped.status, mapped.body); return true; } throw err; }
           return true;
         }
         // E06-S03 projection: get run
