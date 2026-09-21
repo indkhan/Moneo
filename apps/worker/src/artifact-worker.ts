@@ -180,6 +180,7 @@ function installSdk(message: StartMessage): void {
     vm!.setProp(state, "get", get); vm!.setProp(state, "set", set);
     vm!.setProp(finance, "spendingByCategory", spendingByCategory);
     vm!.setProp(finance, "cashflow", cashflow); vm!.setProp(finance, "getBalances", getBalances); vm!.setProp(finance, "transactionSummary", transactionSummary); vm!.setProp(finance, "projection", projection);
+    vm!.setProp(artifact, "ui", ui); vm!.setProp(artifact, "state", state); vm!.setProp(artifact, "finance", finance); vm!.setProp(vm!.global, "artifact", artifact);
     [render, patch, get, set, spendingByCategory, cashflow, getBalances, transactionSummary, projection, ui, state, finance, artifact].forEach(disposeHandle);
 
     vm!.evalCode(`Object.freeze(artifact.ui);Object.freeze(artifact.state);Object.freeze(artifact.finance);Object.freeze(artifact);globalThis.eval=undefined;globalThis.Function=undefined;globalThis.fetch=undefined;globalThis.XMLHttpRequest=undefined;globalThis.WebSocket=undefined;globalThis.navigator=undefined;globalThis.window=undefined;globalThis.document=undefined;globalThis.localStorage=undefined;globalThis.sessionStorage=undefined;globalThis.indexedDB=undefined;`);
