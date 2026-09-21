@@ -294,7 +294,7 @@ const results = await Promise.all(
       idempotencyKey: randomUUID(),
     });
     expect(over.status).toBe(409);
-    expect((over.json as { availableMinor: string }).availableMinor).toBe("60000");
+    expect((over.json as { detail: { availableMinor: string } }).detail.availableMinor).toBe("60000");
   });
 
   it("undo of supported allocate restores capacity with compensating audit; stale undo is UNDO_CONFLICT", async () => {

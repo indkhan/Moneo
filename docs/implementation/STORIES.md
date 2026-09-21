@@ -1231,7 +1231,7 @@ Execution record:
 
 ## E06-S03 — Compute case projections and Available to Spend
 
-Status: Ready | Release: R1 | Epic: E06
+Status: In progress | Release: R1 | Epic: E06
 Dependencies: E06-S02 (Ready above; must be Done before S03 implementation starts)
 
 Outcome: One shared deterministic engine computes daily per-account and total cash series for Expected/Conservative/Optimistic cases plus an Available to Spend result under the conservative case; every surface (later UI, chat, artifacts) consumes these shared queries and returns identical authoritative results for identical inputs.

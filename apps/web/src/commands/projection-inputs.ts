@@ -148,16 +148,36 @@ function checkAssumptionValue(type: AssumptionType, value: unknown): AssumptionV
       return { amountMinor: checkMinor(v.amountMinor), currency: checkCurrency(v.currency) };
     }
     case "EXPECTED_RECURRING_AMOUNT": {
-      unknownKeys(v, ["amountMinor", "currency", "fingerprint"]);
+      unknownKeys(v, ["amountMinor", "currency", "fingerprint", "cadence", "dayOfMonth", "month", "date", "direction", "accountId"]);
       const out: AssumptionValue = { amountMinor: checkMinor(v.amountMinor), currency: checkCurrency(v.currency) };
       if (v.fingerprint !== undefined) {
         if (typeof v.fingerprint !== "string" || !FP_RE.test(v.fingerprint)) throw new TenantInvalid();
         out.fingerprint = v.fingerprint;
       }
+      // Optional deterministic schedule (additive S03 extension; previously
+      // fingerprint-only). With a cadence the engine expands fixed dates;
+      // without one the engine links the fingerprint to a confirmed recurring
+      // override, else records missing-commitment coverage.
+      if (v.cadence !== undefined) {
+        if (v.cadence !== "MONTHLY" && v.cadence !== "YEARLY") throw new TenantInvalid();
+        out.cadence = v.cadence;
+        if (v.cadence === "MONTHLY") out.dayOfMonth = checkDayOfMonth(v.dayOfMonth, 31);
+        else {
+          if (!Number.isInteger(v.month) || (v.month as number) < 1 || (v.month as number) > 12) throw new TenantInvalid();
+          out.month = v.month as number;
+          out.dayOfMonth = checkDayOfMonth(v.dayOfMonth, 31);
+        }
+      }
+      if (v.date !== undefined) out.date = checkDate(v.date);
+      if (v.direction !== undefined) {
+        if (v.direction !== "INFLOW" && v.direction !== "OUTFLOW") throw new TenantInvalid();
+        out.direction = v.direction;
+      }
+      if (v.accountId !== undefined) out.accountId = checkUuid(v.accountId);
       return out;
     }
     case "ONE_TIME_EXPECTED_EXPENSE": {
-      unknownKeys(v, ["amountMinor", "currency", "direction", "date", "accountId", "description"]);
+      unknownKeys(v, ["amountMinor", "currency", "direction", "date", "accountId", "toAccountId", "description"]);
       if (v.direction !== "INFLOW" && v.direction !== "OUTFLOW") throw new TenantInvalid();
       const out: AssumptionValue = {
         amountMinor: checkMinor(v.amountMinor),
@@ -166,6 +186,9 @@ function checkAssumptionValue(type: AssumptionType, value: unknown): AssumptionV
         date: checkDate(v.date),
       };
       if (v.accountId !== undefined) out.accountId = checkUuid(v.accountId);
+      // Optional paired transfer leg (additive S03 extension): an explicitly
+      // scheduled inter-account movement; TOTAL is unchanged.
+      if (v.toAccountId !== undefined) out.toAccountId = checkUuid(v.toAccountId);
       if (v.description !== undefined) {
         if (typeof v.description !== "string" || v.description.length < 1 || v.description.length > 200) throw new TenantInvalid();
         out.description = v.description;
@@ -237,9 +260,9 @@ function scopeKeyFor(type: AssumptionType, value: AssumptionValue, freshId: stri
     case "EXPECTED_VARIABLE_SPEND":
       return `varspend:${String(value.currency)}`;
     case "EXPECTED_RECURRING_AMOUNT":
-      return `rec:${String(value.fingerprint ?? `${String(value.currency)}:${String(value.amountMinor)}`)}`;
+      return `rec:${String(value.cadence ?? "linked")}:${String(value.dayOfMonth ?? value.month ?? "any")}:${String(value.direction ?? "OUTFLOW")}:${String(value.accountId ?? "any")}:${String(value.fingerprint ?? `${String(value.currency)}:${String(value.amountMinor)}`)}`;
     case "ONE_TIME_EXPECTED_EXPENSE":
-      return `onetime:${String(value.date)}:${String(value.direction)}:${String(value.accountId ?? "any")}:${String(value.currency)}:${String(value.amountMinor)}`;
+      return `onetime:${String(value.date)}:${String(value.direction)}:${String(value.accountId ?? "any")}:${String(value.toAccountId ?? "any")}:${String(value.currency)}:${String(value.amountMinor)}`;
     case "ACCOUNT_BEHAVIOR":
       return `acct:${String(value.accountId)}`;
     case "CUSTOM":
