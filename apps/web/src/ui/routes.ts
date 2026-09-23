@@ -31,6 +31,7 @@ import { handlePlanningRoutes } from "./planning.ts";
 import { createChatRouter } from "./chat.ts";
 import { handleArtifactRoutes } from "./artifact-editor.ts";
 import { handleNavigationJobsRoutes } from "./jobs.ts";
+import { handlePrivacyRoutes } from "./privacy.ts";
 
 export type UiConfig = {
   appBaseUrl: string;
@@ -998,6 +999,10 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
     // E07-S04 navigation + job feedback (durable jobs/notices list,
     // exact-route palette; PG truth, idempotent notice sync on load).
     if (await handleNavigationJobsRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
+      return true;
+    }
+    // E08-S01 Privacy & Security: export request/status/one-use download.
+    if (await handlePrivacyRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
       return true;
     }
     // E04-S04 chat UI (context, activity, Stop/retry).

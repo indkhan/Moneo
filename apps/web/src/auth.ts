@@ -9,7 +9,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Pool } from "pg";
-import { createSession, readSession, revokeSession, type Session } from "./session-store.ts";
+import { createSession, readSession, recordStepUp, revokeSession, type Session } from "./session-store.ts";
 
 export type AuthConfig = {
   issuer: string; // exact issuer identifier, e.g. http://127.0.0.1:8080/realms/moneo
@@ -268,12 +268,29 @@ export function createAuthRouter(config: AuthConfig, pool: Pool): AuthRouter {
         failClosed(res, "userinfo");
         return;
       }
-      const claims = (await userRes.json()) as { sub?: string };
+      const claims = (await userRes.json()) as { sub?: string; auth_time?: unknown; acr?: unknown };
       if (typeof claims.sub !== "string" || !claims.sub) {
         failClosed(res, "sub");
         return;
       }
       const session = await createSession(pool, claims.sub, config.sessionTtlSec);
+      // E08-S01 step-up evidence: the verified auth_time/acr claims prove a
+      // fresh strong-factor Keycloak authentication. Both are provider facts
+      // (never user input). Missing or stale claims fail closed for export:
+      // the login still succeeds, but step_up_at stays NULL and export
+      // creation/download deny until a fresh step-up login. Tolerances: the
+      // claim must be numeric seconds, at most 60s in the future (skew) and
+      // no older than 15 minutes (SSO reuse beyond that is not a step-up);
+      // the tighter 5-minute freshness window is enforced at export time.
+      const authTimeSec = typeof claims.auth_time === "number" && Number.isFinite(claims.auth_time) ? Math.floor(claims.auth_time) : null;
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (authTimeSec !== null && authTimeSec <= nowSec + 60 && authTimeSec >= nowSec - 15 * 60) {
+        const acr = typeof claims.acr === "string" && claims.acr.length >= 1 && claims.acr.length <= 64 ? claims.acr : null;
+        await recordStepUp(pool, session.id, new Date(authTimeSec * 1000), acr);
+        event("auth_step_up_ok");
+      } else {
+        event("auth_step_up_missing");
+      }
       setSessionCookie(res, config, session.id, config.sessionTtlSec);
       event("auth_login_ok");
       res.writeHead(302, { Location: entry.returnTo });
