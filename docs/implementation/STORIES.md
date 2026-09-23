@@ -1378,8 +1378,8 @@ Execution record:
 
 ## E07-S02 — Render trusted Home before AI completes
 
-Status: Ready | Release: R1 | Epic: E07
-Dependencies: E07-S01 (Ready; must be Done before implementation)
+Status: Done | Release: R1 | Epic: E07
+Dependencies: E07-S01 (Done at `8f38232`)
 
 Outcome: `/w/:id/home` renders useful, trusted financial state immediately, with analysis progress and up to three validated findings when available.
 Contracts: Product R1 Home row/§77.1/§77.6–77.12; architecture §§258–261/535–536/538/312; existing `getFinancialSummary`, `getBalances`, `getCashflow`, `evaluateProjection`, goals, E07-S01 report. Shared queries own all arithmetic; AI text never supplies a metric.
@@ -1387,6 +1387,16 @@ Scope/ownership: `src/ui/home.ts` + shell/routes render one server-side dashboar
 Acceptance: With an accepted import and a deliberately delayed/failed provider, Home responds locally within 2 seconds on the 10k-row synthetic fixture and shows trusted metrics plus progress/error; no blank dashboard. Missing balance/FX/reconciliation or spend baseline shows an unavailable/partial label, never a false zero or complete net worth. Findings appear only after evidence validation and current policy recheck; excluded sentinel never appears. A second import updates metrics from shared queries on reload without AI dispatch. Keyboard/320px/44px checks cover detail and error links.
 Limits/data: At most three expanded findings and 50 evidence rows per detail; existing query row/byte caps apply. No new Home metric cache or dashboard table in this story; S03 owns layout persistence. Rollback removes route and falls back to workspace page; no data migration.
 Verification: Add `npm run test:home` (real PG + HTTP/browser smoke with synthetic exact-money and unavailable fixtures); regress `test:calculations`, `test:projections`, `test:deep-analysis`, `test:ui`, `test:policy`, `test:e06-exit`; typecheck/build:web and accessibility keyboard checks. Review focus: mislabeled net worth, stale or excluded findings, zero-coerced inputs, query parity and HTML escaping.
+
+Execution record:
+- Assignee / branch: Orchestrator/implementer this session / `story/e07-s02-home` (deleted after merge)
+- Base SHA / heads: base `08e29ee`; reviewed `2c9e5e647741de4672667bdfebfe05d1599be311` (implementer-reported SHA was a 39-char truncation; reviewer resolved the true 40-char tip)
+- Tests (Windows 11, Node v22.23.2, local PG18, disposable `moneo_e07_home` DB + Redis DB 11, synthetic data): `npm run typecheck` 0; `test:home` 0 (9/9: 10k-row Home <2s, delayed/failed-provider, unavailable labels, findings gate incl. EXCLUDED-SENTINEL-77, freshness without AI dispatch, details/50-cap, escaping, cross-tenant 404); regression calculations 10/10, projections 22/22, deep-analysis 12/12, ui 10/10, policy 7/7; `build:web` 0; `test:failure` exit 1 as intended; `git diff --check` 0; secret scan clean.
+- Design note: new `src/ui/home.ts` (server-rendered, zero JS, escaped interpolation, native anchors/forms, 44px targets, deterministic section order, no persistence); metrics call shared queries directly (no Home cache/table); net-worth headline only on full single-currency coverage; findings gated by re-running `validateFindings` against current policy at render, cap 3, 50-row details; workspace page links to `/w/:id/home` (rollback = remove route).
+- Review: independent Pass at `2c9e5e6` (reproduced typecheck, home 9/9, all five mandated regressions, diff-check, secret scan, hostile inspection). 7 non-blocking findings accepted: F1 SHA-typo process note; F2 title+body finding re-match; F3 dead `summarizeEligible` round-trip; F4 UI-layer BigInt display precedent; F5 tables lack overflow-x wrappers; F6 no explicit tenant-swap-on-detail/forged-finding tests (guards verified by inspection); F7 e06-exit latency red (see below).
+- Integration: local main at base `08e29ee` unchanged; merge-base == base; candidate == reviewed `2c9e5e6`; candidate gates green except `test:e06-exit` 11/12 on the latency assertion (`run:729ms` vs <500ms) — proven pre-existing/environmental by re-running on clean base main (also 11/12, same assertion; e06-exit never exercises `/home`; wall-clock threshold varies run-to-run). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `0590972`; post-merge `npm run check` 0, `test:home` 9/9, clean status. Remote push/PR not performed (local-only merges per E00 precedent).
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: F2–F6 as follow-ups; e06-exit latency gate red independent of this story (needs faster host or budget revisit, out of E07 scope).
 
 ## E07-S03 — Pin and arrange persistent artifacts
 
