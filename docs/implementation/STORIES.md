@@ -1313,7 +1313,7 @@ Execution record:
 
 ## E06-S05 — Verify planning invariants across UI, AI and artifacts
 
-Status: Ready | Release: R1 | Epic: E06
+Status: In progress | Release: R1 | Epic: E06
 Dependencies: E06-S04 (Ready above; must be Done before S05 implementation starts)
 
 Outcome: The merged E06 candidate proves the EPICS.md E06 exit on real code: month-end/leap-year daily fixtures reproduce exact balances; competing allocations cannot double-reserve; transfers respect liquidity; missing inputs make Available to Spend unavailable; scenario comparisons leave source transactions unchanged; UI/chat/artifact outputs agree.
@@ -1324,7 +1324,7 @@ Acceptance:
 1. Given the exit fixture (declared in suite header: 2 workspaces, 3–4 accounts across EUR/JPY/USD, dated snapshots, 8 complete spend weeks, deterministic schedules incl. day-31 + Feb-29, income/one-time assumptions, 1 goal + reservations, 1 flat scenario), when the suite runs, then every golden equals its independently computed expectation exactly (decimal strings, no floats).
 2. Given the same fixture, when corrected/undone then re-run, then reads update, prior runs immutable, audit chains link, races/conflicts behave (409 + currentVersion, single winners).
 3. Given tenant-B and nonexistent IDs across settings/assumptions/goals/allocations/runs/scenarios, then uniform non-oracle responses and zero unscoped rows.
-4. Given declared dataset + latency targets below, when measured locally, then results recorded honestly (pass or explicit limitation); forecast horizon recorded (default 30d S01 setting; exit also exercises 366d leap fixture for date logic only).
+4. Given declared dataset + latency targets below, when measured locally, then results recorded honestly (pass or explicit limitation); forecast horizon recorded (default 30d S01 setting; exit also exercises 120d daily windows for date logic — engine caps horizons at 365d, so longer leap coverage is out of range by design).
 Invariants: All E06 boundaries hold end to end (cases are named assumptions; ATS conservative-only with zero+shortfall/unavailable honesty; snapshots-not-sums; transfers only scheduled; reservations≠cash; deltas-only scenarios; shared-query parity; exclusions→partial/never false certainty).
 Failure lifecycle: Any defect returns the owning story to Changes requested (no deferral into E07); changed candidates rerun affected checks + re-review; failed post-merge smoke pauses E07.
 UI/accessibility: Planning/goals/projection/scenario journeys re-exercised through the server UI; keyboard/labels/focus/320px asserted structurally.
@@ -1336,6 +1336,9 @@ Review focus: Oracles derived from implementation, skipped gates, stale-SHA evid
 Rollout/rollback: No schema; exit suite is test-only. E07 may start only after this exit records Pass on the merged candidate.
 
 Execution record: (pending implementation)
+
+- Assignee / branch: Orchestrator/implementer this session / `story/e06-s05-exit` (base `0550c79`, the S04-Done main)
+- Independent exit review at merged `11bc238`: Changes requested (separate task, test-only gaps, no product defect) — Gap A no audit-chain assertion, Gap B no undo leg, Gap C no assumption/allocation cross-tenant probes, Gap D stale "366d leap fixture" text (engine caps 365), Gap E no in-suite exclusion→partial leg. Fixes on this branch: new `e06-exit` gaps leg (per-mutation audit linkage incl. undo compensation chain, allocate-undo + stale `undo_conflict`, foreign≡missing 404-error equality for assumptions.archive + allocations.allocate, JPY-exclusion tool-partial vs owner-full contrast) + acceptance-4 text corrected to the 365 cap + `.gitignore` gains `dump.rdb` (WSL Redis snapshot artifact, hygiene).
 
 ## E07-S01 — Trigger one bounded initial Deep Analysis
 
