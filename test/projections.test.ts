@@ -477,6 +477,20 @@ describe("e06-s03 Available to Spend", () => {
     });
   });
 
+  it("does not treat years-old activity as a complete recent spend baseline", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e06-ats-old-history");
+    const accountId = await createAccount(base, cookie, workspaceId, "Checking");
+    await createSnapshot(base, cookie, workspaceId, accountId, "1000.00");
+    const old = await postJson(base, "/api/commands/accounts.manual_transaction", cookie, {
+      workspaceId, accountId, amount: "10.00", currency: "EUR", direction: "OUTFLOW", effectiveDate: "2020-01-01", description: "Old purchase", idempotencyKey: randomUUID(),
+    });
+    expect(old.status).toBe(200);
+    const run = await runProjection(base, cookie, workspaceId, 1, accountId);
+    expect(run.status).toBe(200);
+    expect((run.json as { ats: { status: string; reasons: string[] } }).ats).toMatchObject({ status: "UNAVAILABLE", reasons: ["missing_variable_baseline"] });
+  });
+
   it.each([{ freshness: "unknown" }, { reconciliationState: "disputed" }])("UNAVAILABLE for unusable snapshot %j", async (metadata) => {
     const base = await startApp();
     const { cookie, workspaceId } = await setupWorkspace(base, `e06-ats-unusable-${Object.keys(metadata)[0]}`);
@@ -504,6 +518,7 @@ describe("e06-s03 Available to Spend", () => {
     const run = await runProjection(base, cookie, workspaceId, 1, accountId);
     expect(run.status).toBe(200);
     expect((run.json as { ats: { status: string; reasons: string[] } }).ats).toMatchObject({ status: "UNAVAILABLE", reasons: ["ambiguous_snapshot_cutoff"] });
+    expect((run.json as { points: unknown[] }).points).toEqual([]);
   });
 
   it("funding-gap warning when no spending account selected and per-account constraints fail", async () => {

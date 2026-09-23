@@ -211,6 +211,11 @@ function applyCaseBps(amount: bigint, caseName: keyof typeof CASE_BPS, isIncome:
  * TOTAL always equals the sum of account scopes; transfers move scopes only.
  */
 function computeTimeline(resolved: ComputeTimelineInput): ComputeTimelineResult {
+  // A starting balance without reliable inclusion semantics cannot support a
+  // numeric series; do not publish guessed daily points from it.
+  if (resolved.unusableBalances.length || resolved.ambiguousCutoffs.length) {
+    return { points: [], events: [], ats: { status: "UNAVAILABLE", amountMinor: 0n, reasons: [resolved.unusableBalances.length ? "unusable_balance" : "ambiguous_snapshot_cutoff"] } };
+  }
   type DayEvent = { date: string; type: string; direction: "INFLOW" | "OUTFLOW"; amountMinor: bigint; currency: string; accountId: string | null; label: string; sourceRefs: Record<string, unknown>; caseNeutral?: boolean };
   const startDt = new Date(`${resolved.horizonStart}T00:00:00Z`);
   const endDt = new Date(startDt.getTime() + resolved.horizonDays * 86400000);
@@ -383,12 +388,6 @@ function computeTimeline(resolved: ComputeTimelineInput): ComputeTimelineResult 
 
   if (resolved.missingCommitments.length > 0) {
     return { points, events, ats: { status: "UNAVAILABLE", amountMinor: 0n, reasons: ["missing_commitments"] } };
-  }
-  if (resolved.unusableBalances.length > 0) {
-    return { points, events, ats: { status: "UNAVAILABLE", amountMinor: 0n, reasons: ["unusable_balance"] } };
-  }
-  if (resolved.ambiguousCutoffs.length > 0) {
-    return { points, events, ats: { status: "UNAVAILABLE", amountMinor: 0n, reasons: ["ambiguous_snapshot_cutoff"] } };
   }
   if (spendable.length === 0) {
     return { points, events, ats: { status: "UNAVAILABLE", amountMinor: 0n, reasons: ["no_spendable_accounts"] } };
@@ -716,7 +715,8 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
       }
       return { start, complete, spendMinor: spendByWeek.get(start) ?? 0n };
     });
-    const built = bookedRows.length === 0
+    const hasWindowHistory = bookedRows.some((b) => b.date >= weekStarts[0]!.start && b.date < horizonStart);
+    const built = !hasWindowHistory
       ? { status: "insufficient" as const, medianMinor: null }
       : buildWeeklyBaseline(baselineWeeks, settings.baselineWeeks);
     if (built.status === "ok" && built.medianMinor !== null) {
