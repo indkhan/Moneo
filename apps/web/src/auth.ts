@@ -274,18 +274,21 @@ export function createAuthRouter(config: AuthConfig, pool: Pool): AuthRouter {
         return;
       }
       const session = await createSession(pool, claims.sub, config.sessionTtlSec);
-      // E08-S01 step-up evidence: the verified auth_time/acr claims prove a
-      // fresh strong-factor Keycloak authentication. Both are provider facts
-      // (never user input). Missing or stale claims fail closed for export:
+      // E08-S01 step-up evidence: the verified auth_time AND acr claims prove
+      // a fresh strong-factor Keycloak authentication. Both are provider facts
+      // (never user input). A missing or stale claim fails closed for export:
       // the login still succeeds, but step_up_at stays NULL and export
-      // creation/download deny until a fresh step-up login. Tolerances: the
-      // claim must be numeric seconds, at most 60s in the future (skew) and
-      // no older than 15 minutes (SSO reuse beyond that is not a step-up);
-      // the tighter 5-minute freshness window is enforced at export time.
+      // creation/download deny until a fresh step-up login. auth_time must be
+      // numeric seconds, at most 60s in the future (skew) and no older than
+      // 15 minutes (SSO reuse beyond that is not a step-up); acr must be a
+      // non-empty provider value (the deployed Keycloak must be configured to
+      // supply an acr identifying strong-factor auth — userinfo without it
+      // denies export by design). The tighter 5-minute freshness window is
+      // enforced at export time.
       const authTimeSec = typeof claims.auth_time === "number" && Number.isFinite(claims.auth_time) ? Math.floor(claims.auth_time) : null;
+      const acr = typeof claims.acr === "string" && claims.acr.length >= 1 && claims.acr.length <= 64 ? claims.acr : null;
       const nowSec = Math.floor(Date.now() / 1000);
-      if (authTimeSec !== null && authTimeSec <= nowSec + 60 && authTimeSec >= nowSec - 15 * 60) {
-        const acr = typeof claims.acr === "string" && claims.acr.length >= 1 && claims.acr.length <= 64 ? claims.acr : null;
+      if (authTimeSec !== null && acr !== null && authTimeSec <= nowSec + 60 && authTimeSec >= nowSec - 15 * 60) {
         await recordStepUp(pool, session.id, new Date(authTimeSec * 1000), acr);
         event("auth_step_up_ok");
       } else {

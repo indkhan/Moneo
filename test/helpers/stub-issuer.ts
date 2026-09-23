@@ -29,8 +29,8 @@ function readBody(req: IncomingMessage): Promise<string> {
 export type StubIssuer = {
   base: string;
   setEvil: (evil: boolean) => void;
-  /** E08-S01 step-up claims mode: ok (fresh auth_time+acr), missing (sub only), stale (1h-old auth_time). */
-  setStepUp: (mode: "ok" | "missing" | "stale") => void;
+  /** E08-S01 step-up claims mode: ok (fresh auth_time+acr), missing (sub only), stale (1h-old auth_time), no-acr (auth_time only). */
+  setStepUp: (mode: "ok" | "missing" | "stale" | "no-acr") => void;
   lastAccessToken: () => string;
   close: () => Promise<void>;
 };
@@ -38,7 +38,7 @@ export type StubIssuer = {
 export async function startStubIssuer(): Promise<StubIssuer> {
   let base = "";
   let evil = false;
-  let stepUp: "ok" | "missing" | "stale" = "ok";
+  let stepUp: "ok" | "missing" | "stale" | "no-acr" = "ok";
   const codes = new Map<string, StubCode>();
   const accessToSub = new Map<string, string>();
   const server: Server = createServer(async (req, res) => {
@@ -98,6 +98,10 @@ export async function startStubIssuer(): Promise<StubIssuer> {
         return;
       }
       const nowSec = Math.floor(Date.now() / 1000);
+      if (stepUp === "no-acr") {
+        stubJson(res, 200, { sub, auth_time: nowSec });
+        return;
+      }
       stubJson(res, 200, { sub, auth_time: stepUp === "stale" ? nowSec - 3600 : nowSec, acr: "1" });
       return;
     }
@@ -110,7 +114,7 @@ export async function startStubIssuer(): Promise<StubIssuer> {
     setEvil: (value: boolean) => {
       evil = value;
     },
-    setStepUp: (mode: "ok" | "missing" | "stale") => {
+    setStepUp: (mode: "ok" | "missing" | "stale" | "no-acr") => {
       stepUp = mode;
     },
     lastAccessToken: () => [...accessToSub.keys()].at(-1) ?? "",

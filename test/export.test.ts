@@ -18,7 +18,7 @@ import { createTenancyRouter, withTenant } from "../apps/web/src/tenancy.ts";
 import { createUiRouter } from "../apps/web/src/ui/routes.ts";
 import { dispatchOutbox, jobsQueue, type JobPayload } from "../apps/web/src/jobs.ts";
 import { csvCell, loadExportConfig, processExportJob, type ExportConfig } from "../apps/web/src/export.ts";
-import { s3DeleteExport, s3EnsureBucket, s3ListKeys } from "../apps/web/src/s3.ts";
+import { s3DeleteExport, s3EnsureBucket, s3GetExport, s3ListKeys } from "../apps/web/src/s3.ts";
 import { ensureTestPool, env } from "./helpers/test-db.ts";
 import { startStubIssuer, STUB_CLIENT_ID, STUB_CLIENT_SECRET, type StubIssuer } from "./helpers/stub-issuer.ts";
 
@@ -319,6 +319,10 @@ describe("e08-s01 workspace export", () => {
     // The object store holds ciphertext only: no sentinel, no money text.
     const keys = await s3ListKeys(config.s3, `exports/${owner.workspaceId}/`);
     expect(keys.length).toBe(1);
+    const rawBytes = Buffer.from(await s3GetExport(config.s3, keys[0], 64 * 1024 * 1024)).toString("latin1");
+    expect(rawBytes).not.toContain(OWNER_SENTINEL);
+    expect(rawBytes).not.toContain(MEMBER2_SENTINEL);
+    expect(rawBytes).not.toContain("9007199254740993");
 
     const first = await downloadPackage(base, owner.cookie, owner.workspaceId, packageId);
     expect(first.status).toBe(200);
@@ -374,6 +378,38 @@ describe("e08-s01 workspace export", () => {
     expect(await runExport(winner.json.jobId)).toBe("applied");
   });
 
+  it("scales to the story fixture: 10k transactions and 2 artifacts in one package", async () => {
+    const base = await startApp();
+    const me = await setupWorkspace(base, "synthetic-export-scale-a");
+    const seeded = await seedFixture(me.userId, me.workspaceId, "kappa");
+    await scoped(me.userId, me.workspaceId, async (client) => {
+      await client.query(
+        "INSERT INTO transactions (workspace_id, id, account_id, amount_minor, currency, direction, effective_date, description, import_id, import_row_no, observation_id, version, financial_kind) SELECT $1, ('00000000-0000-4000-8000-' || lpad(to_hex(s), 12, '0'))::uuid, $2, 100 + s, 'EUR', CASE WHEN s % 2 = 0 THEN 'INFLOW' ELSE 'OUTFLOW' END, '2024-02-01', 'bulk-' || s, $3, s + 100, 'bulk-obs-' || s, 1, 'NORMAL' FROM generate_series(1, 10000) s",
+        [me.workspaceId, seeded.accountId, seeded.importId],
+      );
+      for (const n of ["kappa-extra-1", "kappa-extra-2"]) {
+        const artifactId = randomUUID();
+        await client.query("INSERT INTO artifacts (workspace_id, id, name) VALUES ($1, $2, $3)", [me.workspaceId, artifactId, n]);
+        await client.query("INSERT INTO artifact_versions (workspace_id, id, artifact_id, manifest, source_hash, build_hash, status, source_html, source_css, source_js) VALUES ($1, $2, $3, '{}', '\\x00', '\\x01', 'ready', '', '', '')", [
+          me.workspaceId,
+          randomUUID(),
+          artifactId,
+        ]);
+      }
+    });
+    const accepted = await acceptExport(base, me.cookie, me.workspaceId);
+    expect(accepted.status).toBe(202);
+    const started = Date.now();
+    expect(await runExport(accepted.json.jobId)).toBe("applied");
+    const elapsedMs = Date.now() - started;
+    const ready = await readPackage(base, me.cookie, me.workspaceId, accepted.json.packageId);
+    expect(ready.json.package.status).toBe("READY");
+    expect(ready.json.package.sectionCounts.transactions).toBe(10002);
+    expect(ready.json.package.sectionCounts.artifacts).toBe(3);
+    // Local reference measurement only (host-sensitive; not a host SLA).
+    expect(elapsedMs).toBeLessThan(120_000);
+  });
+
   it("expired idempotency keys conflict and busy workspaces refuse a second key", async () => {
     const base = await startApp();
     const me = await setupWorkspace(base, "synthetic-export-busy-a");
@@ -408,6 +444,13 @@ describe("e08-s01 workspace export", () => {
     const weakDenied = await acceptExport(base, weakCookie, me.workspaceId);
     expect(weakDenied.status).toBe(403);
     expect(weakDenied.json).toEqual({ error: "forbidden", reason: "step_up_required" });
+    // auth_time without acr is not a step-up: the acr claim is required too.
+    stub.setStepUp("no-acr");
+    const noAcrCookie = await login(base, "synthetic-export-stepup-noacr");
+    await addMember(me, "synthetic-export-stepup-noacr");
+    const noAcrDenied = await acceptExport(base, noAcrCookie, me.workspaceId);
+    expect(noAcrDenied.status).toBe(403);
+    expect(noAcrDenied.json).toEqual({ error: "forbidden", reason: "step_up_required" });
     stub.setStepUp("ok");
     // Stale step-up: backdate the session claim; both doors deny.
     await pool.query("UPDATE app_sessions SET step_up_at = now() - interval '10 minutes' WHERE keycloak_sub = $1", ["synthetic-export-stepup-a"]);

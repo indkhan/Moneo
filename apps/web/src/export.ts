@@ -119,9 +119,10 @@ function acceptRequestHash(workspaceId: string): string {
   return createHash("sha256").update(JSON.stringify({ command: EXPORTS_BUILD, workspaceId })).digest("hex");
 }
 
-/** Fresh verified step-up required: server-recorded instant within 5 minutes, never future beyond skew. */
-export function assertFreshStepUp(stepUpAt: string | null): void {
-  if (!stepUpAt) throw new ExportError("step_up_required");
+/** Fresh verified step-up required: server-recorded instant within 5 minutes (never future beyond skew) plus a recorded provider acr. Missing either fails closed. */
+export function assertFreshStepUp(session: Session): void {
+  const stepUpAt = session.stepUpAt;
+  if (!stepUpAt || !session.stepUpAcr) throw new ExportError("step_up_required");
   const at = new Date(stepUpAt).getTime();
   if (!Number.isFinite(at)) throw new ExportError("step_up_required");
   const now = Date.now();
@@ -179,10 +180,10 @@ async function acceptTx(
   client: PoolClient,
   claims: TenantClaims,
   actorId: string,
-  stepUpAt: string | null,
+  session: Session,
   input: { workspaceId: string; idempotencyKey: string },
 ): Promise<TxOutcome> {
-  assertFreshStepUp(stepUpAt);
+  assertFreshStepUp(session);
   const hash = acceptRequestHash(input.workspaceId);
   const dedup = `${EXPORTS_BUILD}:${input.idempotencyKey}`;
 
@@ -299,7 +300,7 @@ export async function acceptExportJob(
   if (input.workspaceId !== claims.workspaceId) throw new TenantDenied();
   if (!isUuid(actorId)) throw new TenantDenied();
   if (session.keycloakSub === "") throw new TenantDenied();
-  const outcome = await withTenant(pool, claims, (client) => acceptTx(client, claims, actorId, session.stepUpAt, input));
+  const outcome = await withTenant(pool, claims, (client) => acceptTx(client, claims, actorId, session, input));
   if (!outcome.ok) throw new ExportError(outcome.code);
   return outcome.result;
 }
@@ -389,7 +390,8 @@ async function snapshotWorkspace(pool: Pool, claims: TenantClaims, requesterUser
       await get("projectionSettings", "SELECT horizon_days, baseline_weeks, safety_floor_minor, savings_included, version, updated_at FROM projection_settings WHERE workspace_id = $1", [claims.workspaceId]);
       await get("assumptions", "SELECT id, assumption_type, status, valid_from, valid_to, value, scope_key, origin, confidence, supersedes_id, actor_id, version, created_at FROM financial_assumptions WHERE workspace_id = $1 AND created_at <= $2 ORDER BY created_at, id", [claims.workspaceId, cutoff]);
       await get("recurringOverrides", "SELECT id, fingerprint, status, kind, day_of_month, version, created_at FROM recurring_overrides WHERE workspace_id = $1 AND created_at <= $2 ORDER BY created_at, id", [claims.workspaceId, cutoff]);
-      await get("scenarios", "SELECT id FROM scenarios WHERE workspace_id = $1 AND created_at <= $2 ORDER BY created_at, id", [claims.workspaceId, cutoff]);
+      await get("scenarios", "SELECT id, name, status, parent_scenario_id, version, created_at FROM scenarios WHERE workspace_id = $1 AND created_at <= $2 ORDER BY created_at, id", [claims.workspaceId, cutoff]);
+      await get("scenarioOverrides", "SELECT id, scenario_id, override_type, effective_from, effective_to, payload, version, created_at FROM scenario_overrides WHERE workspace_id = $1 AND created_at <= $2 ORDER BY created_at, id", [claims.workspaceId, cutoff]);
       const counts: Record<string, number> = {};
       for (const [name, rows] of Object.entries(sections)) counts[name] = rows.length;
       const total = Object.values(counts).reduce((a, b) => a + b, 0);
@@ -678,7 +680,8 @@ export async function serveExportDownload(
   packageId: string,
 ): Promise<ExportDownload | null> {
   if (!isUuid(packageId) || !isUuid(actorId)) return null;
-  assertFreshStepUp(session.stepUpAt);
+  assertFreshStepUp(session);
+  const auditId = uuidv7();
   const consumed = await withTenant(pool, claims, async (client) => {
     const row = await findPackage(client, claims.workspaceId, packageId);
     if (!row) return null;
@@ -692,16 +695,26 @@ export async function serveExportDownload(
     if (!taken.object_key || !taken.data_key) return null;
     await client.query(
       "INSERT INTO audit_events (workspace_id, id, actor_type, actor_user_id, entity_type, entity_id, action) VALUES ($1, $2, 'user', $3, 'export_package', $4, 'downloaded')",
-      [claims.workspaceId, uuidv7(), actorId, packageId],
+      [claims.workspaceId, auditId, actorId, packageId],
     );
     return taken;
   });
   if (!consumed) return null;
-  const stored = await s3GetExport(s3, consumed.object_key, MAX_EXPORT_OBJECT_BYTES);
   let plaintext: Buffer;
   try {
+    const stored = await s3GetExport(s3, consumed.object_key, MAX_EXPORT_OBJECT_BYTES);
     plaintext = decryptEnvelope(consumed.data_key, envelopeAad(claims.workspaceId, consumed.id, consumed.cutoff.toISOString()), stored);
   } catch {
+    // The single use must not burn on a storage failure that delivered no
+    // bytes: reopen the package and retract the download audit row (by its
+    // exact id) so a retry stays possible and history stays truthful.
+    await withTenant(pool, claims, async (client) => {
+      await client.query("UPDATE export_packages SET downloaded_at = NULL WHERE workspace_id = $1 AND id = $2 AND status = 'READY'", [
+        claims.workspaceId,
+        packageId,
+      ]);
+      await client.query("DELETE FROM audit_events WHERE workspace_id = $1 AND id = $2 AND action = 'downloaded'", [claims.workspaceId, auditId]);
+    });
     return null;
   }
   return { filename: `moneo-export-${consumed.id}.json`, bytes: plaintext, packageId: consumed.id };
