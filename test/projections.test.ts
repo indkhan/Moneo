@@ -151,6 +151,9 @@ async function getProjectionRun(base: string, cookie: string, runId: string): Pr
 
 beforeAll(async () => {
   pool = await ensureTestPool("E06-S03", "moneo_e06_projection", [
+    "deep_analysis_findings",
+    "deep_analysis_steps",
+    "deep_analysis_runs",
     "projection_runs",
     "projection_points",
     "projection_events",

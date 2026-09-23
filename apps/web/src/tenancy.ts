@@ -30,6 +30,14 @@ import {
   retryTurn,
   sendTurn,
 } from "./chat.ts";
+import {
+  analysisErrorBody,
+  AnalysisError,
+  readAnalysisDetail,
+  readAnalysisStatus,
+  retryAnalysis,
+  stopAnalysis,
+} from "./deep-analysis.ts";
 import { readLimitedBody } from "./http-controls.ts";
 import { createFakeProvider } from "./ai-fake-provider.ts";
 import {
@@ -1975,6 +1983,96 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
               return true;
             }
             throw err;
+          }
+          return true;
+        }
+        // E07-S01 Deep Analysis status/detail/stop/retry. Session first
+        // (uniform 401), then membership inside withTenant; foreign and
+        // missing runs share one 404 body (no cross-tenant oracle).
+        if (path === "/api/analysis/status" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const status = await readAnalysisStatus(pool, resolved.claim);
+          if (!status) tenantJson(res, 200, { status: "none", requestId });
+          else tenantJson(res, 200, { ...status, requestId });
+          return true;
+        }
+        if (path === "/api/analysis/detail" && method === "GET") {
+          const workspaceId = query.get("workspaceId") ?? "";
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          try {
+            const detail = await readAnalysisDetail(pool, resolved.claim);
+            if (!detail) tenantJson(res, 404, { error: "not_found" });
+            else tenantJson(res, 200, { ...detail, requestId });
+          } catch (err) {
+            if (err instanceof TenantDenied) tenantJson(res, 404, { error: "not_found" });
+            else throw err;
+          }
+          return true;
+        }
+        if (path === "/api/analysis/stop" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown };
+          if (typeof body.workspaceId !== "string" || !isUuid(body.workspaceId)) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const resolved = await claims(req, body.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            tenantJson(res, 200, { ...(await stopAnalysis(pool, resolved.claim)), requestId });
+          } catch (err) {
+            if (err instanceof AnalysisError) {
+              const mapped = analysisErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            if (err instanceof TenantDenied) tenantJson(res, 404, { error: "not_found" });
+            else throw err;
+          }
+          return true;
+        }
+        if (path === "/api/analysis/retry" && method === "POST") {
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const body = (await readJsonBody(req)) as { workspaceId?: unknown };
+          if (typeof body.workspaceId !== "string" || !isUuid(body.workspaceId)) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const resolved = await claims(req, body.workspaceId);
+          if (!resolved.claim) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            tenantJson(res, 200, { ...(await retryAnalysis(pool, resolved.claim, resolved.claim.userId)), requestId });
+          } catch (err) {
+            if (err instanceof AnalysisError) {
+              const mapped = analysisErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            if (err instanceof TenantDenied) tenantJson(res, 404, { error: "not_found" });
+            else throw err;
           }
           return true;
         }

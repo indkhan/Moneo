@@ -16,6 +16,7 @@ import { dispatchOutbox, jobsQueue, processImportJob, readJob, resolveJobRoute, 
 import { parseLeaseMsEnv } from "../../web/src/job-recovery.ts";
 import { loadUploadConfig, processParseJob } from "../../web/src/uploads.ts";
 import { processChatJob } from "../../web/src/chat.ts";
+import { processDeepAnalysisJob } from "../../web/src/deep-analysis.ts";
 import { liveChatTransport, loadChatTransportConfig, type DispatchTransport } from "../../web/src/ai-dispatch.ts";
 
 export type WorkerService = {
@@ -70,6 +71,17 @@ export function createWorkerService(opts: { databaseUrl: string; redisUrl: strin
           }
           const transport: DispatchTransport = liveChatTransport(chatConfig);
           outcome = await processChatJob(pool, job.data.backgroundJobId, transport, invocation);
+        } else if (jobType === "deep-analysis.run") {
+          // E07-S01 initial analysis reuses the chat provider route (same
+          // development/production qualification); without it the job defers
+          // like chat instead of failing or fabricating a report.
+          const analysisConfig = loadChatTransportConfig();
+          if (!analysisConfig) {
+            console.log(JSON.stringify({ event: "job_deferred", reason: "analysis_transport_missing" }));
+            return "analysis-transport-missing-deferred";
+          }
+          const analysisTransport: DispatchTransport = liveChatTransport(analysisConfig);
+          outcome = await processDeepAnalysisJob(pool, job.data.backgroundJobId, analysisTransport, invocation);
         } else {
           // Unknown job types never run a foreign effect: complete the
           // transport record without touching PG truth (unreachable today

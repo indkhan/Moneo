@@ -17,6 +17,7 @@ import {
   type Claim,
 } from "./job-recovery.ts";
 import { resolveJobRoute, IMPORTS_COMMIT, IMPORTS_JOB_VERSION, type JobRoute } from "./jobs.ts";
+import { maybeTriggerDeepAnalysisTx } from "./deep-analysis.ts";
 
 export type ImportCommitConfig = {
   commitChunkRows: number;
@@ -575,6 +576,10 @@ export async function processCommitJob(
        ON CONFLICT (workspace_id, background_job_id) DO NOTHING`,
       [route.workspaceId, uuidv7(), route.jobId],
     );
+    // E07-S01: one durable accepted-commit signal in the SAME transaction as
+    // commit success. The workspace-keyed claim converges duplicates and the
+    // batch window, so redelivered completions emit no second analysis.
+    await maybeTriggerDeepAnalysisTx(client, route.workspaceId, route.acceptedBy, loaded.importId);
     await markAttempt(client, route, pick.attemptId, "SUCCEEDED");
     await client.query("DELETE FROM job_dispatch_index WHERE workspace_id = $1 AND job_id = $2", [route.workspaceId, route.jobId]);
     return { ok: true as const };

@@ -185,6 +185,7 @@ async function seedFull(base: string, sub: string): Promise<{ cookie: string; wo
 
 beforeAll(async () => {
   pool = await ensureTestPool("E06-S05", "moneo_e06_exit", [
+    "deep_analysis_findings", "deep_analysis_steps", "deep_analysis_runs",
     "scenario_overrides", "scenarios", "projection_runs", "projection_points", "projection_events", "projection_settings",
     "financial_assumptions", "goals", "goal_allocations", "recurring_overrides", "source_links", "transactions",
     "manual_transactions", "balance_snapshots", "balance_audit", "audit_events", "workspace_data_revision", "command_operations",

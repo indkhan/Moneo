@@ -22,6 +22,7 @@ import { acceptImportCommitJob, ImportCommitError, readImportCommitStatus } from
 import { acceptMapping, listMappingProfiles, loadMappingSample, MappingError, proposeMapping, readCurrentMapping } from "../mapping.ts";
 import { liveMappingTransport, loadMappingProvider } from "../mapping-provider.ts";
 import { listWorkspaces, sessionClaims, TenantDenied, TenantInvalid, type SessionResolver } from "../tenancy.ts";
+import { AnalysisError, readAnalysisDetail, retryAnalysis, stopAnalysis } from "../deep-analysis.ts";
 import { errorPage, escapeHtml, page } from "./shell.ts";
 import { handleTransactionRoutes } from "./transactions.ts";
 import { handleRecurringRoutes } from "./recurring.ts";
@@ -162,9 +163,80 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
           requestId,
           authed: true,
           notice,
-          content: `<p>AI coverage: ${escapeHtml(summary.coverage)} (${escapeHtml(String(summary.accountCount))} of ${escapeHtml(String(accounts.length))} accounts eligible, policy v${escapeHtml(summary.policyVersion)}).</p><p><a href="/w/${escapeHtml(workspaceId)}/imports/new">Import a bank file (CSV/XLSX)</a></p>${rows}`,
+          content: `<p>AI coverage: ${escapeHtml(summary.coverage)} (${escapeHtml(String(summary.accountCount))} of ${escapeHtml(String(accounts.length))} accounts eligible, policy v${escapeHtml(summary.policyVersion)}).</p><p><a href="/w/${escapeHtml(workspaceId)}/imports/new">Import a bank file (CSV/XLSX)</a> · <a href="/w/${escapeHtml(workspaceId)}/analysis">Deep Analysis</a></p>${rows}`,
         }),
       );
+      return true;
+    }
+
+    // E07-S01 Deep Analysis page: server-rendered status + saved findings,
+    // with native Stop/retry controls (no client JavaScript). Missing and
+    // foreign workspaces share the 404 page.
+    const analysisMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/analysis$/);
+    if (analysisMatch && method === "GET") {
+      const workspaceId = analysisMatch[1];
+      const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+      if (!resolved.session) {
+        html(res, 401, errorPage({ status: 401, heading: "Sign in required", message: "Log in to view this analysis.", back: "/", requestId, authed: false }));
+        return true;
+      }
+      if (!resolved.claim) {
+        event("ui_denied:workspace");
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace.", back: "/", requestId, authed: true }));
+        return true;
+      }
+      let detail;
+      try {
+        detail = await readAnalysisDetail(pool, resolved.claim);
+      } catch (err) {
+        if (err instanceof TenantDenied) {
+          event("ui_denied:workspace");
+          html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace.", back: "/", requestId, authed: true }));
+          return true;
+        }
+        throw err;
+      }
+      const body =
+        detail === null
+          ? `<p>No Deep Analysis yet. Accept an import to start the initial analysis.</p>`
+          : `<p>Status: ${escapeHtml(detail.status)} · stage ${escapeHtml(detail.progressStage)} · ${escapeHtml(String(detail.findings.length))} findings · ${escapeHtml(String(detail.dispatchesUsed))} dispatches · ${escapeHtml(String(detail.toolCallsUsed))} evidence calls.</p>${
+              detail.coverageWarnings.length > 0 ? `<div class="alert" role="alert"><h2>Coverage warnings</h2><ul>${detail.coverageWarnings.map((w) => `<li>${escapeHtml(w.kind)}${"count" in w ? `: ${escapeHtml(String(w.count))}` : ""}</li>`).join("")}</ul></div>` : ``
+            }<ul>${detail.findings.map((f) => `<li><strong>${escapeHtml(f.title)}</strong> — ${escapeHtml(f.body)}${f.amountMinor !== null ? ` (${escapeHtml(f.amountMinor)}${f.currency ? ` ${escapeHtml(f.currency)}` : ``})` : ``}</li>`).join("")}</ul>${
+              detail.status === "RUNNING" || detail.status === "QUEUED"
+                ? `<form method="post" action="/w/${escapeHtml(workspaceId)}/analysis/stop"><button type="submit">Stop analysis</button></form>`
+                : detail.status === "FAILED_FINAL" || detail.status === "CANCELLED"
+                  ? `<form method="post" action="/w/${escapeHtml(workspaceId)}/analysis/retry"><button type="submit">Retry analysis</button></form>`
+                  : ``
+            }`;
+      html(res, 200, page({ title: "Deep Analysis", requestId, authed: true, content: `<h2>Deep Analysis</h2>${body}<p><a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p>` }));
+      return true;
+    }
+    const analysisActionMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/analysis\/(stop|retry)$/);
+    if (analysisActionMatch && method === "POST") {
+      const workspaceId = analysisActionMatch[1];
+      const action = analysisActionMatch[2];
+      if (!sameOrigin(req, config.appBaseUrl)) {
+        event("ui_denied:origin");
+        html(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: `/w/${workspaceId}/analysis`, requestId, authed: true }));
+        return true;
+      }
+      const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+      if (!resolved.session || !resolved.claim) {
+        html(res, resolved.session ? 404 : 401, errorPage({ status: resolved.session ? 404 : 401, heading: resolved.session ? "Not found" : "Sign in required", message: "No such workspace.", back: "/", requestId, authed: !!resolved.session }));
+        return true;
+      }
+      try {
+        if (action === "stop") await stopAnalysis(pool, resolved.claim);
+        else await retryAnalysis(pool, resolved.claim, resolved.claim.userId);
+        res.writeHead(303, { Location: `/w/${workspaceId}/analysis` });
+        res.end();
+      } catch (err) {
+        if (err instanceof AnalysisError || err instanceof TenantDenied) {
+          html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such analysis.", back: `/w/${workspaceId}/analysis`, requestId, authed: true }));
+          return true;
+        }
+        throw err;
+      }
       return true;
     }
 

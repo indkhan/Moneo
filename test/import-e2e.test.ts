@@ -172,6 +172,9 @@ beforeAll(async () => {
     savedEnv[name] = process.env[name];
   }
   pool = await ensureTestPool("E02-S07", "moneo_e02_w2_v2", [
+    "deep_analysis_findings",
+    "deep_analysis_steps",
+    "deep_analysis_runs",
     "fx_valuation",
     "fx_rates_ecb",
     "fx_rates_manual",
