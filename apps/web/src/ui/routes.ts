@@ -25,6 +25,7 @@ import { listWorkspaces, sessionClaims, TenantDenied, TenantInvalid, type Sessio
 import { AnalysisError, readAnalysisDetail, retryAnalysis, stopAnalysis } from "../deep-analysis.ts";
 import { errorPage, escapeHtml, page } from "./shell.ts";
 import { handleTransactionRoutes } from "./transactions.ts";
+import { handleHomeRoutes } from "./home.ts";
 import { handleRecurringRoutes } from "./recurring.ts";
 import { handlePlanningRoutes } from "./planning.ts";
 import { createChatRouter } from "./chat.ts";
@@ -163,7 +164,7 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
           requestId,
           authed: true,
           notice,
-          content: `<p>AI coverage: ${escapeHtml(summary.coverage)} (${escapeHtml(String(summary.accountCount))} of ${escapeHtml(String(accounts.length))} accounts eligible, policy v${escapeHtml(summary.policyVersion)}).</p><p><a href="/w/${escapeHtml(workspaceId)}/imports/new">Import a bank file (CSV/XLSX)</a> · <a href="/w/${escapeHtml(workspaceId)}/analysis">Deep Analysis</a></p>${rows}`,
+           content: `<p>AI coverage: ${escapeHtml(summary.coverage)} (${escapeHtml(String(summary.accountCount))} of ${escapeHtml(String(accounts.length))} accounts eligible, policy v${escapeHtml(summary.policyVersion)}).</p><p><a href="/w/${escapeHtml(workspaceId)}/home">Home dashboard</a> · <a href="/w/${escapeHtml(workspaceId)}/imports/new">Import a bank file (CSV/XLSX)</a> · <a href="/w/${escapeHtml(workspaceId)}/analysis">Deep Analysis</a></p>${rows}`,
         }),
       );
       return true;
@@ -968,6 +969,11 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
             <p><a href="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(importId)}">Back to import status</a></p>`,
         }),
       );
+      return true;
+    }
+
+    // E07-S02 trusted Home (server-rendered, zero JS; shared queries only).
+    if (await handleHomeRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
       return true;
     }
 
