@@ -495,6 +495,31 @@ describe("e08-s01 workspace export", () => {
     expect((bare.rows[0] as { n: number }).n).toBe(0);
   });
 
+  it("download storage failure reopens the single use without audit residue", async () => {
+    const base = await startApp();
+    const me = await setupWorkspace(base, "synthetic-export-reopen-a");
+    await seedFixture(me.userId, me.workspaceId, "lambda");
+    const accepted = await acceptExport(base, me.cookie, me.workspaceId);
+    expect(await runExport(accepted.json.jobId)).toBe("applied");
+    const packageId = accepted.json.packageId as string;
+    // Simulate a lost object after READY: the consume succeeds, the fetch
+    // fails, and the package must reopen with no download recorded.
+    const keys = await s3ListKeys(config.s3, `exports/${me.workspaceId}/`);
+    expect(keys.length).toBe(1);
+    await s3DeleteExport(config.s3, keys[0]);
+    const failed = await downloadPackage(base, me.cookie, me.workspaceId, packageId);
+    expect(failed.status).toBe(404);
+    await scoped(me.userId, me.workspaceId, async (client) => {
+      const pkg = await client.query("SELECT downloaded_at FROM export_packages WHERE workspace_id = $1 AND id = $2", [me.workspaceId, packageId]);
+      expect((pkg.rows[0] as { downloaded_at: string | null }).downloaded_at).toBeNull();
+      const audit = await client.query("SELECT count(*)::int AS n FROM audit_events WHERE workspace_id = $1 AND entity_type = 'export_package' AND entity_id = $2 AND action = 'downloaded'", [
+        me.workspaceId,
+        packageId,
+      ]);
+      expect((audit.rows[0] as { n: number }).n).toBe(0);
+    });
+  });
+
   it("member exports contain only their own conversations", async () => {
     const base = await startApp();
     const owner = await setupWorkspace(base, "synthetic-export-mine-owner");
