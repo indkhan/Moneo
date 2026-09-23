@@ -13,14 +13,17 @@
 // reservation (400.00); 1 flat scenario (Trip + 900.00 on 2024-02-15; the
 // date sits inside the 120d daily window so the exact-delta golden reads
 // every day — long-horizon weekly aggregation is covered in scenarios.test).
+// A dedicated gaps leg pins audit-chain linkage per mutating command,
+// supported allocate-undo (+stale conflict), cross-tenant uniformity for
+// assumptions/allocations, and AI-tool partial honesty under exclusions.
 // Projection-math legs use isolated EUR-only workspaces (same 2024-01-01
 // anchor) so TOTAL stays hand-computable; multi-currency TOTAL is covered by
 // the FX-gap UNAVAILABLE leg. All expectations are independently hand-computed
 // decimal-string/BigInt oracles, never the implementation's echo. Runs allow
 // 1..365d; the leap case is exercised via Feb-29 scheduling (2024 is leap).
-// Measured (Win11, i5-12450HX, Node v22.23.2, local PG; 11/11 green): 21
-// timed ops, worst run:154ms, all <500ms; in-suite 7263ms, vitest 8.44s
-// (<120s). Honest local measurement, not an SLA.
+// Measured (Win11, i5-12450HX, Node v22.23.2, local PG; 12/12 green):
+// every timed op <500ms and suite <120s (both asserted in-suite; exact
+// worst-op figures are printed by the latency leg). Not an SLA.
 
 import { randomBytes, randomUUID } from "node:crypto";
 import type { IncomingMessage, Server } from "node:http";
@@ -34,6 +37,7 @@ import { createTenancyRouter, withTenant } from "../apps/web/src/tenancy.ts";
 import { createUiRouter } from "../apps/web/src/ui/routes.ts";
 import { formatMinor, parseMinor } from "../apps/web/src/money.ts";
 import { createToolContext, executeTool } from "../apps/web/src/ai-tools.ts";
+import { setAccountExclusion } from "../apps/web/src/ai-policy.ts";
 import { claimChatGeneration, createThread, sendTurn } from "../apps/web/src/chat.ts";
 import { ensureTestPool } from "./helpers/test-db.ts";
 import { startStubIssuer, STUB_CLIENT_ID, STUB_CLIENT_SECRET, type StubIssuer } from "./helpers/stub-issuer.ts";
@@ -554,6 +558,82 @@ describe("e06-s05 exit: scenarios, parity, isolation and latency", () => {
       expect(html.text).toContain("Skip to content");
       expect(html.text).not.toContain("<script");
     }
+  }, T);
+
+  it("links audit chains, supports undo, isolates assumptions/allocations, and keeps AI views partial on exclusions", async () => {
+    const base = await startApp();
+    const a = await seedFull(base, "e06-exit-gaps");
+    const b = await setupWorkspace(base, "e06-exit-gaps-b");
+
+    // Gap C: cross-tenant assumption/allocation IDs are indistinguishable
+    // from missing (uniform 404 error, no oracle).
+    const assumptionId = await withTenant(pool, { userId: a.userId, workspaceId: a.workspaceId }, async (client) => {
+      const r = await client.query("SELECT id FROM financial_assumptions WHERE workspace_id = $1 LIMIT 1", [a.workspaceId]);
+      return String((r.rows[0] as { id: string }).id);
+    });
+    const foreignArchive = await postJson(base, "/api/commands/assumptions.archive", b.cookie, { workspaceId: b.workspaceId, assumptionId, expectedVersion: "1", idempotencyKey: randomUUID() });
+    expect(foreignArchive.status).toBe(404);
+    const missingArchive = await postJson(base, "/api/commands/assumptions.archive", b.cookie, { workspaceId: b.workspaceId, assumptionId: randomUUID(), expectedVersion: "1", idempotencyKey: randomUUID() });
+    expect(missingArchive.status).toBe(404);
+    expect((missingArchive.json as { error: string }).error).toBe((foreignArchive.json as { error: string }).error);
+    const foreignAlloc = await postJson(base, "/api/commands/allocations.allocate", b.cookie, { workspaceId: b.workspaceId, goalId: a.goalId, accountId: a.eur, amountMinor: "10000", currency: "EUR", idempotencyKey: randomUUID() });
+    expect(foreignAlloc.status).toBe(404);
+    const missingAlloc = await postJson(base, "/api/commands/allocations.allocate", b.cookie, { workspaceId: b.workspaceId, goalId: randomUUID(), accountId: randomUUID(), amountMinor: "10000", currency: "EUR", idempotencyKey: randomUUID() });
+    expect(missingAlloc.status).toBe(404);
+    expect((missingAlloc.json as { error: string }).error).toBe((foreignAlloc.json as { error: string }).error);
+
+    // Gap B: undo of a supported allocate restores capacity; stale undo
+    // conflicts; the compensation is audit-linked to the original op.
+    const goal = await postJson(base, "/api/commands/goals.create", a.cookie, { workspaceId: a.workspaceId, name: "Gap fund", goalType: "SAVINGS_TARGET", targetAmountMinor: "100000", currency: "EUR", idempotencyKey: randomUUID() });
+    expect(goal.status).toBe(200);
+    const alloc = await postJson(base, "/api/commands/allocations.allocate", a.cookie, { workspaceId: a.workspaceId, goalId: (goal.json as { id: string }).id, accountId: a.eur, amountMinor: "10000", currency: "EUR", idempotencyKey: randomUUID() });
+    expect(alloc.status).toBe(200);
+    const allocOpId = (alloc.json as { operationId: string }).operationId;
+    expect(typeof allocOpId).toBe("string");
+    const undone = await postJson(base, "/api/commands/operations.undo", a.cookie, { workspaceId: a.workspaceId, operationId: allocOpId, idempotencyKey: randomUUID() });
+    expect(undone.status).toBe(200);
+    const goalView = await getJson(base, `/api/goals/${(goal.json as { id: string }).id}?workspaceId=${a.workspaceId}`, a.cookie);
+    expect((goalView.json as { reservedMinor: string }).reservedMinor).toBe("0");
+    const staleUndo = await postJson(base, "/api/commands/operations.undo", a.cookie, { workspaceId: a.workspaceId, operationId: allocOpId, idempotencyKey: randomUUID() });
+    expect(staleUndo.status).toBe(409);
+    expect((staleUndo.json as { reason: string }).reason).toBe("undo_conflict");
+
+    // Gap A: mutating finance commands journal audit rows linked to their
+    // operation; the undo compensation links back to the original op.
+    // (Read-only/plumbing commands carry no audit row by design — the
+    // contract is per-mutation linkage, not a universal quantifier.)
+    await withTenant(pool, { userId: a.userId, workspaceId: a.workspaceId }, async (client) => {
+      const allocAudit = await client.query("SELECT action FROM audit_events WHERE workspace_id = $1 AND operation_id = $2", [a.workspaceId, allocOpId]);
+      expect(allocAudit.rows.length).toBeGreaterThan(0);
+      const undoOp = await client.query("SELECT id FROM command_operations WHERE workspace_id = $1 AND command_name = 'operations.undo' AND status = 'SUCCEEDED' ORDER BY started_at DESC LIMIT 1", [a.workspaceId]);
+      expect(undoOp.rows.length).toBe(1);
+      const undoOpId = String((undoOp.rows[0] as { id: string }).id);
+      const comp = await client.query("SELECT action, operation_id, compensating_operation_id FROM audit_events WHERE workspace_id = $1 AND operation_id = $2", [a.workspaceId, undoOpId]);
+      expect(comp.rows.length).toBeGreaterThan(0);
+      expect(comp.rows.some((r: { action: string; compensating_operation_id: string }) => r.action === "undo" && String(r.compensating_operation_id) === allocOpId)).toBe(true);
+      const mtxOp = await client.query("SELECT id FROM command_operations WHERE workspace_id = $1 AND command_name = 'accounts.manual_transaction' AND status = 'SUCCEEDED' LIMIT 1", [a.workspaceId]);
+      expect(mtxOp.rows.length).toBe(1);
+      const mtxAudit = await client.query("SELECT COUNT(*)::int AS n FROM audit_events WHERE workspace_id = $1 AND operation_id = $2", [a.workspaceId, String((mtxOp.rows[0] as { id: string }).id)]);
+      expect(Number((mtxAudit.rows[0] as { n: number }).n)).toBeGreaterThan(0);
+    });
+
+    // Gap E: with JPY excluded from AI, the tool view is partial (never
+    // full totals) while the owner HTTP run still sees every account.
+    await setAccountExclusion(pool, { userId: a.userId, workspaceId: a.workspaceId }, a.userId, a.jpy, true, "synthetic");
+    const claims = { userId: a.userId, workspaceId: a.workspaceId };
+    const ctx = await createToolContext(pool, claims);
+    expect(ctx.eligibleAccountIds).not.toContain(a.jpy);
+    const thread = await createThread(pool, claims, a.userId, { title: "exit exclusion" });
+    const sent = await sendTurn(pool, claims, a.userId, { threadId: thread.id, body: "exclusion probe", idempotencyKey: randomUUID() });
+    const claimed = await claimChatGeneration(pool, sent.jobId, { workerId: "e06-exit", leaseMs: 30_000 });
+    if (!claimed) throw new Error("probe claim failed");
+    const toolOut = await timed("tool-excl", () => executeTool(pool, ctx, claimed.attemptId, 1, { name: "forecast.evaluate", args: { horizonDays: 30 } }));
+    const toolRes = toolOut.result as { coverage: { aiCoverage?: string }; points: { scope: string }[] };
+    expect(toolRes.coverage.aiCoverage).toContain("partial");
+    expect(toolRes.points.filter((p) => p.scope === a.jpy)).toHaveLength(0);
+    const owner = await timed("run-excl", () => run(base, a.cookie, a.workspaceId, 30));
+    expect(owner.status).toBe(200);
+    expect((owner.json.points as { scope: string }[]).some((p) => p.scope === a.jpy)).toBe(true);
   }, T);
 
   it("reports baseline ok over 8+ spend weeks (never zero) and confirms recurring without booking", async () => {

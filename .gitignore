@@ -13,3 +13,4 @@ storybook-static/
 test-results/
 playwright-report/
 proof-output/
+dump.rdb
