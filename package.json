@@ -54,7 +54,6 @@
     "test:forecast-tools": "vitest run test/forecast-tools.test.ts",
     "test:projection-sdk": "vitest run test/projection-sdk.test.ts",
     "test:e06-exit": "vitest run test/e06-exit.test.ts",
-    "test:scenarios": "vitest run test/scenarios.test.ts",
     "test:e03-exit": "vitest run test/e03-exit.test.ts",
     "test:artifact-build": "vitest run test/artifact-build.test.ts",
     "test:artifact-runtime": "playwright test --config test/artifact-runtime.config.mjs",

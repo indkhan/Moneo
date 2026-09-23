@@ -32,7 +32,7 @@ const tag = randomBytes(4).toString("hex");
 type Fx = { cookie: string; userId: string; workspaceId: string; acct: string };
 type EvalResult = {
   horizonStart: string; horizonDays: number; baseCurrency: string; inputHash: string;
-  ats: unknown; truncated: boolean;
+  ats: unknown; truncated: boolean; coverage: Record<string, unknown>;
   points: { caseName: string; scope: string; pointDate: string; amountMinor: string; currencyCode: string }[];
 };
 type CmpResult = {
@@ -151,6 +151,23 @@ describe("e06-s04 forecast tools", () => {
     expect(ctx.eligibleAccountIds).not.toContain(fx.acct);
     const code = await codeOf(ctx, await newAttempt(fx, "excl"), 1, "forecast.evaluate", { horizonDays: 3, spendingAccountId: fx.acct });
     expect(code).toBe("denied");
+  });
+
+  it("unhinted evaluate with an excluded account never returns full totals", async () => {
+    const fx = await setupFx("excl-all");
+    await setMonthlyIncome(fx, "100000");
+    const claims = { userId: fx.userId, workspaceId: fx.workspaceId };
+    await setAccountExclusion(pool, claims, fx.userId, fx.acct, true, "synthetic");
+    const ctx = await createToolContext(pool, claims);
+    expect(ctx.eligibleAccountIds).not.toContain(fx.acct);
+    // No spendingAccountId hint: the engine aggregates the eligible set only.
+    // The sole account is excluded, so no spendable accounts remain — the
+    // result is UNAVAILABLE (no_spendable_accounts), never a full total.
+    const out = (await executeTool(pool, ctx, await newAttempt(fx, "excl-all"), 1, { name: "forecast.evaluate", args: { horizonDays: 3 } })).result as EvalResult;
+    const ats = out.ats as { status: string };
+    expect(ats.status).toBe("UNAVAILABLE");
+    expect((out.coverage as { aiCoverage?: string }).aiCoverage).toContain("partial");
+    expect(out.points.filter((p) => p.scope === fx.acct)).toHaveLength(0);
   });
 
   it("unknown/foreign scenarios deny; malformed args are invalid", async () => {

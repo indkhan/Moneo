@@ -1440,6 +1440,8 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
               baselineAts: result.baselineAts,
               scenarioAts: result.scenarioAts,
               goalDisplay: result.goalDisplay,
+              aggregated: result.aggregated,
+              truncated: result.truncated,
               deltas: result.deltas.map((d) => ({ case_name: d.caseName, scope: d.scope, point_date: d.pointDate, baseline_minor: d.baselineMinor, scenario_minor: d.scenarioMinor, delta_minor: d.deltaMinor, currency: d.currency })),
               baselinePoints: result.baselinePoints.map((p) => ({ case_name: p.caseName, scope: p.scope, point_date: p.pointDate, amount_minor: p.amountMinor, currency: p.currency })),
               scenarioPoints: result.scenarioPoints.map((p) => ({ case_name: p.caseName, scope: p.scope, point_date: p.pointDate, amount_minor: p.amountMinor, currency: p.currency })),

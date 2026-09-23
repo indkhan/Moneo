@@ -82,6 +82,7 @@ export type ProjectionRunInput = {
   horizonDays?: number;
   spendingAccountId?: string;
   scenarioId?: string;
+  eligibleAccountIds?: string[];
   idempotencyKey: string;
 };
 
@@ -167,7 +168,7 @@ export type ProjectionRunResult = {
 
 function runHash(input: ProjectionRunInput): string {
   return createHash("sha256")
-    .update(JSON.stringify({ command: PROJECTION_RUN_COMMAND, workspaceId: input.workspaceId, horizonDays: input.horizonDays ?? null, spendingAccountId: input.spendingAccountId ?? null, scenarioId: input.scenarioId ?? null }))
+    .update(JSON.stringify({ command: PROJECTION_RUN_COMMAND, workspaceId: input.workspaceId, horizonDays: input.horizonDays ?? null, spendingAccountId: input.spendingAccountId ?? null, scenarioId: input.scenarioId ?? null, eligibleAccountIds: input.eligibleAccountIds ?? null }))
     .digest("hex");
 }
 
@@ -313,7 +314,10 @@ function computeTimeline(resolved: ComputeTimelineInput): ComputeTimelineResult 
   const points: ComputeTimelineResult["points"] = [];
   const events: ComputeTimelineResult["events"] = [];
   for (const e of dated) {
-    events.push({ eventDate: e.date, eventType: e.type, direction: e.direction, amountMinor: e.amountMinor, currencyCode: e.currency, accountScope: e.accountId ?? "TOTAL", label: e.label, sourceRefs: e.sourceRefs });
+    // Scenario-appended deltas are type-distinguishable from real scheduled
+    // assumptions: hypothetical outflows must never read as booked schedule.
+    const fromScenario = typeof (e.sourceRefs as { assumptionId?: unknown }).assumptionId === "string" && String((e.sourceRefs as { assumptionId?: unknown }).assumptionId).startsWith("scenario:");
+    events.push({ eventDate: e.date, eventType: fromScenario ? "SCENARIO_OVERRIDE" : e.type, direction: e.direction, amountMinor: e.amountMinor, currencyCode: e.currency, accountScope: e.accountId ?? "TOTAL", label: e.label, sourceRefs: e.sourceRefs });
   }
   for (const c of cases) {
     const perAcct = new Map<string, bigint>();
@@ -498,7 +502,16 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
   }
 
   const accts = await client.query("SELECT id, base_currency_code AS currency FROM accounts WHERE workspace_id = $1 AND archived = FALSE ORDER BY id", [wsId]);
-  const accountIds = (accts.rows as { id: string }[]).map((r) => String(r.id));
+  const ownedIds = (accts.rows as { id: string }[]).map((r) => String(r.id));
+  // AI-limited evaluation (chat tools, artifact SDK): the eligible set is
+  // intersected BEFORE aggregation, so excluded accounts never contribute
+  // to totals. Owner paths (UI, persisted runs) pass no filter and see all.
+  // A filter that excludes nothing normalizes to null so cross-adapter
+  // parity holds: identical effective inputs share one input hash.
+  const eligibleRaw = input.eligibleAccountIds === undefined ? null : new Set(input.eligibleAccountIds);
+  const aiLimited = eligibleRaw !== null && ownedIds.some((id) => !eligibleRaw.has(id));
+  const eligible = aiLimited ? eligibleRaw : null;
+  const accountIds = ownedIds.filter((id) => eligible === null || eligible.has(id));
   const accountCurrency = new Map<string, string>((accts.rows as { id: string; currency: string }[]).map((r) => [String(r.id), String(r.currency)]));
 
   const behavRows = await client.query("SELECT value FROM financial_assumptions WHERE workspace_id = $1 AND status = 'ACTIVE' AND assumption_type = 'ACCOUNT_BEHAVIOR'", [wsId]);
@@ -531,6 +544,9 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
   const bookedByAccountDay = new Map<string, Map<string, bigint>>();
   const bookedRows: { accountId: string; amountMinor: bigint; currency: string; direction: string; date: string; description: string }[] = [];
   for (const r of booked.rows as { account_id: string; amount_minor: string; currency: string; direction: string; effective_date: unknown; description: string }[]) {
+    // AI-limited views never see excluded accounts' booked rows at all —
+    // otherwise they would leak into TOTAL through the unattributed path.
+    if (eligible !== null && !eligible.has(String(r.account_id))) continue;
     const day = String(r.effective_date).slice(0, 10);
     const amt = BigInt(String(r.amount_minor));
     const signed = r.direction === "INFLOW" ? amt : -amt;
@@ -562,7 +578,7 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
   const allocRows = await client.query("SELECT a.goal_id, a.account_id, a.amount_minor, a.currency_code, a.version FROM goal_allocations a JOIN goals g ON g.workspace_id = a.workspace_id AND g.id = a.goal_id WHERE a.workspace_id = $1 AND g.status = 'ACTIVE'", [wsId]);
   const goalReservations = (allocRows.rows as { goal_id: string; account_id: string; amount_minor: string; currency_code: string }[]).map((r) => ({
     goalId: String(r.goal_id), accountId: String(r.account_id), amountMinor: BigInt(String(r.amount_minor)), currency: String(r.currency_code),
-  }));
+  })).filter((g) => eligible === null || eligible.has(g.accountId));
 
   // Confirmed recurring linkage for fingerprint-only assumptions.
   const overrides = await client.query("SELECT fingerprint, kind, day_of_month FROM recurring_overrides WHERE workspace_id = $1 AND status = 'confirmed'", [wsId]);
@@ -601,6 +617,15 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
   for (const e of scenarioIncomes) incomes.push(e);
   for (const e of scenarioRecurrings) recurrings.push(e);
   for (const e of scenarioOneTimes) oneTimes.push(e);
+  // AI-limited views: any scheduled input naming an excluded account cannot
+  // be safely recomputed on eligible inputs, so the run is unavailable
+  // rather than a fabricated partial substitute (§538).
+  if (eligible !== null) {
+    const namesExcluded = (...ids: (string | undefined)[]) => ids.some((id) => id !== undefined && !eligible.has(id));
+    for (const e of incomes) if (namesExcluded(e.accountId)) { missingCommitments.push(`excluded:${e.assumptionId}`); }
+    for (const e of recurrings) if (namesExcluded(e.accountId)) { missingCommitments.push(`excluded:${e.assumptionId}`); }
+    for (const e of oneTimes) if (namesExcluded(e.accountId, e.toAccountId)) { missingCommitments.push(`excluded:${e.assumptionId}`); }
+  }
 
   // Linked recurring schedules (fingerprint -> confirmed override + amount center).
   // A fingerprint claimed by both an explicit schedule and a confirmed
@@ -689,6 +714,7 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
     variableSpend: variableWeekly ? "assumption" : variableBaselineStatus,
     missingCommitments,
     scenarioGoalDisplay,
+    ...(aiLimited ? { aiCoverage: "partial (account exclusions apply to this AI-limited view)" } : {}),
   };
   let fxPartial = false;
   for (const id of accountIds) {
@@ -769,6 +795,7 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
   const canonical = {
     settingsVersion: settings.version, horizonDays, baseCurrency, spendingAccountId: input.spendingAccountId ?? null, scenarioId: input.scenarioId ?? null,
     scenarioRef,
+    eligibleAccountIds: eligible === null ? null : [...eligible].sort(),
     assumptions: assumptions.map((a) => `${a.id}:${a.version}`).sort(),
     goals: goalRows.rows.map((r: { id: string }) => String(r.id)).sort(),
     allocations: (allocRows.rows as { goal_id: string; account_id: string; amount_minor: string }[]).map((r) => `${String(r.goal_id)}:${String(r.account_id)}:${String(r.amount_minor)}`).sort(),
@@ -1086,10 +1113,24 @@ export async function runSdkProjection(
   if (v.horizonDays !== undefined && (!Number.isInteger(v.horizonDays) || (v.horizonDays as number) < 1 || (v.horizonDays as number) > 120)) throw new TenantInvalid();
   if (v.spendingAccountId !== undefined && (typeof v.spendingAccountId !== "string" || !isUuid(v.spendingAccountId))) throw new TenantInvalid();
   if (v.scenarioId !== undefined && (typeof v.scenarioId !== "string" || !isUuid(v.scenarioId))) throw new TenantInvalid();
+  // Artifact SDK reads use the AI data policy like chat tools: excluded
+  // accounts are intersected out before aggregation (never full totals).
+  const eligibleAccountIds: string[] = await withTenant(pool, claim, async (client) => {
+    const known = await client.query("SELECT id FROM accounts WHERE workspace_id = $1 AND archived = false", [claim.workspaceId]);
+    const excluded = await client.query("SELECT account_id AS id FROM ai_exclusions WHERE workspace_id = $1", [claim.workspaceId]);
+    const excludedIds = new Set((excluded.rows as { id: string }[]).map((r) => String(r.id)));
+    return (known.rows as { id: string }[]).map((r) => String(r.id)).filter((id) => !excludedIds.has(id)).sort();
+  });
+  if (typeof v.spendingAccountId === "string" && !eligibleAccountIds.includes(v.spendingAccountId)) {
+    const err = new Error("denied") as Error & { code?: string };
+    (err as { code?: string }).code = "denied";
+    throw err;
+  }
   const evaluated = await evaluateProjection(pool, claim, {
     horizonDays: v.horizonDays as number | undefined,
     spendingAccountId: v.spendingAccountId as string | undefined,
     scenarioId: v.scenarioId as string | undefined,
+    eligibleAccountIds,
   });
   const points = evaluated.points.slice(0, SDK_MAX_POINTS);
   return {
@@ -1113,17 +1154,21 @@ export async function runSdkProjection(
 export async function evaluateProjection(
   pool: Pool,
   claims: TenantClaims,
-  opts: { horizonDays?: number; spendingAccountId?: string; scenarioId?: string },
+  opts: { horizonDays?: number; spendingAccountId?: string; scenarioId?: string; eligibleAccountIds?: string[] },
 ): Promise<ProjectionEvaluation> {
   if (opts.horizonDays !== undefined && (!Number.isInteger(opts.horizonDays) || opts.horizonDays < 1 || opts.horizonDays > 365)) throw new TenantInvalid();
-  if (opts.spendingAccountId !== undefined && !isUuid(opts.spendingAccountId)) throw new TenantInvalid();
-  if (opts.scenarioId !== undefined && !isUuid(opts.scenarioId)) throw new TenantInvalid();
+  if (opts.spendingAccountId !== undefined && (typeof opts.spendingAccountId !== "string" || !isUuid(opts.spendingAccountId))) throw new TenantInvalid();
+  if (opts.scenarioId !== undefined && (typeof opts.scenarioId !== "string" || !isUuid(opts.scenarioId))) throw new TenantInvalid();
+  if (opts.eligibleAccountIds !== undefined) {
+    if (!Array.isArray(opts.eligibleAccountIds) || opts.eligibleAccountIds.some((id) => typeof id !== "string" || !isUuid(id))) throw new TenantInvalid();
+  }
   return withTenant(pool, claims, async (client) => {
     const { inputHash, resolved } = await resolveInputs(client, claims, {
       workspaceId: claims.workspaceId,
       horizonDays: opts.horizonDays,
       spendingAccountId: opts.spendingAccountId,
       scenarioId: opts.scenarioId,
+      eligibleAccountIds: opts.eligibleAccountIds === undefined ? undefined : [...opts.eligibleAccountIds].sort(),
       idempotencyKey: "00000000-0000-0000-0000-000000000000",
     });
     const { points, events, ats } = computeTimeline(resolved);

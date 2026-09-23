@@ -1300,7 +1300,12 @@ Verification: New `npm run test:scenarios` (own DB `moneo_e06_scenarios`): delta
 Review focus: Booked mutation via scenario paths, parent-chain smuggling, payload-type confusion (float minor), adapter predicate drift (different filters per surface), exclusion bypass in SDK/tool, stale-snapshot silence, unbounded compare payloads, unescaped planning templates.
 Rollout/rollback: Pre-release boundary; rollback = prior image + `037 rollback.sql` (synthetic scenarios only). AI tools ship disabled unless compliant dev config (E02-S04 precedent); artifact SDK read joins existing grant model.
 
-Execution record: (pending implementation)
+Execution record:
+- Assignee / branch / worktree: Orchestrator/implementer this session / `story/e06-s04-scenarios` / main worktree branch
+- Base SHA / heads: base `41a57d1608e90058618a61696ad71f3f1fbe85a6`; impl `df214ec`; wiring fix `168db3b`
+- Tests (recorded from prior session runs on this branch): `test:scenarios` 6/6, `test:forecast-tools` 6/6, `test:projection-sdk` 6/6, `test:e06-exit` 11/11, plus ai-tools 14/14, ui 10/10, chat-ui 9/9, artifact-ui 12/12, artifact-ai 12/12, e03-exit 11/11, projections 15/15, goals 6/6, projection-inputs 13/13, tenancy 7/7. `test:e05-exit` worker-RPC leg caught a real regression from the SDK edit (dropped artifact-global wiring line) and now passes after restore.
+- Review: independent adversarial review (separate task) Changes requested with 3 blockers — B1 AI adapters aggregating excluded accounts, B2 unbounded compare payloads, B3 missing SCENARIO_OVERRIDE event type — plus N1–N7 nonblocking. Fixes applied on-branch (unverified by execution in this session): eligible-set intersection in resolveInputs (booked rows, reservations, assumption refs) + aiCoverage note + no_spendable_accounts; weekly sampling + 2000-row caps + aggregated/truncated in compare path, route and UI; SCENARIO_OVERRIDE typing for scenario-appended events; package.json duplicate script key removed.
+- Remaining before merge: run typecheck + test:scenarios + test:forecast-tools + test:projection-sdk + test:e06-exit + regressions, obtain independent re-review Pass, merge, post-merge smoke. No shell/subagent execution is available in the current session, so these steps are explicitly pending and S04 is NOT Done.
 
 ## E06-S05 — Verify planning invariants across UI, AI and artifacts
 

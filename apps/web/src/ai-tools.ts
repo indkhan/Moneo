@@ -445,7 +445,7 @@ async function runForecastEvaluate(pool: Pool, ctx: ToolContext, args: unknown):
   const filter = checkForecastArgs(args);
   if (filter.spendingAccountId !== undefined) authorizeAccounts(ctx, [filter.spendingAccountId]);
   if (filter.scenarioId !== undefined) await authorizeScenario(pool, ctx, filter.scenarioId);
-  const evaluated = await withToolTimeout(evaluateProjection(pool, ctx.claims, filter));
+  const evaluated = await withToolTimeout(evaluateProjection(pool, ctx.claims, { ...filter, eligibleAccountIds: ctx.eligibleAccountIds }));
   const points = evaluated.points.slice(0, MAX_FORECAST_POINTS);
   const truncated = evaluated.points.length > MAX_FORECAST_POINTS;
   const result = {
@@ -475,7 +475,7 @@ async function runForecastCompare(pool: Pool, ctx: ToolContext, args: unknown): 
   const filter = checkForecastArgs(rest);
   if (filter.spendingAccountId !== undefined) authorizeAccounts(ctx, [filter.spendingAccountId]);
   await authorizeScenario(pool, ctx, v.scenarioId);
-  const compared = await withToolTimeout(compareScenarios(pool, ctx.claims, { workspaceId: ctx.claims.workspaceId, scenarioId: v.scenarioId, horizonDays: filter.horizonDays, spendingAccountId: filter.spendingAccountId }));
+  const compared = await withToolTimeout(compareScenarios(pool, ctx.claims, { workspaceId: ctx.claims.workspaceId, scenarioId: v.scenarioId, horizonDays: filter.horizonDays, spendingAccountId: filter.spendingAccountId, eligibleAccountIds: ctx.eligibleAccountIds }));
   const deltas = compared.deltas.slice(0, MAX_FORECAST_POINTS);
   const truncated = compared.deltas.length > MAX_FORECAST_POINTS;
   const result = {

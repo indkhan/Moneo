@@ -172,7 +172,7 @@ describe("e06-s04 flat scenarios", () => {
       workspaceId,
       scenarioId,
       overrideType: "ONE_TIME_EXPENSE",
-      payload: { amountMinor: "90000", currency: "EUR", date: "2026-06-01", accountId, description: "Japan flight" },
+      payload: { amountMinor: "90000", currency: "EUR", date: "2026-02-15", accountId, description: "Japan flight" },
       idempotencyKey: randomUUID(),
     });
     expect(added.status).toBe(200);
@@ -180,7 +180,7 @@ describe("e06-s04 flat scenarios", () => {
     const cmp = await postJson(base, "/api/projection/compare", cookie, {
       workspaceId,
       scenarioId,
-      horizonDays: 200,
+      horizonDays: 90,
       idempotencyKey: randomUUID(),
     });
     expect(cmp.status).toBe(200);
@@ -194,18 +194,76 @@ describe("e06-s04 flat scenarios", () => {
     };
     expect(body.baselineInputHash).not.toBe(body.scenarioInputHash);
     expect(body.horizonStart).toBe("2026-01-01");
-    // No delta before the flight; exactly -90000 from 2026-06-01 on.
-    expect(body.deltas.filter((d) => d.point_date < "2026-06-01")).toHaveLength(0);
-    const flightDay = body.deltas.filter((d) => d.case_name === "EXPECTED" && d.scope === accountId && d.point_date === "2026-06-01");
+    // No delta before the flight; exactly -90000 from 2026-02-15 on.
+    // Short horizon (90d) stays daily, so every day is an exact sample;
+    // long-horizon weekly aggregation is covered by the next test.
+    expect(body.deltas.filter((d) => d.point_date < "2026-02-15")).toHaveLength(0);
+    const flightDay = body.deltas.filter((d) => d.case_name === "EXPECTED" && d.scope === accountId && d.point_date === "2026-02-15");
     expect(flightDay).toHaveLength(1);
     expect(BigInt(flightDay[0]!.delta_minor)).toBe(-90000n);
     expect(BigInt(flightDay[0]!.scenario_minor)).toBe(BigInt(flightDay[0]!.baseline_minor) - 90000n);
     // Later days keep the knocked level (no income in fixture).
-    const later = body.deltas.find((d) => d.case_name === "EXPECTED" && d.scope === accountId && d.point_date === "2026-06-02");
+    const later = body.deltas.find((d) => d.case_name === "EXPECTED" && d.scope === accountId && d.point_date === "2026-02-16");
     expect(later).toBeDefined();
     expect(BigInt(later!.delta_minor)).toBe(-90000n);
+    // Scenario-derived events are typed SCENARIO_OVERRIDE with source refs.
+    const run2 = await postJson(base, "/api/projection/run", cookie, { workspaceId, horizonDays: 90, scenarioId, idempotencyKey: randomUUID() });
+    expect(run2.status).toBe(200);
+    const runBody = run2.json as { events: { event_type: string; point_date?: string; event_date: string }[] };
+    const scenEvents = runBody.events.filter((e) => e.event_type === "SCENARIO_OVERRIDE");
+    expect(scenEvents.length).toBeGreaterThan(0);
+    expect(scenEvents.some((e) => e.event_date === "2026-02-15")).toBe(true);
     // Booked rows unchanged by scenario work.
     expect(await countBooked(pool, workspaceId)).toBe(before);
+  });
+
+  it("long-horizon compare aggregates weekly with exact samples and flags", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e06-scen-weekly");
+    const accountId = await createAccount(base, cookie, workspaceId, "Cash");
+    await createSnapshot(base, cookie, workspaceId, accountId, "2000.00");
+    const scenarioId = await createScenario(base, cookie, workspaceId, "Long view");
+    await postJson(base, "/api/commands/scenario-overrides.add", cookie, {
+      workspaceId,
+      scenarioId,
+      overrideType: "ONE_TIME_EXPENSE",
+      payload: { amountMinor: "90000", currency: "EUR", date: "2026-06-01", accountId, description: "Japan flight" },
+      idempotencyKey: randomUUID(),
+    });
+
+    const cmp = await postJson(base, "/api/projection/compare", cookie, {
+      workspaceId,
+      scenarioId,
+      horizonDays: 200,
+      idempotencyKey: randomUUID(),
+    });
+    expect(cmp.status).toBe(200);
+    const body = cmp.json as {
+      aggregated: string; truncated: boolean; horizonStart: string;
+      baselinePoints: { point_date: string }[]; scenarioPoints: { point_date: string }[];
+      deltas: { point_date: string; delta_minor: string }[];
+    };
+    expect(body.aggregated).toBe("weekly");
+    // Weekly samples: every 7th day plus the horizon end — exact values.
+    // The horizon end is always present; the start day is not a sample day.
+    const end = new Date(new Date(`${body.horizonStart}T00:00:00Z`).getTime() + 199 * 86400000).toISOString().slice(0, 10);
+    const last = body.baselinePoints.filter((p) => p.point_date === end);
+    expect(last.length).toBeGreaterThan(0);
+    const dates = [...new Set(body.baselinePoints.map((p) => p.point_date))].sort();
+    expect(dates.length).toBeLessThan(200);
+    for (const d of dates.slice(0, -1)) {
+      const day = Math.round((new Date(`${d}T00:00:00Z`).getTime() - new Date(`${body.horizonStart}T00:00:00Z`).getTime()) / 86400000);
+      expect(day % 7 === 6 || d === dates[dates.length - 1]).toBe(true);
+    }
+    // Short horizons stay daily.
+    const short = await postJson(base, "/api/projection/compare", cookie, {
+      workspaceId,
+      scenarioId,
+      horizonDays: 30,
+      idempotencyKey: randomUUID(),
+    });
+    expect(short.status).toBe(200);
+    expect((short.json as { aggregated: string }).aggregated).toBe("daily");
   });
 
   it("reopen after an assumption change recomputes; the original run is immutable", async () => {

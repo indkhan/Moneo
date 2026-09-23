@@ -427,7 +427,14 @@ export type ScenarioCompare = {
   deltas: ScenarioDelta[];
   baselinePoints: { caseName: string; scope: string; pointDate: string; amountMinor: string; currency: string }[];
   scenarioPoints: { caseName: string; scope: string; pointDate: string; amountMinor: string; currency: string }[];
+  aggregated: "daily" | "weekly";
+  truncated: boolean;
 };
+
+// Compare-payload bounds (story limits): long horizons aggregate to exact
+// weekly samples; arrays cap with an explicit truncated flag. 365 d × 3
+// cases × N scopes × 2 series must never become an unbounded payload.
+const COMPARE_MAX_ROWS = 2000;
 
 /**
  * Compare baseline vs scenario over the same horizon using the shared
@@ -437,15 +444,18 @@ export type ScenarioCompare = {
 export async function compareScenarios(
   pool: Pool,
   claims: TenantClaims,
-  input: { workspaceId: string; scenarioId: string; horizonDays?: number; spendingAccountId?: string },
+  input: { workspaceId: string; scenarioId: string; horizonDays?: number; spendingAccountId?: string; eligibleAccountIds?: string[] },
 ): Promise<ScenarioCompare> {
   if (typeof input.workspaceId !== "string" || !isUuid(input.workspaceId)) throw new TenantInvalid();
   if (input.workspaceId !== claims.workspaceId) throw new TenantDenied();
   if (typeof input.scenarioId !== "string" || !isUuid(input.scenarioId)) throw new TenantInvalid();
   if (input.horizonDays !== undefined && (!Number.isInteger(input.horizonDays) || input.horizonDays < 1 || input.horizonDays > 365)) throw new TenantInvalid();
   if (input.spendingAccountId !== undefined && !isUuid(input.spendingAccountId)) throw new TenantInvalid();
-  const baseline = await evaluateProjection(pool, claims, { horizonDays: input.horizonDays, spendingAccountId: input.spendingAccountId });
-  const scenario = await evaluateProjection(pool, claims, { horizonDays: input.horizonDays, spendingAccountId: input.spendingAccountId, scenarioId: input.scenarioId });
+  if (input.eligibleAccountIds !== undefined) {
+    if (!Array.isArray(input.eligibleAccountIds) || input.eligibleAccountIds.some((id) => typeof id !== "string" || !isUuid(id))) throw new TenantInvalid();
+  }
+  const baseline = await evaluateProjection(pool, claims, { horizonDays: input.horizonDays, spendingAccountId: input.spendingAccountId, eligibleAccountIds: input.eligibleAccountIds });
+  const scenario = await evaluateProjection(pool, claims, { horizonDays: input.horizonDays, spendingAccountId: input.spendingAccountId, scenarioId: input.scenarioId, eligibleAccountIds: input.eligibleAccountIds });
   const baseByKey = new Map(baseline.points.map((p) => [`${p.caseName}|${p.scope}|${p.pointDate}`, p]));
   const deltas: ScenarioDelta[] = [];
   for (const sp of scenario.points) {
@@ -460,6 +470,22 @@ export async function compareScenarios(
   const goalDisplay = ((scenario.coverage as { scenarioGoalDisplay?: { goalId: string; targetAmountMinor?: string; targetDate?: string }[] }).scenarioGoalDisplay ?? []) as { goalId: string; targetAmountMinor?: string; targetDate?: string }[];
   const snake = (ps: { caseName: string; scope: string; pointDate: string; amountMinor: string; currencyCode: string }[]) =>
     ps.map((p) => ({ caseName: p.caseName, scope: p.scope, pointDate: p.pointDate, amountMinor: p.amountMinor, currency: p.currencyCode }));
+  // Long horizons aggregate to exact weekly samples (every 7th day plus the
+  // horizon end, exact values — balances are levels, never summed).
+  const aggregated: "daily" | "weekly" = scenario.horizonDays > 120 ? "weekly" : "daily";
+  const endDate = (() => {
+    const t = new Date(`${scenario.horizonStart}T00:00:00Z`).getTime() + (scenario.horizonDays - 1) * 86400000;
+    return new Date(t).toISOString().slice(0, 10);
+  })();
+  const sample = <T extends { pointDate: string }>(rows: T[]): T[] =>
+    aggregated === "daily" ? rows : rows.filter((r) => {
+      const day = Math.round((new Date(`${r.pointDate}T00:00:00Z`).getTime() - new Date(`${scenario.horizonStart}T00:00:00Z`).getTime()) / 86400000);
+      return day % 7 === 6 || r.pointDate === endDate;
+    });
+  const sampledDeltas = sample(deltas);
+  const sampledBaseline = sample(snake(baseline.points));
+  const sampledScenario = sample(snake(scenario.points));
+  const truncated = sampledDeltas.length > COMPARE_MAX_ROWS || sampledBaseline.length > COMPARE_MAX_ROWS || sampledScenario.length > COMPARE_MAX_ROWS;
   return {
     baselineInputHash: baseline.inputHash,
     scenarioInputHash: scenario.inputHash,
@@ -469,8 +495,10 @@ export async function compareScenarios(
     baselineAts: baseline.ats,
     scenarioAts: scenario.ats,
     goalDisplay,
-    deltas,
-    baselinePoints: snake(baseline.points),
-    scenarioPoints: snake(scenario.points),
+    deltas: sampledDeltas.slice(0, COMPARE_MAX_ROWS),
+    baselinePoints: sampledBaseline.slice(0, COMPARE_MAX_ROWS),
+    scenarioPoints: sampledScenario.slice(0, COMPARE_MAX_ROWS),
+    aggregated,
+    truncated,
   };
 }

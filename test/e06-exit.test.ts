@@ -10,7 +10,9 @@
 // EXPECTED_VARIABLE_SPEND 0 (past spend weeks never leak daily events into
 // hand-computed timelines); day-31 MONTHLY 800.00 + Feb-29 YEARLY 120.00
 // schedules; 1 category + 1 tag (+1 assignment); 1 goal (5000.00) + 1
-// reservation (400.00); 1 flat scenario (Trip + 900.00 on 2024-06-01).
+// reservation (400.00); 1 flat scenario (Trip + 900.00 on 2024-02-15; the
+// date sits inside the 120d daily window so the exact-delta golden reads
+// every day — long-horizon weekly aggregation is covered in scenarios.test).
 // Projection-math legs use isolated EUR-only workspaces (same 2024-01-01
 // anchor) so TOTAL stays hand-computable; multi-currency TOTAL is covered by
 // the FX-gap UNAVAILABLE leg. All expectations are independently hand-computed
@@ -173,7 +175,7 @@ async function seedFull(base: string, sub: string): Promise<{ cookie: string; wo
   const goal = (await postJson(base, "/api/commands/goals.create", cookie, { workspaceId, name: "Emergency", goalType: "EMERGENCY_FUND", targetAmountMinor: "500000", currency: "EUR", idempotencyKey: randomUUID() })).json as { id: string };
   await postJson(base, "/api/commands/allocations.allocate", cookie, { workspaceId, goalId: goal.id, accountId: eur, amountMinor: "40000", currency: "EUR", idempotencyKey: randomUUID() });
   const scenario = (await postJson(base, "/api/commands/scenarios.create", cookie, { workspaceId, name: "Trip", idempotencyKey: randomUUID() })).json as { id: string };
-  await postJson(base, "/api/commands/scenario-overrides.add", cookie, { workspaceId, scenarioId: scenario.id, overrideType: "ONE_TIME_EXPENSE", payload: { amountMinor: "90000", currency: "EUR", date: "2024-06-01", accountId: eur, description: "Flight" }, idempotencyKey: randomUUID() });
+  await postJson(base, "/api/commands/scenario-overrides.add", cookie, { workspaceId, scenarioId: scenario.id, overrideType: "ONE_TIME_EXPENSE", payload: { amountMinor: "90000", currency: "EUR", date: "2024-02-15", accountId: eur, description: "Flight" }, idempotencyKey: randomUUID() });
   return { cookie, workspaceId, userId, eur, jpy, kwd, usd, goalId: goal.id, scenarioId: scenario.id };
 }
 
@@ -413,23 +415,24 @@ describe("e06-s05 exit: scenarios, parity, isolation and latency", () => {
     const fx = await seedFull(base, "e06-exit-scen");
     const before = await bookedCount(fx.workspaceId, fx.userId);
     expect(before).toBe(32);
-    const cmp1 = await timed("compare", () => postJson(base, "/api/projection/compare", fx.cookie, { workspaceId: fx.workspaceId, scenarioId: fx.scenarioId, horizonDays: 200, idempotencyKey: randomUUID() }));
+    const cmp1 = await timed("compare", () => postJson(base, "/api/projection/compare", fx.cookie, { workspaceId: fx.workspaceId, scenarioId: fx.scenarioId, horizonDays: 120, idempotencyKey: randomUUID() }));
     expect(cmp1.status).toBe(200);
-    const c1 = cmp1.json as { baselineInputHash: string; scenarioInputHash: string; horizonStart: string; deltas: { case_name: string; scope: string; point_date: string; baseline_minor: string; scenario_minor: string; delta_minor: string }[] };
+    const c1 = cmp1.json as { baselineInputHash: string; scenarioInputHash: string; horizonStart: string; aggregated: string; deltas: { case_name: string; scope: string; point_date: string; baseline_minor: string; scenario_minor: string; delta_minor: string }[] };
     expect(c1.horizonStart).toBe("2024-01-01");
+    expect(c1.aggregated).toBe("daily");
     expect(c1.baselineInputHash).not.toBe(c1.scenarioInputHash);
-    expect(c1.deltas.filter((d) => d.point_date < "2024-06-01")).toHaveLength(0);
-    const flight = c1.deltas.filter((d) => d.case_name === "EXPECTED" && d.scope === fx.eur && d.point_date === "2024-06-01");
+    expect(c1.deltas.filter((d) => d.point_date < "2024-02-15")).toHaveLength(0);
+    const flight = c1.deltas.filter((d) => d.case_name === "EXPECTED" && d.scope === fx.eur && d.point_date === "2024-02-15");
     expect(flight).toHaveLength(1);
     expect(BigInt(flight[0]!.delta_minor)).toBe(-90000n);
     expect(BigInt(flight[0]!.scenario_minor)).toBe(BigInt(flight[0]!.baseline_minor) - 90000n);
-    const later = c1.deltas.find((d) => d.case_name === "EXPECTED" && d.scope === fx.eur && d.point_date === "2024-06-02");
+    const later = c1.deltas.find((d) => d.case_name === "EXPECTED" && d.scope === fx.eur && d.point_date === "2024-02-16");
     expect(BigInt(later!.delta_minor)).toBe(-90000n);
     expect(await bookedCount(fx.workspaceId, fx.userId)).toBe(before);
     // Persisted run, then a baseline change: new hash, original run byte-identical.
     const run1 = (await run(base, fx.cookie, fx.workspaceId, 30)).json as { runId: string; points: unknown[] };
     await assume(base, fx.cookie, fx.workspaceId, "EXPECTED_INCOME", { amountMinor: "100000", currency: "EUR", cadence: "MONTHLY", dayOfMonth: 1 });
-    const cmp2 = (await postJson(base, "/api/projection/compare", fx.cookie, { workspaceId: fx.workspaceId, scenarioId: fx.scenarioId, horizonDays: 200, idempotencyKey: randomUUID() })).json as { scenarioInputHash: string };
+    const cmp2 = (await postJson(base, "/api/projection/compare", fx.cookie, { workspaceId: fx.workspaceId, scenarioId: fx.scenarioId, horizonDays: 120, idempotencyKey: randomUUID() })).json as { scenarioInputHash: string };
     expect(cmp2.scenarioInputHash).not.toBe(c1.scenarioInputHash);
     const run2 = (await run(base, fx.cookie, fx.workspaceId, 30)).json as { runId: string };
     expect(run2.runId).not.toBe(run1.runId);
