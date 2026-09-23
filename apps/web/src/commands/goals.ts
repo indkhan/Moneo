@@ -293,7 +293,7 @@ async function getAccountCurrency(client: PoolClient, workspaceId: string, accou
 
 export async function getAccountSpendableCapacity(client: PoolClient, workspaceId: string, accountId: string): Promise<bigint> {
   const snap = await client.query(
-    `SELECT amount_minor, freshness, reconciliation_state FROM balance_snapshots WHERE workspace_id = $1 AND account_id = $2 AND currency = (SELECT base_currency_code FROM accounts WHERE workspace_id = $1 AND id = $2) ORDER BY as_of_date DESC LIMIT 1`,
+    `SELECT amount_minor, freshness, reconciliation_state FROM balance_snapshots WHERE workspace_id = $1 AND account_id = $2 AND currency = (SELECT base_currency_code FROM accounts WHERE workspace_id = $1 AND id = $2) AND as_of_date <= CURRENT_DATE ORDER BY as_of_date DESC LIMIT 1`,
     [workspaceId, accountId],
   );
   if (snap.rows.length === 0) return 0n;
@@ -383,7 +383,7 @@ export async function allocateTx(client: PoolClient, claims: TenantClaims, actor
          SELECT
            GREATEST(COALESCE((
              SELECT CASE WHEN freshness = 'unknown' OR reconciliation_state = 'disputed' THEN 0 ELSE amount_minor END FROM balance_snapshots
-             WHERE workspace_id = $1 AND account_id = $2
+             WHERE workspace_id = $1 AND account_id = $2 AND as_of_date <= CURRENT_DATE
                AND currency = (SELECT base_currency_code FROM accounts WHERE workspace_id = $1 AND id = $2)
              ORDER BY as_of_date DESC LIMIT 1
            ), 0), 0)::text AS capacity,
@@ -416,7 +416,7 @@ export async function allocateTx(client: PoolClient, claims: TenantClaims, actor
         `SELECT
            GREATEST(COALESCE((
              SELECT CASE WHEN freshness = 'unknown' OR reconciliation_state = 'disputed' THEN 0 ELSE amount_minor END FROM balance_snapshots
-             WHERE workspace_id = $1 AND account_id = $2
+             WHERE workspace_id = $1 AND account_id = $2 AND as_of_date <= CURRENT_DATE
                AND currency = (SELECT base_currency_code FROM accounts WHERE workspace_id = $1 AND id = $2)
              ORDER BY as_of_date DESC LIMIT 1
            ), 0), 0)::text AS capacity,

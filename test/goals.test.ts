@@ -335,6 +335,24 @@ const results = await Promise.all(
     expect((result.json as { detail: { availableMinor: string } }).detail.availableMinor).toBe("0");
   });
 
+  it("does not reserve cash from a future-dated snapshot", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e06-goal-future-snapshot");
+    const accountId = await createAccount(base, cookie, workspaceId, "Cash");
+    const future = await postJson(base, "/api/commands/accounts.balance_snapshot", cookie, {
+      workspaceId, accountId, asOfDate: "2099-01-01", amount: "1000.00", currency: "EUR", idempotencyKey: randomUUID(),
+    });
+    expect(future.status).toBe(200);
+    const goal = await postJson(base, "/api/commands/goals.create", cookie, {
+      workspaceId, name: "Reserve", goalType: "SAVINGS_TARGET", targetAmountMinor: "10000", currency: "EUR", idempotencyKey: randomUUID(),
+    });
+    const result = await postJson(base, "/api/commands/allocations.allocate", cookie, {
+      workspaceId, goalId: (goal.json as { id: string }).id, accountId, amountMinor: "10000", currency: "EUR", idempotencyKey: randomUUID(),
+    });
+    expect(result.status).toBe(409);
+    expect((result.json as { detail: { availableMinor: string } }).detail.availableMinor).toBe("0");
+  });
+
   it("undo of supported allocate restores capacity with compensating audit; stale undo is UNDO_CONFLICT", async () => {
     const base = await startApp();
     const { cookie, workspaceId } = await setupWorkspace(base, "e06-goal-undo");
