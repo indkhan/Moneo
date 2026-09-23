@@ -121,6 +121,10 @@ describe("e06-s04 forecast tools", () => {
     expect(MAX_TOOL_ACCOUNTS).toBe(10);
     const fx = await setupFx("eval");
     await setMonthlyIncome(fx, "100000");
+    expect((await postJson("/api/commands/assumptions.set", fx.cookie, {
+      workspaceId: fx.workspaceId, assumptionType: "EXPECTED_VARIABLE_SPEND", validFrom: "2026-01-01",
+      value: { amountMinor: "0", currency: "EUR" }, idempotencyKey: randomUUID(),
+    })).status).toBe(200);
     const claims = { userId: fx.userId, workspaceId: fx.workspaceId };
     const ctx = await createToolContext(pool, claims);
     const out = (await executeTool(pool, ctx, await newAttempt(fx, "eval"), 1, { name: "forecast.evaluate", args: { horizonDays: 3 } })).result as EvalResult;

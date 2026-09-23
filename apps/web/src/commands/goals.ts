@@ -293,11 +293,13 @@ async function getAccountCurrency(client: PoolClient, workspaceId: string, accou
 
 export async function getAccountSpendableCapacity(client: PoolClient, workspaceId: string, accountId: string): Promise<bigint> {
   const snap = await client.query(
-    `SELECT amount_minor FROM balance_snapshots WHERE workspace_id = $1 AND account_id = $2 AND currency = (SELECT base_currency_code FROM accounts WHERE workspace_id = $1 AND id = $2) AND amount_minor > 0 ORDER BY as_of_date DESC LIMIT 1`,
+    `SELECT amount_minor, freshness, reconciliation_state FROM balance_snapshots WHERE workspace_id = $1 AND account_id = $2 AND currency = (SELECT base_currency_code FROM accounts WHERE workspace_id = $1 AND id = $2) ORDER BY as_of_date DESC LIMIT 1`,
     [workspaceId, accountId],
   );
   if (snap.rows.length === 0) return 0n;
-  return BigInt(String(snap.rows[0].amount_minor));
+  if (snap.rows[0].freshness === "unknown" || snap.rows[0].reconciliation_state === "disputed") return 0n;
+  const latest = BigInt(String(snap.rows[0].amount_minor));
+  return latest > 0n ? latest : 0n;
 }
 
 export async function getAccountTotalAllocated(client: PoolClient, workspaceId: string, accountId: string): Promise<bigint> {
@@ -379,13 +381,12 @@ export async function allocateTx(client: PoolClient, claims: TenantClaims, actor
     const alloc = await client.query(
       `WITH caps AS (
          SELECT
-           COALESCE((
-             SELECT amount_minor FROM balance_snapshots
+           GREATEST(COALESCE((
+             SELECT CASE WHEN freshness = 'unknown' OR reconciliation_state = 'disputed' THEN 0 ELSE amount_minor END FROM balance_snapshots
              WHERE workspace_id = $1 AND account_id = $2
                AND currency = (SELECT base_currency_code FROM accounts WHERE workspace_id = $1 AND id = $2)
-               AND amount_minor > 0
              ORDER BY as_of_date DESC LIMIT 1
-           ), 0)::text AS capacity,
+           ), 0), 0)::text AS capacity,
            COALESCE((
              SELECT SUM(amount_minor)::text FROM goal_allocations
              WHERE workspace_id = $1 AND account_id = $2
@@ -413,13 +414,12 @@ export async function allocateTx(client: PoolClient, claims: TenantClaims, actor
       // Capacity exhausted - compute available for error detail
       const capRow = await client.query(
         `SELECT
-           COALESCE((
-             SELECT amount_minor FROM balance_snapshots
+           GREATEST(COALESCE((
+             SELECT CASE WHEN freshness = 'unknown' OR reconciliation_state = 'disputed' THEN 0 ELSE amount_minor END FROM balance_snapshots
              WHERE workspace_id = $1 AND account_id = $2
                AND currency = (SELECT base_currency_code FROM accounts WHERE workspace_id = $1 AND id = $2)
-               AND amount_minor > 0
              ORDER BY as_of_date DESC LIMIT 1
-           ), 0)::text AS capacity,
+           ), 0), 0)::text AS capacity,
            COALESCE((
              SELECT SUM(amount_minor)::text FROM goal_allocations
              WHERE workspace_id = $1 AND account_id = $2
@@ -447,11 +447,13 @@ export async function allocateTx(client: PoolClient, claims: TenantClaims, actor
       createdAt: String(allocRow.created_at),
       updatedAt: String(allocRow.updated_at),
     };
+    const priorAmount = BigInt(view.amountMinor) - ask;
+    const auditBeforeState: unknown = priorAmount === 0n ? null : { amountMinor: priorAmount.toString() };
     const auditAfterState: unknown = { ...view };
     await client.query(
       `INSERT INTO audit_events (workspace_id, id, actor_type, actor_user_id, entity_type, entity_id, action, before_state, after_state, operation_id, compensating_operation_id)
        VALUES ($1, $2, 'user', $3, $4, $5, $6, $7, $8, $9, $10)`,
-      [claims.workspaceId, uuidv7(), actorId, "goal_allocation", allocRow.id, "allocate", JSON.stringify(null), JSON.stringify(auditAfterState), operationId, null],
+      [claims.workspaceId, uuidv7(), actorId, "goal_allocation", allocRow.id, "allocate", JSON.stringify(auditBeforeState), JSON.stringify(auditAfterState), operationId, null],
     );
     await bumpRevision(client, claims.workspaceId);
     return { view, operationId };
@@ -460,6 +462,11 @@ export async function allocateTx(client: PoolClient, claims: TenantClaims, actor
 
 export async function releaseTx(client: PoolClient, claims: TenantClaims, actorId: string, input: AllocationReleaseInput): Promise<TxOutcome<AllocationView>> {
   return claimAndExecute(client, claims, actorId, ALLOCATION_RELEASE_COMMAND, input.idempotencyKey, releaseHash(input), async (client, operationId) => {
+    // Match allocate's account -> goal -> allocation lock order.
+    const account = await client.query("SELECT id FROM accounts WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [claims.workspaceId, input.accountId]);
+    if (account.rows.length === 0) throw new TxError("not_found");
+    const goal = await client.query("SELECT id FROM goals WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [claims.workspaceId, input.goalId]);
+    if (goal.rows.length === 0) throw new TxError("not_found");
     const alloc = await client.query("SELECT * FROM goal_allocations WHERE workspace_id = $1 AND goal_id = $2 AND account_id = $3 FOR UPDATE", [claims.workspaceId, input.goalId, input.accountId]);
     const row = alloc.rows[0] as Record<string, unknown> | undefined;
     if (!row) throw new TxError("not_found");
