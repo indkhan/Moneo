@@ -20,8 +20,10 @@ import { executeReserved, reserveDispatch, DispatchError, type DispatchRoute, ty
 import { getTransactionEvidence, listTransactions, type TxListResult } from "./transactions-query.ts";
 import { listBalanceSnapshots } from "./commands/accounts.ts";
 import { getFinancialSummary } from "./calculations/financial-summary.ts";
+import { compareScenarios } from "./projections/scenarios.ts";
+import { evaluateProjection } from "./projections/engine.ts";
 
-export const TOOL_NAMES = ["transactions.search", "transactions.evidence", "accounts.balances", "finance.totals"] as const;
+export const TOOL_NAMES = ["transactions.search", "transactions.evidence", "accounts.balances", "finance.totals", "forecast.evaluate", "forecast.compareScenarios"] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
 export const MAX_TOOL_CALLS_PER_RUN = 8;
 export const MAX_TOOL_STEPS = 8;
@@ -104,7 +106,7 @@ export async function revalidateContext(pool: Pool, ctx: ToolContext): Promise<v
 }
 
 function isToolName(value: unknown): value is ToolName {
-  return value === "transactions.search" || value === "transactions.evidence" || value === "accounts.balances" || value === "finance.totals";
+  return value === "transactions.search" || value === "transactions.evidence" || value === "accounts.balances" || value === "finance.totals" || value === "forecast.evaluate" || value === "forecast.compareScenarios";
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -407,6 +409,93 @@ async function runTotals(pool: Pool, ctx: ToolContext, args: unknown): Promise<T
   return { result, evidence, resultRows: perAccount.length, resultBytes };
 }
 
+// E06-S04 forecast adapters: the read-only shared projection evaluation,
+// never a model-computed number. Spending-account and scenario hints are
+// authorized against the run context (unknown/foreign/excluded → denied);
+// policy/revision revalidation happens in executeTool before dispatch.
+const MAX_FORECAST_POINTS = 500;
+
+function checkForecastArgs(args: unknown): { horizonDays?: number; spendingAccountId?: string; scenarioId?: string } {
+  if (typeof args !== "object" || args === null || Array.isArray(args)) throw new ToolError("invalid_args");
+  const v = args as Record<string, unknown>;
+  const out: { horizonDays?: number; spendingAccountId?: string; scenarioId?: string } = {};
+  for (const key of Object.keys(v)) {
+    if (key === "horizonDays") {
+      if (!Number.isInteger(v.horizonDays) || (v.horizonDays as number) < 1 || (v.horizonDays as number) > 120) throw new ToolError("invalid_args");
+      out.horizonDays = v.horizonDays as number;
+    } else if (key === "spendingAccountId" || key === "scenarioId") {
+      if (typeof v[key] !== "string" || !UUID_RE.test(v[key] as string)) throw new ToolError("invalid_args");
+      (out as Record<string, unknown>)[key] = v[key];
+    } else {
+      throw new ToolError("invalid_args");
+    }
+  }
+  return out;
+}
+
+async function authorizeScenario(pool: Pool, ctx: ToolContext, scenarioId: string): Promise<void> {
+  const found = await withToolTimeout(
+    withTenant(pool, ctx.claims, async (client) => client.query("SELECT status FROM scenarios WHERE workspace_id = $1 AND id = $2", [ctx.claims.workspaceId, scenarioId])),
+  );
+  const row = found.rows[0] as { status: string } | undefined;
+  if (!row || row.status !== "ACTIVE") throw new ToolError("denied");
+}
+
+async function runForecastEvaluate(pool: Pool, ctx: ToolContext, args: unknown): Promise<ToolResult> {
+  const filter = checkForecastArgs(args);
+  if (filter.spendingAccountId !== undefined) authorizeAccounts(ctx, [filter.spendingAccountId]);
+  if (filter.scenarioId !== undefined) await authorizeScenario(pool, ctx, filter.scenarioId);
+  const evaluated = await withToolTimeout(evaluateProjection(pool, ctx.claims, { ...filter, eligibleAccountIds: ctx.eligibleAccountIds }));
+  const points = evaluated.points.slice(0, MAX_FORECAST_POINTS);
+  const truncated = evaluated.points.length > MAX_FORECAST_POINTS;
+  const result = {
+    horizonStart: evaluated.horizonStart,
+    horizonDays: evaluated.horizonDays,
+    baseCurrency: evaluated.baseCurrency,
+    inputHash: evaluated.inputHash,
+    coverage: evaluated.coverage,
+    ats: evaluated.ats,
+    points: points.map((p) => ({ caseName: p.caseName, scope: p.scope, pointDate: p.pointDate, amountMinor: p.amountMinor, currencyCode: p.currencyCode })),
+    truncated,
+  };
+  const resultBytes = byteSize(result);
+  if (resultBytes > MAX_TOOL_RESULT_BYTES) throw new ToolError("oversized");
+  const evidence: EvidenceRef[] = [{ kind: "calculation" as const, id: evaluated.inputHash.slice(0, 16), label: `projection ${evaluated.inputHash.slice(0, 12)}` }];
+  return { result, evidence, resultRows: points.length, resultBytes };
+}
+
+async function runForecastCompare(pool: Pool, ctx: ToolContext, args: unknown): Promise<ToolResult> {
+  if (typeof args !== "object" || args === null || Array.isArray(args)) throw new ToolError("invalid_args");
+  const v = args as Record<string, unknown>;
+  if (typeof v.scenarioId !== "string" || !UUID_RE.test(v.scenarioId)) throw new ToolError("invalid_args");
+  const rest: Record<string, unknown> = {};
+  for (const key of Object.keys(v)) {
+    if (key !== "scenarioId") rest[key] = v[key];
+  }
+  const filter = checkForecastArgs(rest);
+  if (filter.spendingAccountId !== undefined) authorizeAccounts(ctx, [filter.spendingAccountId]);
+  await authorizeScenario(pool, ctx, v.scenarioId);
+  const compared = await withToolTimeout(compareScenarios(pool, ctx.claims, { workspaceId: ctx.claims.workspaceId, scenarioId: v.scenarioId, horizonDays: filter.horizonDays, spendingAccountId: filter.spendingAccountId, eligibleAccountIds: ctx.eligibleAccountIds }));
+  const deltas = compared.deltas.slice(0, MAX_FORECAST_POINTS);
+  const truncated = compared.deltas.length > MAX_FORECAST_POINTS;
+  const result = {
+    baselineInputHash: compared.baselineInputHash,
+    scenarioInputHash: compared.scenarioInputHash,
+    horizonStart: compared.horizonStart,
+    horizonDays: compared.horizonDays,
+    baseCurrency: compared.baseCurrency,
+    baselineAts: compared.baselineAts,
+    scenarioAts: compared.scenarioAts,
+    goalDisplay: compared.goalDisplay,
+    deltas: deltas.map((d) => ({ caseName: d.caseName, scope: d.scope, pointDate: d.pointDate, baselineMinor: d.baselineMinor, scenarioMinor: d.scenarioMinor, deltaMinor: d.deltaMinor, currency: d.currency })),
+    truncated,
+  };
+  const resultBytes = byteSize(result);
+  if (resultBytes > MAX_TOOL_RESULT_BYTES) throw new ToolError("oversized");
+  const evidence: EvidenceRef[] = [{ kind: "calculation" as const, id: compared.scenarioInputHash.slice(0, 16), label: `scenario compare ${compared.scenarioInputHash.slice(0, 12)}` }];
+  return { result, evidence, resultRows: deltas.length, resultBytes };
+}
+
 /**
  * Execute one allowlisted tool call: revalidate the run context (stale
  * policy/revision blocks without execution), authorize every account hint,
@@ -439,7 +528,9 @@ export async function executeTool(
     if (call.name === "transactions.search") out = await runSearch(pool, ctx, call.args);
     else if (call.name === "transactions.evidence") out = await runEvidence(pool, ctx, call.args);
     else if (call.name === "accounts.balances") out = await runBalances(pool, ctx, call.args);
-    else out = await runTotals(pool, ctx, call.args);
+    else if (call.name === "finance.totals") out = await runTotals(pool, ctx, call.args);
+    else if (call.name === "forecast.evaluate") out = await runForecastEvaluate(pool, ctx, call.args);
+    else out = await runForecastCompare(pool, ctx, call.args);
     await record({ status: "ok", evidence: out.evidence, resultRows: out.resultRows, resultBytes: out.resultBytes });
     return out;
   } catch (err) {
@@ -506,12 +597,14 @@ export function parseModelOutput(bodyText: string): ModelStep {
 export type HistoryTurn = { role: "user" | "assistant"; body: string };
 
 const TOOL_SCHEMAS = `Tools (exact JSON only; anything else is final text):
-{"tool_calls":[{"id":"optional ≤64 chars","name":"transactions.search|transactions.evidence|accounts.balances|finance.totals","args":{}}]}
+{"tool_calls":[{"id":"optional ≤64 chars","name":"transactions.search|transactions.evidence|accounts.balances|finance.totals|forecast.evaluate|forecast.compareScenarios","args":{}}]}
 transactions.search args: {accountIds?:[uuid ×1..10, eligible only],kind?:imported|manual|all,categoryId?,tagId?,direction?:INFLOW|OUTFLOW,dateFrom?,dateTo? YYYY-MM-DD,search?:≤100 chars,sort?:date_desc|date_asc,limit?:1..100,offset?}
 transactions.evidence args: {transactionId:uuid,kind:imported|manual}
 accounts.balances args: {accountIds:[uuid ×1..10, eligible only],asOfDate? YYYY-MM-DD}
 finance.totals args: {accountIds:[uuid ×1..10, eligible only, required],dateFrom?,dateTo?}
-Final: {"final":"answer text"}. Never compute money yourself: call finance.totals. Never claim full coverage when a result says partial/unavailable. Excluded accounts are invisible: a denial means unavailable, not zero.`;
+forecast.evaluate args: {horizonDays?:1..120,spendingAccountId?:uuid eligible only,scenarioId?:uuid active own scenario}
+forecast.compareScenarios args: {scenarioId:uuid active own scenario required,horizonDays?:1..120,spendingAccountId?:uuid eligible only}
+Final: {"final":"answer text"}. Never compute money yourself: call finance.totals or forecast.evaluate. Never claim full coverage when a result says partial/unavailable. Excluded accounts are invisible: a denial means unavailable, not zero. Forecast cases are named assumptions, never probabilities; Available to Spend is an estimate under the conservative case, unavailable when inputs are missing.`;
 
 /**
  * Build the generation prompt from thread history (pure, unit-testable).

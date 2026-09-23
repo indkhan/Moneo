@@ -62,7 +62,7 @@ export function validateManifest(manifest: unknown): ValidateResult {
   }
   const approved = m["approvedPermissions"];
   if (!Array.isArray(approved) || approved.some((p) => typeof p !== "string" || !(RUNTIME_PERMISSIONS as readonly string[]).includes(p))) {
-    return { ok: false, errorClass: "permission_denied", errorMessage: "Manifest requests an unsupported permission. R1 allows balances.read, analytics.cashflow, analytics.spending_by_category, transactions.summary.read only." };
+    return { ok: false, errorClass: "permission_denied", errorMessage: "Manifest requests an unsupported permission. R1 allows balances.read, analytics.cashflow, analytics.spending_by_category, transactions.summary.read, forecast.read only." };
   }
   return { ok: true };
 }

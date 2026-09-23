@@ -30,7 +30,7 @@ const ASSUMPTION_TYPES = [
   "CUSTOM",
 ] as const;
 
-type AssumptionType = (typeof ASSUMPTION_TYPES)[number];
+export type AssumptionType = (typeof ASSUMPTION_TYPES)[number];
 
 function checkUuid(value: unknown): string {
   if (typeof value !== "string" || !isUuid(value)) throw new TenantInvalid();
@@ -130,7 +130,7 @@ function checkConfidence(value: unknown): string | null {
   return value;
 }
 
-function checkAssumptionValue(type: AssumptionType, value: unknown): AssumptionValue {
+export function checkAssumptionValue(type: AssumptionType, value: unknown): AssumptionValue {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new TenantInvalid();
   const v = value as Record<string, unknown>;
   switch (type) {

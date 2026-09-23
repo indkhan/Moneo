@@ -53,6 +53,7 @@ async function handleRpcRequest(session: ArtifactSession, method: string, args: 
         "cashflow": "analytics.cashflow",
         "getBalances": "balances.read",
         "transactionSummary": "transactions.summary.read",
+        "projection": "forecast.read",
     };
     const requiredPermission = permissionMap[method];
     if (requiredPermission && !session.approvedPermissions.includes(requiredPermission)) {

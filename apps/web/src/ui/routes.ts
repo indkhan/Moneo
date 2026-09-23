@@ -25,6 +25,7 @@ import { listWorkspaces, sessionClaims, TenantDenied, TenantInvalid, type Sessio
 import { errorPage, escapeHtml, page } from "./shell.ts";
 import { handleTransactionRoutes } from "./transactions.ts";
 import { handleRecurringRoutes } from "./recurring.ts";
+import { handlePlanningRoutes } from "./planning.ts";
 import { createChatRouter } from "./chat.ts";
 import { handleArtifactRoutes } from "./artifact-editor.ts";
 
@@ -909,6 +910,10 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
     }
     // E03-S07 recurring candidates + confirm/dismiss.
     if (await handleRecurringRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
+      return true;
+    }
+    // E06-S04 planning inputs, goals, projections and flat scenarios.
+    if (await handlePlanningRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
       return true;
     }
     // E04-S04 chat UI (context, activity, Stop/retry).
