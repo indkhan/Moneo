@@ -24,7 +24,7 @@ import { readLimitedBody } from "../http-controls.ts";
 import { confirmProposal, getProposal, ProposalError } from "../ai-action-proposals.ts";
 import { formatMinor, parseDecimalBigint } from "../money.ts";
 import { getSettingsView } from "../ai-settings.ts";
-import { errorPage, escapeHtml, page } from "./shell.ts";
+import { errorPage, escapeHtml, page, workspaceNav } from "./shell.ts";
 
 export type ChatUiConfig = { appBaseUrl: string; sessionSecret: string };
 
@@ -204,7 +204,7 @@ export function createChatRouter(pool: Pool, resolveSession: SessionResolver, co
       const content = threads.length === 0
         ? `<p>No conversations yet.</p><p><a href="/w/${escapeHtml(workspaceId)}/chat/new">Start a new conversation</a></p>`
         : `<ul>${threads.map((t) => `<li><a href="/w/${escapeHtml(workspaceId)}/chat/${escapeHtml(t.id)}">${escapeHtml(t.title || "Untitled")}</a> - ${timeAgo(t.createdAt)}</li>`).join("")}</ul>`;
-      html(res, 200, page({ title: "Conversations", requestId, authed: true, content: `<p><a href="/w/${escapeHtml(workspaceId)}/chat/new">New conversation</a></p>${content}` }));
+      html(res, 200, page({ title: "Conversations", requestId, authed: true, content: `${workspaceNav(workspaceId)}<p><a href="/w/${escapeHtml(workspaceId)}/chat/new">New conversation</a></p>${content}` }));
       return true;
     }
 
@@ -301,6 +301,7 @@ export function createChatRouter(pool: Pool, resolveSession: SessionResolver, co
         `;
 
         const content = `
+          ${workspaceNav(workspaceId)}
           <div class="chat-header">
             <h2>${escapeHtml(view.thread.title || "Untitled conversation")}</h2>
             <p class="meta">Policy v${escapeHtml(eligible.policyVersion)} - Coverage: ${escapeHtml(eligible.coverage)} - ${escapeHtml(String(eligible.accountCount))} accounts</p>

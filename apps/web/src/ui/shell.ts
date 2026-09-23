@@ -53,7 +53,28 @@ const STYLE = [
   ".send-area button:disabled{opacity:.6;cursor:not-allowed}",
   ".chat-main{display:flex;gap:1rem;align-items:flex-start}",
   "@media (max-width: 700px) { .chat-main { flex-direction: column; } .activity-panel { width: 100%; border-left: none; border-top: 1px solid #eee; padding-top: 1rem; padding-left: 0; } }",
+  // E07-S04 workspace navigation + job/notices surfaces. Native links only
+  // (zero client JavaScript): the Jump entry carries accesskey="k" so the
+  // exact-route palette is keyboard-reachable without script; Escape clears
+  // the palette field natively and Back returns focus. No motion is used, so
+  // prefers-reduced-motion is a no-op by construction (declared honestly).
+  ".wsnav{border-bottom:1px solid #ccc;margin-bottom:1rem;padding-bottom:.5rem}",
+  ".wsnav ul{list-style:none;display:flex;flex-wrap:wrap;gap:.4rem 1rem;padding:0;margin:.5rem 0}",
+  ".wsnav a{display:inline-block;min-height:44px;line-height:44px}",
+  "@media (prefers-reduced-motion: reduce) { *{transition:none;animation:none} }",
 ].join("");
+
+/**
+ * E07-S04 primary destinations: Home / Money / Plan / AI (product §3),
+ * plus Jobs, Notices and the exact-route palette entry ("Jump to…",
+ * accesskey k, with a visible fallback link list on the /go page).
+ * Rendered inside page content by workspace pages (Home/chat/import/
+ * artifact/jobs/notices/go); every href is workspace-scoped and escaped.
+ */
+export function workspaceNav(workspaceId: string): string {
+  const w = escapeHtml(workspaceId);
+  return `<nav class="wsnav" aria-label="Workspace"><ul><li><a href="/w/${w}/home">Home</a></li><li><a href="/w/${w}/transactions">Money</a></li><li><a href="/w/${w}/planning">Plan</a></li><li><a href="/w/${w}/chat">AI</a></li><li><a href="/w/${w}/jobs">Jobs</a></li><li><a href="/w/${w}/notices">Notices</a></li><li><a href="/w/${w}/go" accesskey="k" title="Jump to… (access key K)">Jump to…</a></li></ul></nav>`;
+}
 
 export function page(opts: { title: string; requestId: string; authed: boolean; notice?: string; content: string }): string {
   const notice = opts.notice ? `<div class="notice" role="status"><p>${escapeHtml(opts.notice)}</p></div>` : "";

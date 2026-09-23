@@ -23,13 +23,14 @@ import { acceptMapping, listMappingProfiles, loadMappingSample, MappingError, pr
 import { liveMappingTransport, loadMappingProvider } from "../mapping-provider.ts";
 import { listWorkspaces, sessionClaims, TenantDenied, TenantInvalid, type SessionResolver } from "../tenancy.ts";
 import { AnalysisError, readAnalysisDetail, retryAnalysis, stopAnalysis } from "../deep-analysis.ts";
-import { errorPage, escapeHtml, page } from "./shell.ts";
+import { errorPage, escapeHtml, page, workspaceNav } from "./shell.ts";
 import { handleTransactionRoutes } from "./transactions.ts";
 import { handleHomeRoutes } from "./home.ts";
 import { handleRecurringRoutes } from "./recurring.ts";
 import { handlePlanningRoutes } from "./planning.ts";
 import { createChatRouter } from "./chat.ts";
 import { handleArtifactRoutes } from "./artifact-editor.ts";
+import { handleNavigationJobsRoutes } from "./jobs.ts";
 
 export type UiConfig = {
   appBaseUrl: string;
@@ -164,7 +165,7 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
           requestId,
           authed: true,
           notice,
-           content: `<p>AI coverage: ${escapeHtml(summary.coverage)} (${escapeHtml(String(summary.accountCount))} of ${escapeHtml(String(accounts.length))} accounts eligible, policy v${escapeHtml(summary.policyVersion)}).</p><p><a href="/w/${escapeHtml(workspaceId)}/home">Home dashboard</a> · <a href="/w/${escapeHtml(workspaceId)}/imports/new">Import a bank file (CSV/XLSX)</a> · <a href="/w/${escapeHtml(workspaceId)}/analysis">Deep Analysis</a></p>${rows}`,
+           content: `${workspaceNav(workspaceId)}<p>AI coverage: ${escapeHtml(summary.coverage)} (${escapeHtml(String(summary.accountCount))} of ${escapeHtml(String(accounts.length))} accounts eligible, policy v${escapeHtml(summary.policyVersion)}).</p><p><a href="/w/${escapeHtml(workspaceId)}/home">Home dashboard</a> · <a href="/w/${escapeHtml(workspaceId)}/imports/new">Import a bank file (CSV/XLSX)</a> · <a href="/w/${escapeHtml(workspaceId)}/analysis">Deep Analysis</a></p>${rows}`,
         }),
       );
       return true;
@@ -510,7 +511,7 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
           title: "Import status",
           requestId,
           authed: true,
-          content: `<h2>${escapeHtml(viewed.fileName)}</h2><p>${stateLine}</p>${sampleRows}<p><a href="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(importStatusMatch[2])}/mapping">Map columns for this import</a> · <a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p>`,
+          content: `<h2>${escapeHtml(viewed.fileName)}</h2>${workspaceNav(workspaceId)}<p>${stateLine}</p>${sampleRows}<p><a href="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(importStatusMatch[2])}/mapping">Map columns for this import</a> · <a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p>`,
         }),
       );
       return true;
@@ -992,6 +993,11 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
     }
     // E06-S04 planning inputs, goals, projections and flat scenarios.
     if (await handlePlanningRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
+      return true;
+    }
+    // E07-S04 navigation + job feedback (durable jobs/notices list,
+    // exact-route palette; PG truth, idempotent notice sync on load).
+    if (await handleNavigationJobsRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
       return true;
     }
     // E04-S04 chat UI (context, activity, Stop/retry).
