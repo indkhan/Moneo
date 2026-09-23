@@ -207,10 +207,17 @@ async function commitImport(claims: TenantClaims, importId: string, accountId: s
 
 async function seedFindings(claims: TenantClaims, runId: string, rows: { kind: string; title: string; body: string; amountMinor: string | null; currency: string | null; evidence: string[] }[]): Promise<void> {
   await scoped(claims, async (client) => {
+    // Explicit staggered created_at: same-transaction now() ties would leave
+    // ORDER BY created_at, id to random-UUID order, so the 3-finding cap
+    // could drop an arbitrary valid finding (intermittent oracle miss).
+    // Staggering 1s per row makes insertion order the deterministic order.
+    const base = Date.now();
+    let rowNo = 0;
     for (const r of rows) {
+      rowNo += 1;
       await client.query(
-        "INSERT INTO deep_analysis_findings (workspace_id, id, run_id, kind, title, body, amount_minor, currency, evidence) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-        [claims.workspaceId, randomUUID(), runId, r.kind, r.title, r.body, r.amountMinor, r.currency, JSON.stringify(r.evidence)],
+        "INSERT INTO deep_analysis_findings (workspace_id, id, run_id, kind, title, body, amount_minor, currency, evidence, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+        [claims.workspaceId, randomUUID(), runId, r.kind, r.title, r.body, r.amountMinor, r.currency, JSON.stringify(r.evidence), new Date(base + rowNo * 1000).toISOString()],
       );
     }
   });
