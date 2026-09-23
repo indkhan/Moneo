@@ -75,11 +75,11 @@ All epics are R1. All are **Not started** until their story evidence exists. Can
 
 **Exit demonstration:** First batch import → partial trusted Home → evidence-backed analysis → saved tool → manual edit → pin → reopen → second import → live update. User layout changes survive personalization. Failure/Stop/retry remain understandable and keyboard-accessible.
 
-## E08 — External-beta safety and product validation (6 stories)
+## E08 — External-beta safety and product validation (8 stories)
 
 **Outcome:** Demonstrate that the complete R1 is safe to operate for controlled external users and useful enough to justify expansion.
 
-**Stories:** E08-S01 through E08-S06. Privacy and security are implemented continuously; this epic closes and verifies lifecycle/operational obligations. No external financial-data cohort before E08-S01 through E08-S05 pass and required processor/privacy arrangements are in place.
+**Stories:** E08-S01, E08-S01b, E08-S01c, and E08-S02 through E08-S06. The original lifecycle story was split into export, deletion and retention so each can be reviewed separately. Privacy and security are implemented continuously; this epic closes and verifies lifecycle/operational obligations. No external financial-data cohort before all E08 lifecycle and S02–S05 gates pass and required processor/privacy arrangements are in place.
 
 **Exit demonstration:** Export/delete/retention, isolated restore with deletion tombstones, production-provider policy, independent runtime/tenant review, bounded load/failure drills and full R1 acceptance pass. Founder records controlled-cohort results and go/iterate/no-go. Public launch still needs applicable legal/privacy/operational review and a release decision.
 
@@ -98,6 +98,6 @@ This maps every Delivery baseline row to its implementation owners. Story refine
 | One Home dashboard, trusted metrics, pin/unpin/reorder/limited sizes | E07-S02–S03 |
 | Included AI, read-only prompts, usage/cost, account AI exclusions | E01-S05; E04-S01, E04-S03, E04-S06 |
 | Navigation palette, job progress/completion, notices, evidence links | E01-S06; E02-S06; E04-S02–S04; E07-S04 |
-| Auth/tenancy, export/delete, retention, restore, cost caps, redacted telemetry/security | E01-S02–S06; E04-S01/S03; E08-S01–S05 |
+| Auth/tenancy, export/delete, retention, restore, cost caps, redacted telemetry/security | E01-S02–S06; E04-S01/S03; E08-S01/S01b/S01c/S02–S05 |
 
 R2/R3 are deliberately absent from the execution backlog. Create their epics only after R1 evidence supports the next investment. Do not interpret retained detailed target-product sections as an instruction to prebuild them.

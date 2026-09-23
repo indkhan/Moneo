@@ -952,7 +952,7 @@ export async function processDeepAnalysisJob(
       calcRefs,
     };
     baselineEvidence.recurring = { count: eligibleRecurring.length, scanned: recurring.scanned };
-    baselineEvidence.goals = eligibleGoals.map((g) => ({ id: g.id, reservedMinor: g.reservedMinor, target: g.targetAmountMinor }));
+    baselineEvidence.goals = eligibleGoals.map((g) => ({ id: g.id, name: g.name, targetAmountMinor: g.targetAmountMinor, currency: g.currency, reservedMinor: g.reservedMinor }));
     await withTenant(pool, claims, async (client) => {
       await client.query("INSERT INTO deep_analysis_steps (workspace_id, id, run_id, step, status, evidence) VALUES ($1, $2, $3, 'baseline', 'ok', $4)", [
         claims.workspaceId,
@@ -1134,19 +1134,13 @@ export async function processDeepAnalysisJob(
 
   // ---- Evidence validation → fenced publish ----
   if (!(await checkpoint("analysis-validation"))) return "duplicate-terminal-noop";
-  // Goals are re-read for finding construction with the same eligibility
-  // filter as the baseline (allocations on ineligible accounts stay out).
-  const eligibleGoalIds = new Set(((baselineEvidence.goals as { id: string }[]) ?? []).map((g) => g.id));
-  const goalNames = (await listGoals(pool, claims))
-    .filter((g) => g.status === "ACTIVE" && eligibleGoalIds.has(g.id))
-    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
-    .map((g) => ({ id: g.id, name: g.name, targetAmountMinor: g.targetAmountMinor, currency: g.currency, reservedMinor: g.reservedMinor }));
+  const frozenGoals = baselineEvidence.goals as FindingsInput["goals"];
   const projection = baselineEvidence.projection as { status: string; amountMinor?: string; baseCurrency?: string; inputHash?: string; fullHash?: string } | undefined;
   const drafts = buildFindings({
     summary: { baseCurrency: summary.baseCurrency, incomeMinor: summary.incomeMinor, spendMinor: summary.spendMinor, coverage: summary.coverage, evidenceRefs: summary.calcRefs },
     recurringCount: recurringInfo.count,
     recurringEvidence: collectedEvidence.filter((r) => r.startsWith("transaction:")).slice(0, 8),
-    goals: goalNames,
+    goals: frozenGoals,
     projection:
       projection && typeof projection.fullHash === "string"
         ? {
@@ -1189,18 +1183,25 @@ export async function processDeepAnalysisJob(
     await client.query("INSERT INTO ai_policies (workspace_id, policy_version) VALUES ($1, 1) ON CONFLICT (workspace_id) DO NOTHING", [route.workspaceId]);
     const locked = await client.query("SELECT policy_version AS v FROM ai_policies WHERE workspace_id = $1 FOR UPDATE", [route.workspaceId]);
     const live = (locked.rowCount ?? 0) === 0 ? "1" : String((locked.rows[0] as { v: string }).v);
-    if (live !== fctx.policyVersion) {
+    await client.query("INSERT INTO workspace_data_revision (workspace_id, revision) VALUES ($1, 0) ON CONFLICT (workspace_id) DO NOTHING", [route.workspaceId]);
+    const revision = await client.query("SELECT revision AS r FROM workspace_data_revision WHERE workspace_id = $1 FOR UPDATE", [route.workspaceId]);
+    const staleData = String((revision.rows[0] as { r: string }).r) !== fctx.revision;
+    if (live !== fctx.policyVersion || staleData) {
+      const errorCode = live !== fctx.policyVersion ? "policy_revoked" : "stale_data";
+      const errorClass = live !== fctx.policyVersion ? "revoked" : "stale";
       await client.query(
-        "UPDATE background_jobs SET status = 'FAILED_FINAL', completed_at = now(), error_code = 'policy_revoked', updated_at = now() WHERE workspace_id = $1 AND id = $2 AND status = 'RUNNING' AND attempt_generation = $3 AND cancel_requested_at IS NULL",
-        [route.workspaceId, route.jobId, pick.generation],
+        "UPDATE background_jobs SET status = 'FAILED_FINAL', completed_at = now(), error_code = $4, updated_at = now() WHERE workspace_id = $1 AND id = $2 AND status = 'RUNNING' AND attempt_generation = $3 AND cancel_requested_at IS NULL",
+        [route.workspaceId, route.jobId, pick.generation, errorCode],
       );
-      await client.query("UPDATE deep_analysis_runs SET status = 'FAILED_FINAL', completed_at = now(), error_code = 'policy_revoked', error_class = 'revoked', progress_stage = 'failed', updated_at = now() WHERE workspace_id = $1 AND id = $2", [
+      await client.query("UPDATE deep_analysis_runs SET status = 'FAILED_FINAL', completed_at = now(), error_code = $3, error_class = $4, progress_stage = 'failed', updated_at = now() WHERE workspace_id = $1 AND id = $2", [
         route.workspaceId,
         runId,
+        errorCode,
+        errorClass,
       ]);
       await markAttempt(client, route, pick.attemptId, "SUCCEEDED");
       await client.query("DELETE FROM job_dispatch_index WHERE workspace_id = $1 AND job_id = $2", [route.workspaceId, route.jobId]);
-      return { ok: false as const, reason: "revoked" as const };
+      return { ok: false as const, reason: errorClass };
     }
     const terminal = await client.query(
       "UPDATE background_jobs SET status = 'SUCCEEDED', completed_at = now(), result_ref = $3, progress_stage = 'effect', updated_at = now() WHERE workspace_id = $1 AND id = $2 AND status = 'RUNNING' AND attempt_generation = $4 AND cancel_requested_at IS NULL",
@@ -1258,8 +1259,8 @@ export async function processDeepAnalysisJob(
     return { ok: true as const };
   });
   if (!published.ok) {
-    if ((published as { reason?: string }).reason === "revoked") {
-      logEvent({ runId: runId.slice(0, 8), stage: "failed", code: "policy_revoked" });
+    if (["revoked", "stale"].includes((published as { reason?: string }).reason ?? "")) {
+      logEvent({ runId: runId.slice(0, 8), stage: "failed", code: (published as { reason?: string }).reason === "stale" ? "stale_data" : "policy_revoked" });
       return "failed-final";
     }
     return "duplicate-terminal-noop";

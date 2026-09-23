@@ -25,7 +25,7 @@ import {
 } from "../commands/home-layout.ts";
 import { TxError } from "../commands/transactions.ts";
 import { readLimitedBody } from "../http-controls.ts";
-import { getPolicy, summarizeEligible, type PolicyState } from "../ai-policy.ts";
+import { getPolicy, type PolicyState } from "../ai-policy.ts";
 import { getBalances, getCashflow, getFinancialSummary, type FinancialSummary } from "../calculations/financial-summary.ts";
 import { evaluateProjection, type ProjectionEvaluation } from "../projections/engine.ts";
 import { readAnalysisDetail, validateFindings, type AnalysisDetailView, type FindingView } from "../deep-analysis.ts";
@@ -84,9 +84,8 @@ export function gateFindings(findings: FindingView[], eligibleAccountIds: Set<st
     currency: f.currency,
     evidence: f.evidence,
   }));
-  const keptDrafts = validateFindings(drafts, eligibleAccountIds);
-  const kept = new Set(keptDrafts);
-  return findings.filter((f) => [...kept].some((d) => d.title === f.title && d.body === f.body)).slice(0, 3);
+  const kept = new Set(validateFindings(drafts, eligibleAccountIds));
+  return findings.filter((_, i) => kept.has(drafts[i]!)).slice(0, 3);
 }
 
 export async function loadHomeData(
@@ -95,10 +94,9 @@ export async function loadHomeData(
   now = new Date(),
 ): Promise<HomeData> {
   const full = claims as Parameters<typeof getFinancialSummary>[1];
-  const [accounts, policy, eligible, analysis] = await Promise.all([
+  const [accounts, policy, analysis] = await Promise.all([
     listAccountViews(pool, full),
     getPolicy(pool, full),
-    summarizeEligible(pool, full),
     readAnalysisDetail(pool, full),
   ]);
   const excluded = new Set(policy.excludedAccountIds);
@@ -146,7 +144,6 @@ export async function loadHomeData(
     cashflowPoints = null;
   }
 
-  void eligible;
   const gatedFindings = analysis ? gateFindings(analysis.findings, new Set(eligibleAccountIds)) : [];
 
   // E07-S03 pinned artifacts: read-only load. A missing layout row is

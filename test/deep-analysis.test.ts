@@ -22,7 +22,7 @@ import { processCommitJob, DEFAULT_COMMIT_CONFIG, acceptImportCommitJob } from "
 import { setAccountExclusion } from "../apps/web/src/ai-policy.ts";
 import { setDispatchBudget, type DispatchTransport } from "../apps/web/src/ai-dispatch.ts";
 import { getFinancialSummary } from "../apps/web/src/calculations/financial-summary.ts";
-import { allocate, createGoal, listGoals } from "../apps/web/src/commands/goals.ts";
+import { allocate, createGoal, listGoals, updateGoal } from "../apps/web/src/commands/goals.ts";
 import { evaluateProjection } from "../apps/web/src/projections/engine.ts";
 import {
   AnalysisError,
@@ -473,6 +473,35 @@ describe("e07-s01 bounded initial deep analysis", () => {
     expect(reopened.status).toBe("SUCCEEDED");
     expect((reopened.report as { incomeMinor: string }).incomeMinor).toBe("405000");
     expect(reopened.findings).toHaveLength(detail.findings.length);
+  });
+
+  it("does not publish a frozen finding after a goal changes during provider execution", async () => {
+    const base = await startApp();
+    const setup = await setupWorkspace(base, "deep-goal-race", "goal-race");
+    const checking = await seedAccount(setup.claims, "Checking");
+    await seedSnapshot(setup.claims, checking, "2026-01-31", "100000");
+    const goalId = await seedGoal(setup.claims, checking);
+    await scoped(setup.claims, (client) => maybeTriggerDeepAnalysisTx(client, setup.workspaceId, setup.userId, randomUUID()));
+    let changed = false;
+    const transport: DispatchTransport = async () => {
+      if (!changed) {
+        changed = true;
+        const goal = (await listGoals(pool, setup.claims)).find((g) => g.id === goalId)!;
+        await updateGoal(pool, setup.claims, setup.userId, {
+          workspaceId: setup.workspaceId, goalId, expectedVersion: goal.version,
+          targetAmountMinor: "120000", currency: "EUR", idempotencyKey: randomUUID(),
+        });
+      }
+      return { httpStatus: 200, bodyText: JSON.stringify({ final: "Goal changed." }), inputTokens: 10, outputTokens: 10, model: "deep-analysis-fake" };
+    };
+    expect(await runAnalysis(setup.claims, transport)).toBe("failed-final");
+    const detail = (await readAnalysisDetail(pool, setup.claims))!;
+    expect(detail.errorCode).toBe("stale_data");
+    expect(detail.findings).toHaveLength(0);
+    await retryAnalysis(pool, setup.claims, setup.userId);
+    expect(await runAnalysis(setup.claims, scriptTransport([checking]))).toBe("applied");
+    const retried = (await readAnalysisDetail(pool, setup.claims))!;
+    expect(retried.findings.find((f) => f.kind === "goal")?.amountMinor).toBe("80000");
   });
 
   it("names pending-review and excluded coverage gaps without unsupported claims", async () => {
