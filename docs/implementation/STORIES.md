@@ -1423,8 +1423,8 @@ Execution record:
 
 ## E07-S04 — Complete navigation and job feedback
 
-Status: Ready | Release: R1 | Epic: E07
-Dependencies: E07-S03 (Ready; must be Done before implementation)
+Status: Done | Release: R1 | Epic: E07
+Dependencies: E07-S03 (Done at `e7398d4`)
 
 Outcome: Home/Money/Plan/AI navigation, a small keyboard palette, a durable job list, and in-app completion/failure notices connect the core journey.
 Contracts: Product R1 shared-UI row and §§80.3–80.4/81; architecture §§204–205/219–220/324–325; existing `background_jobs`, outbox, chat activity, import/artifact/analysis job status and tenant-safe evidence URLs.
@@ -1432,6 +1432,16 @@ Scope/ownership: Shell/routes add the four primary destinations and Ctrl/Cmd+K e
 Acceptance: A completed/failed import, analysis, chat or artifact job appears once after reload or Redis event loss; a foreign/deleted reference yields uniform 404 or an inert notice. Failed jobs show a safe recovery link and error class, not a secret/raw payload. Keyboard navigation, Escape, restored focus, 320px layout, reduced motion and screen-reader status are verified across Home/chat/import/artifact. Refresh does not duplicate notices or restart work.
 Limits/rollback: Job page 50 rows/page, notices 50/page and ≤500 visible characters; no general notification rules, cross-object search or new realtime service. Additive notice table; remove UI/producer before pre-release rollback, retain accepted notices after external use.
 Verification: Add `npm run test:navigation-jobs` (real PG tenant/event replay/failed-job cases plus Chromium+Firefox keyboard journey); regress `test:jobs`, `test:job-recovery`, `test:chat-ui`, `test:home-layout`, `test:ui`; typecheck/build/web and diff/secret gates. Review focus: cross-tenant links, stale deleted data, retry authorization, focus and missed-event recovery.
+
+Execution record:
+- Assignee / branch: Orchestrator/implementer this session / `story/e07-s04-navigation-jobs` (deleted after merge)
+- Base SHA / heads: base `df149eb`; reviewed `0dec0fe88a577e6c5c1e61b408c05193e389527b` (single commit, 12 files, +1764/−14)
+- Tests (Windows 11, Node v22.23.2, local PG18 + WSL loopback Redis, disposable `moneo_e07_navigation_jobs` DB): `npm run typecheck` 0; `test:navigation-jobs` 0 (14/14 incl. Chromium + Firefox + WebKit 320px keyboard journeys, Redis-loss recovery, 040 rollback/re-apply); regression jobs 8/8, job-recovery 14/14, chat-ui 9/9, home-layout 7/7, ui 10/10, tenancy 7/7 (040 first in chain, 68 tables); `build:web` 0; `test:failure` exit 1 as intended; `git diff --check` 0; secret scan clean (only synthetic test canary).
+- Design note: migration 040 (+rollback): `notices` (per-user workspace-keyed, UNIQUE workspace+user+source_event, body ≤500, FORCE RLS + NULLIF guard). `notices.ts`: idempotent terminal-notice insert + lazy `syncNoticesForTerminalJobs` from PG truth (SUCCEEDED/FAILED_FINAL jobs + settled artifact versions; never enqueues/restarts); allowlisted error classes + relative-link guard. `ui/jobs.ts`: /jobs (50/page, manual Refresh + opt-in auto meta refresh), /jobs/:id (attempts, authorized evidence links, safe failure box), cancel via existing cancelJob (also fixed the dead batch-page Cancel form), /notices, /go exact-route palette (13 named routes, visible Go/Clear/Back + fallback list). Zero script; workspaceNav (Home/Money/Plan/AI + Jobs/Notices + Jump accesskey=k) on all core pages; reduced-motion rule.
+- Review: independent Pass at `0dec0fe` (reproduced typecheck, navigation-jobs 14/14 incl. all three browser journeys, all six regression suites, pure-function hostile probes, diff-check, secret scan). 6 low-severity notes accepted: no eager outbox-terminal producer (notices materialize lazily on page load — scope sentence aspirational); no literal Ctrl/Cmd+K binding (accesskey=k + autofocus under zero-JS contract); artifact.build jobs without settled versions yield no notice; sync window LIMIT 200; per-load insert-attempt cost; 040 comment overstates composite FKs.
+- Integration: local main at base `df149eb` unchanged; merge-base == base; candidate == reviewed `0dec0fe`; candidate gates green (see Tests). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `029373f`; post-merge `npm run check` 0, `test:navigation-jobs` 14/14, clean status. Remote push/PR not performed (local-only merges per E00 precedent).
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: 6 review notes above; WSL redis-server needed a restart mid-session (no persistence flags, disposable).
 
 ## E07-S05 — Demonstrate the complete core loop
 
