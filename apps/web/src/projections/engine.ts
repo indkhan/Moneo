@@ -531,7 +531,7 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
   }
 
   const snaps = await client.query(
-    `SELECT DISTINCT ON (account_id) account_id, id, as_of_date, amount_minor, currency, freshness, reconciliation_state FROM balance_snapshots WHERE workspace_id = $1 ORDER BY account_id, as_of_date DESC`,
+    `SELECT DISTINCT ON (account_id) account_id, id, as_of_date, amount_minor, currency, freshness, reconciliation_state FROM balance_snapshots WHERE workspace_id = $1 AND as_of_date <= CURRENT_DATE ORDER BY account_id, as_of_date DESC`,
     [wsId],
   );
   const snapByAccount = new Map<string, { id: string; date: string; amountMinor: bigint; currency: string; freshness: string; reconciliationState: string }>();

@@ -465,6 +465,20 @@ describe("e06-s03 Available to Spend", () => {
     expect(runJson.ats.reasons).toContain("missing_balance");
   });
 
+  it("does not use a future-dated snapshot as today's forecast start", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e06-ats-future-snapshot");
+    const accountId = await createAccount(base, cookie, workspaceId, "Checking");
+    const future = await postJson(base, "/api/commands/accounts.balance_snapshot", cookie, {
+      workspaceId, accountId, asOfDate: "2099-01-01", amount: "1000.00", currency: "EUR", idempotencyKey: randomUUID(),
+    });
+    expect(future.status).toBe(200);
+    await setAssumption(base, cookie, workspaceId, "EXPECTED_VARIABLE_SPEND", { amountMinor: "0", currency: "EUR" });
+    const run = await runProjection(base, cookie, workspaceId, 1, accountId);
+    expect(run.status).toBe(200);
+    expect((run.json as { ats: { status: string; reasons: string[] } }).ats).toMatchObject({ status: "UNAVAILABLE", reasons: ["missing_balance"] });
+  });
+
   it("UNAVAILABLE without complete variable-spend history or an explicit assumption", async () => {
     const base = await startApp();
     const { cookie, workspaceId } = await setupWorkspace(base, "e06-ats-no-baseline");
