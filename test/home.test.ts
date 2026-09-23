@@ -12,6 +12,7 @@ import { createApp } from "../apps/web/src/server.ts";
 import { createAuthRouter, requestSession, type AuthConfig } from "../apps/web/src/auth.ts";
 import { createTenancyRouter, withTenant, type TenantClaims } from "../apps/web/src/tenancy.ts";
 import { createUiRouter } from "../apps/web/src/ui/routes.ts";
+import { gateFindings } from "../apps/web/src/ui/home.ts";
 import { dispatchOutbox, jobsQueue, type JobPayload } from "../apps/web/src/jobs.ts";
 import { processCommitJob, DEFAULT_COMMIT_CONFIG, acceptImportCommitJob } from "../apps/web/src/import-commit.ts";
 import { setAccountExclusion } from "../apps/web/src/ai-policy.ts";
@@ -33,6 +34,17 @@ const appServers: Server[] = [];
 const sessionSecret = randomBytes(32).toString("hex");
 let redisUrl: string;
 let queue: Queue<JobPayload>;
+
+it("does not re-admit excluded evidence when findings share text", () => {
+  const allowed = randomUUID();
+  const excluded = randomUUID();
+  const common = { workspaceId: randomUUID(), kind: "income", title: "Same", body: "Same", amountMinor: "10", currency: "EUR" };
+  const findings = [
+    { ...common, id: randomUUID(), evidence: [`account:${allowed}`] },
+    { ...common, id: randomUUID(), evidence: [`account:${excluded}`] },
+  ];
+  expect(gateFindings(findings, new Set([allowed])).map((f) => f.id)).toEqual([findings[0]!.id]);
+});
 
 function homeRedisUrl(): string {
   const base = env("E07-S02", "REDIS_URL");
