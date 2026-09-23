@@ -297,6 +297,44 @@ const results = await Promise.all(
     expect((over.json as { detail: { availableMinor: string } }).detail.availableMinor).toBe("60000");
   });
 
+  it.each(["0.00", "-10.00"])("does not reserve against an older positive snapshot after latest balance is %s", async (latest) => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, `e06-goal-latest-${latest}`);
+    const accountId = await createAccount(base, cookie, workspaceId, "Cash");
+    await createSnapshot(base, cookie, workspaceId, accountId, "1000.00");
+    const newer = await postJson(base, "/api/commands/accounts.balance_snapshot", cookie, {
+      workspaceId, accountId, asOfDate: "2026-01-02", amount: latest, currency: "EUR", idempotencyKey: randomUUID(),
+    });
+    expect(newer.status).toBe(200);
+    const goal = await postJson(base, "/api/commands/goals.create", cookie, {
+      workspaceId, name: "Reserve", goalType: "SAVINGS_TARGET", targetAmountMinor: "10000", currency: "EUR", idempotencyKey: randomUUID(),
+    });
+    const result = await postJson(base, "/api/commands/allocations.allocate", cookie, {
+      workspaceId, goalId: (goal.json as { id: string }).id, accountId, amountMinor: "10000", currency: "EUR", idempotencyKey: randomUUID(),
+    });
+    expect(result.status).toBe(409);
+    expect((result.json as { detail: { availableMinor: string } }).detail.availableMinor).toBe("0");
+  });
+
+  it.each([{ freshness: "unknown" }, { reconciliationState: "disputed" }])("does not reserve against an unusable latest snapshot %j", async (metadata) => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, `e06-goal-unusable-${Object.keys(metadata)[0]}`);
+    const accountId = await createAccount(base, cookie, workspaceId, "Cash");
+    await createSnapshot(base, cookie, workspaceId, accountId, "1000.00");
+    const newer = await postJson(base, "/api/commands/accounts.balance_snapshot", cookie, {
+      workspaceId, accountId, asOfDate: "2026-01-02", amount: "1000.00", currency: "EUR", ...metadata, idempotencyKey: randomUUID(),
+    });
+    expect(newer.status).toBe(200);
+    const goal = await postJson(base, "/api/commands/goals.create", cookie, {
+      workspaceId, name: "Reserve", goalType: "SAVINGS_TARGET", targetAmountMinor: "10000", currency: "EUR", idempotencyKey: randomUUID(),
+    });
+    const result = await postJson(base, "/api/commands/allocations.allocate", cookie, {
+      workspaceId, goalId: (goal.json as { id: string }).id, accountId, amountMinor: "10000", currency: "EUR", idempotencyKey: randomUUID(),
+    });
+    expect(result.status).toBe(409);
+    expect((result.json as { detail: { availableMinor: string } }).detail.availableMinor).toBe("0");
+  });
+
   it("undo of supported allocate restores capacity with compensating audit; stale undo is UNDO_CONFLICT", async () => {
     const base = await startApp();
     const { cookie, workspaceId } = await setupWorkspace(base, "e06-goal-undo");
@@ -341,6 +379,42 @@ const results = await Promise.all(
     });
     expect(stale.status).toBe(409);
     expect((stale.json as { reason: string }).reason).toBe("undo_conflict");
+  });
+
+  it("undo preserves prior reservations, rejects intervening writes, and restores a full release", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e06-goal-undo-chain");
+    const accountId = await createAccount(base, cookie, workspaceId, "Cash");
+    await createSnapshot(base, cookie, workspaceId, accountId, "1000.00");
+    const goal = await postJson(base, "/api/commands/goals.create", cookie, {
+      workspaceId, name: "Fund", goalType: "SAVINGS_TARGET", targetAmountMinor: "100000", currency: "EUR", idempotencyKey: randomUUID(),
+    });
+    const goalId = (goal.json as { id: string }).id;
+    const allocate = (amountMinor: string) => postJson(base, "/api/commands/allocations.allocate", cookie, {
+      workspaceId, goalId, accountId, amountMinor, currency: "EUR", idempotencyKey: randomUUID(),
+    });
+    const undo = (operationId: string) => postJson(base, "/api/commands/operations.undo", cookie, {
+      workspaceId, operationId, idempotencyKey: randomUUID(),
+    });
+    const first = await allocate("40000");
+    const second = await allocate("30000");
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    const stale = await undo((first.json as { operationId: string }).operationId);
+    expect(stale.status).toBe(409);
+    expect((stale.json as { reason: string }).reason).toBe("undo_conflict");
+    const undoneSecond = await undo((second.json as { operationId: string }).operationId);
+    expect(undoneSecond.status).toBe(200);
+    const read = () => getJson(base, `/api/goals/${goalId}?workspaceId=${workspaceId}`, cookie);
+    expect(((await read()).json as { reservedMinor: string }).reservedMinor).toBe("40000");
+    const released = await postJson(base, "/api/commands/allocations.release", cookie, {
+      workspaceId, goalId, accountId, amountMinor: "40000", idempotencyKey: randomUUID(),
+    });
+    expect(released.status).toBe(200);
+    expect(((await read()).json as { reservedMinor: string }).reservedMinor).toBe("0");
+    const undoneRelease = await undo((released.json as { operationId: string }).operationId);
+    expect(undoneRelease.status).toBe(200);
+    expect(((await read()).json as { reservedMinor: string }).reservedMinor).toBe("40000");
   });
 
   it("archived goal rejects new allocations; tenant-B IDs uniform 404; unscoped reads zero", async () => {

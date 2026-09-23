@@ -12,7 +12,7 @@ import type { Pool, PoolClient } from "pg";
 import { isUuid, uuidv7 } from "../ids.ts";
 import { currencyExponent, formatDecimalBigint, parseDecimalBigint, parseMinor } from "../money.ts";
 import { TenantDenied, TenantInvalid, withTenant, type TenantClaims } from "../tenancy.ts";
-import { ALLOCATION_ALLOCATE_COMMAND, ALLOCATION_RELEASE_COMMAND, type AllocationView } from "./goals.ts";
+import { ALLOCATION_ALLOCATE_COMMAND, ALLOCATION_RELEASE_COMMAND, getAccountSpendableCapacity, getAccountTotalAllocated, type AllocationView } from "./goals.ts";
 
 export const CATEGORIES_CREATE_COMMAND = "categories.create";
 export const CATEGORIES_ARCHIVE_COMMAND = "categories.archive";
@@ -1067,10 +1067,20 @@ export async function undoTx(client: PoolClient, claims: TenantClaims, actorId: 
       const prior = await client.query("SELECT 1 FROM audit_events WHERE workspace_id = $1 AND compensating_operation_id = $2 LIMIT 1", [claims.workspaceId, input.operationId]);
       if ((prior.rowCount ?? 0) !== 0) throw new TxError("undo_conflict");
       const before = audit.before_state as { amountMinor: string } | null;
-      const after = audit.after_state as { amountMinor: string };
+      const after = audit.after_state as AllocationView;
+      // Match allocate/release lock order before reading or restoring the pair.
+      const account = await client.query("SELECT id FROM accounts WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [claims.workspaceId, after.accountId]);
+      const goal = await client.query("SELECT status FROM goals WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [claims.workspaceId, after.goalId]);
+      if (!account.rows.length || !goal.rows.length || goal.rows[0].status !== "ACTIVE") throw new TxError("undo_conflict");
       const alloc = await client.query("SELECT * FROM goal_allocations WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [claims.workspaceId, audit.entity_id]);
       const current = alloc.rows[0] as { workspace_id: string; goal_id: string; account_id: string; amount_minor: string; currency_code: string; version: string } | undefined;
-      if (!current) throw new TxError("not_found");
+      if (current && (current.version !== after.version || current.amount_minor !== after.amountMinor)) throw new TxError("undo_conflict");
+      if (!current && !(commandName === ALLOCATION_RELEASE_COMMAND && after.amountMinor === "0")) throw new TxError("undo_conflict");
+      if (before !== null && BigInt(before.amountMinor) > BigInt(after.amountMinor)) {
+        const capacity = await getAccountSpendableCapacity(client, claims.workspaceId, after.accountId);
+        const allocated = await getAccountTotalAllocated(client, claims.workspaceId, after.accountId);
+        if (allocated + BigInt(before.amountMinor) - BigInt(after.amountMinor) > capacity) throw new TxError("undo_conflict");
+      }
       if (commandName === ALLOCATION_ALLOCATE_COMMAND) {
         if (before === null) {
           await client.query("DELETE FROM goal_allocations WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, audit.entity_id]);
@@ -1079,11 +1089,17 @@ export async function undoTx(client: PoolClient, claims: TenantClaims, actorId: 
         }
       } else {
         if (before === null) throw new TxError("undo_conflict");
-        await client.query("UPDATE goal_allocations SET amount_minor = $1, version = version + 1, updated_at = now() WHERE workspace_id = $2 AND id = $3", [before.amountMinor, claims.workspaceId, audit.entity_id]);
+        if (current) {
+          await client.query("UPDATE goal_allocations SET amount_minor = $1, version = version + 1, updated_at = now() WHERE workspace_id = $2 AND id = $3", [before.amountMinor, claims.workspaceId, audit.entity_id]);
+        } else {
+          const pair = await client.query("SELECT 1 FROM goal_allocations WHERE workspace_id = $1 AND goal_id = $2 AND account_id = $3", [claims.workspaceId, after.goalId, after.accountId]);
+          if (pair.rows.length) throw new TxError("undo_conflict");
+          await client.query("INSERT INTO goal_allocations (workspace_id, id, goal_id, account_id, allocation_type, amount_minor, currency_code, version) VALUES ($1, $2, $3, $4, 'FIXED_AMOUNT', $5, $6, $7)", [claims.workspaceId, audit.entity_id, after.goalId, after.accountId, before.amountMinor, after.currency, (BigInt(after.version) + 1n).toString()]);
+        }
       }
-      const goalAfter = await client.query("SELECT version FROM goals WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, current.goal_id]);
-    const goalVersion = String(goalAfter.rows[0]?.version ?? "0");
-    const view = { workspaceId: claims.workspaceId, id: audit.entity_id, goalId: current.goal_id, accountId: current.account_id, amountMinor: before === null ? "0" : before.amountMinor, currency: current.currency_code, version: (BigInt(current.version) + 1n).toString(), goalVersion, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      const goalAfter = await client.query("UPDATE goals SET version = version + 1, updated_at = now() WHERE workspace_id = $1 AND id = $2 RETURNING version", [claims.workspaceId, after.goalId]);
+      const goalVersion = String(goalAfter.rows[0]?.version ?? "0");
+      const view = { workspaceId: claims.workspaceId, id: audit.entity_id, goalId: after.goalId, accountId: after.accountId, amountMinor: before === null ? "0" : before.amountMinor, currency: after.currency, version: (BigInt(after.version) + 1n).toString(), goalVersion, createdAt: after.createdAt, updatedAt: new Date().toISOString() };
       await insertAudit(client, claims, actorId, "goal_allocation", audit.entity_id, "undo", after, view, operationId, input.operationId);
       await bumpRevision(client, claims.workspaceId);
       return { view, operationId };

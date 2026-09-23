@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Pool } from "pg";
 import { createApp } from "../apps/web/src/server.ts";
 import { createAuthRouter, requestSession, type AuthConfig } from "../apps/web/src/auth.ts";
-import { createTenancyRouter } from "../apps/web/src/tenancy.ts";
+import { createTenancyRouter, withTenant } from "../apps/web/src/tenancy.ts";
 import { ensureTestPool } from "./helpers/test-db.ts";
 import { startStubIssuer, STUB_CLIENT_ID, STUB_CLIENT_SECRET, type StubIssuer } from "./helpers/stub-issuer.ts";
 
@@ -410,6 +410,7 @@ describe("e06-s03 Available to Spend", () => {
     const { cookie, workspaceId } = await setupWorkspace(base, "e06-ats-available");
     const accountId = await createAccount(base, cookie, workspaceId, "Checking");
     await createSnapshot(base, cookie, workspaceId, accountId, "1000.00");
+    await setAssumption(base, cookie, workspaceId, "EXPECTED_VARIABLE_SPEND", { amountMinor: "0", currency: "EUR" });
     await updateSettings(base, cookie, workspaceId, { horizonDays: 30 });
 
     const run = await runProjection(base, cookie, workspaceId, 30, accountId);
@@ -426,6 +427,7 @@ describe("e06-s03 Available to Spend", () => {
     const { cookie, workspaceId } = await setupWorkspace(base, "e06-ats-shortfall");
     const accountId = await createAccount(base, cookie, workspaceId, "Checking");
     await createSnapshot(base, cookie, workspaceId, accountId, "100.00");
+    await setAssumption(base, cookie, workspaceId, "EXPECTED_VARIABLE_SPEND", { amountMinor: "0", currency: "EUR" });
     // Monthly EUR 200 expense on the 5th exhausts the EUR 100 balance.
     const expense = await setAssumption(base, cookie, workspaceId, "EXPECTED_RECURRING_AMOUNT", {
       amountMinor: "20000",
@@ -463,9 +465,66 @@ describe("e06-s03 Available to Spend", () => {
     expect(runJson.ats.reasons).toContain("missing_balance");
   });
 
+  it("UNAVAILABLE without complete variable-spend history or an explicit assumption", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e06-ats-no-baseline");
+    const accountId = await createAccount(base, cookie, workspaceId, "Checking");
+    await createSnapshot(base, cookie, workspaceId, accountId, "1000.00");
+    const run = await runProjection(base, cookie, workspaceId, 30, accountId);
+    expect(run.status).toBe(200);
+    expect((run.json as { ats: { status: string; reasons: string[] } }).ats).toMatchObject({
+      status: "UNAVAILABLE", reasons: ["missing_variable_baseline"],
+    });
+  });
+
+  it("does not treat years-old activity as a complete recent spend baseline", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e06-ats-old-history");
+    const accountId = await createAccount(base, cookie, workspaceId, "Checking");
+    await createSnapshot(base, cookie, workspaceId, accountId, "1000.00");
+    const old = await postJson(base, "/api/commands/accounts.manual_transaction", cookie, {
+      workspaceId, accountId, amount: "10.00", currency: "EUR", direction: "OUTFLOW", effectiveDate: "2020-01-01", description: "Old purchase", idempotencyKey: randomUUID(),
+    });
+    expect(old.status).toBe(200);
+    const run = await runProjection(base, cookie, workspaceId, 1, accountId);
+    expect(run.status).toBe(200);
+    expect((run.json as { ats: { status: string; reasons: string[] } }).ats).toMatchObject({ status: "UNAVAILABLE", reasons: ["missing_variable_baseline"] });
+  });
+
+  it.each([{ freshness: "unknown" }, { reconciliationState: "disputed" }])("UNAVAILABLE for unusable snapshot %j", async (metadata) => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, `e06-ats-unusable-${Object.keys(metadata)[0]}`);
+    const accountId = await createAccount(base, cookie, workspaceId, "Checking");
+    const snap = await postJson(base, "/api/commands/accounts.balance_snapshot", cookie, {
+      workspaceId, accountId, asOfDate: "2026-01-01", amount: "1000.00", currency: "EUR", ...metadata, idempotencyKey: randomUUID(),
+    });
+    expect(snap.status).toBe(200);
+    await setAssumption(base, cookie, workspaceId, "EXPECTED_VARIABLE_SPEND", { amountMinor: "0", currency: "EUR" });
+    const run = await runProjection(base, cookie, workspaceId, 1, accountId);
+    expect(run.status).toBe(200);
+    expect((run.json as { ats: { status: string; reasons: string[] } }).ats).toMatchObject({ status: "UNAVAILABLE", reasons: ["unusable_balance"] });
+  });
+
+  it("does not publish ATS when a same-day booking may already be included in its snapshot", async () => {
+    const base = await startApp();
+    const { cookie, workspaceId } = await setupWorkspace(base, "e06-ats-cutoff");
+    const accountId = await createAccount(base, cookie, workspaceId, "Checking");
+    await createSnapshot(base, cookie, workspaceId, accountId, "1000.00");
+    await setAssumption(base, cookie, workspaceId, "EXPECTED_VARIABLE_SPEND", { amountMinor: "0", currency: "EUR" });
+    const booked = await postJson(base, "/api/commands/accounts.manual_transaction", cookie, {
+      workspaceId, accountId, amount: "200.00", currency: "EUR", direction: "INFLOW", effectiveDate: "2026-01-01", description: "Pay", idempotencyKey: randomUUID(),
+    });
+    expect(booked.status).toBe(200);
+    const run = await runProjection(base, cookie, workspaceId, 1, accountId);
+    expect(run.status).toBe(200);
+    expect((run.json as { ats: { status: string; reasons: string[] } }).ats).toMatchObject({ status: "UNAVAILABLE", reasons: ["ambiguous_snapshot_cutoff"] });
+    expect((run.json as { points: unknown[] }).points).toEqual([]);
+  });
+
   it("funding-gap warning when no spending account selected and per-account constraints fail", async () => {
     const base = await startApp();
     const { cookie, workspaceId } = await setupWorkspace(base, "e06-ats-gap");
+    await setAssumption(base, cookie, workspaceId, "EXPECTED_VARIABLE_SPEND", { amountMinor: "0", currency: "EUR" });
     const checkingId = await createAccount(base, cookie, workspaceId, "Checking");
     const savingsId = await createAccount(base, cookie, workspaceId, "Savings");
     await createSnapshot(base, cookie, workspaceId, checkingId, "100.00");
@@ -521,6 +580,32 @@ describe("e06-s03 Available to Spend", () => {
     const runJson = run.json as { ats: { status: string; reasons: string[] } };
     expect(runJson.ats.status).toBe("UNAVAILABLE");
     expect(runJson.ats.reasons).toContain("missing_fx");
+  });
+
+  it("keeps foreign account points native and converts TOTAL exactly once", async () => {
+    const base = await startApp();
+    const sub = "e06-ats-fx-once";
+    const { cookie, workspaceId } = await setupWorkspace(base, sub);
+    const account = await postJson(base, "/api/commands/accounts.create", cookie, {
+      workspaceId, name: "USD cash", currency: "USD", idempotencyKey: randomUUID(),
+    });
+    const accountId = (account.json as { id: string }).id;
+    const snap = await postJson(base, "/api/commands/accounts.balance_snapshot", cookie, {
+      workspaceId, accountId, asOfDate: "2026-01-01", amount: "100.00", currency: "USD", idempotencyKey: randomUUID(),
+    });
+    expect(snap.status).toBe(200);
+    await setAssumption(base, cookie, workspaceId, "EXPECTED_VARIABLE_SPEND", { amountMinor: "0", currency: "EUR" });
+    const user = await pool.query("SELECT id FROM users WHERE auth_subject = $1", [sub]);
+    await withTenant(pool, { userId: String(user.rows[0].id), workspaceId }, async (client) => {
+      await client.query("INSERT INTO fx_rates_manual (workspace_id, rate_date, base_currency, target_currency, rate, auditor, source) VALUES ($1, '2026-01-01', 'USD', 'EUR', '0.9', 'test', 'synthetic')", [workspaceId]);
+    });
+    const run = await runProjection(base, cookie, workspaceId, 1, accountId);
+    expect(run.status).toBe(200);
+    const result = run.json as { points: { case_name: string; scope: string; amount_minor: string }[]; ats: { status: string; amountMinor: string } };
+    const point = (scope: string) => result.points.find((p) => p.case_name === "EXPECTED" && p.scope === scope)!.amount_minor;
+    expect(point(accountId)).toBe("10000");
+    expect(point("TOTAL")).toBe("9000");
+    expect(result.ats).toMatchObject({ status: "AVAILABLE", amountMinor: "9000" });
   });
 
   it("UNAVAILABLE with missing_commitments for unlinkable fingerprint assumptions", async () => {

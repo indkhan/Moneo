@@ -47,6 +47,8 @@ type ComputeTimelineInput = {
   recurringLinked: Array<{ fingerprint: string; dayOfMonth: number; kind: "expense" | "income"; amountCenterMinor: bigint; currency: string; accountId: string }>;
   bookedByAccountDay: Map<string, Map<string, bigint>>;
   missingCommitments: string[];
+  unusableBalances: string[];
+  ambiguousCutoffs: string[];
   coverageNotes: Record<string, unknown>;
   fxByCurrency: Record<string, { num: string; den: string } | null>;
   spendingAccountId?: string;
@@ -209,6 +211,11 @@ function applyCaseBps(amount: bigint, caseName: keyof typeof CASE_BPS, isIncome:
  * TOTAL always equals the sum of account scopes; transfers move scopes only.
  */
 function computeTimeline(resolved: ComputeTimelineInput): ComputeTimelineResult {
+  // A starting balance without reliable inclusion semantics cannot support a
+  // numeric series; do not publish guessed daily points from it.
+  if (resolved.unusableBalances.length || resolved.ambiguousCutoffs.length) {
+    return { points: [], events: [], ats: { status: "UNAVAILABLE", amountMinor: 0n, reasons: [resolved.unusableBalances.length ? "unusable_balance" : "ambiguous_snapshot_cutoff"] } };
+  }
   type DayEvent = { date: string; type: string; direction: "INFLOW" | "OUTFLOW"; amountMinor: bigint; currency: string; accountId: string | null; label: string; sourceRefs: Record<string, unknown>; caseNeutral?: boolean };
   const startDt = new Date(`${resolved.horizonStart}T00:00:00Z`);
   const endDt = new Date(startDt.getTime() + resolved.horizonDays * 86400000);
@@ -278,7 +285,7 @@ function computeTimeline(resolved: ComputeTimelineInput): ComputeTimelineResult 
       base.push({ date: ot.date, type: "PLANNED_EVENT", direction: ot.direction, amountMinor: BigInt(ot.amountMinor), currency: ot.currency, accountId: ot.accountId ?? null, label: `one-time ${ot.direction === "INFLOW" ? "income" : "expense"} ${ot.currency}`, sourceRefs: { assumptionId: (ot as { assumptionId?: string }).assumptionId ?? null } });
     }
   }
-  // Variable spend: explicit weekly assumption wins, else baseline median, else assumed zero.
+  // Variable spend: explicit weekly assumption wins, else complete baseline.
   const variableWeekly = resolved.variableWeekly ? BigInt(resolved.variableWeekly.amountMinor) : resolved.variableBaselineMedian;
   const variableCurrency = resolved.variableWeekly ? resolved.variableWeekly.currency : resolved.variableCurrency;
   if (variableWeekly !== null && variableWeekly > 0n) {
@@ -397,6 +404,9 @@ function computeTimeline(resolved: ComputeTimelineInput): ComputeTimelineResult 
     if (!resolved.spendingAccountId) {
       return { points, events, ats: { status: "UNAVAILABLE", amountMinor: 0n, reasons: ["missing_balance"] } };
     }
+  }
+  if (resolved.variableBaselineStatus === "assumed-zero-no-baseline") {
+    return { points, events, ats: { status: "UNAVAILABLE", amountMinor: 0n, reasons: ["missing_variable_baseline"] } };
   }
   const acctOkEveryDay = (id: string) => days.every((d) => cons(id, d) - (reservedByAccount.get(id) ?? 0n) >= 0n);
   if (!resolved.spendingAccountId) {
@@ -521,12 +531,12 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
   }
 
   const snaps = await client.query(
-    `SELECT DISTINCT ON (account_id) account_id, id, as_of_date, amount_minor, currency FROM balance_snapshots WHERE workspace_id = $1 ORDER BY account_id, as_of_date DESC`,
+    `SELECT DISTINCT ON (account_id) account_id, id, as_of_date, amount_minor, currency, freshness, reconciliation_state FROM balance_snapshots WHERE workspace_id = $1 ORDER BY account_id, as_of_date DESC`,
     [wsId],
   );
-  const snapByAccount = new Map<string, { id: string; date: string; amountMinor: bigint; currency: string }>();
-  for (const r of snaps.rows as { account_id: string; id: string; as_of_date: unknown; amount_minor: string; currency: string }[]) {
-    snapByAccount.set(String(r.account_id), { id: String(r.id), date: String(r.as_of_date).slice(0, 10), amountMinor: BigInt(String(r.amount_minor)), currency: String(r.currency) });
+  const snapByAccount = new Map<string, { id: string; date: string; amountMinor: bigint; currency: string; freshness: string; reconciliationState: string }>();
+  for (const r of snaps.rows as { account_id: string; id: string; as_of_date: unknown; amount_minor: string; currency: string; freshness: string; reconciliation_state: string }[]) {
+    snapByAccount.set(String(r.account_id), { id: String(r.id), date: String(r.as_of_date).slice(0, 10), amountMinor: BigInt(String(r.amount_minor)), currency: String(r.currency), freshness: String(r.freshness), reconciliationState: String(r.reconciliation_state) });
   }
 
   // Horizon starts on the latest starting-balance date (documented R1 rule:
@@ -555,6 +565,14 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
     const m = bookedByAccountDay.get(String(r.account_id))!;
     m.set(day, (m.get(day) ?? 0n) + signed);
   }
+  const unusableBalances = accountIds.filter((id) => {
+    const snap = snapByAccount.get(id);
+    return snap?.freshness === "unknown" || snap?.reconciliationState === "disputed";
+  });
+  const ambiguousCutoffs = accountIds.filter((id) => {
+    const snap = snapByAccount.get(id);
+    return !!snap && bookedRows.some((b) => b.accountId === id && b.date === snap.date);
+  });
 
   // FX: resolve one held-flat rate per foreign currency at horizon start.
   const ecbRows = await client.query("SELECT rate_date, target_currency, rate FROM fx_rates_ecb WHERE workspace_id = $1 ORDER BY rate_date DESC", [wsId]);
@@ -697,7 +715,10 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
       }
       return { start, complete, spendMinor: spendByWeek.get(start) ?? 0n };
     });
-    const built = buildWeeklyBaseline(baselineWeeks, settings.baselineWeeks);
+    const hasWindowHistory = bookedRows.some((b) => b.date >= weekStarts[0]!.start && b.date < horizonStart);
+    const built = !hasWindowHistory
+      ? { status: "insufficient" as const, medianMinor: null }
+      : buildWeeklyBaseline(baselineWeeks, settings.baselineWeeks);
     if (built.status === "ok" && built.medianMinor !== null) {
       variableBaselineMedian = built.medianMinor;
       variableBaselineStatus = "ok";
@@ -710,9 +731,12 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
   // Per-account starts with forward reconciliation + FX valuation.
   const accounts: ComputeTimelineInput["accounts"] = [];
   const coverageNotes: Record<string, unknown> = {
+    status: missingCommitments.length || unusableBalances.length || ambiguousCutoffs.length || variableBaselineStatus === "assumed-zero-no-baseline" ? "partial" : "full",
     holds: "not-applicable/no-feed (R1 has no pending-hold feed)",
     variableSpend: variableWeekly ? "assumption" : variableBaselineStatus,
     missingCommitments,
+    unusableBalances,
+    ambiguousCutoffs,
     scenarioGoalDisplay,
     ...(aiLimited ? { aiCoverage: "partial (account exclusions apply to this AI-limited view)" } : {}),
   };
@@ -741,14 +765,12 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
         if (manual) {
           const r = parseRate(manual.rate);
           fx = { coverage: "full", rateDate: manual.rateDate, rateSource: "manual", triangNum: r.num.toString(), triangDen: r.den.toString() };
-          startMinor = convertWithRate(startMinor, currencyExponent(currency)!, r, currencyExponent(baseCurrency)!);
         } else if (legX && legB) {
           const rx = parseRate(legX.rate);
           const rb = parseRate(legB.rate);
           const num = rb.num * rx.den;
           const den = rx.num * rb.den;
           fx = { coverage: valued.coverage, rateDate: valued.rateDate, rateSource: "ecb", triangNum: num.toString(), triangDen: den.toString() };
-          startMinor = valued.valuedAmountMinor;
         } else {
           fx = { coverage: "unavailable", rateDate: null, rateSource: null, triangNum: null, triangDen: null };
           fxPartial = true;
@@ -757,7 +779,10 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
     }
     accounts.push({ id, currency, spendable: !nonSpendable.has(id), snapshotId: snap?.id ?? null, snapshotDate: snap?.date ?? null, startMinor, fx });
   }
-  if (fxPartial) coverageNotes.fx = "partial (unvalued accounts excluded from TOTAL)";
+  if (fxPartial) {
+    coverageNotes.status = "partial";
+    coverageNotes.fx = "partial (unvalued accounts excluded from TOTAL)";
+  }
   void getAccountTotalAllocated;
 
   // Held-flat conversion ratios for every non-base currency in play
@@ -799,8 +824,9 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
     assumptions: assumptions.map((a) => `${a.id}:${a.version}`).sort(),
     goals: goalRows.rows.map((r: { id: string }) => String(r.id)).sort(),
     allocations: (allocRows.rows as { goal_id: string; account_id: string; amount_minor: string }[]).map((r) => `${String(r.goal_id)}:${String(r.account_id)}:${String(r.amount_minor)}`).sort(),
-    snapshots: [...snapByAccount.entries()].map(([k, s]) => `${k}:${s.id}:${s.date}:${s.amountMinor.toString()}`).sort(),
+    snapshots: [...snapByAccount.entries()].map(([k, s]) => `${k}:${s.id}:${s.date}:${s.amountMinor.toString()}:${s.freshness}:${s.reconciliationState}`).sort(),
     booked: `${bookedRows.length}:${bookedFingerprint}`,
+    variableBaseline: `${variableBaselineStatus}:${variableBaselineMedian?.toString() ?? "missing"}`,
     fx: Object.entries(fxByCurrency).map(([k, v]) => `${k}:${v ? `${v.num}/${v.den}` : "missing"}`).sort(),
     overrides: [...confirmedByFp.entries()].map(([k, v]) => `${k}:${v.kind}:${v.dayOfMonth}`).sort(),
   };
@@ -812,7 +838,7 @@ async function resolveInputs(client: PoolClient, claims: TenantClaims, input: Pr
       floorMinor: BigInt(settings.safetyFloorMinor),
       settingsVersion: settings.version, baselineWeeks: settings.baselineWeeks,
       accounts, incomes, recurrings, oneTimes, variableWeekly, variableBaselineMedian, variableBaselineStatus, variableCurrency,
-      goalReservations, recurringLinked, bookedByAccountDay, missingCommitments, coverageNotes, fxByCurrency,
+      goalReservations, recurringLinked, bookedByAccountDay, missingCommitments, unusableBalances, ambiguousCutoffs, coverageNotes, fxByCurrency,
       spendingAccountId: input.spendingAccountId,
     },
   };
