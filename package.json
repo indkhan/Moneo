@@ -58,6 +58,7 @@
     "test:home": "vitest run test/home.test.ts",
     "test:home-layout": "vitest run test/home-layout.test.ts",
     "test:navigation-jobs": "vitest run test/navigation-jobs.test.ts",
+    "test:e07-exit": "vitest run test/e07-exit.test.ts",
     "test:e03-exit": "vitest run test/e03-exit.test.ts",
     "test:artifact-build": "vitest run test/artifact-build.test.ts",
     "test:artifact-runtime": "playwright test --config test/artifact-runtime.config.mjs",
