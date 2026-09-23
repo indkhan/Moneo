@@ -1400,8 +1400,8 @@ Execution record:
 
 ## E07-S03 — Pin and arrange persistent artifacts
 
-Status: Ready | Release: R1 | Epic: E07
-Dependencies: E07-S02, E05-S07 (both must be Done before implementation)
+Status: Done | Release: R1 | Epic: E07
+Dependencies: E07-S02 (Done at `0590972`), E05-S07 (Done)
 
 Outcome: A member pins ready artifacts to the one Home dashboard, reorders and resizes tiles, and reopens the same live artifact after reload.
 Contracts: Product R1 Home/artifact row and §77.3–77.4/77.9; architecture §§312–314 and E05 grant/freshness/runtime contracts; existing artifacts/versions/state commands, command journal/audit, `workspace_data_revision`.
@@ -1409,6 +1409,17 @@ Scope/ownership: Migration `039_home_layout.sql` (+ rollback) stores one workspa
 Acceptance: Two tabs saving from version `1` produce one success and one `409 version_mismatch` with current decimal-string version; retry from fresh layout preserves both intents. Pin/unpin/reorder/size survive reload and keyboard-only operation; max 12 tiles, no duplicate pin. A newer artifact version reopens with current authorized data and saved state; archived/deleted or policy-revoked artifacts render an unavailable/removable tile without executing stale code or leaking cross-tenant data. Unscoped reads see zero rows.
 Limits/rollback: 12 tiles/workspace, three fixed sizes, max one active execution per opened tile under existing E05 quotas. Additive migration; disable UI/commands before rollback, never drop user layouts after external use without export. No speculative widget framework.
 Verification: Add `npm run test:home-layout` (real PG race/RLS/audit/version and browser keyboard/reopen/second-import refresh); regress `test:artifact-runtime`, `test:artifact-ui`, `test:projection-sdk`, `test:home`, `test:e05-exit`; typecheck/build/web, diff/secret gates. Review focus: stale grants, layout lost updates, archived pins, focus order and small-screen overflow.
+
+Execution record:
+- Assignee / branch: Orchestrator/implementer this session / `story/e07-s03-home-layout` (deleted after merge)
+- Base SHA / heads: base `ad75c45`; reviewed `e6cdd480d47a7f67597663b21e41053db9156c18`
+- Tests (Windows 11, Node v22.23.2, local PG18, disposable `moneo_e07_home_layout` DB, synthetic data): `npm run typecheck` 0; `test:home-layout` 0 (7/7: CAS race + retry preserves both intents + replay, keyboard/reload, 12-cap + no-dup + cross-tenant 404, v2 reopen + fresh grant + second-import refresh without layout bump, archived/stale-grant, journal/audit/revision, unscoped zero rows, 039 rollback/re-apply); regression tenancy 7/7 (FORCE-RLS 24 tables, 039→002 chain, 67-table re-apply), home 9/9, artifact-ui 12/12, projection-sdk 6/6, artifact-runtime Chromium 10/10, Firefox 8/8; `build:web` 0; `test:failure` exit 1 as intended; `git diff --check` 0; secret scan clean.
+- Design note: migration 039 (+rollback): `home_layouts` (one row/workspace, version BIGINT, user_edited) + `home_layout_tiles` (workspace+artifact PK, composite FKs, position/size); FORCE RLS + NULLIF guard. Journaled CAS pin/unpin/move/resize (decimal-string versions, audit + revision, user_edited on every mutation); pin requires owned + non-archived + ready active version; pins store artifact_id only so reopen resolves the current active version with a fresh grant. Customize mode `?customize=1` with native Move up/down + size select; conflict page with fresh-version retry. Rollback drops the two tables, forbidden after real member layouts without export.
+- Review: independent Pass at `e6cdd48` (reproduced typecheck, home-layout 7/7, tenancy/home/artifact-ui/projection-sdk, Chromium 10/10, diff-check, secret scan, hostile inspection). 5 non-blocking findings accepted: policy-revoked tiles render available with open-time grant denial (acceptance wording vs implementation); unreachable deleted-branch under ON DELETE CASCADE; suggested-defaults omit names; stale count comment in tenancy.test.ts; bounded N+1 in resolveHomeTiles (≤2×12 queries).
+- Integration: local main at base `ad75c45` unchanged; merge-base == base; candidate == reviewed `e6cdd48`; candidate gates green incl. `test:e05-exit` 9/9 with disposable MinIO + ClamAV containers (recreated with current .env S3 creds after removing stale stopped containers; WSL redis-server restarted after it stopped mid-session) + loopback WSL Redis (`REDIS_URL=redis://127.0.0.1:6379`); containers stopped after (none running). WebKit full matrix not run (Chromium 10/10 + single WebKit probe green pre-merge; WebKit launch-infra is the E00-recorded host condition). Merged with `--no-ff`.
+- Merge SHA / post-merge smoke: `e7398d4`; post-merge `npm run check` 0, `test:home-layout` 7/7, clean status. Remote push/PR not performed (local-only merges per E00 precedent).
+- Flake note (non-blocking follow-up): `test:home` findings-gate test failed 1 run on candidate and 2 consecutive post-merge runs (`expected page to contain 'Valid income finding'`), then passed isolated (1/1) and full-file 9/9 three times consecutively on the identical merged tree (merge diff vs candidate empty). Intermittent, recovers on rerun; root cause not isolated — watch in S05 exit runs.
+- Remaining blockers or explicitly accepted nonblocking follow-up: none blocking. Accepted: review findings above; e05-exit needs disposable MinIO/ClamAV + loopback Redis (documented procedure); `test:home` intermittence.
 
 ## E07-S04 — Complete navigation and job feedback
 
