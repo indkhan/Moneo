@@ -370,11 +370,24 @@ describe("e07-s01 bounded initial deep analysis", () => {
     expect(first.runId).toBe(run.id);
     const impD = randomUUID();
     await scoped(setup.claims, (client) => maybeTriggerDeepAnalysisTx(client, setup.workspaceId, setup.userId, impD, t0 + 90_000));
+    run = await scoped(setup.claims, async (client) => (await client.query("SELECT * FROM deep_analysis_runs WHERE workspace_id = $1", [setup.workspaceId])).rows[0] as { id: string; status: string; commit_ids: string[]; window_closed_at: string | null });
+    expect(run.commit_ids).toEqual([impA, impB, impC, impD]);
+    // Regression: +5min is past the 2-minute quiet window, so it does NOT
+    // join the same batch, yet exactly one initial run still stands.
+    const impF = randomUUID();
+    const late = await scoped(setup.claims, (client) => maybeTriggerDeepAnalysisTx(client, setup.workspaceId, setup.userId, impF, t0 + 5 * 60_000));
+    expect(late.created).toBe(false);
+    expect(late.runId).toBe(run.id);
     const impE = randomUUID();
     await scoped(setup.claims, (client) => maybeTriggerDeepAnalysisTx(client, setup.workspaceId, setup.userId, impE, t0 + 11 * 60_000));
     run = await scoped(setup.claims, async (client) => (await client.query("SELECT * FROM deep_analysis_runs WHERE workspace_id = $1", [setup.workspaceId])).rows[0] as { id: string; status: string; commit_ids: string[]; window_closed_at: string | null });
     expect(run.commit_ids).toEqual([impA, impB, impC, impD]);
     expect(run.window_closed_at).not.toBeNull();
+    const runCount = await scoped(
+      setup.claims,
+      async (client) => (await client.query("SELECT count(*)::int AS n FROM deep_analysis_runs WHERE workspace_id = $1", [setup.workspaceId])).rows[0] as { n: number },
+    );
+    expect(runCount.n).toBe(1);
     // Drain the coalesced run so later global sweeps see a clean index.
     expect(await runAnalysis(setup.claims, scriptTransport([checking]))).toBe("applied");
     expect((await readAnalysisStatus(pool, setup.claims))!.status).toBe("SUCCEEDED");

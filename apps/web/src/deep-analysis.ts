@@ -265,16 +265,20 @@ export async function maybeTriggerDeepAnalysisTx(
     await client.query("UPDATE deep_analysis_runs SET job_id = $2, updated_at = now() WHERE workspace_id = $1", [workspaceId, jobId]);
     return { created: true, runId };
   }
-  const existing = await readRunByWorkspace(client, workspaceId);
+  const locked = await client.query("SELECT * FROM deep_analysis_runs WHERE workspace_id = $1 FOR UPDATE", [workspaceId]);
+  const existing = ((locked.rowCount ?? 0) === 0 ? null : (locked.rows[0] as RunRow));
   if (!existing) throw new Error("analysis run missing after claim");
-  if (existing.status === "QUEUED" && nowMs - new Date(existing.window_started_at).getTime() <= DEEP_ANALYSIS_MAX_WINDOW_MS) {
-    const commits = Array.isArray(existing.commit_ids) ? existing.commit_ids : [];
-    if (!commits.includes(importId)) {
-      commits.push(importId);
-      await client.query("UPDATE deep_analysis_runs SET commit_ids = $2, updated_at = now() WHERE workspace_id = $1", [workspaceId, JSON.stringify(commits)]);
+  if (existing.status === "QUEUED" && existing.window_closed_at === null) {
+    const elapsed = nowMs - new Date(existing.window_started_at).getTime();
+    if (elapsed <= DEEP_ANALYSIS_QUIET_WINDOW_MS && elapsed <= DEEP_ANALYSIS_MAX_WINDOW_MS) {
+      const commits = Array.isArray(existing.commit_ids) ? existing.commit_ids : [];
+      if (!commits.includes(importId)) {
+        commits.push(importId);
+        await client.query("UPDATE deep_analysis_runs SET commit_ids = $2, updated_at = now() WHERE workspace_id = $1", [workspaceId, JSON.stringify(commits)]);
+      }
+    } else {
+      await client.query("UPDATE deep_analysis_runs SET window_closed_at = coalesce(window_closed_at, $2), updated_at = now() WHERE workspace_id = $1", [workspaceId, now]);
     }
-  } else if (existing.status === "QUEUED") {
-    await client.query("UPDATE deep_analysis_runs SET window_closed_at = coalesce(window_closed_at, now()), updated_at = now() WHERE workspace_id = $1", [workspaceId]);
   }
   return { created: false, runId: existing.id };
 }
