@@ -30,7 +30,7 @@ import { getBalances, getCashflow, getFinancialSummary, type FinancialSummary } 
 import { evaluateProjection, type ProjectionEvaluation } from "../projections/engine.ts";
 import { readAnalysisDetail, validateFindings, type AnalysisDetailView, type FindingView } from "../deep-analysis.ts";
 import { TenantDenied, sessionClaims, type SessionResolver } from "../tenancy.ts";
-import { errorPage, escapeHtml, page } from "./shell.ts";
+import { errorPage, escapeHtml, page, workspaceNav } from "./shell.ts";
 
 export type HomeUiConfig = { appBaseUrl: string };
 
@@ -390,7 +390,7 @@ function sectionArtifacts(workspaceId: string, data: HomeData, customize: boolea
 }
 
 export function renderHomeContent(workspaceId: string, data: HomeData, customize = false): string {
-  return `<h2>Home</h2>
+  return `<h2>Home</h2>${workspaceNav(workspaceId)}
 <form method="get" action="/w/${escapeHtml(workspaceId)}/home">${customize ? `<input type="hidden" name="customize" value="1">` : ""}<button type="submit" ${TAP}>Refresh</button></form>
 ${sectionArtifacts(workspaceId, data, customize)}
 ${sectionBalances(workspaceId, data)}

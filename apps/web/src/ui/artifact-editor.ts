@@ -35,7 +35,7 @@ import { readGrantBasis } from "../artifact-ai.ts";
 import { createSessionRecord } from "../artifact-host.ts";
 import { readLimitedBody } from "../http-controls.ts";
 import { uuidv7 } from "../ids.ts";
-import { errorPage, escapeHtml, page } from "./shell.ts";
+import { errorPage, escapeHtml, page, workspaceNav } from "./shell.ts";
 import { RENDERER_ORIGIN } from "../artifact-contract.ts";
 
 function uiHtml(res: ServerResponse, status: number, body: string): void {
@@ -195,6 +195,7 @@ export async function handleArtifactRoutes(
         requestId,
         authed: true,
         content:
+          workspaceNav(workspaceId) +
           '<p><a href="/w/' +
           escapeHtml(workspaceId) +
           '/artifacts/new">Create new artifact</a> · <a href="/w/' +
@@ -478,6 +479,7 @@ export async function handleArtifactRoutes(
         authed: true,
         notice,
         content:
+          workspaceNav(workspaceId) +
           "<h2>" +
           escapeHtml(artifact.name) +
           (artifact.description ? " \u2014 " + escapeHtml(artifact.description) : "") +
