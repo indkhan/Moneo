@@ -72,6 +72,7 @@ jobs:
             -c "CREATE DATABASE moneo_e02_upload OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e02_mapping OWNER moneo_app;" \
       -c "CREATE DATABASE moneo_e08_export OWNER moneo_app;" \
+      -c "CREATE DATABASE moneo_e08_deletion OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e04_dispatch OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e04_chat OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e04_tools OWNER moneo_app;"
@@ -135,6 +136,8 @@ jobs:
         run: npm run test:mapping
       - name: Workspace export lifecycle (real PG + MinIO)
         run: npm run test:export
+      - name: Deletion lifecycle and tombstones (real PG + MinIO)
+        run: npm run test:deletion
       - name: Durable effects (real PG + Redis)
         run: npm run test:durable
       - name: Deliberate failure must exit nonzero
