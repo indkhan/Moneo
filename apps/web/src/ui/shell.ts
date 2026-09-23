@@ -73,7 +73,7 @@ const STYLE = [
  */
 export function workspaceNav(workspaceId: string): string {
   const w = escapeHtml(workspaceId);
-  return `<nav class="wsnav" aria-label="Workspace"><ul><li><a href="/w/${w}/home">Home</a></li><li><a href="/w/${w}/transactions">Money</a></li><li><a href="/w/${w}/planning">Plan</a></li><li><a href="/w/${w}/chat">AI</a></li><li><a href="/w/${w}/jobs">Jobs</a></li><li><a href="/w/${w}/notices">Notices</a></li><li><a href="/w/${w}/go" accesskey="k" title="Jump to… (access key K)">Jump to…</a></li></ul></nav>`;
+  return `<nav class="wsnav" aria-label="Workspace"><ul><li><a href="/w/${w}/home">Home</a></li><li><a href="/w/${w}/transactions">Money</a></li><li><a href="/w/${w}/planning">Plan</a></li><li><a href="/w/${w}/chat">AI</a></li><li><a href="/w/${w}/jobs">Jobs</a></li><li><a href="/w/${w}/notices">Notices</a></li><li><a href="/w/${w}/privacy">Privacy</a></li><li><a href="/w/${w}/go" accesskey="k" title="Jump to… (access key K)">Jump to…</a></li></ul></nav>`;
 }
 
 export function page(opts: { title: string; requestId: string; authed: boolean; notice?: string; content: string }): string {

@@ -14,6 +14,18 @@ import { acceptImportJob, JobError, readJob, validateAcceptInput } from "./jobs.
 import { cancelJob } from "./job-recovery.ts";
 import { bumpCalculationVersion, bumpWorkspaceRevision, getCalculationVersion, getWorkspaceRevision, validateBumpCalculationVersionInput, validateBumpWorkspaceRevisionInput, bumpCalculationVersionInputSchema, bumpWorkspaceRevisionInputSchema, BUMP_CALCULATION_VERSION_COMMAND, BUMP_WORKSPACE_REVISION_COMMAND } from "./calculations/evidence.ts";
 import { acceptUpload, listObservations, loadUploadConfig, MAX_UPLOAD_BYTES, readImport, UploadError } from "./uploads.ts";
+import {
+  ExportError,
+  acceptExportJob,
+  cancelExport,
+  expireExportPackage,
+  exportErrorBody,
+  listExports,
+  loadExportConfig,
+  readExport,
+  serveExportDownload,
+  validateExportAcceptInput,
+} from "./export.ts";
 import { acceptImportCommitJob, ImportCommitError, readImportCommitStatus } from "./import-commit.ts";
 import { acceptMapping, listMappingProfiles, MappingError, mappingErrorBody, proposeMapping, readCurrentMapping } from "./mapping.ts";
 import { liveMappingTransport, loadMappingProvider } from "./mapping-provider.ts";
@@ -2163,6 +2175,186 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           const outcome = await cancelJob(pool, resolved.claim, jobCancelMatch[2]);
           if (!outcome) tenantJson(res, 404, { error: "not_found" });
           else tenantJson(res, 200, { status: outcome.status, changed: outcome.changed, effectApplied: outcome.effectApplied, requestId });
+          return true;
+        }
+        // E08-S01 workspace export. Disabled by default (EXPORTS_ENABLED +
+        // S3 config): without it the endpoints hide as 404, like uploads.
+        // Creation and download require a fresh verified step-up (403
+        // step_up_required on the requester's own stale session); foreign
+        // and missing ids share the uniform 404 body with no object bytes.
+        const exportsMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/exports$/);
+        if (exportsMatch && (method === "POST" || method === "GET")) {
+          let exportConfig;
+          try {
+            exportConfig = loadExportConfig();
+          } catch {
+            if (method === "POST") {
+              try {
+                await readJsonBody(req);
+              } catch { /* socket hygiene; still hidden */ }
+            }
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const session = await resolveSession(req);
+          if (!session) {
+            if (method === "POST") {
+              try {
+                await readJsonBody(req);
+              } catch { /* drain attempt; still unauthorized */ }
+            }
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const workspaceId = exportsMatch[1];
+          if (method === "GET") {
+            const resolved = await claims(req, workspaceId);
+            if (!resolved.claim) {
+              denied(res, resolved.session !== null);
+              return true;
+            }
+            tenantJson(res, 200, { packages: await listExports(pool, resolved.claim, exportConfig.s3), requestId });
+            return true;
+          }
+          let input: ReturnType<typeof validateExportAcceptInput>;
+          try {
+            const body = (await readJsonBody(req)) as { idempotencyKey?: unknown };
+            input = validateExportAcceptInput({ workspaceId, idempotencyKey: body.idempotencyKey });
+          } catch (err) {
+            if (err instanceof TenantInvalid || (err instanceof Error && (err.message === "body_too_large" || err.message === "body_invalid"))) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            throw err;
+          }
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim || !resolved.session) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await acceptExportJob(pool, resolved.claim, resolved.claim.userId, resolved.session, input);
+            tenantJson(res, result.replayed ? 200 : 202, { package: result.view, operationId: result.operationId, packageId: result.packageId, jobId: result.jobId, replayed: result.replayed, requestId });
+          } catch (err) {
+            if (err instanceof ExportError) {
+              const mapped = exportErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        const exportReadMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/exports\/([A-Za-z0-9-]+)$/);
+        if (exportReadMatch && method === "GET") {
+          let exportConfig;
+          try {
+            exportConfig = loadExportConfig();
+          } catch {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const resolved = await claims(req, exportReadMatch[1]);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const view = await readExport(pool, resolved.claim, exportReadMatch[2], exportConfig.s3);
+          if (!view) tenantJson(res, 404, { error: "not_found" });
+          else tenantJson(res, 200, { package: view, requestId });
+          return true;
+        }
+        const exportDownloadMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/exports\/([A-Za-z0-9-]+)\/download$/);
+        if (exportDownloadMatch && method === "GET") {
+          let exportConfig;
+          try {
+            exportConfig = loadExportConfig();
+          } catch {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const session = await resolveSession(req);
+          if (!session) {
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const resolved = await claims(req, exportDownloadMatch[1]);
+          if (!resolved.claim || !resolved.session) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const download = await serveExportDownload(pool, exportConfig.s3, resolved.claim, resolved.claim.userId, resolved.session, exportDownloadMatch[2]);
+            if (!download) {
+              tenantJson(res, 404, { error: "not_found" });
+              return true;
+            }
+            res.writeHead(200, {
+              "Content-Type": "application/json; charset=utf-8",
+              "Content-Length": download.bytes.byteLength,
+              "Content-Disposition": `attachment; filename="${download.filename}"`,
+              "X-Content-Type-Options": "nosniff",
+              "X-Frame-Options": "DENY",
+              "Referrer-Policy": "no-referrer",
+            });
+            res.end(download.bytes);
+          } catch (err) {
+            if (err instanceof ExportError) {
+              const mapped = exportErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        const exportCancelMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/exports\/([A-Za-z0-9-]+)\/cancel$/);
+        if (exportCancelMatch && method === "POST") {
+          try {
+            await readJsonBody(req);
+          } catch (err) {
+            if (err instanceof Error && (err.message === "body_too_large" || err.message === "body_invalid")) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            throw err;
+          }
+          const resolved = await claims(req, exportCancelMatch[1]);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const outcome = await cancelExport(pool, resolved.claim, exportCancelMatch[2]);
+          if (!outcome) tenantJson(res, 404, { error: "not_found" });
+          else tenantJson(res, 200, { status: outcome.status, requestId });
+          return true;
+        }
+        const exportExpireMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/exports\/([A-Za-z0-9-]+)\/expire$/);
+        if (exportExpireMatch && method === "POST") {
+          let exportConfig;
+          try {
+            exportConfig = loadExportConfig();
+          } catch {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            await readJsonBody(req);
+          } catch (err) {
+            if (err instanceof Error && (err.message === "body_too_large" || err.message === "body_invalid")) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            throw err;
+          }
+          const resolved = await claims(req, exportExpireMatch[1]);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          const outcome = await expireExportPackage(pool, exportConfig.s3, resolved.claim, exportExpireMatch[2]);
+          if (!outcome) tenantJson(res, 404, { error: "not_found" });
+          else tenantJson(res, 200, { expired: outcome.expired, requestId });
           return true;
         }
         // E02-S03 quarantine uploads. Disabled by default (UPLOADS_ENABLED +

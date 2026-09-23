@@ -94,9 +94,27 @@ export async function s3Put(config: S3Config, key: string, bytes: Uint8Array, co
   await res.arrayBuffer().catch(() => undefined);
 }
 
+/** PUT bytes under a generated export key (E08-S01 private packages). */
+export async function s3PutExport(config: S3Config, key: string, bytes: Uint8Array, contentType: string): Promise<void> {
+  assertExportKey(key);
+  const res = await signedFetch(config, "PUT", key, bytes, contentType);
+  check(res, "put");
+  await res.arrayBuffer().catch(() => undefined);
+}
+
 /** GET bytes for a quarantine key. Caps the download to maxBytes. */
 export async function s3Get(config: S3Config, key: string, maxBytes: number): Promise<Uint8Array> {
   assertQuarantineKey(key);
+  return s3GetAny(config, key, maxBytes);
+}
+
+/** GET bytes for a private export key. Caps the download to maxBytes. */
+export async function s3GetExport(config: S3Config, key: string, maxBytes: number): Promise<Uint8Array> {
+  assertExportKey(key);
+  return s3GetAny(config, key, maxBytes);
+}
+
+async function s3GetAny(config: S3Config, key: string, maxBytes: number): Promise<Uint8Array> {
   const res = await signedFetch(config, "GET", key);
   check(res, "get");
   const buf = new Uint8Array(await res.arrayBuffer());
@@ -115,6 +133,16 @@ export async function s3Head(config: S3Config, key: string): Promise<{ size: num
 
 export async function s3Delete(config: S3Config, key: string): Promise<void> {
   assertQuarantineKey(key);
+  return s3DeleteAny(config, key);
+}
+
+/** DELETE a private export key (E08-S01 expiry path). */
+export async function s3DeleteExport(config: S3Config, key: string): Promise<void> {
+  assertExportKey(key);
+  return s3DeleteAny(config, key);
+}
+
+async function s3DeleteAny(config: S3Config, key: string): Promise<void> {
   const res = await signedFetch(config, "DELETE", key);
   if (res.status === 404 || res.status === 204 || res.status === 200) return;
   check(res, "delete");
@@ -166,7 +194,7 @@ export async function s3ListKeys(config: S3Config, prefix: string, maxKeys = 100
   const re = /<Key>([^<]+)<\/Key>/g;
   let match: RegExpExecArray | null;
   while ((match = re.exec(xml)) !== null) keys.push(decodeURIComponent(match[1].replaceAll("+", " ")));
-  return keys.filter((k) => k.startsWith("quarantine/"));
+  return keys.filter((k) => k.startsWith("quarantine/") || k.startsWith("exports/"));
 }
 
 /** Quarantine keys are generated server-side and never contain traversal. */
@@ -177,4 +205,14 @@ export function assertQuarantineKey(key: string): void {
 /** Server-generated quarantine key: no filename bytes, no traversal. */
 export function quarantineKey(workspaceId: string, objectId: string): string {
   return `quarantine/${workspaceId}/${objectId}`;
+}
+
+/** Export package keys are generated server-side and never contain traversal. */
+export function assertExportKey(key: string): void {
+  if (!/^exports\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.enc$/.test(key)) throw new Error("object key refused");
+}
+
+/** Server-generated export key: unpredictable ids only, no filename bytes. */
+export function exportKey(workspaceId: string, packageId: string): string {
+  return `exports/${workspaceId}/${packageId}.enc`;
 }
