@@ -1271,7 +1271,7 @@ Execution record:
 
 ## E06-S04 — Compare flat what-if scenarios
 
-Status: In progress | Release: R1 | Epic: E06
+Status: Done | Release: R1 | Epic: E06
 Dependencies: E06-S03 (Ready above; must be Done before S04 implementation starts)
 
 Outcome: A keyboard user can manage goals/projections/scenarios in server-rendered UI, save flat what-if scenarios as deltas, compare scenario vs baseline over the same horizon, and get identical authoritative numbers through chat tools and artifact SDK reads; scenario edits never mutate booked data.
@@ -1308,6 +1308,8 @@ Execution record:
 - Fix verification (this session, Windows 11, Node v22.23.2, local PG18, WSL Redis restarted): `test:scenarios` 7/7, `test:forecast-tools` 7/7, `test:projection-sdk` 6/6, `test:e06-exit` 11/11, `test:projections` 15/15, `test:goals` 6/6, `test:projection-inputs` 13/13, `test:tenancy` 7/7, `test:ai-tools` 14/14, `test:chat` 13/13, `test:chat-ui` 9/9, `test:artifact-ai` 12/12, `test:artifact-ui` 12/12, `test:ui` 10/10, `test:e03-exit` 11/11; typecheck 0; build:web 0; failure gate nonzero-as-intended; diff check clean; tracked secret scan clean. Two extra defects found and fixed during verification: (a) B2 weekly sampling broke exact-daily goldens at horizon 200 — goldens moved to daily windows (scenarios 90d/2026-02-15, e06-exit 120d/2024-02-15 + aggregated:daily assert) with weekly coverage kept in a dedicated test; (b) eligible-filter changed input hashes and broke tool/SDK↔engine parity — no-op filters now normalize to null in resolveInputs so identical effective inputs share one hash. e05-exit + staging smoke not runnable here (Docker daemon down: no MinIO :9000; pre-existing environment limitation, artifact SDK legs covered by projection-sdk/artifact-ai green).
 - Re-review: independent Pass (separate task) at `92d7b93` — reproduced typecheck, scenarios/forecast-tools/projection-sdk/e06-exit/tenancy green; B1–B3 verified fixed; 7 nonblocking notes accepted (N1 SDK exclusion tests, N2 horizonStart from all snapshots, N3 no byte cap on compare route, N4 ASSUMPTION_OVERRIDE event typing scope, N5 no stored original-hash banner, N6 generic 400 code instead of literal `scenario_branching_unsupported`, N7 UI compare clamped ≤120 so weekly notes are API-only). None block: behavior/status requirements hold; recorded as follow-ups.
 - Remaining before merge: merge + post-merge smoke.
+- Integration: `git fetch origin main` — remote origin/main is an ancestor of local main (local-only merges per precedent; now 93 ahead); local main at base `41a57d1` unchanged; merge-base == base; candidate `7d522aa` == reviewed `92d7b93` + docs-only ledger delta (3 insertions); candidate gate `test:scenarios` 7/7 + diff check clean re-ran on candidate. Merged with `--no-ff` as `11bc238`; branch deleted.
+- Post-merge smoke on main `11bc238`: typecheck 0, scenarios 7/7, e06-exit 11/11, tenancy 7/7, clean status. Remote push/PR not performed (local-only merges per E00 precedent).
 
 ## E06-S05 — Verify planning invariants across UI, AI and artifacts
 
