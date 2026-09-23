@@ -7,9 +7,24 @@
 // (evidence-validated + current-policy recheck at render, max 3 expanded).
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { listAccountViews } from "../commands/accounts.ts";
 import { listGoals, type GoalView } from "../commands/goals.ts";
+import {
+  defaultPinnedOrder,
+  listPinnableArtifacts,
+  moveTile,
+  pinTile,
+  readHomeLayout,
+  resizeTile,
+  resolveHomeTiles,
+  unpinTile,
+  type HomeTileResolution,
+  type PinnedArtifactDefault,
+} from "../commands/home-layout.ts";
+import { TxError } from "../commands/transactions.ts";
+import { readLimitedBody } from "../http-controls.ts";
 import { getPolicy, summarizeEligible, type PolicyState } from "../ai-policy.ts";
 import { getBalances, getCashflow, getFinancialSummary, type FinancialSummary } from "../calculations/financial-summary.ts";
 import { evaluateProjection, type ProjectionEvaluation } from "../projections/engine.ts";
@@ -42,6 +57,11 @@ export type HomeData = {
   cashflowPoints: number | null;
   analysis: AnalysisDetailView | null;
   gatedFindings: FindingView[];
+  layout: { version: string; userEdited: boolean } | null;
+  layoutError: string | null;
+  tiles: HomeTileResolution[];
+  defaults: PinnedArtifactDefault[];
+  pinnable: { artifactId: string; name: string }[];
 };
 
 export function currentMonthRange(now = new Date()): { dateFrom: string; dateTo: string } {
@@ -128,7 +148,28 @@ export async function loadHomeData(
 
   void eligible;
   const gatedFindings = analysis ? gateFindings(analysis.findings, new Set(eligibleAccountIds)) : [];
-  return { accounts, policy, eligibleAccountIds, balances, month, monthError, projection, projectionError, goals, goalsError, cashflowPoints, analysis, gatedFindings };
+
+  // E07-S03 pinned artifacts: read-only load. A missing layout row is
+  // version "1" with no tiles and nothing is written here, so analysis
+  // personalization can never overwrite a saved order — and a saved order
+  // (userEdited) is never replaced by the deterministic default.
+  let layout: HomeData["layout"] = null;
+  let layoutError: string | null = null;
+  let tiles: HomeTileResolution[] = [];
+  let defaults: PinnedArtifactDefault[] = [];
+  let pinnable: { artifactId: string; name: string }[] = [];
+  try {
+    const resolved = await resolveHomeTiles(pool, full);
+    layout = { version: resolved.layout.version, userEdited: resolved.layout.userEdited };
+    tiles = resolved.tiles;
+    if (resolved.layout.tiles.length === 0 && !resolved.layout.userEdited) {
+      defaults = await defaultPinnedOrder(pool, full);
+    }
+    pinnable = await listPinnableArtifacts(pool, full);
+  } catch {
+    layoutError = "unavailable";
+  }
+  return { accounts, policy, eligibleAccountIds, balances, month, monthError, projection, projectionError, goals, goalsError, cashflowPoints, analysis, gatedFindings, layout, layoutError, tiles, defaults, pinnable };
 }
 
 function minorLabel(amountMinor: string | null, currency: string | null): string {
@@ -236,9 +277,122 @@ function sectionAnalysis(workspaceId: string, data: HomeData): string {
   return `<section aria-labelledby="home-analysis"><h2 id="home-analysis">Deep Analysis</h2>${statusLine}${warnings}${findings}${controls}<p><a href="/w/${escapeHtml(workspaceId)}/analysis" ${TAP}>Open Deep Analysis</a></p></section>`;
 }
 
-export function renderHomeContent(workspaceId: string, data: HomeData): string {
+const TILE_WIDTH: Record<string, string> = { small: "240px", wide: "480px", large: "720px" };
+
+function layoutForm(workspaceId: string, fields: string, label: string): string {
+  return `<form method="post" action="/w/${escapeHtml(workspaceId)}/home/layout">${fields}<button type="submit" ${TAP}>${escapeHtml(label)}</button></form>`;
+}
+
+function hiddenField(name: string, value: string): string {
+  return `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
+}
+
+/** E07-S03 pinned artifacts: saved order wins; a fresh workspace shows the
+ *  deterministic default (newest ready first) without writing anything.
+ *  Tiles never execute artifact code here — Open resolves the CURRENT
+ *  active version with fresh SDK grants in the editor; Compact opens the
+ *  sandboxed preview. Unavailable pins render as removable, never as code. */
+function sectionArtifacts(workspaceId: string, data: HomeData, customize: boolean): string {
+  const head = `<section aria-labelledby="home-artifacts"><h2 id="home-artifacts">Pinned artifacts</h2>`;
+  if (data.layoutError || !data.layout) {
+    return `${head}<p><strong>Pinned artifacts unavailable</strong> (${escapeHtml(data.layoutError ?? "unavailable")}). Saved pins are intact; retry Refresh.</p></section>`;
+  }
+  const versionLine = `<p>Layout version ${escapeHtml(data.layout.version)}${data.layout.userEdited ? " · customized order" : ""}.</p>`;
+  const customizeToggle = customize
+    ? `<p><a href="/w/${escapeHtml(workspaceId)}/home" ${TAP}>Done customizing</a></p>`
+    : `<p><a href="/w/${escapeHtml(workspaceId)}/home?customize=1" ${TAP}>Customize</a></p>`;
+
+  if (data.tiles.length === 0) {
+    const empty = data.layout.userEdited
+      ? `<p>No pinned artifacts yet. Customize to pin ready artifacts.</p>`
+      : data.defaults.length === 0
+        ? `<p>No ready artifacts yet. Publish an artifact, then pin it here.</p>`
+        : `<p>Suggested order (newest ready first) — nothing saved yet. Customize to pin your own order.</p><ol style="max-width:100%">${data.defaults
+            .map(
+              (d) =>
+                `<li style="max-width:100%;overflow-wrap:anywhere"><strong>${escapeHtml("(default)")}</strong> <a href="/w/${escapeHtml(workspaceId)}/artifacts/${escapeHtml(d.artifactId)}?tab=preview" ${TAP}>Open</a></li>`,
+            )
+            .join("")}</ol>`;
+    const pinForm =
+      customize && data.pinnable.length > 0
+        ? `<h3>Pin an artifact</h3><p>Only ready, owned, non-archived artifacts can be pinned (max 12 tiles, no duplicates).</p>${layoutForm(
+            workspaceId,
+            `${hiddenField("action", "pin")}${hiddenField("expectedVersion", data.layout.version)}${hiddenField("idempotencyKey", randomUUID())}<label>Artifact <select name="artifactId" ${TAP}>${data.pinnable.map((p) => `<option value="${escapeHtml(p.artifactId)}">${escapeHtml(p.name)}</option>`).join("")}</select></label> <label>Size <select name="size" ${TAP}><option value="small">small</option><option value="wide">wide</option><option value="large">large</option></select></label>`,
+            "Pin artifact",
+          )}`
+        : customize
+          ? `<p>No more pinnable artifacts (only ready, owned, non-archived artifacts can be pinned).</p>`
+          : ``;
+    return `${head}${versionLine}${empty}${customize ? `<h3>Customize mode</h3><p>Reorder and resize with native controls — no drag library, keyboard-only.</p>${pinForm}` : ""}${customizeToggle}</section>`;
+  }
+
+  const items = data.tiles
+    .map((tile) => {
+      const width = TILE_WIDTH[tile.size] ?? "240px";
+      if (tile.status === "unavailable") {
+        const reason = tile.reason === "deleted" ? "deleted or moved" : tile.reason === "archived" ? "archived" : "has no ready version";
+        const label = tile.name ?? "Pinned artifact";
+        const remove = customize
+          ? layoutForm(
+              workspaceId,
+              `${hiddenField("action", "unpin")}${hiddenField("artifactId", tile.artifactId)}${hiddenField("expectedVersion", data.layout!.version)}${hiddenField("idempotencyKey", randomUUID())}`,
+              "Remove",
+            )
+          : ``;
+        return `<li style="max-width:100%;overflow-wrap:anywhere"><strong>${escapeHtml(label)}</strong> — unavailable (${escapeHtml(reason)}). Nothing runs here; remove the pin or republish the artifact.${remove}</li>`;
+      }
+      const open = `<a href="/w/${escapeHtml(workspaceId)}/artifacts/${escapeHtml(tile.artifactId)}?tab=preview" ${TAP}>Open</a>`;
+      const compact = `<a href="/w/${escapeHtml(workspaceId)}/artifacts/${escapeHtml(tile.artifactId)}/versions/${escapeHtml(tile.activeVersionId!)}/compact" ${TAP}>Compact preview</a>`;
+      if (!customize) {
+        return `<li style="max-width:100%;overflow-wrap:anywhere"><strong>${escapeHtml(tile.name!)}</strong> (${escapeHtml(tile.size)}) ${open} · ${compact}</li>`;
+      }
+      const up =
+        tile.position > 0
+          ? layoutForm(
+              workspaceId,
+              `${hiddenField("action", "move")}${hiddenField("artifactId", tile.artifactId)}${hiddenField("toPosition", String(tile.position - 1))}${hiddenField("expectedVersion", data.layout!.version)}${hiddenField("idempotencyKey", randomUUID())}`,
+              "Move up",
+            )
+          : ``;
+      const down =
+        tile.position < data.tiles.length - 1
+          ? layoutForm(
+              workspaceId,
+              `${hiddenField("action", "move")}${hiddenField("artifactId", tile.artifactId)}${hiddenField("toPosition", String(tile.position + 1))}${hiddenField("expectedVersion", data.layout!.version)}${hiddenField("idempotencyKey", randomUUID())}`,
+              "Move down",
+            )
+          : ``;
+      const sizeOptions = (["small", "wide", "large"] as const)
+        .map((s) => `<option value="${s}"${s === tile.size ? " selected" : ""}>${s}</option>`)
+        .join("");
+      const sizeForm = layoutForm(
+        workspaceId,
+        `${hiddenField("action", "size")}${hiddenField("artifactId", tile.artifactId)}${hiddenField("expectedVersion", data.layout!.version)}${hiddenField("idempotencyKey", randomUUID())}<label>Size <select name="size" ${TAP}>${sizeOptions}</select></label>`,
+        "Apply size",
+      );
+      const unpin = layoutForm(
+        workspaceId,
+        `${hiddenField("action", "unpin")}${hiddenField("artifactId", tile.artifactId)}${hiddenField("expectedVersion", data.layout!.version)}${hiddenField("idempotencyKey", randomUUID())}`,
+        "Unpin",
+      );
+      return `<li style="max-width:${escapeHtml(width)};overflow-wrap:anywhere"><strong>${escapeHtml(tile.name!)}</strong> (${escapeHtml(tile.size)}) ${open} · ${compact}${up}${down}${sizeForm}${unpin}</li>`;
+    })
+    .join("");
+  const pinForm =
+    customize && data.pinnable.length > 0
+      ? `<h3>Pin an artifact</h3>${layoutForm(
+          workspaceId,
+          `${hiddenField("action", "pin")}${hiddenField("expectedVersion", data.layout.version)}${hiddenField("idempotencyKey", randomUUID())}<label>Artifact <select name="artifactId" ${TAP}>${data.pinnable.map((p) => `<option value="${escapeHtml(p.artifactId)}">${escapeHtml(p.name)}</option>`).join("")}</select></label> <label>Size <select name="size" ${TAP}><option value="small">small</option><option value="wide">wide</option><option value="large">large</option></select></label>`,
+          "Pin artifact",
+        )}`
+      : ``;
+  return `${head}${versionLine}<ol style="max-width:100%">${items}</ol>${customize ? `<h3>Customize mode</h3><p>Saved order — newest pins go last; Move up/down reorders one step. Keyboard: Tab through native controls in tile order.</p>${pinForm}` : ""}${customizeToggle}</section>`;
+}
+
+export function renderHomeContent(workspaceId: string, data: HomeData, customize = false): string {
   return `<h2>Home</h2>
-<form method="get" action="/w/${escapeHtml(workspaceId)}/home"><button type="submit" ${TAP}>Refresh</button></form>
+<form method="get" action="/w/${escapeHtml(workspaceId)}/home">${customize ? `<input type="hidden" name="customize" value="1">` : ""}<button type="submit" ${TAP}>Refresh</button></form>
+${sectionArtifacts(workspaceId, data, customize)}
 ${sectionBalances(workspaceId, data)}
 ${sectionSpend(workspaceId, data)}
 ${sectionProjection(workspaceId, data)}
@@ -368,7 +522,8 @@ export async function handleHomeRoutes(
     }
     try {
       const data = await loadHomeData(pool, resolved.claim);
-      html(res, 200, page({ title: "Home", requestId, authed: true, content: renderHomeContent(workspaceId, data) }));
+      const customize = query.get("customize") === "1";
+      html(res, 200, page({ title: "Home", requestId, authed: true, content: renderHomeContent(workspaceId, data, customize) }));
     } catch (err) {
       if (err instanceof TenantDenied) {
         event("ui_denied:workspace");
@@ -428,5 +583,124 @@ export async function handleHomeRoutes(
     return true;
   }
 
+  // E07-S03 layout commands: native-form CAS writes. Success redirects
+  // (staying in Customize mode); a version conflict re-renders 409 with the
+  // fresh decimal-string version and a prefilled retry form so the second
+  // tab's intent is preserved, not silently dropped.
+  const layoutMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/home\/layout$/);
+  if (layoutMatch && method === "POST") {
+    const workspaceId = layoutMatch[1];
+    const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+    if (!resolved.session) {
+      html(res, 401, errorPage({ status: 401, heading: "Sign in required", message: "Log in to customize Home.", back: "/", requestId, authed: false }));
+      return true;
+    }
+    if (!resolved.claim) {
+      event("ui_denied:workspace");
+      html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace.", back: "/", requestId, authed: true }));
+      return true;
+    }
+    if (!homeSameOrigin(req, _config.appBaseUrl)) {
+      html(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: `/w/${workspaceId}/home`, requestId, authed: true }));
+      return true;
+    }
+    const claim = resolved.claim;
+    let form: URLSearchParams;
+    try {
+      form = await readLimitedBody(req, 64 * 1024).then((body) => new URLSearchParams(body.toString("utf8")));
+    } catch {
+      html(res, 400, errorPage({ status: 400, heading: "Layout change failed", message: "Unreadable form body.", back: `/w/${workspaceId}/home?customize=1`, requestId, authed: true }));
+      return true;
+    }
+    const action = form.get("action") ?? "";
+    const idempotencyKey = form.get("idempotencyKey") || randomUUID();
+    const expectedVersion = form.get("expectedVersion") ?? "";
+    const artifactId = form.get("artifactId") ?? "";
+    // Per-action payloads: validators reject unknown keys, so each action
+    // carries exactly its own fields.
+    const raw: Record<string, unknown> =
+      action === "pin"
+        ? { workspaceId, artifactId, size: form.get("size") ?? undefined, expectedVersion, idempotencyKey }
+        : action === "move"
+          ? { workspaceId, artifactId, toPosition: form.get("toPosition") ?? "", expectedVersion, idempotencyKey }
+          : action === "size"
+            ? { workspaceId, artifactId, size: form.get("size") ?? "", expectedVersion, idempotencyKey }
+            : { workspaceId, artifactId, expectedVersion, idempotencyKey };
+    const back = `/w/${workspaceId}/home?customize=1`;
+    try {
+      if (action === "pin") await pinTile(pool, claim, claim.userId, raw);
+      else if (action === "unpin") await unpinTile(pool, claim, claim.userId, raw);
+      else if (action === "move") await moveTile(pool, claim, claim.userId, raw);
+      else if (action === "size") await resizeTile(pool, claim, claim.userId, raw);
+      else {
+        html(res, 400, errorPage({ status: 400, heading: "Layout change failed", message: "Unknown layout action.", back, requestId, authed: true }));
+        return true;
+      }
+      res.writeHead(303, { Location: back });
+      res.end();
+    } catch (err) {
+      if (err instanceof TenantDenied) {
+        event("ui_denied:workspace");
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace.", back: "/", requestId, authed: true }));
+        return true;
+      }
+      if (err instanceof TxError && err.code === "version_mismatch") {
+        // Lost update, not silent overwrite: show the fresh version with a
+        // prefilled retry carrying a NEW idempotency key. Retrying from
+        // fresh preserves both tabs' intents.
+        const retryFields =
+          `${hiddenField("action", action)}${hiddenField("expectedVersion", err.currentVersion ?? "1")}${hiddenField("idempotencyKey", randomUUID())}` +
+          (typeof raw.artifactId === "string" && raw.artifactId ? hiddenField("artifactId", raw.artifactId) : "") +
+          (action === "size" && typeof raw.size === "string" ? hiddenField("size", raw.size) : "") +
+          (action === "move" && typeof raw.toPosition === "string" ? hiddenField("toPosition", raw.toPosition) : "") +
+          (action === "pin" && typeof raw.size === "string" ? hiddenField("size", raw.size) : "");
+        html(
+          res,
+          409,
+          page({
+            title: "Home",
+            requestId,
+            authed: true,
+            content: `<h2>Home</h2><div class="alert" role="alert"><h2>Layout changed elsewhere (version ${escapeHtml(err.currentVersion ?? "?")})</h2><p>Another tab saved first. Your change was not applied and nothing was overwritten. Review the current order, then retry.</p><form method="post" action="/w/${escapeHtml(workspaceId)}/home/layout">${retryFields}<button type="submit" ${TAP}>Retry with version ${escapeHtml(err.currentVersion ?? "?")}</button></form><p><a href="${escapeHtml(back)}" ${TAP}>Back to Home (Customize)</a></p></div>`,
+          }),
+        );
+        return true;
+      }
+      if (err instanceof TxError && err.code === "not_found") {
+        html(res, 404, errorPage({ status: 404, heading: "Pin not found", message: "The artifact or pin does not exist here.", back, requestId, authed: true }));
+        return true;
+      }
+      if (err instanceof TxError && (err.code === "limit_exceeded" || err.code === "unsupported_operation" || err.code === "idempotency_reuse" || err.code === "idempotency_expired")) {
+        const detail = (err.detail as { reason?: string } | undefined)?.reason;
+        const message =
+          detail === "already_pinned"
+            ? "That artifact is already pinned (no duplicate pins)."
+            : err.code === "limit_exceeded"
+              ? "Home holds at most 12 tiles."
+              : detail === "version_not_ready"
+                ? "Only ready, owned, non-archived artifacts can be pinned."
+                : "That layout change conflicts with the saved state. Reload and retry.";
+        html(res, 409, errorPage({ status: 409, heading: "Layout conflict", message, back, requestId, authed: true }));
+        return true;
+      }
+      html(res, 400, errorPage({ status: 400, heading: "Layout change failed", message: "Check the values and retry.", back, requestId, authed: true }));
+    }
+    return true;
+  }
+
+  return false;
+}
+
+function homeSameOrigin(req: IncomingMessage, appBaseUrl: string): boolean {
+  // Same convention as the UI shell (routes.ts): same-origin fetch metadata
+  // wins; otherwise the posted Origin/Referer must match the app origin or
+  // the request's own Host (loopback test servers bind ephemeral ports).
+  if (req.headers["sec-fetch-site"] === "same-origin") return true;
+  const allowed = new URL(appBaseUrl).origin;
+  const requestOrigins = typeof req.headers.host === "string" ? [`http://${req.headers.host}`, `https://${req.headers.host}`] : [];
+  const origin = req.headers.origin;
+  const referer = req.headers.referer;
+  if (typeof origin === "string") return origin === allowed || requestOrigins.includes(origin);
+  if (typeof referer === "string") return [allowed, ...requestOrigins].some((candidate) => referer === candidate || referer.startsWith(`${candidate}/`));
   return false;
 }
