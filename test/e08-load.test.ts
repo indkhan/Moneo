@@ -9,6 +9,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -20,13 +22,14 @@ import { createTenancyRouter, withTenant } from "../apps/web/src/tenancy.ts";
 import { createWorkspace } from "../apps/web/src/tenancy.ts";
 import { createUiRouter } from "../apps/web/src/ui/routes.ts";
 import { dispatchOutbox, jobsQueue, processImportJob, type JobPayload } from "../apps/web/src/jobs.ts";
-import { reconcileTransport } from "../apps/web/src/job-recovery.ts";
+import { cancelJob, reconcileTransport } from "../apps/web/src/job-recovery.ts";
 import { processParseJob, loadUploadConfig, type UploadConfig } from "../apps/web/src/uploads.ts";
 import { acceptMapping, proposeMapping } from "../apps/web/src/mapping.ts";
 import { acceptImportCommitJob, processCommitJob, DEFAULT_COMMIT_CONFIG } from "../apps/web/src/import-commit.ts";
 import { clamdPing } from "../apps/web/src/clamav.ts";
 import { s3EnsureBucket, s3ListKeys, s3Delete, s3DeleteExport } from "../apps/web/src/s3.ts";
 import { dispatchModelCall, setDispatchBudget, type DispatchAttempt, type DispatchTransport } from "../apps/web/src/ai-dispatch.ts";
+import { DispatchError, dispatchErrorBody } from "../apps/web/src/ai-dispatch.ts";
 import { issuePermit } from "../apps/web/src/ai-policy.ts";
 import { ensureTestPool, env } from "./helpers/test-db.ts";
 import { startStubIssuer, STUB_CLIENT_ID, STUB_CLIENT_SECRET, type StubIssuer } from "./helpers/stub-issuer.ts";
@@ -226,7 +229,12 @@ function ctx(): { base: string; ownerA: { cookie: string; userId: string }; owne
 }
 
 afterAll(async () => {
-  writeFileSync("C:\\Users\\mgsuk\\AppData\\Local\\Temp\\opencode\\e08-load-summary.json", JSON.stringify({ ...summary, node: process.version, platform: process.platform }));
+  const summaryPath = join(tmpdir(), "e08-load-summary.json");
+  try {
+    writeFileSync(summaryPath, JSON.stringify({ ...summary, node: process.version, platform: process.platform }));
+  } catch {
+    // Summary is evidence-only; a read-only temp dir must not fail the suite.
+  }
   for (const [name, value] of Object.entries(savedEnv)) {
     if (value === undefined) delete process.env[name];
     else process.env[name] = value;
@@ -265,32 +273,46 @@ describe("e08-s05-L local load and failure", () => {
       summary[`readers${n}`] = { p50ms: percentile(lat, 50), p95ms: percentile(lat, 95), maxMs: lat[lat.length - 1] };
     }
     // Tenant swap at load stays a uniform denial.
-    const { ownerB } = ctx();
+    const { ownerB, wsB, oracleB } = ctx();
     const swap = await fetch(`${base}/api/transactions?workspaceId=${wsA}&limit=5`, { headers: { cookie: ownerB.cookie } });
     expect(swap.status).toBe(404);
+    // Workspace B totals are exact too (single pass suffices with A proven).
+    const bRes = await fetch(`${base}/api/transactions?workspaceId=${wsB}&limit=5`, { headers: { cookie: ownerB.cookie } });
+    expect(bRes.status).toBe(200);
+    const bTotals = ((await bRes.json()) as any).totals?.byCurrency?.find((t: { currency: string }) => t.currency === "EUR") as { inflowMinor: string; outflowMinor: string };
+    expect(bTotals?.inflowMinor).toBe(oracleB.inflowMinor.toString(10));
+    expect(bTotals?.outflowMinor).toBe(oracleB.outflowMinor.toString(10));
   }, 120_000);
 
   it("runs one projection per workspace with exact figures", async () => {
     const { base, ownerA, ownerB, wsA, wsB } = ctx();
-    for (const [me, ws] of [[ownerA, wsA], [ownerB, wsB]] as const) {
-      const started = Date.now();
+    const runOnce = async (me: { cookie: string }, ws: string): Promise<any> => {
       const res = await fetch(`${base}/api/projection/run`, {
         method: "POST",
         headers: { cookie: me.cookie, "Content-Type": "application/json" },
         body: JSON.stringify({ workspaceId: ws, horizonDays: 30, idempotencyKey: randomUUID() }),
       });
-      const ms = Date.now() - started;
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { points: Array<{ amount_minor: string }> };
-      expect(Array.isArray(body.points)).toBe(true);
-      summary[`projection${ws === wsA ? "A" : "B"}Ms`] = ms;
+      return (await res.json()) as any;
+    };
+    for (const [me, ws, tag] of [[ownerA, wsA, "A"], [ownerB, wsB, "B"]] as const) {
+      const started = Date.now();
+      const first = await runOnce(me, ws);
+      const ms = Date.now() - started;
+      expect(Array.isArray(first.points)).toBe(true);
+      // Deterministic on the fixed seed: identical inputs rerun identically.
+      const second = await runOnce(me, ws);
+      expect(second.points).toEqual(first.points);
+      expect(second.inputHash).toBe(first.inputHash);
+      summary[`projection${tag}Ms`] = ms;
     }
   }, 120_000);
 
   it("completes the 100k-row boundary import within parser ceilings", async () => {
     // Reference measurement: the E02 chunk commit path is correct but
-    // per-row (~230 rows/s locally) — roughly 7 minutes for 100k rows.
-    // This timeout bounds the observation; it is not a host promise.
+    // per-row (~175-230 rows/s locally) — roughly 9-10 minutes for 100k
+    // rows plus the over-limit probe. This timeout bounds the observation;
+    // it is not a host promise.
     const { base, ownerA, wsA } = ctx();
     const t0 = Date.now();
     // The parser counts the header line toward the 100k ceiling, so 99,999
@@ -348,6 +370,18 @@ describe("e08-s05-L local load and failure", () => {
     });
     expect(count).toBe(99999);
     summary["import100kTotalMs"] = Date.now() - t0;
+    // Provenance sample: committed rows link to their staged observations.
+    const sample = await scoped(ownerA.userId, wsA, async (client) => {
+      const found = await client.query(
+        `SELECT t.id AS tx, t.import_row_no AS row, t.observation_id AS obs, sl.status AS link
+         FROM transactions t JOIN source_links sl ON sl.workspace_id = t.workspace_id AND sl.target_transaction_id = t.id
+         WHERE t.workspace_id = $1 AND t.import_id = $2 AND t.import_row_no IN (7, 7007, 70007) ORDER BY t.import_row_no`,
+        [wsA, staged.import.id],
+      );
+      return found.rows as Array<{ tx: string; row: number; obs: string; link: string }>;
+    });
+    expect(sample.map((r) => [r.row, r.link])).toEqual([[7, "NEW"], [7007, "NEW"], [70007, "NEW"]]);
+    expect(new Set(sample.map((r) => r.obs)).size).toBe(3);
     const mem = process.memoryUsage();
     summary["postImportRssMB"] = Math.round(mem.rss / 1024 / 1024);
     // Over the ceiling (100,001 lines) rejects typed without staging.
@@ -378,10 +412,20 @@ describe("e08-s05-L local load and failure", () => {
     });
     expect(overStatus.status).toBe("REJECTED");
     expect(overStatus.error_code).toBe("row-limit");
-  }, 600_000);
+  }, 900_000);
 
   it("recovers visibly when Redis is lost and jobs cancel under load", async () => {
     const { base, readers, wsA, ownerA } = ctx();
+    // Accept the synthetic job BEFORE the loss so queued state must rebuild.
+    const jobAccept = await fetch(`${base}/api/workspaces/${wsA}/import-jobs`, {
+      method: "POST",
+      headers: { cookie: ownerA.cookie, "Content-Type": "application/json" },
+      body: JSON.stringify({ idempotencyKey: randomUUID() }),
+    });
+    expect(jobAccept.status).toBe(201);
+    const jobId = ((await jobAccept.json()) as any).jobId as string;
+    // Publish to transport BEFORE the loss so queued state must rebuild.
+    await dispatchOutbox(pool, queue);
     // Readers in flight while the dedicated Redis DB is flushed.
     const reading = Promise.all(
       readers.slice(0, 20).map(async (r) => {
@@ -396,20 +440,16 @@ describe("e08-s05-L local load and failure", () => {
     } finally {
       admin.disconnect();
     }
-    // A synthetic job accepted before the loss rebuilds via the reconciler.
-    const jobAccept = await fetch(`${base}/api/workspaces/${wsA}/import-jobs`, {
-      method: "POST",
-      headers: { cookie: ownerA.cookie, "Content-Type": "application/json" },
-      body: JSON.stringify({ idempotencyKey: randomUUID() }),
-    });
-    expect(jobAccept.status).toBe(201);
-    const jobId = ((await jobAccept.json()) as any).jobId as string;
-    const { reconcileTransport } = await import("../apps/web/src/job-recovery.ts");
     const rebuilt = await reconcileTransport(pool, queue);
     expect(rebuilt.enqueued + rebuilt.skipped).toBeGreaterThan(0);
     expect(await processImportJob(pool, jobId)).toBe("applied");
+    // Exactly one business effect from the rebuilt delivery.
+    const effects = await scoped(ownerA.userId, wsA, async (client) => {
+      const found = await client.query("SELECT count(*)::int AS n FROM background_job_results WHERE workspace_id = $1 AND background_job_id = $2", [wsA, jobId]);
+      return (found.rows[0] as { n: number }).n;
+    });
+    expect(effects).toBe(1);
     // Cancel converges without effects.
-    const { cancelJob } = await import("../apps/web/src/job-recovery.ts");
     const jobAccept2 = await fetch(`${base}/api/workspaces/${wsA}/import-jobs`, {
       method: "POST",
       headers: { cookie: ownerA.cookie, "Content-Type": "application/json" },
@@ -419,6 +459,11 @@ describe("e08-s05-L local load and failure", () => {
     const cancelled = await cancelJob(pool, { userId: ownerA.userId, workspaceId: wsA }, jobId2);
     expect(cancelled?.status).toBe("CANCELLED");
     expect(await processImportJob(pool, jobId2)).toBe("duplicate-terminal-noop");
+    const noEffects = await scoped(ownerA.userId, wsA, async (client) => {
+      const found = await client.query("SELECT count(*)::int AS n FROM background_job_results WHERE workspace_id = $1 AND background_job_id = $2", [wsA, jobId2]);
+      return (found.rows[0] as { n: number }).n;
+    });
+    expect(noEffects).toBe(0);
     const statuses = await reading;
     expect(statuses.every((s) => s === 200)).toBe(true);
     summary["redisLossRecovered"] = true;
@@ -448,6 +493,10 @@ describe("e08-s05-L local load and failure", () => {
     );
     expect(results).toContain("RECONCILED");
     expect(results.some((s) => s.startsWith("budget_"))).toBe(true);
+    // Over-budget denials map to HTTP 429 safe rejections (never silent).
+    for (const code of ["budget_money", "budget_tokens", "budget_concurrency"] as const) {
+      expect(dispatchErrorBody(new DispatchError(code))).toEqual({ status: 429, body: { error: "budget_exceeded", reason: code } });
+    }
     // Reconciled + held money never exceeds the budget.
     const usage = await scoped(ownerA.userId, wsA, async (client) => {
       const done = await client.query("SELECT coalesce(sum(reconciled_cost_minor::bigint), 0)::text AS s FROM ai_dispatch_usage WHERE workspace_id = $1 AND status = 'RECONCILED'", [wsA]);
