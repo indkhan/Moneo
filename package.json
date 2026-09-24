@@ -44,6 +44,7 @@
     "test:deletion": "vitest run test/deletion.test.ts",
     "test:retention": "vitest run test/retention.test.ts",
     "test:restore": "vitest run test/restore.test.ts",
+    "test:prod-policy": "vitest run test/prod-policy.test.ts",
     "test:accounts": "vitest run test/accounts.test.ts",
     "test:calculations": "vitest run test/calculations.test.ts",
     "test:fx": "vitest run test/fx.test.ts",

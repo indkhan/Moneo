@@ -18,7 +18,7 @@ import { loadUploadConfig, processParseJob } from "../../web/src/uploads.ts";
 import { loadExportConfig, processExportJob } from "../../web/src/export.ts";
 import { processChatJob } from "../../web/src/chat.ts";
 import { processDeepAnalysisJob } from "../../web/src/deep-analysis.ts";
-import { liveChatTransport, loadChatTransportConfig, type DispatchTransport } from "../../web/src/ai-dispatch.ts";
+import { liveChatTransport, loadChatTransportConfig, loadProductionTransportConfig, type DispatchTransport } from "../../web/src/ai-dispatch.ts";
 
 export type WorkerService = {
   pool: Pool;
@@ -81,7 +81,7 @@ export function createWorkerService(opts: { databaseUrl: string; redisUrl: strin
             console.log(JSON.stringify({ event: "job_deferred", reason: "chat_transport_missing" }));
             return "chat-transport-missing-deferred";
           }
-          const transport: DispatchTransport = liveChatTransport(chatConfig);
+          const transport: DispatchTransport = liveChatTransport(chatConfig, loadProductionTransportConfig());
           outcome = await processChatJob(pool, job.data.backgroundJobId, transport, invocation);
         } else if (jobType === "deep-analysis.run") {
           // E07-S01 initial analysis reuses the chat provider route (same
@@ -92,7 +92,7 @@ export function createWorkerService(opts: { databaseUrl: string; redisUrl: strin
             console.log(JSON.stringify({ event: "job_deferred", reason: "analysis_transport_missing" }));
             return "analysis-transport-missing-deferred";
           }
-          const analysisTransport: DispatchTransport = liveChatTransport(analysisConfig);
+          const analysisTransport: DispatchTransport = liveChatTransport(analysisConfig, loadProductionTransportConfig());
           outcome = await processDeepAnalysisJob(pool, job.data.backgroundJobId, analysisTransport, invocation);
         } else {
           // Unknown job types never run a foreign effect: complete the

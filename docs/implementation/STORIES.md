@@ -1631,14 +1631,39 @@ Zero-cost candidate researched 2026-09-24 after founder asked for a free setup: 
 
 ## E08-S03 — Qualify production AI and customer-data disclosure
 
-Status: Draft | Release: R1 | Epic: E08 | Dependencies: E08-S01c, E04-S07
+Status: In progress | Release: R1 | Epic: E08 | Dependencies: E08-S01c, E04-S07
 
 Outcome: Every production customer-data model call uses an evaluated, available no-training/ZDR route with honest processor/region/retention disclosure; absence of a compliant route returns recoverable unavailability.
+
+Local/Deploy split (2026-09-24 refinement against ai-dispatch.ts): the fail-closed production-route policy, capability checks at reserve/execute/fallback, processor inventory and synthetic evaluations are E08-S03-L (no live calls, no customer data); the credentialed synthetic live qualification on the selected no-training/ZDR route is E08-S03-D and stays open. The parent is not Done until both land. No live no-training/ZDR route is qualified without evidence.
 Contracts: Product deployment constraints; architecture §130 (production `data_collection: "deny"`, `zdr: true`, parameter support on every route/fallback), §§465 and E04-S07 rubric. Development free/training-permitted routes stay separate.
 Scope: Reuse `ai-dispatch.ts`, `ai-eval.ts`, policy/usage ledger and bounded synthetic rubric. Pin production models/routes and credentials separately from development; enforce fail-closed capability checks at each dispatch and fallback. Inventory OpenRouter, underlying models and subprocessors, actual processing regions, retention and contracts. Do not send real-customer data during qualification.
 Acceptance: Unsupported ZDR/no-collection setting, unavailable compliant provider, missing credentials and an attempted free-route fallback all fail closed without request leakage; permitted calls respect budgets, cancellation and redacted telemetry. Versioned synthetic eval meets the predeclared E04 rubric for grounded claims, tools, mapping and edits; disclosures match signed processor terms and observed config.
 Verification: `npm run test:ai-dispatch`, `test:ai-eval`, `test:chat`, `test:deep-analysis`, `test:artifact-ai`; add a bounded production-route policy/transport test, then a separate credentialed synthetic live qualification with exact model/version/cost and no customer records. Typecheck/builds and independent privacy/security review.
 Open gate: Qualified route availability, processor agreements and actual disclosure text depend on external providers and privacy review; record evidence before Ready for live customer qualification.
+
+## E08-S03-L — Fail-closed production-route policy with honest disclosure (local, synthetic)
+
+Status: Ready | Release: R1 | Epic: E08 | Dependencies: E08-S01c-L (Done at `36739e4`; E04-S07 Done pre-E07)
+
+Outcome: Production-route dispatches require an explicit pinned no-training/ZDR capability record at reserve, rechecked at execute/fallback; anything else (unqualified flag, unsupported ZDR/data-collection setting, missing credentials, free-model fallback attempt) fails closed without request leakage. The processor inventory names development reality and pending production qualification without inventing terms; versioned synthetic evaluations run offline.
+Contracts: Product deployment constraints; architecture §130 (`data_collection: "deny"`, `zdr: true`, parameter support on every route/fallback), §§465 and E04-S07 rubric. Development free/training-permitted routes stay separate and never serve production.
+Scope: `loadProductionRouteConfig()` capability gate (flag + deny/ZDR settings + pinned non-free model + credential presence, names only) enforced in reserveDispatch and rechecked in executeReserved pre-attempt and pre-retry (release with route_forbidden); transport refuses free-variant models on the production route without sending; `apps/web/src/ai-processors.ts` machine-readable inventory + Settings disclosure (dev actual, prod pending); versioned synthetic eval evidence offline; no live calls, no customer records, no new tables.
+Acceptance: (1) Each misconfiguration denies with route_forbidden and a recording transport proves zero requests left the process; budgets/permits unconsumed beyond the released hold. (2) Dequalification between reserve and execute releases without provider I/O. (3) Free-model production attempts fail closed at reserve and at the transport. (4) Disclosure text matches observed config (dev) and names every pending production term without asserting it. (5) Frozen E04-rubric synthetic cases pass offline with versions recorded.
+Failure/data/limits: Synthetic fixtures only; production-credentials env names read, values never logged. Reservation holds release on every deny path (no stranded PENDING from policy denies).
+Verification: New `npm run test:prod-policy` (disposable PG, recording transports, env-matrix); regress `test:ai-dispatch`, `test:ai-eval`, `test:chat`, `test:deep-analysis`, `test:artifact-ai`, typecheck/builds; independent review.
+Review focus: TOCTOU between reserve/execute (recheck completeness), fallback paths that could downgrade to development, free-model detection gaps, credential/secret handling in config/errors, disclosure over-claims, eval oracle independence.
+Rollout/rollback: Code-only capability gate defaulting to deny; rollback = unset qualification flags (production stays forbidden). No migration.
+
+## E08-S03-D — Live no-training/ZDR route qualification (credentialed, synthetic)
+
+Status: Draft | Release: R1 | Epic: E08 | Dependencies: E08-S03-L, provider/privacy selection
+
+Outcome: A selected production no-training/ZDR route is proven with bounded synthetic live calls (exact model/version/cost, no customer records) and signed processor terms feed the disclosure text.
+Contracts: Architecture §130/§465; S03 open gate.
+Scope: Credentialed synthetic live qualification only after provider + privacy terms exist: pinned model/route/credentials separate from development, fail-closed capability checks exercised live, versioned synthetic eval at the E04 rubric thresholds, disclosures updated to signed terms.
+Acceptance: Permitted live calls respect budgets/cancellation/redacted telemetry; unsupported/unavailable/missing-credential/free-fallback cases fail closed without leakage; eval meets predeclared thresholds; disclosure matches signed terms and observed config.
+Verification: Bounded live gate evidence + reviewer sign-off. Not runnable locally — stays open until providers/terms exist.
 
 ## E08-S04 — Independently review tenant, finance and artifact boundaries
 

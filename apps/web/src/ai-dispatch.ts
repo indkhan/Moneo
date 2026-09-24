@@ -139,6 +139,32 @@ export function routeModel(route: DispatchRoute): string {
   return process.env["DISPATCH_DEV_MODEL"] ?? "dispatch-double";
 }
 
+/** OpenRouter free-variant models train on prompts: never production. */
+export function isFreeModel(model: string): boolean {
+  return model.toLowerCase().includes(":free");
+}
+
+export type ProductionRouteConfig = { model: string; dataCollection: "deny"; zdr: true };
+
+/**
+ * E08-S03-L pinned production capability record (architecture §130). Every
+ * production dispatch AND fallback must pass this at reserve and re-pass it
+ * before provider I/O: an explicit qualification flag, data_collection deny,
+ * ZDR enabled, a pinned non-free model, and present credentials (names only
+ * — values never enter logs, errors or committed files). Anything else
+ * fails closed with route_forbidden and no request leaves the process. The
+ * development route never satisfies this and is never a fallback.
+ */
+export function loadProductionRouteConfig(): ProductionRouteConfig {
+  if (!productionQualified()) throw new DispatchError("route_forbidden");
+  if (process.env["AI_PROD_DATA_COLLECTION"] !== "deny") throw new DispatchError("route_forbidden");
+  if (process.env["AI_PROD_ZDR"] !== "true") throw new DispatchError("route_forbidden");
+  const model = process.env["DISPATCH_PROD_MODEL"] ?? "";
+  if (!model || model.length > 200 || isFreeModel(model)) throw new DispatchError("route_forbidden");
+  if (!process.env["AI_PROD_API_KEY"]) throw new DispatchError("route_forbidden");
+  return { model, dataCollection: "deny", zdr: true };
+}
+
 async function currentPolicyVersion(client: PoolClient, workspaceId: string): Promise<bigint> {
   const rows = await client.query("SELECT policy_version AS v FROM ai_policies WHERE workspace_id = $1", [workspaceId]);
   if ((rows.rowCount ?? 0) === 0) return 1n;
@@ -249,6 +275,32 @@ export type ReserveOptions = {
   outputCeiling: number;
 };
 
+/** Fenced release for a production reservation whose route capability lapsed
+ * after reserve: no provider I/O, budget freed, terminal class recorded. */
+async function releaseForRouteForbidden(pool: Pool, claims: TenantClaims, reservationId: string, model: string): Promise<DispatchState> {
+  return withTenant(pool, claims, async (client) => {
+    const locked = await client.query("SELECT status FROM ai_dispatch_reservations WHERE workspace_id = $1 AND id = $2 FOR UPDATE", [
+      claims.workspaceId,
+      reservationId,
+    ]);
+    if ((locked.rowCount ?? 0) === 0) throw new TenantDenied();
+    if ((locked.rows[0] as { status: string }).status !== "RESERVED") {
+      const found = await client.query("SELECT * FROM ai_dispatch_reservations WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, reservationId]);
+      return { reservation: rowToReservation(found.rows[0] as Parameters<typeof rowToReservation>[0]), usage: await readUsage(client, claims.workspaceId, reservationId) };
+    }
+    await settleReservation(client, claims.workspaceId, reservationId, "RELEASED", 1, {
+      usageStatus: "RELEASED",
+      inputTokens: null,
+      outputTokens: null,
+      cost: null,
+      errorClass: "route_forbidden",
+      model,
+    });
+    const found = await client.query("SELECT * FROM ai_dispatch_reservations WHERE workspace_id = $1 AND id = $2", [claims.workspaceId, reservationId]);
+    return { reservation: rowToReservation(found.rows[0] as Parameters<typeof rowToReservation>[0]), usage: await readUsage(client, claims.workspaceId, reservationId) };
+  });
+}
+
 /**
  * Atomically admit one dispatch: tenant policy + permit CAS (fenced by the
  * current policy version) + route + concurrency/money/token budgets in a
@@ -264,7 +316,8 @@ export async function reserveDispatch(pool: Pool, claims: TenantClaims, opts: Re
   if (!Number.isInteger(opts.inputEstimate) || opts.inputEstimate < 0 || opts.inputEstimate > 1_000_000) throw new TenantInvalid();
   if (!Number.isInteger(opts.outputCeiling) || opts.outputCeiling < 1 || opts.outputCeiling > DISPATCH_MAX_OUTPUT_TOKENS) throw new TenantInvalid();
   if (typeof opts.requestText !== "string" || requestBytes(opts.requestText) > DISPATCH_REQUEST_MAX_BYTES) throw new DispatchError("request_too_large");
-  if (opts.route === "production" && !productionQualified()) throw new DispatchError("route_forbidden");
+  // Fail-closed production capability check (never a development fallback).
+  if (opts.route === "production") loadProductionRouteConfig();
   const model = routeModel(opts.route);
   const hash = hashRequest(opts.route, purpose, opts.requestText, opts.outputCeiling, model);
   const reserved = reservedCostFor(opts.inputEstimate, opts.outputCeiling);
@@ -414,6 +467,16 @@ export async function executeReserved(
   }
   const model = routeModel(current.reservation.route);
 
+  // Production recheck before any provider I/O (TOCTOU with reserve):
+  // dequalification after reserve releases without dispatching.
+  if (current.reservation.route === "production") {
+    try {
+      loadProductionRouteConfig();
+    } catch {
+      return releaseForRouteForbidden(pool, claims, reservationId, model);
+    }
+  }
+
   // Revocation recheck before any provider I/O: a policy change after
   // reserve fails closed and releases the untouched reservation.
   const live = await withTenant(pool, claims, async (client) => currentPolicyVersion(client, claims.workspaceId));
@@ -461,6 +524,13 @@ export async function executeReserved(
     // One retry only, and only because no provider output exists yet. A
     // policy change between attempts fails closed without dispatching.
     const liveBeforeRetry = await withTenant(pool, claims, async (client) => currentPolicyVersion(client, claims.workspaceId));
+    if (current.reservation.route === "production") {
+      try {
+        loadProductionRouteConfig();
+      } catch {
+        return releaseForRouteForbidden(pool, claims, reservationId, model);
+      }
+    }
     if (liveBeforeRetry.toString(10) !== current.reservation.policyVersion) {
       return withTenant(pool, claims, async (client) => {
         // Fenced like every other settle path: a cancel that lands between
@@ -647,12 +717,58 @@ export function loadChatTransportConfig(): LiveChatConfig | null {
   };
 }
 
+export type ProductionTransportConfig = { apiKey: string; baseUrl: string; model: string };
+
+/**
+ * Fail-closed production transport config: present only while the full
+ * S03-L capability record holds (flag + deny + ZDR + pinned non-free model
+ * + credentials). Values travel to the Authorization header only; the
+ * loader reports presence, never values.
+ */
+export function loadProductionTransportConfig(): ProductionTransportConfig | null {
+  try {
+    const cap = loadProductionRouteConfig();
+    const apiKey = process.env["AI_PROD_API_KEY"];
+    if (!apiKey) return null;
+    return { apiKey, baseUrl: process.env["AI_PROD_BASE_URL"] ?? "https://openrouter.ai/api/v1", model: cap.model };
+  } catch {
+    return null;
+  }
+}
+
 /** Live OpenRouter chat transport for generation: key in the header only,
  * 30 s cap, usage extracted from the envelope (null when absent — the
  * dispatch then stays PENDING, never zero). Output text is returned to the
- * caller for fenced persistence; it is never logged here. */
-export function liveChatTransport(config: LiveChatConfig): DispatchTransport {
+ * caller for fenced persistence; it is never logged here.
+ *
+ * Route-aware (B2): development requests use the dev config; production
+ * requests use ONLY the production config and fail closed (no send, no
+ * leakage) without a complete one. A production reservation therefore can
+ * never execute over development credentials, and a missing production
+ * transport defers as unavailability — never a silent dev fallback.
+ * Free-variant models never send on the production route (defense in depth
+ * behind the reserve-time refusal). */
+export function liveChatTransport(devConfig: LiveChatConfig, prodConfig?: ProductionTransportConfig | null): DispatchTransport {
   return async (req, signal) => {
+    if (req.route === "production") {
+      const prod = prodConfig ?? null;
+      // Null-body here means ambiguous dispatch (PENDING per S01), not a
+      // policy deny: honest dequalification is owned by the executeReserved
+      // recheck (RELEASED/route_forbidden) before any transport call.
+      if (!prod || isFreeModel(prod.model) || isFreeModel(req.model)) {
+        return { httpStatus: null, bodyText: null, inputTokens: null, outputTokens: null, model: prod?.model ?? req.model };
+      }
+      return sendChatCompletion(prod, req, signal);
+    }
+    return sendChatCompletion(devConfig, req, signal);
+  };
+}
+
+async function sendChatCompletion(
+  config: LiveChatConfig,
+  req: { route: DispatchRoute; model: string; requestText: string; maxOutputTokens: number },
+  signal: AbortSignal,
+): Promise<DispatchAttempt> {
     const controller = new AbortController();
     const onAbort = () => controller.abort();
     signal.addEventListener("abort", onAbort, { once: true });
@@ -692,7 +808,6 @@ export function liveChatTransport(config: LiveChatConfig): DispatchTransport {
       clearTimeout(timeout);
       signal.removeEventListener("abort", onAbort);
     }
-  };
 }
 
 /**

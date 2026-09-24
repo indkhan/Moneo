@@ -77,6 +77,7 @@ jobs:
       -c "CREATE DATABASE moneo_e08_restore OWNER moneo_app;" \
       -c "CREATE DATABASE moneo_e08_restore_iso OWNER moneo_app;" \
       -c "CREATE DATABASE moneo_e08_restore_bad OWNER moneo_app;" \
+      -c "CREATE DATABASE moneo_e08_prodpolicy OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e04_dispatch OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e04_chat OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e04_tools OWNER moneo_app;"
@@ -155,6 +156,8 @@ jobs:
           pg_dump --version && pg_restore --version
       - name: Isolated restore with tombstone replay (real PG + MinIO)
         run: npm run test:restore
+      - name: Production-route policy and disclosure (real PG, synthetic only)
+        run: npm run test:prod-policy
       - name: Durable effects (real PG + Redis)
         run: npm run test:durable
       - name: Deliberate failure must exit nonzero

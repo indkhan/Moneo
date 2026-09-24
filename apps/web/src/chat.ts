@@ -16,7 +16,7 @@ import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { isUuid, uuidv7 } from "./ids.ts";
 import { TenantDenied, TenantInvalid, withTenant, type TenantClaims } from "./tenancy.ts";
-import { cancelDispatch, productionQualified, supersedeReservationTx, type DispatchTransport } from "./ai-dispatch.ts";
+import { cancelDispatch, loadProductionRouteConfig, supersedeReservationTx, type DispatchRoute, type DispatchTransport } from "./ai-dispatch.ts";
 import { createToolContext, runToolLoop, type HistoryTurn, type LoopResult } from "./ai-tools.ts";
 import {
   cancelJob,
@@ -885,9 +885,16 @@ export async function driveChatGeneration(
 
   let run: LoopResult;
   try {
-    // Route selection restores the S01 invariant (B2): production only when
-    // qualified, never a silent fallback to the training-permitted route.
-    const dispatchRoute = productionQualified() ? "production" : "development";
+    // Route selection restores the S01 invariant (B2) and S03-L full
+    // capability: production only with the pinned no-training/ZDR record,
+    // never a silent fallback to the training-permitted route.
+    let dispatchRoute: DispatchRoute = "development";
+    try {
+      loadProductionRouteConfig();
+      dispatchRoute = "production";
+    } catch {
+      dispatchRoute = "development";
+    }
     run = await runToolLoop(pool, ctx, attemptId, `chat:${attemptId}`, history, recording, { route: dispatchRoute }, {
       onReservation: async (reservationId) => {
         await withTenant(pool, workerClaims, async (client) => {
