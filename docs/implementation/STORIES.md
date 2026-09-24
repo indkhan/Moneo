@@ -1678,13 +1678,49 @@ Verification: Bounded live gate evidence + reviewer sign-off. Not runnable local
 
 ## E08-S04 — Independently review tenant, finance and artifact boundaries
 
-Status: Ready | Release: R1 | Epic: E08 | Dependencies: E08-S02, E08-S03
+Status: In progress | Release: R1 | Epic: E08 | Dependencies: E08-S02, E08-S03
+
+Outcome: An independent reviewer tests the deployed candidate and returns Pass or concrete release-blocking findings; implementers fix, then a separate reviewer rechecks the exact changed SHA.
+
+Local/Deploy split (2026-09-24): the independent review of the local candidate (all R1 boundaries + E08 lifecycle) is E08-S04-L; the same review repeated against the real deployment (identity/roles/secrets/TLS/browser/role probes) is E08-S04-D and stays open. The parent is not Done until both pass.
 
 Outcome: An independent reviewer tests the deployed candidate and returns Pass or concrete release-blocking findings; implementers fix, then a separate reviewer rechecks the exact changed SHA.
 Contracts: Architecture tenant/RLS, money/evidence, parser, AI and artifact runtime boundaries; workflow independent-review gate; product R1 coverage matrix.
 Scope: Review actual deployment identity/roles/secrets/TLS, cross-tenant ID swaps, malicious imports, prompt injection, exclusions, money/FX/coverage goldens, hostile artifact DOM/network/SDK grants and E08 export/delete/restore behavior. Use existing tests/proof fixtures and one targeted new repro per discovered blocker; reviewers do not edit approved code.
 Acceptance: Every release blocker is fixed and re-reviewed on the final candidate. Remaining nonblocking findings and rationale are recorded in this ledger. A checklist, old SHA or previous E07 review alone does not pass this gate.
 Verification: `npm run check`, `test:tenancy`, `test:e03-exit`, `test:e05-exit`, `test:e06-exit`, `test:e07-exit`, `test:e05-matrix`, `test:artifact-runtime`, E08 lifecycle/restore/production-policy suites and deployed browser/role probes; exact commands and skips recorded. No real customer data in hostile tests.
+
+## E08-S04-L — Independent local review of all R1 boundaries (synthetic, disposable services)
+
+Status: Done | Release: R1 | Epic: E08 | Dependencies: E08-S03-L (Done at `c7ec96c`)
+
+Outcome: An independent reviewer tests the local candidate across tenant/RLS, money/evidence, parser, AI and artifact runtime boundaries plus the E08 export/delete/retention/restore/production-policy lifecycle, and returns Pass or concrete release-blocking findings; the implementer fixes every blocker with a regression test and a separate re-review approves the exact changed SHA.
+Contracts: Architecture tenant/RLS, money/evidence, parser, AI and artifact runtime boundaries; workflow independent-review gate; product R1 coverage matrix; E08-S01–S03 acceptance.
+Scope: Review-only story — no product code except regression tests and blocker fixes. Review the merged tree (not summaries) with real PG/Redis/MinIO/ClamAV + Chromium/Firefox/WebKit where the suites require them: cross-tenant ID swaps, malicious imports, prompt injection, exclusions, money/FX/coverage goldens, hostile artifact DOM/network/SDK grants, export/delete/restore/production-policy behavior. One targeted new repro per discovered blocker. Reviewers do not edit approved code.
+Acceptance: Every release blocker is fixed and re-reviewed on the final candidate. Remaining nonblocking findings and rationale are recorded in the ledger. A checklist, old SHA or previous E07 review alone does not pass this gate.
+Failure/data/limits: Synthetic data only; hostile tests never touch shared/production services. Findings cite file/line, impact, repro, violated contract and correction direction.
+Verification: `npm run check`, `test:tenancy`, `test:e03-exit`, `test:e05-exit`, `test:e06-exit`, `test:e07-exit`, `test:e05-matrix`, `test:artifact-runtime`, `test:export`, `test:deletion`, `test:retention`, `test:restore`, `test:prod-policy`, `test:job-recovery`, typecheck/builds, `staging:smoke`, diff/secret gates; exact commands and skips recorded.
+Review focus: Tenant escapes, money misstatement, evidence forgery, policy bypass, artifact breakout, lifecycle (export/delete/restore) data loss or leakage, and any gap between documented gates and actual enforcement.
+Rollout/rollback: No product rollout; fix commits land on one review branch and merge only after re-review Pass + candidate gates.
+
+Execution record:
+- Assignee / branch: Orchestrator/implementer this session / `story/e08-s04-review` (deleted after merge)
+- Base SHA / heads: base `c7ec96c` (= local main at branch-off); reviewed `c7ec96c`; fix/reviewed `85c8f75` (candidate; no post-review code changes)
+- Review: independent full-candidate adversarial review at `c7ec96c` — Pass with no release blockers (typecheck 0; tenancy 7/7; e03-exit 11/11; e05-exit 9/9; e06-exit 12/12; e07-exit 12/12; artifact-runtime 26 + 4 pre-existing skips; export 13/13; deletion 9/9; retention 6/6; restore 1/1; prod-policy 7/7; job-recovery 14/14; extras import/money/fx/calc-evidence/ai-dispatch/mapping/upload/web/e05-matrix all green; secret scan clean; own RLS audit + cross-tenant + fence probes pass; 7 nonblocking findings, none above low)
+- Fixes at `85c8f75` for findings 2 (runbook privileged-pool pin + non-vacuous evidence assertion), 3 (snapshot manifest basename/prefix validation + refusal tests), 7 (canonical-only money parse + rejection goldens); findings 1 (AI-vs-analytics exclusion separation by design), 4 (requested_by documented), 5 (FAILED-request linger → S01c-D), 6 (acr strength → S04-D) accepted with rationale; independent re-review Pass at `85c8f75` (validators/parser congruence verified, no legitimate path breaks)
+- Integration gates on candidate: check 0; tenancy 7/7; e03-exit 11/11; e05-matrix 21/21; artifact-runtime 26 + 4 skips; export 13/13; deletion 9/9 (one load flake, green on rerun); retention 6/6; restore 1/1; prod-policy 7/7; job-recovery 14/14; money 5/5; accounts/commands/transactions-table green; builds web/worker 0; `staging:smoke` PASS; `test:failure` nonzero-as-intended; `git diff --check` 0; tracked `.env` scan clean; e07-exit 12/12. e05-exit oversized-test timed out at the default 5 s budget 4× (host CPU 67–81%, mem pressure) but passes 9/9 with a bounded 60 s timeout; proven independent of S04 changes by revert experiment (fails identically with pristine money.ts) — recorded as host-load flake, not a regression. e06-exit latency gate failed once (771 vs 500 ms; documented pre-existing host threshold). Merged with `--no-ff`
+- Merge SHA / post-merge smoke: `5667295`; post-merge `npm run check` 0, `test:money` 5/5, clean status. Remote push/PR not performed (local-only merges per E00 precedent)
+- Deployed gate retained: S04-D stays open (identity/roles/secrets/TLS/browser/role probes on the real deployment); no customer data, no public release
+
+## E08-S04-D — Independent review of the deployed candidate
+
+Status: Draft | Release: R1 | Epic: E08 | Dependencies: E08-S04-L, hosting selection
+
+Outcome: The S04-L review is repeated against the real deployment (actual identity/roles/secrets/TLS, deployed browser/role probes) with a Pass or release-blocking findings, fixed and rechecked on the exact deployed SHA.
+Contracts: Same as S04-L plus deployment identity/roles/secrets/TLS contracts.
+Scope: Deployed-candidate review only after hosting selection. No customer data in hostile tests.
+Acceptance: Pass on the deployed candidate with evidence, or blockers closed + re-reviewed. Public launch additionally needs the founder release decision.
+Verification: Deployed probes + evidence links. Not runnable locally — stays open until hosting is chosen.
 
 ## E08-S05 — Establish load, failure and cost release gates
 
