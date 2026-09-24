@@ -277,6 +277,15 @@ async function acceptTx(
       "INSERT INTO export_packages (workspace_id, id, job_id, requested_by, cutoff, status, object_key, data_key, expires_at) VALUES ($1, $2, $3, $4, now(), 'BUILDING', $5, $6, now() + ($7 || ' hours')::interval)",
       [claims.workspaceId, packageId, jobId, actorId, key, dataKey, String(EXPORT_EXPIRY_HOURS)],
     );
+    // E08-S01c-L retention discovery: ID-only row for the cross-workspace
+    // sweeper (never an unscoped tenant read); cleared on every terminal
+    // transition below.
+    await client.query("INSERT INTO export_expiry_index (workspace_id, package_id, requested_by, expires_at) VALUES ($1, $2, $3, now() + ($4 || ' hours')::interval) ON CONFLICT DO NOTHING", [
+      claims.workspaceId,
+      packageId,
+      actorId,
+      String(EXPORT_EXPIRY_HOURS),
+    ]);
     const view = await readPackageByJob(client, claims.workspaceId, jobId);
     if (!view) throw new Error("export package missing after accept");
     await client.query("UPDATE command_operations SET status = 'SUCCEEDED', response_payload = $1, completed_at = now() WHERE workspace_id = $2 AND id = $3", [
@@ -489,6 +498,10 @@ async function failPackage(pool: Pool, route: JobRoute & { jobId: string }, clai
       route.jobId,
       code,
     ]);
+    await client.query("DELETE FROM export_expiry_index WHERE workspace_id = $1 AND package_id IN (SELECT id FROM export_packages WHERE workspace_id = $1 AND job_id = $2)", [
+      route.workspaceId,
+      route.jobId,
+    ]);
     await client.query("INSERT INTO background_job_results (workspace_id, id, background_job_id, result_kind) VALUES ($1, $2, $3, 'export-ready') ON CONFLICT (workspace_id, background_job_id) DO NOTHING", [
       route.workspaceId,
       uuidv7(),
@@ -567,6 +580,10 @@ export async function processExportJob(
             full.workspaceId,
             backgroundJobId,
           ]);
+          await client.query("DELETE FROM export_expiry_index WHERE workspace_id = $1 AND package_id IN (SELECT id FROM export_packages WHERE workspace_id = $1 AND job_id = $2)", [
+            full.workspaceId,
+            backgroundJobId,
+          ]);
         }
         return false;
       }
@@ -614,6 +631,11 @@ async function findPackage(client: PoolClient, workspaceId: string, packageId: s
   return found.rows[0] as PackageRow;
 }
 
+/** Clear the retention discovery row on terminal transitions (consume, expire, fail, purge). */
+export async function deleteExportExpiryIndex(client: PoolClient, workspaceId: string, packageId: string): Promise<void> {
+  await client.query("DELETE FROM export_expiry_index WHERE workspace_id = $1 AND package_id = $2", [workspaceId, packageId]);
+}
+
 /** Lazy expiry inside the caller's tenant transaction: past-due READY rows lose their object before any read is served. */
 async function expireIfDue(client: PoolClient, s3: S3Config | null, workspaceId: string, row: PackageRow): Promise<boolean> {
   if (row.status !== "READY" || new Date(row.expires_at as unknown as string).getTime() > Date.now()) return false;
@@ -628,6 +650,7 @@ async function expireIfDue(client: PoolClient, s3: S3Config | null, workspaceId:
     workspaceId,
     row.id,
   ]);
+  await deleteExportExpiryIndex(client, workspaceId, row.id);
   return true;
 }
 
@@ -697,6 +720,7 @@ export async function serveExportDownload(
       "INSERT INTO audit_events (workspace_id, id, actor_type, actor_user_id, entity_type, entity_id, action) VALUES ($1, $2, 'user', $3, 'export_package', $4, 'downloaded')",
       [claims.workspaceId, auditId, actorId, packageId],
     );
+    await deleteExportExpiryIndex(client, claims.workspaceId, packageId);
     return taken;
   });
   if (!consumed) return null;
@@ -748,6 +772,7 @@ export async function expireExportPackage(
       claims.workspaceId,
       packageId,
     ]);
+    await deleteExportExpiryIndex(client, claims.workspaceId, packageId);
     return { expired: true };
   });
 }

@@ -621,10 +621,15 @@ async function terminalReject(
   importId: string,
   errorCode: string,
 ): Promise<void> {
-  await client.query("UPDATE imports SET status = 'REJECTED', error_code = $3, completed_at = now(), staged_count = 0, review_count = 0, rejected_count = 0 WHERE workspace_id = $1 AND id = $2", [
+  await client.query("UPDATE imports SET status = 'REJECTED', error_code = $3, completed_at = now(), staged_count = 0, review_count = 0, rejected_count = 0, expires_at = now() + interval '30 days' WHERE workspace_id = $1 AND id = $2", [
     route.workspaceId,
     importId,
     errorCode,
+  ]);
+  // E08-S01c-L retention discovery for rejected bytes (same 30-day marker).
+  await client.query("INSERT INTO import_expiry_index (workspace_id, import_id, expires_at) VALUES ($1, $2, now() + interval '30 days') ON CONFLICT DO NOTHING", [
+    route.workspaceId,
+    importId,
   ]);
   await client.query(
     "UPDATE background_jobs SET status = 'SUCCEEDED', completed_at = now(), result_ref = $3, progress_stage = 'rejected', updated_at = now() WHERE workspace_id = $1 AND id = $2",
@@ -866,6 +871,12 @@ export async function processParseJob(
       "UPDATE imports SET status = 'STAGED', completed_at = now(), row_count = $3, staged_count = $4, review_count = $5, rejected_count = $6, expires_at = now() + interval '30 days', source_columns = $7 WHERE workspace_id = $1 AND id = $2",
       [route.workspaceId, loaded.importId, rows, staged, review, rejected, JSON.stringify(sourceHeader)],
     );
+    // E08-S01c-L retention discovery: the sweeper finds marked imports
+    // through this ID-only index (never an unscoped tenant read).
+    await client.query("INSERT INTO import_expiry_index (workspace_id, import_id, expires_at) VALUES ($1, $2, now() + interval '30 days') ON CONFLICT DO NOTHING", [
+      route.workspaceId,
+      loaded.importId,
+    ]);
     await client.query("UPDATE source_objects SET status = 'ACCEPTED' WHERE workspace_id = $1 AND import_id = $2", [route.workspaceId, loaded.importId]);
     await client.query(
       "INSERT INTO background_job_results (workspace_id, id, background_job_id, result_kind) VALUES ($1, $2, $3, 'import-parsed') ON CONFLICT (workspace_id, background_job_id) DO NOTHING",

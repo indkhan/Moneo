@@ -1532,14 +1532,39 @@ Execution record:
 
 ## E08-S01c — Enforce and disclose retention
 
-Status: Draft | Release: R1 | Epic: E08 | Dependencies: E08-S01b
+Status: In progress | Release: R1 | Epic: E08 | Dependencies: E08-S01b
 
 Outcome: A machine-readable retention catalog and bounded cleanup agree with the privacy text and actual deployed storage/processor behavior.
+
+Local/Deploy split (2026-09-24 refinement against the code): the local slice is E08-S01c-L (implemented and reviewed here); backup/audit/processor periods and privacy sign-off are E08-S01c-D and stay gated on the hosting/processor decision. The parent is not Done until both land. No production purge until backup retention and legal basis are approved.
 Contracts: Architecture §§455–456/463/465 and E02 raw-upload 30-day marker; product R1 privacy/operations row.
 Scope: Retain canonical observations while the workspace is active; default original uploaded bytes to 30 days after validated import, with explicit retain/unresolved-import holds; export packages expire at 24 hours. Set and enforce periods for AI metadata, Redis/PG job records, security audit and backups only after operational/legal review. Reuse existing source-object markers and queue retention. Give Settings a plain account of active-system, backup and provider timelines.
 Acceptance: Synthetic clock advance purges eligible raw files/export bundles once, keeps held source bytes and canonical observations, and retries failed S3 deletes; deleted tenant tombstones outlive backup restoration windows. Catalog, settings text and cleanup code name the same durations. No privacy text claims provider guarantees that have not been qualified in S03.
 Verification: Add `npm run test:retention` with disposable PG/MinIO and frozen clock; run `test:upload`, `test:export`, `test:deletion`, `test:job-recovery`, typecheck/builds and privacy-text review. No production purge until backup retention and legal basis are approved.
 Open gate: Proposed on 2026-09-24 for the controlled beta: seven-day managed PostgreSQL PITR and 30-day rolling, daily, independently encrypted backup copies in Backblaze B2 EU Central; apply seven-day Object Lock to backup generations, expire all object versions by the approved 30-day schedule, and keep external deletion tombstones at least 45 days so they outlive the oldest restorable backup. Backblaze rules: https://www.backblaze.com/docs/cloud-storage-object-lock and https://www.backblaze.com/docs/cloud-storage-lifecycle-rules . These are proposed operational values, not approved privacy text. Production backup, audit and processor retention periods still require the actual hosting/processor inventory and privacy sign-off; keep Draft until those values are recorded.
+
+## E08-S01c-L — Enforce local retention (upload bytes, export bundles, tombstone floor)
+
+Status: Ready | Release: R1 | Epic: E08 | Dependencies: E08-S01b (Done at `1c4f770`)
+
+Outcome: Bounded local cleanup enforces the arch 455-456 periods that need no provider: original upload bytes ~30 days after validated import (explicit retain/unresolved holds), export bundles 24 hours (cross-workspace sweep closing the S01 lazy-only gap), and deletion tombstones never purged (45-day floor exported for S02). AI metadata, queue records, security audit and backups are cataloged as deployment-gated with no enforced period and no fake claim.
+Contracts: Architecture §§455–456/463/465 and E02 raw-upload 30-day marker; product R1 privacy/operations row; S01 export expiry + S01b tombstones/objects.
+Scope: `apps/web/src/retention.ts` (machine-readable RETENTION_CATALOG, per-workspace sweep contexts bound to expiry-index rows, purgeImportBytes, sweepRetention across both expiry indexes); migration `043_retention` (imports.retain_original, export_expiry_index + import_expiry_index ID-only discovery tables without RLS, backfill of existing markers); uploads.ts writes the import index on STAGED and (new) sets the 30-day marker on REJECTED; export.ts writes/clears the export index on accept/consume/expire/fail/purge; privacy page renders the catalog (enforced values + deployment-gated names). No scheduler/cron (S01c-D owns cadence), no member sweep endpoint (tests drive the sweeper; the deployed cron reuses it), no backup/audit/processor enforcement.
+Acceptance: (1) Synthetic backdated clocks purge eligible STAGED/REJECTED bytes once (object + source_objects rows gone; canonical observations + import row stay), keep retain=true and unmarked/unresolved bytes, and clean only consumed index rows. (2) Backdated READY exports expire via the cross-workspace sweep (object gone, keys nulled); broken storage stays READY with failed counts and converges after restore. (3) Backdated tombstones survive every sweep; catalog, settings text and cleanup code name the same durations; gated classes carry no period. (4) Tombstone floor constant (45d) is exported for S02.
+Failure/data/limits: Sweeps are read-committed per package/import with bounded batches (≤1,000 rows/objects); failed object deletes stay visible with counts and retry. Tombstones are never deleted by any sweep. Deterministic via backdated markers (no wall-clock races).
+Verification: `npm run test:retention` (disposable PG `moneo_e08_retention` + MinIO, real bytes/objects); regress `test:upload`, `test:export`, `test:deletion`, `test:job-recovery`, `test:tenancy` (043-first rollback chain); typecheck, build:web, `staging:smoke`, diff/secret gates; independent review.
+Review focus: cross-workspace context bypass scope (index-bound, RLS-scoped reads only), RLS on new tables (indexes intentionally ID-only like job_dispatch_index), marker writes on every terminal path, retain/hold correctness, tombstone immunity, catalog-text-code agreement, scheduler-shaped scope creep.
+Rollout/rollback: Additive migration + new module; rollback drops the indexes/column (synthetic data only). Disable by not running the sweeper; no cron exists yet.
+
+## E08-S01c-D — Qualify deployed retention (backups, audit, processors, privacy text)
+
+Status: Draft | Release: R1 | Epic: E08 | Dependencies: E08-S01c-L, hosting/processor selection
+
+Outcome: Production backup, audit-log, AI-metadata, queue-record and processor retention periods are set from the actual hosting/processor inventory, enforced by the deployed scheduler, and written into approved privacy text with legal sign-off.
+Contracts: Architecture §§455–456/463/465; the S01c open gate above (PITR/backup proposal).
+Scope: Deployed cron cadence for sweepRetention, backup retention + Object Lock + lifecycle rules on the selected provider, audit/AI/queue periods, processor DPAs, privacy-text approval. No customer data before it passes.
+Acceptance: Periods recorded from signed provider terms; sweeps run on schedule with redacted evidence; tombstones demonstrably outlive the oldest restorable backup; privacy text matches code and contracts.
+Verification: Deployed drill + evidence links; privacy/legal sign-off record. Not runnable locally — stays open until hosting is chosen.
 
 ## E08-S02 — Restore safely and prove operational recovery
 

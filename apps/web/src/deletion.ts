@@ -38,7 +38,7 @@ import { TenantDenied, TenantInvalid, listWorkspaces, withTenant, type TenantCla
 import { cancelJob } from "./job-recovery.ts";
 import { closeArtifactSession } from "./artifact-host.ts";
 import { s3Delete, s3DeleteExport, type S3Config } from "./s3.ts";
-import { ExportError, assertFreshStepUp } from "./export.ts";
+import { deleteExportExpiryIndex, ExportError, assertFreshStepUp } from "./export.ts";
 import type { Session } from "./session-store.ts";
 
 export const DELETIONS_REQUEST = "deletions.request";
@@ -554,6 +554,9 @@ async function purgeExportPackages(client: PoolClient, s3: S3Config, workspaceId
       }
     }
     await client.query(`DELETE FROM export_packages WHERE workspace_id = $1 AND id = ANY ($2)`, [workspaceId, (rows.rows as Array<{ id: string }>).map((r) => r.id)]);
+    for (const row of rows.rows as Array<{ id: string }>) {
+      await deleteExportExpiryIndex(client, workspaceId, row.id);
+    }
   }
 }
 
