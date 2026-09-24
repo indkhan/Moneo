@@ -46,6 +46,9 @@ export const STEP_UP_WINDOW_MS = 5 * 60 * 1000;
 export const MAX_ACTIVE_EXPORTS = 1;
 export const MAX_EXPORT_ROWS = 100_000;
 export const MAX_EXPORT_OBJECT_BYTES = 64 * 1024 * 1024;
+// Cap collected rows below the encrypted-object limit: the final JSON/CSV
+// and encryption each need another buffer. Full streaming is a deployed gate.
+const MAX_EXPORT_SNAPSHOT_BYTES = MAX_EXPORT_OBJECT_BYTES / 2;
 const REPLAY_RETENTION_DAYS = 30;
 
 export type ExportStatus = "BUILDING" | "READY" | "FAILED_FINAL" | "EXPIRED";
@@ -351,12 +354,26 @@ async function snapshotWorkspace(pool: Pool, claims: TenantClaims, requesterUser
     claims,
     async (client) => {
       const sections: Record<string, Record<string, string>[]> = {};
+      let totalRows = 0;
+      let snapshotBytes = 0;
       const get = async (name: string, sql: string, params: unknown[] = []): Promise<void> => {
-        const found = await client.query(sql, params as unknown[]);
-        sections[name] = destringify(found.rows as Record<string, unknown>[]);
+        const rows: Record<string, string>[] = [];
+        for (;;) {
+          const found = await client.query(`${sql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, 250, rows.length]);
+          for (const row of destringify(found.rows as Record<string, unknown>[])) {
+            totalRows += 1;
+            snapshotBytes += Buffer.byteLength(JSON.stringify(row), "utf8");
+            if (totalRows > MAX_EXPORT_ROWS || snapshotBytes > MAX_EXPORT_SNAPSHOT_BYTES) throw new ExportError("too_large");
+            rows.push(row);
+          }
+          if ((found.rowCount ?? 0) < 250) break;
+        }
+        sections[name] = rows;
       };
       const ws = await client.query("SELECT id, name, base_currency_code, timezone, locale FROM workspaces WHERE id = $1", [claims.workspaceId]);
       sections["workspace"] = destringify(ws.rows as Record<string, unknown>[]);
+      totalRows += sections["workspace"].length;
+      snapshotBytes += Buffer.byteLength(JSON.stringify(sections["workspace"]), "utf8");
       await get("membership", "SELECT user_id, role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2", [claims.workspaceId, requesterUserId]);
       await get("accounts", "SELECT id, name, base_currency_code, archived, source, version, created_at, updated_at FROM accounts WHERE workspace_id = $1 AND created_at <= $2 ORDER BY created_at, id", [claims.workspaceId, cutoff]);
       await get("transactions", "SELECT id, account_id, amount_minor, currency, direction, effective_date, description, source_link_id, import_id, import_row_no, observation_id, category_id, version, financial_kind, linked_account_id, created_at FROM transactions WHERE workspace_id = $1 AND created_at <= $2 ORDER BY created_at, id", [claims.workspaceId, cutoff]);
@@ -403,8 +420,6 @@ async function snapshotWorkspace(pool: Pool, claims: TenantClaims, requesterUser
       await get("scenarioOverrides", "SELECT id, scenario_id, override_type, effective_from, effective_to, payload, version, created_at FROM scenario_overrides WHERE workspace_id = $1 AND created_at <= $2 ORDER BY created_at, id", [claims.workspaceId, cutoff]);
       const counts: Record<string, number> = {};
       for (const [name, rows] of Object.entries(sections)) counts[name] = rows.length;
-      const total = Object.values(counts).reduce((a, b) => a + b, 0);
-      if (total > MAX_EXPORT_ROWS) throw new ExportError("too_large");
       return { sections, counts };
     },
     "REPEATABLE READ",

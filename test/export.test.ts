@@ -410,6 +410,20 @@ describe("e08-s01 workspace export", () => {
     expect(elapsedMs).toBeLessThan(120_000);
   });
 
+  it("rejects an oversized snapshot before building or uploading an export", async () => {
+    const base = await startApp();
+    const me = await setupWorkspace(base, "synthetic-export-oversize");
+    await seedFixture(me.userId, me.workspaceId, "oversize");
+    await scoped(me.userId, me.workspaceId, async (client) => {
+      await client.query("UPDATE artifact_versions SET source_js = $2 WHERE workspace_id = $1", [me.workspaceId, "x".repeat(33 * 1024 * 1024)]);
+    });
+    const accepted = await acceptExport(base, me.cookie, me.workspaceId);
+    expect(await runExport(accepted.json.jobId)).toBe("applied");
+    const rejected = await readPackage(base, me.cookie, me.workspaceId, accepted.json.packageId);
+    expect(rejected.json.package).toMatchObject({ status: "FAILED_FINAL", errorCode: "export_too_large" });
+    expect(await s3ListKeys(config.s3, `exports/${me.workspaceId}/`)).toEqual([]);
+  });
+
   it("expired idempotency keys conflict and busy workspaces refuse a second key", async () => {
     const base = await startApp();
     const me = await setupWorkspace(base, "synthetic-export-busy-a");

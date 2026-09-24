@@ -777,7 +777,12 @@ async function sendChatCompletion(
       const res = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
         method: "POST",
         headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: config.model, messages: [{ role: "user", content: req.requestText }], max_tokens: req.maxOutputTokens }),
+        body: JSON.stringify({
+          model: config.model,
+          messages: [{ role: "user", content: req.requestText }],
+          max_tokens: req.maxOutputTokens,
+          ...(req.route === "production" ? { provider: { data_collection: "deny", zdr: true } } : {}),
+        }),
         signal: controller.signal,
       });
       const text = await res.text();

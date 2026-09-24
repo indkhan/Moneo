@@ -1490,7 +1490,7 @@ Founder sequencing decision (2026-09-24): Continue E08 implementation and exhaus
 
 ## E08-S01 — Export complete workspace data
 
-Status: Done | Release: R1 | Epic: E08 | Dependencies: E07-S05 (Done; post-exit audit repair merged)
+Status: In progress (reopened by 2026-09-24 audit) | Release: R1 | Epic: E08 | Dependencies: E07-S05 (Done; post-exit audit repair merged)
 
 Outcome: A workspace owner obtains a private, machine-readable workspace export from Settings → Privacy & Security. This retains the original E08-S01 ID; deletion and retention were split to S01b/S01c for independent review.
 Contracts: Product R1 privacy/operations row and §81.2/§81.10; architecture §§457–460, CSV spreadsheet-cell safety and E02 tenancy/session contracts. The R1 identity override replaces old Auth0 references with Keycloak.
@@ -1507,6 +1507,8 @@ Execution record:
 - Integration: local main at base `3e135f6` unchanged; merge-base == base; candidate == `b711ec9`; full candidate gates green (see Tests). Merged with `--no-ff`
 - Merge SHA / post-merge smoke: `05902b9`; post-merge `npm run check` 0, `test:export` 13/13, clean status. Remote push/PR not performed (local-only merges per E00 precedent)
 - Accepted residuals (nonblocking, reviewer-explicit): acr strength is presence-only — pinning accepted acr values to the deployed Keycloak LoA mapping is an S04 deployed gate (live-Keycloak acr set never qualified locally); any workspace member (not only owners) may export shared finance + own private data — recorded as intended GDPR-portability behavior unless the founder restricts it; transaction_tags has no timestamp so no cutoff predicate is expressible (FK bounds it); no cross-workspace expiry sweep in S01 — owned by S01c; deployed Keycloak must supply auth_time+acr in userinfo (mapper) or export denies by design
+
+**Post-E08 audit (2026-09-24):** Reopened because the original export builder read all rows into memory before its 64 MiB object check, contrary to this story's bounded-stream requirement. Audit repair branch `story/e08-audit-fixes` pages reads and fails early at 100,000 rows or 32 MiB of serialized section data; a 33 MiB synthetic artifact is rejected with `export_too_large` and no object. This bounds the local failure mode but does not deliver complete, streamed exports for larger workspaces. The original Done evidence remains historical; finish streaming or explicitly revise the product limit before this story returns to Done. No customer data is authorized.
 
 ## E08-S01b — Delete account/workspace data durably
 
