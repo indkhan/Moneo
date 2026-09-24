@@ -238,7 +238,8 @@ describe("e08-s01c-L local retention", () => {
     const pkgA = await readyPackage(a);
     const pkgB = await readyPackage(b);
     // Backdate both expiries (synthetic clock advance) plus an old tombstone.
-    await pool.query("UPDATE export_packages SET expires_at = '2000-01-01T00:00:00Z' WHERE id IN ($1, $2)", [pkgA, pkgB]);
+    // Package rows are RLS-protected: backdate them as the operator would.
+    await admin.query("UPDATE export_packages SET expires_at = '2000-01-01T00:00:00Z' WHERE id IN ($1, $2)", [pkgA, pkgB]);
     await pool.query("UPDATE export_expiry_index SET expires_at = '2000-01-01T00:00:00Z' WHERE package_id IN ($1, $2)", [pkgA, pkgB]);
     const tombId = randomUUID();
     await pool.query("INSERT INTO deletion_tombstones (id, subject_kind, subject_ref, scope, request_id, basis, deleted_at) VALUES ($1, 'identity', $2, 'identity', $3, 'erasure-request', now() - interval '44 days')", [
@@ -263,6 +264,39 @@ describe("e08-s01c-L local retention", () => {
     const tomb = await pool.query("SELECT count(*)::int AS n FROM deletion_tombstones WHERE id = $1", [tombId]);
     expect((tomb.rows[0] as { n: number }).n).toBe(1);
     expect(TOMBSTONE_RETENTION_DAYS).toBe(45);
+  });
+
+  it("a failed download keeps its index row so the sweep still converges", async () => {
+    const base = await startApp();
+    const me = await setupWorkspace(base, "synthetic-ret-reopen-a");
+    const accepted = await fetch(`${base}/api/workspaces/${me.workspaceId}/exports`, {
+      method: "POST",
+      headers: { cookie: me.cookie, "Content-Type": "application/json" },
+      body: JSON.stringify({ idempotencyKey: randomUUID() }),
+    });
+    expect(accepted.status).toBe(202);
+    const body = (await accepted.json()) as any;
+    expect(await processExportJob(pool, body.jobId, s3)).toBe("applied");
+    const packageId = body.packageId as string;
+    // Lose the object, then attempt the download while unexpired: consume
+    // succeeds, the fetch fails, the single use reopens with index intact.
+    const keys = await s3ListKeys(s3, `exports/${me.workspaceId}/`);
+    expect(keys.length).toBe(1);
+    await s3DeleteExport(s3, keys[0]);
+    const dl = await fetch(`${base}/api/workspaces/${me.workspaceId}/exports/${packageId}/download`, { headers: { cookie: me.cookie } });
+    expect(dl.status).toBe(404);
+    const reopened = await admin.query("SELECT downloaded_at FROM export_packages WHERE id = $1", [packageId]);
+    expect((reopened.rows[0] as { downloaded_at: string | null }).downloaded_at).toBeNull();
+    const indexKept = await pool.query("SELECT count(*)::int AS n FROM export_expiry_index WHERE package_id = $1", [packageId]);
+    expect((indexKept.rows[0] as { n: number }).n).toBe(1);
+    // Advance the clock: the sweep converges on the kept index row.
+    await admin.query("UPDATE export_packages SET expires_at = '2000-01-01T00:00:00Z' WHERE id = $1", [packageId]);
+    await pool.query("UPDATE export_expiry_index SET expires_at = '2000-01-01T00:00:00Z' WHERE package_id = $1", [packageId]);
+    // The sweep converges: missing object tolerates delete, row expires.
+    const swept = await sweepRetention(pool, s3, 100);
+    expect(swept.expiredExports).toBe(1);
+    const indexGone = await pool.query("SELECT count(*)::int AS n FROM export_expiry_index WHERE package_id = $1", [packageId]);
+    expect((indexGone.rows[0] as { n: number }).n).toBe(0);
   });
 
   it("broken storage stays visible and converges after restore", async () => {

@@ -715,6 +715,13 @@ export async function runDeletion(pool: Pool, workspaceId: string, requestId: st
       }
       await closeGrantSessions(null);
       await purgeWorkspaceTables(null);
+      // Retention discovery converges here too (per-package clears already
+      // ran; this catches stragglers so no sweep revisits a purged
+      // workspace). Tombstones are never indexed and stay untouched.
+      await withDeletionWorkspace(pool, workspaceId, async (client) => {
+        await client.query("DELETE FROM import_expiry_index WHERE workspace_id = $1", [workspaceId]);
+        await client.query("DELETE FROM export_expiry_index WHERE workspace_id = $1", [workspaceId]);
+      });
       const memberSubs = await withDeletionWorkspace(pool, workspaceId, async (client) =>
         userSubs(client, (await client.query("SELECT user_id FROM workspace_members WHERE workspace_id = $1", [workspaceId])).rows.map((r: { user_id: string }) => r.user_id)),
       );

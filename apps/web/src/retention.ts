@@ -111,15 +111,19 @@ export async function sweepRetention(pool: Pool, s3: S3Config | null, limit = 10
   for (const row of dueImports.rows as Array<{ workspace_id: string; import_id: string }>) {
     try {
       const purged = await withRetentionSweep(pool, "import_expiry_index", row.workspace_id, row.import_id, async (client) => {
-        const imp = await client.query("SELECT status, retain_original FROM imports WHERE workspace_id = $1 AND id = $2", [row.workspace_id, row.import_id]);
+        const imp = await client.query("SELECT status, retain_original, expires_at FROM imports WHERE workspace_id = $1 AND id = $2", [row.workspace_id, row.import_id]);
         if ((imp.rowCount ?? 0) === 0) {
           await client.query("DELETE FROM import_expiry_index WHERE workspace_id = $1 AND import_id = $2", [row.workspace_id, row.import_id]);
           return false;
         }
-        const meta = imp.rows[0] as { status: string; retain_original: boolean };
+        const meta = imp.rows[0] as { status: string; retain_original: boolean; expires_at: Date | null };
         // Eligible: terminal validated/rejected bytes past expiry without an
-        // explicit hold. Anything else (in-flight, unmarked, retained) holds.
+        // explicit hold. Anything else (in-flight, unmarked, retained, or no
+        // longer due) holds.
         if (meta.retain_original || (meta.status !== "STAGED" && meta.status !== "REJECTED")) {
+          return false;
+        }
+        if (meta.expires_at === null || new Date(meta.expires_at).getTime() > Date.now()) {
           return false;
         }
         await deleteImportBytes(client, s3, row.workspace_id, row.import_id);
@@ -137,20 +141,32 @@ export async function sweepRetention(pool: Pool, s3: S3Config | null, limit = 10
   for (const row of dueExports.rows as Array<{ workspace_id: string; package_id: string }>) {
     try {
       const expired = await withRetentionSweep(pool, "export_expiry_index", row.workspace_id, row.package_id, async (client) => {
-        const pkg = await client.query("SELECT status, object_key FROM export_packages WHERE workspace_id = $1 AND id = $2", [row.workspace_id, row.package_id]);
+        const pkg = await client.query("SELECT status, object_key, expires_at FROM export_packages WHERE workspace_id = $1 AND id = $2", [row.workspace_id, row.package_id]);
         if ((pkg.rowCount ?? 0) === 0) {
           await client.query("DELETE FROM export_expiry_index WHERE workspace_id = $1 AND package_id = $2", [row.workspace_id, row.package_id]);
           return false;
         }
-        const meta = pkg.rows[0] as { status: string; object_key: string | null };
-        if (meta.status !== "READY") return false;
+        const meta = pkg.rows[0] as { status: string; object_key: string | null; expires_at: Date };
+        if (meta.status === "BUILDING") return false;
+        if (meta.status !== "READY") {
+          // Terminal without index cleanup (failed/cancelled paths clear it
+          // themselves; this converges stragglers).
+          await client.query("DELETE FROM export_expiry_index WHERE workspace_id = $1 AND package_id = $2", [row.workspace_id, row.package_id]);
+          return false;
+        }
+        // Recheck expiry inside the fence: discovery-to-sweep moves must not
+        // purge early.
+        if (new Date(meta.expires_at).getTime() > Date.now()) return false;
         if (meta.object_key) await s3DeleteExport(s3, meta.object_key);
-        await client.query(
+        const done = await client.query(
           "UPDATE export_packages SET status = 'EXPIRED', object_key = NULL, data_key = NULL, manifest = NULL, section_counts = NULL, completed_at = coalesce(completed_at, now()) WHERE workspace_id = $1 AND id = $2 AND status = 'READY'",
           [row.workspace_id, row.package_id],
         );
-        await client.query("DELETE FROM export_expiry_index WHERE workspace_id = $1 AND package_id = $2", [row.workspace_id, row.package_id]);
-        return true;
+        if ((done.rowCount ?? 0) === 1) {
+          await client.query("DELETE FROM export_expiry_index WHERE workspace_id = $1 AND package_id = $2", [row.workspace_id, row.package_id]);
+          return true;
+        }
+        return false;
       });
       if (expired) counts.expiredExports += 1;
       else counts.skippedExports += 1;

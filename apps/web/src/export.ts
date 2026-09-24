@@ -692,7 +692,10 @@ export type ExportDownload = { filename: string; bytes: Buffer; packageId: strin
  * One-use download: atomically consumes the READY package (downloaded_at,
  * audit row) under tenancy, then fetches + decrypts the object. The step-up
  * must be fresh at download time. Second downloads, expired packages and
- * foreign ids return null (uniform 404); stale step-up throws (403).
+ * foreign ids return null (uniform 404); stale step-up throws (403). The
+ * retention index row is cleared only after bytes are delivered: on fetch
+ * failure the package reopens with its index intact so the 24h sweep still
+ * converges after storage recovers.
  */
 export async function serveExportDownload(
   pool: Pool,
@@ -720,7 +723,6 @@ export async function serveExportDownload(
       "INSERT INTO audit_events (workspace_id, id, actor_type, actor_user_id, entity_type, entity_id, action) VALUES ($1, $2, 'user', $3, 'export_package', $4, 'downloaded')",
       [claims.workspaceId, auditId, actorId, packageId],
     );
-    await deleteExportExpiryIndex(client, claims.workspaceId, packageId);
     return taken;
   });
   if (!consumed) return null;
@@ -731,16 +733,25 @@ export async function serveExportDownload(
   } catch {
     // The single use must not burn on a storage failure that delivered no
     // bytes: reopen the package and retract the download audit row (by its
-    // exact id) so a retry stays possible and history stays truthful.
-    await withTenant(pool, claims, async (client) => {
-      await client.query("UPDATE export_packages SET downloaded_at = NULL WHERE workspace_id = $1 AND id = $2 AND status = 'READY'", [
-        claims.workspaceId,
-        packageId,
-      ]);
-      await client.query("DELETE FROM audit_events WHERE workspace_id = $1 AND id = $2 AND action = 'downloaded'", [claims.workspaceId, auditId]);
-    });
+    // exact id) so a retry stays possible and history stays truthful. The
+    // expiry index row was never cleared, so the sweep converges too. The
+    // reopen is best-effort (fail-closed to consumed on its own failure).
+    try {
+      await withTenant(pool, claims, async (client) => {
+        await client.query("UPDATE export_packages SET downloaded_at = NULL WHERE workspace_id = $1 AND id = $2 AND status = 'READY'", [
+          claims.workspaceId,
+          packageId,
+        ]);
+        await client.query("DELETE FROM audit_events WHERE workspace_id = $1 AND id = $2 AND action = 'downloaded'", [claims.workspaceId, auditId]);
+      });
+    } catch { /* stays consumed; operator-visible via downloaded_at without bytes */ }
     return null;
   }
+  // Bytes delivered: the retention index row can go (expiry already passed
+  // or the sweeper cleans the orphan if this write is lost).
+  await withTenant(pool, claims, async (client) => {
+    await deleteExportExpiryIndex(client, claims.workspaceId, packageId);
+  }).catch(() => null);
   return { filename: `moneo-export-${consumed.id}.json`, bytes: plaintext, packageId: consumed.id };
 }
 
