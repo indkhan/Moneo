@@ -186,6 +186,9 @@ describe("e08-s02-L isolated restore with tombstone replay", () => {
     const m2 = await addMember(o2.userId, del2Ws, "synthetic-restore-m2");
 
     const preHashes: EvidenceHashes = await hashWorkspaceEvidence(adminLive, keepWs);
+    // Non-vacuous evidence: the fixture must hash real rows (an RLS-scoped
+    // pool would hash empties on both sides and pass spuriously).
+    expect(preHashes.transactions).not.toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
     // Live sessions pre-backup (revocation replay needs them in the dump).
     const d1Session = await freshSession("synthetic-restore-del1");
     const m2Session = await freshSession("synthetic-restore-m2");
@@ -358,6 +361,19 @@ describe("e08-s02-L isolated restore with tombstone replay", () => {
     // Loose local bounds (host-sensitive; exact values recorded in STORIES.md).
     expect(measured.dumpMs).toBeLessThan(300_000);
     expect(measured.restoreMs).toBeLessThan(300_000);
+    // A tampered manifest cannot traverse or overwrite foreign keys.
+    const { drillTempDir: mkTmp } = await import("../apps/web/src/restore.ts");
+    const evilDir = mkTmp("moneo-restore-evil-");
+    try {
+      const { writeFileSync: write } = await import("node:fs");
+      write(`${evilDir}/manifest.json`, JSON.stringify([{ key: `exports/${keepWs}/${randomUUID()}.enc`, file: "../evil.bin" }]));
+      await expect(restoreWorkspaceObjects(s3, evilDir)).rejects.toThrow("restore manifest refused");
+      write(`${evilDir}/manifest.json`, JSON.stringify([{ key: "quarantine/elsewhere", file: "exports-0.bin" }]));
+      await expect(restoreWorkspaceObjects(s3, evilDir)).rejects.toThrow("restore manifest refused");
+    } finally {
+      const { cleanTempDir: clean } = await import("../apps/web/src/restore.ts");
+      clean(evilDir);
+    }
     // Evidence file for the ledger (approved temp dir, never committed).
     writeFileSync("C:\\Users\\mgsuk\\AppData\\Local\\Temp\\opencode\\restore-measure.json", JSON.stringify({ ...measured, t0 }));
   }, 300_000);

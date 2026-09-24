@@ -252,11 +252,18 @@ export async function snapshotWorkspaceObjects(s3: S3Config, workspaceId: string
   return { files: manifest.length, bytes };
 }
 
-/** Restore objects from a snapshot directory; returns byte-identical failures. */
+/** Restore objects from a snapshot directory; returns byte-identical failures. Manifest entries are validated (basename files, known prefixes) so a tampered manifest cannot traverse or overwrite foreign keys. */
 export async function restoreWorkspaceObjects(s3: S3Config, dir: string): Promise<{ restored: number; mismatched: string[] }> {
   const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as Array<{ key: string; file: string }>;
   let restored = 0;
   const mismatched: string[] = [];
+  for (const entry of manifest) {
+    if (typeof entry.key !== "string" || typeof entry.file !== "string") throw new Error("restore manifest refused");
+    if (entry.file.includes("/") || entry.file.includes("\\") || entry.file.includes("..")) throw new Error("restore manifest refused");
+    if (!/^exports\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.enc$/.test(entry.key) && !/^quarantine\/[0-9a-f-]{36}\/[0-9a-f-]{36}$/.test(entry.key)) {
+      throw new Error("restore manifest refused");
+    }
+  }
   for (const entry of manifest) {
     const bytes = new Uint8Array(readFileSync(join(dir, entry.file)));
     if (entry.key.startsWith("exports/")) await s3PutExport(s3, entry.key, bytes, "application/octet-stream");
