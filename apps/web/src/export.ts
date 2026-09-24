@@ -357,6 +357,11 @@ async function snapshotWorkspace(pool: Pool, claims: TenantClaims, requesterUser
       let totalRows = 0;
       let snapshotBytes = 0;
       const get = async (name: string, sql: string, params: unknown[] = []): Promise<void> => {
+        // PostgreSQL measures the entire section before any rows cross the
+        // wire, so one oversized page cannot defeat the in-process limit.
+        const size = await client.query(`SELECT count(*)::text AS rows, coalesce(sum(octet_length(row_to_json(t)::text)), 0)::text AS bytes FROM (${sql}) t`, params);
+        const measured = size.rows[0] as { rows: string; bytes: string };
+        if (BigInt(measured.rows) + BigInt(totalRows) > BigInt(MAX_EXPORT_ROWS) || BigInt(measured.bytes) + BigInt(snapshotBytes) > BigInt(MAX_EXPORT_SNAPSHOT_BYTES)) throw new ExportError("too_large");
         const rows: Record<string, string>[] = [];
         for (;;) {
           const found = await client.query(`${sql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, 250, rows.length]);
