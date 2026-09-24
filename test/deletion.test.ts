@@ -447,6 +447,31 @@ describe("e08-s01b durable deletion", () => {
     expect(tombs[0]).toMatchObject({ subjectKind: "identity", scope: "identity" });
   });
 
+  it("purges the 10k-row batch path within bounds", async () => {
+    const base = await startApp();
+    const me = await setupWorkspace(base, "synthetic-del9-scale");
+    const seeded = await seedWorkspace(me.userId, me.workspaceId, "scale");
+    const importRow = await admin.query("SELECT id FROM imports WHERE workspace_id = $1", [me.workspaceId]);
+    const importId = (importRow.rows[0] as { id: string }).id;
+    await scoped(me.userId, me.workspaceId, async (client) => {
+      await client.query(
+        "INSERT INTO transactions (workspace_id, id, account_id, amount_minor, currency, direction, effective_date, description, import_id, import_row_no, observation_id, version, financial_kind) SELECT $1, ('00000000-0000-4000-8000-' || lpad(to_hex(s), 12, '0'))::uuid, $2, 100 + s, 'EUR', 'OUTFLOW', '2024-02-01', 'bulk-' || s, $3, s + 100, 'scale-obs-' || s, 1, 'NORMAL' FROM generate_series(1, 10000) s",
+        [me.workspaceId, seeded.accountId, importId],
+      );
+    });
+    const before = await admin.query("SELECT count(*)::int AS n FROM transactions WHERE workspace_id = $1", [me.workspaceId]);
+    expect((before.rows[0] as { n: number }).n).toBe(10001);
+    const started = Date.now();
+    const res = await requestDeletion(base, me.cookie, me.workspaceId, { scope: "workspace" });
+    expect(res.json.deletion.status).toBe("COMPLETE");
+    expect(Date.now() - started).toBeLessThan(120_000);
+    const counts = await workspaceTableCounts(me.workspaceId);
+    for (const [table, n] of Object.entries(counts)) {
+      expect(`${table}:${n}`).toBe(`${table}:0`);
+    }
+    expect(await s3ListKeys(s3, `quarantine/${me.workspaceId}/`)).toEqual([]);
+  });
+
   it("crash mid-purge resumes to one completion with the flag already revoking", async () => {
     const base = await startApp();
     const owner = await setupWorkspace(base, "synthetic-del4-owner");

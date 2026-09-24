@@ -323,13 +323,14 @@ async function acceptTx(
       return fail("successor_invalid");
     }
 
-    // Server-recorded workspace list for identity finalization (never client input).
-    const subRow = await client.query("SELECT auth_subject FROM users WHERE id = $1", [actorId]);
-    const authSubject = ((subRow.rows[0] as { auth_subject: string } | undefined)?.auth_subject ?? "");
+    // Server-recorded acceptance instant only. Never store identity
+    // material (e.g. auth_subject) in the checkpoint: shared-workspace
+    // request rows persist after COMPLETE and must not relink the departed
+    // identity (finalizeIdentity re-queries users when it needs the sub).
     const requestId = uuidv7();
     await client.query(
       "INSERT INTO deletion_requests (workspace_id, id, scope, subject_user_id, requested_by, successor_user_id, status, checkpoint) VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', $7)",
-      [claims.workspaceId, requestId, input.scope, actorId, actorId, successor, JSON.stringify({ authSubject, acceptedAt: new Date().toISOString() })],
+      [claims.workspaceId, requestId, input.scope, actorId, actorId, successor, JSON.stringify({ acceptedAt: new Date().toISOString() })],
     );
     await client.query("UPDATE command_operations SET status = 'SUCCEEDED', response_payload = $1, completed_at = now() WHERE workspace_id = $2 AND id = $3", [
       JSON.stringify({ requestId }),
@@ -526,7 +527,11 @@ async function purgeSourceObjects(client: PoolClient, s3: S3Config, workspaceId:
     const keys = await client.query("SELECT object_key FROM source_objects WHERE workspace_id = $1 LIMIT $2", [workspaceId, DELETION_BATCH_ROWS]);
     if ((keys.rowCount ?? 0) === 0) return total;
     for (const row of keys.rows as Array<{ object_key: string }>) {
-      await s3Delete(s3, row.object_key);
+      try {
+        await s3Delete(s3, row.object_key);
+      } catch {
+        throw new DeletionError("object_store_unavailable");
+      }
     }
     await client.query("DELETE FROM source_objects WHERE workspace_id = $1 AND object_key = ANY ($2)", [workspaceId, (keys.rows as Array<{ object_key: string }>).map((r) => r.object_key)]);
     total += keys.rowCount ?? 0;
@@ -540,7 +545,13 @@ async function purgeExportPackages(client: PoolClient, s3: S3Config, workspaceId
     const rows = await client.query(`SELECT id, object_key FROM export_packages WHERE workspace_id = $1 ${extra} LIMIT ${DELETION_BATCH_ROWS}`, [workspaceId, ...params]);
     if ((rows.rowCount ?? 0) === 0) return 0;
     for (const row of rows.rows as Array<{ id: string; object_key: string | null }>) {
-      if (row.object_key) await s3DeleteExport(s3, row.object_key);
+      if (row.object_key) {
+        try {
+          await s3DeleteExport(s3, row.object_key);
+        } catch {
+          throw new DeletionError("object_store_unavailable");
+        }
+      }
     }
     await client.query(`DELETE FROM export_packages WHERE workspace_id = $1 AND id = ANY ($2)`, [workspaceId, (rows.rows as Array<{ id: string }>).map((r) => r.id)]);
   }
@@ -731,10 +742,9 @@ export async function runDeletion(pool: Pool, workspaceId: string, requestId: st
       if (!successor || !others.some((m) => m.user_id === successor)) {
         return failRequest(pool, workspaceId, requestId, "successor_invalid");
       }
-      // Atomic handoff: successor becomes owner as the subject leaves.
-      await withDeletionWorkspace(pool, workspaceId, async (client) => {
-        await client.query("UPDATE workspace_members SET role = 'owner' WHERE workspace_id = $1 AND user_id = $2", [workspaceId, successor]);
-      });
+      // The promotion itself happens in the final atomic step below
+      // (handoff + removal + tombstone + COMPLETE in one transaction), so a
+      // crash can never leave two owners behind.
     }
 
     // Personal content purge (bounded batches, checkpointed steps).
@@ -767,8 +777,15 @@ export async function runDeletion(pool: Pool, workspaceId: string, requestId: st
     await closeGrantSessions(subject);
     const subjectSubs = await withDeletionWorkspace(pool, workspaceId, (client) => userSubs(client, [subject]));
     await revokeSessions(pool, subjectSubs);
-    // Atomic final step: membership removal + tombstone + COMPLETE.
+    // Atomic final step: successor handoff (when required) + membership
+    // removal + tombstone + COMPLETE in one transaction.
+    const handoff = isMember && soleOwner && others.length > 0 ? shape.successor : null;
     const view = await withDeletionWorkspace(pool, workspaceId, async (client) => {
+      if (handoff) {
+        const stillThere = await client.query("SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2", [workspaceId, handoff]);
+        if ((stillThere.rowCount ?? 0) === 0) throw new DeletionError("successor_invalid");
+        await client.query("UPDATE workspace_members SET role = 'owner' WHERE workspace_id = $1 AND user_id = $2", [workspaceId, handoff]);
+      }
       await client.query("DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2", [workspaceId, subject]);
       await client.query("INSERT INTO deletion_tombstones (id, subject_kind, subject_ref, workspace_ref, scope, request_id, basis) VALUES ($1, 'identity', $2, $3, 'identity', $4, 'erasure-request') ON CONFLICT (request_id) DO NOTHING", [
         uuidv7(),
@@ -786,6 +803,9 @@ export async function runDeletion(pool: Pool, workspaceId: string, requestId: st
     if (err instanceof TenantDenied) throw err;
     if (err instanceof DeletionError && err.code === "object_store_unavailable") {
       return failRequest(pool, workspaceId, requestId, "object_store_unavailable");
+    }
+    if (err instanceof DeletionError && err.code === "successor_invalid") {
+      return failRequest(pool, workspaceId, requestId, "successor_invalid");
     }
     if ((err as Error).message === "deletion_fault_injected") {
       return failRequest(pool, workspaceId, requestId, "fault_injected");
