@@ -209,10 +209,22 @@ describe("e08-s03-L production-route policy", () => {
 
   it("free-model production attempts fail at the transport without sending", async () => {
     let hits = 0;
-    const hitServer: Server = (await import("node:http")).createServer((_req, res) => {
+    let lastAuth: string | null = null;
+    let lastModel: string | null = null;
+    const hitServer: Server = (await import("node:http")).createServer((req, res) => {
       hits += 1;
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ choices: [{ message: { content: "hi" } }], usage: { prompt_tokens: 1, completion_tokens: 1 } }));
+      lastAuth = (req.headers.authorization as string | undefined) ?? null;
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        try {
+          lastModel = (JSON.parse(body) as { model?: unknown }).model as string ?? null;
+        } catch {
+          lastModel = null;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ choices: [{ message: { content: "hi" } }], usage: { prompt_tokens: 1, completion_tokens: 1 } }));
+      });
     });
     await new Promise<void>((resolve) => hitServer.listen(0, "127.0.0.1", resolve));
     appServers.push(hitServer);
@@ -235,6 +247,9 @@ describe("e08-s03-L production-route policy", () => {
       const prodRes = await bothTransport({ route: "production", model: "muse-spark-1.3", requestText: "synthetic", maxOutputTokens: 10 }, AbortSignal.timeout(5000));
       expect(prodRes.bodyText).toBe("hi");
       expect(hits).toBe(2);
+      // Production credentials and the pinned model — never the dev ones.
+      expect(lastAuth).toBe("Bearer synthetic-prod");
+      expect(lastModel).toBe("muse-spark-1.3");
     } finally {
       await new Promise<void>((resolve) => hitServer.close(() => resolve()));
     }

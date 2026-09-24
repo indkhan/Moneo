@@ -752,6 +752,9 @@ export function liveChatTransport(devConfig: LiveChatConfig, prodConfig?: Produc
   return async (req, signal) => {
     if (req.route === "production") {
       const prod = prodConfig ?? null;
+      // Null-body here means ambiguous dispatch (PENDING per S01), not a
+      // policy deny: honest dequalification is owned by the executeReserved
+      // recheck (RELEASED/route_forbidden) before any transport call.
       if (!prod || isFreeModel(prod.model) || isFreeModel(req.model)) {
         return { httpStatus: null, bodyText: null, inputTokens: null, outputTokens: null, model: prod?.model ?? req.model };
       }

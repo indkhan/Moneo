@@ -496,9 +496,19 @@ describe("e04-s03 scoped tools and evidence", () => {
       delete process.env["AI_PROD_ZDR"];
       delete process.env["DISPATCH_PROD_MODEL"];
       delete process.env["AI_PROD_API_KEY"];
+      const prodBefore = await scoped(fx.userId, fx.workspaceId, async (client) => {
+        const r = await client.query("SELECT count(*)::int AS n FROM ai_dispatch_reservations WHERE workspace_id = $1 AND route = 'production'", [fx.workspaceId]);
+        return (r.rows[0] as { n: number }).n;
+      });
       const flagOnly = await runOnce();
       expect(flagOnly.status).toBe("applied");
       expect(flagOnly.routes).toEqual(["development", "production"]);
+      const prodAfter = await scoped(fx.userId, fx.workspaceId, async (client) => {
+        const r = await client.query("SELECT count(*)::int AS n FROM ai_dispatch_reservations WHERE workspace_id = $1 AND route = 'production'", [fx.workspaceId]);
+        return (r.rows[0] as { n: number }).n;
+      });
+      // The flag-only run added no production reservation of its own.
+      expect(prodAfter).toBe(prodBefore);
     } finally {
       for (const [name, value] of Object.entries(saved)) {
         if (value === undefined) delete process.env[name];
