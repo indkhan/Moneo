@@ -18,6 +18,7 @@ import {
 } from "../export.ts";
 import { DeletionError, acceptDeletion, listDeletionMembers } from "../deletion.ts";
 import { renderRetentionCatalogHtml } from "../retention.ts";
+import { renderProcessorDisclosureHtml } from "../ai-processors.ts";
 import { readLimitedBody } from "../http-controls.ts";
 import { sessionClaims, type SessionResolver } from "../tenancy.ts";
 import { errorPage, escapeHtml, page, workspaceNav } from "./shell.ts";
@@ -143,7 +144,7 @@ export async function handlePrivacyRoutes(
           title: "Privacy & Security",
           requestId,
           authed: true,
-          content: `<h2>Privacy &amp; Security</h2>${workspaceNav(workspaceId)}${noticeLine}<h3>Export workspace data</h3>${form}${rows}${deletionSection}<h3>Retention</h3>${renderRetentionCatalogHtml()}<p><a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p>`,
+          content: `<h2>Privacy &amp; Security</h2>${workspaceNav(workspaceId)}${noticeLine}<h3>Export workspace data</h3>${form}${rows}${deletionSection}<h3>Retention</h3>${renderRetentionCatalogHtml()}<h3>AI processors</h3>${renderProcessorDisclosureHtml()}<p><a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p>`,
         }),
       );
       return true;
