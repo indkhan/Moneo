@@ -1545,7 +1545,7 @@ Open gate: Proposed on 2026-09-24 for the controlled beta: seven-day managed Pos
 
 ## E08-S01c-L — Enforce local retention (upload bytes, export bundles, tombstone floor)
 
-Status: Ready | Release: R1 | Epic: E08 | Dependencies: E08-S01b (Done at `1c4f770`)
+Status: Done | Release: R1 | Epic: E08 | Dependencies: E08-S01b (Done at `1c4f770`)
 
 Outcome: Bounded local cleanup enforces the arch 455-456 periods that need no provider: original upload bytes ~30 days after validated import (explicit retain/unresolved holds), export bundles 24 hours (cross-workspace sweep closing the S01 lazy-only gap), and deletion tombstones never purged (45-day floor exported for S02). AI metadata, queue records, security audit and backups are cataloged as deployment-gated with no enforced period and no fake claim.
 Contracts: Architecture §§455–456/463/465 and E02 raw-upload 30-day marker; product R1 privacy/operations row; S01 export expiry + S01b tombstones/objects.
@@ -1555,6 +1555,17 @@ Failure/data/limits: Sweeps are read-committed per package/import with bounded b
 Verification: `npm run test:retention` (disposable PG `moneo_e08_retention` + MinIO, real bytes/objects); regress `test:upload`, `test:export`, `test:deletion`, `test:job-recovery`, `test:tenancy` (043-first rollback chain); typecheck, build:web, `staging:smoke`, diff/secret gates; independent review.
 Review focus: cross-workspace context bypass scope (index-bound, RLS-scoped reads only), RLS on new tables (indexes intentionally ID-only like job_dispatch_index), marker writes on every terminal path, retain/hold correctness, tombstone immunity, catalog-text-code agreement, scheduler-shaped scope creep.
 Rollout/rollback: Additive migration + new module; rollback drops the indexes/column (synthetic data only). Disable by not running the sweeper; no cron exists yet.
+
+Execution record:
+- Assignee / branch: Orchestrator/implementer this session / `story/e08-s01c-retention` (deleted after merge)
+- Base SHA / heads: base `1c4f770` (= local main at branch-off); impl `7cd60f6`; fix/reviewed `0dda5db` (candidate; no post-review code changes)
+- Implementation: migration `043_retention` (imports.retain_original, export/import_expiry_index ID-only discovery without RLS, backfill of marked rows); `apps/web/src/retention.ts` (RETENTION_CATALOG, index-fenced withRetentionSweep, purgeImportBytes, sweepRetention, TOMBSTONE_RETENTION_DAYS=45, catalog HTML for Settings); uploads.ts writes the import index on STAGED and sets the 30-day marker + index on REJECTED; export.ts writes the export index on accept and clears it on consume-after-delivery/expire/fail/purge; deletion purge clears both indexes; privacy page renders the catalog
+- Tests (Windows 11, Node v22.23.2, local PG18, disposable PG `moneo_e08_retention`, loopback MinIO :9000, synthetic data, backdated markers for clock advance): `npm run test:retention` 0 (6/6: bytes purge-once with retain/unmarked holds + provenance intact, cross-workspace READY expiry with 44-day tombstone survival, live-outage + missing-config failure visibility and convergence, failed-download index retention with sweep convergence, catalog/text/code agreement)
+- Regression on candidate: typecheck 0; upload 21/21; export 13/13; deletion 9/9; tenancy 7/7 (043-first rollback chain, 73 tables); job-recovery 14/14; `test:failure` nonzero-as-intended; build:web 0; `staging:smoke` PASS; `git diff --check` 0; clean status
+- Review: independent Changes-requested at `7cd60f6` (B1 download-reopen cleared the expiry index while bytes remained + N1–N4); fix `0dda5db` (index cleared only after delivery, sweep rechecks expiry in-tx with guarded index cleanup, purge clears both indexes, reopen→sweep regression test); independent re-review Pass at `0dda5db`
+- Integration: local main at base `1c4f770` unchanged; merge-base == base; candidate == reviewed `0dda5db`; full candidate gates green (see Tests). Merged with `--no-ff`
+- Merge SHA / post-merge smoke: `197e3fa`; post-merge `npm run check` 0, `test:retention` 6/6, clean status. Remote push/PR not performed (local-only merges per E00 precedent)
+- Accepted residuals: requested_by kept on the export index (UUID-only, mirrors dispatch accepted_by); expireIfDue S3-throw behavior unchanged from S01 (out of slice); no scheduler/cron exists — S01c-D owns cadence; FAILED deletion requests linger until S01c sweep (results-trigger exception stays open but RLS-scoped)
 
 ## E08-S01c-D — Qualify deployed retention (backups, audit, processors, privacy text)
 
