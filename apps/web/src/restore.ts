@@ -130,6 +130,7 @@ export type TombstoneInput = {
   subjectKind: "workspace" | "identity";
   subjectRef: string;
   workspaceRef: string | null;
+  successorUserId: string | null;
   scope: string;
   requestId: string;
   deletedAt: string;
@@ -175,6 +176,10 @@ export async function replayTombstones(admin: Pool, s3: S3Config, tombstones: To
     if (tomb.subjectKind === "identity" && tomb.workspaceRef) {
       const ws = tomb.workspaceRef;
       const sub = tomb.subjectRef;
+      if (tomb.successorUserId) {
+        const promoted = await admin.query("UPDATE workspace_members SET role = 'owner' WHERE workspace_id = $1 AND user_id = $2 RETURNING user_id", [ws, tomb.successorUserId]);
+        if ((promoted.rowCount ?? 0) !== 1) throw new Error("restore successor missing");
+      }
       await admin.query("DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2", [ws, sub]);
       const subRow = await admin.query("SELECT auth_subject FROM users WHERE id = $1", [sub]);
       const authSub = (subRow.rows[0] as { auth_subject: string } | undefined)?.auth_subject ?? "";
@@ -196,7 +201,7 @@ export async function replayTombstones(admin: Pool, s3: S3Config, tombstones: To
         if (row.object_key) {
           try {
             await s3DeleteExport(s3, row.object_key);
-          } catch { /* visible below via object re-list, never silent-complete */ }
+          } catch { throw new Error("restore export purge failed"); }
         }
         await admin.query("DELETE FROM export_packages WHERE workspace_id = $1 AND id = $2", [ws, row.id]);
         purgedPackageIds.push(row.id);

@@ -797,11 +797,12 @@ export async function runDeletion(pool: Pool, workspaceId: string, requestId: st
         await client.query("UPDATE workspace_members SET role = 'owner' WHERE workspace_id = $1 AND user_id = $2", [workspaceId, handoff]);
       }
       await client.query("DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2", [workspaceId, subject]);
-      await client.query("INSERT INTO deletion_tombstones (id, subject_kind, subject_ref, workspace_ref, scope, request_id, basis) VALUES ($1, 'identity', $2, $3, 'identity', $4, 'erasure-request') ON CONFLICT (request_id) DO NOTHING", [
+      await client.query("INSERT INTO deletion_tombstones (id, subject_kind, subject_ref, workspace_ref, scope, request_id, basis, successor_user_id) VALUES ($1, 'identity', $2, $3, 'identity', $4, 'erasure-request', $5) ON CONFLICT (request_id) DO NOTHING", [
         uuidv7(),
         subject,
         workspaceId,
         requestId,
+        handoff,
       ]);
       await client.query("UPDATE deletion_requests SET status = 'COMPLETE', completed_at = now() WHERE workspace_id = $1 AND id = $2", [workspaceId, requestId]);
       return readRequest(client, workspaceId, requestId);
@@ -863,12 +864,13 @@ async function finalizeIdentity(pool: Pool, subjectUserId: string): Promise<void
 }
 
 /** Tombstones visible to the S02 restore replay (UUIDs/codes only). */
-export async function listTombstones(pool: Pool): Promise<Array<{ subjectKind: string; subjectRef: string; workspaceRef: string | null; scope: string; requestId: string; deletedAt: string }>> {
-  const found = await pool.query("SELECT subject_kind AS \"subjectKind\", subject_ref AS \"subjectRef\", workspace_ref AS \"workspaceRef\", scope, request_id AS \"requestId\", deleted_at AS \"deletedAt\" FROM deletion_tombstones ORDER BY deleted_at, id");
-  return (found.rows as Array<{ subjectKind: string; subjectRef: string; workspaceRef: string | null; scope: string; requestId: string; deletedAt: Date }>).map((r) => ({
+export async function listTombstones(pool: Pool): Promise<Array<{ subjectKind: string; subjectRef: string; workspaceRef: string | null; successorUserId: string | null; scope: string; requestId: string; deletedAt: string }>> {
+  const found = await pool.query("SELECT subject_kind AS \"subjectKind\", subject_ref AS \"subjectRef\", workspace_ref AS \"workspaceRef\", successor_user_id AS \"successorUserId\", scope, request_id AS \"requestId\", deleted_at AS \"deletedAt\" FROM deletion_tombstones ORDER BY deleted_at, id");
+  return (found.rows as Array<{ subjectKind: string; subjectRef: string; workspaceRef: string | null; successorUserId: string | null; scope: string; requestId: string; deletedAt: Date }>).map((r) => ({
     subjectKind: r.subjectKind,
     subjectRef: String(r.subjectRef),
     workspaceRef: r.workspaceRef === null ? null : String(r.workspaceRef),
+    successorUserId: r.successorUserId === null ? null : String(r.successorUserId),
     scope: r.scope,
     requestId: String(r.requestId),
     deletedAt: (r.deletedAt as Date).toISOString(),

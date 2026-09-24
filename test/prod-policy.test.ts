@@ -211,6 +211,7 @@ describe("e08-s03-L production-route policy", () => {
     let hits = 0;
     let lastAuth: string | null = null;
     let lastModel: string | null = null;
+    let lastProvider: unknown = null;
     const hitServer: Server = (await import("node:http")).createServer((req, res) => {
       hits += 1;
       lastAuth = (req.headers.authorization as string | undefined) ?? null;
@@ -218,7 +219,9 @@ describe("e08-s03-L production-route policy", () => {
       req.on("data", (chunk) => (body += chunk));
       req.on("end", () => {
         try {
-          lastModel = (JSON.parse(body) as { model?: unknown }).model as string ?? null;
+          const request = JSON.parse(body) as { model?: unknown; provider?: unknown };
+          lastModel = request.model as string ?? null;
+          lastProvider = request.provider ?? null;
         } catch {
           lastModel = null;
         }
@@ -238,6 +241,7 @@ describe("e08-s03-L production-route policy", () => {
       const devRes = await devTransport({ route: "development", model: "some-model:free", requestText: "synthetic", maxOutputTokens: 10 }, AbortSignal.timeout(5000));
       expect(devRes.bodyText).toBe("hi");
       expect(hits).toBe(1);
+      expect(lastProvider).toBeNull();
       // With a complete production config, production requests send over
       // production credentials only (never the dev key/route).
       const bothTransport = liveChatTransport(
@@ -250,6 +254,7 @@ describe("e08-s03-L production-route policy", () => {
       // Production credentials and the pinned model — never the dev ones.
       expect(lastAuth).toBe("Bearer synthetic-prod");
       expect(lastModel).toBe("muse-spark-1.3");
+      expect(lastProvider).toEqual({ data_collection: "deny", zdr: true });
     } finally {
       await new Promise<void>((resolve) => hitServer.close(() => resolve()));
     }

@@ -184,6 +184,9 @@ describe("e08-s02-L isolated restore with tombstone replay", () => {
     const del2Ws = await setupWorkspace(o2.userId, "del2");
     await seedWorkspace(o2.userId, del2Ws, "del2");
     const m2 = await addMember(o2.userId, del2Ws, "synthetic-restore-m2");
+    const o3 = await setupUser("synthetic-restore-owner3");
+    const handoffWs = await setupWorkspace(o3.userId, "handoff");
+    const successor = await addMember(o3.userId, handoffWs, "synthetic-restore-successor");
 
     const preHashes: EvidenceHashes = await hashWorkspaceEvidence(adminLive, keepWs);
     // Non-vacuous evidence: the fixture must hash real rows (an RLS-scoped
@@ -192,6 +195,7 @@ describe("e08-s02-L isolated restore with tombstone replay", () => {
     // Live sessions pre-backup (revocation replay needs them in the dump).
     const d1Session = await freshSession("synthetic-restore-del1");
     const m2Session = await freshSession("synthetic-restore-m2");
+    const o3Session = await freshSession("synthetic-restore-owner3");
     // B2/N3 fixture: proposal + expiry rows the cascade cannot reach, a KEEP
     // export for the two-prefix snapshot, and a pre-T0 tombstone (skipped).
     await adminLive.query(
@@ -243,6 +247,8 @@ describe("e08-s02-L isolated restore with tombstone replay", () => {
     expect(del1Res.view.status).toBe("COMPLETE");
     const del2Res = await acceptDeletion(pool, { userId: m2.userId, workspaceId: del2Ws }, m2.userId, m2Session, { workspaceId: del2Ws, scope: "identity", idempotencyKey: randomUUID() });
     expect(del2Res.view.status).toBe("COMPLETE");
+    const handoff = await acceptDeletion(pool, { userId: o3.userId, workspaceId: handoffWs }, o3.userId, o3Session, { workspaceId: handoffWs, scope: "identity", successorUserId: successor.userId, idempotencyKey: randomUUID() });
+    expect(handoff.view.status).toBe("COMPLETE");
 
 
 
@@ -252,11 +258,12 @@ describe("e08-s02-L isolated restore with tombstone replay", () => {
       subjectKind: t.subjectKind as "workspace" | "identity",
       subjectRef: t.subjectRef,
       workspaceRef: t.workspaceRef,
+      successorUserId: t.successorUserId,
       scope: t.scope,
       requestId: t.requestId,
       deletedAt: t.deletedAt,
     }));
-    expect(ledgerInputs.filter((t) => new Date(t.deletedAt).getTime() > new Date(t0).getTime()).length).toBe(2);
+    expect(ledgerInputs.filter((t) => new Date(t.deletedAt).getTime() > new Date(t0).getTime()).length).toBe(3);
 
     // Disaster drill target: FRESH isolated database, live untouched.
 
@@ -284,9 +291,10 @@ describe("e08-s02-L isolated restore with tombstone replay", () => {
     const replayStarted = Date.now();
     const replayed = await replayTombstones(adminIso, s3, ledgerInputs, t0);
     measured = { dumpMs: dumped.ms, dumpBytes: dumped.bytes, restoreMs: restored.ms, replayMs: Date.now() - replayStarted, snapshotFiles: snap.files, snapshotBytes: snap.bytes };
-    expect(replayed.applied).toBe(2);
+    expect(replayed.applied).toBe(3);
     expect(replayed.skipped).toBe(1);
-    expect(replayed.needsExternalIdentity).toEqual(["synthetic-restore-m2"]);
+    expect(replayed.needsExternalIdentity).toEqual(["synthetic-restore-m2", "synthetic-restore-owner3"]);
+    expect((await adminIso.query("SELECT user_id, role FROM workspace_members WHERE workspace_id = $1", [handoffWs])).rows).toEqual([{ user_id: successor.userId, role: "owner" }]);
 
     // KEEP evidence is byte-exact; DEL scopes are re-purged with objects.
     const postHashes = await hashWorkspaceEvidence(adminIso, keepWs);
@@ -308,6 +316,13 @@ describe("e08-s02-L isolated restore with tombstone replay", () => {
     expect((await s3ListKeys(s3, `quarantine/${del2Ws}/`)).length).toBe(1);
     expect(await s3ListKeys(s3, `quarantine/${del1Ws}/`)).toEqual([]);
     expect((await s3ListKeys(s3, `quarantine/${keepWs}/`)).length).toBe(1);
+    // Object-store failure must keep the private export locator and stop replay.
+    const strandedJob = randomUUID();
+    const strandedPackage = randomUUID();
+    await adminIso.query("INSERT INTO background_jobs (workspace_id, id, job_type, status, input_ref) VALUES ($1, $2, 'exports.build', 'SUCCEEDED', '{}')", [del2Ws, strandedJob]);
+    await adminIso.query("INSERT INTO export_packages (workspace_id, id, job_id, requested_by, cutoff, status, object_key, data_key, expires_at) VALUES ($1, $2, $3, $4, now(), 'READY', $5, $6, now() + interval '1 hour')", [del2Ws, strandedPackage, strandedJob, m2.userId, `exports/${del2Ws}/${strandedPackage}.enc`, randomBytes(32)]);
+    await expect(replayTombstones(adminIso, { ...s3, endpoint: "http://127.0.0.1:1" }, [{ subjectKind: "identity", subjectRef: m2.userId, workspaceRef: del2Ws, successorUserId: null, scope: "identity", requestId: randomUUID(), deletedAt: new Date(Date.now() + 1000).toISOString() }], t0)).rejects.toThrow("restore export purge failed");
+    expect((await adminIso.query("SELECT object_key FROM export_packages WHERE workspace_id = $1 AND id = $2", [del2Ws, strandedPackage])).rowCount).toBe(1);
     // Object round-trip from the snapshot: delete, restore, byte-compare.
     const { s3Delete } = await import("../apps/web/src/s3.ts");
     await s3Delete(s3, keepSeed.objectKey);
