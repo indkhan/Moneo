@@ -1594,7 +1594,7 @@ Open gate: Hosting recommendation researched 2026-09-24: DigitalOcean FRA1 Basic
 
 ## E08-S02-L — Prove isolated restore with tombstone replay (local)
 
-Status: Ready | Release: R1 | Epic: E08 | Dependencies: E08-S01c-L (Done at `36739e4`)
+Status: Done | Release: R1 | Epic: E08 | Dependencies: E08-S01c-L (Done at `36739e4`)
 
 Outcome: A pg_dump/pg_restore drill into an isolated disposable database plus MinIO object snapshot proves exact financial evidence survives restore and newer deletion tombstones re-purge resurrected data before any traffic reopens.
 Contracts: Architecture §§393/463–464 (restore into isolation, tombstone replay, no casual restore into use), R1 Docker/Keycloak override; S01b tombstones, S01c 45-day floor, E02 durability contracts. Internal targets (RPO ≤15 min provider-native where PITR exists, ≤24 h logical, RTO ≤4 h) are engineering targets, not SLAs; local runs record measured values only.
@@ -1604,6 +1604,18 @@ Failure/data/limits: Synthetic data only; disaster simulated by dropping the liv
 Verification: `npm run test:restore` (disposable PG `moneo_e08_restore*` + MinIO, real binaries); regress `test:job-recovery`, `test:deletion` (tombstone source), `test:e07-exit`; typecheck, build:web, `staging:smoke`, diff/secret gates; independent review.
 Review focus: restore-target isolation (never live), tombstone-window correctness (only newer-than-restore-point replay), hash canonicalization (decimal strings, ordering, no float), superuser-scope discipline in operator code, traffic-gate honesty, backup-secret hygiene.
 Rollout/rollback: Operator tooling only; no app routes. Rollback = remove scripts/module use; drill databases are disposable.
+
+Execution record:
+- Assignee / branch: Orchestrator/implementer this session / `story/e08-s02-restore` (deleted after merge)
+- Base SHA / heads: base `36739e4` (= local main at branch-off); impl `1322c22`; fix/reviewed `a81ce0c`; test-only `fa61e59` (replay-path fixture assertions; non-test diff vs `a81ce0c` verified empty)
+- Implementation: `apps/web/src/restore.ts` (canonical SHA-256 evidence hashes, pg_dump/pg_restore orchestration with PG* env credentials, tombstone replay for workspace + identity scopes incl. MinIO prefix purge, object snapshot/restore with byte-compare, migration + boot verification helpers); redacted `docs/implementation/RESTORE-RUNBOOK.md` (owner/alert/restore-point/traffic-gate/rollback/Keycloak/external-identity; T0-before-dump intentional); CI installs the matching-major PG17 client from pgdg
+- Tests (Windows 11, Node v22.23.2, local PG18 binaries, disposable PG `moneo_e08_restore*`, loopback MinIO :9000, synthetic data): `npm run test:restore` 0 (1/1 full drill: KEEP hashes byte-exact across restore, DEL resurrection proven then re-purged via 2 newer tombstones with 1 pre-T0 skip, DEL objects purged + KEEP objects intact with snapshot round-trip incl. two-prefix names, corrupt + missing dumps fail closed, migrate [] + /healthz + tenant read on the isolated DB, live proven untouched)
+- Measured local values (not host promises): dump 436 ms / 300,985 B; restore 1,777 ms; replay 64 ms; total drill ~5–15 s; suite asserts loose <300 s bounds only
+- Regression on candidate: typecheck 0; deletion 9/9; job-recovery 14/14; e07-exit 12/12; `test:failure` nonzero-as-intended; build:web 0; `staging:smoke` PASS; `git diff --check` 0; clean status
+- Review: independent Changes-requested at `1322c22` (B1 CI wrong-major PG client, B2 cascade-only replay orphans proposals/indexes/sessions + N1–N6); fix `a81ce0c` (pgdg PG17 client, replay purge parity, prefix-qualified snapshots, pre-T0/missing-file suite cases, T0 note); independent re-review Pass at `a81ce0c` with 2 weak notes closed by test-only `fa61e59` (suite re-run 1/1)
+- Integration: local main at base `36739e4` unchanged; merge-base == base; candidate == `fa61e59`; full candidate gates green (see Tests). Merged with `--no-ff`
+- Merge SHA / post-merge smoke: `f067795`; post-merge `npm run check` 0, `test:restore` 1/1, clean status. Remote push/PR not performed (local-only merges per E00 precedent)
+- Accepted residuals: single-page s3ListKeys (limit 1,000 — S02-D must page); snapshot content types are byte-drill placeholders; CI run itself unobserved (no runner here); provider RPO/RTO, managed state, Keycloak drill stay S02-D
 
 ## E08-S02-D — Qualify provider recovery (RPO/RTO on the selected host)
 
