@@ -1617,7 +1617,7 @@ Execution record:
 - Review: independent Changes-requested at `1322c22` (B1 CI wrong-major PG client, B2 cascade-only replay orphans proposals/indexes/sessions + N1–N6); fix `a81ce0c` (pgdg PG17 client, replay purge parity, prefix-qualified snapshots, pre-T0/missing-file suite cases, T0 note); independent re-review Pass at `a81ce0c` with 2 weak notes closed by test-only `fa61e59` (suite re-run 1/1)
 - Integration: local main at base `36739e4` unchanged; merge-base == base; candidate == `fa61e59`; full candidate gates green (see Tests). Merged with `--no-ff`
 - Merge SHA / post-merge smoke: `f067795`; post-merge `npm run check` 0, `test:restore` 1/1, clean status. Remote push/PR not performed (local-only merges per E00 precedent)
-- Accepted residuals: single-page s3ListKeys (limit 1,000 — S02-D must page); snapshot content types are byte-drill placeholders; CI run itself unobserved (no runner here); provider RPO/RTO, managed state, Keycloak drill stay S02-D
+- Accepted residuals: S3 list pagination was closed by post-E08 audit merge `1d4419b`; snapshot content types are byte-drill placeholders; CI run itself unobserved (no runner here); provider RPO/RTO, managed state, Keycloak drill stay S02-D
 
 ## E08-S02-D — Qualify provider recovery (RPO/RTO on the selected host)
 
