@@ -1739,7 +1739,7 @@ Open gate: Before Ready, predeclare numeric p95, memory, queue-wait, safe-reject
 
 ## E08-S05-L — Measure repeatable local load and failure behavior (synthetic)
 
-Status: Ready | Release: R1 | Epic: E08 | Dependencies: E08-S04-L (Done; local candidate fixed at its merge)
+Status: Done | Release: R1 | Epic: E08 | Dependencies: E08-S04-L (Done; local candidate fixed at its merge)
 
 Outcome: A repeatable local harness on a fixed synthetic dataset (2 workspaces, 100 accounts, 10k transactions, 12 pinned artifacts, one 100k-row boundary import) measures 1/5/20 concurrent users through import, Home/query, projection, artifacts and AI reservations, plus worker-death/Redis-loss/provider-outage/cancel drills, with exact-money and tenant assertions true at every load and caps rejecting safely.
 Contracts: Architecture job/dispatch limits; E02 100k-row import cap, E03 10k-row query target, E06 projection ≤2s and E07 Home ≤2s local targets (reference measurements, not external SLAs).
@@ -1749,6 +1749,18 @@ Failure/data/limits: Synthetic fixed dataset (seeded); drills use the suite's ow
 Verification: `npm run test:e08-load` green twice (repeatability); regress `test:job-recovery`, `test:ai-dispatch`, `test:e07-exit`; typecheck/builds; independent review.
 Review focus: Dataset determinism, oracle independence (not recomputed by implementation code), rejection safety (no silent drops/overspend), redacted telemetry, CI-time suitability, invented-SLA language.
 Rollout/rollback: Test-only plus any measured-necessary controls; no migration expected. Rollback = remove the suite/controls.
+
+Execution record:
+- Assignee / branch: Orchestrator/implementer this session / `story/e08-s05-load` (deleted after merge)
+- Base SHA / heads: base `f361f8f` (= local main at branch-off); impl `9ef46e9`; fix/reviewed `5e42bf7` (candidate; no post-review code changes)
+- Implementation: `test/e08-load.test.ts` (+ `test:e08-load` script) only — no product code, no alerting backend, no backpressure controls, no host budgets. Fixed dataset (2 workspaces, 100 accounts, 10k transactions via generate_series oracle, 12 pinned artifacts, 20 readers, one 99,999-row boundary import at the header-inclusive parser ceiling + one over-ceiling rejection probe); machine-readable summary to the OS temp dir; redacted console (counts/latencies only)
+- Measured local values, Windows 11, i5-12450HX, Node v22.23.2, local PG18/Redis/MinIO/ClamAV (not host promises; two full green runs 608 s + 599 s with consistent figures): readers1 p50/p95 237–267 ms; readers5 p50 ~438–474/p95 ~470–491 ms; readers20 p50 ~1.5–1.9 s/p95 ~1.6–1.9 s; projection A ~1.1–1.6 s / B ~0.8–1.0 s (E06 ≤2 s reference met); parse100k ~23–28 s; commit100k ~567–569 s (~175–230 rows/s per-row chunk path); import total ~590–598 s; RSS 118–120 → 169–174 MB (bounded); cost done 5/held 0 within budget 12; Redis-loss rebuilt + applied once; cancel zero-effect; outage PENDING typed
+- Tests: `npm run test:e08-load` 0 (5/5: exact A+B totals at 1/5/20 + swap denial, projection determinism run-twice, boundary count + provenance samples + row-limit rejection, Redis-loss/cancel/outage convergence with effect counts, 429 mapping + cost invariant)
+- Regression on candidate: typecheck 0; job-recovery 14/14; ai-dispatch 16/16; e07-exit 12/12; `test:failure` nonzero-as-intended; build:web 0; `git diff --check` 0; clean status
+- Review: independent Changes-requested at `9ef46e9` (B1 409-vs-429 wording/proof, B2 hardcoded temp path, B3 oracle/provenance/determinism gaps + N1/N2/N4/N5); fix `5e42bf7` (429 wording + mapping assertions, tmpdir summary, B totals + run-twice projections + link samples, reordered Redis drill with single-effect proof, cancel zero-effect, static imports); independent re-review Pass at `5e42bf7` (fast subset re-run green; full 100k run verified code-level + implementer's double-green)
+- Integration: local main at base `f361f8f` unchanged; merge-base == base; candidate == reviewed `5e42bf7`; gates green (see Tests). Merged with `--no-ff`
+- Merge SHA / post-merge smoke: `f749d84`; post-merge `npm run check` 0, clean status. Remote push/PR not performed (local-only merges per E00 precedent)
+- Accepted residuals + decisions: suite EXCLUDED from CI on duration grounds (~10 min; deliberate, proportionate — CI keeps all functional suites); E02 100k commit at ~175–230 rows/s is correct-but-slow (bulk commit path is the concrete fix direction, not built here); parser counts the header toward maxRows (99,999 data rows sit at the ceiling — documented, parser frozen); local numbers are reference only — S05-D must predeclare host budgets before Ready
 
 ## E08-S05-D — Declare deployed load budgets and qualify the host
 
