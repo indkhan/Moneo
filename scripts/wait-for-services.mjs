@@ -1,4 +1,4 @@
-// CI gate helper: wait for the MinIO S3 endpoint and the clamd TCP port.
+// CI gate helper: wait for the S3 endpoint and the clamd TCP port.
 // No credentials or payloads are logged; only readiness lines. Fails the
 // step (nonzero exit) after WAIT_TIMEOUT_MS so a stuck service is a red
 // gate, never a silent skip.
@@ -14,8 +14,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function s3Live() {
   try {
-    const res = await fetch(`${s3Endpoint.replace(/\/$/, "")}/minio/health/live`, { signal: AbortSignal.timeout(5000) });
-    return res.ok;
+    const res = await fetch(`${s3Endpoint.replace(/\/$/, "")}/`, { signal: AbortSignal.timeout(5000) });
+    return res.status === 403;
   } catch {
     return false;
   }

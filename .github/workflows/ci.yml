@@ -32,7 +32,7 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 3s --health-retries 10
-      # MinIO and ClamAV run as explicit docker steps below (service
+      # S3 test server and ClamAV run as explicit docker steps below (service
       # containers cannot take the required server args / slow-start waits).
     env:
       DATABASE_URL: postgresql://moneo_app:ci-synthetic-only@localhost:5432/moneo_ci
@@ -81,11 +81,12 @@ jobs:
             -c "CREATE DATABASE moneo_e04_dispatch OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e04_chat OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e04_tools OWNER moneo_app;"
-      - name: Start MinIO + ClamAV test services (synthetic only)
+      - name: Start S3 + ClamAV test services (synthetic only)
         run: |
-          docker run -d --name ci-minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=ci-minio-test-only -e MINIO_ROOT_PASSWORD=ci-minio-test-only-secret-01 \
-            quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e server /data
+          docker run -d --name ci-s3 -p 9000:8000 \
+            -e SCALITY_ACCESS_KEY_ID=ci-minio-test-only -e SCALITY_SECRET_ACCESS_KEY=ci-minio-test-only-secret-01 \
+            -e S3BACKEND=mem -e REMOTE_MANAGEMENT_DISABLE=1 \
+            zenko/cloudserver@sha256:b53e57829cf7df357323e60a19c9f98d2218f1b7ccb1d7cea5761a5a227a9ee3
           docker run -d --name ci-clamav -p 3310:3310 \
             clamav/clamav:stable@sha256:9cb27d7660bdf66e9878c832cb433dd8aa152cfbe16f3c2c0084c80b04ae22b4
       - name: Wait for object store + scanner (clamd downloads signatures)
@@ -135,15 +136,15 @@ jobs:
         run: npm run test:job-recovery
       - name: Build parser child (upload worker dependency)
         run: npm run build:parser
-      - name: Quarantine upload and bounded parse (real PG + MinIO + ClamAV)
+      - name: Quarantine upload and bounded parse (real PG + S3 + ClamAV)
         run: npm run test:upload
       - name: Mapping inference and manual fallback (real PG, stub transport)
         run: npm run test:mapping
-      - name: Workspace export lifecycle (real PG + MinIO)
+      - name: Workspace export lifecycle (real PG + S3)
         run: npm run test:export
-      - name: Deletion lifecycle and tombstones (real PG + MinIO)
+      - name: Deletion lifecycle and tombstones (real PG + S3)
         run: npm run test:deletion
-      - name: Retention enforcement and catalog (real PG + MinIO)
+      - name: Retention enforcement and catalog (real PG + S3)
         run: npm run test:retention
       - name: Install PostgreSQL 17 client (restore drill binaries)
         # Ubuntu archives ship an older-major client; pg_dump aborts
@@ -154,7 +155,7 @@ jobs:
           sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
           sudo apt-get update && sudo apt-get install -y postgresql-client-17
           pg_dump --version && pg_restore --version
-      - name: Isolated restore with tombstone replay (real PG + MinIO)
+      - name: Isolated restore with tombstone replay (real PG + S3)
         run: npm run test:restore
       - name: Production-route policy and disclosure (real PG, synthetic only)
         run: npm run test:prod-policy
