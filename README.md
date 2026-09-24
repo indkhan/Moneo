@@ -37,9 +37,10 @@ all synthetic-only and fail-closed when absent:
 
 ```powershell
 # 1. S3-compatible object storage (pinned test image, loopback, disposable):
-docker run -d --name moneo-minio -p 127.0.0.1:9000:9000 `
-  -e MINIO_ROOT_USER=moneo-test-only -e MINIO_ROOT_PASSWORD=moneo-test-only-secret-01 `
-  quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e server /data
+docker run -d --name moneo-s3 -p 127.0.0.1:9000:8000 `
+  -e SCALITY_ACCESS_KEY_ID=moneo-test-only -e SCALITY_SECRET_ACCESS_KEY=moneo-test-only-secret-01 `
+  -e S3BACKEND=mem -e REMOTE_MANAGEMENT_DISABLE=1 `
+  zenko/cloudserver@sha256:b53e57829cf7df357323e60a19c9f98d2218f1b7ccb1d7cea5761a5a227a9ee3
 # 2. Malware scanner (pinned test image, loopback, disposable; first boot
 #    downloads signature databases and takes a few minutes):
 docker run -d --name moneo-clamav -p 127.0.0.1:3310:3310 `
@@ -49,7 +50,7 @@ docker run -d --name moneo-clamav -p 127.0.0.1:3310:3310 `
 #    S3_ACCESS_KEY=<synthetic> S3_SECRET_KEY=<synthetic> S3_BUCKET=<test bucket>
 #    CLAMAV_HOST=127.0.0.1 CLAMAV_PORT=3310
 npm run build:parser   # compiles the worker-spawned bounded parser child
-npm run test:upload    # real PG + MinIO + clamd integration
+npm run test:upload    # real PG + S3 + clamd integration
 ```
 
 Uploads stay disabled unless `UPLOADS_ENABLED=1` with all S3/scanner inputs

@@ -4,7 +4,12 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { Pool } from "pg";
+import { Pool, types } from "pg";
+
+// DATE (OID 1082) arrives as YYYY-MM-DD text, never a timezone-shifted Date:
+// the production pool must parse dates exactly like the test helper, or
+// calendar-day logic diverges between test and prod (E06-S03 review B7).
+types.setTypeParser(1082, (val: string) => val);
 
 export function createPool(connectionString: string): Pool {
   return new Pool({ connectionString, max: 5 });

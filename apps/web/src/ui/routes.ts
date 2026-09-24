@@ -10,6 +10,10 @@ import { isUuid } from "../ids.ts";
 import { CommandError, renameAccount, validateRenameInput } from "../commands/accounts.ts";
 import { getPolicy, PolicyError, setAccountExclusion, summarizeEligible } from "../ai-policy.ts";
 import { getAccountView, listAccountViews } from "../commands/accounts.ts";
+import { createArtifactDraft, submitArtifactBuild, getArtifactVersion, listArtifactVersions, activateArtifactVersion, getArtifact, listArtifacts } from "../commands/artifacts.ts";
+import { getArtifactState } from "../commands/artifact-state.ts";
+import { openArtifactSession, sendArtifactEvent, stopArtifactSession, restartArtifactSession, closeArtifactSession, getArtifactSession, getActiveSessionsCount, getArtifactExecutionsCount } from "../artifact-host.ts";
+import { type ArtifactSource, type ArtifactManifest } from "../artifact-contract.ts";
 import { clearSessionCookie, revokeRequestSession } from "../auth.ts";
 import { readLimitedBody } from "../http-controls.ts";
 import { readMultipart } from "../multipart.ts";
@@ -18,7 +22,16 @@ import { acceptImportCommitJob, ImportCommitError, readImportCommitStatus } from
 import { acceptMapping, listMappingProfiles, loadMappingSample, MappingError, proposeMapping, readCurrentMapping } from "../mapping.ts";
 import { liveMappingTransport, loadMappingProvider } from "../mapping-provider.ts";
 import { listWorkspaces, sessionClaims, TenantDenied, TenantInvalid, type SessionResolver } from "../tenancy.ts";
-import { errorPage, escapeHtml, page } from "./shell.ts";
+import { AnalysisError, readAnalysisDetail, retryAnalysis, stopAnalysis } from "../deep-analysis.ts";
+import { errorPage, escapeHtml, page, workspaceNav } from "./shell.ts";
+import { handleTransactionRoutes } from "./transactions.ts";
+import { handleHomeRoutes } from "./home.ts";
+import { handleRecurringRoutes } from "./recurring.ts";
+import { handlePlanningRoutes } from "./planning.ts";
+import { createChatRouter } from "./chat.ts";
+import { handleArtifactRoutes } from "./artifact-editor.ts";
+import { handleNavigationJobsRoutes } from "./jobs.ts";
+import { handlePrivacyRoutes } from "./privacy.ts";
 
 export type UiConfig = {
   appBaseUrl: string;
@@ -49,17 +62,20 @@ function readFormBody(req: IncomingMessage): Promise<URLSearchParams> {
 }
 
 function sameOrigin(req: IncomingMessage, appBaseUrl: string): boolean {
+  if (req.headers["sec-fetch-site"] === "same-origin") return true;
   const allowed = new URL(appBaseUrl).origin;
+  const requestOrigins = typeof req.headers.host === "string" ? [`http://${req.headers.host}`, `https://${req.headers.host}`] : [];
   const origin = req.headers.origin;
   const referer = req.headers.referer;
-  if (typeof origin === "string") return origin === allowed;
-  if (typeof referer === "string") return referer === allowed || referer.startsWith(`${allowed}/`);
+  if (typeof origin === "string") return origin === allowed || requestOrigins.includes(origin);
+  if (typeof referer === "string") return [allowed, ...requestOrigins].some((candidate) => referer === candidate || referer.startsWith(`${candidate}/`));
   return false;
 }
 
 export function createUiRouter(pool: Pool, resolveSession: SessionResolver, config: UiConfig): {
   handle: (req: IncomingMessage, res: ServerResponse, path: string, method: string, query: URLSearchParams, requestId?: string) => Promise<boolean>;
 } {
+  const chatRouter = createChatRouter(pool, resolveSession, { appBaseUrl: config.appBaseUrl, sessionSecret: config.sessionSecret });
   const event = config.onEvent ?? (() => {});
 
   async function shell(
@@ -150,9 +166,80 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
           requestId,
           authed: true,
           notice,
-          content: `<p>AI coverage: ${escapeHtml(summary.coverage)} (${escapeHtml(String(summary.accountCount))} of ${escapeHtml(String(accounts.length))} accounts eligible, policy v${escapeHtml(summary.policyVersion)}).</p><p><a href="/w/${escapeHtml(workspaceId)}/imports/new">Import a bank file (CSV/XLSX)</a></p>${rows}`,
+           content: `${workspaceNav(workspaceId)}<p>AI coverage: ${escapeHtml(summary.coverage)} (${escapeHtml(String(summary.accountCount))} of ${escapeHtml(String(accounts.length))} accounts eligible, policy v${escapeHtml(summary.policyVersion)}).</p><p><a href="/w/${escapeHtml(workspaceId)}/home">Home dashboard</a> · <a href="/w/${escapeHtml(workspaceId)}/imports/new">Import a bank file (CSV/XLSX)</a> · <a href="/w/${escapeHtml(workspaceId)}/analysis">Deep Analysis</a></p>${rows}`,
         }),
       );
+      return true;
+    }
+
+    // E07-S01 Deep Analysis page: server-rendered status + saved findings,
+    // with native Stop/retry controls (no client JavaScript). Missing and
+    // foreign workspaces share the 404 page.
+    const analysisMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/analysis$/);
+    if (analysisMatch && method === "GET") {
+      const workspaceId = analysisMatch[1];
+      const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+      if (!resolved.session) {
+        html(res, 401, errorPage({ status: 401, heading: "Sign in required", message: "Log in to view this analysis.", back: "/", requestId, authed: false }));
+        return true;
+      }
+      if (!resolved.claim) {
+        event("ui_denied:workspace");
+        html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace.", back: "/", requestId, authed: true }));
+        return true;
+      }
+      let detail;
+      try {
+        detail = await readAnalysisDetail(pool, resolved.claim);
+      } catch (err) {
+        if (err instanceof TenantDenied) {
+          event("ui_denied:workspace");
+          html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace.", back: "/", requestId, authed: true }));
+          return true;
+        }
+        throw err;
+      }
+      const body =
+        detail === null
+          ? `<p>No Deep Analysis yet. Accept an import to start the initial analysis.</p>`
+          : `<p>Status: ${escapeHtml(detail.status)} · stage ${escapeHtml(detail.progressStage)} · ${escapeHtml(String(detail.findings.length))} findings · ${escapeHtml(String(detail.dispatchesUsed))} dispatches · ${escapeHtml(String(detail.toolCallsUsed))} evidence calls.</p>${
+              detail.coverageWarnings.length > 0 ? `<div class="alert" role="alert"><h2>Coverage warnings</h2><ul>${detail.coverageWarnings.map((w) => `<li>${escapeHtml(w.kind)}${"count" in w ? `: ${escapeHtml(String(w.count))}` : ""}</li>`).join("")}</ul></div>` : ``
+            }<ul>${detail.findings.map((f) => `<li><strong>${escapeHtml(f.title)}</strong> — ${escapeHtml(f.body)}${f.amountMinor !== null ? ` (${escapeHtml(f.amountMinor)}${f.currency ? ` ${escapeHtml(f.currency)}` : ``})` : ``}</li>`).join("")}</ul>${
+              detail.status === "RUNNING" || detail.status === "QUEUED"
+                ? `<form method="post" action="/w/${escapeHtml(workspaceId)}/analysis/stop"><button type="submit">Stop analysis</button></form>`
+                : detail.status === "FAILED_FINAL" || detail.status === "CANCELLED"
+                  ? `<form method="post" action="/w/${escapeHtml(workspaceId)}/analysis/retry"><button type="submit">Retry analysis</button></form>`
+                  : ``
+            }`;
+      html(res, 200, page({ title: "Deep Analysis", requestId, authed: true, content: `<h2>Deep Analysis</h2>${body}<p><a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p>` }));
+      return true;
+    }
+    const analysisActionMatch = path.match(/^\/w\/([A-Za-z0-9-]+)\/analysis\/(stop|retry)$/);
+    if (analysisActionMatch && method === "POST") {
+      const workspaceId = analysisActionMatch[1];
+      const action = analysisActionMatch[2];
+      if (!sameOrigin(req, config.appBaseUrl)) {
+        event("ui_denied:origin");
+        html(res, 403, errorPage({ status: 403, heading: "Forbidden", message: "Cross-origin form posts are rejected.", back: `/w/${workspaceId}/analysis`, requestId, authed: true }));
+        return true;
+      }
+      const resolved = await sessionClaims(pool, resolveSession, req, workspaceId);
+      if (!resolved.session || !resolved.claim) {
+        html(res, resolved.session ? 404 : 401, errorPage({ status: resolved.session ? 404 : 401, heading: resolved.session ? "Not found" : "Sign in required", message: "No such workspace.", back: "/", requestId, authed: !!resolved.session }));
+        return true;
+      }
+      try {
+        if (action === "stop") await stopAnalysis(pool, resolved.claim);
+        else await retryAnalysis(pool, resolved.claim, resolved.claim.userId);
+        res.writeHead(303, { Location: `/w/${workspaceId}/analysis` });
+        res.end();
+      } catch (err) {
+        if (err instanceof AnalysisError || err instanceof TenantDenied) {
+          html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such analysis.", back: `/w/${workspaceId}/analysis`, requestId, authed: true }));
+          return true;
+        }
+        throw err;
+      }
       return true;
     }
 
@@ -255,16 +342,23 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
       const form = await readFormBody(req).catch(() => null);
       const accountId = form?.get("accountId") ?? "";
       const excluded = form?.get("excluded") === "true";
+      const expectedPolicyVersion = form?.get("policyVersion") ?? undefined;
       if (!isUuid(accountId)) {
         html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such account.", back: `/w/${workspaceId}`, requestId, authed: true }));
         return true;
       }
       try {
-        const state = await setAccountExclusion(pool, resolved.claim, resolved.claim.userId, accountId, excluded);
-        res.writeHead(303, { Location: `/w/${workspaceId}?notice=exclusion-updated&policyVersion=${encodeURIComponent(state.policyVersion)}` });
+        const state = await setAccountExclusion(pool, resolved.claim, resolved.claim.userId, accountId, excluded, undefined, expectedPolicyVersion);
+        const destination = form?.get("returnTo") === "ai-settings" ? `/w/${workspaceId}/ai-settings` : `/w/${workspaceId}`;
+        res.writeHead(303, { Location: `${destination}?notice=exclusion-updated&policyVersion=${encodeURIComponent(state.policyVersion)}` });
         res.end();
         return true;
       } catch (err) {
+        if (err instanceof PolicyError && err.code === "version_mismatch") {
+          const current = await getPolicy(pool, resolved.claim);
+          html(res, 409, errorPage({ status: 409, heading: "Settings conflict", message: `AI settings changed. Current policy version is ${current.policyVersion}. Review and retry.`, back: `/w/${workspaceId}/ai-settings`, requestId, authed: true }));
+          return true;
+        }
         if (err instanceof PolicyError || err instanceof TenantDenied) {
           event("ui_denied:exclusion");
           html(res, 404, errorPage({ status: 404, heading: "Not found", message: "No such workspace or account.", back: `/w/${workspaceId}`, requestId, authed: true }));
@@ -418,7 +512,7 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
           title: "Import status",
           requestId,
           authed: true,
-          content: `<h2>${escapeHtml(viewed.fileName)}</h2><p>${stateLine}</p>${sampleRows}<p><a href="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(importStatusMatch[2])}/mapping">Map columns for this import</a> · <a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p>`,
+          content: `<h2>${escapeHtml(viewed.fileName)}</h2>${workspaceNav(workspaceId)}<p>${stateLine}</p>${sampleRows}<p><a href="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(importStatusMatch[2])}/mapping">Map columns for this import</a> · <a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p>`,
         }),
       );
       return true;
@@ -877,6 +971,42 @@ export function createUiRouter(pool: Pool, resolveSession: SessionResolver, conf
             <p><a href="/w/${escapeHtml(workspaceId)}/imports/${escapeHtml(importId)}">Back to import status</a></p>`,
         }),
       );
+      return true;
+    }
+
+    // E07-S02 trusted Home (server-rendered, zero JS; shared queries only).
+    if (await handleHomeRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
+      return true;
+    }
+
+// E05-S05 Artifact editor UI routes
+    if (await handleArtifactRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
+      return true;
+    }
+ 
+    // E03-S06 transaction table + drawer (shared reads, S05 commands).
+    if (await handleTransactionRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
+      return true;
+    }
+    // E03-S07 recurring candidates + confirm/dismiss.
+    if (await handleRecurringRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
+      return true;
+    }
+    // E06-S04 planning inputs, goals, projections and flat scenarios.
+    if (await handlePlanningRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
+      return true;
+    }
+    // E07-S04 navigation + job feedback (durable jobs/notices list,
+    // exact-route palette; PG truth, idempotent notice sync on load).
+    if (await handleNavigationJobsRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
+      return true;
+    }
+    // E08-S01 Privacy & Security: export request/status/one-use download.
+    if (await handlePrivacyRoutes(pool, resolveSession, { appBaseUrl: config.appBaseUrl }, event, req, res, path, method, query, requestId)) {
+      return true;
+    }
+    // E04-S04 chat UI (context, activity, Stop/retry).
+    if (await chatRouter.handle(req, res, path, method, query, requestId)) {
       return true;
     }
 

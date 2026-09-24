@@ -245,6 +245,9 @@ beforeAll(async () => {
     if (!process.env[name]) process.env[name] = env("E02-S04", name);
   }
   pool = await ensureTestPool("E02-S04", "moneo_e02_mapping", [
+    "manual_transactions",
+    "balance_snapshots",
+    "balance_audit",
     "mapping_provider_usage",
     "mapping_provider_reservations",
     "mapping_proposals",

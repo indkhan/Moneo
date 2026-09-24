@@ -17,6 +17,7 @@ import {
   type Claim,
 } from "./job-recovery.ts";
 import { resolveJobRoute, IMPORTS_COMMIT, IMPORTS_JOB_VERSION, type JobRoute } from "./jobs.ts";
+import { maybeTriggerDeepAnalysisTx } from "./deep-analysis.ts";
 
 export type ImportCommitConfig = {
   commitChunkRows: number;
@@ -349,15 +350,22 @@ async function findMatchCandidates(
   const startDate = new Date(parseDateOrNull(staged.effectiveDate)!.getTime() - windowDays * 24 * 60 * 60 * 1000);
   const endDate = new Date(parseDateOrNull(staged.effectiveDate)!.getTime() + windowDays * 24 * 60 * 60 * 1000);
   const res = await client.query(
-    `SELECT id AS "transactionId", amount_minor AS "amountMinor", currency, direction, effective_date AS "effectiveDate", description
-     FROM transactions
-     WHERE workspace_id = $1
-       AND amount_minor = $2
-       AND currency = $3
-       AND direction = $4
-       AND description = $5
-       AND effective_date BETWEEN $6 AND $7`,
-    [workspaceId, staged.amountMinor, staged.currency, staged.direction, staged.description, startDate, endDate],
+    `SELECT t.id AS "transactionId", t.amount_minor AS "amountMinor", t.currency, t.direction, t.effective_date::text AS "effectiveDate", t.description
+     FROM transactions t
+     WHERE t.workspace_id = $1
+       AND t.amount_minor = $2
+       AND t.currency = $3
+       AND t.direction = $4
+       AND t.description = $5
+       AND t.effective_date BETWEEN $6 AND $7
+       AND t.import_id <> $8
+       AND NOT EXISTS (
+         SELECT 1 FROM source_links sl
+         WHERE sl.workspace_id = t.workspace_id AND sl.import_id = $8
+           AND sl.target_transaction_id = t.id AND sl.status = 'MATCHED'
+       )
+     ORDER BY t.effective_date, t.id`,
+    [workspaceId, staged.amountMinor, staged.currency, staged.direction, staged.description, startDate, endDate, staged.importId],
   );
   return res.rows as MatchCandidate[];
 }
@@ -382,7 +390,7 @@ async function createSourceLink(
        match_reason = EXCLUDED.match_reason,
        resolved_at = EXCLUDED.resolved_at,
        resolved_by = EXCLUDED.resolved_by`,
-    [workspaceId, sourceLinkId, importId, rowNo, observationId, targetTransactionId, status, matchReason, status !== "NEW" ? new Date() : null, status !== "NEW" ? "system" : null],
+    [workspaceId, sourceLinkId, importId, rowNo, observationId, targetTransactionId, status, matchReason, status !== "NEW" ? new Date() : null, null],
   );
   return sourceLinkId;
 }
@@ -402,6 +410,18 @@ async function processCommitChunk(
 
   for (const obs of stagedRows) {
     total++;
+    const prior = await client.query(
+      "SELECT status FROM source_links WHERE workspace_id = $1 AND import_id = $2 AND import_row_no = $3",
+      [workspaceId, obs.importId, obs.rowNo],
+    );
+    if ((prior.rowCount ?? 0) > 0) {
+      const status = (prior.rows[0] as { status: string }).status;
+      if (status === "NEW" || status === "KEPT_DISTINCT") staged++;
+      else if (status === "MATCHED") matched++;
+      else if (status === "PENDING_REVIEW") review++;
+      else rejected++;
+      continue;
+    }
     const candidates = await findMatchCandidates(client, workspaceId, obs, config.matchWindowDays);
     const exactMatch = candidates.find((c) => isExactMatch(obs, c, config.matchWindowDays));
 
@@ -423,13 +443,19 @@ async function processCommitChunk(
         rejected++;
         continue;
       }
-      await client.query(
+      const inserted = await client.query(
         `INSERT INTO transactions (workspace_id, id, account_id, amount_minor, currency, direction, effective_date, description, import_id, import_row_no, observation_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-         ON CONFLICT (workspace_id, import_id, import_row_no) DO NOTHING`,
+         ON CONFLICT (workspace_id, import_id, import_row_no) DO NOTHING
+         RETURNING id`,
         [workspaceId, txId, accountId, obs.amountMinor, obs.currency, obs.direction, effDate, obs.description, obs.importId, obs.rowNo, obs.observationId],
       );
-      await createSourceLink(client, workspaceId, obs.importId, obs.rowNo, obs.observationId, "NEW", txId);
+      const transactionId = (inserted.rows[0] as { id: string } | undefined)?.id ?? (await client.query(
+        "SELECT id FROM transactions WHERE workspace_id = $1 AND import_id = $2 AND import_row_no = $3",
+        [workspaceId, obs.importId, obs.rowNo],
+      )).rows[0]?.id;
+      if (!transactionId) throw new Error("committed transaction missing");
+      await createSourceLink(client, workspaceId, obs.importId, obs.rowNo, obs.observationId, "NEW", transactionId);
       staged++;
     }
   }
@@ -440,7 +466,7 @@ export async function processCommitJob(
   pool: Pool,
   backgroundJobId: string,
   config: ImportCommitConfig,
-  opts?: { workerId?: string; leaseMs?: number; bullmqJobId?: string },
+  opts?: { workerId?: string; leaseMs?: number; bullmqJobId?: string; faultAfterChunk?: number },
 ): Promise<"applied" | "deferred-transient" | "duplicate-terminal-noop"> {
   if (!isUuid(backgroundJobId)) throw new TenantInvalid();
   const workerId = validateWorkerId(opts?.workerId ?? `jobs-worker-${process.pid}`);
@@ -495,7 +521,7 @@ export async function processCommitJob(
   // Fetch STAGED observations for this import
   const observations = await fenced(async (client) => {
     const res = await client.query(
-      `SELECT import_id, row_no AS "rowNo", observation_id AS "observationId", amount_minor AS "amountMinor", currency, direction, effective_date AS "effectiveDate", description, source_sheet AS "sourceSheet"
+      `SELECT import_id AS "importId", row_no AS "rowNo", observation_id AS "observationId", amount_minor AS "amountMinor", currency, direction, effective_date::text AS "effectiveDate", description, source_sheet AS "sourceSheet"
        FROM parsed_observations
        WHERE workspace_id = $1 AND import_id = $2 AND status = 'STAGED'
        ORDER BY row_no`,
@@ -516,6 +542,7 @@ export async function processCommitJob(
     totalCounts.matched += counts.matched;
     totalCounts.review += counts.review;
     totalCounts.rejected += counts.rejected;
+    if (opts?.faultAfterChunk === at / config.commitChunkRows + 1) throw new Error("fault injected after committed chunk");
   }
 
   // Terminal: finalize job, update import counts, emit completion outbox
@@ -549,6 +576,10 @@ export async function processCommitJob(
        ON CONFLICT (workspace_id, background_job_id) DO NOTHING`,
       [route.workspaceId, uuidv7(), route.jobId],
     );
+    // E07-S01: one durable accepted-commit signal in the SAME transaction as
+    // commit success. The workspace-keyed claim converges duplicates and the
+    // batch window, so redelivered completions emit no second analysis.
+    await maybeTriggerDeepAnalysisTx(client, route.workspaceId, route.acceptedBy, loaded.importId);
     await markAttempt(client, route, pick.attemptId, "SUCCEEDED");
     await client.query("DELETE FROM job_dispatch_index WHERE workspace_id = $1 AND job_id = $2", [route.workspaceId, route.jobId]);
     return { ok: true as const };

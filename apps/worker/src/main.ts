@@ -15,6 +15,10 @@ import { createPool } from "../../web/src/db.ts";
 import { dispatchOutbox, jobsQueue, processImportJob, readJob, resolveJobRoute, startJobsWorker, type JobPayload } from "../../web/src/jobs.ts";
 import { parseLeaseMsEnv } from "../../web/src/job-recovery.ts";
 import { loadUploadConfig, processParseJob } from "../../web/src/uploads.ts";
+import { loadExportConfig, processExportJob } from "../../web/src/export.ts";
+import { processChatJob } from "../../web/src/chat.ts";
+import { processDeepAnalysisJob } from "../../web/src/deep-analysis.ts";
+import { liveChatTransport, loadChatTransportConfig, loadProductionTransportConfig, type DispatchTransport } from "../../web/src/ai-dispatch.ts";
 
 export type WorkerService = {
   pool: Pool;
@@ -58,6 +62,38 @@ export function createWorkerService(opts: { databaseUrl: string; redisUrl: strin
           outcome = await processParseJob(pool, job.data.backgroundJobId, uploadConfig, invocation);
         } else if (jobType === "imports.start") {
           outcome = await processImportJob(pool, job.data.backgroundJobId, invocation);
+        } else if (jobType === "exports.build") {
+          let exportConfig;
+          try {
+            exportConfig = loadExportConfig();
+          } catch {
+            // Misconfigured object storage must not fail the durable job:
+            // stay RUNNING for the sweep to redeliver once configured.
+            console.log(JSON.stringify({ event: "job_deferred", reason: "export_config_missing" }));
+            return "config-missing-deferred";
+          }
+          outcome = await processExportJob(pool, job.data.backgroundJobId, exportConfig.s3, invocation);
+        } else if (jobType === "chat.generate") {
+          const chatConfig = loadChatTransportConfig();
+          if (!chatConfig) {
+            // No provider transport configured: stay RUNNING for the sweep
+            // to redeliver once configured (upload-config deferral shape).
+            console.log(JSON.stringify({ event: "job_deferred", reason: "chat_transport_missing" }));
+            return "chat-transport-missing-deferred";
+          }
+          const transport: DispatchTransport = liveChatTransport(chatConfig, loadProductionTransportConfig());
+          outcome = await processChatJob(pool, job.data.backgroundJobId, transport, invocation);
+        } else if (jobType === "deep-analysis.run") {
+          // E07-S01 initial analysis reuses the chat provider route (same
+          // development/production qualification); without it the job defers
+          // like chat instead of failing or fabricating a report.
+          const analysisConfig = loadChatTransportConfig();
+          if (!analysisConfig) {
+            console.log(JSON.stringify({ event: "job_deferred", reason: "analysis_transport_missing" }));
+            return "analysis-transport-missing-deferred";
+          }
+          const analysisTransport: DispatchTransport = liveChatTransport(analysisConfig, loadProductionTransportConfig());
+          outcome = await processDeepAnalysisJob(pool, job.data.backgroundJobId, analysisTransport, invocation);
         } else {
           // Unknown job types never run a foreign effect: complete the
           // transport record without touching PG truth (unreachable today

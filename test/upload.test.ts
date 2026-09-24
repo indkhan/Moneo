@@ -1,5 +1,5 @@
 // E02-S03 quarantine upload + bounded parse: real PostgreSQL
-// (`moneo_e02_upload`, fails closed), real MinIO object storage (loopback,
+// (`moneo_e02_upload_v3`, fails closed), real MinIO object storage (loopback,
 // disposable bucket) and real clamd (loopback) — never mocks for the
 // quarantine/scan/parse boundaries. Exact expectations reuse the E00-S03
 // manifest oracle values (utf8-bom-quoted, basic-xlsx, formula-xlsx,
@@ -229,7 +229,10 @@ beforeAll(async () => {
   for (const name of ["UPLOADS_ENABLED", "S3_ENDPOINT", "S3_REGION", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET", "CLAMAV_HOST", "CLAMAV_PORT", "PARSER_CHILD"]) {
     savedEnv[name] = process.env[name];
   }
-  pool = await ensureTestPool("E02-S03", "moneo_e02_upload", [
+pool = await ensureTestPool("E02-S03", "moneo_e02_upload_v3", [
+    "manual_transactions",
+    "balance_snapshots",
+    "balance_audit",
     "mapping_provider_usage",
     "mapping_provider_reservations",
     "mapping_proposals",
@@ -256,7 +259,10 @@ beforeAll(async () => {
     "workspaces",
     "users",
     "app_sessions",
-  ]);
+    "artifact_build_attempts",
+    "artifact_versions",
+    "artifacts",
+]);
   stub = await startStubIssuer();
   appDbUrl = env("E02-S03", "DATABASE_URL");
   // Hydrate S3/scanner names from the ignored local .env the same way
@@ -385,7 +391,8 @@ describe("e02-s03 quarantine upload and bounded parse", () => {
   it("unsupported, empty, mismatched and oversized uploads fail typed without storage", async () => {
     const base = await startApp();
     const { cookie, workspaceId } = await setupWorkspace(base, "synthetic-up-d");
-    const before = await s3ListKeys(config.s3, "quarantine/");
+    const prefix = `quarantine/${workspaceId}/`;
+    const before = await s3ListKeys(config.s3, prefix);
     const csv = new TextEncoder().encode("date,description,amount\n2026-01-02,X,-100\n");
     const pdf = await upload(base, cookie, workspaceId, { filename: "statement.pdf", bytes: csv });
     expect(pdf.status).toBe(400);
@@ -402,7 +409,7 @@ describe("e02-s03 quarantine upload and bounded parse", () => {
     expect(huge.json).toMatchObject({ error: "payload_too_large" });
     // No rejected upload above stored new quarantine bytes (earlier tests'
     // accepted objects persist by design; the suite wipes the prefix after).
-    expect(await s3ListKeys(config.s3, "quarantine/")).toEqual(before);
+    expect(await s3ListKeys(config.s3, prefix)).toEqual(before);
   });
 
   it("EICAR bytes are quarantined, detected, and rejected without observations", async () => {
@@ -661,7 +668,7 @@ describe("e02-s03 quarantine upload and bounded parse", () => {
     const base = await startApp();
     const { cookie, workspaceId, userId } = await setupWorkspace(base, "synthetic-up-o");
     const service = createWorkerService({
-      databaseUrl: withDatabase(appDbUrl, "moneo_e02_upload"),
+      databaseUrl: withDatabase(appDbUrl, "moneo_e02_upload_v3"),
       redisUrl,
       leaseMs: 5000,
       workerId: "e02-s03-probe",

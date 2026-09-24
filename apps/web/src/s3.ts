@@ -94,9 +94,27 @@ export async function s3Put(config: S3Config, key: string, bytes: Uint8Array, co
   await res.arrayBuffer().catch(() => undefined);
 }
 
+/** PUT bytes under a generated export key (E08-S01 private packages). */
+export async function s3PutExport(config: S3Config, key: string, bytes: Uint8Array, contentType: string): Promise<void> {
+  assertExportKey(key);
+  const res = await signedFetch(config, "PUT", key, bytes, contentType);
+  check(res, "put");
+  await res.arrayBuffer().catch(() => undefined);
+}
+
 /** GET bytes for a quarantine key. Caps the download to maxBytes. */
 export async function s3Get(config: S3Config, key: string, maxBytes: number): Promise<Uint8Array> {
   assertQuarantineKey(key);
+  return s3GetAny(config, key, maxBytes);
+}
+
+/** GET bytes for a private export key. Caps the download to maxBytes. */
+export async function s3GetExport(config: S3Config, key: string, maxBytes: number): Promise<Uint8Array> {
+  assertExportKey(key);
+  return s3GetAny(config, key, maxBytes);
+}
+
+async function s3GetAny(config: S3Config, key: string, maxBytes: number): Promise<Uint8Array> {
   const res = await signedFetch(config, "GET", key);
   check(res, "get");
   const buf = new Uint8Array(await res.arrayBuffer());
@@ -115,6 +133,16 @@ export async function s3Head(config: S3Config, key: string): Promise<{ size: num
 
 export async function s3Delete(config: S3Config, key: string): Promise<void> {
   assertQuarantineKey(key);
+  return s3DeleteAny(config, key);
+}
+
+/** DELETE a private export key (E08-S01 expiry path). */
+export async function s3DeleteExport(config: S3Config, key: string): Promise<void> {
+  assertExportKey(key);
+  return s3DeleteAny(config, key);
+}
+
+async function s3DeleteAny(config: S3Config, key: string): Promise<void> {
   const res = await signedFetch(config, "DELETE", key);
   if (res.status === 404 || res.status === 204 || res.status === 200) return;
   check(res, "delete");
@@ -143,30 +171,41 @@ export async function s3EnsureBucket(config: S3Config): Promise<void> {
   check(res, "ensure-bucket");
 }
 
-/** List keys under a prefix (test isolation + future retention purge; XML parsed minimally). */
+/** List every key under a prefix; a truncated S3 page is never treated as complete. */
 export async function s3ListKeys(config: S3Config, prefix: string, maxKeys = 1000): Promise<string[]> {
   if (prefix.includes("..") || prefix.includes("\\")) throw new Error("object key refused");
   // Encode every byte of the value, including '/' as %2F: SigV4 signs the
   // encoded canonical query string, and a raw slash mismatches the server.
   const encodedPrefix = prefix.split("/").map((part) => encodeURIComponent(part)).join("%2F");
-  const url = `${config.endpoint.replace(/\/$/, "")}/${config.bucket}/?list-type=2&prefix=${encodedPrefix}&max-keys=${maxKeys}`;
-  const { full, day } = amzDate();
-  const headers: Record<string, string> = { host: new URL(url).host, "x-amz-content-sha256": sha256Hex(""), "x-amz-date": full };
-  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
-  const canonical = ["GET", `/${config.bucket}/`, `list-type=2&max-keys=${maxKeys}&prefix=${encodedPrefix}`, `host:${headers["host"]}`, `x-amz-content-sha256:${headers["x-amz-content-sha256"]}`, `x-amz-date:${headers["x-amz-date"]}`, "", signedHeaders, sha256Hex("")].join("\n");
-  const scope = `${day}/${config.region}/s3/aws4_request`;
-  const signature = Buffer.from(hmac(signingKey(config.secretKey, day, config.region), ["AWS4-HMAC-SHA256", full, scope, sha256Hex(canonical)].join("\n"))).toString("hex");
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { ...headers, Authorization: `AWS4-HMAC-SHA256 Credential=${config.accessKey}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}` },
-  });
-  check(res, "list");
-  const xml = await res.text();
   const keys: string[] = [];
-  const re = /<Key>([^<]+)<\/Key>/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(xml)) !== null) keys.push(decodeURIComponent(match[1].replaceAll("+", " ")));
-  return keys.filter((k) => k.startsWith("quarantine/"));
+  let continuation: string | null = null;
+  const seen = new Set<string>();
+  do {
+    const query: string = `${continuation ? `continuation-token=${encodeURIComponent(continuation)}&` : ""}list-type=2&max-keys=${maxKeys}&prefix=${encodedPrefix}`;
+    const url: string = `${config.endpoint.replace(/\/$/, "")}/${config.bucket}/?${query}`;
+    const { full, day } = amzDate();
+    const headers: Record<string, string> = { host: new URL(url).host, "x-amz-content-sha256": sha256Hex(""), "x-amz-date": full };
+    const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+    const canonical = ["GET", `/${config.bucket}/`, query, `host:${headers["host"]}`, `x-amz-content-sha256:${headers["x-amz-content-sha256"]}`, `x-amz-date:${headers["x-amz-date"]}`, "", signedHeaders, sha256Hex("")].join("\n");
+    const scope = `${day}/${config.region}/s3/aws4_request`;
+    const signature = Buffer.from(hmac(signingKey(config.secretKey, day, config.region), ["AWS4-HMAC-SHA256", full, scope, sha256Hex(canonical)].join("\n"))).toString("hex");
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { ...headers, Authorization: `AWS4-HMAC-SHA256 Credential=${config.accessKey}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}` },
+    });
+    check(res, "list");
+    const xml = await res.text();
+    if (!/<ListBucketResult(?:\s|>)/.test(xml)) throw new Error("object list malformed");
+    const re = /<Key>([^<]+)<\/Key>/g;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(xml)) !== null) keys.push(decodeURIComponent(match[1].replaceAll("+", " ")));
+    const next = /<NextContinuationToken>([^<]+)<\/NextContinuationToken>/.exec(xml)?.[1] ?? null;
+    continuation = /<IsTruncated>true<\/IsTruncated>/.test(xml) ? next : null;
+    if (continuation === null && /<IsTruncated>true<\/IsTruncated>/.test(xml)) throw new Error("object list truncated without continuation");
+    if (continuation && seen.has(continuation)) throw new Error("object list repeated continuation");
+    if (continuation) seen.add(continuation);
+  } while (continuation);
+  return keys.filter((k) => k.startsWith("quarantine/") || k.startsWith("exports/"));
 }
 
 /** Quarantine keys are generated server-side and never contain traversal. */
@@ -177,4 +216,14 @@ export function assertQuarantineKey(key: string): void {
 /** Server-generated quarantine key: no filename bytes, no traversal. */
 export function quarantineKey(workspaceId: string, objectId: string): string {
   return `quarantine/${workspaceId}/${objectId}`;
+}
+
+/** Export package keys are generated server-side and never contain traversal. */
+export function assertExportKey(key: string): void {
+  if (!/^exports\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.enc$/.test(key)) throw new Error("object key refused");
+}
+
+/** Server-generated export key: unpredictable ids only, no filename bytes. */
+export function exportKey(workspaceId: string, packageId: string): string {
+  return `exports/${workspaceId}/${packageId}.enc`;
 }
