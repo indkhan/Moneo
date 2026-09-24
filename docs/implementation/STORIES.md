@@ -1724,7 +1724,11 @@ Verification: Deployed probes + evidence links. Not runnable locally — stays o
 
 ## E08-S05 — Establish load, failure and cost release gates
 
-Status: Draft | Release: R1 | Epic: E08 | Dependencies: E08-S04
+Status: In progress | Release: R1 | Epic: E08 | Dependencies: E08-S04
+
+Outcome: The deployed candidate has measured safe capacity and recovery limits for an invited beta, with alerting that exposes failures without financial payloads.
+
+Local/Deploy split (2026-09-24 refinement): repeatable local measurement on a fixed synthetic dataset with failure drills is E08-S05-L; numeric p95/memory/queue/cost budgets for the chosen host and beta cohort are E08-S05-D. Local numbers are reference measurements, never a pass for a different deployment.
 
 Outcome: The deployed candidate has measured safe capacity and recovery limits for an invited beta, with alerting that exposes failures without financial payloads.
 Contracts: Architecture job/dispatch limits, R1 operations targets; existing E02 100k-row import cap, E03 10k-row query target, E06 projection ≤2s and E07 Home ≤2s local targets. These are starting budgets for measurement, not external SLAs.
@@ -1732,6 +1736,29 @@ Scope: Use a fixed synthetic 2-workspace/100-account/10k-transaction dataset plu
 Acceptance: Exact-money and tenant assertions remain true at every load; caps reject safely rather than overspend or silently drop work. Provider and queue failures remain visible/recoverable; cost reservations bound concurrent usage. Record maximum supported beta concurrency and any budget miss with a concrete fix or reduced cohort limit. Full R1 journey passes on the latest candidate.
 Verification: Add `npm run test:e08-load` with repeatable dataset/config and machine-readable summary; run `test:job-recovery`, `test:ai-dispatch`, `test:e07-exit`, `staging:smoke`, failure gate, builds and privacy scan. Rerun affected cases after each fix; no destructive drills on shared/production services.
 Open gate: Before Ready, predeclare numeric p95, memory, queue-wait, safe-rejection and cost budgets for the chosen host and beta cohort. Existing local Home/projection targets are reference measurements, not a pass for a different deployment.
+
+## E08-S05-L — Measure repeatable local load and failure behavior (synthetic)
+
+Status: Ready | Release: R1 | Epic: E08 | Dependencies: E08-S04-L (Done; local candidate fixed at its merge)
+
+Outcome: A repeatable local harness on a fixed synthetic dataset (2 workspaces, 100 accounts, 10k transactions, 12 pinned artifacts, one 100k-row boundary import) measures 1/5/20 concurrent users through import, Home/query, projection, artifacts and AI reservations, plus worker-death/Redis-loss/provider-outage/cancel drills, with exact-money and tenant assertions true at every load and caps rejecting safely.
+Contracts: Architecture job/dispatch limits; E02 100k-row import cap, E03 10k-row query target, E06 projection ≤2s and E07 Home ≤2s local targets (reference measurements, not external SLAs).
+Scope: `test/e08-load.test.ts` (+ `test:e08-load` script) driving real HTTP/PG/Redis/MinIO/ClamAV/worker paths; machine-readable summary to the approved temp dir; redacted console lines (counts/latencies only). No new alerting backend or backpressure controls unless measurements demand them (record the decision). No numeric host-budget promises.
+Acceptance: (1) All reads exact at every concurrency (totals equal the independent oracle; tenant swaps deny). (2) 100k-row import completes within parser ceilings with exact multiplicity/provenance. (3) Redis loss + cancel + provider outage during load converge visibly (recovery completes, no duplicate effects, cost bounded, failures typed). (4) Over-budget AI reservations 409 without overspend. (5) Summary records p50/p95, durations, queue/cost figures and environment for the ledger.
+Failure/data/limits: Synthetic fixed dataset (seeded); drills use the suite's own disposable Redis DB (flush) and synthetic jobs only. Durations are measurements. CI includes the suite only if it fits the job budget (record decision).
+Verification: `npm run test:e08-load` green twice (repeatability); regress `test:job-recovery`, `test:ai-dispatch`, `test:e07-exit`; typecheck/builds; independent review.
+Review focus: Dataset determinism, oracle independence (not recomputed by implementation code), rejection safety (no silent drops/overspend), redacted telemetry, CI-time suitability, invented-SLA language.
+Rollout/rollback: Test-only plus any measured-necessary controls; no migration expected. Rollback = remove the suite/controls.
+
+## E08-S05-D — Declare deployed load budgets and qualify the host
+
+Status: Draft | Release: R1 | Epic: E08 | Dependencies: E08-S05-L, hosting selection
+
+Outcome: Numeric p95/memory/queue-wait/safe-rejection/cost budgets for the chosen host and beta cohort are predeclared, measured against, and met (or the cohort is reduced) with alerting that exposes failures without financial payloads.
+Contracts: Same as S05 plus the S05 open gate.
+Scope: Host-specific budgets, deployed load run, alerts/backpressure, max-concurrency statement. No customer data before it passes.
+Acceptance: Exact-money/tenant assertions true at load; caps reject safely; failures visible/recoverable; cost bounded; full R1 journey passes on the latest candidate; maximum supported beta concurrency recorded.
+Verification: Deployed evidence + reviewer sign-off. Not runnable locally — stays open until hosting is chosen.
 
 ## E08-S06 — Validate a controlled cohort and decide the next release
 
