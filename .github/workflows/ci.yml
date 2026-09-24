@@ -71,13 +71,13 @@ jobs:
             -c "CREATE DATABASE moneo_e02_recovery OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e02_upload OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e02_mapping OWNER moneo_app;" \
-      -c "CREATE DATABASE moneo_e08_export OWNER moneo_app;" \
-      -c "CREATE DATABASE moneo_e08_deletion OWNER moneo_app;" \
-      -c "CREATE DATABASE moneo_e08_retention OWNER moneo_app;" \
-      -c "CREATE DATABASE moneo_e08_restore OWNER moneo_app;" \
-      -c "CREATE DATABASE moneo_e08_restore_iso OWNER moneo_app;" \
-      -c "CREATE DATABASE moneo_e08_restore_bad OWNER moneo_app;" \
-      -c "CREATE DATABASE moneo_e08_prodpolicy OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_e08_export OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_e08_deletion OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_e08_retention OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_e08_restore OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_e08_restore_iso OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_e08_restore_bad OWNER moneo_app;" \
+            -c "CREATE DATABASE moneo_e08_prodpolicy OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e04_dispatch OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e04_chat OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e04_tools OWNER moneo_app;"
