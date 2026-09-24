@@ -17,6 +17,7 @@ import {
   serveExportDownload,
 } from "../export.ts";
 import { DeletionError, acceptDeletion, listDeletionMembers } from "../deletion.ts";
+import { renderRetentionCatalogHtml } from "../retention.ts";
 import { readLimitedBody } from "../http-controls.ts";
 import { sessionClaims, type SessionResolver } from "../tenancy.ts";
 import { errorPage, escapeHtml, page, workspaceNav } from "./shell.ts";
@@ -142,7 +143,7 @@ export async function handlePrivacyRoutes(
           title: "Privacy & Security",
           requestId,
           authed: true,
-          content: `<h2>Privacy &amp; Security</h2>${workspaceNav(workspaceId)}${noticeLine}<h3>Export workspace data</h3>${form}${rows}${deletionSection}<h3>Retention</h3><p>Original upload bytes are kept about 30 days after validated import; export packages expire after 24 hours. Backup, audit and processor timelines are set after hosting selection (E08-S01c gate) and shown here once approved.</p><p><a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p>`,
+          content: `<h2>Privacy &amp; Security</h2>${workspaceNav(workspaceId)}${noticeLine}<h3>Export workspace data</h3>${form}${rows}${deletionSection}<h3>Retention</h3>${renderRetentionCatalogHtml()}<p><a href="/w/${escapeHtml(workspaceId)}">Back to workspace</a></p>`,
         }),
       );
       return true;

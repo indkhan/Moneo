@@ -277,6 +277,15 @@ async function acceptTx(
       "INSERT INTO export_packages (workspace_id, id, job_id, requested_by, cutoff, status, object_key, data_key, expires_at) VALUES ($1, $2, $3, $4, now(), 'BUILDING', $5, $6, now() + ($7 || ' hours')::interval)",
       [claims.workspaceId, packageId, jobId, actorId, key, dataKey, String(EXPORT_EXPIRY_HOURS)],
     );
+    // E08-S01c-L retention discovery: ID-only row for the cross-workspace
+    // sweeper (never an unscoped tenant read); cleared on every terminal
+    // transition below.
+    await client.query("INSERT INTO export_expiry_index (workspace_id, package_id, requested_by, expires_at) VALUES ($1, $2, $3, now() + ($4 || ' hours')::interval) ON CONFLICT DO NOTHING", [
+      claims.workspaceId,
+      packageId,
+      actorId,
+      String(EXPORT_EXPIRY_HOURS),
+    ]);
     const view = await readPackageByJob(client, claims.workspaceId, jobId);
     if (!view) throw new Error("export package missing after accept");
     await client.query("UPDATE command_operations SET status = 'SUCCEEDED', response_payload = $1, completed_at = now() WHERE workspace_id = $2 AND id = $3", [
@@ -489,6 +498,10 @@ async function failPackage(pool: Pool, route: JobRoute & { jobId: string }, clai
       route.jobId,
       code,
     ]);
+    await client.query("DELETE FROM export_expiry_index WHERE workspace_id = $1 AND package_id IN (SELECT id FROM export_packages WHERE workspace_id = $1 AND job_id = $2)", [
+      route.workspaceId,
+      route.jobId,
+    ]);
     await client.query("INSERT INTO background_job_results (workspace_id, id, background_job_id, result_kind) VALUES ($1, $2, $3, 'export-ready') ON CONFLICT (workspace_id, background_job_id) DO NOTHING", [
       route.workspaceId,
       uuidv7(),
@@ -567,6 +580,10 @@ export async function processExportJob(
             full.workspaceId,
             backgroundJobId,
           ]);
+          await client.query("DELETE FROM export_expiry_index WHERE workspace_id = $1 AND package_id IN (SELECT id FROM export_packages WHERE workspace_id = $1 AND job_id = $2)", [
+            full.workspaceId,
+            backgroundJobId,
+          ]);
         }
         return false;
       }
@@ -614,6 +631,11 @@ async function findPackage(client: PoolClient, workspaceId: string, packageId: s
   return found.rows[0] as PackageRow;
 }
 
+/** Clear the retention discovery row on terminal transitions (consume, expire, fail, purge). */
+export async function deleteExportExpiryIndex(client: PoolClient, workspaceId: string, packageId: string): Promise<void> {
+  await client.query("DELETE FROM export_expiry_index WHERE workspace_id = $1 AND package_id = $2", [workspaceId, packageId]);
+}
+
 /** Lazy expiry inside the caller's tenant transaction: past-due READY rows lose their object before any read is served. */
 async function expireIfDue(client: PoolClient, s3: S3Config | null, workspaceId: string, row: PackageRow): Promise<boolean> {
   if (row.status !== "READY" || new Date(row.expires_at as unknown as string).getTime() > Date.now()) return false;
@@ -628,6 +650,7 @@ async function expireIfDue(client: PoolClient, s3: S3Config | null, workspaceId:
     workspaceId,
     row.id,
   ]);
+  await deleteExportExpiryIndex(client, workspaceId, row.id);
   return true;
 }
 
@@ -669,7 +692,10 @@ export type ExportDownload = { filename: string; bytes: Buffer; packageId: strin
  * One-use download: atomically consumes the READY package (downloaded_at,
  * audit row) under tenancy, then fetches + decrypts the object. The step-up
  * must be fresh at download time. Second downloads, expired packages and
- * foreign ids return null (uniform 404); stale step-up throws (403).
+ * foreign ids return null (uniform 404); stale step-up throws (403). The
+ * retention index row is cleared only after bytes are delivered: on fetch
+ * failure the package reopens with its index intact so the 24h sweep still
+ * converges after storage recovers.
  */
 export async function serveExportDownload(
   pool: Pool,
@@ -707,16 +733,25 @@ export async function serveExportDownload(
   } catch {
     // The single use must not burn on a storage failure that delivered no
     // bytes: reopen the package and retract the download audit row (by its
-    // exact id) so a retry stays possible and history stays truthful.
-    await withTenant(pool, claims, async (client) => {
-      await client.query("UPDATE export_packages SET downloaded_at = NULL WHERE workspace_id = $1 AND id = $2 AND status = 'READY'", [
-        claims.workspaceId,
-        packageId,
-      ]);
-      await client.query("DELETE FROM audit_events WHERE workspace_id = $1 AND id = $2 AND action = 'downloaded'", [claims.workspaceId, auditId]);
-    });
+    // exact id) so a retry stays possible and history stays truthful. The
+    // expiry index row was never cleared, so the sweep converges too. The
+    // reopen is best-effort (fail-closed to consumed on its own failure).
+    try {
+      await withTenant(pool, claims, async (client) => {
+        await client.query("UPDATE export_packages SET downloaded_at = NULL WHERE workspace_id = $1 AND id = $2 AND status = 'READY'", [
+          claims.workspaceId,
+          packageId,
+        ]);
+        await client.query("DELETE FROM audit_events WHERE workspace_id = $1 AND id = $2 AND action = 'downloaded'", [claims.workspaceId, auditId]);
+      });
+    } catch { /* stays consumed; operator-visible via downloaded_at without bytes */ }
     return null;
   }
+  // Bytes delivered: the retention index row can go (expiry already passed
+  // or the sweeper cleans the orphan if this write is lost).
+  await withTenant(pool, claims, async (client) => {
+    await deleteExportExpiryIndex(client, claims.workspaceId, packageId);
+  }).catch(() => null);
   return { filename: `moneo-export-${consumed.id}.json`, bytes: plaintext, packageId: consumed.id };
 }
 
@@ -748,6 +783,7 @@ export async function expireExportPackage(
       claims.workspaceId,
       packageId,
     ]);
+    await deleteExportExpiryIndex(client, claims.workspaceId, packageId);
     return { expired: true };
   });
 }
