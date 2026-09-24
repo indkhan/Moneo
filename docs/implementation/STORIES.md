@@ -1644,7 +1644,7 @@ Open gate: Qualified route availability, processor agreements and actual disclos
 
 ## E08-S03-L — Fail-closed production-route policy with honest disclosure (local, synthetic)
 
-Status: Ready | Release: R1 | Epic: E08 | Dependencies: E08-S01c-L (Done at `36739e4`; E04-S07 Done pre-E07)
+Status: Done | Release: R1 | Epic: E08 | Dependencies: E08-S01c-L (Done at `36739e4`; E04-S07 Done pre-E07)
 
 Outcome: Production-route dispatches require an explicit pinned no-training/ZDR capability record at reserve, rechecked at execute/fallback; anything else (unqualified flag, unsupported ZDR/data-collection setting, missing credentials, free-model fallback attempt) fails closed without request leakage. The processor inventory names development reality and pending production qualification without inventing terms; versioned synthetic evaluations run offline.
 Contracts: Product deployment constraints; architecture §130 (`data_collection: "deny"`, `zdr: true`, parameter support on every route/fallback), §§465 and E04-S07 rubric. Development free/training-permitted routes stay separate and never serve production.
@@ -1654,6 +1654,17 @@ Failure/data/limits: Synthetic fixtures only; production-credentials env names r
 Verification: New `npm run test:prod-policy` (disposable PG, recording transports, env-matrix); regress `test:ai-dispatch`, `test:ai-eval`, `test:chat`, `test:deep-analysis`, `test:artifact-ai`, typecheck/builds; independent review.
 Review focus: TOCTOU between reserve/execute (recheck completeness), fallback paths that could downgrade to development, free-model detection gaps, credential/secret handling in config/errors, disclosure over-claims, eval oracle independence.
 Rollout/rollback: Code-only capability gate defaulting to deny; rollback = unset qualification flags (production stays forbidden). No migration.
+
+Execution record:
+- Assignee / branch: Orchestrator/implementer this session / `story/e08-s03-prodpolicy` (deleted after merge)
+- Base SHA / heads: base `ff82928` (= local main at branch-off); impl `edf5bc7`; fix/reviewed `1cf71d4`; strengthening `19af09e` (3-line comment + tests; non-test diff vs `1cf71d4` verified comment-only)
+- Implementation: `loadProductionRouteConfig()` pinned capability (flag + data_collection deny + ZDR + non-free model + credentials, names only) enforced at reserve and rechecked pre-attempt/pre-retry with fenced RELEASED/route_forbidden; route-aware `liveChatTransport(dev, prod?)` (production sends only over prod config, free variants never send); `loadProductionTransportConfig()` fail-closed loader wired in the worker for chat/analysis; chat route selection + settings badge on full capability; `apps/web/src/ai-processors.ts` inventory + Settings disclosure (dev actual, prod pending); no live calls, no customer data, no migration
+- Tests (Windows 11, Node v22.23.2, local PG18, disposable PG `moneo_e08_prodpolicy`, synthetic data): `npm run test:prod-policy` 0 (7/7: free-model unit, 7-case capability matrix with zero production rows, qualified happy-path reconcile, dequalify-to-release with zero provider I/O + budget freed, transport guard with bearer/model proof, disclosure honesty, frozen rubric pin)
+- Regression on candidate: typecheck 0; ai-dispatch 16/16; ai-eval 2/2; chat 13/13 (one SIGKILL-timing flake under load, green on rerun ×2 — environmental); deep-analysis 13/13; artifact-ai 12/12; ai-tools 14/14 (contract updated to full matrix + flag-only adds nothing); chat-ui 9/9; e07-exit 12/12; `test:failure` nonzero-as-intended; build:web/worker 0; `git diff --check` 0; clean status
+- Review: independent Changes-requested at `edf5bc7` (B1 broke ai-tools flag-only expectation, B2 production reservations executed over dev transport + N1–N6); fix `1cf71d4` (route-aware transport, full-capability selection everywhere, badge gating, ai-tools contract, prod-transport positive test); independent re-review Pass at `1cf71d4` with 3 strengthening notes closed by `19af09e` (flag-only no-increment proof, bearer/model assertions, PENDING-vs-deny comment; suite re-run 7/7 + ai-tools 14/14)
+- Integration: local main at base `ff82928` unchanged; merge-base == base; candidate == `19af09e`; full candidate gates green (see Tests). Merged with `--no-ff`
+- Merge SHA / post-merge smoke: `2e4e4bd`; post-merge `npm run check` 0, `test:prod-policy` 7/7, clean status. Remote push/PR not performed (local-only merges per E00 precedent)
+- Accepted residuals: provider-specific deny/ZDR wire params left to S03-D (no invented params; capability is env-record-gated); transport null-body is ambiguous-dispatch PENDING (unreachable through honest wiring); arch §130 free-route qualification question deferred to S03-D; live no-training/ZDR route explicitly unqualified — S03-D stays open
 
 ## E08-S03-D — Live no-training/ZDR route qualification (credentialed, synthetic)
 
