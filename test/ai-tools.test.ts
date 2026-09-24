@@ -477,15 +477,33 @@ describe("e04-s03 scoped tools and evidence", () => {
     const dev = await runOnce();
     expect(dev.status).toBe("applied");
     expect(dev.routes).toEqual(["development"]);
-    const saved = process.env["AI_PRODUCTION_QUALIFIED"];
-    process.env["AI_PRODUCTION_QUALIFIED"] = "1";
+    // S03-L full capability matrix (flag + deny + ZDR + pinned model + key)
+    // admits production; the flag alone no longer does.
+    const saved: Record<string, string | undefined> = {};
+    for (const name of ["AI_PRODUCTION_QUALIFIED", "AI_PROD_DATA_COLLECTION", "AI_PROD_ZDR", "DISPATCH_PROD_MODEL", "AI_PROD_API_KEY"]) {
+      saved[name] = process.env[name];
+    }
     try {
+      process.env["AI_PRODUCTION_QUALIFIED"] = "1";
+      process.env["AI_PROD_DATA_COLLECTION"] = "deny";
+      process.env["AI_PROD_ZDR"] = "true";
+      process.env["DISPATCH_PROD_MODEL"] = "muse-spark-1.3";
+      process.env["AI_PROD_API_KEY"] = "synthetic-test-key";
       const prod = await runOnce();
       expect(prod.status).toBe("applied");
       expect(prod.routes).toEqual(["development", "production"]);
+      delete process.env["AI_PROD_DATA_COLLECTION"];
+      delete process.env["AI_PROD_ZDR"];
+      delete process.env["DISPATCH_PROD_MODEL"];
+      delete process.env["AI_PROD_API_KEY"];
+      const flagOnly = await runOnce();
+      expect(flagOnly.status).toBe("applied");
+      expect(flagOnly.routes).toEqual(["development", "production"]);
     } finally {
-      if (saved === undefined) delete process.env["AI_PRODUCTION_QUALIFIED"];
-      else process.env["AI_PRODUCTION_QUALIFIED"] = saved;
+      for (const [name, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
     }
   });
 

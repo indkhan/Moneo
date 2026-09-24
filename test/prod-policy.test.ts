@@ -226,6 +226,15 @@ describe("e08-s03-L production-route policy", () => {
       const devRes = await devTransport({ route: "development", model: "some-model:free", requestText: "synthetic", maxOutputTokens: 10 }, AbortSignal.timeout(5000));
       expect(devRes.bodyText).toBe("hi");
       expect(hits).toBe(1);
+      // With a complete production config, production requests send over
+      // production credentials only (never the dev key/route).
+      const bothTransport = liveChatTransport(
+        { apiKey: "synthetic-dev", baseUrl: hitBase, model: "dev-model" },
+        { apiKey: "synthetic-prod", baseUrl: hitBase, model: "muse-spark-1.3" },
+      );
+      const prodRes = await bothTransport({ route: "production", model: "muse-spark-1.3", requestText: "synthetic", maxOutputTokens: 10 }, AbortSignal.timeout(5000));
+      expect(prodRes.bodyText).toBe("hi");
+      expect(hits).toBe(2);
     } finally {
       await new Promise<void>((resolve) => hitServer.close(() => resolve()));
     }

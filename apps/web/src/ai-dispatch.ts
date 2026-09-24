@@ -717,17 +717,55 @@ export function loadChatTransportConfig(): LiveChatConfig | null {
   };
 }
 
+export type ProductionTransportConfig = { apiKey: string; baseUrl: string; model: string };
+
+/**
+ * Fail-closed production transport config: present only while the full
+ * S03-L capability record holds (flag + deny + ZDR + pinned non-free model
+ * + credentials). Values travel to the Authorization header only; the
+ * loader reports presence, never values.
+ */
+export function loadProductionTransportConfig(): ProductionTransportConfig | null {
+  try {
+    const cap = loadProductionRouteConfig();
+    const apiKey = process.env["AI_PROD_API_KEY"];
+    if (!apiKey) return null;
+    return { apiKey, baseUrl: process.env["AI_PROD_BASE_URL"] ?? "https://openrouter.ai/api/v1", model: cap.model };
+  } catch {
+    return null;
+  }
+}
+
 /** Live OpenRouter chat transport for generation: key in the header only,
  * 30 s cap, usage extracted from the envelope (null when absent — the
  * dispatch then stays PENDING, never zero). Output text is returned to the
- * caller for fenced persistence; it is never logged here. Defense in depth:
- * a free-variant model on the production route is refused before any
- * request leaves the process (reserve already denies it). */
-export function liveChatTransport(config: LiveChatConfig): DispatchTransport {
+ * caller for fenced persistence; it is never logged here.
+ *
+ * Route-aware (B2): development requests use the dev config; production
+ * requests use ONLY the production config and fail closed (no send, no
+ * leakage) without a complete one. A production reservation therefore can
+ * never execute over development credentials, and a missing production
+ * transport defers as unavailability — never a silent dev fallback.
+ * Free-variant models never send on the production route (defense in depth
+ * behind the reserve-time refusal). */
+export function liveChatTransport(devConfig: LiveChatConfig, prodConfig?: ProductionTransportConfig | null): DispatchTransport {
   return async (req, signal) => {
-    if (req.route === "production" && isFreeModel(config.model)) {
-      return { httpStatus: null, bodyText: null, inputTokens: null, outputTokens: null, model: config.model };
+    if (req.route === "production") {
+      const prod = prodConfig ?? null;
+      if (!prod || isFreeModel(prod.model) || isFreeModel(req.model)) {
+        return { httpStatus: null, bodyText: null, inputTokens: null, outputTokens: null, model: prod?.model ?? req.model };
+      }
+      return sendChatCompletion(prod, req, signal);
     }
+    return sendChatCompletion(devConfig, req, signal);
+  };
+}
+
+async function sendChatCompletion(
+  config: LiveChatConfig,
+  req: { route: DispatchRoute; model: string; requestText: string; maxOutputTokens: number },
+  signal: AbortSignal,
+): Promise<DispatchAttempt> {
     const controller = new AbortController();
     const onAbort = () => controller.abort();
     signal.addEventListener("abort", onAbort, { once: true });
@@ -767,7 +805,6 @@ export function liveChatTransport(config: LiveChatConfig): DispatchTransport {
       clearTimeout(timeout);
       signal.removeEventListener("abort", onAbort);
     }
-  };
 }
 
 /**

@@ -8,6 +8,7 @@ import { TenantDenied, TenantInvalid, withTenant, type TenantClaims } from "./te
 import { formatDecimalBigint, parseDecimalBigint } from "./money.ts";
 import { getPolicy, setAccountExclusion, summarizeEligible } from "./ai-policy.ts";
 import { setDispatchBudget } from "./ai-dispatch.ts";
+import { loadProductionRouteConfig } from "./ai-dispatch.ts";
 
 export class SettingsError extends Error {
   readonly code: "not_found" | "invalid_input" | "version_mismatch";
@@ -140,7 +141,15 @@ export async function getSettingsView(
     summarizeEligible(pool, claims),
   ]);
 
-  const routeClass = process.env["AI_PRODUCTION_QUALIFIED"] === "1" ? "production" : "development";
+  // S03-L: the badge reflects the full production capability, never the
+  // qualification flag alone.
+  let routeClass: "development" | "production" = "development";
+  try {
+    loadProductionRouteConfig();
+    routeClass = "production";
+  } catch {
+    routeClass = "development";
+  }
 
   return {
     budget,
@@ -173,9 +182,14 @@ export async function toggleAccountExclusion(
   return setAccountExclusion(pool, claims, actorId, accountId, excluded);
 }
 
-/** Route class for the settings page (development vs production). */
+/** Route class for the settings page: full production capability or development. */
 export function getRouteClass(): "development" | "production" {
-  return process.env["AI_PRODUCTION_QUALIFIED"] === "1" ? "production" : "development";
+  try {
+    loadProductionRouteConfig();
+    return "production";
+  } catch {
+    return "development";
+  }
 }
 
 export function settingsErrorBody(err: SettingsError): { status: number; body: unknown } {
