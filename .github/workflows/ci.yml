@@ -74,6 +74,9 @@ jobs:
       -c "CREATE DATABASE moneo_e08_export OWNER moneo_app;" \
       -c "CREATE DATABASE moneo_e08_deletion OWNER moneo_app;" \
       -c "CREATE DATABASE moneo_e08_retention OWNER moneo_app;" \
+      -c "CREATE DATABASE moneo_e08_restore OWNER moneo_app;" \
+      -c "CREATE DATABASE moneo_e08_restore_iso OWNER moneo_app;" \
+      -c "CREATE DATABASE moneo_e08_restore_bad OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e04_dispatch OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e04_chat OWNER moneo_app;" \
             -c "CREATE DATABASE moneo_e04_tools OWNER moneo_app;"
@@ -141,6 +144,17 @@ jobs:
         run: npm run test:deletion
       - name: Retention enforcement and catalog (real PG + MinIO)
         run: npm run test:retention
+      - name: Install PostgreSQL 17 client (restore drill binaries)
+        # Ubuntu archives ship an older-major client; pg_dump aborts
+        # against a newer server, so pin the matching major from pgdg.
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          sudo apt-get update && sudo apt-get install -y postgresql-client-17
+          pg_dump --version && pg_restore --version
+      - name: Isolated restore with tombstone replay (real PG + MinIO)
+        run: npm run test:restore
       - name: Durable effects (real PG + Redis)
         run: npm run test:durable
       - name: Deliberate failure must exit nonzero
