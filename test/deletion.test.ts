@@ -521,6 +521,21 @@ describe("e08-s01b durable deletion", () => {
     const retry = await requestDeletion(base, owner.cookie, owner.workspaceId, { scope: "workspace", idempotencyKey: key });
     expect(retry.json.deletion.status).toBe("COMPLETE");
     expect(await s3ListKeys(s3, `quarantine/${owner.workspaceId}/`)).toEqual([]);
+    // A live S3 outage mid-purge maps to the same visible FAILED (not a 500):
+    // break the endpoint on a fresh workspace and retry with the same key.
+    const owner2 = await setupWorkspace(base, "synthetic-del5-owner2");
+    await seedWorkspace(owner2.userId, owner2.workspaceId, "objfail2");
+    const key2 = randomUUID();
+    process.env["S3_ENDPOINT"] = "http://127.0.0.1:9";
+    try {
+      const outage = await requestDeletion(base, owner2.cookie, owner2.workspaceId, { scope: "workspace", idempotencyKey: key2 });
+      expect(outage.json.deletion.status).toBe("FAILED");
+      expect(outage.json.deletion.errorCode).toBe("object_store_unavailable");
+    } finally {
+      process.env["S3_ENDPOINT"] = saved.endpoint;
+    }
+    const retry2 = await requestDeletion(base, owner2.cookie, owner2.workspaceId, { scope: "workspace", idempotencyKey: key2 });
+    expect(retry2.json.deletion.status).toBe("COMPLETE");
   });
 
   it("foreign actors, stale step-up and disabled deletions deny cleanly", async () => {
