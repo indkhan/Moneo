@@ -198,6 +198,20 @@ describe("e08-s02-L isolated restore with tombstone replay", () => {
     await adminLive.query("INSERT INTO import_expiry_index (workspace_id, import_id, expires_at) VALUES ($1, $2, now() + interval '1 hour')", [
       del1Ws, randomUUID(),
     ]);
+    // NN1: a DEL2 export package + expiry row so the per-package replay path
+    // is exercised non-trivially.
+    const m2PkgId = randomUUID();
+    const m2PkgKey = `exports/${del2Ws}/${m2PkgId}.enc`;
+    const { s3PutExport } = await import("../apps/web/src/s3.ts");
+    await s3PutExport(s3, m2PkgKey, new TextEncoder().encode("m2-package"), "application/octet-stream");
+    const m2JobId = randomUUID();
+    await adminLive.query("INSERT INTO background_jobs (workspace_id, id, job_type, status, input_ref) VALUES ($1, $2, 'exports.build', 'SUCCEEDED', '{}')", [del2Ws, m2JobId]);
+    await adminLive.query("INSERT INTO export_packages (workspace_id, id, job_id, requested_by, cutoff, status, object_key, data_key, expires_at) VALUES ($1, $2, $3, $4, now(), 'READY', $5, $6, now() + interval '1 hour')", [
+      del2Ws, m2PkgId, m2JobId, m2.userId, m2PkgKey, randomBytes(32),
+    ]);
+    await adminLive.query("INSERT INTO export_expiry_index (workspace_id, package_id, requested_by, expires_at) VALUES ($1, $2, $3, now() + interval '1 hour')", [
+      del2Ws, m2PkgId, m2.userId,
+    ]);
     const { acceptExportJob, processExportJob, loadExportConfig } = await import("../apps/web/src/export.ts");
     const keepExport = await acceptExportJob(pool, { userId: keep.userId, workspaceId: keepWs }, keep.userId, await freshSession("synthetic-restore-keep"), {
       workspaceId: keepWs, idempotencyKey: randomUUID(),
@@ -284,6 +298,9 @@ describe("e08-s02-L isolated restore with tombstone replay", () => {
     expect((await adminIso.query("SELECT count(*)::int AS n FROM import_expiry_index WHERE workspace_id = $1", [del1Ws])).rows[0]).toEqual({ n: 0 });
     expect((await adminIso.query("SELECT count(*)::int AS n FROM export_expiry_index WHERE workspace_id = $1", [del2Ws])).rows[0]).toEqual({ n: 0 });
     expect((await adminIso.query("SELECT count(*)::int AS n FROM app_sessions WHERE revoked_at IS NULL AND keycloak_sub = 'synthetic-restore-del1'")).rows[0]).toEqual({ n: 0 });
+    expect((await adminIso.query("SELECT count(*)::int AS n FROM app_sessions WHERE revoked_at IS NULL AND keycloak_sub = 'synthetic-restore-m2'")).rows[0]).toEqual({ n: 0 });
+    expect((await adminIso.query("SELECT count(*)::int AS n FROM export_packages WHERE workspace_id = $1", [del2Ws])).rows[0]).toEqual({ n: 0 });
+    expect((await adminIso.query("SELECT count(*)::int AS n FROM export_expiry_index WHERE workspace_id = $1", [del2Ws])).rows[0]).toEqual({ n: 0 });
     expect((await adminIso.query("SELECT auth_subject FROM users WHERE id = $1", [o2.userId])).rows[0]).toEqual({ auth_subject: "synthetic-restore-o2" });
     expect((await s3ListKeys(s3, `quarantine/${del2Ws}/`)).length).toBe(1);
     expect(await s3ListKeys(s3, `quarantine/${del1Ws}/`)).toEqual([]);
