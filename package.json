@@ -45,6 +45,7 @@
     "test:retention": "vitest run test/retention.test.ts",
     "test:restore": "vitest run test/restore.test.ts",
     "test:prod-policy": "vitest run test/prod-policy.test.ts",
+    "test:e08-load": "vitest run test/e08-load.test.ts",
     "test:accounts": "vitest run test/accounts.test.ts",
     "test:calculations": "vitest run test/calculations.test.ts",
     "test:fx": "vitest run test/fx.test.ts",
