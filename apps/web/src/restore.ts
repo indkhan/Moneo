@@ -155,8 +155,20 @@ export async function replayTombstones(admin: Pool, s3: S3Config, tombstones: To
       continue;
     }
     if (tomb.subjectKind === "workspace") {
+      // Mirror the S01b purge list for rows the workspace cascade cannot
+      // reach: proposals (no workspace FK), both expiry indexes, and member
+      // sessions (revoked after capturing subs — the members row is going).
+      const memberSubs = await admin.query("SELECT u.auth_subject FROM users u JOIN workspace_members m ON m.user_id = u.id WHERE m.workspace_id = $1", [tomb.subjectRef]);
       await admin.query("DELETE FROM workspaces WHERE id = $1", [tomb.subjectRef]);
       await purgeWorkspaceObjects(admin, s3, tomb.subjectRef);
+      await admin.query("DELETE FROM ai_action_proposals WHERE workspace_id = $1", [tomb.subjectRef]);
+      await admin.query("DELETE FROM import_expiry_index WHERE workspace_id = $1", [tomb.subjectRef]);
+      await admin.query("DELETE FROM export_expiry_index WHERE workspace_id = $1", [tomb.subjectRef]);
+      for (const row of memberSubs.rows as Array<{ auth_subject: string }>) {
+        if (row.auth_subject && !row.auth_subject.startsWith("deleted:")) {
+          await admin.query("UPDATE app_sessions SET revoked_at = now() WHERE keycloak_sub = $1 AND revoked_at IS NULL", [row.auth_subject]);
+        }
+      }
       result.applied += 1;
       continue;
     }
@@ -179,6 +191,7 @@ export async function replayTombstones(admin: Pool, s3: S3Config, tombstones: To
       await admin.query("DELETE FROM notices WHERE workspace_id = $1 AND user_id = $2", [ws, sub]);
       await admin.query("DELETE FROM artifact_runtime_grants WHERE workspace_id = $1 AND user_id = $2", [ws, sub]);
       const pkgs = await admin.query("SELECT id, object_key FROM export_packages WHERE workspace_id = $1 AND requested_by = $2", [ws, sub]);
+      const purgedPackageIds: string[] = [];
       for (const row of pkgs.rows as Array<{ id: string; object_key: string | null }>) {
         if (row.object_key) {
           try {
@@ -186,7 +199,12 @@ export async function replayTombstones(admin: Pool, s3: S3Config, tombstones: To
           } catch { /* visible below via object re-list, never silent-complete */ }
         }
         await admin.query("DELETE FROM export_packages WHERE workspace_id = $1 AND id = $2", [ws, row.id]);
+        purgedPackageIds.push(row.id);
       }
+      if (purgedPackageIds.length > 0) {
+        await admin.query("DELETE FROM export_expiry_index WHERE workspace_id = $1 AND package_id = ANY ($2)", [ws, purgedPackageIds]);
+      }
+      await admin.query("DELETE FROM ai_action_proposals WHERE workspace_id = $1 AND (proposed_by = $2 OR confirmed_by = $2)", [ws, sub]);
       const remaining = await admin.query("SELECT 1 FROM workspace_members WHERE user_id = $1 LIMIT 1", [sub]);
       if ((remaining.rowCount ?? 0) === 0 && authSub && !authSub.startsWith("deleted:")) {
         await admin.query("UPDATE users SET auth_subject = $2 WHERE id = $1", [sub, `deleted:${tomb.requestId}`]);
@@ -217,12 +235,13 @@ export async function snapshotWorkspaceObjects(s3: S3Config, workspaceId: string
   mkdirSync(dir, { recursive: true });
   const manifest: Array<{ key: string; file: string }> = [];
   let bytes = 0;
+  let n = 0;
   for (const prefix of [`exports/${workspaceId}/`, `quarantine/${workspaceId}/`]) {
+    const kind = prefix.startsWith("exports/") ? "exports" : "quarantine";
     const keys = await s3ListKeys(s3, prefix, 1000);
-    let n = 0;
     for (const key of keys) {
       const data = key.startsWith("exports/") ? await s3GetExport(s3, key, 64 * 1024 * 1024) : await s3Get(s3, key, 100 * 1024 * 1024);
-      const file = `obj-${n}.bin`;
+      const file = `${kind}-${n}.bin`;
       writeFileSync(join(dir, file), Buffer.from(data));
       manifest.push({ key, file });
       bytes += data.byteLength;

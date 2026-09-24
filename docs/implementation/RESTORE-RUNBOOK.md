@@ -14,7 +14,9 @@ handling before any customer data exists.
 ## Restore point
 
 - Source: `pg_dump -Fc` of the live database plus a MinIO object snapshot
-  (`snapshotWorkspaceObjects`). Record the dump timestamp as T0 (ISO-8601).
+  (`snapshotWorkspaceObjects`). Record the dump timestamp as T0 (ISO-8601)
+  BEFORE the dump starts: tombstones created during the dump window are
+  then replayed rather than risked as already-included-and-skipped.
 - Tombstone ledger: read `deletion_tombstones` from the LIVE database
   before touching anything. It lives outside restored tenant data by design.
 

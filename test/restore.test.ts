@@ -186,9 +186,30 @@ describe("e08-s02-L isolated restore with tombstone replay", () => {
     const m2 = await addMember(o2.userId, del2Ws, "synthetic-restore-m2");
 
     const preHashes: EvidenceHashes = await hashWorkspaceEvidence(adminLive, keepWs);
-
-
+    // Live sessions pre-backup (revocation replay needs them in the dump).
+    const d1Session = await freshSession("synthetic-restore-del1");
+    const m2Session = await freshSession("synthetic-restore-m2");
+    // B2/N3 fixture: proposal + expiry rows the cascade cannot reach, a KEEP
+    // export for the two-prefix snapshot, and a pre-T0 tombstone (skipped).
+    await adminLive.query(
+      "INSERT INTO ai_action_proposals (workspace_id, id, kind, payload_hash, payload, account_version, policy_version, proposed_by, status, idempotency_key, expires_at) VALUES ($1, $2, 'create_manual_transaction', $3, $4, 1, 1, $5, 'proposed', $6, now() + interval '1 hour'), ($7, $8, 'create_manual_transaction', $3, $4, 1, 1, $9, 'proposed', $10, now() + interval '1 hour')",
+      [del1Ws, randomUUID(), "ab".repeat(32), JSON.stringify({ accountId: randomUUID(), amountMinor: "100", currency: "EUR", direction: "OUTFLOW", effectiveDate: "2024-01-02", description: "x" }), d1.userId, randomUUID(), del2Ws, randomUUID(), m2.userId, randomUUID()],
+    );
+    await adminLive.query("INSERT INTO import_expiry_index (workspace_id, import_id, expires_at) VALUES ($1, $2, now() + interval '1 hour')", [
+      del1Ws, randomUUID(),
+    ]);
+    const { acceptExportJob, processExportJob, loadExportConfig } = await import("../apps/web/src/export.ts");
+    const keepExport = await acceptExportJob(pool, { userId: keep.userId, workspaceId: keepWs }, keep.userId, await freshSession("synthetic-restore-keep"), {
+      workspaceId: keepWs, idempotencyKey: randomUUID(),
+    });
+    expect(await processExportJob(pool, keepExport.jobId, loadExportConfig().s3)).toBe("applied");
     const snap = await snapshotWorkspaceObjects(s3, keepWs, `${drillDir}/keep-objects`);
+    expect(snap.files).toBe(2);
+    // Pre-T0 tombstone for a dead subject: must skip, never apply.
+    const oldTombSubject = randomUUID();
+    await adminLive.query("INSERT INTO deletion_tombstones (id, subject_kind, subject_ref, scope, request_id, basis, deleted_at) VALUES ($1, 'workspace', $2, 'workspace', $3, 'erasure-request', now() - interval '1 hour')", [
+      randomUUID(), oldTombSubject, randomUUID(),
+    ]);
 
 
 
@@ -201,10 +222,8 @@ describe("e08-s02-L isolated restore with tombstone replay", () => {
 
 
     // Real S01b deletions after the backup (tombstones newer than T0).
-    const d1Session = await freshSession("synthetic-restore-del1");
     const del1Res = await acceptDeletion(pool, { userId: d1.userId, workspaceId: del1Ws }, d1.userId, d1Session, { workspaceId: del1Ws, scope: "workspace", idempotencyKey: randomUUID() });
     expect(del1Res.view.status).toBe("COMPLETE");
-    const m2Session = await freshSession("synthetic-restore-m2");
     const del2Res = await acceptDeletion(pool, { userId: m2.userId, workspaceId: del2Ws }, m2.userId, m2Session, { workspaceId: del2Ws, scope: "identity", idempotencyKey: randomUUID() });
     expect(del2Res.view.status).toBe("COMPLETE");
 
@@ -243,12 +262,13 @@ describe("e08-s02-L isolated restore with tombstone replay", () => {
     const resurrected = await adminIso.query("SELECT count(*)::int AS n FROM workspaces WHERE id = $1", [del1Ws]);
     expect((resurrected.rows[0] as { n: number }).n).toBe(1);
 
-    // Replay tombstones newer than T0 before any traffic.
+    // Replay tombstones newer than T0 before any traffic (the pre-T0 dead
+    // subject skips).
     const replayStarted = Date.now();
     const replayed = await replayTombstones(adminIso, s3, ledgerInputs, t0);
     measured = { dumpMs: dumped.ms, dumpBytes: dumped.bytes, restoreMs: restored.ms, replayMs: Date.now() - replayStarted, snapshotFiles: snap.files, snapshotBytes: snap.bytes };
     expect(replayed.applied).toBe(2);
-    expect(replayed.skipped).toBe(0);
+    expect(replayed.skipped).toBe(1);
     expect(replayed.needsExternalIdentity).toEqual(["synthetic-restore-m2"]);
 
     // KEEP evidence is byte-exact; DEL scopes are re-purged with objects.
@@ -258,6 +278,14 @@ describe("e08-s02-L isolated restore with tombstone replay", () => {
     expect((await adminIso.query("SELECT count(*)::int AS n FROM workspace_members WHERE workspace_id = $1 AND user_id = $2", [del2Ws, m2.userId])).rows[0]).toEqual({ n: 0 });
     const m2Anon = await adminIso.query("SELECT auth_subject FROM users WHERE id = $1", [m2.userId]);
     expect((m2Anon.rows[0] as { auth_subject: string }).auth_subject.startsWith("deleted:")).toBe(true);
+    // B2/N3 negative paths: no-cascade leftovers are re-purged, DEL2 objects
+    // survive, the remaining owner is untouched.
+    expect((await adminIso.query("SELECT count(*)::int AS n FROM ai_action_proposals WHERE workspace_id IN ($1, $2)", [del1Ws, del2Ws])).rows[0]).toEqual({ n: 0 });
+    expect((await adminIso.query("SELECT count(*)::int AS n FROM import_expiry_index WHERE workspace_id = $1", [del1Ws])).rows[0]).toEqual({ n: 0 });
+    expect((await adminIso.query("SELECT count(*)::int AS n FROM export_expiry_index WHERE workspace_id = $1", [del2Ws])).rows[0]).toEqual({ n: 0 });
+    expect((await adminIso.query("SELECT count(*)::int AS n FROM app_sessions WHERE revoked_at IS NULL AND keycloak_sub = 'synthetic-restore-del1'")).rows[0]).toEqual({ n: 0 });
+    expect((await adminIso.query("SELECT auth_subject FROM users WHERE id = $1", [o2.userId])).rows[0]).toEqual({ auth_subject: "synthetic-restore-o2" });
+    expect((await s3ListKeys(s3, `quarantine/${del2Ws}/`)).length).toBe(1);
     expect(await s3ListKeys(s3, `quarantine/${del1Ws}/`)).toEqual([]);
     expect((await s3ListKeys(s3, `quarantine/${keepWs}/`)).length).toBe(1);
     // Object round-trip from the snapshot: delete, restore, byte-compare.
@@ -290,6 +318,8 @@ describe("e08-s02-L isolated restore with tombstone replay", () => {
     const corruptFile = `${drillDir}/corrupt.dump`;
     writeFileSync(corruptFile, readFileSync(dumpFile).subarray(0, 100));
     await expect(restoreDatabase(env("E08-S02-L", "DATABASE_MIGRATION_URL"), BAD_DB, corruptFile)).rejects.toThrow();
+    // A missing dump file rejects immediately (never hangs on stdin).
+    await expect(restoreDatabase(env("E08-S02-L", "DATABASE_MIGRATION_URL"), BAD_DB, `${drillDir}/no-such.dump`)).rejects.toThrow();
     const badPool = new Pool({ connectionString: isoUrl(BAD_DB) });
     try {
       // A truncated custom-format dump dies reading the TOC: either the
