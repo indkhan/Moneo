@@ -26,6 +26,7 @@ import {
   serveExportDownload,
   validateExportAcceptInput,
 } from "./export.ts";
+import { DeletionError, acceptDeletion, deletionErrorBody, readDeletion, validateDeletionAcceptInput } from "./deletion.ts";
 import { acceptImportCommitJob, ImportCommitError, readImportCommitStatus } from "./import-commit.ts";
 import { acceptMapping, listMappingProfiles, MappingError, mappingErrorBody, proposeMapping, readCurrentMapping } from "./mapping.ts";
 import { liveMappingTransport, loadMappingProvider } from "./mapping-provider.ts";
@@ -208,6 +209,14 @@ export async function withTenant<T>(pool: Pool, claims: TenantClaims, work: (cli
       claims.userId,
     ]);
     if ((member.rowCount ?? 0) === 0) {
+      await client.query("ROLLBACK");
+      throw new TenantDenied();
+    }
+    // E08-S01b immediate revocation: a workspace with a requested deletion
+    // denies at every trust boundary (uniform denial, no oracle). The
+    // deletion coordinator itself uses withDeletionWorkspace, never this.
+    const flagged = await client.query("SELECT deletion_requested_at FROM workspaces WHERE id = $1", [claims.workspaceId]);
+    if ((flagged.rowCount ?? 0) === 0 || (flagged.rows[0] as { deletion_requested_at: string | null }).deletion_requested_at !== null) {
       await client.query("ROLLBACK");
       throw new TenantDenied();
     }
@@ -2355,6 +2364,76 @@ export function createTenancyRouter(pool: Pool, resolveSession: SessionResolver)
           const outcome = await expireExportPackage(pool, exportConfig.s3, resolved.claim, exportExpireMatch[2]);
           if (!outcome) tenantJson(res, 404, { error: "not_found" });
           else tenantJson(res, 200, { expired: outcome.expired, requestId });
+          return true;
+        }
+        // E08-S01b durable deletion. Creation requires a fresh verified
+        // step-up and is irreversible once the purge starts; foreign and
+        // missing ids share the uniform 404 body.
+        const deletionsMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/deletions$/);
+        if (deletionsMatch && method === "POST") {
+          if (process.env["DELETIONS_ENABLED"] !== "1") {
+            try {
+              await readJsonBody(req);
+            } catch { /* drain attempt; still hidden */ }
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          const session = await resolveSession(req);
+          if (!session) {
+            try {
+              await readJsonBody(req);
+            } catch { /* drain attempt; still unauthorized */ }
+            tenantJson(res, 401, { error: "unauthorized" });
+            return true;
+          }
+          const workspaceId = deletionsMatch[1];
+          let input: ReturnType<typeof validateDeletionAcceptInput>;
+          try {
+            const body = (await readJsonBody(req)) as { scope?: unknown; successorUserId?: unknown; idempotencyKey?: unknown };
+            input = validateDeletionAcceptInput({ workspaceId, scope: body.scope, successorUserId: body.successorUserId, idempotencyKey: body.idempotencyKey });
+          } catch (err) {
+            if (err instanceof TenantInvalid || (err instanceof Error && (err.message === "body_too_large" || err.message === "body_invalid"))) {
+              tenantJson(res, 400, { error: "invalid_request" });
+              return true;
+            }
+            throw err;
+          }
+          const resolved = await claims(req, workspaceId);
+          if (!resolved.claim || !resolved.session) {
+            tenantJson(res, 404, { error: "not_found" });
+            return true;
+          }
+          try {
+            const result = await acceptDeletion(pool, resolved.claim, resolved.claim.userId, resolved.session, input);
+            tenantJson(res, result.replayed ? 200 : 202, { deletion: result.view, replayed: result.replayed, requestId });
+          } catch (err) {
+            if (err instanceof DeletionError) {
+              const mapped = deletionErrorBody(err);
+              tenantJson(res, mapped.status, mapped.body);
+              return true;
+            }
+            throw err;
+          }
+          return true;
+        }
+        const deletionReadMatch = path.match(/^\/api\/workspaces\/([A-Za-z0-9-]+)\/deletions\/([A-Za-z0-9-]+)$/);
+        if (deletionReadMatch && method === "GET") {
+          const resolved = await claims(req, deletionReadMatch[1]);
+          if (!resolved.claim) {
+            denied(res, resolved.session !== null);
+            return true;
+          }
+          try {
+            const view = await readDeletion(pool, resolved.claim, deletionReadMatch[2]);
+            if (!view) tenantJson(res, 404, { error: "not_found" });
+            else tenantJson(res, 200, { deletion: view, requestId });
+          } catch (err) {
+            if (err instanceof TenantDenied) {
+              tenantJson(res, 404, { error: "not_found" });
+              return true;
+            }
+            throw err;
+          }
           return true;
         }
         // E02-S03 quarantine uploads. Disabled by default (UPLOADS_ENABLED +

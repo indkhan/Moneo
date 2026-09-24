@@ -41,6 +41,7 @@
     "test:mapping": "vitest run test/mapping.test.ts",
     "test:import-e2e": "vitest run test/import-e2e.test.ts",
     "test:export": "vitest run test/export.test.ts",
+    "test:deletion": "vitest run test/deletion.test.ts",
     "test:accounts": "vitest run test/accounts.test.ts",
     "test:calculations": "vitest run test/calculations.test.ts",
     "test:fx": "vitest run test/fx.test.ts",
