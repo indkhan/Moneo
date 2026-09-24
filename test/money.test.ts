@@ -3,7 +3,7 @@
 // exponents, no floats anywhere. Past safe-integer values must round-trip.
 
 import { describe, expect, it } from "vitest";
-import { currencyExponent, formatDecimalBigint, formatMinor, parseDecimalBigint, parseMinor } from "../apps/web/src/money.ts";
+import { currencyExponent, formatDecimalBigint, formatMinor, parseDecimalBigint, parseMinor, parseSignedMinor } from "../apps/web/src/money.ts";
 
 describe("e01-s04 money boundary", () => {
   it("parses and formats canonical decimal strings", () => {
@@ -50,5 +50,15 @@ describe("e01-s04 money boundary", () => {
     const exact = parseMinor("0.1", "EUR") + parseMinor("0.2", "EUR");
     expect(exact).toBe(30n);
     expect(formatMinor(exact, "EUR")).toBe("0.30");
+  });
+
+  it("rejects non-canonical decimal strings fail-closed", () => {
+    // Value-exact but non-canonical inputs must not parse (S04-L finding 7).
+    for (const bad of ["31.", "31.42_", "31_42", " 31.42", "31.42 ", "+31.42", "0x10", "1e3", "NaN", ""]) {
+      expect(() => parseMinor(bad, "EUR")).toThrow();
+      expect(() => parseSignedMinor(bad, "EUR")).toThrow();
+    }
+    expect(() => parseSignedMinor("-31.", "EUR")).toThrow();
+    expect(parseSignedMinor("-31.42", "EUR")).toBe(-3142n);
   });
 });

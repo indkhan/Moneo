@@ -70,15 +70,15 @@ export function currencyExponent(code: string): number | undefined {
   return EXPONENTS[code];
 }
 
-/** Decimal major-unit string (e.g. "31.42") → minor units for the currency. Exact; rejects excess precision. */
+/** Decimal major-unit string (e.g. "31.42") → minor units for the currency. Exact; rejects excess precision. Canonical only: no underscores, no trailing dot, no whitespace — fail closed on anything else. */
 export function parseMinor(amount: string, currency: string): bigint {
   const exponent = currencyExponent(currency);
   if (exponent === undefined) throw new Error("unknown_currency");
   if (typeof amount !== "string") throw new Error("not_decimal_string");
-  const match = amount.match(/^([0-9]+)(?:\.([0-9]*))?$/);
+  const match = amount.match(/^([0-9]+)(?:\.([0-9]+))?$/);
   if (!match) throw new Error("not_decimal_string");
   const [, whole, fractionRaw] = match as [string, string, string | undefined];
-  const fraction = (fractionRaw ?? "").replace(/_+$/, "");
+  const fraction = fractionRaw ?? "";
   if (fraction.length > exponent) throw new Error("excess_precision");
   const padded = fraction.padEnd(exponent, "0");
   const minor = BigInt(`${whole.replace(/^0+(?=\d)/, "")}${padded}` || "0");
@@ -86,15 +86,15 @@ export function parseMinor(amount: string, currency: string): bigint {
   return minor;
 }
 
-/** Signed decimal major-unit string (e.g. "-31.42" or "100.00") → signed minor units for the currency. Exact; rejects excess precision. */
+/** Signed decimal major-unit string (e.g. "-31.42" or "100.00") → signed minor units for the currency. Exact; rejects excess precision. Canonical only (see parseMinor). */
 export function parseSignedMinor(amount: string, currency: string): bigint {
   const exponent = currencyExponent(currency);
   if (exponent === undefined) throw new Error("unknown_currency");
   if (typeof amount !== "string") throw new Error("not_decimal_string");
-  const match = amount.match(/^(-?)([0-9]+)(?:\.([0-9]*))?$/);
+  const match = amount.match(/^(-?)([0-9]+)(?:\.([0-9]+))?$/);
   if (!match) throw new Error("not_decimal_string");
   const [, sign, whole, fractionRaw] = match as [string, string, string, string | undefined];
-  const fraction = (fractionRaw ?? "").replace(/_+$/, "");
+  const fraction = fractionRaw ?? "";
   if (fraction.length > exponent) throw new Error("excess_precision");
   const padded = fraction.padEnd(exponent, "0");
   const minor = BigInt(`${whole.replace(/^0+(?=\d)/, "")}${padded}` || "0");

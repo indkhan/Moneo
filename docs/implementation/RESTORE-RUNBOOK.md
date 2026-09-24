@@ -36,7 +36,9 @@ handling before any customer data exists.
    resurrected memberships/sessions/personal content re-purge; anonymization
    applies only with zero memberships anywhere.
 5. Re-verify evidence hashes (`hashWorkspaceEvidence` vs pre-failure):
-   every section must match exactly or traffic stays closed.
+   every section must match exactly or traffic stays closed. Run the hash
+   step with a PRIVILEGED pool (RLS-restricted reads hash empties on both
+   sides and pass vacuously — the drill asserts non-empty evidence).
 6. Re-run migrations (must be a no-op) and boot the app against the fresh
    database for a tenant-read smoke test.
 
