@@ -50,6 +50,7 @@ export const imports = pgTable("imports", {
   newRows: integer("new_rows").notNull().default(0),
   matchedRows: integer("matched_rows").notNull().default(0),
   reviewRows: integer("review_rows").notNull().default(0),
+  rejectedRows: integer("rejected_rows").notNull().default(0),
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [uniqueIndex("imports_workspace_hash_unique").on(table.workspaceId, table.fileHash)]);

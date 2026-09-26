@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
+import { ReviewActions } from "./actions";
 
 export default async function ImportReviewPage({ params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -26,6 +27,7 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
       <h2 className="font-medium">Source row {row.row_number}</h2>
       {row.external_id && <p className="text-sm">Source ID: {row.external_id}</p>}
       <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded bg-muted p-3 text-sm">{JSON.stringify(row.original_row, null, 2)}</pre>
+      {imported.status === "completed" && <ReviewActions importId={id} sourceId={row.id} />}
     </article>)}
     {rows?.length === 100 && <p>Showing the first 100 rows.</p>}
   </main>;

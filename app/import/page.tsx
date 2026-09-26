@@ -12,7 +12,7 @@ type Preview = {
   examples: { postedOn: string; description: string; amountMinor: string; currencyCode: string }[];
 };
 type Inspection = { headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string };
-type ImportStatus = { id: string; filename: string; status: string; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; error: string | null; created_at: string };
+type ImportStatus = { id: string; filename: string; status: string; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; rejected_rows: number; error: string | null; created_at: string };
 
 function formatMinor(value: string, currency: string) {
   const amount = BigInt(value);
@@ -149,7 +149,7 @@ export default function ImportPage() {
       {!history.length && <p>No imports yet.</p>}
       {history.map((item) => <article key={item.id} className="rounded border p-3">
         <div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.filename}</strong><span role="status">{item.status}</span></div>
-        <p className="text-sm">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows} for review · {item.total_rows} total</p>
+        <p className="text-sm">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows} for review · {item.rejected_rows} rejected · {item.total_rows} total</p>
         {item.error && <p className="text-sm text-red-700">{item.error}</p>}
         {item.review_rows > 0 && <Link className="text-sm underline" href={`/import/${item.id}/review`}>Review rows</Link>}
         {item.status === "failed" && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void retry(item.id)}>Retry</button>}
