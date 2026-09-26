@@ -1,5 +1,11 @@
 import { pgTable, text, numeric, timestamp, uuid, jsonb } from "drizzle-orm/pg-core";
 
+// Canonical table definitions (Drizzle builders double as shared types; see
+// drizzle-zod in lib/validations.ts). Tables live in Supabase PostgreSQL and
+// are accessed at runtime through the Supabase JS client
+// (lib/supabase/*, PostgREST + RLS) using only NEXT_PUBLIC_SUPABASE_URL and
+// NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY — no connection string needed.
+
 // Workspaces isolate each user's data (stack.md: RLS + workspace isolation from day one).
 export const workspaces = pgTable("workspaces", {
   id: uuid("id").defaultRandom().primaryKey(),

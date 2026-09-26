@@ -5,7 +5,7 @@
 // Docs: https://vercel.com/docs/workflows (SDK package: `workflow@4.8.9`)
 export async function financialReview(workflowRunId: string, workspaceId: string) {
   "use step";
-  // Step 1: load workspace snapshot (Drizzle + Supabase).
+  // Step 1: load workspace snapshot via the Supabase client (RLS enforced).
   void workflowRunId;
   void workspaceId;
   // Step 2: run Finance SDK calculations (lib/finance).
