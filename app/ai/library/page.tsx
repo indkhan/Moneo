@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireWorkspace } from "@/lib/auth";
 import { createArtifact } from "./actions";
+import { GenerateForm } from "./generate-form";
 import { RuntimeCheck } from "./runtime-check";
 
 const kinds = [
@@ -26,6 +27,7 @@ export default async function Library() {
         <input id={item.kind} name="name" defaultValue={item.name} required maxLength={120} className="mt-3 w-full rounded border p-2" />
         <button className="mt-3 rounded bg-primary px-3 py-2 text-sm text-primary-foreground">Create</button>
       </form>)}</div>
+    <GenerateForm />
     <h2 className="mt-10 text-xl font-semibold">Saved tools</h2>
     {!artifacts?.length && <p className="mt-3 text-muted-foreground">No tools saved yet.</p>}
     <ul className="mt-3 space-y-2">{artifacts?.map(artifact =>
