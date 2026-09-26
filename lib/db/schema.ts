@@ -52,6 +52,8 @@ export const imports = pgTable("imports", {
   reviewRows: integer("review_rows").notNull().default(0),
   rejectedRows: integer("rejected_rows").notNull().default(0),
   error: text("error"),
+  undoneAt: timestamp("undone_at", { withTimezone: true }),
+  undoneBy: uuid("undone_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [uniqueIndex("imports_workspace_hash_unique").on(table.workspaceId, table.fileHash)]);
 

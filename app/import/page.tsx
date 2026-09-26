@@ -13,6 +13,7 @@ type Preview = {
 };
 type Inspection = { headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string };
 type ImportStatus = { id: string; filename: string; status: string; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; rejected_rows: number; error: string | null; created_at: string };
+type UndoPreview = { import_id: string; filename: string; status: string; deletable_transactions: number; deletable_balances: number; blockers: string[]; safe: boolean };
 
 function formatMinor(value: string, currency: string) {
   const amount = BigInt(value);
@@ -29,6 +30,8 @@ export default function ImportPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [history, setHistory] = useState<ImportStatus[]>([]);
+  const [undoId, setUndoId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<UndoPreview | null>(null);
   const file = files[index];
 
   async function loadHistory() {
@@ -125,6 +128,46 @@ export default function ImportPage() {
     }
   }
 
+  async function showUndo(id: string) {
+    setBusy(true);
+    setError("");
+    setUndoId(id);
+    setPreview(null);
+    try {
+      const response = await fetch(`/api/imports/${id}/undo`, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Undo preview failed");
+      setPreview(result as UndoPreview);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Undo preview failed");
+      setUndoId(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmUndo() {
+    if (!preview) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/imports/${preview.import_id}/undo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true, expectedTransactions: preview.deletable_transactions, expectedBalances: preview.deletable_balances }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Undo failed");
+      setUndoId(null);
+      setPreview(null);
+      await loadHistory();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Undo failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const chooseColumn = (label: string, key: keyof ImportMapping, optional = false) => (
     <label className="grid gap-1 text-sm" key={key}>
       {label}
@@ -157,6 +200,16 @@ export default function ImportPage() {
         {item.error && <p className="text-sm text-red-700">{item.error}</p>}
         {item.review_rows > 0 && <Link className="text-sm underline" href={`/import/${item.id}/review`}>Review rows</Link>}
         {item.status === "failed" && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void retry(item.id)}>Retry</button>}
+        {item.status === "completed" && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void showUndo(item.id)}>Undo import</button>}
+        {undoId === item.id && preview && <div className="mt-3 space-y-2 rounded bg-muted p-3 text-sm">
+          <p><strong>Undo impact:</strong> remove {preview.deletable_transactions} transactions and {preview.deletable_balances} balance snapshots. Source file, import history and matched links are kept.</p>
+          {preview.blockers.length > 0
+            ? <ul className="list-disc pl-5">{preview.blockers.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+            : <div className="flex flex-wrap gap-2">
+                <button type="button" className="rounded bg-black px-3 py-2 text-white" disabled={busy} onClick={() => void confirmUndo()}>Confirm undo {preview.deletable_transactions} transactions</button>
+                <button type="button" className="rounded border px-3 py-2" disabled={busy} onClick={() => { setUndoId(null); setPreview(null); }}>Keep import</button>
+              </div>}
+        </div>}
       </article>)}
     </section>
     {busy && <p role="status">Working…</p>}
