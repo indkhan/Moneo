@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { TransactionTable } from "./table";
-import { correctTransaction, undoCorrection } from "./actions";
+import { correctTransaction, undoCorrection, markTransfer, markRefund, clearLink } from "./actions";
 
 type Filters = { q?: string; from?: string; to?: string; account?: string; status?: string; kind?: string; direction?: string; cursor?: string; transaction?: string };
 
@@ -45,6 +45,41 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     .eq("transaction_id", selected.id).order("created_at", { ascending: false }) : { data: null };
   const { data: category } = selected?.category_id ? await supabase.from("categories")
     .select("name").eq("workspace_id", workspace.id).eq("id", selected.category_id).maybeSingle() : { data: null };
+  const selectedAmount = (() => { try { return BigInt(selected?.amount_minor ?? ""); } catch { return null; } })();
+  const negatedAmount = selectedAmount === null ? null : String(-selectedAmount);
+  const { data: counterpart } = selected?.transfer_id ? await supabase.from("transactions")
+    .select("id, description, posted_on, amount_minor, currency_code, account_id, kind, status")
+    .eq("workspace_id", workspace.id).eq("id", selected.transfer_id).maybeSingle() : { data: null };
+  const { data: refundOriginal } = selected?.refund_of_id ? await supabase.from("transactions")
+    .select("id, description, posted_on, amount_minor, currency_code, account_id, kind, status")
+    .eq("workspace_id", workspace.id).eq("id", selected.refund_of_id).maybeSingle() : { data: null };
+  const { data: inboundRefunds } = selected ? await supabase.from("transactions")
+    .select("id, description, posted_on, amount_minor, currency_code")
+    .eq("workspace_id", workspace.id).eq("refund_of_id", selected.id)
+    .order("posted_on", { ascending: false }).limit(10) : { data: null };
+  const { data: inboundTransfer } = selected ? await supabase.from("transactions")
+    .select("id, description, posted_on, amount_minor, currency_code, account_id, kind")
+    .eq("workspace_id", workspace.id).eq("transfer_id", selected.id).limit(5) : { data: null };
+  let transferCandidates: { id: string; description: string; posted_on: string; amount_minor: string; currency_code: string; account_id: string }[] | null = null;
+if (selected && selected.status === "posted" && selected.kind === "ordinary" && negatedAmount !== null) {
+    const { data } = await supabase.from("transactions")
+      .select("id, description, posted_on, amount_minor, currency_code, account_id")
+      .eq("workspace_id", workspace.id).neq("id", selected.id).neq("account_id", selected.account_id)
+    .eq("currency_code", selected.currency_code).eq("amount_minor", negatedAmount).eq("status", "posted").eq("kind", "ordinary")
+      .order("posted_on", { ascending: false }).limit(20);
+    transferCandidates = data;
+  }
+  let refundCandidates: { id: string; description: string; posted_on: string; amount_minor: string; currency_code: string }[] | null = null;
+if (selected && selected.status === "posted" && selected.kind === "ordinary" && selectedAmount !== null && selectedAmount > 0n) {
+    let candidateQuery = supabase.from("transactions")
+      .select("id, description, posted_on, amount_minor, currency_code")
+      .eq("workspace_id", workspace.id).eq("account_id", selected.account_id)
+    .eq("currency_code", selected.currency_code).neq("id", selected.id).eq("kind", "ordinary").eq("status", "posted")
+    .lte("posted_on", selected.posted_on);
+  candidateQuery = candidateQuery.lt("amount_minor", 0);
+    const { data } = await candidateQuery.order("posted_on", { ascending: false }).limit(20);
+    refundCandidates = data;
+  }
   const names = Object.fromEntries((accounts ?? []).map(account => [account.id, account.name]));
   const current = new URLSearchParams();
   for (const key of ["q", "from", "to", "account", "cursor"] as const) if (params[key]) current.set(key, params[key]);
@@ -71,6 +106,28 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       <h2 className="mt-6 text-xl font-semibold">{selected.description}</h2>
       <p className="mt-2">{selected.posted_on} · {selected.amount_minor} minor units {selected.currency_code}</p>
       <dl className="mt-6 space-y-2 text-sm"><div><dt className="text-muted-foreground">Account</dt><dd>{names[selected.account_id]}</dd></div><div><dt className="text-muted-foreground">Status</dt><dd>{selected.status}</dd></div><div><dt className="text-muted-foreground">Type</dt><dd>{selected.kind}</dd></div><div><dt className="text-muted-foreground">Note</dt><dd>{selected.note || "—"}</dd></div></dl>
+      <section aria-label="Transfer or refund" className="mt-6 space-y-3 border-t pt-5">
+        <h3 className="font-medium">Transfer / refund</h3>
+        <p className="text-sm text-muted-foreground">Transfers are excluded from income and spending. Refunds reduce spending in the refund posting period. Markings are audited and can be undone from the history below.</p>
+        {counterpart && <p className="text-sm">Transfer pair: <Link className="underline" href={`/money/transactions?${current.toString()}${current.toString() ? "&" : ""}transaction=${counterpart.id}`}>{counterpart.description} · {counterpart.posted_on}</Link></p>}
+        {refundOriginal && <p className="text-sm">Refund of: <Link className="underline" href={`/money/transactions?${current.toString()}${current.toString() ? "&" : ""}transaction=${refundOriginal.id}`}>{refundOriginal.description} · {refundOriginal.posted_on}</Link></p>}
+        {inboundRefunds?.length ? <div className="text-sm"><p className="text-muted-foreground">Refunds of this transaction:</p><ul className="mt-1 space-y-1">{inboundRefunds.map(item => <li key={item.id}><Link className="underline" href={`/money/transactions?${current.toString()}${current.toString() ? "&" : ""}transaction=${item.id}`}>{item.description} · {item.posted_on}</Link></li>)}</ul></div> : null}
+        {inboundTransfer?.filter(item => item.id !== counterpart?.id).map(item => <p key={item.id} className="text-sm text-muted-foreground">Also linked here as transfer: {item.description} · {item.posted_on}</p>)}
+        {selected.status !== "posted" ? <p className="text-sm text-muted-foreground">Only posted transactions can be marked as transfers or refunds.</p> : <>
+          {selected.kind === "ordinary" && <form action={markTransfer} className="space-y-2">
+            <input type="hidden" name="id" value={selected.id} /><input type="hidden" name="version" value={selected.version} /><input type="hidden" name="query" value={current.toString()} />
+            <label className="block text-sm">Transfer counterpart (different account, opposite matching {selected.currency_code} amount)<select name="counterpartId" required defaultValue="" aria-label="Transfer counterpart" className="mt-1 block w-full rounded border p-2"><option value="" disabled>Select counterpart</option>{transferCandidates?.map(item => <option key={item.id} value={item.id}>{item.posted_on} · {item.description} · {names[item.account_id] ?? "Unknown account"} · {item.amount_minor} {item.currency_code}</option>)}</select></label>
+            {!transferCandidates?.length && <p className="text-sm text-muted-foreground">No matching counterpart found (needs the opposite amount in the same currency from another account).</p>}
+            <button className="rounded border px-4 py-2 text-sm" disabled={!transferCandidates?.length}>Mark as transfer</button>
+          </form>}
+          {selected.kind === "ordinary" && selectedAmount !== null && selectedAmount > 0n && <form action={markRefund} className="space-y-2 border-t pt-4">
+            <input type="hidden" name="id" value={selected.id} /><input type="hidden" name="version" value={selected.version} /><input type="hidden" name="query" value={current.toString()} />
+            <label className="block text-sm">Refund original (same account, same currency, opposite sign)<select name="originalId" defaultValue="" aria-label="Refund original" className="mt-1 block w-full rounded border p-2"><option value="">Standalone refund (no original)</option>{refundCandidates?.map(item => <option key={item.id} value={item.id}>{item.posted_on} · {item.description} · {item.amount_minor} {item.currency_code}</option>)}</select></label>
+            <button className="rounded border px-4 py-2 text-sm">Mark as refund</button>
+          </form>}
+          {(selected.kind !== "ordinary" || selected.transfer_id || selected.refund_of_id) && <form action={clearLink} className="border-t pt-4"><input type="hidden" name="id" value={selected.id} /><input type="hidden" name="version" value={selected.version} /><input type="hidden" name="query" value={current.toString()} /><button className="text-sm underline">Clear to ordinary</button></form>}
+        </>}
+      </section>
       <form action={correctTransaction} className="mt-6 space-y-3 border-t pt-5">
         <input type="hidden" name="id" value={selected.id} /><input type="hidden" name="version" value={selected.version} /><input type="hidden" name="query" value={current.toString()} />
         <label className="block text-sm">Category<input name="category" defaultValue={category?.name ?? ""} maxLength={100} className="mt-1 block w-full rounded border p-2" /></label>

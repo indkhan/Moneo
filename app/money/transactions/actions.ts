@@ -3,6 +3,14 @@
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 
+const uuidPattern = /^[0-9a-f-]{36}$/i;
+
+function linkInput(form: FormData) {
+  const id = String(form.get("id") ?? "");
+  const version = Number(form.get("version"));
+  if (!uuidPattern.test(id) || !Number.isSafeInteger(version)) throw new Error("Invalid correction");
+  return { id, version };
+}
 function returnPath(form: FormData) {
   const query = String(form.get("query") ?? "");
   const params = new URLSearchParams(query);
@@ -37,4 +45,44 @@ export async function undoCorrection(form: FormData) {
   });
   if (error) throw new Error(error.message);
   redirect(`${returnPath(form)}&transaction=${transactionId}`);
+}
+
+export async function markTransfer(form: FormData) {
+  const { supabase } = await requireWorkspace();
+  const { id, version } = linkInput(form);
+  const counterpartId = String(form.get("counterpartId") ?? "");
+  if (!uuidPattern.test(counterpartId) || counterpartId === id) throw new Error("Select a valid counterpart transaction");
+  const { error } = await supabase.rpc("mark_transaction_transfer", {
+    p_transaction_id: id,
+    p_expected_version: version,
+    p_counterpart_id: counterpartId,
+  });
+  if (error) throw new Error(error.message);
+  redirect(`${returnPath(form)}&transaction=${id}`);
+}
+
+export async function markRefund(form: FormData) {
+  const { supabase } = await requireWorkspace();
+  const { id, version } = linkInput(form);
+  const rawOriginal = String(form.get("originalId") ?? "");
+  const originalId = rawOriginal === "" ? null : rawOriginal;
+  if (originalId !== null && (!uuidPattern.test(originalId) || originalId === id)) throw new Error("Select a valid original transaction");
+  const { error } = await supabase.rpc("mark_transaction_refund", {
+    p_transaction_id: id,
+    p_expected_version: version,
+    p_original_id: originalId,
+  });
+  if (error) throw new Error(error.message);
+  redirect(`${returnPath(form)}&transaction=${id}`);
+}
+
+export async function clearLink(form: FormData) {
+  const { supabase } = await requireWorkspace();
+  const { id, version } = linkInput(form);
+  const { error } = await supabase.rpc("clear_transaction_link", {
+    p_transaction_id: id,
+    p_expected_version: version,
+  });
+  if (error) throw new Error(error.message);
+  redirect(`${returnPath(form)}&transaction=${id}`);
 }

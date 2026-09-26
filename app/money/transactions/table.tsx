@@ -18,6 +18,7 @@ export function TransactionTable({ rows, accountNames, query }: { rows: Row[]; a
     { accessorKey: "description", header: "Description", cell: ({ row }) => <Link className="underline" href={`/money/transactions?${query}${query ? "&" : ""}transaction=${row.original.id}`}>{row.original.description}</Link> },
     { accessorKey: "account_id", header: "Account", cell: ({ row }) => accountNames[row.original.account_id] ?? "Unknown" },
     { accessorKey: "amount_minor", header: "Amount", cell: ({ row }) => amount(row.original.amount_minor, row.original.currency_code) },
+    { accessorKey: "kind", header: "Type" },
     { accessorKey: "status", header: "Status" },
   ];
   return <div className="mt-6 overflow-x-auto">{rows.length ? <DataTable data={rows} columns={columns} /> : <p className="text-muted-foreground">No transactions found.</p>}</div>;
