@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { start } from "workflow/api";
 import { decideImportMatch } from "@/lib/import-match";
-import { mapRows, parseCsv, parseExcel, type MappedRow } from "@/lib/csv";
+import { mapRows, normalizeCategoryName, parseCsv, parseExcel, resolveMerchantName, type MappedRow } from "@/lib/csv";
 import { getModel } from "@/lib/ai/provider";
 import { financialReview } from "./financial-review";
 
@@ -103,6 +103,37 @@ async function maybeStartFirstReview(importId: string, workspaceId: string) {
 
 type Db = SupabaseClient;
 
+async function getOrCreateMerchantId(db: Db, workspaceId: string, name: string): Promise<string | null> {
+  try {
+    const display = name.trim().replace(/\s+/g, " ").slice(0, 100);
+    if (!display) return null;
+    const normalized = display.toLowerCase();
+    const existing = checked(await db.from("merchants").select("id").eq("workspace_id", workspaceId).eq("normalized_name", normalized).limit(1))!;
+    if (existing.length) return existing[0].id as string;
+    const id = stableId(`${workspaceId}:merchant:${normalized}`);
+    checked(await db.from("merchants").upsert({ id, workspace_id: workspaceId, name: display, normalized_name: normalized }, { onConflict: "id", ignoreDuplicates: true }));
+    const again = checked(await db.from("merchants").select("id").eq("workspace_id", workspaceId).eq("normalized_name", normalized).limit(1))!;
+    return (again[0]?.id as string | undefined) ?? id;
+  } catch {
+    return null; // Merchant capture never blocks an otherwise valid import.
+  }
+}
+
+async function getOrCreateCategoryId(db: Db, workspaceId: string, name: string): Promise<string | null> {
+  try {
+    const display = name.trim();
+    if (!display || display.length > 100) return null;
+    const existing = checked(await db.from("categories").select("id").eq("workspace_id", workspaceId).eq("name", display).limit(1))!;
+    if (existing.length) return existing[0].id as string;
+    const id = stableId(`${workspaceId}:category:${display}`);
+    checked(await db.from("categories").upsert({ id, workspace_id: workspaceId, name: display }, { onConflict: "id", ignoreDuplicates: true }));
+    const again = checked(await db.from("categories").select("id").eq("workspace_id", workspaceId).eq("name", display).limit(1))!;
+    return (again[0]?.id as string | undefined) ?? id;
+  } catch {
+    return null; // Uncertain/missing categories stay uncategorized without blocking.
+  }
+}
+
 async function importRow(db: Db, workspaceId: string, importId: string, accountId: string, row: MappedRow): Promise<"new" | "matched" | "review" | "rejected"> {
   const sourceId = stableId(`${importId}:row:${row.rowNumber}`);
   checked(await db.from("source_transactions").upsert({ id: sourceId, workspace_id: workspaceId, import_id: importId, row_number: row.rowNumber, original_row: row.sourceRow, external_id: row.externalId ?? null }, { onConflict: "id", ignoreDuplicates: true }));
@@ -146,7 +177,16 @@ async function importRow(db: Db, workspaceId: string, importId: string, accountI
     return "review";
   }
   const transactionId = decision.action === "matched" ? decision.transactionId : stableId(`${importId}:transaction:${row.rowNumber}`);
-  if (decision.action === "new") checked(await db.from("transactions").upsert({ id: transactionId, workspace_id: workspaceId, account_id: accountId, posted_on: row.postedOn, description: row.description, amount_minor: row.amountMinor.toString(), currency_code: row.currencyCode }, { onConflict: "id", ignoreDuplicates: true }));
+  if (decision.action === "new") {
+    // Raw description is preserved as-is. Merchants come from an explicit
+    // column when present, else only a tiny high-confidence table or null.
+    // Categories are created only from an explicit source category.
+    const merchantName = resolveMerchantName(row.merchant, row.description);
+    const merchantId = merchantName ? await getOrCreateMerchantId(db, workspaceId, merchantName) : null;
+    const categoryName = normalizeCategoryName(row.category);
+    const categoryId = categoryName ? await getOrCreateCategoryId(db, workspaceId, categoryName) : null;
+    checked(await db.from("transactions").upsert({ id: transactionId, workspace_id: workspaceId, account_id: accountId, posted_on: row.postedOn, description: row.description, amount_minor: row.amountMinor.toString(), currency_code: row.currencyCode, merchant_id: merchantId, category_id: categoryId }, { onConflict: "id", ignoreDuplicates: true }));
+  }
   checked(await db.from("transaction_sources").upsert({ transaction_id: transactionId, source_transaction_id: sourceId }, { onConflict: "source_transaction_id", ignoreDuplicates: true }));
   checked(await db.from("source_transactions").update({ status: decision.action }).eq("id", sourceId));
   if (row.balanceMinor !== undefined) checked(await db.from("balance_snapshots").upsert({ id: stableId(`${importId}:balance:${row.rowNumber}`), workspace_id: workspaceId, account_id: accountId, amount_minor: row.balanceMinor.toString(), currency_code: row.currencyCode, as_of: `${row.postedOn}T00:00:00Z`, provenance: `import:${importId}:row:${row.rowNumber}` }, { onConflict: "id", ignoreDuplicates: true }));

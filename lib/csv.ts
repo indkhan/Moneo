@@ -15,6 +15,7 @@ export const mappingSchema = z.object({
   currencyColumn: z.string().min(1).optional(),
   balanceColumn: z.string().min(1).optional(),
   merchantColumn: z.string().min(1).optional(),
+  categoryColumn: z.string().min(1).optional(),
   externalIdColumn: z.string().min(1).optional(),
   dateFormat: z.enum(["iso", "dmy", "mdy"]),
   amountSign: z.enum(["signed", "outflow-positive"]),
@@ -65,7 +66,7 @@ export function validateMapping(input: unknown, rows: SourceRow[]): ImportMappin
   const headers = Object.keys(rows[0]);
   for (const column of [mapping.dateColumn, mapping.descriptionColumn, mapping.amountColumn,
     mapping.debitColumn, mapping.creditColumn, mapping.currencyColumn, mapping.balanceColumn,
-    mapping.merchantColumn, mapping.externalIdColumn]) {
+    mapping.merchantColumn, mapping.categoryColumn, mapping.externalIdColumn]) {
     if (column && !headers.includes(column)) throw new Error(`Unknown column: ${column}`);
   }
   return mapping;
@@ -113,9 +114,57 @@ export type MappedRow = {
   currencyCode: string;
   sourceRow: SourceRow;
   merchant?: string;
+  category?: string;
   externalId?: string;
   balanceMinor?: bigint;
 };
+
+// Tiny explicit high-confidence merchant canonicalization. Only these
+// substrings may produce a merchant name when no merchant column exists.
+// Anything else stays unknown (null) — no speculative AI guessing.
+export const MERCHANT_CANONICALS: Record<string, string> = {
+  amazon: "Amazon",
+  amzn: "Amazon",
+  spotify: "Spotify",
+  netflix: "Netflix",
+  uber: "Uber",
+  ikea: "IKEA",
+};
+
+function canonicalizeFragment(lower: string): string | null {
+  for (const [fragment, canonical] of Object.entries(MERCHANT_CANONICALS)) {
+    if (lower.includes(fragment)) return canonical;
+  }
+  return null;
+}
+
+export function normalizeMerchantDisplay(value: string): string {
+  return value.trim().replace(/\s+/g, " ").slice(0, 100);
+}
+
+// Resolve the canonical merchant display name for one row.
+// Explicit merchant columns win (normalized, canonicalized when known).
+// Without one, only a tiny explicit fragment table may infer a name;
+// otherwise returns null (unknown merchant, import continues).
+export function resolveMerchantName(explicit: string | undefined, description: string): string | null {
+  const cleaned = explicit?.trim().replace(/\s+/g, " ");
+  if (cleaned) {
+    const display = cleaned.slice(0, 100);
+    const lower = display.toLowerCase();
+    if (MERCHANT_CANONICALS[lower]) return MERCHANT_CANONICALS[lower];
+    return canonicalizeFragment(lower) ?? display;
+  }
+  return canonicalizeFragment(description.toLowerCase());
+}
+
+// Explicit source categories only. Empty or overlong values become null
+// (uncategorized) so they never block an otherwise valid import.
+export function normalizeCategoryName(input: string | undefined): string | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (!trimmed || trimmed.length > 100) return null;
+  return trimmed;
+}
 
 export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
   const mapping = validateMapping(input, rows);
@@ -146,6 +195,7 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
         currencyCode,
         sourceRow,
         ...(mapping.merchantColumn && sourceRow[mapping.merchantColumn]?.trim() ? { merchant: sourceRow[mapping.merchantColumn].trim() } : {}),
+        ...(mapping.categoryColumn && sourceRow[mapping.categoryColumn]?.trim() ? { category: sourceRow[mapping.categoryColumn].trim() } : {}),
         ...(mapping.externalIdColumn && sourceRow[mapping.externalIdColumn]?.trim() ? { externalId: sourceRow[mapping.externalIdColumn].trim() } : {}),
         ...(mapping.balanceColumn && sourceRow[mapping.balanceColumn]?.trim() ? { balanceMinor: parseAmountMinor(sourceRow[mapping.balanceColumn]) } : {}),
       };

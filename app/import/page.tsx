@@ -9,7 +9,7 @@ type Preview = {
   currencyCode: string;
   totalRows: number;
   dateRange: { from: string; to: string };
-  examples: { postedOn: string; description: string; amountMinor: string; currencyCode: string }[];
+  examples: { postedOn: string; description: string; amountMinor: string; currencyCode: string; merchant?: string; category?: string }[];
 };
 type Inspection = { headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string };
 type ImportStatus = { id: string; filename: string; status: string; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; rejected_rows: number; error: string | null; created_at: string };
@@ -223,8 +223,9 @@ export default function ImportPage() {
       {inspection.preview && <>
         <p><strong>Account:</strong> {inspection.preview.accountName} · <strong>Currency:</strong> {inspection.preview.currencyCode}</p>
         <p><strong>{inspection.preview.totalRows} rows</strong> · {inspection.preview.dateRange.from} to {inspection.preview.dateRange.to}</p>
-        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th>Date</th><th>Description</th><th>Incoming / outgoing</th></tr></thead><tbody>
-          {inspection.preview.examples.map((row, i) => <tr key={i} className="border-t"><td>{row.postedOn}</td><td>{row.description}</td><td>{formatMinor(row.amountMinor, row.currencyCode)}</td></tr>)}
+        <p className="text-sm text-muted-foreground">Descriptions stay exactly as in the file. Merchants/categories below come only from explicit columns when present.</p>
+        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th>Date</th><th>Description</th><th>Incoming / outgoing</th><th>Merchant</th><th>Category</th></tr></thead><tbody>
+          {inspection.preview.examples.map((row, i) => <tr key={i} className="border-t"><td>{row.postedOn}</td><td>{row.description}</td><td>{formatMinor(row.amountMinor, row.currencyCode)}</td><td>{row.merchant ?? "—"}</td><td>{row.category ?? "Uncategorized"}</td></tr>)}
         </tbody></table></div>
       </>}
       {editing && mapping && <div className="grid gap-3 sm:grid-cols-2">
@@ -234,7 +235,7 @@ export default function ImportPage() {
         {chooseColumn("Amount", "amountColumn", true)}
         {chooseColumn("Debit", "debitColumn", true)}{chooseColumn("Credit", "creditColumn", true)}
         {chooseColumn("Currency", "currencyColumn", true)}{chooseColumn("Balance", "balanceColumn", true)}
-        {chooseColumn("Merchant", "merchantColumn", true)}{chooseColumn("External ID", "externalIdColumn", true)}
+        {chooseColumn("Merchant", "merchantColumn", true)}{chooseColumn("Category", "categoryColumn", true)}{chooseColumn("External ID", "externalIdColumn", true)}
         <label className="grid gap-1 text-sm">Date format<select className="rounded border p-2" value={mapping.dateFormat} onChange={(e) => setMapping({ ...mapping, dateFormat: e.target.value as ImportMapping["dateFormat"] })}><option value="iso">YYYY-MM-DD</option><option value="dmy">DD/MM/YYYY</option><option value="mdy">MM/DD/YYYY</option></select></label>
         <label className="grid gap-1 text-sm">Amount signs<select className="rounded border p-2" value={mapping.amountSign} onChange={(e) => setMapping({ ...mapping, amountSign: e.target.value as ImportMapping["amountSign"] })}><option value="signed">Positive is incoming</option><option value="outflow-positive">Positive is outgoing</option></select></label>
         <div className="sm:col-span-2"><button type="button" className="rounded bg-black px-4 py-2 text-white" disabled={busy} onClick={() => void inspect(file, mapping)}>Preview correction</button></div>
