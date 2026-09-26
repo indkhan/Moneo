@@ -1,3 +1,0 @@
-DROP TABLE IF EXISTS artifact_build_attempts CASCADE;
-DROP TABLE IF EXISTS artifact_versions CASCADE;
-DROP TABLE IF EXISTS artifacts CASCADE;
