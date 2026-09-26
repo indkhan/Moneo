@@ -32,6 +32,7 @@
     "lucide-react": "^1.48.0",
     "next": "^16.3.6",
     "papaparse": "^5.7.0",
+    "quickjs-emscripten": "^0.32.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "tailwind-merge": "^3.7.0",

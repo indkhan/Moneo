@@ -100,7 +100,7 @@ begin
     end)
   returning * into artifact_row;
   insert into public.artifact_versions (workspace_id, artifact_id, version, source, manifest, status)
-  values (owner_workspace, artifact_row.id, 1, 'trusted:' || p_kind,
+  values (owner_workspace, artifact_row.id, 1, '(input) => ({ kind: input.kind, ready: true })',
     jsonb_build_object('kind', p_kind, 'runtime', 'trusted'), 'validated')
   returning id into version_id;
   insert into public.artifact_state (workspace_id, artifact_id)
@@ -113,3 +113,34 @@ $$;
 
 revoke all on function public.create_trusted_artifact(text, text) from public;
 grant execute on function public.create_trusted_artifact(text, text) to authenticated;
+
+create function public.rename_trusted_artifact(p_artifact_id uuid, p_name text)
+returns public.artifacts language plpgsql security definer set search_path = '' as $$
+declare
+  artifact_row public.artifacts%rowtype;
+  next_version integer;
+  version_id uuid;
+begin
+  if length(btrim(p_name)) not between 1 and 120 then
+    raise exception 'Invalid artifact name' using errcode = '22023';
+  end if;
+  select * into artifact_row from public.artifacts
+  where id = p_artifact_id and public.owns_workspace(workspace_id)
+  for update;
+  if not found then
+    raise exception 'Artifact not found' using errcode = 'P0002';
+  end if;
+  select coalesce(max(version), 0) + 1 into next_version from public.artifact_versions
+  where artifact_id = p_artifact_id;
+  insert into public.artifact_versions (workspace_id, artifact_id, version, source, manifest, status)
+  values (artifact_row.workspace_id, p_artifact_id, next_version, '(input) => ({ kind: input.kind, ready: true })',
+    jsonb_build_object('kind', artifact_row.kind, 'runtime', 'trusted'), 'validated')
+  returning id into version_id;
+  update public.artifacts set name = btrim(p_name), active_version_id = version_id, updated_at = now()
+  where id = p_artifact_id returning * into artifact_row;
+  return artifact_row;
+end;
+$$;
+
+revoke all on function public.rename_trusted_artifact(uuid, text) from public;
+grant execute on function public.rename_trusted_artifact(uuid, text) to authenticated;

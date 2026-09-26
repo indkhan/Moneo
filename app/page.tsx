@@ -26,9 +26,16 @@ export default async function Home() {
   ]);
   const { data: snapshots } = await supabase.from("balance_snapshots")
     .select("account_id, amount_minor, currency_code, as_of, provenance")
-    .eq("workspace_id", workspace.id).order("as_of", { ascending: false }).order("created_at", { ascending: false });
+    .eq("workspace_id", workspace.id).lte("as_of", new Date().toISOString())
+    .order("as_of", { ascending: false }).order("created_at", { ascending: false });
   const latest = new Map<string, NonNullable<typeof snapshots>[number]>();
   for (const snapshot of snapshots ?? []) if (!latest.has(snapshot.account_id)) latest.set(snapshot.account_id, snapshot);
+  const { data: pins } = await supabase.from("dashboard_items")
+    .select("artifact_id, position").eq("workspace_id", workspace.id).order("position");
+  const { data: pinnedArtifacts } = pins?.length ? await supabase.from("artifacts")
+    .select("id, name, kind").eq("workspace_id", workspace.id).in("id", pins.map(pin => pin.artifact_id))
+    : { data: [] as { id: string; name: string; kind: string }[] };
+  const pinnedById = new Map(pinnedArtifacts?.map(artifact => [artifact.id, artifact]));
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
@@ -58,6 +65,16 @@ export default async function Home() {
         <h2 className="font-semibold">Transactions</h2>
         <p className="mt-2 text-muted-foreground">{transactionCount ?? 0} accepted transactions</p>
         <Link href="/money/transactions" className="mt-3 inline-block underline">Browse transactions</Link>
+      </section>
+      <section className="mt-10">
+        <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold">Pinned tools</h2><Link href="/ai/library" className="text-sm underline">Library</Link></div>
+        {!pins?.length && <p className="mt-3 text-muted-foreground">Pin a saved tool from your AI Library.</p>}
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">{pins?.map(pin => {
+          const artifact = pinnedById.get(pin.artifact_id);
+          return artifact && <Link key={pin.artifact_id} href={`/ai/library/${artifact.id}`} className="rounded-lg border p-5">
+            <h3 className="font-medium">{artifact.name}</h3><p className="mt-2 text-sm text-muted-foreground">{artifact.kind.replaceAll("_", " ")} · opens with current data</p>
+          </Link>;
+        })}</div>
       </section>
     </main>
   );
