@@ -17,6 +17,7 @@ export const mappingSchema = z.object({
   merchantColumn: z.string().min(1).optional(),
   categoryColumn: z.string().min(1).optional(),
   externalIdColumn: z.string().min(1).optional(),
+  statusColumn: z.string().min(1).optional(),
   dateFormat: z.enum(["iso", "dmy", "mdy"]),
   amountSign: z.enum(["signed", "outflow-positive"]),
 }).strict().refine(
@@ -66,7 +67,7 @@ export function validateMapping(input: unknown, rows: SourceRow[]): ImportMappin
   const headers = Object.keys(rows[0]);
   for (const column of [mapping.dateColumn, mapping.descriptionColumn, mapping.amountColumn,
     mapping.debitColumn, mapping.creditColumn, mapping.currencyColumn, mapping.balanceColumn,
-    mapping.merchantColumn, mapping.categoryColumn, mapping.externalIdColumn]) {
+    mapping.merchantColumn, mapping.categoryColumn, mapping.externalIdColumn, mapping.statusColumn]) {
     if (column && !headers.includes(column)) throw new Error(`Unknown column: ${column}`);
   }
   return mapping;
@@ -112,12 +113,24 @@ export type MappedRow = {
   description: string;
   amountMinor: bigint;
   currencyCode: string;
+  status: "posted" | "pending";
   sourceRow: SourceRow;
   merchant?: string;
   category?: string;
   externalId?: string;
   balanceMinor?: bigint;
 };
+
+// Explicit posted/pending indicator only. Empty means posted. Anything else
+// throws so a mis-mapped column never silently flips pending/posted.
+export function parseTransactionStatus(input: string | undefined): "posted" | "pending" {
+  if (input === undefined) return "posted";
+  const value = input.trim().toLowerCase();
+  if (!value) return "posted";
+  if (value === "pending") return "pending";
+  if (value === "posted") return "posted";
+  throw new Error(`Invalid status: ${input}`);
+}
 
 // Tiny explicit high-confidence merchant canonicalization. Only these
 // substrings may produce a merchant name when no merchant column exists.
@@ -193,6 +206,7 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
         description,
         amountMinor,
         currencyCode,
+        status: mapping.statusColumn ? parseTransactionStatus(sourceRow[mapping.statusColumn]) : "posted",
         sourceRow,
         ...(mapping.merchantColumn && sourceRow[mapping.merchantColumn]?.trim() ? { merchant: sourceRow[mapping.merchantColumn].trim() } : {}),
         ...(mapping.categoryColumn && sourceRow[mapping.categoryColumn]?.trim() ? { category: sourceRow[mapping.categoryColumn].trim() } : {}),
@@ -213,6 +227,8 @@ export function previewImport(rows: SourceRow[], input: unknown) {
     accountName: mapping.accountName,
     currencyCode: mapping.currencyCode,
     totalRows: mapped.length,
+    pendingRows: mapped.filter((row) => row.status === "pending").length,
+    postedRows: mapped.filter((row) => row.status === "posted").length,
     dateRange: { from: dates[0], to: dates[dates.length - 1] },
     examples: mapped.slice(0, 5),
   };

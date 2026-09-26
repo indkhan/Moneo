@@ -145,17 +145,17 @@ async function importRow(db: Db, workspaceId: string, importId: string, accountI
   const linked = linkResult.data as { transaction_id: string } | null;
   if (linked) return linked.transaction_id === stableId(`${importId}:transaction:${row.rowNumber}`) ? "new" : "matched";
 
-  const potential = checked(await db.from("transactions").select("id").eq("workspace_id", workspaceId).eq("account_id", accountId).eq("posted_on", row.postedOn).eq("amount_minor", row.amountMinor.toString()).eq("currency_code", row.currencyCode).eq("description", row.description))!;
-  const candidates: { id: string; externalId?: string }[] = [];
-  function addCandidate(candidate: { id: string; externalId?: string }) {
-    if (!candidates.some(item => item.id === candidate.id && item.externalId === candidate.externalId)) candidates.push(candidate);
+  const potential = checked(await db.from("transactions").select("id, status").eq("workspace_id", workspaceId).eq("account_id", accountId).eq("posted_on", row.postedOn).eq("amount_minor", row.amountMinor.toString()).eq("currency_code", row.currencyCode).eq("description", row.description))!;
+  const candidates: { id: string; externalId?: string; status?: string }[] = [];
+  function addCandidate(candidate: { id: string; externalId?: string; status?: string }) {
+    if (!candidates.some(item => item.id === candidate.id && item.externalId === candidate.externalId && (item.status ?? "posted") === (candidate.status ?? "posted"))) candidates.push(candidate);
   }
   for (const transaction of potential) {
     const sources = checked(await db.from("transaction_sources").select("source_transactions!inner(import_id, external_id)").eq("transaction_id", transaction.id))!;
-    if (!sources.length) { addCandidate({ id: transaction.id }); continue; }
+    if (!sources.length) { addCandidate({ id: transaction.id, status: (transaction as { status?: string }).status }); continue; }
     for (const link of sources) {
       const source = link.source_transactions as unknown as { import_id: string; external_id: string | null };
-      if (source.import_id !== importId) addCandidate({ id: transaction.id, externalId: source.external_id ?? undefined });
+      if (source.import_id !== importId) addCandidate({ id: transaction.id, externalId: source.external_id ?? undefined, status: (transaction as { status?: string }).status });
     }
   }
   if (row.externalId) {
@@ -163,15 +163,15 @@ async function importRow(db: Db, workspaceId: string, importId: string, accountI
     for (const priorSource of priorSources) {
       const priorLink = checked(await db.from("transaction_sources").select("transaction_id").eq("source_transaction_id", priorSource.id))!;
       for (const link of priorLink) {
-        const transaction = checked(await db.from("transactions").select("account_id, currency_code, posted_on, amount_minor, description").eq("id", link.transaction_id).single()) as { account_id: string; currency_code: string; posted_on: string; amount_minor: string; description: string };
+        const transaction = checked(await db.from("transactions").select("account_id, currency_code, posted_on, amount_minor, description, status").eq("id", link.transaction_id).single()) as { account_id: string; currency_code: string; posted_on: string; amount_minor: string; description: string; status: string };
         if (transaction.account_id === accountId && transaction.currency_code === row.currencyCode) {
           const sameRecord = transaction.posted_on === row.postedOn && BigInt(transaction.amount_minor) === row.amountMinor && transaction.description === row.description;
-          addCandidate({ id: link.transaction_id, externalId: sameRecord ? row.externalId : undefined });
+          addCandidate({ id: link.transaction_id, externalId: sameRecord ? row.externalId : undefined, status: transaction.status });
         }
       }
     }
   }
-  const decision = decideImportMatch(row.externalId, candidates);
+  const decision = decideImportMatch(row.externalId, candidates, row.status);
   if (decision.action === "review") {
     checked(await db.from("source_transactions").update({ status: "review" }).eq("id", sourceId));
     return "review";
@@ -185,7 +185,7 @@ async function importRow(db: Db, workspaceId: string, importId: string, accountI
     const merchantId = merchantName ? await getOrCreateMerchantId(db, workspaceId, merchantName) : null;
     const categoryName = normalizeCategoryName(row.category);
     const categoryId = categoryName ? await getOrCreateCategoryId(db, workspaceId, categoryName) : null;
-    checked(await db.from("transactions").upsert({ id: transactionId, workspace_id: workspaceId, account_id: accountId, posted_on: row.postedOn, description: row.description, amount_minor: row.amountMinor.toString(), currency_code: row.currencyCode, merchant_id: merchantId, category_id: categoryId }, { onConflict: "id", ignoreDuplicates: true }));
+    checked(await db.from("transactions").upsert({ id: transactionId, workspace_id: workspaceId, account_id: accountId, posted_on: row.postedOn, description: row.description, amount_minor: row.amountMinor.toString(), currency_code: row.currencyCode, status: row.status, merchant_id: merchantId, category_id: categoryId }, { onConflict: "id", ignoreDuplicates: true }));
   }
   checked(await db.from("transaction_sources").upsert({ transaction_id: transactionId, source_transaction_id: sourceId }, { onConflict: "source_transaction_id", ignoreDuplicates: true }));
   checked(await db.from("source_transactions").update({ status: decision.action }).eq("id", sourceId));

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
-import { mapRows, parseAmountMinor, parseCsv, parseExcel, previewImport, validateMapping } from "./csv";
+import { mapRows, parseAmountMinor, parseCsv, parseExcel, parseTransactionStatus, previewImport, validateMapping } from "./csv";
 
 const mapping = {
   accountName: "Checking",
@@ -39,6 +39,27 @@ describe("financial import parsing", () => {
     delete base.amountColumn;
     const mapped = mapRows(rows, { ...base, dateFormat: "iso", debitColumn: "Debit", creditColumn: "Credit" });
     expect(mapped.map((r) => r.amountMinor)).toEqual([-90000n, 200000n]);
+  });
+
+  it("defaults to posted and only accepts an explicit posted/pending column", () => {
+    const rows = parseCsv("Date,Description,Amount\n31.08.2026,Coffee,2.49");
+    expect(mapRows(rows, mapping)[0].status).toBe("posted");
+    expect(parseTransactionStatus(undefined)).toBe("posted");
+    expect(parseTransactionStatus("")).toBe("posted");
+    expect(parseTransactionStatus("Pending")).toBe("pending");
+    expect(parseTransactionStatus("POSTED")).toBe("posted");
+    expect(() => parseTransactionStatus("settled")).toThrow("Invalid status");
+    const withStatus = parseCsv("Date,Description,Amount,Status\n31.08.2026,Coffee,2.49,pending\n01.09.2026,Salary,1500.00,posted");
+    const mapped = mapRows(withStatus, { ...mapping, statusColumn: "Status" });
+    expect(mapped.map((r) => r.status)).toEqual(["pending", "posted"]);
+    expect(mapped[0].sourceRow).toMatchObject({ Status: "pending" });
+    const preview = previewImport(withStatus, { ...mapping, statusColumn: "Status" });
+    expect(preview.pendingRows).toBe(1);
+    expect(preview.postedRows).toBe(1);
+    expect(preview.examples[0].status).toBe("pending");
+    expect(() => mapRows(withStatus, { ...mapping, statusColumn: "Missing" })).toThrow("Unknown column");
+    const bad = parseCsv("Date,Description,Amount,Status\n31.08.2026,Coffee,2.49,unknown");
+    expect(() => mapRows(bad, { ...mapping, statusColumn: "Status" })).toThrow("Row 2");
   });
 
   it("reads XLSX cells under their actual headers", async () => {

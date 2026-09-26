@@ -15,4 +15,11 @@ describe("overlapping imports", () => {
   it("accepts repeated identical rows in one file because caller supplies only earlier imports", () => {
     expect(decideImportMatch(undefined, [])).toEqual({ action: "new" });
   });
+
+  it("never merges pending and posted", () => {
+    expect(decideImportMatch("ref-1", [{ id: "old", externalId: "ref-1", status: "posted" }], "pending")).toEqual({ action: "review" });
+    expect(decideImportMatch("ref-1", [{ id: "old", externalId: "ref-1", status: "pending" }], "pending")).toEqual({ action: "matched", transactionId: "old" });
+    expect(decideImportMatch(undefined, [{ id: "old", status: "posted" }], "pending")).toEqual({ action: "review" });
+    expect(decideImportMatch(undefined, [], "pending")).toEqual({ action: "new" });
+  });
 });
