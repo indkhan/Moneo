@@ -2,12 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { monthPrefix, spendingForCategory, type SpendingPlanTransaction } from "@/lib/finance/spending-plans";
+import { formatMoney } from "@/lib/finance/format";
 import { saveSpendingPlan, toggleSpendingPlan } from "./actions";
-
-function money(minor: bigint, currency: string) {
-  const abs = minor < 0n ? -minor : minor;
-  return `${minor < 0n ? "−" : ""}${currency} ${abs / 100n}.${(abs % 100n).toString().padStart(2, "0")}`;
-}
 
 export default async function SpendingPlansPage() {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -85,10 +81,10 @@ export default async function SpendingPlansPage() {
         <li key={plan.id} className="rounded border p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h3 className="font-medium">{names.get(plan.category_id) ?? "Unknown category"}{plan.enabled ? "" : " (disabled)"}</h3>
-            <p className="text-sm text-muted-foreground">{money(plan.spent, plan.currency_code)} of {money(plan.limit, plan.currency_code)}</p>
+            <p className="text-sm text-muted-foreground">{formatMoney(plan.spent, plan.currency_code)} of {formatMoney(plan.limit, plan.currency_code)}</p>
           </div>
           <p className="mt-1 text-sm">{plan.enabled
-            ? (plan.remaining >= 0n ? `${money(plan.remaining, plan.currency_code)} left` : `${money(-plan.remaining, plan.currency_code)} over plan`)
+            ? (plan.remaining >= 0n ? `${formatMoney(plan.remaining, plan.currency_code)} left` : `${formatMoney(-plan.remaining, plan.currency_code)} over plan`)
             : "Disabled: not counted as an active target."}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <form action={saveSpendingPlan} className="flex flex-wrap gap-2">

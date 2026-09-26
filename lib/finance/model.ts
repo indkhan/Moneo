@@ -10,10 +10,13 @@ export function expandSchedule(item: Scheduled, start: string, days: number): Fo
   const end = new Date(horizon.getTime() + days * 86400000);
   const events: ForecastEvent[] = [];
   const elapsedDays = Math.max(0, Math.floor((horizon.getTime() - first.getTime()) / 86400000));
-  const firstIndex = item.cadence === "daily" ? elapsedDays
-    : item.cadence === "weekly" ? Math.floor(elapsedDays / 7)
-    : item.cadence === "monthly" ? Math.max(0, (horizon.getUTCFullYear() - first.getUTCFullYear()) * 12 + horizon.getUTCMonth() - first.getUTCMonth() - 1)
-    : 0;
+  let firstIndex = 0;
+  if (item.cadence === "daily") firstIndex = elapsedDays;
+  else if (item.cadence === "weekly") firstIndex = Math.floor(elapsedDays / 7);
+  else if (item.cadence === "monthly") firstIndex = Math.max(0, (horizon.getUTCFullYear() - first.getUTCFullYear()) * 12 + horizon.getUTCMonth() - first.getUTCMonth() - 1);
+  else if (item.cadence === "yearly") firstIndex = Math.max(0, horizon.getUTCFullYear() - first.getUTCFullYear() - 1);
+  const startMonth = first.getUTCMonth();
+  const startDate = first.getUTCDate();
   for (let n = firstIndex; n < firstIndex + days + 2; n++) {
     const date = new Date(first);
     if (item.cadence === "once" && n > 0) break;
@@ -23,7 +26,13 @@ export function expandSchedule(item: Scheduled, start: string, days: number): Fo
       date.setUTCDate(1);
       date.setUTCMonth(first.getUTCMonth() + n);
       const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
-      date.setUTCDate(Math.min(first.getUTCDate(), lastDay));
+      date.setUTCDate(Math.min(startDate, lastDay));
+    } else if (item.cadence === "yearly") {
+      const targetYear = first.getUTCFullYear() + n;
+      const lastDay = new Date(Date.UTC(targetYear, startMonth + 1, 0)).getUTCDate();
+      date.setUTCFullYear(targetYear);
+      date.setUTCMonth(startMonth);
+      date.setUTCDate(Math.min(startDate, lastDay));
     } else if (item.cadence !== "once") throw new Error(`Unknown cadence: ${item.cadence}`);
     if (date >= end || (item.ends_on && date.toISOString().slice(0, 10) > item.ends_on)) break;
     if (date < horizon) continue;

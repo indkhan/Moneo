@@ -1,5 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { convertFx } from "./fx";
+import { convertFx, minorDigits } from "./fx";
+
+describe("minorDigits", () => {
+  it("returns correct minor digits for known currencies", () => {
+    expect(minorDigits("EUR")).toBe(2);
+    expect(minorDigits("USD")).toBe(2);
+    expect(minorDigits("GBP")).toBe(2);
+    expect(minorDigits("JPY")).toBe(0);
+    expect(minorDigits("KRW")).toBe(0);
+    expect(minorDigits("KWD")).toBe(3);
+  });
+
+  it("normalizes case and whitespace", () => {
+    expect(minorDigits("eur")).toBe(2);
+    expect(minorDigits("  USD  ")).toBe(2);
+    expect(minorDigits("jpy")).toBe(0);
+  });
+
+  it("throws for invalid currency codes", () => {
+    expect(() => minorDigits("")).toThrow("Invalid currency code");
+    expect(() => minorDigits("EU")).toThrow("Invalid currency code");
+    expect(() => minorDigits("EURO")).toThrow("Invalid currency code");
+    expect(() => minorDigits("123")).toThrow("Invalid currency code");
+    expect(() => minorDigits("XXX")).toThrow("Invalid currency code");
+  });
+});
 
 describe("exact FX conversion", () => {
   it("converts minor units exactly, beyond float precision, preserving source and rate", () => {
@@ -52,10 +77,8 @@ describe("exact FX conversion", () => {
   });
 
   it("returns unavailable, keeping the original, when currency or rate metadata is missing", () => {
-    expect(convertFx({ amountMinor: 100n, from: "CHF", to: "EUR", rate: "1", source: "ecb", date: "2026-09-25" }))
-      .toEqual({ status: "unavailable", missingInputs: ["currency:CHF"], amountMinor: 100n, currencyCode: "CHF" });
-    expect(convertFx({ amountMinor: 100n, from: "JPY", to: "CHF", rate: "1", source: "ecb", date: "2026-09-25" }))
-      .toEqual({ status: "unavailable", missingInputs: ["currency:CHF"], amountMinor: 100n, currencyCode: "JPY" });
+    expect(convertFx({ amountMinor: 100n, from: "CHF", to: "EUR", rate: undefined, source: "ecb", date: "2026-09-25" }))
+      .toEqual({ status: "unavailable", missingInputs: ["rate:CHF->EUR"], amountMinor: 100n, currencyCode: "CHF" });
     expect(convertFx({ amountMinor: 100n, from: "EUR", to: "USD", rate: undefined, source: "ecb", date: "2026-09-25" }))
       .toEqual({ status: "unavailable", missingInputs: ["rate:EUR->USD"], amountMinor: 100n, currencyCode: "EUR" });
   });
@@ -66,5 +89,30 @@ describe("exact FX conversion", () => {
     expect(() => convertFx({ ...base, rate: { numerator: 1n, denominator: 0n } })).toThrow("Invalid rate");
     expect(() => convertFx({ ...base, rate: "0" })).toThrow("Invalid rate");
     expect(() => convertFx({ ...base, rate: "1", date: "2026-13-01" })).toThrow("Invalid date");
+  });
+
+  it("converts KRW (0 digits) and KWD (3 digits) correctly", () => {
+    // KRW has 0 minor digits, KWD has 3
+    const krwToUsd = convertFx({ amountMinor: 1000n, from: "KRW", to: "USD", rate: "0.00075", source: "ecb", date: "2026-09-25" });
+    if (krwToUsd.status !== "available") throw new Error("expected available");
+    // 1000 KRW * 0.00075 = 0.75 USD = 75 cents
+    expect(krwToUsd.converted.amountMinor).toBe(75n);
+
+    const kwdToUsd = convertFx({ amountMinor: 1000n, from: "KWD", to: "USD", rate: "3.25", source: "ecb", date: "2026-09-25" });
+    if (kwdToUsd.status !== "available") throw new Error("expected available");
+    // 1.000 KWD * 3.25 = 3.25 USD = 325 cents.
+    expect(kwdToUsd.converted.amountMinor).toBe(325n);
+
+    const usdToKrw = convertFx({ amountMinor: 100n, from: "USD", to: "KRW", rate: "1333", source: "ecb", date: "2026-09-25" });
+    if (usdToKrw.status !== "available") throw new Error("expected available");
+    // 1.00 USD * 1333 = 1333 KRW (0 digits)
+    expect(usdToKrw.converted.amountMinor).toBe(1333n);
+  });
+
+  it("returns unavailable for unknown currency codes without throwing", () => {
+    const result = convertFx({ amountMinor: 100n, from: "XXX", to: "USD", rate: "1", source: "ecb", date: "2026-09-25" });
+    expect(result.status).toBe("unavailable");
+    if (result.status !== "unavailable") throw new Error("expected unavailable");
+    expect(result.missingInputs[0]).toBe("currency:XXX");
   });
 });

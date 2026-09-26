@@ -8,12 +8,19 @@
 // Rate meaning: 1 major unit of `from` buys `numerator/denominator`
 // major units of `to`.
 
-export const MINOR_DIGITS: Record<string, number> = {
-  EUR: 2,
-  USD: 2,
-  GBP: 2,
-  JPY: 0,
-};
+const minorDigitsCache = new Map<string, number>();
+const supportedCurrencies = new Set(Intl.supportedValuesOf("currency"));
+
+export function minorDigits(currencyCode: string): number {
+  const code = currencyCode.trim().toUpperCase();
+  if (!supportedCurrencies.has(code)) throw new Error(`Invalid currency code: ${currencyCode}`);
+  const cached = minorDigitsCache.get(code);
+  if (cached !== undefined) return cached;
+  const digits = new Intl.NumberFormat("en-US", { style: "currency", currency: code }).resolvedOptions().maximumFractionDigits;
+  if (digits === undefined) throw new Error(`Invalid minor digits for ${code}`);
+  minorDigitsCache.set(code, digits);
+  return digits;
+}
 
 export type ExactRate = { numerator: bigint; denominator: bigint } | string;
 
@@ -73,10 +80,12 @@ function divRoundHalfUp(num: bigint, den: bigint): bigint {
 
 export function convertFx(input: FxInput): FxResult {
   const { amountMinor, from, to, rate, source, date } = input;
-  const fromDigits: number | undefined = MINOR_DIGITS[from];
-  const toDigits: number | undefined = MINOR_DIGITS[to];
-  if (fromDigits === undefined) return { status: "unavailable", missingInputs: [`currency:${from}`], amountMinor, currencyCode: from };
-  if (toDigits === undefined) return { status: "unavailable", missingInputs: [`currency:${to}`], amountMinor, currencyCode: from };
+  let fromDigits: number;
+  let toDigits: number;
+  try { fromDigits = minorDigits(from); }
+  catch { return { status: "unavailable", missingInputs: [`currency:${from}`], amountMinor, currencyCode: from }; }
+  try { toDigits = minorDigits(to); }
+  catch { return { status: "unavailable", missingInputs: [`currency:${to}`], amountMinor, currencyCode: from }; }
   if (typeof amountMinor !== "bigint") throw new Error("Invalid amount: bigint minor units required");
   validateDate(date);
   if (!source) throw new Error("Invalid source");

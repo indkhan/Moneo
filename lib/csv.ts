@@ -1,6 +1,7 @@
 import Papa from "papaparse";
 import ExcelJS from "exceljs";
 import { z } from "zod";
+import { minorDigits } from "@/lib/finance/fx";
 
 export type SourceRow = Record<string, string>;
 
@@ -73,23 +74,32 @@ export function validateMapping(input: unknown, rows: SourceRow[]): ImportMappin
   return mapping;
 }
 
-export function parseAmountMinor(input: string): bigint {
+export function parseAmountMinor(input: string, currencyCode: string = "EUR"): bigint {
+  const digits = minorDigits(currencyCode);
   let value = input.trim().replace(/\s/g, "").replace(/[€$£]/g, "");
   if (!/^(?:\(\d[\d.,]*\)|[-+]?\d[\d.,]*|\d[\d.,]*-)$/.test(value)) throw new Error(`Invalid amount: ${input}`);
   const negative = /^\(.*\)$/.test(value) || value.startsWith("-") || value.endsWith("-");
   value = value.replace(/[()\-+]/g, "");
   const comma = value.lastIndexOf(",");
   const dot = value.lastIndexOf(".");
-  if (/^\d{1,3}([.,]\d{3})+$/.test(value)) return BigInt(value.replace(/[.,]/g, "")) * (negative ? -100n : 100n);
+  if ((comma < 0 || dot < 0) && /^\d{1,3}([.,]\d{3})+$/.test(value)) {
+    const whole = BigInt(value.replace(/[.,]/g, ""));
+    return whole * (negative ? -pow10(digits) : pow10(digits));
+  }
   const decimal = comma > dot ? "," : ".";
   const parts = value.split(decimal);
   if (parts.length > 2 || !/^(\d{1,3}([.,]\d{3})*|\d+)$/.test(parts[0]) ||
-      (parts[1] !== undefined && !/^\d{1,2}$/.test(parts[1]))) {
+      (parts[1] !== undefined && (!/^\d+$/.test(parts[1]) || parts[1].length > digits))) {
     throw new Error(`Invalid amount: ${input}`);
   }
   const whole = parts[0].replace(/[.,]/g, "");
-  const minor = BigInt(whole) * 100n + BigInt((parts[1] ?? "").padEnd(2, "0") || "0");
+  const fraction = (parts[1] ?? "").padEnd(digits, "0").slice(0, digits);
+  const minor = BigInt(whole) * pow10(digits) + BigInt(fraction || "0");
   return negative ? -minor : minor;
+}
+
+function pow10(exponent: number): bigint {
+  return 10n ** BigInt(exponent);
 }
 
 function parseDate(input: string, format: ImportMapping["dateFormat"]): string {
@@ -189,13 +199,13 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
       if (!/^[A-Z]{3}$/.test(currencyCode)) throw new Error("Invalid currency");
       let amountMinor: bigint;
       if (mapping.amountColumn) {
-        amountMinor = parseAmountMinor(sourceRow[mapping.amountColumn] ?? "");
+        amountMinor = parseAmountMinor(sourceRow[mapping.amountColumn] ?? "", currencyCode);
         if (mapping.amountSign === "outflow-positive") amountMinor = -amountMinor;
       } else {
         const debit = sourceRow[mapping.debitColumn!] ?? "";
         const credit = sourceRow[mapping.creditColumn!] ?? "";
         if (Boolean(debit.trim()) === Boolean(credit.trim())) throw new Error("Expected exactly one debit or credit value");
-        amountMinor = credit.trim() ? parseAmountMinor(credit) : -parseAmountMinor(debit);
+        amountMinor = credit.trim() ? parseAmountMinor(credit, currencyCode) : -parseAmountMinor(debit, currencyCode);
         if ((credit.trim() && amountMinor < 0n) || (debit.trim() && amountMinor > 0n))
           throw new Error("Debit and credit values must be positive");
         if (amountMinor === 0n) throw new Error("Zero debit or credit");
@@ -211,7 +221,7 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
         ...(mapping.merchantColumn && sourceRow[mapping.merchantColumn]?.trim() ? { merchant: sourceRow[mapping.merchantColumn].trim() } : {}),
         ...(mapping.categoryColumn && sourceRow[mapping.categoryColumn]?.trim() ? { category: sourceRow[mapping.categoryColumn].trim() } : {}),
         ...(mapping.externalIdColumn && sourceRow[mapping.externalIdColumn]?.trim() ? { externalId: sourceRow[mapping.externalIdColumn].trim() } : {}),
-        ...(mapping.balanceColumn && sourceRow[mapping.balanceColumn]?.trim() ? { balanceMinor: parseAmountMinor(sourceRow[mapping.balanceColumn]) } : {}),
+        ...(mapping.balanceColumn && sourceRow[mapping.balanceColumn]?.trim() ? { balanceMinor: parseAmountMinor(sourceRow[mapping.balanceColumn], currencyCode) } : {}),
       };
     } catch (error) {
       throw new Error(`Row ${index + 2}: ${error instanceof Error ? error.message : String(error)}`);

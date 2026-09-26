@@ -7,4 +7,24 @@ describe("financial assumptions", () => {
     expect(events.map(event => event.date)).toEqual(["2026-02-28", "2026-03-31"]);
     expect(events[0].conservativeMinor).toBe(-11000n);
   });
+
+  it("projects yearly cadence correctly", () => {
+    const events = expandSchedule({ account_id: "checking", amount_minor: "-10000", currency_code: "EUR", cadence: "yearly", starts_on: "2020-01-15", ends_on: null }, "2026-02-01", 400);
+    expect(events.map(event => event.date)).toEqual(["2027-01-15"]);
+  });
+
+  it("rolls Feb 29 to Feb 28 in non-leap years for yearly cadence", () => {
+    const events = expandSchedule({ account_id: "checking", amount_minor: "-10000", currency_code: "EUR", cadence: "yearly", starts_on: "2020-02-29", ends_on: null }, "2025-01-01", 1200);
+    expect(events.map(event => event.date)).toEqual(["2025-02-28", "2026-02-28", "2027-02-28", "2028-02-29"]);
+  });
+
+  it("returns no events when horizon ends before first yearly occurrence", () => {
+    const events = expandSchedule({ account_id: "checking", amount_minor: "-10000", currency_code: "EUR", cadence: "yearly", starts_on: "2025-06-15", ends_on: null }, "2026-01-01", 30);
+    expect(events).toEqual([]);
+  });
+
+  it("projects yearly occurrence when horizon includes the date", () => {
+    const events = expandSchedule({ account_id: "checking", amount_minor: "-10000", currency_code: "EUR", cadence: "yearly", starts_on: "2025-06-15", ends_on: null }, "2026-01-01", 200);
+    expect(events.map(event => event.date)).toEqual(["2026-06-15"]);
+  });
 });

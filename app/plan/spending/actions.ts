@@ -9,7 +9,7 @@ export async function saveSpendingPlan(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
   const categoryId = z.uuid().parse(form.get("categoryId"));
   const currency = z.string().regex(/^[A-Z]{3}$/).parse(form.get("currency"));
-  const limit = parseAmountMinor(String(form.get("amount") ?? ""));
+  const limit = parseAmountMinor(String(form.get("amount") ?? ""), currency);
   if (limit <= 0n) throw new Error("Spending limit must be positive");
   const { data: category } = await supabase.from("categories").select("id")
     .eq("workspace_id", workspace.id).eq("id", categoryId).maybeSingle();

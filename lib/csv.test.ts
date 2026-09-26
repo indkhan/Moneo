@@ -21,6 +21,31 @@ describe("financial import parsing", () => {
     expect(() => parseAmountMinor("1.2345")).toThrow();
   });
 
+  it("parses EUR (2 digits) and JPY (0 digits) correctly", () => {
+    expect(parseAmountMinor("1.234,56", "EUR")).toBe(123456n);
+    expect(parseAmountMinor("1,234.56", "EUR")).toBe(123456n);
+    expect(parseAmountMinor("1000", "EUR")).toBe(100000n);
+    expect(parseAmountMinor("1000", "JPY")).toBe(1000n);
+    expect(parseAmountMinor("1,000", "JPY")).toBe(1000n);
+    expect(parseAmountMinor("(1,000)", "JPY")).toBe(-1000n);
+    expect(() => parseAmountMinor("1000.00", "JPY")).toThrow();
+    expect(() => parseAmountMinor("1000,00", "JPY")).toThrow();
+    expect(() => parseAmountMinor("0.01", "JPY")).toThrow();
+  });
+
+  it("parses KRW (0 digits) and KWD (3 digits) correctly", () => {
+    expect(parseAmountMinor("1,000", "KRW")).toBe(1000n);
+    expect(parseAmountMinor("(1,000)", "KRW")).toBe(-1000n);
+    expect(() => parseAmountMinor("1000.00", "KRW")).toThrow();
+    expect(() => parseAmountMinor("0.01", "KRW")).toThrow();
+
+    expect(parseAmountMinor("1.234,567", "KWD")).toBe(1234567n);
+    expect(parseAmountMinor("1,234.567", "KWD")).toBe(1234567n);
+    expect(parseAmountMinor("1000", "KWD")).toBe(1000000n);
+    expect(parseAmountMinor("1.234,56", "KWD")).toBe(1234560n);
+    expect(parseAmountMinor("1000.0", "KWD")).toBe(1000000n);
+  });
+
   it("validates mapping and preserves original rows", () => {
     const rows = parseCsv("Date,Description,Amount\n31.08.2026,Coffee,2.49\n01.09.2026,Salary,1500.00");
     expect(mapRows(rows, mapping)).toMatchObject([
@@ -39,6 +64,34 @@ describe("financial import parsing", () => {
     delete base.amountColumn;
     const mapped = mapRows(rows, { ...base, dateFormat: "iso", debitColumn: "Debit", creditColumn: "Credit" });
     expect(mapped.map((r) => r.amountMinor)).toEqual([-90000n, 200000n]);
+  });
+
+  it("uses row currency for amount parsing when currencyColumn is mapped", () => {
+    const rows = parseCsv("Date,Description,Amount,Currency\n2026-09-01,Coffee EUR,2.49,EUR\n2026-09-02,Coffee JPY,249,JPY");
+    const jpyMapping = { accountName: "Checking", currencyCode: "EUR", dateColumn: "Date", descriptionColumn: "Description", amountColumn: "Amount", dateFormat: "iso" as const, amountSign: "signed" as const, currencyColumn: "Currency" };
+    const mapped = mapRows(rows, jpyMapping);
+    expect(mapped[0].currencyCode).toBe("EUR");
+    expect(mapped[0].amountMinor).toBe(249n);
+    expect(mapped[1].currencyCode).toBe("JPY");
+    expect(mapped[1].amountMinor).toBe(249n);
+  });
+
+  it("uses row currency for debit/credit parsing when currencyColumn is mapped", () => {
+    const rows = parseCsv("Date,Description,Debit,Credit,Currency\n2026-09-01,Rent EUR,900,,EUR\n2026-09-02,Salary JPY,,200000,JPY");
+    const jpyMapping = { accountName: "Checking", currencyCode: "EUR", dateColumn: "Date", descriptionColumn: "Description", debitColumn: "Debit", creditColumn: "Credit", dateFormat: "iso" as const, amountSign: "signed" as const, currencyColumn: "Currency" };
+    const mapped = mapRows(rows, jpyMapping);
+    expect(mapped[0].currencyCode).toBe("EUR");
+    expect(mapped[0].amountMinor).toBe(-90000n);
+    expect(mapped[1].currencyCode).toBe("JPY");
+    expect(mapped[1].amountMinor).toBe(200000n);
+  });
+
+  it("uses row currency for balance parsing when currencyColumn is mapped", () => {
+    const rows = parseCsv("Date,Description,Amount,Currency,Balance\n2026-09-01,Coffee,2.49,EUR,100.00\n2026-09-02,Salary,249,JPY,50000");
+    const jpyMapping = { accountName: "Checking", currencyCode: "EUR", dateColumn: "Date", descriptionColumn: "Description", amountColumn: "Amount", dateFormat: "iso" as const, amountSign: "signed" as const, currencyColumn: "Currency", balanceColumn: "Balance" };
+    const mapped = mapRows(rows, jpyMapping);
+    expect(mapped[0].balanceMinor).toBe(10000n);
+    expect(mapped[1].balanceMinor).toBe(50000n);
   });
 
   it("defaults to posted and only accepts an explicit posted/pending column", () => {

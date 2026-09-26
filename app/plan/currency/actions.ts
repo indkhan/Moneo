@@ -3,14 +3,12 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { MINOR_DIGITS } from "@/lib/finance/fx";
-
-const SUPPORTED = Object.keys(MINOR_DIGITS);
+import { minorDigits } from "@/lib/finance/fx";
 
 function parseCurrency(raw: unknown): string {
   const normalized = String(raw ?? "").trim().toUpperCase();
   const code = z.string().regex(/^[A-Z]{3}$/).parse(normalized);
-  if (!(code in MINOR_DIGITS)) throw new Error(`Unsupported currency: ${code} (supported: ${SUPPORTED.join(", ")})`);
+  minorDigits(code);
   return code;
 }
 

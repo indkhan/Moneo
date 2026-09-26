@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
-import { MINOR_DIGITS } from "@/lib/finance/fx";
 import { addFxRate, setDisplayCurrency } from "./actions";
 
 export default async function CurrencyPage() {
@@ -12,7 +11,6 @@ export default async function CurrencyPage() {
     redirect("/login");
   }
   const { supabase, workspace } = context;
-  const supported = Object.keys(MINOR_DIGITS);
   const [{ data: accounts }, { data: rates }] = await Promise.all([
     supabase.from("accounts").select("id, name, currency_code").eq("workspace_id", workspace.id).order("name"),
     supabase.from("fx_rates")
@@ -21,6 +19,11 @@ export default async function CurrencyPage() {
       .order("rate_date", { ascending: false })
       .order("created_at", { ascending: false }),
   ]);
+  const currencies = [...new Set([
+    workspace.display_currency,
+    ...(accounts ?? []).map((account) => account.currency_code),
+    ...(rates ?? []).flatMap((rate) => [rate.from_currency, rate.to_currency]),
+  ])].sort();
   const today = new Date().toISOString().slice(0, 10);
 
   return (
@@ -36,12 +39,10 @@ export default async function CurrencyPage() {
 
       <section className="rounded-lg border p-5">
         <h2 className="font-semibold">Display currency</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Currently {workspace.display_currency}. Supported: {supported.join(", ")}.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Currently {workspace.display_currency}. Enter any ISO 4217 currency code; conversions without a saved rate remain unavailable.</p>
         <form action={setDisplayCurrency} className="mt-4 flex flex-wrap items-end gap-2">
           <label className="grid gap-1 text-sm">Currency
-            <select name="currency" defaultValue={workspace.display_currency} aria-label="Display currency" className="rounded border p-2">
-              {supported.map((code) => <option key={code} value={code}>{code}</option>)}
-            </select>
+            <input name="currency" list="currency-codes" defaultValue={workspace.display_currency} pattern="[A-Za-z]{3}" maxLength={3} required aria-label="Display currency" className="w-24 rounded border p-2" />
           </label>
           <button className="rounded bg-primary px-4 py-2 text-primary-foreground">Save display currency</button>
         </form>
@@ -50,16 +51,13 @@ export default async function CurrencyPage() {
       <section className="rounded-lg border p-5">
         <h2 className="font-semibold">Manual FX rate</h2>
         <p className="mt-1 text-sm text-muted-foreground">Directional exact decimal rate: 1 unit of From buys Rate units of To.</p>
+        <datalist id="currency-codes">{currencies.map((code) => <option key={code} value={code} />)}</datalist>
         <form action={addFxRate} className="mt-4 flex flex-wrap items-end gap-2">
           <label className="grid gap-1 text-sm">From
-            <select name="from" aria-label="From currency" className="rounded border p-2">
-              {supported.map((code) => <option key={code} value={code}>{code}</option>)}
-            </select>
+            <input name="from" list="currency-codes" defaultValue={currencies[0] ?? "EUR"} pattern="[A-Za-z]{3}" maxLength={3} required aria-label="From currency" className="w-24 rounded border p-2" />
           </label>
           <label className="grid gap-1 text-sm">To
-            <select name="to" aria-label="To currency" className="rounded border p-2">
-              {supported.map((code) => <option key={code} value={code}>{code}</option>)}
-            </select>
+            <input name="to" list="currency-codes" defaultValue={currencies[1] ?? "USD"} pattern="[A-Za-z]{3}" maxLength={3} required aria-label="To currency" className="w-24 rounded border p-2" />
           </label>
           <label className="grid gap-1 text-sm">Rate
             <input name="rate" required placeholder="1.08" inputMode="decimal" aria-label="Rate" className="w-32 rounded border p-2" />

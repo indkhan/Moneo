@@ -166,8 +166,10 @@ async function GoalTracker({ id, scenarioGoalId, extra }: { id: string; scenario
   const data = await goalsForArtifact(id);
   const today = new Date().toISOString().slice(0, 10);
   const accountCurrencies = new Map(data.balances.map(item => [item.id, item.currency_code]));
+  const targetGoal = data.goals.find(g => g.id === scenarioGoalId);
+  const extraCurrency = targetGoal?.currency_code ?? "EUR";
   let extraMinor = 0n;
-  try { if (extra) extraMinor = parseAmountMinor(extra); } catch { /* Ignore invalid what-if input. */ }
+  try { if (extra) extraMinor = parseAmountMinor(extra, extraCurrency); } catch { /* Ignore invalid what-if input. */ }
   return <section className="mt-8">
     <h2 className="text-xl font-semibold">Goals and reservations</h2>
     {!data.goals.length && <p className="mt-3">No goals yet. <Link href="/plan" className="underline">Create a goal</Link>.</p>}

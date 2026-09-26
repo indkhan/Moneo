@@ -2,12 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { hasSupabase } from "@/lib/env";
-import { convertFx, MINOR_DIGITS } from "@/lib/finance/fx";
+import { convertFx, minorDigits } from "@/lib/finance/fx";
 import { createAccount, setManualBalance } from "./actions";
 
 function money(minor: string | bigint, currency: string) {
   const value = BigInt(minor);
-  const digits = MINOR_DIGITS[currency] ?? 2;
+  const digits = minorDigits(currency);
   const base = 10n ** BigInt(digits);
   const sign = value < 0n ? "−" : "";
   const abs = value < 0n ? -value : value;

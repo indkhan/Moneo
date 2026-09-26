@@ -20,8 +20,8 @@ describe("plan assumption controls", () => {
   });
 
   it("keeps exact minor units for edited assumption amounts", () => {
-    expect(parseAmountMinor("-1200.00")).toBe(-120000n);
-    expect(parseAmountMinor("0.01")).toBe(1n);
+    expect(parseAmountMinor("-1200.00", "EUR")).toBe(-120000n);
+    expect(parseAmountMinor("0.01", "EUR")).toBe(1n);
   });
 
   it("guards user-confirmed assumptions against inferred overwrites and deletes", () => {
