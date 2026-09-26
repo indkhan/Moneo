@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { TransactionTable } from "./table";
+import { correctTransaction, undoCorrection } from "./actions";
 
 type Filters = { q?: string; from?: string; to?: string; account?: string; cursor?: string; transaction?: string };
 
@@ -33,8 +34,10 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     .select("source_transactions(original_row, import_id, row_number)")
     .eq("transaction_id", selected.id) : { data: null };
   const { data: history } = selected ? await supabase.from("correction_events")
-    .select("before, after, created_at").eq("workspace_id", workspace.id)
+    .select("id, before, after, undone, created_at").eq("workspace_id", workspace.id)
     .eq("transaction_id", selected.id).order("created_at", { ascending: false }) : { data: null };
+  const { data: category } = selected?.category_id ? await supabase.from("categories")
+    .select("name").eq("workspace_id", workspace.id).eq("id", selected.category_id).maybeSingle() : { data: null };
   const names = Object.fromEntries((accounts ?? []).map(account => [account.id, account.name]));
   const current = new URLSearchParams();
   for (const key of ["q", "from", "to", "account", "cursor"] as const) if (params[key]) current.set(key, params[key]);
@@ -55,8 +58,19 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       <h2 className="mt-6 text-xl font-semibold">{selected.description}</h2>
       <p className="mt-2">{selected.posted_on} · {selected.amount_minor} minor units {selected.currency_code}</p>
       <dl className="mt-6 space-y-2 text-sm"><div><dt className="text-muted-foreground">Account</dt><dd>{names[selected.account_id]}</dd></div><div><dt className="text-muted-foreground">Status</dt><dd>{selected.status}</dd></div><div><dt className="text-muted-foreground">Type</dt><dd>{selected.kind}</dd></div><div><dt className="text-muted-foreground">Note</dt><dd>{selected.note || "—"}</dd></div></dl>
+      <form action={correctTransaction} className="mt-6 space-y-3 border-t pt-5">
+        <input type="hidden" name="id" value={selected.id} /><input type="hidden" name="version" value={selected.version} /><input type="hidden" name="query" value={current.toString()} />
+        <label className="block text-sm">Category<input name="category" defaultValue={category?.name ?? ""} maxLength={100} className="mt-1 block w-full rounded border p-2" /></label>
+        <label className="block text-sm">Note<textarea name="note" defaultValue={selected.note ?? ""} maxLength={2000} className="mt-1 block w-full rounded border p-2" /></label>
+        <button className="rounded bg-primary px-4 py-2 text-sm text-primary-foreground">Save correction</button>
+      </form>
       <h3 className="mt-8 font-medium">Original source</h3><pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded bg-muted p-3 text-xs">{JSON.stringify(sources ?? [], null, 2)}</pre>
-      <h3 className="mt-8 font-medium">Correction history</h3><pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded bg-muted p-3 text-xs">{JSON.stringify(history ?? [], null, 2)}</pre>
+      <h3 className="mt-8 font-medium">Correction history</h3>
+      {history?.length ? <ul className="mt-2 space-y-2 text-sm">{history.map((event, index) => <li key={event.id} className="rounded border p-3">
+        <p>{new Date(event.created_at).toLocaleString()} {event.undone ? "· undone" : ""}</p>
+        <pre className="mt-2 whitespace-pre-wrap text-xs">{JSON.stringify({ before: event.before, after: event.after }, null, 2)}</pre>
+        {index === history.findIndex(item => !item.undone) && <form action={undoCorrection} className="mt-3"><input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="transactionId" value={selected.id} /><input type="hidden" name="version" value={selected.version} /><input type="hidden" name="query" value={current.toString()} /><button className="underline">Undo correction</button></form>}
+      </li>)}</ul> : <p className="mt-2 text-sm text-muted-foreground">No corrections yet.</p>}
     </aside>}
   </main>;
 }
