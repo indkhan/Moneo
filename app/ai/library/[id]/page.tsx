@@ -2,16 +2,24 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { goalsForArtifact, spendingForArtifact, tripForArtifact } from "@/lib/artifacts/finance-sdk";
+import { buildCalculatorSnapshot } from "@/lib/artifacts/snapshot";
+import { defaultParams } from "@/lib/artifacts/validate";
+import { calculatorManifestSchema, type ArtifactKind } from "@/lib/artifacts/spec";
 import { parseAmountMinor } from "@/lib/csv";
 import { pinArtifact, renameArtifact, saveTripState, unpinArtifact } from "../actions";
 import { SpendingChart } from "../spending-chart";
 import { RuntimeCheck } from "../runtime-check";
+import { CalculatorPanel } from "../calculator-panel";
+import { GenerateCalculatorForm } from "../generate-calculator-form";
+import { VersionEditor } from "../version-editor";
 
 function money(minor: bigint | string | number, currency: string) {
   const value = BigInt(minor);
   const abs = value < 0n ? -value : value;
   return `${value < 0n ? "−" : ""}${currency} ${abs / 100n}.${(abs % 100n).toString().padStart(2, "0")}`;
 }
+
+const kinds: ArtifactKind[] = ["spending_explorer", "trip_planner", "goal_tracker"];
 
 export default async function ArtifactPage({ params, searchParams }: {
   params: Promise<{ id: string }>;
@@ -26,11 +34,43 @@ export default async function ArtifactPage({ params, searchParams }: {
     supabase.from("artifact_state").select("state").eq("workspace_id", workspace.id).eq("artifact_id", id).maybeSingle(),
     supabase.from("dashboard_items").select("id").eq("workspace_id", workspace.id).eq("artifact_id", id).maybeSingle(),
   ]);
-  if (!artifact?.active_version_id) notFound();
-  const { data: version } = await supabase.from("artifact_versions").select("version, source")
-    .eq("workspace_id", workspace.id).eq("id", artifact.active_version_id).single();
-  const stateValue = state?.state as { costMinor?: number } | null;
-  const costMinor = Number.isSafeInteger(stateValue?.costMinor) && stateValue!.costMinor! >= 0 ? BigInt(stateValue!.costMinor!) : 90000n;
+  if (!artifact?.active_version_id || !kinds.includes(artifact.kind as ArtifactKind)) notFound();
+  const kind = artifact.kind as ArtifactKind;
+  const [{ data: version }, { data: versions }] = await Promise.all([
+    supabase.from("artifact_versions").select("version, source, manifest")
+      .eq("workspace_id", workspace.id).eq("id", artifact.active_version_id).single(),
+    supabase.from("artifact_versions").select("id, version, status, error, created_at, manifest, source")
+      .eq("workspace_id", workspace.id).eq("artifact_id", id).order("version", { ascending: false }).limit(20),
+  ]);
+  const stateValue = (state?.state ?? {}) as Record<string, number | string>;
+  const costMinor = Number.isSafeInteger((stateValue as { costMinor?: number }).costMinor) && (stateValue as { costMinor?: number }).costMinor! >= 0
+    ? BigInt((stateValue as { costMinor?: number }).costMinor!) : 90000n;
+
+  const manifestParsed = calculatorManifestSchema.safeParse(version?.manifest);
+  const isCalculator = manifestParsed.success;
+  let snapshot: unknown = { kind };
+  let initialParams: Record<string, number | string> = {};
+  if (isCalculator && version) {
+    try {
+      const built = await buildCalculatorSnapshot(id, kind, {
+        query: q.slice(0, 100),
+        costMinor,
+      });
+      snapshot = built.snapshot;
+      const defaults = defaultParams(manifestParsed.data);
+      initialParams = { ...defaults };
+      for (const [k, v] of Object.entries(stateValue)) {
+        if (k in defaults && typeof v === typeof defaults[k]) initialParams[k] = v as number | string;
+      }
+      // Trip cost also flows from legacy trip state for compatibility.
+      if (kind === "trip_planner" && "costMinor" in defaults) {
+        initialParams.costMinor = Number(costMinor);
+      }
+    } catch {
+      snapshot = { unavailable: "Snapshot unavailable" };
+      initialParams = manifestParsed.success ? defaultParams(manifestParsed.data) : {};
+    }
+  }
 
   return <main className="mx-auto max-w-4xl px-6 py-10">
     <Link href="/ai/library" className="text-sm underline">Library</Link>
@@ -50,7 +90,34 @@ export default async function ArtifactPage({ params, searchParams }: {
     {artifact.kind === "spending_explorer" && <SpendingExplorer id={id} query={q.slice(0, 100)} />}
     {artifact.kind === "trip_planner" && <TripPlanner id={id} costMinor={costMinor} />}
     {artifact.kind === "goal_tracker" && <GoalTracker id={id} scenarioGoalId={goalId} extra={extra} />}
-    {version && <RuntimeCheck source={version.source} input={{ kind: artifact.kind }} />}
+    {version && isCalculator && (
+      <CalculatorPanel
+        source={version.source}
+        snapshot={snapshot}
+        initialParams={initialParams}
+        versionLabel={`v${version.version}`}
+      />
+    )}
+    {version && !isCalculator && (
+      <p className="mt-8 rounded-lg border p-4 text-sm text-muted-foreground">
+        This tool still uses the built-in trusted template (no generated calculator yet). Use the
+        generator below to draft the first validated calculator version.
+      </p>
+    )}
+    <GenerateCalculatorForm artifactId={id} kind={kind} />
+    {version && (
+      <VersionEditor
+        artifactId={id}
+        activeVersionId={artifact.active_version_id}
+        versions={(versions ?? []).map((v) => ({
+          id: v.id, version: v.version, status: v.status,
+          error: v.error, created_at: v.created_at, manifest: v.manifest, source: v.source,
+        }))}
+        currentSource={version.source}
+        currentManifest={version.manifest}
+      />
+    )}
+    {version && <RuntimeCheck source={version.source} input={{ kind: artifact.kind, snapshot, params: initialParams }} />}
   </main>;
 }
 
