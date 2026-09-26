@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, date, bigint, integer, jsonb, boolean, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, date, bigint, integer, jsonb, boolean, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 
 export const workspaces = pgTable("workspaces", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -257,5 +257,39 @@ export const messages = pgTable("messages", {
   replyTo: uuid("reply_to"),
   content: text("content").notNull(),
   context: jsonb("context"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const recurringSeries = pgTable("recurring_series", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  accountId: uuid("account_id").notNull().references(() => accounts.id),
+  label: text("label").notNull(),
+  normalizedLabel: text("normalized_label").notNull(),
+  cadence: text("cadence").notNull(),
+  currencyCode: text("currency_code").notNull(),
+  amountMinMinor: bigint("amount_min_minor", { mode: "bigint" }).notNull(),
+  amountMaxMinor: bigint("amount_max_minor", { mode: "bigint" }).notNull(),
+  occurrences: integer("occurrences").notNull(),
+  confidence: integer("confidence"),
+  status: text("status").notNull().default("pending"),
+  assumptionId: uuid("assumption_id").references(() => financialAssumptions.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex("recurring_series_workspace_unique").on(table.workspaceId, table.accountId, table.normalizedLabel, table.cadence, table.currencyCode)]);
+
+export const recurringSeriesTransactions = pgTable("recurring_series_transactions", {
+  seriesId: uuid("series_id").notNull().references(() => recurringSeries.id),
+  transactionId: uuid("transaction_id").notNull().references(() => transactions.id),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+}, (table) => [primaryKey({ columns: [table.seriesId, table.transactionId] })]);
+
+export const fxRates = pgTable("fx_rates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  fromCurrency: text("from_currency").notNull(),
+  toCurrency: text("to_currency").notNull(),
+  rateText: text("rate_text").notNull(),
+  rateDate: date("rate_date").notNull(),
+  source: text("source").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

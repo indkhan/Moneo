@@ -2,13 +2,18 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { hasSupabase } from "@/lib/env";
+import { convertFx, MINOR_DIGITS } from "@/lib/finance/fx";
 import { createAccount, setManualBalance } from "./actions";
 
-function money(minor: string, currency: string) {
+function money(minor: string | bigint, currency: string) {
   const value = BigInt(minor);
+  const digits = MINOR_DIGITS[currency] ?? 2;
+  const base = 10n ** BigInt(digits);
   const sign = value < 0n ? "−" : "";
   const abs = value < 0n ? -value : value;
-  return `${sign}${currency} ${abs / 100n}.${(abs % 100n).toString().padStart(2, "0")}`;
+  const whole = (abs / base).toString();
+  const frac = digits > 0 ? `.${(abs % base).toString().padStart(digits, "0")}` : "";
+  return `${sign}${currency} ${whole}${frac}`;
 }
 
 export default async function Home() {
@@ -30,6 +35,47 @@ export default async function Home() {
     .order("as_of", { ascending: false }).order("created_at", { ascending: false });
   const latest = new Map<string, NonNullable<typeof snapshots>[number]>();
   for (const snapshot of snapshots ?? []) if (!latest.has(snapshot.account_id)) latest.set(snapshot.account_id, snapshot);
+  const { data: fxRates } = await supabase.from("fx_rates")
+    .select("from_currency, to_currency, rate_text, rate_date, source")
+    .eq("workspace_id", workspace.id)
+    .order("rate_date", { ascending: false }).order("created_at", { ascending: false });
+  const displayCurrency: string = workspace.display_currency;
+  const missingInputs: string[] = [];
+  const convertedLines: { name: string; text: string }[] = [];
+  let netWorthMinor = 0n;
+  let convertedCount = 0;
+  for (const account of accounts ?? []) {
+    const balance = latest.get(account.id);
+    if (!balance) {
+      missingInputs.push(`balance:${account.name}`);
+      continue;
+    }
+    const balanceDate = String(balance.as_of).slice(0, 10);
+    const rate = balance.currency_code === displayCurrency ? undefined
+      : (fxRates ?? []).find((row) =>
+        row.from_currency === balance.currency_code &&
+        row.to_currency === displayCurrency &&
+        String(row.rate_date).slice(0, 10) <= balanceDate);
+    try {
+      const result = convertFx({
+        amountMinor: BigInt(balance.amount_minor),
+        from: balance.currency_code,
+        to: displayCurrency,
+        rate: balance.currency_code === displayCurrency ? undefined : rate?.rate_text,
+        source: rate?.source ?? (balance.provenance || "balance"),
+        date: rate ? String(rate.rate_date).slice(0, 10) : balanceDate,
+      });
+      if (result.status === "available") {
+        netWorthMinor += result.converted.amountMinor;
+        convertedCount += 1;
+        convertedLines.push({ name: account.name, text: money(result.converted.amountMinor, displayCurrency) });
+      } else {
+        for (const missing of result.missingInputs) missingInputs.push(`${missing} for ${account.name}`);
+      }
+    } catch {
+      missingInputs.push(`rate:${balance.currency_code}->${displayCurrency} for ${account.name}`);
+    }
+  }
   const { data: pins } = await supabase.from("dashboard_items")
     .select("artifact_id, position").eq("workspace_id", workspace.id).order("position");
   const { data: pinnedArtifacts } = pins?.length ? await supabase.from("artifacts")
@@ -45,6 +91,35 @@ export default async function Home() {
           <Link href="/import">Import</Link><Link href="/money/transactions">Transactions</Link><Link href="/plan">Plan</Link><Link href="/ai">AI</Link>
         </nav>
       </header>
+      <section aria-label="Net worth" className="mt-10 rounded-lg border p-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="text-xl font-semibold">Net worth</h2>
+          <Link href="/plan/currency" className="text-sm underline">Manage currency</Link>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">Enter debts as negative balances for this signed total.</p>
+        {!accounts?.length ? (
+          <p className="mt-3 text-muted-foreground">Net worth unavailable: no accounts yet.</p>
+        ) : missingInputs.length === 0 ? (
+          <>
+            <p className="mt-3 text-3xl font-semibold">{money(netWorthMinor, displayCurrency)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">In {displayCurrency} · from latest dated balances · originals unchanged</p>
+          </>
+        ) : convertedCount > 0 ? (
+          <>
+            <p className="mt-3 text-3xl font-semibold">{money(netWorthMinor, displayCurrency)} <span className="text-base font-normal text-muted-foreground">partial</span></p>
+            <p className="mt-1 text-xs text-muted-foreground">Partial total in {displayCurrency}; excludes accounts below. Never zero-filled.</p>
+            <ul className="mt-3 space-y-1 text-sm">
+              {convertedLines.map((line) => <li key={line.name}>{line.name}: {line.text}</li>)}
+            </ul>
+            <p className="mt-3 text-sm text-muted-foreground">Missing inputs: {missingInputs.join(", ")}</p>
+          </>
+        ) : (
+          <>
+            <p className="mt-3 text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Missing inputs: {missingInputs.join(", ")}</p>
+          </>
+        )}
+      </section>
       <section className="mt-10">
         <h2 className="text-xl font-semibold">Accounts</h2>
         {!accounts?.length && <p className="mt-3 text-muted-foreground">No accounts yet. <Link className="underline" href="/import">Import a statement</Link> to begin.</p>}
