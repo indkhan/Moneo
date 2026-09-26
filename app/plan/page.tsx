@@ -31,7 +31,8 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const currency = workspace.display_currency;
 
   return <main className="mx-auto max-w-5xl space-y-10 px-6 py-10">
-    <header><Link href="/" className="text-sm text-muted-foreground">← Home</Link><h1 className="mt-2 text-3xl font-semibold">Plan</h1></header>
+    <header><Link href="/" className="text-sm text-muted-foreground">← Home</Link><h1 className="mt-2 text-3xl font-semibold">Plan</h1>
+      <p className="mt-2 text-sm"><Link href="/plan/spending" className="underline">Monthly category spending plans</Link></p></header>
     <section className="rounded-lg border p-5"><h2 className="text-xl font-semibold">Available to spend</h2>
       <form method="get" className="mt-3 flex items-center gap-3"><label>Horizon (days) <input name="horizon" type="number" min="1" max="365" defaultValue={horizon} className="ml-2 w-20 rounded border p-1" /></label>{scenarioId && <input type="hidden" name="scenario" value={scenarioId} />}<button className="underline">Update</button></form>
       {projection.available.status === "available" ? <><p className="mt-4 text-3xl font-semibold">{money(projection.available.amountMinor, currency)}</p><p className="text-sm text-muted-foreground">Conservative daily minimum on {projection.available.limitingDate}. Includes confirmed and enabled assumptions and goal reservations.</p></> : <p className="mt-4 text-muted-foreground">Unavailable: {projection.available.missingInputs.join(", ")}. Add dated account balances and complete missing assumptions.</p>}
