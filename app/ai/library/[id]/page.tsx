@@ -96,6 +96,7 @@ export default async function ArtifactPage({ params, searchParams }: {
         snapshot={snapshot}
         initialParams={initialParams}
         versionLabel={`v${version.version}`}
+        artifactId={id}
       />
     )}
     {version && !isCalculator && (

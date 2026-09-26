@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { runIsolatedArtifact } from "@/lib/artifacts/run";
+import { saveCalculatorParams } from "./actions";
 
 const Chart = dynamic(() => import("echarts-for-react"), { ssr: false });
 
@@ -20,11 +21,13 @@ export function CalculatorPanel({
   snapshot,
   initialParams,
   versionLabel,
+  artifactId,
 }: {
   source: string;
   snapshot: unknown;
   initialParams: Record<string, number | string>;
   versionLabel: string;
+  artifactId: string;
 }) {
   const [params, setParams] = useState(initialParams);
   const [output, setOutput] = useState<CalculatorOutput | null>(null);
@@ -52,7 +55,7 @@ export function CalculatorPanel({
         setError(err instanceof Error ? err.message : String(err));
         setStatus("error");
       }
-    }, 300); // debounce rapidly changing inputs (§37)
+    }, 300);
     return () => clearTimeout(timer);
   }, [source, snapshot, params]);
 
@@ -80,6 +83,13 @@ export function CalculatorPanel({
           >
             Re-run
           </button>
+          <form action={saveCalculatorParams} className="inline">
+            <input type="hidden" name="artifactId" value={artifactId} />
+            <input type="hidden" name="params" value={JSON.stringify(params)} />
+            <button type="submit" className="rounded border px-3 py-1">
+              Save inputs
+            </button>
+          </form>
         </div>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
