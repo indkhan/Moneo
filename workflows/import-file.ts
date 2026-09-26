@@ -56,7 +56,7 @@ async function processImport(importId: string, workspaceId: string, from: number
       const status = await importRow(db, workspaceId, importId, accountId, row);
       if (status === "new") newRows++;
       else if (status === "matched") matchedRows++;
-      else reviewRows++;
+      else if (status === "review") reviewRows++;
     }
     checked(await db.from("imports").update({ new_rows: newRows, matched_rows: matchedRows, review_rows: reviewRows }).eq("id", importId).eq("workspace_id", workspaceId));
     return { newRows, matchedRows, reviewRows };
@@ -74,11 +74,12 @@ async function finishImport(importId: string, workspaceId: string, counts: { new
 
 type Db = SupabaseClient<any>;
 
-async function importRow(db: Db, workspaceId: string, importId: string, accountId: string, row: MappedRow): Promise<"new" | "matched" | "review"> {
+async function importRow(db: Db, workspaceId: string, importId: string, accountId: string, row: MappedRow): Promise<"new" | "matched" | "review" | "rejected"> {
   const sourceId = stableId(`${importId}:row:${row.rowNumber}`);
   checked(await db.from("source_transactions").upsert({ id: sourceId, workspace_id: workspaceId, import_id: importId, row_number: row.rowNumber, original_row: row.sourceRow, external_id: row.externalId ?? null }, { onConflict: "id", ignoreDuplicates: true }));
   const source = checked(await db.from("source_transactions").select("status").eq("id", sourceId).single()) as { status: string };
   if (source.status === "review") return "review";
+  if (source.status === "rejected") return "rejected";
   const linkResult = await db.from("transaction_sources").select("transaction_id").eq("source_transaction_id", sourceId).maybeSingle();
   if (linkResult.error) throw linkResult.error;
   const linked = linkResult.data as { transaction_id: string } | null;
