@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { ImportMapping, SourceRow } from "@/lib/csv";
 
 type Preview = {
@@ -11,6 +12,7 @@ type Preview = {
   examples: { postedOn: string; description: string; amountMinor: string; currencyCode: string }[];
 };
 type Inspection = { headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string };
+type ImportStatus = { id: string; filename: string; status: string; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; error: string | null; created_at: string };
 
 function formatMinor(value: string, currency: string) {
   const amount = BigInt(value);
@@ -26,8 +28,27 @@ export default function ImportPage() {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [completed, setCompleted] = useState(0);
+  const [history, setHistory] = useState<ImportStatus[]>([]);
   const file = files[index];
+
+  async function loadHistory() {
+    const response = await fetch("/api/imports", { cache: "no-store" });
+    if (response.ok) setHistory(await response.json());
+  }
+
+  useEffect(() => { void loadHistory(); }, []);
+  useEffect(() => {
+    if (!history.some((item) => item.status === "queued" || item.status === "running")) return;
+    const timer = setInterval(async () => {
+      const active = history.filter((item) => item.status === "queued" || item.status === "running");
+      const updates = await Promise.all(active.map(async (item) => {
+        const response = await fetch(`/api/imports/${item.id}`, { cache: "no-store" });
+        return response.ok ? await response.json() as ImportStatus : item;
+      }));
+      setHistory((current) => current.map((item) => updates.find((update) => update.id === item.id) ?? item));
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [history]);
 
   async function inspect(target: File, corrected?: ImportMapping) {
     setBusy(true);
@@ -68,7 +89,7 @@ export default function ImportPage() {
       const response = await fetch("/api/imports/confirm", { method: "POST", body: form });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Import failed");
-      setCompleted((value) => value + 1);
+      await loadHistory();
       setInspection(null);
       setMapping(null);
       if (index + 1 < files.length) {
@@ -80,6 +101,21 @@ export default function ImportPage() {
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Import failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function retry(id: string) {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/imports/${id}/retry`, { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Retry failed");
+      await loadHistory();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Retry failed");
     } finally {
       setBusy(false);
     }
@@ -106,10 +142,19 @@ export default function ImportPage() {
         setFiles(selected);
         setIndex(0);
         setInspection(null);
-        setCompleted(0);
         if (selected[0]) void inspect(selected[0]);
       }} />
-    {completed > 0 && <p>{completed} file{completed === 1 ? "" : "s"} queued for import.</p>}
+    <section className="space-y-3" aria-label="Import history">
+      <h2 className="text-xl font-semibold">Import history</h2>
+      {!history.length && <p>No imports yet.</p>}
+      {history.map((item) => <article key={item.id} className="rounded border p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.filename}</strong><span role="status">{item.status}</span></div>
+        <p className="text-sm">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows} for review · {item.total_rows} total</p>
+        {item.error && <p className="text-sm text-red-700">{item.error}</p>}
+        {item.review_rows > 0 && <Link className="text-sm underline" href={`/import/${item.id}/review`}>Review rows</Link>}
+        {item.status === "failed" && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void retry(item.id)}>Retry</button>}
+      </article>)}
+    </section>
     {busy && <p role="status">Working…</p>}
     {error && <p role="alert" className="text-red-700">{error}</p>}
     {file && inspection && <section className="space-y-4 rounded border p-4">
