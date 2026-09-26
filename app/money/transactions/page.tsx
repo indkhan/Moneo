@@ -53,7 +53,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   if (direction) current.set("direction", direction);
 
   return <main className="mx-auto max-w-6xl px-6 py-10">
-    <header className="flex items-center justify-between"><div><Link href="/" className="text-sm text-muted-foreground">← Home</Link><h1 className="mt-2 text-3xl font-semibold">Transactions</h1></div><Link href="/import" className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground">Import</Link></header>
+    <header className="flex items-center justify-between"><div><Link href="/" className="text-sm text-muted-foreground">← Home</Link><h1 className="mt-2 text-3xl font-semibold">Transactions</h1><Link href="/money/recurring" className="mt-2 inline-block text-sm underline">Review recurring patterns</Link></div><Link href="/import" className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground">Import</Link></header>
     <form className="mt-8 flex flex-wrap gap-3" method="get">
       <input name="q" defaultValue={params.q} placeholder="Search descriptions" aria-label="Search descriptions" className="rounded border p-2" />
       <input name="from" type="date" defaultValue={params.from} aria-label="From date" className="rounded border p-2" />
