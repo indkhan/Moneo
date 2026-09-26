@@ -1,23 +1,131 @@
-// Shared, exact financial calculations in integer cents.
-// AI narrates; this module computes. Both UI and workflows import from here.
+// Money is always signed integer minor units. Conversion must happen before calling.
+export type Balance = { amountMinor: bigint | null; currencyCode: string };
 
-export function sumCents(amounts: number[]): number {
-  return amounts.reduce((a, b) => a + b, 0);
+export function netWorth(balances: Balance[], currencyCode: string): bigint | null {
+  if (balances.some(balance => balance.amountMinor === null || balance.currencyCode !== currencyCode)) return null;
+  return balances.reduce((total, balance) => total + balance.amountMinor!, 0n);
 }
 
-export function netWorthCents(balances: number[]): number {
-  return sumCents(balances);
+export type CashflowTransaction = {
+  amountMinor: bigint;
+  currencyCode: string;
+  status: "posted" | "pending";
+  kind: "ordinary" | "transfer" | "refund";
+};
+
+export function summarizeCashflow(transactions: CashflowTransaction[], currencyCode: string) {
+  if (transactions.some(transaction => transaction.currencyCode !== currencyCode)) return null;
+  let incomeMinor = 0n;
+  let spendingMinor = 0n;
+  for (const transaction of transactions) {
+    if (transaction.status !== "posted" || transaction.kind === "transfer") continue;
+    if (transaction.kind === "refund") spendingMinor -= transaction.amountMinor;
+    else if (transaction.amountMinor > 0n) incomeMinor += transaction.amountMinor;
+    else spendingMinor -= transaction.amountMinor;
+  }
+  return { incomeMinor, spendingMinor, netMinor: incomeMinor - spendingMinor };
 }
 
-/** Available-to-spend = balances − reserved − upcoming bills. All in cents. */
-export function availableToSpendCents(args: {
-  balances: number[];
-  reserved: number[];
-  upcoming: number[];
-}): number {
-  return sumCents(args.balances) - sumCents(args.reserved) - sumCents(args.upcoming);
+export type ForecastAccount = {
+  id: string;
+  currencyCode: string;
+  balanceMinor: bigint | null;
+  // A bank's available balance already includes pending holds. Use it instead of deducting holds again.
+  availableMinor?: bigint | null;
+  pendingHoldMinor?: bigint;
+  reservedMinor?: bigint;
+  safetyBufferMinor?: bigint;
+  minimumMinor?: bigint;
+};
+
+export type ForecastEvent = {
+  date: string;
+  accountId: string;
+  expectedMinor: bigint;
+  conservativeMinor?: bigint;
+  optimisticMinor?: bigint;
+};
+
+export type ForecastInput = {
+  startDate: string;
+  horizonDays: number;
+  currencyCode: string;
+  accounts: ForecastAccount[];
+  events: ForecastEvent[];
+  scenarioEvents?: ForecastEvent[];
+  missingInputs?: string[];
+};
+
+type ForecastDay = {
+  date: string;
+  expectedMinor: bigint;
+  conservativeMinor: bigint;
+  optimisticMinor: bigint;
+  conservativeByAccount: Record<string, bigint>;
+};
+
+type ForecastResult =
+  | { status: "unavailable"; missingInputs: string[] }
+  | { status: "available"; days: ForecastDay[] };
+
+function parseDate(date: string): number {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`Invalid date: ${date}`);
+  const timestamp = Date.parse(`${date}T00:00:00Z`);
+  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== date) throw new Error(`Invalid date: ${date}`);
+  return timestamp;
 }
 
-export function formatCents(cents: number, currency = "USD"): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
+export function forecastDaily(input: ForecastInput): ForecastResult {
+  const start = parseDate(input.startDate);
+  if (!Number.isSafeInteger(input.horizonDays) || input.horizonDays < 1 || input.horizonDays > 3660) throw new Error("Invalid forecast horizon");
+  const ids = new Set(input.accounts.map(account => account.id));
+  if (ids.size !== input.accounts.length) throw new Error("Duplicate account ID");
+  const events = [...input.events, ...(input.scenarioEvents ?? [])];
+  for (const event of events) {
+    parseDate(event.date);
+    if (!ids.has(event.accountId)) throw new Error(`Unknown account: ${event.accountId}`);
+  }
+  const missingInputs = [...(input.missingInputs ?? [])];
+  if (!input.accounts.length) missingInputs.push("accounts");
+  for (const account of input.accounts) {
+    if (account.currencyCode !== input.currencyCode) missingInputs.push(`fx:${account.id}`);
+    if (account.availableMinor == null && account.balanceMinor === null) missingInputs.push(`balance:${account.id}`);
+    if (account.availableMinor === null) missingInputs.push(`available-balance:${account.id}`);
+  }
+  if (missingInputs.length) return { status: "unavailable", missingInputs };
+
+  const balances = new Map<string, { expected: bigint; conservative: bigint; optimistic: bigint }>(input.accounts.map(account => {
+    const initial = account.availableMinor ?? account.balanceMinor! - (account.pendingHoldMinor ?? 0n);
+    return [account.id, { expected: initial, conservative: initial, optimistic: initial }];
+  }));
+  const days: ForecastDay[] = [];
+  for (let offset = 0; offset < input.horizonDays; offset++) {
+    const date = new Date(start + offset * 86400000).toISOString().slice(0, 10);
+    for (const event of events) {
+      if (event.date !== date) continue;
+      const balance = balances.get(event.accountId)!;
+      balance.expected += event.expectedMinor;
+      balance.conservative += event.conservativeMinor ?? event.expectedMinor;
+      balance.optimistic += event.optimisticMinor ?? event.expectedMinor;
+    }
+    const conservativeByAccount = Object.fromEntries([...balances].map(([id, balance]) => [id, balance.conservative]));
+    days.push({
+      date,
+      expectedMinor: [...balances.values()].reduce((sum, balance) => sum + balance.expected, 0n),
+      conservativeMinor: [...balances.values()].reduce((sum, balance) => sum + balance.conservative, 0n),
+      optimisticMinor: [...balances.values()].reduce((sum, balance) => sum + balance.optimistic, 0n),
+      conservativeByAccount,
+    });
+  }
+  return { status: "available", days };
+}
+
+export function availableToSpend(input: ForecastInput):
+  | { status: "unavailable"; missingInputs: string[] }
+  | { status: "available"; amountMinor: bigint; limitingDate: string } {
+  const forecast = forecastDaily(input);
+  if (forecast.status === "unavailable") return forecast;
+  const protectedMinor = input.accounts.reduce((sum, account) => sum + (account.reservedMinor ?? 0n) + (account.safetyBufferMinor ?? 0n) + (account.minimumMinor ?? 0n), 0n);
+  const limitingDay = forecast.days.reduce((lowest, day) => day.conservativeMinor < lowest.conservativeMinor ? day : lowest);
+  return { status: "available", amountMinor: limitingDay.conservativeMinor - protectedMinor, limitingDate: limitingDay.date };
 }

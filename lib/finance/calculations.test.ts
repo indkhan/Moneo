@@ -1,18 +1,56 @@
 import { describe, expect, it } from "vitest";
-import { availableToSpendCents, formatCents, sumCents } from "./calculations";
+import { availableToSpend, forecastDaily, netWorth, summarizeCashflow } from "./calculations";
 
-describe("finance calculations (exact, in cents)", () => {
-  it("sums without float drift", () => {
-    expect(sumCents([1999, 1])).toBe(2000);
+describe("exact financial calculations", () => {
+  it("keeps large minor-unit totals exact and unknown balances unknown", () => {
+    expect(netWorth([{ amountMinor: 9007199254740993n, currencyCode: "EUR" }, { amountMinor: 7n, currencyCode: "EUR" }], "EUR")).toBe(9007199254741000n);
+    expect(netWorth([{ amountMinor: null, currencyCode: "EUR" }], "EUR")).toBeNull();
+    expect(netWorth([{ amountMinor: 1n, currencyCode: "USD" }], "EUR")).toBeNull();
   });
 
-  it("computes available-to-spend", () => {
-    expect(
-      availableToSpendCents({ balances: [100000], reserved: [20000], upcoming: [5000] }),
-    ).toBe(75000);
+  it("excludes transfers and pending, and treats refunds as reduced spending", () => {
+    expect(summarizeCashflow([
+      { amountMinor: 10000n, currencyCode: "EUR", status: "posted", kind: "ordinary" },
+      { amountMinor: -4000n, currencyCode: "EUR", status: "posted", kind: "ordinary" },
+      { amountMinor: 1000n, currencyCode: "EUR", status: "posted", kind: "refund" },
+      { amountMinor: -5000n, currencyCode: "EUR", status: "posted", kind: "transfer" },
+      { amountMinor: -3000n, currencyCode: "EUR", status: "pending", kind: "ordinary" },
+    ], "EUR")).toEqual({ incomeMinor: 10000n, spendingMinor: 3000n, netMinor: 7000n });
   });
 
-  it("formats cents", () => {
-    expect(formatCents(75000)).toBe("$750.00");
+  it("does not combine different currencies in cashflow", () => {
+    expect(summarizeCashflow([
+      { amountMinor: 100n, currencyCode: "EUR", status: "posted", kind: "ordinary" },
+      { amountMinor: 100n, currencyCode: "USD", status: "posted", kind: "ordinary" },
+    ], "EUR")).toBeNull();
+  });
+
+  it("evaluates every day and finds an early shortfall, including reservations and pending only once", () => {
+    const input = {
+      startDate: "2026-10-01", horizonDays: 3, currencyCode: "EUR",
+      accounts: [{ id: "checking", currencyCode: "EUR", balanceMinor: 10000n, availableMinor: 9000n, pendingHoldMinor: 1000n, reservedMinor: 1000n, safetyBufferMinor: 500n }],
+      events: [
+        { date: "2026-10-02", accountId: "checking", expectedMinor: -6000n, conservativeMinor: -7000n },
+        { date: "2026-10-03", accountId: "checking", expectedMinor: 8000n, conservativeMinor: 8000n },
+      ],
+    };
+    const forecast = forecastDaily(input);
+    expect(forecast.status).toBe("available");
+    if (forecast.status === "available") expect(forecast.days.map(day => day.conservativeMinor)).toEqual([9000n, 2000n, 10000n]);
+    expect(availableToSpend(input)).toEqual({ status: "available", amountMinor: 500n, limitingDate: "2026-10-02" });
+  });
+
+  it("applies scenario deltas without changing base events", () => {
+    const base = { startDate: "2026-10-01", horizonDays: 2, currencyCode: "EUR", accounts: [{ id: "cash", currencyCode: "EUR", balanceMinor: 5000n }], events: [] };
+    const scenario = forecastDaily({ ...base, scenarioEvents: [{ date: "2026-10-02", accountId: "cash", expectedMinor: -1000n, conservativeMinor: -1500n, optimisticMinor: -500n }] });
+    expect(scenario.status).toBe("available");
+    if (scenario.status === "available") expect(scenario.days[1]).toMatchObject({ expectedMinor: 4000n, conservativeMinor: 3500n, optimisticMinor: 4500n });
+    expect(base.events).toEqual([]);
+  });
+
+  it("reports unknown or mixed-currency inputs as unavailable", () => {
+    const base = { startDate: "2026-10-01", horizonDays: 1, currencyCode: "EUR", events: [] };
+    expect(availableToSpend({ ...base, accounts: [{ id: "cash", currencyCode: "EUR", balanceMinor: null }] })).toEqual({ status: "unavailable", missingInputs: ["balance:cash"] });
+    expect(availableToSpend({ ...base, accounts: [{ id: "cash", currencyCode: "USD", balanceMinor: 1n }] })).toEqual({ status: "unavailable", missingInputs: ["fx:cash"] });
   });
 });
