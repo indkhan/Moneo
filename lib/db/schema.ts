@@ -73,6 +73,14 @@ export const categories = pgTable("categories", {
   name: text("name").notNull(),
 }, (table) => [uniqueIndex("categories_workspace_name_unique").on(table.workspaceId, table.name)]);
 
+export const merchants = pgTable("merchants", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  name: text("name").notNull(),
+  normalizedName: text("normalized_name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex("merchants_workspace_normalized_unique").on(table.workspaceId, table.normalizedName)]);
+
 export const transactions = pgTable("transactions", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
@@ -84,6 +92,7 @@ export const transactions = pgTable("transactions", {
   status: text("status").notNull().default("posted"),
   kind: text("kind").notNull().default("ordinary"),
   categoryId: uuid("category_id").references(() => categories.id),
+  merchantId: uuid("merchant_id").references(() => merchants.id),
   note: text("note"),
   transferId: uuid("transfer_id"),
   refundOfId: uuid("refund_of_id"),

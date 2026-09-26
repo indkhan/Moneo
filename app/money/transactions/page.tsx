@@ -5,7 +5,7 @@ import { TransactionTable } from "./table";
 import { correctTransaction, undoCorrection, markTransfer, markRefund, clearLink } from "./actions";
 import { SORT_ORDER, cursorClause, nextCursorForRow, parseTransactionParams, toQueryParams } from "./filters";
 
-type Filters = { q?: string; from?: string; to?: string; account?: string; status?: string; kind?: string; direction?: string; category?: string; minAmount?: string; maxAmount?: string; sort?: string; cursor?: string; transaction?: string };
+type Filters = { q?: string; from?: string; to?: string; account?: string; status?: string; kind?: string; direction?: string; category?: string; merchant?: string; minAmount?: string; maxAmount?: string; sort?: string; cursor?: string; transaction?: string };
 
 export default async function TransactionsPage({ searchParams }: { searchParams: Promise<Filters> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -13,15 +13,20 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const { supabase, workspace } = context;
   const params = await searchParams;
   const filters = parseTransactionParams(params as Record<string, string | undefined>);
-  const [{ data: accounts }, { data: categories }] = await Promise.all([
+  const merchantRaw = typeof params.merchant === "string" ? params.merchant : undefined;
+  const merchantId = merchantRaw && /^[0-9a-f-]{36}$/i.test(merchantRaw) ? merchantRaw : undefined;
+  const merchantUnknown = merchantRaw === "none";
+  const [{ data: accounts }, { data: categories }, { data: merchants }] = await Promise.all([
     supabase.from("accounts").select("id, name")
       .eq("workspace_id", workspace.id).order("name"),
     supabase.from("categories").select("id, name")
       .eq("workspace_id", workspace.id).order("name"),
+    supabase.from("merchants").select("id, name")
+      .eq("workspace_id", workspace.id).order("name"),
   ]);
   const { column, ascending } = SORT_ORDER[filters.sort];
   let query = supabase.from("transactions")
-    .select("id, posted_on, description, amount_minor, currency_code, status, kind, account_id, category_id, note")
+    .select("id, posted_on, description, amount_minor, currency_code, status, kind, account_id, category_id, merchant_id, note")
     .eq("workspace_id", workspace.id).order(column, { ascending }).order("id", { ascending }).limit(51);
   if (filters.q) query = query.ilike("description", `%${filters.q.replace(/[%_]/g, "\\$&")}%`);
   if (filters.from) query = query.gte("posted_on", filters.from);
@@ -33,6 +38,8 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   else if (filters.direction === "outflow") query = query.lt("amount_minor", 0);
   if (filters.categoryId) query = query.eq("category_id", filters.categoryId);
   else if (filters.uncategorized) query = query.is("category_id", null);
+  if (merchantId) query = query.eq("merchant_id", merchantId);
+  else if (merchantUnknown) query = query.is("merchant_id", null);
   if (filters.minAmountMinor !== undefined) query = query.gte("amount_minor", filters.minAmountMinor);
   if (filters.maxAmountMinor !== undefined) query = query.lte("amount_minor", filters.maxAmountMinor);
   if (filters.cursor) query = query.or(cursorClause(filters.sort, filters.cursor));
@@ -51,6 +58,8 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     .eq("transaction_id", selected.id).order("created_at", { ascending: false }) : { data: null };
   const { data: category } = selected?.category_id ? await supabase.from("categories")
     .select("name").eq("workspace_id", workspace.id).eq("id", selected.category_id).maybeSingle() : { data: null };
+  const { data: selectedMerchant } = selected?.merchant_id ? await supabase.from("merchants")
+    .select("name").eq("workspace_id", workspace.id).eq("id", selected.merchant_id).maybeSingle() : { data: null };
   const selectedAmount = (() => { try { return BigInt(selected?.amount_minor ?? ""); } catch { return null; } })();
   const negatedAmount = selectedAmount === null ? null : String(-selectedAmount);
   const { data: counterpart } = selected?.transfer_id ? await supabase.from("transactions")
@@ -87,9 +96,17 @@ if (selected && selected.status === "posted" && selected.kind === "ordinary" && 
     refundCandidates = data;
   }
   const names = Object.fromEntries((accounts ?? []).map(account => [account.id, account.name]));
+  const merchantNames = Object.fromEntries((merchants ?? []).map(merchant => [merchant.id, merchant.name]));
   const current = toQueryParams(filters, { includeCursor: true });
-  const baseQuery = toQueryParams(filters).toString();
+  if (merchantId) current.set("merchant", merchantId);
+  else if (merchantUnknown) current.set("merchant", "none");
+  const baseParams = toQueryParams(filters);
+  if (merchantId) baseParams.set("merchant", merchantId);
+  else if (merchantUnknown) baseParams.set("merchant", "none");
+  const baseQuery = baseParams.toString();
   const nextParams = toQueryParams(filters);
+  if (merchantId) nextParams.set("merchant", merchantId);
+  else if (merchantUnknown) nextParams.set("merchant", "none");
   if (next) nextParams.set("cursor", next);
 
   return <main className="mx-auto max-w-6xl px-6 py-10">
@@ -100,6 +117,7 @@ if (selected && selected.status === "posted" && selected.kind === "ordinary" && 
       <input name="to" type="date" defaultValue={filters.to} aria-label="To date" className="rounded border p-2" />
       <select name="account" defaultValue={filters.accountId ?? ""} aria-label="Account" className="rounded border p-2"><option value="">All accounts</option>{accounts?.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select>
       <select name="category" defaultValue={filters.uncategorized ? "none" : filters.categoryId ?? ""} aria-label="Category" className="rounded border p-2"><option value="">All categories</option><option value="none">Uncategorized</option>{categories?.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
+      <select name="merchant" defaultValue={merchantUnknown ? "none" : merchantId ?? ""} aria-label="Merchant" className="rounded border p-2"><option value="">All merchants</option><option value="none">Unknown</option>{merchants?.map(merchant => <option key={merchant.id} value={merchant.id}>{merchant.name}</option>)}</select>
       <input name="minAmount" defaultValue={filters.minAmountMinor} placeholder="Min (minor units)" aria-label="Minimum amount in minor units" inputMode="numeric" pattern="-?[0-9]+" title="Exact amount in minor units, e.g. cents (no decimals)" className="w-36 rounded border p-2" />
       <input name="maxAmount" defaultValue={filters.maxAmountMinor} placeholder="Max (minor units)" aria-label="Maximum amount in minor units" inputMode="numeric" pattern="-?[0-9]+" title="Exact amount in minor units, e.g. cents (no decimals)" className="w-36 rounded border p-2" />
       <select name="status" defaultValue={filters.status ?? ""} aria-label="Status" className="rounded border p-2"><option value="">All statuses</option><option value="posted">Posted</option><option value="pending">Pending</option></select>
@@ -108,13 +126,13 @@ if (selected && selected.status === "posted" && selected.kind === "ordinary" && 
       <select name="sort" defaultValue={filters.sort} aria-label="Sort order" className="rounded border p-2"><option value="date-desc">Newest first</option><option value="date-asc">Oldest first</option><option value="amount-desc">Largest amount first</option><option value="amount-asc">Smallest amount first</option></select>
       <button className="rounded border px-4">Filter</button>
     </form>
-    {error ? <p role="alert" className="mt-6">Could not load transactions: {error.message}</p> : <TransactionTable rows={rows} accountNames={names} query={current.toString()} sort={filters.sort} baseQuery={baseQuery} />}
+    {error ? <p role="alert" className="mt-6">Could not load transactions: {error.message}</p> : <TransactionTable rows={rows} accountNames={names} merchantNames={merchantNames} query={current.toString()} sort={filters.sort} baseQuery={baseQuery} />}
     {next && <Link className="mt-5 inline-block underline" href={`/money/transactions?${nextParams}`}>Next page</Link>}
     {selected && <aside aria-label="Transaction details" className="fixed inset-y-0 right-0 w-full max-w-md overflow-y-auto border-l bg-background p-6 shadow-xl">
       <Link href={`/money/transactions?${current}`} className="text-sm underline">Close</Link>
       <h2 className="mt-6 text-xl font-semibold">{selected.description}</h2>
       <p className="mt-2">{selected.posted_on} · {selected.amount_minor} minor units {selected.currency_code}</p>
-      <dl className="mt-6 space-y-2 text-sm"><div><dt className="text-muted-foreground">Account</dt><dd>{names[selected.account_id]}</dd></div><div><dt className="text-muted-foreground">Status</dt><dd>{selected.status}</dd></div><div><dt className="text-muted-foreground">Type</dt><dd>{selected.kind}</dd></div><div><dt className="text-muted-foreground">Note</dt><dd>{selected.note || "—"}</dd></div></dl>
+      <dl className="mt-6 space-y-2 text-sm"><div><dt className="text-muted-foreground">Account</dt><dd>{names[selected.account_id]}</dd></div><div><dt className="text-muted-foreground">Merchant</dt><dd>{selectedMerchant?.name ?? "Unknown"}</dd></div><div><dt className="text-muted-foreground">Status</dt><dd>{selected.status}</dd></div><div><dt className="text-muted-foreground">Type</dt><dd>{selected.kind}</dd></div><div><dt className="text-muted-foreground">Note</dt><dd>{selected.note || "—"}</dd></div></dl>
       <section aria-label="Transfer or refund" className="mt-6 space-y-3 border-t pt-5">
         <h3 className="font-medium">Transfer / refund</h3>
         <p className="text-sm text-muted-foreground">Transfers are excluded from income and spending. Refunds reduce spending in the refund posting period. Markings are audited and can be undone from the history below.</p>
