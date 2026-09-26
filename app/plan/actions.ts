@@ -6,6 +6,8 @@ import { requireWorkspace } from "@/lib/auth";
 import { parseAmountMinor } from "@/lib/csv";
 
 const date = z.iso.date();
+const assumptionId = z.uuid();
+const assumptionCadence = z.enum(["once", "daily", "weekly", "monthly"]);
 
 export async function createGoal(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
@@ -49,6 +51,50 @@ export async function addAssumption(form: FormData) {
     amount_minor: amount.toString(), currency_code: account.currency_code, cadence,
     starts_on: start, source: "user", confirmed: true, enabled: true,
   });
+  if (error) throw error;
+  redirect("/plan");
+}
+
+export async function updateAssumption(form: FormData) {
+  const { supabase, workspace } = await requireWorkspace();
+  const id = assumptionId.parse(form.get("assumptionId"));
+  const name = z.string().trim().min(1).max(120).parse(form.get("name"));
+  const cadence = assumptionCadence.parse(form.get("cadence"));
+  const startsOn = date.parse(form.get("startsOn"));
+  const rawEndsOn = String(form.get("endsOn") ?? "").trim();
+  const endsOn = rawEndsOn ? date.parse(rawEndsOn) : null;
+  if (endsOn && endsOn < startsOn) throw new Error("End date cannot be before start date");
+  const amount = parseAmountMinor(String(form.get("amount") ?? ""));
+  const { data: existing, error: lookupError } = await supabase.from("financial_assumptions")
+    .select("id").eq("workspace_id", workspace.id).eq("id", id).single();
+  if (lookupError || !existing) throw new Error("Assumption not found");
+  const { error } = await supabase.from("financial_assumptions").update({
+    name, amount_minor: amount.toString(), kind: amount >= 0n ? "income" : "expense",
+    cadence, starts_on: startsOn, ends_on: endsOn, source: "user", confirmed: true,
+  }).eq("workspace_id", workspace.id).eq("id", id);
+  if (error) throw error;
+  redirect("/plan");
+}
+
+export async function toggleAssumption(form: FormData) {
+  const { supabase, workspace } = await requireWorkspace();
+  const id = assumptionId.parse(form.get("assumptionId"));
+  const enabled = z.enum(["true", "false"]).parse(form.get("enabled")) === "true";
+  const { data: existing, error: lookupError } = await supabase.from("financial_assumptions")
+    .select("id").eq("workspace_id", workspace.id).eq("id", id).single();
+  if (lookupError || !existing) throw new Error("Assumption not found");
+  const { error } = await supabase.from("financial_assumptions").update({
+    enabled, source: "user", confirmed: true,
+  }).eq("workspace_id", workspace.id).eq("id", id);
+  if (error) throw error;
+  redirect("/plan");
+}
+
+export async function deleteAssumption(form: FormData) {
+  const { supabase, workspace } = await requireWorkspace();
+  const id = assumptionId.parse(form.get("assumptionId"));
+  const { error } = await supabase.from("financial_assumptions")
+    .delete().eq("workspace_id", workspace.id).eq("id", id);
   if (error) throw error;
   redirect("/plan");
 }
