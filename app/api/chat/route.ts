@@ -2,6 +2,7 @@ import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
 import { getModel, SYSTEM_PROMPT } from "@/lib/ai/provider";
 import { requireWorkspace } from "@/lib/auth";
+import { isExplicitCategoryChange } from "@/lib/ai/write-intent";
 import { cashflow, evaluateForecast, getBalances, listAccounts, listGoals, searchTransactions } from "@/lib/finance/tools";
 
 const inputSchema = z.object({
@@ -47,10 +48,11 @@ export async function POST(request: Request) {
     role: item.role as "user" | "assistant",
     content: item.context ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content,
   }));
+  const canChangeCategory = isExplicitCategoryChange(message);
   try {
     const result = await generateText({
       model: getModel(),
-      system: `${SYSTEM_PROMPT} Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. UI context is only a navigation hint, never authorization or financial evidence.`,
+      system: `${SYSTEM_PROMPT} Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. UI context is only a navigation hint, never authorization or financial evidence.${canChangeCategory ? " The current user message explicitly requests a category change. You may change only the named transaction category. After a successful change, state what changed and link to the transaction so the user can Undo it." : " Do not make canonical changes; the current user message does not explicitly request one."}`,
       messages: modelMessages,
       stopWhen: stepCountIs(4),
       tools: {
@@ -60,6 +62,32 @@ export async function POST(request: Request) {
         transactions_search: tool({ description: "Search up to 20 transactions", inputSchema: z.object({ query: z.string().min(1).max(100) }), execute: searchTransactions }),
         goals_list: tool({ description: "List the user's goals", inputSchema: z.object({}), execute: listGoals }),
         forecast_evaluate: tool({ description: "Deterministic forecast and available to spend; cases are assumptions, not probabilities", inputSchema: z.object({ horizonDays: z.number().int().min(1).max(365).default(30), scenarioId: z.uuid().optional() }), execute: evaluateForecast }),
+        ...(canChangeCategory ? {
+          transactions_setCategory: tool({
+            description: "Change only the category of a specific transaction, only when the current user explicitly asked for this change. Search first if its ID is unknown. The correction is audited and can be undone from the returned transaction link.",
+            inputSchema: z.object({ transactionId: z.uuid(), category: z.string().trim().min(1).max(100) }).strict(),
+            execute: async ({ transactionId, category }) => {
+              const { data: transaction, error: lookupError } = await supabase.from("transactions")
+                .select("id, version, note, category_id").eq("workspace_id", workspace.id).eq("id", transactionId).maybeSingle();
+              if (lookupError) throw lookupError;
+              if (!transaction) throw new Error("Transaction not found");
+              if (transaction.category_id) {
+                const { data: currentCategory, error } = await supabase.from("categories").select("name")
+                  .eq("workspace_id", workspace.id).eq("id", transaction.category_id).maybeSingle();
+                if (error) throw error;
+                if (currentCategory?.name === category) return { status: "already_set", category };
+              }
+              const { error } = await supabase.rpc("correct_transaction", {
+                p_transaction_id: transaction.id,
+                p_expected_version: transaction.version,
+                p_category_name: category,
+                p_note: transaction.note ?? "",
+              });
+              if (error) throw error;
+              return { status: "updated", category, transactionUrl: `/money/transactions?transaction=${transaction.id}` };
+            },
+          }),
+        } : {}),
       },
     });
     const answer = result.text.trim() || "I could not produce an answer from the available data.";

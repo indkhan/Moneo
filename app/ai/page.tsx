@@ -4,6 +4,13 @@ import { requireWorkspace } from "@/lib/auth";
 import { ChatForm } from "./chat-form";
 import { AnalysisPanel } from "./analysis-panel";
 
+function renderMessage(content: string) {
+  const linkPattern = /(\/money\/transactions\?transaction=[0-9a-f-]{36})/gi;
+  return content.split(linkPattern).map((part, index) => part.startsWith("/money/transactions?transaction=")
+    ? <Link key={index} href={part} className="underline">Open transaction and Undo</Link>
+    : part);
+}
+
 export default async function AiPage({ searchParams }: { searchParams: Promise<{ conversation?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { redirect("/login"); }
@@ -25,7 +32,7 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<{
       <Link href="/notifications" className="mt-2 block text-sm underline">Notifications</Link>
     </aside>
     <section><h2 className="text-xl font-semibold">{selected?.title ?? "New conversation"}</h2>
-      <div className="mt-5 space-y-4" aria-live="polite">{messages?.map(item => <article key={item.id} className="rounded border p-4"><p className="text-xs font-semibold uppercase text-muted-foreground">{item.role}</p><p className="mt-2 whitespace-pre-wrap text-sm">{item.content}</p></article>)}</div>
+      <div className="mt-5 space-y-4" aria-live="polite">{messages?.map(item => <article key={item.id} className="rounded border p-4"><p className="text-xs font-semibold uppercase text-muted-foreground">{item.role}</p><p className="mt-2 whitespace-pre-wrap text-sm">{renderMessage(item.content)}</p></article>)}</div>
       <ChatForm conversationId={selected?.id ?? crypto.randomUUID()} />
       <AnalysisPanel />
     </section>
