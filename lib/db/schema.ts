@@ -103,3 +103,77 @@ export const correctionEvents = pgTable("correction_events", {
   undone: boolean("undone").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const goals = pgTable("goals", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  name: text("name").notNull(),
+  targetMinor: bigint("target_minor", { mode: "bigint" }).notNull(),
+  currencyCode: text("currency_code").notNull(),
+  targetDate: date("target_date"),
+  priority: integer("priority").notNull().default(0),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  version: integer("version").notNull().default(0),
+  idempotencyKey: text("idempotency_key"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex("goals_workspace_idempotency_unique").on(table.workspaceId, table.idempotencyKey)]);
+
+export const goalAllocations = pgTable("goal_allocations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  goalId: uuid("goal_id").notNull().references(() => goals.id),
+  accountId: uuid("account_id").notNull().references(() => accounts.id),
+  amountMinor: bigint("amount_minor", { mode: "bigint" }).notNull(),
+}, (table) => [uniqueIndex("goal_allocations_goal_account_unique").on(table.goalId, table.accountId)]);
+
+export const financialAssumptions = pgTable("financial_assumptions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  accountId: uuid("account_id").references(() => accounts.id),
+  kind: text("kind").notNull(),
+  name: text("name").notNull(),
+  amountMinor: bigint("amount_minor", { mode: "bigint" }).notNull(),
+  currencyCode: text("currency_code").notNull(),
+  cadence: text("cadence").notNull(),
+  startsOn: date("starts_on").notNull(),
+  endsOn: date("ends_on"),
+  source: text("source").notNull(),
+  confidence: integer("confidence"),
+  confirmed: boolean("confirmed").notNull().default(false),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const scenarios = pgTable("scenarios", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const scenarioOverrides = pgTable("scenario_overrides", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  scenarioId: uuid("scenario_id").notNull().references(() => scenarios.id),
+  accountId: uuid("account_id").notNull().references(() => accounts.id),
+  assumptionId: uuid("assumption_id").references(() => financialAssumptions.id),
+  name: text("name").notNull(),
+  amountDeltaMinor: bigint("amount_delta_minor", { mode: "bigint" }).notNull(),
+  currencyCode: text("currency_code").notNull(),
+  cadence: text("cadence").notNull(),
+  startsOn: date("starts_on").notNull(),
+  endsOn: date("ends_on"),
+});
+
+export const forecastRuns = pgTable("forecast_runs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  scenarioId: uuid("scenario_id").references(() => scenarios.id),
+  horizonStart: date("horizon_start").notNull(),
+  horizonEnd: date("horizon_end").notNull(),
+  inputs: jsonb("inputs").notNull(),
+  result: jsonb("result").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
