@@ -84,6 +84,7 @@ export const transactions = pgTable("transactions", {
   note: text("note"),
   transferId: uuid("transfer_id"),
   refundOfId: uuid("refund_of_id"),
+  version: integer("version").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
