@@ -30,6 +30,15 @@ describe("import-time merchant and category capture", () => {
     expect(resolveMerchantName("", "Corner bakery croissant")).toBeNull();
   });
 
+  it("requires word boundaries for merchant inference", () => {
+    expect(resolveMerchantName(undefined, "Superuber trip")).toBeNull();
+    expect(resolveMerchantName(undefined, "Amazonium store")).toBeNull();
+    expect(resolveMerchantName("Superuber", "Superuber trip")).toBe("Superuber");
+    expect(resolveMerchantName("Amazonium", "Amazonium store")).toBe("Amazonium");
+    expect(resolveMerchantName(undefined, "Uber trip")).toBe("Uber");
+    expect(resolveMerchantName(undefined, "UBER *TRIP")).toBe("Uber");
+    expect(resolveMerchantName(undefined, "AMZN MKTP DE*XYZ")).toBe("Amazon");
+  });
   it("creates categories only from explicit source values", () => {
     expect(normalizeCategoryName("Groceries")).toBe("Groceries");
     expect(normalizeCategoryName("  ")).toBeNull();

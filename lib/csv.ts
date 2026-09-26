@@ -146,7 +146,7 @@ export const MERCHANT_CANONICALS: Record<string, string> = {
 
 function canonicalizeFragment(lower: string): string | null {
   for (const [fragment, canonical] of Object.entries(MERCHANT_CANONICALS)) {
-    if (lower.includes(fragment)) return canonical;
+    if (new RegExp(`\\b${fragment}\\b`).test(lower)) return canonical;
   }
   return null;
 }
