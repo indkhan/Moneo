@@ -2,8 +2,11 @@
 
 import { createHash } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { start } from "workflow/api";
 import { decideImportMatch } from "@/lib/import-match";
 import { mapRows, parseCsv, parseExcel, type MappedRow } from "@/lib/csv";
+import { getModel } from "@/lib/ai/provider";
+import { financialReview } from "./financial-review";
 
 // Stable IDs make every canonical effect safe to retry after a partial workflow failure.
 function stableId(value: string): string {
@@ -18,14 +21,20 @@ function checked<T>(result: { data: T | null; error: { message: string } | null 
 
 export async function importFile(importId: string, workspaceId: string, rowCount: number) {
   "use workflow";
-  let newRows = 0, matchedRows = 0, reviewRows = 0;
-  for (let offset = 0; offset < rowCount; offset += 250) {
-    const counts = await processImport(importId, workspaceId, offset, Math.min(offset + 250, rowCount), { newRows, matchedRows, reviewRows });
-    newRows = counts.newRows;
-    matchedRows = counts.matchedRows;
-    reviewRows = counts.reviewRows;
+  try {
+    let newRows = 0, matchedRows = 0, reviewRows = 0;
+    for (let offset = 0; offset < rowCount; offset += 250) {
+      const counts = await processImport(importId, workspaceId, offset, Math.min(offset + 250, rowCount), { newRows, matchedRows, reviewRows });
+      newRows = counts.newRows;
+      matchedRows = counts.matchedRows;
+      reviewRows = counts.reviewRows;
+    }
+    await finishImport(importId, workspaceId, { newRows, matchedRows, reviewRows });
+  } catch (error) {
+    await failImport(importId, workspaceId, String(error));
+    return;
   }
-  await finishImport(importId, workspaceId, { newRows, matchedRows, reviewRows });
+  await maybeStartFirstReview(importId, workspaceId);
 }
 
 async function processImport(importId: string, workspaceId: string, from: number, to: number, prior: { newRows: number; matchedRows: number; reviewRows: number }) {
@@ -36,9 +45,8 @@ async function processImport(importId: string, workspaceId: string, from: number
   const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
   const imported = checked(await db.from("imports").select("*").eq("id", importId).eq("workspace_id", workspaceId).single()) as { status: string; storage_path: string; mapping: unknown };
   if (imported.status === "completed") return prior;
-  checked(await db.from("imports").update({ status: "running", error: null }).eq("id", importId).eq("workspace_id", workspaceId));
-  try {
-    const blob = checked(await db.storage.from("imports").download(imported.storage_path));
+  checked(await db.from("imports").update({ status: "running", error: null }).eq("id", importId).eq("workspace_id", workspaceId).in("status", ["queued", "running"]));
+  const blob = checked(await db.storage.from("imports").download(imported.storage_path));
     if (!blob) throw new Error("Stored import file is missing");
     const extension = imported.storage_path.split(".").pop();
     const rows = extension === "csv" ? parseCsv(await blob.text()) : await parseExcel(await blob.arrayBuffer());
@@ -60,16 +68,37 @@ async function processImport(importId: string, workspaceId: string, from: number
     }
     checked(await db.from("imports").update({ new_rows: newRows, matched_rows: matchedRows, review_rows: reviewRows }).eq("id", importId).eq("workspace_id", workspaceId));
     return { newRows, matchedRows, reviewRows };
-  } catch (error) {
-    await db.from("imports").update({ status: "failed", error: error instanceof Error ? error.message : String(error) }).eq("id", importId).eq("workspace_id", workspaceId);
-    throw error;
-  }
 }
 
 async function finishImport(importId: string, workspaceId: string, counts: { newRows: number; matchedRows: number; reviewRows: number }) {
   "use step";
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
-  checked(await db.from("imports").update({ status: "completed", ...{ new_rows: counts.newRows, matched_rows: counts.matchedRows, review_rows: counts.reviewRows }, error: null }).eq("id", importId).eq("workspace_id", workspaceId));
+  checked(await db.from("imports").update({ status: "completed", new_rows: counts.newRows, matched_rows: counts.matchedRows, review_rows: counts.reviewRows, error: null }).eq("id", importId).eq("workspace_id", workspaceId).eq("status", "running"));
+}
+
+async function failImport(importId: string, workspaceId: string, error: string) {
+  "use step";
+  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+  checked(await db.from("imports").update({ status: "failed", error }).eq("id", importId).eq("workspace_id", workspaceId).in("status", ["queued", "running"]));
+}
+
+async function maybeStartFirstReview(importId: string, workspaceId: string) {
+  "use step";
+  if (!process.env.OPENROUTER_API_KEY || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
+  try { getModel(); } catch { return; } // Only a configured free model may start automatically.
+  try {
+    const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+    const first = await db.from("imports").select("id").eq("workspace_id", workspaceId).eq("status", "completed").gt("new_rows", 0).order("created_at").order("id").limit(1).maybeSingle();
+    if (first.error || first.data?.id !== importId) return;
+    const jobId = stableId(`${workspaceId}:first-financial-review`);
+    const inserted = await db.from("background_jobs").upsert({ id: jobId, workspace_id: workspaceId, kind: "financial_review" }, { onConflict: "id", ignoreDuplicates: true }).select("id").maybeSingle();
+    if (inserted.error || !inserted.data) return; // Another import already owns the first review.
+    try {
+    await start(financialReview, [jobId, workspaceId]);
+    } catch (error) {
+      await db.from("background_jobs").update({ status: "failed", stage: "starting", error: String(error) }).eq("id", jobId).eq("workspace_id", workspaceId);
+    }
+  } catch { /* Analysis is optional; the completed import remains valid. */ }
 }
 
 type Db = SupabaseClient<any>;
