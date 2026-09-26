@@ -42,7 +42,7 @@ export async function evaluatePlan(horizonDays = 30, scenarioId?: string) {
     { data: allocations, error: allocationsError }, { data: assumptions, error: assumptionsError }] = await Promise.all([
       supabase.from("accounts").select("id, type, currency_code").eq("workspace_id", workspace.id),
       supabase.from("balance_snapshots").select("account_id, amount_minor, currency_code, as_of")
-        .eq("workspace_id", workspace.id).order("as_of", { ascending: false }),
+        .eq("workspace_id", workspace.id).order("as_of", { ascending: false }).order("created_at", { ascending: false }),
       supabase.from("goal_allocations").select("account_id, amount_minor").eq("workspace_id", workspace.id),
       supabase.from("financial_assumptions").select("account_id, amount_minor, currency_code, cadence, starts_on, ends_on, enabled")
         .eq("workspace_id", workspace.id).eq("enabled", true),

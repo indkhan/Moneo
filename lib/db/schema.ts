@@ -178,3 +178,26 @@ export const forecastRuns = pgTable("forecast_runs", {
   result: jsonb("result").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const backgroundJobs = pgTable("background_jobs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  kind: text("kind").notNull(),
+  status: text("status").notNull().default("queued"),
+  stage: text("stage").notNull().default("queued"),
+  error: text("error"),
+  cancelRequested: boolean("cancel_requested").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const savedAnalyses = pgTable("saved_analyses", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  jobId: uuid("job_id").notNull().unique().references(() => backgroundJobs.id),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  evidence: jsonb("evidence").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
