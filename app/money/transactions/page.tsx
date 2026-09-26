@@ -4,7 +4,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { TransactionTable } from "./table";
 import { correctTransaction, undoCorrection } from "./actions";
 
-type Filters = { q?: string; from?: string; to?: string; account?: string; cursor?: string; transaction?: string };
+type Filters = { q?: string; from?: string; to?: string; account?: string; status?: string; kind?: string; direction?: string; cursor?: string; transaction?: string };
 
 export default async function TransactionsPage({ searchParams }: { searchParams: Promise<Filters> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -20,6 +20,13 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   if (params.from) query = query.gte("posted_on", params.from);
   if (params.to) query = query.lte("posted_on", params.to);
   if (params.account) query = query.eq("account_id", params.account);
+  const status = params.status === "posted" || params.status === "pending" ? params.status : undefined;
+  const kind = params.kind === "ordinary" || params.kind === "transfer" || params.kind === "refund" ? params.kind : undefined;
+  const direction = params.direction === "income" || params.direction === "outflow" ? params.direction : undefined;
+  if (status) query = query.eq("status", status);
+  if (kind) query = query.eq("kind", kind);
+  if (direction === "income") query = query.gt("amount_minor", 0);
+  else if (direction === "outflow") query = query.lt("amount_minor", 0);
   if (params.cursor) {
     const [date, id] = params.cursor.split("|");
     if (/^\d{4}-\d{2}-\d{2}$/.test(date) && /^[0-9a-f-]{36}$/i.test(id))
@@ -41,6 +48,9 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const names = Object.fromEntries((accounts ?? []).map(account => [account.id, account.name]));
   const current = new URLSearchParams();
   for (const key of ["q", "from", "to", "account", "cursor"] as const) if (params[key]) current.set(key, params[key]);
+  if (status) current.set("status", status);
+  if (kind) current.set("kind", kind);
+  if (direction) current.set("direction", direction);
 
   return <main className="mx-auto max-w-6xl px-6 py-10">
     <header className="flex items-center justify-between"><div><Link href="/" className="text-sm text-muted-foreground">← Home</Link><h1 className="mt-2 text-3xl font-semibold">Transactions</h1></div><Link href="/import" className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground">Import</Link></header>
@@ -49,6 +59,9 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       <input name="from" type="date" defaultValue={params.from} aria-label="From date" className="rounded border p-2" />
       <input name="to" type="date" defaultValue={params.to} aria-label="To date" className="rounded border p-2" />
       <select name="account" defaultValue={params.account ?? ""} aria-label="Account" className="rounded border p-2"><option value="">All accounts</option>{accounts?.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select>
+      <select name="status" defaultValue={status ?? ""} aria-label="Status" className="rounded border p-2"><option value="">All statuses</option><option value="posted">Posted</option><option value="pending">Pending</option></select>
+      <select name="kind" defaultValue={kind ?? ""} aria-label="Type" className="rounded border p-2"><option value="">All types</option><option value="ordinary">Ordinary</option><option value="transfer">Transfer</option><option value="refund">Refund</option></select>
+      <select name="direction" defaultValue={direction ?? ""} aria-label="Direction" className="rounded border p-2"><option value="">Income and outflow</option><option value="income">Income</option><option value="outflow">Outflow</option></select>
       <button className="rounded border px-4">Filter</button>
     </form>
     {error ? <p role="alert" className="mt-6">Could not load transactions: {error.message}</p> : <TransactionTable rows={rows} accountNames={names} query={current.toString()} />}
