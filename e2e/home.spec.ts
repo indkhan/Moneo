@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test("home renders stack status", async ({ page }) => {
+test("home explains missing Supabase setup", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByText("Personal Finance Workspace")).toBeVisible();
+  await expect(page.getByText("Configure Supabase in .env to start Moneo.")).toBeVisible();
 });

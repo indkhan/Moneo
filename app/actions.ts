@@ -19,6 +19,7 @@ export async function setManualBalance(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
   const accountId = z.uuid().parse(form.get("accountId"));
   const asOf = z.iso.date().parse(form.get("asOf"));
+  if (asOf > new Date().toISOString().slice(0, 10)) throw new Error("Balance date cannot be in the future");
   const amount = parseAmountMinor(String(form.get("amount") ?? ""));
   const { data: account } = await supabase.from("accounts").select("currency_code")
     .eq("workspace_id", workspace.id).eq("id", accountId).maybeSingle();
