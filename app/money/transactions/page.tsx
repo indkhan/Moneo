@@ -3,27 +3,77 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { TransactionTable } from "./table";
 import { correctTransaction, undoCorrection, markTransfer, markRefund, clearLink } from "./actions";
-import { SORT_ORDER, cursorClause, nextCursorForRow, parseTransactionParams, toQueryParams } from "./filters";
+import { DEFAULT_SORT, SORT_ORDER, cursorClause, nextCursorForRow, parseTransactionParams, toQueryParams, type ParsedTransactionParams } from "./filters";
+import { parseStoredFilters, parseViewId, type SaveInput } from "../views/validate";
+import { SavedViewsPanel } from "../views/panel";
 
-type Filters = { q?: string; from?: string; to?: string; account?: string; status?: string; kind?: string; direction?: string; category?: string; merchant?: string; minAmount?: string; maxAmount?: string; sort?: string; cursor?: string; transaction?: string };
+type Filters = { q?: string; from?: string; to?: string; account?: string; status?: string; kind?: string; direction?: string; category?: string; merchant?: string; minAmount?: string; maxAmount?: string; sort?: string; cursor?: string; transaction?: string; view?: string };
 
 export default async function TransactionsPage({ searchParams }: { searchParams: Promise<Filters> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { redirect("/login"); }
   const { supabase, workspace } = context;
   const params = await searchParams;
-  const filters = parseTransactionParams(params as Record<string, string | undefined>);
-  const merchantRaw = typeof params.merchant === "string" ? params.merchant : undefined;
-  const merchantId = merchantRaw && /^[0-9a-f-]{36}$/i.test(merchantRaw) ? merchantRaw : undefined;
-  const merchantUnknown = merchantRaw === "none";
-  const [{ data: accounts }, { data: categories }, { data: merchants }] = await Promise.all([
+  // Opaque saved-view id (?view=<uuid>). When present the filter JSON is
+  // loaded server-side from workspace-scoped storage, so search terms and
+  // account/category/merchant ids never appear in the saved-view link.
+  const viewId = parseViewId(typeof params.view === "string" ? params.view : undefined);
+  const [{ data: accounts }, { data: categories }, { data: merchants }, { data: savedViews }] = await Promise.all([
     supabase.from("accounts").select("id, name")
       .eq("workspace_id", workspace.id).order("name"),
     supabase.from("categories").select("id, name")
       .eq("workspace_id", workspace.id).order("name"),
     supabase.from("merchants").select("id, name")
       .eq("workspace_id", workspace.id).order("name"),
+    supabase.from("transaction_views").select("id, name, created_at")
+      .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(50),
   ]);
+  let activeView: { id: string; name: string } | null = null;
+  let savedFilters = null as ReturnType<typeof parseStoredFilters> | null;
+  let viewNotFound = false;
+  if (viewId) {
+    const { data } = await supabase.from("transaction_views")
+      .select("id, name, filters").eq("workspace_id", workspace.id).eq("id", viewId).maybeSingle();
+    if (!data) viewNotFound = true;
+    else {
+      activeView = { id: data.id, name: data.name };
+      savedFilters = parseStoredFilters(data.filters as unknown);
+    }
+  }
+  const urlFilters = parseTransactionParams(params as Record<string, string | undefined>);
+  const urlMerchantRaw = typeof params.merchant === "string" ? params.merchant : undefined;
+  const urlMerchantId = urlMerchantRaw && /^[0-9a-f-]{36}$/i.test(urlMerchantRaw) ? urlMerchantRaw : undefined;
+  const urlMerchantUnknown = urlMerchantRaw === "none";
+  // Effective filters: saved JSON in view mode, validated URL params otherwise.
+  // Normal filtering keeps working unchanged when no ?view= is present.
+  let filters: ParsedTransactionParams = urlFilters;
+  let merchantId = urlMerchantId;
+  let merchantUnknown = urlMerchantUnknown;
+  if (activeView && savedFilters) {
+    const sort = savedFilters.sort ?? DEFAULT_SORT;
+    // Cursor/transaction stay in the URL (ephemeral navigation state only);
+    // every other URL filter param is ignored so the view link stays opaque.
+    // The cursor is re-validated against the saved sort, not the URL sort.
+    const cursorHolder = parseTransactionParams({ cursor: params.cursor, sort });
+    filters = {
+      ...(savedFilters.q ? { q: savedFilters.q } : {}),
+      ...(savedFilters.from ? { from: savedFilters.from } : {}),
+      ...(savedFilters.to ? { to: savedFilters.to } : {}),
+      ...(savedFilters.accountId ? { accountId: savedFilters.accountId } : {}),
+      ...(savedFilters.status ? { status: savedFilters.status } : {}),
+      ...(savedFilters.kind ? { kind: savedFilters.kind } : {}),
+      ...(savedFilters.direction ? { direction: savedFilters.direction } : {}),
+      ...(savedFilters.categoryId ? { categoryId: savedFilters.categoryId } : {}),
+      ...(savedFilters.uncategorized ? { uncategorized: true } : {}),
+      ...(savedFilters.minAmountMinor !== undefined ? { minAmountMinor: savedFilters.minAmountMinor } : {}),
+      ...(savedFilters.maxAmountMinor !== undefined ? { maxAmountMinor: savedFilters.maxAmountMinor } : {}),
+      sort,
+      ...(cursorHolder.cursor ? { cursor: cursorHolder.cursor } : {}),
+      ...(urlFilters.transactionId ? { transactionId: urlFilters.transactionId } : {}),
+    };
+    merchantId = savedFilters.merchantId;
+    merchantUnknown = savedFilters.merchantUnknown ?? false;
+  }
   const { column, ascending } = SORT_ORDER[filters.sort];
   let query = supabase.from("transactions")
     .select("id, posted_on, description, amount_minor, currency_code, status, kind, account_id, category_id, merchant_id, note")
@@ -97,20 +147,69 @@ if (selected && selected.status === "posted" && selected.kind === "ordinary" && 
   }
   const names = Object.fromEntries((accounts ?? []).map(account => [account.id, account.name]));
   const merchantNames = Object.fromEntries((merchants ?? []).map(merchant => [merchant.id, merchant.name]));
-  const current = toQueryParams(filters, { includeCursor: true });
-  if (merchantId) current.set("merchant", merchantId);
-  else if (merchantUnknown) current.set("merchant", "none");
-  const baseParams = toQueryParams(filters);
-  if (merchantId) baseParams.set("merchant", merchantId);
-  else if (merchantUnknown) baseParams.set("merchant", "none");
-  const baseQuery = baseParams.toString();
-  const nextParams = toQueryParams(filters);
-  if (merchantId) nextParams.set("merchant", merchantId);
-  else if (merchantUnknown) nextParams.set("merchant", "none");
-  if (next) nextParams.set("cursor", next);
+  // Navigation params. In view mode detail/pagination links stay opaque
+  // (?view=<uuid>&cursor=…&transaction=…); sort headers use the serialized
+  // saved filters so the existing table toggle keeps working, which opens
+  // an ad-hoc filtered URL (same exposure as normal filtering).
+  let current: URLSearchParams;
+  let baseQuery: string;
+  let nextParams: URLSearchParams;
+  let saveDefaults: SaveInput;
+  if (activeView) {
+    current = new URLSearchParams();
+    current.set("view", activeView.id);
+    if (filters.cursor) current.set("cursor", `${filters.cursor.value}|${filters.cursor.id}`);
+    const serialized = toQueryParams({ ...filters, cursor: undefined, transactionId: undefined });
+    serialized.delete("cursor");
+    baseQuery = serialized.toString();
+    nextParams = new URLSearchParams();
+    nextParams.set("view", activeView.id);
+    if (next) nextParams.set("cursor", next);
+    saveDefaults = {
+      ...(filters.q ? { q: filters.q } : {}),
+      ...(filters.from ? { from: filters.from } : {}),
+      ...(filters.to ? { to: filters.to } : {}),
+      ...(filters.accountId ? { account: filters.accountId } : {}),
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.kind ? { kind: filters.kind } : {}),
+      ...(filters.direction ? { direction: filters.direction } : {}),
+      ...(filters.uncategorized ? { category: "none" } : filters.categoryId ? { category: filters.categoryId } : {}),
+      ...(merchantUnknown ? { merchant: "none" } : merchantId ? { merchant: merchantId } : {}),
+      ...(filters.minAmountMinor !== undefined ? { minAmount: filters.minAmountMinor } : {}),
+      ...(filters.maxAmountMinor !== undefined ? { maxAmount: filters.maxAmountMinor } : {}),
+      ...(filters.sort !== DEFAULT_SORT ? { sort: filters.sort } : {}),
+    };
+  } else {
+    current = toQueryParams(filters, { includeCursor: true });
+    if (merchantId) current.set("merchant", merchantId);
+    else if (merchantUnknown) current.set("merchant", "none");
+    const baseParams = toQueryParams(filters);
+    if (merchantId) baseParams.set("merchant", merchantId);
+    else if (merchantUnknown) baseParams.set("merchant", "none");
+    baseQuery = baseParams.toString();
+    nextParams = toQueryParams(filters);
+    if (merchantId) nextParams.set("merchant", merchantId);
+    else if (merchantUnknown) nextParams.set("merchant", "none");
+    if (next) nextParams.set("cursor", next);
+    saveDefaults = {
+      ...(filters.q ? { q: filters.q } : {}),
+      ...(filters.from ? { from: filters.from } : {}),
+      ...(filters.to ? { to: filters.to } : {}),
+      ...(filters.accountId ? { account: filters.accountId } : {}),
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.kind ? { kind: filters.kind } : {}),
+      ...(filters.direction ? { direction: filters.direction } : {}),
+      ...(filters.uncategorized ? { category: "none" } : filters.categoryId ? { category: filters.categoryId } : {}),
+      ...(merchantUnknown ? { merchant: "none" } : merchantId ? { merchant: merchantId } : {}),
+      ...(filters.minAmountMinor !== undefined ? { minAmount: filters.minAmountMinor } : {}),
+      ...(filters.maxAmountMinor !== undefined ? { maxAmount: filters.maxAmountMinor } : {}),
+      ...(filters.sort !== DEFAULT_SORT ? { sort: filters.sort } : {}),
+    };
+  }
 
   return <main className="mx-auto max-w-6xl px-6 py-10">
     <header className="flex items-center justify-between"><div><Link href="/" className="text-sm text-muted-foreground">← Home</Link><h1 className="mt-2 text-3xl font-semibold">Transactions</h1><Link href="/money/recurring" className="mt-2 inline-block text-sm underline">Review recurring patterns</Link></div><Link href="/import" className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground">Import</Link></header>
+    {viewNotFound ? <p role="alert" className="mt-6">Saved view not found. Showing normal filters.</p> : null}
     <form className="mt-8 flex flex-wrap gap-3" method="get">
       <input name="q" defaultValue={filters.q} placeholder="Search descriptions" aria-label="Search descriptions" className="rounded border p-2" />
       <input name="from" type="date" defaultValue={filters.from} aria-label="From date" className="rounded border p-2" />
@@ -126,6 +225,7 @@ if (selected && selected.status === "posted" && selected.kind === "ordinary" && 
       <select name="sort" defaultValue={filters.sort} aria-label="Sort order" className="rounded border p-2"><option value="date-desc">Newest first</option><option value="date-asc">Oldest first</option><option value="amount-desc">Largest amount first</option><option value="amount-asc">Smallest amount first</option></select>
       <button className="rounded border px-4">Filter</button>
     </form>
+    <SavedViewsPanel views={(savedViews ?? []).map(view => ({ id: view.id, name: view.name, created_at: view.created_at }))} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} />
     {error ? <p role="alert" className="mt-6">Could not load transactions: {error.message}</p> : <TransactionTable rows={rows} accountNames={names} merchantNames={merchantNames} query={current.toString()} sort={filters.sort} baseQuery={baseQuery} />}
     {next && <Link className="mt-5 inline-block underline" href={`/money/transactions?${nextParams}`}>Next page</Link>}
     {selected && <aside aria-label="Transaction details" className="fixed inset-y-0 right-0 w-full max-w-md overflow-y-auto border-l bg-background p-6 shadow-xl">
