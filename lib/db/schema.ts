@@ -201,3 +201,42 @@ export const savedAnalyses = pgTable("saved_analyses", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const artifacts = pgTable("artifacts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  kind: text("kind").notNull(),
+  name: text("name").notNull(),
+  activeVersionId: uuid("active_version_id"),
+  permissions: jsonb("permissions").notNull().default([]),
+  createdByConversationId: uuid("created_by_conversation_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const artifactVersions = pgTable("artifact_versions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  artifactId: uuid("artifact_id").notNull().references(() => artifacts.id),
+  version: integer("version").notNull(),
+  source: text("source").notNull(),
+  manifest: jsonb("manifest").notNull(),
+  status: text("status").notNull(),
+  error: text("error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex("artifact_versions_number_unique").on(table.artifactId, table.version)]);
+
+export const artifactState = pgTable("artifact_state", {
+  artifactId: uuid("artifact_id").primaryKey().references(() => artifacts.id),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  state: jsonb("state").notNull().default({}),
+  version: integer("version").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const dashboardItems = pgTable("dashboard_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  artifactId: uuid("artifact_id").notNull().references(() => artifacts.id),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex("dashboard_items_artifact_unique").on(table.workspaceId, table.artifactId)]);
