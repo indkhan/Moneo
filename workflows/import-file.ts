@@ -101,7 +101,7 @@ async function maybeStartFirstReview(importId: string, workspaceId: string) {
   } catch { /* Analysis is optional; the completed import remains valid. */ }
 }
 
-type Db = SupabaseClient<any>;
+type Db = SupabaseClient;
 
 async function importRow(db: Db, workspaceId: string, importId: string, accountId: string, row: MappedRow): Promise<"new" | "matched" | "review" | "rejected"> {
   const sourceId = stableId(`${importId}:row:${row.rowNumber}`);

@@ -35,7 +35,8 @@ describe("financial import parsing", () => {
 
   it("maps debit and credit without changing signs", () => {
     const rows = parseCsv("Date,Description,Debit,Credit\n2026-09-01,Rent,900,\n2026-09-02,Salary,,2000");
-    const { amountColumn: _amountColumn, ...base } = mapping;
+    const base: Partial<typeof mapping> = { ...mapping };
+    delete base.amountColumn;
     const mapped = mapRows(rows, { ...base, dateFormat: "iso", debitColumn: "Debit", creditColumn: "Credit" });
     expect(mapped.map((r) => r.amountMinor)).toEqual([-90000n, 200000n]);
   });

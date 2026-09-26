@@ -36,7 +36,11 @@ export default function ImportPage() {
     if (response.ok) setHistory(await response.json());
   }
 
-  useEffect(() => { void loadHistory(); }, []);
+  useEffect(() => {
+    fetch("/api/imports", { cache: "no-store" }).then(async (response) => {
+      if (response.ok) setHistory(await response.json());
+    }).catch(() => {});
+  }, []);
   useEffect(() => {
     if (!history.some((item) => item.status === "queued" || item.status === "running")) return;
     const timer = setInterval(async () => {
