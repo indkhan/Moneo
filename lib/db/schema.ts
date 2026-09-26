@@ -240,3 +240,22 @@ export const dashboardItems = pgTable("dashboard_items", {
   position: integer("position").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [uniqueIndex("dashboard_items_artifact_unique").on(table.workspaceId, table.artifactId)]);
+
+export const conversations = pgTable("conversations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  title: text("title").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const messages = pgTable("messages", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  conversationId: uuid("conversation_id").notNull().references(() => conversations.id),
+  role: text("role").notNull(),
+  requestId: uuid("request_id"),
+  replyTo: uuid("reply_to"),
+  content: text("content").notNull(),
+  context: jsonb("context"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});

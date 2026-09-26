@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { summarizeCashflow } from "./calculations";
 import { requireWorkspace } from "@/lib/auth";
+import { evaluatePlan } from "./model";
 
 const periodInput = z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().regex(/^[A-Z]{3}$/) });
 const searchInput = z.object({ query: z.string().min(1).max(100) });
@@ -62,6 +63,30 @@ export async function searchTransactions(input: unknown) {
     .order("posted_on", { ascending: false }).limit(20);
   if (error) throw error;
   return data;
+}
+
+export async function listGoals() {
+  const { supabase, workspace } = await requireWorkspace();
+  const { data, error } = await supabase.from("goals")
+    .select("id, name, target_minor, currency_code, target_date, status")
+    .eq("workspace_id", workspace.id).order("created_at", { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+export async function evaluateForecast(input: unknown) {
+  const args = z.object({ horizonDays: z.number().int().min(1).max(365).default(30), scenarioId: z.uuid().optional() }).parse(input);
+  const { forecast, available, input: assumptions } = await evaluatePlan(args.horizonDays, args.scenarioId);
+  if (forecast.status === "unavailable" || available.status === "unavailable")
+    return { status: "unavailable", missingInputs: [...new Set([
+      ...(forecast.status === "unavailable" ? forecast.missingInputs : []),
+      ...(available.status === "unavailable" ? available.missingInputs : []),
+    ])] };
+  const last = forecast.days.at(-1)!;
+  return { status: "available", currencyCode: assumptions.currencyCode, horizonDays: args.horizonDays,
+    expectedMinor: last.expectedMinor.toString(), conservativeMinor: last.conservativeMinor.toString(),
+    optimisticMinor: last.optimisticMinor.toString(), availableToSpendMinor: available.amountMinor.toString(),
+    limitingDate: available.limitingDate, casesAreAssumptionsNotProbabilities: true };
 }
 
 export const financeToolSchemas = { periodInput, searchInput };
