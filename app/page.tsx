@@ -88,7 +88,7 @@ export default async function Home() {
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div><p className="text-sm uppercase tracking-widest text-muted-foreground">Moneo</p><h1 className="text-3xl font-semibold">Home</h1></div>
         <nav aria-label="Main" className="flex flex-wrap gap-4 text-sm">
-          <Link href="/import">Import</Link><Link href="/money/transactions">Transactions</Link><Link href="/plan">Plan</Link><Link href="/ai">AI</Link>
+          <Link href="/import">Import</Link><Link href="/money/transactions">Transactions</Link><Link href="/plan">Plan</Link><Link href="/ai">AI</Link><Link href="/ai/activity">Activity</Link><Link href="/notifications">Notifications</Link>
         </nav>
       </header>
       <section aria-label="Net worth" className="mt-10 rounded-lg border p-5">

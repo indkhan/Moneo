@@ -21,6 +21,8 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<{
       <Link href="/ai?conversation=new" className="mt-5 inline-block rounded border px-3 py-2 text-sm">New conversation</Link>
       <nav aria-label="Conversations" className="mt-5 space-y-2">{threads?.map(thread => <Link key={thread.id} href={`/ai?conversation=${thread.id}`} className="block truncate rounded border p-2 text-sm">{thread.title}</Link>)}</nav>
       <Link href="/ai/library" className="mt-5 block text-sm underline">Saved tools and analyses</Link>
+      <Link href="/ai/activity" className="mt-2 block text-sm underline">Activity</Link>
+      <Link href="/notifications" className="mt-2 block text-sm underline">Notifications</Link>
     </aside>
     <section><h2 className="text-xl font-semibold">{selected?.title ?? "New conversation"}</h2>
       <div className="mt-5 space-y-4" aria-live="polite">{messages?.map(item => <article key={item.id} className="rounded border p-4"><p className="text-xs font-semibold uppercase text-muted-foreground">{item.role}</p><p className="mt-2 whitespace-pre-wrap text-sm">{item.content}</p></article>)}</div>
