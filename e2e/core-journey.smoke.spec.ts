@@ -1,14 +1,12 @@
-// Credential-free smoke test. Runs with blank .env (current repo state).
+// Smoke test for both configured and unconfigured environments.
 //
-// What it proves: the app boots, reports missing Supabase honestly instead of
-// crashing, exposes /api/health with supabase:false/openrouter:false, and the
-// key entry routes render their empty/disabled states. It makes NO network
-// calls to OpenRouter and requires NO Supabase credentials.
+// What it proves: the app boots, reports configuration status, and renders
+// the key entry routes without making OpenRouter requests.
 import { test, expect } from "@playwright/test";
 
-test.describe("core journey smoke (no credentials, no live AI)", () => {
-  test("home explains missing Supabase setup instead of crashing", async ({
-    page,
+test.describe("core journey smoke (no session, no live AI)", () => {
+  test("home shows setup guidance or redirects unauthenticated users", async ({
+    page, request,
   }) => {
     const openRouterCalls: string[] = [];
     page.on("request", (request) => {
@@ -16,23 +14,23 @@ test.describe("core journey smoke (no credentials, no live AI)", () => {
         openRouterCalls.push(request.url());
     });
 
+    const health = await (await request.get("/api/health")).json();
     await page.goto("/");
-    await expect(
-      page.getByText("Configure Supabase in .env to start Moneo."),
-    ).toBeVisible();
+    if (health.supabase) await expect(page).toHaveURL(/\/login$/);
+    else await expect(page.getByText("Configure Supabase in .env to start Moneo.")).toBeVisible();
     expect(openRouterCalls).toEqual([]);
   });
 
-  test("health endpoint reports unconfigured backends honestly", async ({
+  test("health endpoint reports backend configuration", async ({
     request,
   }) => {
     const response = await request.get("/api/health");
     expect(response.ok()).toBe(true);
     const body = await response.json();
     expect(body.ok).toBe(true);
-    // Blank .env => both backends honestly reported as absent.
-    expect(body.supabase).toBe(false);
-    expect(body.openrouter).toBe(false);
+    expect(body.supabase).toBe(Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY));
+    expect(body.openrouter).toBe(Boolean(process.env.OPENROUTER_API_KEY));
+    expect(body.model).toMatch(/:free$/);
   });
 
   test("login page renders OTP form", async ({ page }) => {

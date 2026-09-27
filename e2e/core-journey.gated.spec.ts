@@ -1,14 +1,13 @@
-// Full prompt.md §46 core journey — CREDENTIAL-GATED, skipped without env.
+// Partial live-backend journey — CREDENTIAL-GATED, skipped without auth state.
 //
-// Covers, in order: authenticate → upload sample finance files → confirm AI
-// mapping → import → review/correct transaction → view Home → ask grounded AI
-// question → create goal → run scenario/forecast → complete Deep Analysis →
-// generate artifact → pin artifact → import newer data → verify dependent
-// data/artifact updates.
+// Covers login state, import submission, transaction visibility, Home,
+// goal creation, and re-import against Supabase. AI responses are mocked.
+// It does not yet prove correction, scenario changes, artifact pinning, or
+// refreshed financial values.
 //
 // Why gated: every step after login needs a real Supabase project, an
 // authenticated session, and seeded workspace data. Local .env in this repo
-// is blank, and Supabase magic-link OTP has no deterministic inbox in CI, so
+// may be configured, but Supabase magic-link OTP has no deterministic inbox in CI, so
 // this spec SKIPS (explicitly, via test.skip with the missing vars listed)
 // unless the operator supplies:
 //   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, and
@@ -41,10 +40,10 @@ if (storageState) test.use({ storageState });
 const CAN_RUN =
   hasSupabaseEnv() && storageState !== null && fs.existsSync(storageState);
 
-test.describe("full core journey §46 (gated: real Supabase + mocked AI)", () => {
+test.describe("partial core journey (gated: real Supabase + mocked AI)", () => {
   test.skip(!CAN_RUN, gatedSkipReason());
 
-  test("authenticate → import → correct → home → ask → goal → scenario → analysis → artifact → pin → re-import", async ({
+  test("authenticate → import → home → ask → goal → mocked analysis → mocked artifact → re-import", async ({
     page,
   }) => {
     const openRouterCalls: string[] = [];
@@ -111,7 +110,7 @@ test.describe("full core journey §46 (gated: real Supabase + mocked AI)", () =>
       await expect(page.getByText("august.csv")).toBeVisible();
     });
 
-    await test.step("review/correct a transaction", async () => {
+    await test.step("view an imported transaction", async () => {
       await page.goto("/money/transactions");
       await expect(
         page.getByRole("heading", { name: "Transactions" }),
@@ -150,7 +149,7 @@ test.describe("full core journey §46 (gated: real Supabase + mocked AI)", () =>
       await expect(page.getByText("Mocked grounded answer")).toBeVisible();
     });
 
-    await test.step("create a goal and run a scenario/forecast", async () => {
+    await test.step("create a goal and view forecast availability", async () => {
       await page.goto("/plan");
       await expect(
         page.getByRole("heading", { name: "Plan" }),
@@ -212,7 +211,7 @@ test.describe("full core journey §46 (gated: real Supabase + mocked AI)", () =>
       await expect(page.getByText("Mocked deterministic review")).toBeVisible();
     });
 
-    await test.step("generate and pin an artifact", async () => {
+    await test.step("generate an artifact proposal", async () => {
       const artifactId = "22222222-2222-2222-2222-222222222222";
       await page.route("**/api/artifacts/generate", async (route) => {
         const body = route.request().postDataJSON?.() as
@@ -248,7 +247,7 @@ test.describe("full core journey §46 (gated: real Supabase + mocked AI)", () =>
       await expect(page).toHaveURL(new RegExp(artifactId));
     });
 
-    await test.step("import newer overlapping data and verify coherence", async () => {
+    await test.step("submit newer overlapping data", async () => {
       await page.goto("/import");
       await page.getByLabel("Financial statement files").setInputFiles({
         name: "september.csv",
