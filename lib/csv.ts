@@ -74,6 +74,18 @@ export function validateMapping(input: unknown, rows: SourceRow[]): ImportMappin
   return mapping;
 }
 
+export function validateAiMapping(input: unknown, rows: SourceRow[], workspaceCurrency: string): ImportMapping {
+  const mapping = validateMapping(input, rows);
+  return mapping.currencyColumn ? mapping : { ...mapping, currencyCode: workspaceCurrency };
+}
+
+function exactJsonMinor(amount: bigint): bigint {
+  // ponytail: PostgREST emits bigint as JSON numbers; use text casts if amounts exceed this ceiling.
+  if (amount > BigInt(Number.MAX_SAFE_INTEGER) || amount < -BigInt(Number.MAX_SAFE_INTEGER))
+    throw new Error("Amount exceeds exact JSON range");
+  return amount;
+}
+
 export function parseAmountMinor(input: string, currencyCode: string = "EUR"): bigint {
   const digits = minorDigits(currencyCode);
   let value = input.trim().replace(/\s/g, "").replace(/[€$£]/g, "");
@@ -84,7 +96,7 @@ export function parseAmountMinor(input: string, currencyCode: string = "EUR"): b
   const dot = value.lastIndexOf(".");
   if ((comma < 0 || dot < 0) && /^\d{1,3}([.,]\d{3})+$/.test(value)) {
     const whole = BigInt(value.replace(/[.,]/g, ""));
-    return whole * (negative ? -pow10(digits) : pow10(digits));
+    return exactJsonMinor(whole * (negative ? -pow10(digits) : pow10(digits)));
   }
   const decimal = comma > dot ? "," : ".";
   const parts = value.split(decimal);
@@ -95,7 +107,7 @@ export function parseAmountMinor(input: string, currencyCode: string = "EUR"): b
   const whole = parts[0].replace(/[.,]/g, "");
   const fraction = (parts[1] ?? "").padEnd(digits, "0").slice(0, digits);
   const minor = BigInt(whole) * pow10(digits) + BigInt(fraction || "0");
-  return negative ? -minor : minor;
+  return exactJsonMinor(negative ? -minor : minor);
 }
 
 function pow10(exponent: number): bigint {

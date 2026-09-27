@@ -40,4 +40,5 @@ next-env.d.ts
 
 # drizzle
 /drizzle/*.sql
+/supabase/.temp/
 /.swc

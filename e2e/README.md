@@ -13,10 +13,10 @@
 
 ## Enabling the partial live-backend journey
 
-`e2e/core-journey.gated.spec.ts` exercises login state, import submission,
-transaction visibility, Home, goal creation, and re-import against Supabase.
-It does not yet verify corrections, scenario changes, artifact pinning, or
-refreshed financial values. It **skips** unless all of these exist
+`e2e/core-journey.gated.spec.ts` exercises login state, import completion,
+transaction visibility, real chat, goal creation, artifact pinning, and
+overlapping re-import against Supabase. It does not yet verify transaction
+corrections or scenario changes. It **skips** unless all of these exist
 (a skip is reported as skipped, never as a pass):
 
 1. Applied `supabase/migrations/*.sql` in filename order, plus `.env` with `NEXT_PUBLIC_SUPABASE_URL` and
@@ -28,18 +28,17 @@ refreshed financial values. It **skips** unless all of these exist
    commit it).
 3. Run: `npx playwright test --reporter=list`.
 
-Even when enabled, the spec makes **zero live OpenRouter calls**: the
-AI-proposing inspect, `/api/chat`, `/api/artifacts/generate` (suggest step),
-and `/api/analysis` are fulfilled with deterministic canned payloads, while
-explicit-mapping confirms, corrections, goals, scenarios, and Home metrics
-hit the real backend. Any request to `*.openrouter.ai` aborts and fails.
+When enabled, the spec uses the configured free OpenRouter model for chat and
+the automatic first financial review. File interpretation, artifact proposals,
+and the manually started analysis are mocked. Import confirmation, goals,
+artifact creation/pinning, and Home use the real backend.
 
 ## Coverage / gaps
 
 Covered deterministically: import UX core (§4–§5), empty-state Home/login/
-health, no-quota guarantee.
-Gaps requiring the §2 setup: real auth, Postgres persistence, overlapping-
-import dedup against live data, workflow resume/cancel, RLS isolation,
-artifact runtime with live data, Deep Analysis synthesis quality.
+health. The live gated test additionally covers auth, Postgres persistence,
+overlapping-import review, and artifact pinning when configured.
+Gaps: workflow resume/cancel, full RLS isolation, artifact runtime with live
+data, and Deep Analysis synthesis quality.
 Finance math (§16–§17), CSV/XLSX parsing, and artifact sandbox boundaries
 are covered by Vitest unit tests, not duplicated here.

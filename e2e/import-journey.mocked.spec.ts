@@ -188,4 +188,27 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await expect(page.getByText("No imports yet.")).toBeVisible();
     expect(confirmCalled).toBe(false);
   });
+
+  test("asks for correction when AI proposes reversed amount signs", async ({ page }) => {
+    await page.route("**/api/imports", route => route.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
+    let calls = 0;
+    await page.route("**/api/imports/inspect", route => {
+      calls += 1;
+      const proposal = mockInspectResponse();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(calls === 1 ? { ...proposal, mapping: { ...proposal.mapping, amountSign: "outflow-positive" } } : proposal),
+      });
+    });
+    await page.goto("/import");
+    await page.getByLabel("Financial statement files").setInputFiles({
+      name: "august.csv", mimeType: "text/csv", buffer: Buffer.from(AUGUST_CSV, "utf-8"),
+    });
+    await expect(page.getByRole("button", { name: "Preview correction" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);
+    await page.getByLabel("Amount signs").selectOption("signed");
+    await page.getByRole("button", { name: "Preview correction" }).click();
+    await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeVisible();
+  });
 });

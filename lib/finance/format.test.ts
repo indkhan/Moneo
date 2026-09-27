@@ -37,6 +37,11 @@ describe("formatMoney", () => {
   it("accepts string input", () => {
     expect(formatMoney("12345", "EUR")).toBe("EUR 123.45");
   });
+
+  it("formats safe numeric amounts returned by PostgREST", () => {
+    expect(formatMoney(350000, "EUR")).toBe("EUR 3500.00");
+    expect(() => formatMoney(Number.MAX_SAFE_INTEGER + 1, "EUR")).toThrow("Unsafe minor amount");
+  });
 });
 
 describe("formatInputAmount", () => {
@@ -74,5 +79,9 @@ describe("formatInputAmount", () => {
 
   it("accepts string input", () => {
     expect(formatInputAmount("12345", "EUR")).toBe("123.45");
+  });
+
+  it("formats safe numeric input amounts returned by PostgREST", () => {
+    expect(formatInputAmount(350000, "EUR")).toBe("3500.00");
   });
 });

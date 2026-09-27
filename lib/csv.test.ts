@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
-import { mapRows, parseAmountMinor, parseCsv, parseExcel, parseTransactionStatus, previewImport, validateMapping } from "./csv";
+import { mapRows, parseAmountMinor, parseCsv, parseExcel, parseTransactionStatus, previewImport, validateMapping, validateAiMapping } from "./csv";
 
 const mapping = {
   accountName: "Checking",
@@ -19,6 +19,7 @@ describe("financial import parsing", () => {
     expect(parseAmountMinor("0.01")).toBe(1n);
     expect(parseAmountMinor("1,234")).toBe(123400n);
     expect(() => parseAmountMinor("1.2345")).toThrow();
+    expect(() => parseAmountMinor("90071992547409.92", "EUR")).toThrow("Amount exceeds exact JSON range");
   });
 
   it("parses EUR (2 digits) and JPY (0 digits) correctly", () => {
@@ -56,6 +57,11 @@ describe("financial import parsing", () => {
     expect(() => validateMapping({ ...mapping, amountColumn: "Wrong" }, rows)).toThrow("Unknown column");
     expect(() => validateMapping({ ...mapping, debitColumn: "Amount" }, rows)).toThrow();
     expect(() => mapRows(rows, { ...mapping, dateFormat: "iso" })).toThrow("Row 2");
+  });
+
+  it("uses workspace currency when AI has no currency column", () => {
+    const rows = parseCsv("Date,Description,Amount\n2026-08-01,Salary,2500.00");
+    expect(validateAiMapping({ ...mapping, dateFormat: "iso", currencyCode: "USD" }, rows, "EUR").currencyCode).toBe("EUR");
   });
 
   it("maps debit and credit without changing signs", () => {

@@ -79,7 +79,7 @@ export default function ImportPage() {
         dateFormat: "iso",
         amountSign: "signed",
       });
-      setEditing(!result.mapping);
+      setEditing(!result.mapping || result.mapping.amountSign === "outflow-positive");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Inspection failed");
     } finally {
@@ -224,6 +224,7 @@ export default function ImportPage() {
       </tbody></table></div>}
       {inspection.preview && <>
         <p><strong>Account:</strong> {inspection.preview.accountName} · <strong>Currency:</strong> {inspection.preview.currencyCode}</p>
+        <p className="text-sm text-muted-foreground">Check the currency and incoming/outgoing amounts below. {mapping?.amountSign === "outflow-positive" ? "Positive source amounts are treated as outgoing; review this sign convention before continuing." : "Positive source amounts are treated as incoming."}</p>
         <p><strong>{inspection.preview.totalRows} rows</strong> · {inspection.preview.dateRange.from} to {inspection.preview.dateRange.to}{inspection.preview.pendingRows != null && inspection.preview.pendingRows > 0 ? ` · ${inspection.preview.pendingRows} pending (excluded from posted spending)` : ""}</p>
         <p className="text-sm text-muted-foreground">Descriptions stay exactly as in the file. Merchants/categories below come only from explicit columns when present. Pending rows stay pending and never count as posted spending.</p>
         <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th>Date</th><th>Description</th><th>Incoming / outgoing</th><th>Status</th><th>Merchant</th><th>Category</th></tr></thead><tbody>

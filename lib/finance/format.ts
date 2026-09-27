@@ -1,7 +1,12 @@
 import { minorDigits } from "./fx";
 
-export function formatMoney(amountMinor: bigint | string, currencyCode: string): string {
-  const value = typeof amountMinor === "string" ? BigInt(amountMinor) : amountMinor;
+function exactMinor(value: bigint | string | number): bigint {
+  if (typeof value === "number" && !Number.isSafeInteger(value)) throw new Error("Unsafe minor amount");
+  return BigInt(value);
+}
+
+export function formatMoney(amountMinor: bigint | string | number, currencyCode: string): string {
+  const value = exactMinor(amountMinor);
   const abs = value < 0n ? -value : value;
   const digits = minorDigits(currencyCode);
   const divisor = 10n ** BigInt(digits);
@@ -13,8 +18,8 @@ export function formatMoney(amountMinor: bigint | string, currencyCode: string):
   return `${value < 0n ? "-" : ""}${currencyCode} ${whole}.${fraction}`;
 }
 
-export function formatInputAmount(amountMinor: bigint | string, currencyCode: string): string {
-  const value = typeof amountMinor === "string" ? BigInt(amountMinor) : amountMinor;
+export function formatInputAmount(amountMinor: bigint | string | number, currencyCode: string): string {
+  const value = exactMinor(amountMinor);
   const abs = value < 0n ? -value : value;
   const digits = minorDigits(currencyCode);
   const divisor = 10n ** BigInt(digits);
