@@ -59,6 +59,13 @@ describe("financial import parsing", () => {
     expect(() => mapRows(rows, { ...mapping, dateFormat: "iso" })).toThrow("Row 2");
   });
 
+  it("accepts bank statement ISO timestamps as transaction dates", () => {
+    const rows = parseCsv("Completed Date,Description,Amount\n2025-11-10 17:04:58,Transfer,100.00");
+    const timestampMapping = { ...mapping, dateColumn: "Completed Date", dateFormat: "iso" as const };
+    expect(mapRows(rows, timestampMapping)[0].postedOn).toBe("2025-11-10");
+    expect(() => mapRows(parseCsv("Completed Date,Description,Amount\n2025-11-10 27:04:58,Transfer,100.00"), timestampMapping)).toThrow("Invalid date");
+  });
+
   it("uses workspace currency when AI has no currency column", () => {
     const rows = parseCsv("Date,Description,Amount\n2026-08-01,Salary,2500.00");
     expect(validateAiMapping({ ...mapping, dateFormat: "iso", currencyCode: "USD" }, rows, "EUR").currencyCode).toBe("EUR");

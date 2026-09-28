@@ -117,7 +117,7 @@ function pow10(exponent: number): bigint {
 function parseDate(input: string, format: ImportMapping["dateFormat"]): string {
   const value = input.trim();
   const match = format === "iso"
-    ? /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value)
+    ? /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)?$/.exec(value)
     : /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/.exec(value);
   if (!match) throw new Error(`Invalid date: ${input}`);
   const [year, month, day] = format === "iso"
