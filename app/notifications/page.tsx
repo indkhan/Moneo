@@ -116,18 +116,14 @@ export default async function NotificationsPage() {
   const visible = notices.slice(0, 30);
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <Link href="/" className="text-sm underline">
-        ← Home
-      </Link>
-      <h1 className="mt-4 text-3xl font-semibold">Notifications</h1>
+    <main className="mx-auto max-w-5xl px-5 py-8 lg:px-8">
+      <p className="text-xs font-semibold uppercase tracking-widest text-brand">Workspace / Notifications</p>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Notifications</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        In-app only, derived from current workspace imports, Deep Analysis runs, and saved tools. No
-        email or push. Only completed/failed imports, completed/failed analyses, and saved tool
-        creation currently produce notifications — no invented warnings and no raw datasets.
+        Updates from your imports, financial reviews, and saved tools.
       </p>
       {errors.length > 0 && (
-        <p role="alert" className="mt-4 rounded border p-3 text-sm text-red-700">
+        <p role="alert" className="mt-4 rounded-xl border border-border bg-card p-4 shadow-sm text-sm text-red-700">
           Could not load part of these notifications: {truncate(errors[0]?.message ?? "Unavailable", 200)}
         </p>
       )}
@@ -140,7 +136,7 @@ export default async function NotificationsPage() {
       {visible.length > 0 && (
         <ul className="mt-6 space-y-3">
           {visible.map((notice) => (
-            <li key={notice.key} className="rounded border p-4">
+            <li key={notice.key} className="rounded-xl border border-border bg-card p-5 shadow-sm">
               <p className="text-xs text-muted-foreground">{new Date(notice.at).toLocaleString()}</p>
               <h2 className="mt-1 font-medium">{notice.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{notice.detail}</p>

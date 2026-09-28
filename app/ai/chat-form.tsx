@@ -27,8 +27,8 @@ export function ChatForm({ conversationId }: { conversationId: string }) {
   }
 
   return <form onSubmit={submit} className="mt-6"><label htmlFor="question" className="text-sm font-medium">Ask about your finances</label>
-    <textarea id="question" value={message} onChange={event => setMessage(event.target.value)} maxLength={4000} rows={3} className="mt-2 block w-full rounded border p-3" placeholder="What changed in my spending last month?" />
+    <textarea id="question" value={message} onChange={event => setMessage(event.target.value)} maxLength={4000} rows={3} className="mt-2 block w-full rounded-xl border border-border bg-card p-4 shadow-sm" placeholder="What changed in my spending last month?" />
     {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
-    <button disabled={busy} className="mt-3 rounded bg-primary px-4 py-2 text-sm text-primary-foreground">{busy ? "Thinking…" : "Send"}</button>
+    <button disabled={busy} className="mt-3 rounded-lg bg-brand px-4 py-2 font-medium text-white hover:opacity-90 text-sm">{busy ? "Thinking…" : "Send"}</button>
   </form>;
 }

@@ -66,7 +66,7 @@ export function CalculatorPanel({
   }
 
   return (
-    <section aria-label="Generated calculator output" className="mt-8 rounded-lg border p-4">
+    <section aria-label="Generated calculator output" className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Generated calculator · {versionLabel}</h2>
         <div className="flex gap-2 text-sm">
@@ -110,7 +110,7 @@ export function CalculatorPanel({
                   setParams((p) => ({ ...p, [name]: raw !== "" && Number.isFinite(num) ? num : raw }));
                 }}
                 inputMode="decimal"
-                className="mt-1 block w-40 rounded border p-2"
+                className="mt-1 block w-40 rounded-lg border border-border bg-card px-3 py-2"
               />
             </label>
           ))}
@@ -131,7 +131,7 @@ export function CalculatorPanel({
           {output.numbers && (
             <dl className="mt-3 grid gap-2 sm:grid-cols-2">
               {Object.entries(output.numbers).map(([k, v]) => (
-                <div key={k} className="rounded border p-2">
+                <div key={k} className="rounded-lg border border-border bg-card px-3 py-2">
                   <dt className="text-xs text-muted-foreground">{k}</dt>
                   <dd className="font-mono">{String(v)}</dd>
                 </div>

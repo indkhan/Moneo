@@ -28,8 +28,8 @@ export function ReviewActions({ importId, sourceId }: { importId: string; source
   }
 
   return <div className="mt-3 flex flex-wrap gap-3">
-    <button className="rounded bg-black px-3 py-2 text-sm text-white" type="button" disabled={busy} onClick={() => void decide("accept")}>Accept as new</button>
-    <button className="rounded border px-3 py-2 text-sm" type="button" disabled={busy} onClick={() => void decide("reject")}>Reject</button>
+    <button className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:opacity-90" type="button" disabled={busy} onClick={() => void decide("accept")}>Accept as new</button>
+    <button className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted" type="button" disabled={busy} onClick={() => void decide("reject")}>Reject</button>
     {error && <p role="alert" className="w-full text-sm text-red-700">{error}</p>}
   </div>;
 }

@@ -25,7 +25,7 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
     .maybeSingle();
   if (jobError) {
     return (
-      <main className="mx-auto max-w-3xl px-6 py-10">
+      <main className="mx-auto max-w-5xl px-5 py-8 lg:px-8">
         <Link href="/ai/activity" className="text-sm underline">
           ← Activity
         </Link>
@@ -49,19 +49,19 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
   const evidencePreview = evidenceText.length > 2000 ? `${evidenceText.slice(0, 2000)}…` : evidenceText;
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
+    <main className="mx-auto max-w-5xl px-5 py-8 lg:px-8">
       <Link href="/ai/activity" className="text-sm underline">
         ← Activity
       </Link>
-      <p className="mt-4 text-xs font-semibold uppercase text-muted-foreground">
+      <p className="mt-5 text-xs font-semibold uppercase tracking-widest text-brand">
         Deep Analysis · {job.status} · stage {job.stage}
       </p>
-      <h1 className="mt-2 text-3xl font-semibold">{analysis?.title ?? "Financial review"}</h1>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{analysis?.title ?? "Financial review"}</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Started {new Date(job.created_at).toLocaleString()} · updated {new Date(job.updated_at).toLocaleString()}
       </p>
       {job.error && (
-        <p role="alert" className="mt-4 rounded border p-3 text-sm text-red-700">
+        <p role="alert" className="mt-4 rounded-xl border border-border bg-card p-4 shadow-sm text-sm text-red-700">
           {truncate(job.error, 500)}
         </p>
       )}
@@ -79,7 +79,7 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
         </p>
       )}
       {analysis && (
-        <article className="mt-6 rounded border p-4">
+        <article className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
           <p className="whitespace-pre-wrap text-sm">{truncate(analysis.body, 4000)}</p>
           {evidence?.period && (
             <p className="mt-3 text-sm text-muted-foreground">

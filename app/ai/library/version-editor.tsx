@@ -70,7 +70,7 @@ export function VersionEditor({
   }
 
   return (
-    <section aria-label="Edit calculator version" className="mt-8 rounded-lg border p-4">
+    <section aria-label="Edit calculator version" className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 className="text-lg font-semibold">Edit calculator version</h2>
       <p className="mt-1 text-sm text-muted-foreground">
         Edits create a new version. Validation (allowlist, manifest, QuickJS smoke test incl.
@@ -92,13 +92,13 @@ export function VersionEditor({
         onChange={(e) => setManifestText(e.target.value)}
         rows={8}
         spellCheck={false}
-        className="mt-2 w-full rounded border p-2 font-mono text-xs"
+        className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 font-mono text-xs"
       />
       <button
         type="button"
         disabled={saving || source.trim().length === 0}
         onClick={save}
-        className="mt-3 rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50"
+        className="mt-3 rounded-lg bg-brand px-3 py-2 font-medium text-white hover:opacity-90 text-sm disabled:opacity-50"
       >
         {saving ? "Validating…" : "Save new version"}
       </button>
@@ -111,7 +111,7 @@ export function VersionEditor({
       <h3 className="mt-6 font-medium">Version history</h3>
       <ul className="mt-2 space-y-2 text-sm">
         {versions.map((v) => (
-          <li key={v.id} className="rounded border p-3">
+          <li key={v.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
             <p>
               v{v.version} · {v.status}
               {v.id === activeVersionId ? " · active" : ""}

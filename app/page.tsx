@@ -4,6 +4,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { hasSupabase } from "@/lib/env";
 import { convertFx, minorDigits } from "@/lib/finance/fx";
 import { createAccount, setManualBalance } from "./actions";
+import { ArrowRight, Landmark, Plus, Wallet } from "lucide-react";
 
 function money(minor: string | bigint, currency: string) {
   const value = BigInt(minor);
@@ -41,7 +42,6 @@ export default async function Home() {
     .order("rate_date", { ascending: false }).order("created_at", { ascending: false });
   const displayCurrency: string = workspace.display_currency;
   const missingInputs: string[] = [];
-  const convertedLines: { name: string; text: string }[] = [];
   let netWorthMinor = 0n;
   let convertedCount = 0;
   for (const account of accounts ?? []) {
@@ -68,7 +68,6 @@ export default async function Home() {
       if (result.status === "available") {
         netWorthMinor += result.converted.amountMinor;
         convertedCount += 1;
-        convertedLines.push({ name: account.name, text: money(result.converted.amountMinor, displayCurrency) });
       } else {
         for (const missing of result.missingInputs) missingInputs.push(`${missing} for ${account.name}`);
       }
@@ -84,73 +83,26 @@ export default async function Home() {
   const pinnedById = new Map(pinnedArtifacts?.map(artifact => [artifact.id, artifact]));
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div><p className="text-sm uppercase tracking-widest text-muted-foreground">Moneo</p><h1 className="text-3xl font-semibold">Home</h1></div>
-        <nav aria-label="Main" className="flex flex-wrap gap-4 text-sm">
-          <Link href="/import">Import</Link><Link href="/money/transactions">Transactions</Link><Link href="/plan">Plan</Link><Link href="/ai">AI</Link><Link href="/ai/activity">Activity</Link><Link href="/notifications">Notifications</Link>
-        </nav>
+    <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 text-slate-900 sm:px-8">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">Workspace overview</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">Home</h1><p className="mt-1 text-sm text-slate-500">Your accounts, ledger, and saved tools in one place.</p></div>
+        <Link href="/import" className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-medium text-white hover:bg-blue-800"><Plus size={15} /> Import statement</Link>
       </header>
-      <section aria-label="Net worth" className="mt-10 rounded-lg border p-5">
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="text-xl font-semibold">Net worth</h2>
-          <Link href="/plan/currency" className="text-sm underline">Manage currency</Link>
+      <section aria-label="Overview" className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(250px,1fr)]">
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-[11px] font-medium uppercase tracking-wider text-slate-500">Net worth</p><p className="mt-1 text-xs text-slate-500">Latest dated balances in {displayCurrency}</p></div><Link href="/plan/currency" className="text-xs font-medium text-blue-700 hover:underline">Manage currency</Link></div>
+          {!accounts?.length ? <p className="mt-7 text-sm text-slate-500">Add an account to see your net worth.</p> : convertedCount > 0 ? <><p className="mt-5 font-mono text-4xl font-semibold tracking-tight">{money(netWorthMinor, displayCurrency)}{missingInputs.length > 0 && <span className="ml-2 align-middle text-xs font-normal text-amber-700">Partial</span>}</p><p className="mt-2 text-xs text-slate-500">{missingInputs.length > 0 ? "Excludes accounts without a usable balance or exchange rate." : "Debts entered as negative balances are included."}</p>{missingInputs.length > 0 && <details className="mt-4 text-xs text-slate-600"><summary className="cursor-pointer text-blue-700">See missing inputs</summary><p className="mt-2">{missingInputs.join(", ")}</p></details>}</> : <><p className="mt-6 text-sm text-slate-500">Net worth unavailable in {displayCurrency}.</p><p className="mt-2 text-xs text-slate-500">{missingInputs.join(", ")}</p></>}
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">Enter debts as negative balances for this signed total.</p>
-        {!accounts?.length ? (
-          <p className="mt-3 text-muted-foreground">Net worth unavailable: no accounts yet.</p>
-        ) : missingInputs.length === 0 ? (
-          <>
-            <p className="mt-3 text-3xl font-semibold">{money(netWorthMinor, displayCurrency)}</p>
-            <p className="mt-1 text-xs text-muted-foreground">In {displayCurrency} · from latest dated balances · originals unchanged</p>
-          </>
-        ) : convertedCount > 0 ? (
-          <>
-            <p className="mt-3 text-3xl font-semibold">{money(netWorthMinor, displayCurrency)} <span className="text-base font-normal text-muted-foreground">partial</span></p>
-            <p className="mt-1 text-xs text-muted-foreground">Partial total in {displayCurrency}; excludes accounts below. Never zero-filled.</p>
-            <ul className="mt-3 space-y-1 text-sm">
-              {convertedLines.map((line) => <li key={line.name}>{line.name}: {line.text}</li>)}
-            </ul>
-            <p className="mt-3 text-sm text-muted-foreground">Missing inputs: {missingInputs.join(", ")}</p>
-          </>
-        ) : (
-          <>
-            <p className="mt-3 text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>
-            <p className="mt-1 text-sm text-muted-foreground">Missing inputs: {missingInputs.join(", ")}</p>
-          </>
-        )}
+        <Link href="/money/transactions" className="group flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:border-blue-300"><div className="flex items-center justify-between"><span className="font-mono text-[11px] font-medium uppercase tracking-wider text-slate-500">Transactions</span><ArrowRight size={16} className="text-blue-700 transition-transform group-hover:translate-x-1" /></div><div><p className="font-mono text-4xl font-semibold">{transactionCount ?? 0}</p><p className="mt-2 text-xs text-slate-500">Accepted ledger entries</p></div></Link>
       </section>
-      <section className="mt-10">
-        <h2 className="text-xl font-semibold">Accounts</h2>
-        {!accounts?.length && <p className="mt-3 text-muted-foreground">No accounts yet. <Link className="underline" href="/import">Import a statement</Link> to begin.</p>}
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {accounts?.map((account) => {
-            const balance = latest.get(account.id);
-            return <article key={account.id} className="rounded-lg border p-5">
-              <h3 className="font-medium">{account.name}</h3>
-              <p className="mt-2 text-2xl font-semibold">{balance ? money(balance.amount_minor, balance.currency_code) : "Balance unknown"}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{balance ? `${balance.provenance} · as of ${new Date(balance.as_of).toLocaleDateString()}` : "Add a dated balance to show available cash"}</p>
-              <form action={setManualBalance} className="mt-4 flex flex-wrap gap-2 text-sm"><input type="hidden" name="accountId" value={account.id} /><input name="amount" required placeholder="Balance" aria-label={`${account.name} balance`} className="w-28 rounded border p-2" /><input name="asOf" required type="date" defaultValue={new Date().toISOString().slice(0, 10)} aria-label="Balance as of" className="rounded border p-2" /><button className="underline">Save balance</button></form>
-            </article>;
-          })}
-        </div>
-        <form action={createAccount} className="mt-5 flex flex-wrap gap-2"><input name="name" required maxLength={120} placeholder="Account name" className="rounded border p-2" /><select name="type" aria-label="Account type" className="rounded border p-2"><option value="checking">Checking</option><option value="savings">Savings</option><option value="cash">Cash</option><option value="credit">Credit</option><option value="investment">Investment</option><option value="wallet">Wallet</option><option value="other">Other</option></select><input name="currency" defaultValue={workspace.display_currency} maxLength={3} aria-label="Currency code" className="w-20 rounded border p-2" /><button className="rounded bg-primary px-4 text-primary-foreground">Add account</button></form>
-      </section>
-      <section className="mt-10 rounded-lg border p-5">
-        <h2 className="font-semibold">Transactions</h2>
-        <p className="mt-2 text-muted-foreground">{transactionCount ?? 0} accepted transactions</p>
-        <Link href="/money/transactions" className="mt-3 inline-block underline">Browse transactions</Link>
-      </section>
-      <section className="mt-10">
-        <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold">Pinned tools</h2><Link href="/ai/library" className="text-sm underline">Library</Link></div>
-        {!pins?.length && <p className="mt-3 text-muted-foreground">Pin a saved tool from your AI Library.</p>}
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">{pins?.map(pin => {
-          const artifact = pinnedById.get(pin.artifact_id);
-          return artifact && <Link key={pin.artifact_id} href={`/ai/library/${artifact.id}`} className="rounded-lg border p-5">
-            <h3 className="font-medium">{artifact.name}</h3><p className="mt-2 text-sm text-muted-foreground">{artifact.kind.replaceAll("_", " ")} · opens with current data</p>
-          </Link>;
-        })}</div>
-      </section>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(280px,1fr)]">
+        <section className="space-y-4"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><span className="rounded-lg bg-blue-50 p-2 text-blue-700"><Landmark size={18} /></span><div><h2 className="text-base font-semibold">Accounts</h2><p className="text-xs text-slate-500">Balances you can verify and update</p></div></div><span className="font-mono text-xs text-slate-500">{accounts?.length ?? 0} total</span></div>
+          {!accounts?.length && <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">No accounts yet. <Link className="text-blue-700 underline" href="/import">Import a statement</Link> or add one below.</div>}
+          <div className="grid gap-3 md:grid-cols-2">{accounts?.map((account) => { const balance = latest.get(account.id); return <article key={account.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-start gap-3"><span className="rounded-lg bg-slate-100 p-2 text-slate-600"><Wallet size={17} /></span><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{account.name}</h3><p className="text-[11px] capitalize text-slate-500">{account.type}</p></div></div><p className="mt-5 font-mono text-xl font-semibold">{balance ? money(balance.amount_minor, balance.currency_code) : "Balance unknown"}</p><p className="mt-1 text-[11px] text-slate-500">{balance ? `${balance.provenance} · as of ${new Date(balance.as_of).toLocaleDateString()}` : "Add a dated balance"}</p><form action={setManualBalance} className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4 text-xs"><input type="hidden" name="accountId" value={account.id} /><input name="amount" required placeholder="Balance" aria-label={`${account.name} balance`} className="w-24 rounded-md border border-slate-200 bg-white p-2" /><input name="asOf" required type="date" defaultValue={new Date().toISOString().slice(0, 10)} aria-label="Balance as of" className="min-w-0 rounded-md border border-slate-200 bg-white p-2" /><button className="font-medium text-blue-700 hover:underline">Save</button></form></article>; })}</div>
+          <form action={createAccount} className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-4"><input name="name" required maxLength={120} placeholder="Account name" aria-label="Account name" className="min-w-36 flex-1 rounded-md border border-slate-200 p-2 text-xs" /><select name="type" aria-label="Account type" className="rounded-md border border-slate-200 p-2 text-xs"><option value="checking">Checking</option><option value="savings">Savings</option><option value="cash">Cash</option><option value="credit">Credit</option><option value="investment">Investment</option><option value="wallet">Wallet</option><option value="other">Other</option></select><input name="currency" defaultValue={workspace.display_currency} maxLength={3} aria-label="Currency code" className="w-16 rounded-md border border-slate-200 p-2 text-xs" /><button className="inline-flex items-center gap-1 rounded-md bg-slate-900 px-3 py-2 text-xs font-medium text-white"><Plus size={14} /> Add account</button></form>
+        </section>
+        <section className="space-y-4"><div className="flex items-center justify-between"><div><h2 className="text-base font-semibold">Pinned tools</h2><p className="text-xs text-slate-500">Saved from your AI Library</p></div><Link href="/ai/library" className="text-xs font-medium text-blue-700 hover:underline">Library <ArrowRight size={13} className="inline" /></Link></div><div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">{!pins?.length && <p className="text-sm text-slate-500">Pin a saved tool from your AI Library to open it here.</p>}<div className="divide-y divide-slate-100">{pins?.map(pin => { const artifact = pinnedById.get(pin.artifact_id); return artifact && <Link key={pin.artifact_id} href={`/ai/library/${artifact.id}`} className="group flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><div><h3 className="text-sm font-medium">{artifact.name}</h3><p className="mt-1 text-[11px] capitalize text-slate-500">{artifact.kind.replaceAll("_", " ")}</p></div><ArrowRight size={15} className="text-slate-400 group-hover:text-blue-700" /></Link>; })}</div></div></section>
+      </div>
     </main>
   );
 }

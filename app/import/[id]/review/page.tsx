@@ -17,13 +17,12 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
     .eq("workspace_id", workspace.id).eq("import_id", id).eq("status", "review")
     .order("row_number").limit(100);
 
-  return <main className="mx-auto max-w-3xl space-y-5 p-6">
+  return <main className="mx-auto max-w-5xl space-y-5 px-5 py-8 lg:px-8">
     <Link href="/import" className="underline">← Import history</Link>
-    <h1 className="text-2xl font-semibold">Review: {imported.filename}</h1>
-    <p>{imported.review_rows} ambiguous rows. They are excluded from accepted totals.</p>
+    <div><p className="text-xs font-semibold uppercase tracking-widest text-brand">Money / Import review</p><h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">Review: {imported.filename}</h1><p className="mt-2 text-sm text-muted-foreground">{imported.review_rows} ambiguous rows. They are excluded from accepted totals.</p></div>
     {error && <p role="alert">Could not load review rows: {error.message}</p>}
     {!error && !rows?.length && <p>No rows awaiting review.</p>}
-    {rows?.map((row) => <article className="rounded border p-4" key={row.id}>
+    {rows?.map((row) => <article className="rounded-xl border border-border bg-card p-5 shadow-sm" key={row.id}>
       <h2 className="font-medium">Source row {row.row_number}</h2>
       {row.external_id && <p className="text-sm">Source ID: {row.external_id}</p>}
       <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded bg-muted p-3 text-sm">{JSON.stringify(row.original_row, null, 2)}</pre>

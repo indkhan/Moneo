@@ -47,9 +47,9 @@ export function AnalysisPanel() {
     else setReview(current => current && { ...current, stage: "stopping" });
   }
 
-  return <section className="mt-10 rounded border p-5"><h2 className="text-xl font-semibold">Deep Financial Analysis</h2>
+  return <section className="mt-10 rounded-xl border border-border bg-card p-5 shadow-sm"><h2 className="text-xl font-semibold tracking-tight text-foreground">Deep Financial Analysis</h2>
     <p className="mt-1 text-sm text-muted-foreground">A saved review based on exact current financial evidence.</p>
-    <button onClick={start} disabled={busy} className="mt-4 rounded bg-primary px-4 py-2 text-sm text-primary-foreground">{busy ? "Starting…" : "Run review"}</button>
+    <button onClick={start} disabled={busy} className="mt-4 rounded-lg bg-brand px-4 py-2 font-medium text-white hover:opacity-90 text-sm">{busy ? "Starting…" : "Run review"}</button>
     {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
     {review && <div className="mt-4"><p className="text-sm">{review.status} · {review.stage}</p>
       {review.error && <p role="alert" className="text-sm text-red-700">{review.error}</p>}
