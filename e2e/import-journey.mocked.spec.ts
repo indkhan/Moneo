@@ -211,4 +211,27 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await page.getByRole("button", { name: "Preview correction" }).click();
     await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeVisible();
   });
+
+  test("selects matching headers when automatic interpretation fails", async ({ page }) => {
+    await page.route("**/api/imports", route => route.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
+    await page.route("**/api/imports/inspect", route => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        headers: ["Type", "Product", "Started Date", "Completed Date", "Description", "Amount"],
+        sample: [{ Type: "Transfer", Product: "Savings", "Started Date": "2025-11-10 17:04:58", "Completed Date": "2025-11-10 17:04:58", Description: "Transfer", Amount: "100.00" }],
+        mapping: null,
+        preview: null,
+        aiError: "No object generated",
+      }),
+    }));
+    await page.goto("/import");
+    await page.getByLabel("Financial statement files").setInputFiles({
+      name: "statement.csv", mimeType: "text/csv", buffer: Buffer.from("Type,Product,Started Date,Completed Date,Description,Amount\nTransfer,Savings,2025-11-10 17:04:58,2025-11-10 17:04:58,Transfer,100.00"),
+    });
+    await expect(page.getByRole("combobox", { name: "Date", exact: true })).toHaveValue("Completed Date");
+    await expect(page.getByRole("combobox", { name: "Description", exact: true })).toHaveValue("Description");
+    await expect(page.getByRole("combobox", { name: "Amount", exact: true })).toHaveValue("Amount");
+    await expect(page.getByRole("button", { name: "Continue" })).toHaveCount(0);
+  });
 });

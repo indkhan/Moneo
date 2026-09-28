@@ -70,12 +70,13 @@ export default function ImportPage() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Inspection failed");
       setInspection(result);
+      const column = (name: string) => result.headers.find((header: string) => header.toLowerCase() === name);
       setMapping(result.mapping ?? {
         accountName: target.name.replace(/\.(csv|xlsx)$/i, ""),
         currencyCode: "EUR",
-        dateColumn: result.headers[0] ?? "",
-        descriptionColumn: result.headers[1] ?? "",
-        amountColumn: result.headers[2] ?? "",
+        dateColumn: column("completed date") ?? column("date") ?? column("started date") ?? "",
+        descriptionColumn: column("description") ?? "",
+        amountColumn: column("amount"),
         dateFormat: "iso",
         amountSign: "signed",
       });
