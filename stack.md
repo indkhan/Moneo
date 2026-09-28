@@ -9,7 +9,7 @@ Desktop-first finance website. Personal use first, other users later. CSV/Excel 
 | Website/backend | Next.js + React + TypeScript on Vercel |
 | Database/login/files | Supabase PostgreSQL + Auth + Storage |
 | Background jobs | Vercel Workflows |
-| AI | OpenRouter free models + Vercel AI SDK |
+| AI | Configurable OpenRouter model + Vercel AI SDK |
 | UI | shadcn/ui + Tailwind CSS |
 | Data/tables/charts | TanStack Query + Table + Apache ECharts |
 | Queries/validation | Drizzle ORM + Zod |
@@ -29,6 +29,6 @@ Isolate generated tools behind a controlled Finance SDK. Prototype QuickJS/WASM 
 
 ## Development constraints
 
-Free tiers only; no paid-model fallback. Training on the founder's authorized development data is accepted, not future users' data. Independent backups deferred.
+The configured OpenRouter model is used without an automatic fallback. Training on the founder's authorized development data is accepted, not future users' data. Independent backups deferred.
 
 No Redis, separate hosted worker, Python backend, microservices, vector database, or heavy agent framework initially.

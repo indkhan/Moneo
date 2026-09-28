@@ -30,7 +30,7 @@ test.describe("core journey smoke (no session, no live AI)", () => {
     expect(body.ok).toBe(true);
     expect(body.supabase).toBe(Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY));
     expect(body.openrouter).toBe(Boolean(process.env.OPENROUTER_API_KEY));
-    expect(body.model).toMatch(/:free$/);
+    expect(body.model).toBe(process.env.OPENROUTER_MODEL ?? "qwen/qwen3.8-27b:free");
   });
 
   test("login page renders OTP form", async ({ page }) => {

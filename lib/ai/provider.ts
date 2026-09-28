@@ -1,13 +1,12 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 
-// OpenRouter via the Vercel AI SDK. Free models only (stack.md constraint).
+// OpenRouter via the Vercel AI SDK.
 // Docs: https://openrouter.ai/docs + https://ai-sdk.dev
 export function getModel() {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is missing. Add it to .env (see .env.example).");
   const openrouter = createOpenRouter({ apiKey });
   const modelId = process.env.OPENROUTER_MODEL ?? "qwen/qwen3.8-27b:free";
-  if (!modelId.endsWith(":free")) throw new Error("OPENROUTER_MODEL must be a free model");
   return openrouter.chat(modelId);
 }
 
