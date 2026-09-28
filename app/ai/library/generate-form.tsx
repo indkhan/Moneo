@@ -66,7 +66,7 @@ export function GenerateForm() {
   }
 
   return (
-    <section aria-label="AI-assisted tool suggestion" className="mt-8 rounded-lg border p-4">
+    <section aria-label="AI-assisted tool suggestion" className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 className="text-lg font-semibold">Describe a tool</h2>
       <p className="mt-1 text-sm text-muted-foreground">
         AI suggests one trusted template. Nothing is created until you choose Continue.
@@ -81,19 +81,19 @@ export function GenerateForm() {
         maxLength={500}
         rows={3}
         placeholder="e.g. compare dining spending this month"
-        className="mt-2 w-full rounded border p-2 text-sm"
+        className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm"
       />
       <button
         type="button"
         disabled={suggesting || description.trim().length === 0}
         onClick={suggest}
-        className="mt-3 rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50"
+        className="mt-3 rounded-lg bg-brand px-3 py-2 font-medium text-white hover:opacity-90 text-sm disabled:opacity-50"
       >
         {suggesting ? "Suggesting…" : "Suggest a tool"}
       </button>
 
       {proposal && (
-        <div className="mt-4 rounded border p-3 text-sm">
+        <div className="mt-4 rounded-xl border border-border bg-card p-4 shadow-sm text-sm">
           <p>
             <span className="font-medium">Suggested type:</span> {labels[proposal.kind]}
           </p>
@@ -105,7 +105,7 @@ export function GenerateForm() {
             value={name}
             onChange={(event) => setName(event.target.value)}
             maxLength={120}
-            className="mt-1 w-full rounded border p-2"
+            className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2"
           />
           <p className="mt-2">
             <span className="font-medium">Why:</span> {proposal.rationale}
@@ -117,7 +117,7 @@ export function GenerateForm() {
             type="button"
             disabled={creating || name.trim().length === 0}
             onClick={continueWithProposal}
-            className="mt-3 rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50"
+            className="mt-3 rounded-lg bg-brand px-3 py-2 font-medium text-white hover:opacity-90 text-sm disabled:opacity-50"
           >
             {creating ? "Creating…" : "Continue – Create this tool"}
           </button>

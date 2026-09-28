@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Sparkles } from "lucide-react";
 
 export function AiPanel() {
   const [open, setOpen] = useState(false);
@@ -28,8 +29,8 @@ export function AiPanel() {
   }
 
   return <>
-    <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="moneo-ai-panel" className="fixed bottom-5 right-5 z-40 rounded-full bg-primary px-5 py-3 text-sm text-primary-foreground shadow-lg">Ask AI</button>
-    {open && <aside id="moneo-ai-panel" aria-label="AI assistant" className="fixed inset-y-0 right-0 z-30 w-full max-w-sm overflow-y-auto border-l bg-background p-6 pb-20 shadow-xl">
+    <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="moneo-ai-panel" className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90"><Sparkles className="size-4" aria-hidden="true" />Ask Moneo</button>
+    {open && <aside id="moneo-ai-panel" aria-label="AI assistant" className="fixed inset-y-0 right-0 z-30 w-full max-w-sm overflow-y-auto border-l border-border bg-card p-6 pb-20 shadow-xl">
       <h2 className="text-xl font-semibold">Ask Moneo</h2><p className="mt-1 text-sm text-muted-foreground">I can look up your current financial data.</p>
       {answer && <p className="mt-6 whitespace-pre-wrap rounded border p-3 text-sm">{answer}</p>}
       <form onSubmit={ask} className="mt-6"><label htmlFor="panel-question" className="text-sm">Question</label><textarea id="panel-question" rows={4} maxLength={4000} value={question} onChange={event => setQuestion(event.target.value)} className="mt-2 w-full rounded border p-2" />

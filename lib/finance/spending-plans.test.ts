@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { spendingForCategory, type SpendingPlanTransaction } from "./spending-plans";
+import { nextMonthStart, spendingForCategory, type SpendingPlanTransaction } from "./spending-plans";
 
 const MONTH = "2026-09";
 const CATEGORY = "groceries";
 const EUR = "EUR";
+
+it("provides a full date for the next month, including year rollover", () => {
+  expect(nextMonthStart("2026-09")).toBe("2026-10-01");
+  expect(nextMonthStart("2026-12")).toBe("2027-01-01");
+});
 
 function row(partial: Partial<SpendingPlanTransaction> & { amountMinor: bigint }): SpendingPlanTransaction {
   return {

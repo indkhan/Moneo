@@ -22,8 +22,8 @@ export function SavedViewsPanel({
   saveDefaults: SaveInput;
 }) {
   return (
-    <section aria-label="Saved views" className="mt-8 rounded border p-4">
-      <h2 className="font-medium">Saved views</h2>
+    <section aria-label="Saved views" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="text-sm font-semibold">Saved views</h2>
       {activeViewId ? (
         <p className="mt-2 text-sm">
           Open: <strong>{activeViewName ?? "Saved view"}</strong>{" "}
@@ -33,16 +33,16 @@ export function SavedViewsPanel({
         </p>
       ) : null}
       {views.length ? (
-        <ul className="mt-3 space-y-2 text-sm">
+        <ul className="mt-3 flex flex-wrap gap-2 text-xs">
           {views.map((view) => (
-            <li key={view.id} className="flex items-center gap-3">
-              <Link className="underline" href={`/money/transactions?view=${view.id}`}>
+            <li key={view.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <Link className="font-medium text-blue-700 hover:underline" href={`/money/transactions?view=${view.id}`}>
                 {view.name}
               </Link>
               {view.id === activeViewId ? <span className="text-muted-foreground">(open)</span> : null}
               <form action={deleteTransactionView}>
                 <input type="hidden" name="viewId" value={view.id} />
-                <button aria-label={`Delete saved view ${view.name}`} className="underline">
+                <button aria-label={`Delete saved view ${view.name}`} className="text-slate-500 hover:text-red-700 hover:underline">
                   Delete
                 </button>
               </form>
@@ -52,7 +52,7 @@ export function SavedViewsPanel({
       ) : (
         <p className="mt-2 text-sm text-muted-foreground">No saved views yet.</p>
       )}
-      <form action={saveTransactionView} className="mt-4 flex flex-wrap items-end gap-2">
+      <form action={saveTransactionView} className="mt-4 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-4">
         <label className="block text-sm">
           Save current filters as
           <input
@@ -61,7 +61,7 @@ export function SavedViewsPanel({
             maxLength={80}
             placeholder="e.g. Restaurants over €20"
             aria-label="Saved view name"
-            className="ml-2 rounded border p-2"
+            className="ml-2 rounded-lg border border-slate-200 bg-white p-2 text-xs"
           />
         </label>
         {saveDefaults.q !== undefined ? <input type="hidden" name="q" value={saveDefaults.q} /> : null}
@@ -86,7 +86,7 @@ export function SavedViewsPanel({
           <input type="hidden" name="maxAmount" value={saveDefaults.maxAmount} />
         ) : null}
         {saveDefaults.sort !== undefined ? <input type="hidden" name="sort" value={saveDefaults.sort} /> : null}
-        <button className="rounded border px-4 py-2 text-sm">Save view</button>
+        <button className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium hover:bg-slate-50">Save view</button>
       </form>
       <p className="mt-2 text-xs text-muted-foreground">
         Saved-view links contain only an opaque id; search terms and account ids stay server-side.

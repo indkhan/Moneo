@@ -72,20 +72,21 @@ export default async function ArtifactPage({ params, searchParams }: {
     }
   }
 
-  return <main className="mx-auto max-w-4xl px-6 py-10">
+  return <main className="mx-auto max-w-5xl px-5 py-8 lg:px-8">
     <Link href="/ai/library" className="text-sm underline">Library</Link>
+    <p className="mt-5 text-xs font-semibold uppercase tracking-widest text-brand">AI / Saved tool</p>
     <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-      <h1 className="text-3xl font-semibold">{artifact.name}</h1>
+      <h1 className="text-3xl font-semibold tracking-tight text-foreground">{artifact.name}</h1>
       <form action={pin ? unpinArtifact : pinArtifact}>
         <input type="hidden" name="artifactId" value={id} />
-        <button className="rounded border px-3 py-2 text-sm">{pin ? "Unpin from Home" : "Pin to Home"}</button>
+        <button className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted">{pin ? "Unpin from Home" : "Pin to Home"}</button>
       </form>
     </div>
     <p className="mt-2 text-sm text-muted-foreground">Live financial data · trusted {artifact.kind.replaceAll("_", " ")} v{version?.version ?? "?"}</p>
     <form action={renameArtifact} className="mt-4 flex flex-wrap gap-2 text-sm">
       <input type="hidden" name="artifactId" value={id} />
-      <input name="name" defaultValue={artifact.name} required maxLength={120} aria-label="Artifact name" className="rounded border p-2" />
-      <button className="rounded border px-3">Save new version</button>
+      <input name="name" defaultValue={artifact.name} required maxLength={120} aria-label="Artifact name" className="rounded-lg border border-border bg-card px-3 py-2" />
+      <button className="rounded-lg border border-border bg-card px-3 text-sm font-medium hover:bg-muted">Save new version</button>
     </form>
     {artifact.kind === "spending_explorer" && <SpendingExplorer id={id} query={q.slice(0, 100)} />}
     {artifact.kind === "trip_planner" && <TripPlanner id={id} costMinor={costMinor} />}
@@ -100,7 +101,7 @@ export default async function ArtifactPage({ params, searchParams }: {
       />
     )}
     {version && !isCalculator && (
-      <p className="mt-8 rounded-lg border p-4 text-sm text-muted-foreground">
+      <p className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm text-sm text-muted-foreground">
         This tool still uses the built-in trusted template (no generated calculator yet). Use the
         generator below to draft the first validated calculator version.
       </p>
@@ -124,15 +125,15 @@ export default async function ArtifactPage({ params, searchParams }: {
 
 async function SpendingExplorer({ id, query }: { id: string; query: string }) {
   const data = await spendingForArtifact(id, query);
-  return <section className="mt-8">
-    <h2 className="text-xl font-semibold">This month</h2>
+  return <section className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
+    <h2 className="text-xl font-semibold tracking-tight text-foreground">This month</h2>
     {"unavailable" in data.summary ? <p className="mt-3">{data.summary.unavailable}</p>
       : <p className="mt-3 text-2xl">Spending {money(data.summary.spendingMinor, data.currency)}</p>}
     <p className="mt-1 text-sm text-muted-foreground">{data.from} to {data.to}. Posted ordinary transactions only; mixed currencies remain unavailable.</p>
     <SpendingChart rows={data.transactions} />
     <form method="get" className="mt-5 flex gap-2">
-      <input name="q" defaultValue={query} maxLength={100} aria-label="Filter transaction descriptions" className="flex-1 rounded border p-2" placeholder="Filter descriptions" />
-      <button className="rounded border px-3">Filter</button>
+      <input name="q" defaultValue={query} maxLength={100} aria-label="Filter transaction descriptions" className="flex-1 rounded-lg border border-border bg-card px-3 py-2" placeholder="Filter descriptions" />
+      <button className="rounded-lg border border-border bg-card px-3 text-sm font-medium hover:bg-muted">Filter</button>
     </form>
     <ul className="mt-4 divide-y rounded border">{data.transactions.map(row =>
       <li key={row.id} className="flex justify-between gap-3 p-3 text-sm">
@@ -146,18 +147,18 @@ async function SpendingExplorer({ id, query }: { id: string; query: string }) {
 
 async function TripPlanner({ id, costMinor }: { id: string; costMinor: bigint }) {
   const data = await tripForArtifact(id, costMinor);
-  return <section className="mt-8">
-    <h2 className="text-xl font-semibold">Trip cost</h2>
+  return <section className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
+    <h2 className="text-xl font-semibold tracking-tight text-foreground">Trip cost</h2>
     <form action={saveTripState} className="mt-4 flex flex-wrap items-end gap-3">
       <input type="hidden" name="artifactId" value={id} />
-      <label className="text-sm">Cost in minor units ({data.currency})<input name="costMinor" type="number" min="0" max="10000000" defaultValue={costMinor.toString()} className="mt-1 block rounded border p-2" /></label>
-      <button className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground">Save and recalculate</button>
+      <label className="text-sm">Cost in minor units ({data.currency})<input name="costMinor" type="number" min="0" max="10000000" defaultValue={costMinor.toString()} className="mt-1 block rounded-lg border border-border bg-card px-3 py-2" /></label>
+      <button className="rounded-lg bg-brand px-3 py-2 font-medium text-white hover:opacity-90 text-sm">Save and recalculate</button>
     </form>
     <p className="mt-3 text-sm text-muted-foreground">Hypothetical one-time cost on {data.tripDate}; no goal or account is changed.</p>
     {data.unavailable && <p className="mt-4">{data.unavailable}</p>}
     <div className="mt-5 grid gap-3 sm:grid-cols-2">
-      <div className="rounded border p-4"><h3>Available to spend now</h3><p className="mt-2 text-xl">{data.baseline.status === "available" ? money(data.baseline.amountMinor, data.currency) : "Unavailable"}</p></div>
-      <div className="rounded border p-4"><h3>With trip cost</h3><p className="mt-2 text-xl">{data.withTrip?.status === "available" ? money(data.withTrip.amountMinor, data.currency) : "Unavailable"}</p></div>
+      <div className="rounded-xl border border-border bg-card p-5 shadow-sm"><h3>Available to spend now</h3><p className="mt-2 text-xl">{data.baseline.status === "available" ? money(data.baseline.amountMinor, data.currency) : "Unavailable"}</p></div>
+      <div className="rounded-xl border border-border bg-card p-5 shadow-sm"><h3>With trip cost</h3><p className="mt-2 text-xl">{data.withTrip?.status === "available" ? money(data.withTrip.amountMinor, data.currency) : "Unavailable"}</p></div>
     </div>
   </section>;
 }
@@ -170,8 +171,8 @@ async function GoalTracker({ id, scenarioGoalId, extra }: { id: string; scenario
   const extraCurrency = targetGoal?.currency_code ?? "EUR";
   let extraMinor = 0n;
   try { if (extra) extraMinor = parseAmountMinor(extra, extraCurrency); } catch { /* Ignore invalid what-if input. */ }
-  return <section className="mt-8">
-    <h2 className="text-xl font-semibold">Goals and reservations</h2>
+  return <section className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
+    <h2 className="text-xl font-semibold tracking-tight text-foreground">Goals and reservations</h2>
     {!data.goals.length && <p className="mt-3">No goals yet. <Link href="/plan" className="underline">Create a goal</Link>.</p>}
     <div className="mt-4 space-y-3">{data.goals.map(goal => {
       const goalAllocations = data.allocations.filter(item => item.goal_id === goal.id);
@@ -182,14 +183,14 @@ async function GoalTracker({ id, scenarioGoalId, extra }: { id: string; scenario
       const days = goal.target_date ? Math.max(1, Math.ceil((Date.parse(`${goal.target_date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000)) : null;
       const pace = days ? (remaining * 30n + BigInt(days) - 1n) / BigInt(days) : null;
       const projected = days && comparable && scenarioGoalId === goal.id ? saved + extraMinor * BigInt(days) / 30n : null;
-      return <article key={goal.id} className="rounded border p-4">
+      return <article key={goal.id} className="rounded-xl border border-border bg-card p-5 shadow-sm">
         <h3 className="font-medium">{goal.name}</h3>
         <p className="mt-2">Reserved {comparable ? money(saved, goal.currency_code) : "Unavailable across currencies"} of {money(goal.target_minor, goal.currency_code)}</p>
         <p className="mt-1 text-sm text-muted-foreground">{goal.target_date ? `Target ${goal.target_date} · ${comparable && pace ? `about ${money(pace, goal.currency_code)} per 30 days still needed` : "saving pace unavailable"}` : "No target date"}</p>
         <form method="get" className="mt-3 flex flex-wrap items-end gap-2 text-sm">
           <input type="hidden" name="goalId" value={goal.id} />
-          <label>What if I save monthly?<input name="extra" type="number" step="0.01" min="0" defaultValue={scenarioGoalId === goal.id ? extra : ""} className="mt-1 block w-32 rounded border p-2" /></label>
-          <button className="rounded border px-3 py-2">Calculate</button>
+          <label>What if I save monthly?<input name="extra" type="number" step="0.01" min="0" defaultValue={scenarioGoalId === goal.id ? extra : ""} className="mt-1 block w-32 rounded-lg border border-border bg-card px-3 py-2" /></label>
+          <button className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted">Calculate</button>
         </form>
         {projected !== null && <p className="mt-2 text-sm">Illustrative amount at target date: {money(projected, goal.currency_code)}</p>}
       </article>;

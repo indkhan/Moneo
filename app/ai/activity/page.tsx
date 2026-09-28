@@ -144,17 +144,17 @@ export default async function ActivityPage() {
   const visible = items.slice(0, 50);
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
+    <main className="mx-auto max-w-5xl px-5 py-8 lg:px-8">
       <Link href="/ai" className="text-sm underline">
         ← AI
       </Link>
-      <h1 className="mt-4 text-3xl font-semibold">Activity</h1>
+      <p className="mt-5 text-xs font-semibold uppercase tracking-widest text-brand">AI / Activity</p>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Activity</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Operational history from imports, Deep Analysis runs, saved tools, and conversations. Summaries
-        only — no chain-of-thought and no raw datasets.
+        Your imports, financial reviews, saved tools, and conversations in one place.
       </p>
       {errors.length > 0 && (
-        <p role="alert" className="mt-4 rounded border p-3 text-sm text-red-700">
+        <p role="alert" className="mt-4 rounded-xl border border-border bg-card p-4 shadow-sm text-sm text-red-700">
           Could not load part of this workspace activity: {truncate(errors[0]?.message ?? "Unavailable", 200)}
         </p>
       )}
@@ -167,7 +167,7 @@ export default async function ActivityPage() {
       {visible.length > 0 && (
         <ul className="mt-6 space-y-3">
           {visible.map((item) => (
-            <li key={item.key} className="rounded border p-4">
+            <li key={item.key} className="rounded-xl border border-border bg-card p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase text-muted-foreground">
                 {item.badge} · {new Date(item.at).toLocaleString()}
               </p>

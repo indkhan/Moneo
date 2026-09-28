@@ -22,6 +22,11 @@ export function monthPrefix(today = new Date()): string {
   return today.toISOString().slice(0, 7);
 }
 
+export function nextMonthStart(month: string): string {
+  const [year, mon] = month.split("-").map(Number);
+  return new Date(Date.UTC(year, mon, 1)).toISOString().slice(0, 10);
+}
+
 export function spendingForCategory(
   transactions: SpendingPlanTransaction[],
   categoryId: string,

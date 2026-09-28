@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
-import { monthPrefix, spendingForCategory, type SpendingPlanTransaction } from "@/lib/finance/spending-plans";
+import { monthPrefix, nextMonthStart, spendingForCategory, type SpendingPlanTransaction } from "@/lib/finance/spending-plans";
 import { formatMoney } from "@/lib/finance/format";
 import { saveSpendingPlan, toggleSpendingPlan } from "./actions";
 
@@ -10,9 +10,8 @@ export default async function SpendingPlansPage() {
   try { context = await requireWorkspace(); } catch { redirect("/login"); }
   const { supabase, workspace } = context;
   const month = monthPrefix();
-  const [year, mon] = month.split("-").map(Number);
   const from = `${month}-01`;
-  const next = mon === 12 ? `${year + 1}-01` : `${year}-${String(mon + 1).padStart(2, "0")}`;
+  const next = nextMonthStart(month);
 
   const [{ data: categories }, { data: plans }] = await Promise.all([
     supabase.from("categories").select("id, name").eq("workspace_id", workspace.id).order("name"),
@@ -65,58 +64,59 @@ export default async function SpendingPlansPage() {
     return { ...plan, spent, limit, remaining: limit - spent };
   });
 
-  return <main className="mx-auto max-w-3xl space-y-8 px-6 py-10">
+  return <main className="mx-auto max-w-7xl space-y-7 px-4 py-8 text-foreground sm:px-6 lg:px-10">
     <header>
       <Link href="/plan" className="text-sm text-muted-foreground">← Plan</Link>
-      <h1 className="mt-2 text-3xl font-semibold">Monthly spending plans</h1>
-      <p className="mt-2 text-sm text-muted-foreground">
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Monthly spending plans</h1>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
         Targets for {month}, not predictions. Current-month posted ordinary spending, net of linked refunds;
         transfers, pending and income are excluded. Plans never change account balances and are separate from goal reservations.
       </p>
     </header>
-    <section>
-      <h2 className="text-xl font-semibold">Plans</h2>
+    <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+      <h2 className="text-lg font-semibold">Plans</h2>
       {!progress.length && <p className="mt-3 text-muted-foreground">No spending plans yet. Set one below.</p>}
-      <ul className="mt-4 space-y-3">{progress.map(plan => (
-        <li key={plan.id} className="rounded border p-4">
+      <ul className="mt-4 grid gap-3 lg:grid-cols-2">{progress.map(plan => (
+        <li key={plan.id} className="rounded-lg border border-border bg-muted/35 p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h3 className="font-medium">{names.get(plan.category_id) ?? "Unknown category"}{plan.enabled ? "" : " (disabled)"}</h3>
-            <p className="text-sm text-muted-foreground">{formatMoney(plan.spent, plan.currency_code)} of {formatMoney(plan.limit, plan.currency_code)}</p>
+            <p className="font-mono text-sm text-muted-foreground">{formatMoney(plan.spent, plan.currency_code)} of {formatMoney(plan.limit, plan.currency_code)}</p>
           </div>
-          <p className="mt-1 text-sm">{plan.enabled
+          <p className="mt-2 font-mono text-sm font-medium">{plan.enabled
             ? (plan.remaining >= 0n ? `${formatMoney(plan.remaining, plan.currency_code)} left` : `${formatMoney(-plan.remaining, plan.currency_code)} over plan`)
             : "Disabled: not counted as an active target."}</p>
+          {plan.enabled && <progress className="mt-3 h-1.5 w-full accent-brand" max={Number(plan.limit)} value={Number(plan.spent)} aria-label={`${names.get(plan.category_id) ?? "Category"} plan used`} />}
           <div className="mt-3 flex flex-wrap gap-2">
             <form action={saveSpendingPlan} className="flex flex-wrap gap-2">
               <input type="hidden" name="categoryId" value={plan.category_id} />
               <input type="hidden" name="currency" value={plan.currency_code} />
-              <input name="amount" required aria-label={`Edit ${names.get(plan.category_id) ?? "plan"} limit`} placeholder="0.00" className="w-28 rounded border p-2" />
-              <button className="underline">Update limit</button>
+              <input name="amount" required aria-label={`Edit ${names.get(plan.category_id) ?? "plan"} limit`} placeholder="0.00" className="min-h-10 w-28 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
+              <button className="font-medium text-brand hover:underline">Update limit</button>
             </form>
             <form action={toggleSpendingPlan}>
               <input type="hidden" name="planId" value={plan.id} />
               <input type="hidden" name="enabled" value={plan.enabled ? "false" : "true"} />
-              <button className="underline">{plan.enabled ? "Disable" : "Enable"}</button>
+              <button className="font-medium text-brand hover:underline">{plan.enabled ? "Disable" : "Enable"}</button>
             </form>
           </div>
         </li>))}</ul>
     </section>
     {!!categories?.length && (
-      <section className="rounded-lg border p-5">
-        <h2 className="font-semibold">Set a monthly limit</h2>
+      <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+        <h2 className="text-lg font-semibold">Set a monthly limit</h2>
         <form action={saveSpendingPlan} className="mt-4 flex flex-wrap items-end gap-2">
           <label className="grid gap-1 text-sm">Category
-            <select name="categoryId" aria-label="Category" className="rounded border p-2">
+            <select name="categoryId" aria-label="Category" className="min-h-10 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15">
               {categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </label>
           <label className="grid gap-1 text-sm">Currency
-            <input name="currency" defaultValue={workspace.display_currency} required maxLength={3} aria-label="Currency code" className="w-20 rounded border p-2" />
+            <input name="currency" defaultValue={workspace.display_currency} required maxLength={3} aria-label="Currency code" className="min-h-10 w-20 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
           </label>
           <label className="grid gap-1 text-sm">Monthly limit
-            <input name="amount" required placeholder="400.00" aria-label="Monthly limit" className="w-32 rounded border p-2" />
+            <input name="amount" required placeholder="400.00" aria-label="Monthly limit" className="min-h-10 w-32 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
           </label>
-          <button className="rounded bg-primary px-4 py-2 text-primary-foreground">Save plan</button>
+          <button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">Save plan</button>
         </form>
       </section>
     )}

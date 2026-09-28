@@ -79,17 +79,18 @@ export default async function RecurringPage() {
   );
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
-      <header className="flex flex-wrap items-center justify-between gap-4">
+    <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 text-slate-900 sm:px-8">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm text-muted-foreground">
-            <Link href="/" className="underline">Home</Link> · <Link href="/money/transactions" className="underline">Transactions</Link> · <Link href="/plan" className="underline">Plan</Link>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">
+            Money / Recurring
           </p>
-          <h1 className="mt-2 text-3xl font-semibold">Recurring review</h1>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Recurring review</h1>
         </div>
+        <Link href="/money/transactions" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50">Back to transactions</Link>
       </header>
 
-      <p className="mt-4 text-sm text-muted-foreground">
+      <p className="max-w-3xl text-sm text-slate-500">
         Estimated patterns inferred from up to {MAX_TRANSACTIONS.toLocaleString()} posted transactions.
         Nothing here affects your forecast until you confirm it. Confirming creates one confirmed
         financial assumption used by the deterministic forecast; declining disables it.
@@ -102,10 +103,10 @@ export default async function RecurringPage() {
       {truncated && <p className="mt-6 text-sm text-muted-foreground">Showing the first 10,000 posted transactions.</p>}
 
       {!queryError && !detectError && detected.length === 0 && (
-        <p className="mt-8 text-muted-foreground">No estimated recurring patterns found. Import more history to improve detection.</p>
+        <p className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">No estimated recurring patterns found. Import more history to improve detection.</p>
       )}
 
-      <div className="mt-8 space-y-4">
+      <div className="grid gap-4 lg:grid-cols-2">
         {detected.map((series) => {
           const key = seriesKey({
             accountId: series.accountId,
@@ -118,20 +119,20 @@ export default async function RecurringPage() {
           const percent = confidenceToPercent(series.confidence);
           const evidence = series.transactionIds.map((id) => byId.get(id)).filter((row): row is TxRow => Boolean(row));
           return (
-            <article key={key} className="rounded-lg border p-5">
+            <article key={key} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-medium">{series.label}</h2>
-                <span className="rounded bg-muted px-2 py-0.5 text-xs">Estimated · {series.cadence}</span>
-                {status === "confirmed" && <span className="rounded bg-muted px-2 py-0.5 text-xs">Confirmed · used in forecast</span>}
-                {status === "dismissed" && <span className="rounded bg-muted px-2 py-0.5 text-xs">Dismissed · not recurring</span>}
+                <h2 className="text-base font-semibold">{series.label}</h2>
+                <span className="rounded bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700">Estimated · {series.cadence}</span>
+                {status === "confirmed" && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">Confirmed · used in forecast</span>}
+                {status === "dismissed" && <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">Dismissed · not recurring</span>}
               </div>
-              <p className="mt-2 text-sm">
+              <p className="mt-3 font-mono text-sm">
                 {formatMoney(series.amountMinMinor.toString(), series.currencyCode)}
                 {series.amountMinMinor !== series.amountMaxMinor && <> to {formatMoney(series.amountMaxMinor.toString(), series.currencyCode)}</>}
                 {" · "}{names[series.accountId] ?? "Unknown account"}
                 {" · "}{series.occurrences} payments · confidence {percent}%
               </p>
-              <details className="mt-3 text-sm">
+              <details className="mt-4 border-t border-slate-100 pt-3 text-xs">
                 <summary className="cursor-pointer underline">Evidence ({evidence.length} posted transactions)</summary>
                 <ul className="mt-2 space-y-1">
                   {evidence.slice(0, 8).map((row) => (
@@ -153,7 +154,7 @@ export default async function RecurringPage() {
                   <input type="hidden" name="occurrences" value={series.occurrences} />
                   <input type="hidden" name="confidence" value={percent} />
                   <input type="hidden" name="transactionIds" value={series.transactionIds.join(",")} />
-                  <button className="rounded bg-primary px-4 py-2 text-sm text-primary-foreground">Confirm</button>
+                  <button className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-medium text-white hover:bg-blue-800">Confirm</button>
                 </form>
                 <form action={declineSeries}>
                   <input type="hidden" name="accountId" value={series.accountId} />
@@ -165,7 +166,7 @@ export default async function RecurringPage() {
                   <input type="hidden" name="occurrences" value={series.occurrences} />
                   <input type="hidden" name="confidence" value={percent} />
                   <input type="hidden" name="transactionIds" value={series.transactionIds.join(",")} />
-                  <button className="rounded border px-4 py-2 text-sm">Not recurring</button>
+                  <button className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium hover:bg-slate-50">Not recurring</button>
                 </form>
               </div>
             </article>

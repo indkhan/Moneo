@@ -84,7 +84,7 @@ export function GenerateCalculatorForm({
   }
 
   return (
-    <section aria-label="AI-generated calculator" className="mt-8 rounded-lg border p-4">
+    <section aria-label="AI-generated calculator" className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 className="text-lg font-semibold">Generate calculator code</h2>
       <p className="mt-1 text-sm text-muted-foreground">
         AI drafts a tiny pure calculator. Nothing is saved until you choose Save. Failed
@@ -100,18 +100,18 @@ export function GenerateCalculatorForm({
         maxLength={500}
         rows={3}
         placeholder="e.g. average daily dining spend from the snapshot"
-        className="mt-2 w-full rounded border p-2 text-sm"
+        className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm"
       />
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           type="button"
           disabled={working || description.trim().length === 0}
           onClick={suggest}
-          className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50"
+          className="rounded-lg bg-brand px-3 py-2 font-medium text-white hover:opacity-90 text-sm disabled:opacity-50"
         >
           {working ? "Asking AI…" : "Suggest calculator"}
         </button>
-        <button type="button" onClick={useFallback} className="rounded border px-3 py-2 text-sm">
+        <button type="button" onClick={useFallback} className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted">
           Use safe fallback
         </button>
         {draft && (
@@ -119,7 +119,7 @@ export function GenerateCalculatorForm({
             type="button"
             disabled={working}
             onClick={suggest}
-            className="rounded border px-3 py-2 text-sm"
+            className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
           >
             Retry suggestion
           </button>
@@ -153,7 +153,7 @@ export function GenerateCalculatorForm({
             </ul>
           )}
           {draft.validation.ok === true && draft.validation.warnings?.length ? (
-            <ul className="rounded border p-3 text-muted-foreground">
+            <ul className="rounded-xl border border-border bg-card p-4 shadow-sm text-muted-foreground">
               {draft.validation.warnings.map((w) => (
                 <li key={w}>• {w}</li>
               ))}
@@ -163,7 +163,7 @@ export function GenerateCalculatorForm({
             type="button"
             disabled={saving || draft.validation.ok === false}
             onClick={() => save(draft.source, draft.manifest)}
-            className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50"
+            className="rounded-lg bg-brand px-3 py-2 font-medium text-white hover:opacity-90 text-sm disabled:opacity-50"
             title={
               draft.validation.ok === false
                 ? "Fix validation errors before saving (or save via the editor to record a failed attempt)"

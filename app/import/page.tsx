@@ -173,7 +173,7 @@ export default function ImportPage() {
   const chooseColumn = (label: string, key: keyof ImportMapping, optional = false) => (
     <label className="grid gap-1 text-sm" key={key}>
       {label}
-      <select className="rounded border p-2" value={String(mapping?.[key] ?? "")}
+      <select className="rounded-lg border border-border bg-card px-3 py-2" value={String(mapping?.[key] ?? "")}
         onChange={(event) => setMapping((current) => current && ({ ...current, [key]: event.target.value || undefined }))}>
         {optional && <option value="">None</option>}
         {!optional && <option value="">Select column</option>}
@@ -182,22 +182,21 @@ export default function ImportPage() {
     </label>
   );
 
-  return <main className="mx-auto max-w-3xl space-y-6 p-6">
-    <h1 className="text-3xl font-semibold">Import financial data</h1>
-    <p>Choose CSV or XLSX statements. We&apos;ll propose an interpretation for you to review before importing.</p>
-    <input type="file" accept=".csv,.xlsx" multiple disabled={busy} aria-label="Financial statement files"
+  return <main className="mx-auto max-w-5xl space-y-6 px-5 py-8 lg:px-8">
+    <div><p className="text-xs font-semibold uppercase tracking-widest text-brand">Money / Import</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Import financial data</h1><p className="mt-2 text-sm text-muted-foreground">Choose CSV or XLSX statements. We&apos;ll propose an interpretation for you to review before importing.</p></div>
+    <label className="block rounded-xl border border-dashed border-blue-300 bg-card p-8 text-center shadow-sm hover:bg-muted/40"><span className="block text-base font-semibold">Choose statements to import</span><span className="mt-1 block text-sm text-muted-foreground">CSV or XLSX files · You can select more than one</span><input className="mt-5 w-full max-w-xs text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-brand file:px-4 file:py-2 file:font-medium file:text-white" type="file" accept=".csv,.xlsx" multiple disabled={busy} aria-label="Financial statement files"
       onChange={(event) => {
         const selected = Array.from(event.target.files ?? []);
         setFiles(selected);
         setIndex(0);
         setInspection(null);
         if (selected[0]) void inspect(selected[0]);
-      }} />
+      }} /></label>
     <section className="space-y-3" aria-label="Import history">
-      <h2 className="text-xl font-semibold">Import history</h2>
+      <h2 className="text-xl font-semibold tracking-tight text-foreground">Import history</h2>
       {!history.length && <p>No imports yet.</p>}
-      {history.map((item) => <article key={item.id} className="rounded border p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.filename}</strong><span role="status">{item.status}</span></div>
+      {history.map((item) => <article key={item.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.filename}</strong><span role="status" className="rounded-lg bg-muted px-2.5 py-1 text-xs font-medium capitalize text-brand">{item.status}</span></div>
         <p className="text-sm">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows} for review · {item.rejected_rows} rejected · {item.total_rows} total</p>
         {item.error && <p className="text-sm text-red-700">{item.error}</p>}
         {item.review_rows > 0 && <Link className="text-sm underline" href={`/import/${item.id}/review`}>Review rows</Link>}
@@ -208,45 +207,45 @@ export default function ImportPage() {
           {preview.blockers.length > 0
             ? <ul className="list-disc pl-5">{preview.blockers.map((reason) => <li key={reason}>{reason}</li>)}</ul>
             : <div className="flex flex-wrap gap-2">
-                <button type="button" className="rounded bg-black px-3 py-2 text-white" disabled={busy} onClick={() => void confirmUndo()}>Confirm undo {preview.deletable_transactions} transactions</button>
-                <button type="button" className="rounded border px-3 py-2" disabled={busy} onClick={() => { setUndoId(null); setPreview(null); }}>Keep import</button>
+                <button type="button" className="rounded-lg bg-brand px-3 py-2 text-white hover:opacity-90" disabled={busy} onClick={() => void confirmUndo()}>Confirm undo {preview.deletable_transactions} transactions</button>
+                <button type="button" className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted" disabled={busy} onClick={() => { setUndoId(null); setPreview(null); }}>Keep import</button>
               </div>}
         </div>}
       </article>)}
     </section>
     {busy && <p role="status">Working…</p>}
     {error && <p role="alert" className="text-red-700">{error}</p>}
-    {file && inspection && <section className="space-y-4 rounded border p-4">
-      <h2 className="text-xl font-semibold">{file.name} ({index + 1} of {files.length})</h2>
+    {file && inspection && <section className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-sm">
+      <h2 className="text-xl font-semibold tracking-tight text-foreground">{file.name} ({index + 1} of {files.length})</h2>
       {inspection.aiError && <p>Automatic interpretation unavailable. Choose the columns below.</p>}
-      {editing && <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{inspection.headers.map((header) => <th className="pr-4" key={header}>{header}</th>)}</tr></thead><tbody>
-        {inspection.sample.slice(0, 3).map((row, i) => <tr className="border-t" key={i}>{inspection.headers.map((header) => <td className="pr-4" key={header}>{row[header]}</td>)}</tr>)}
+      {editing && <div className="overflow-x-auto rounded-lg border border-border"><table className="w-full text-left text-sm [&_th]:bg-muted [&_th]:px-3 [&_th]:py-2.5 [&_th]:text-xs [&_th]:font-semibold [&_td]:px-3 [&_td]:py-3"><thead><tr>{inspection.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>
+        {inspection.sample.slice(0, 3).map((row, i) => <tr className="border-t border-border" key={i}>{inspection.headers.map((header) => <td key={header}>{row[header]}</td>)}</tr>)}
       </tbody></table></div>}
       {inspection.preview && <>
         <p><strong>Account:</strong> {inspection.preview.accountName} · <strong>Currency:</strong> {inspection.preview.currencyCode}</p>
         <p className="text-sm text-muted-foreground">Check the currency and incoming/outgoing amounts below. {mapping?.amountSign === "outflow-positive" ? "Positive source amounts are treated as outgoing; review this sign convention before continuing." : "Positive source amounts are treated as incoming."}</p>
         <p><strong>{inspection.preview.totalRows} rows</strong> · {inspection.preview.dateRange.from} to {inspection.preview.dateRange.to}{inspection.preview.pendingRows != null && inspection.preview.pendingRows > 0 ? ` · ${inspection.preview.pendingRows} pending (excluded from posted spending)` : ""}</p>
         <p className="text-sm text-muted-foreground">Descriptions stay exactly as in the file. Merchants/categories below come only from explicit columns when present. Pending rows stay pending and never count as posted spending.</p>
-        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th>Date</th><th>Description</th><th>Incoming / outgoing</th><th>Status</th><th>Merchant</th><th>Category</th></tr></thead><tbody>
+        <div className="overflow-x-auto rounded-lg border border-border"><table className="w-full text-left text-sm [&_th]:bg-muted [&_th]:px-3 [&_th]:py-2.5 [&_th]:text-xs [&_th]:font-semibold [&_td]:px-3 [&_td]:py-3"><thead><tr><th>Date</th><th>Description</th><th>Incoming / outgoing</th><th>Status</th><th>Merchant</th><th>Category</th></tr></thead><tbody>
           {inspection.preview.examples.map((row, i) => <tr key={i} className="border-t"><td>{row.postedOn}</td><td>{row.description}</td><td>{formatMinor(row.amountMinor, row.currencyCode)}</td><td>{row.status ?? "posted"}</td><td>{row.merchant ?? "—"}</td><td>{row.category ?? "Uncategorized"}</td></tr>)}
         </tbody></table></div>
       </>}
       {editing && mapping && <div className="grid gap-3 sm:grid-cols-2">
-        <label className="grid gap-1 text-sm">Account name<input className="rounded border p-2" value={mapping.accountName} onChange={(e) => setMapping({ ...mapping, accountName: e.target.value })} /></label>
-        <label className="grid gap-1 text-sm">Currency code<input className="rounded border p-2" maxLength={3} value={mapping.currencyCode} onChange={(e) => setMapping({ ...mapping, currencyCode: e.target.value.toUpperCase() })} /></label>
+        <label className="grid gap-1 text-sm">Account name<input className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.accountName} onChange={(e) => setMapping({ ...mapping, accountName: e.target.value })} /></label>
+        <label className="grid gap-1 text-sm">Currency code<input className="rounded-lg border border-border bg-card px-3 py-2" maxLength={3} value={mapping.currencyCode} onChange={(e) => setMapping({ ...mapping, currencyCode: e.target.value.toUpperCase() })} /></label>
         {chooseColumn("Date", "dateColumn")}{chooseColumn("Description", "descriptionColumn")}
         {chooseColumn("Amount", "amountColumn", true)}
         {chooseColumn("Debit", "debitColumn", true)}{chooseColumn("Credit", "creditColumn", true)}
         {chooseColumn("Currency", "currencyColumn", true)}{chooseColumn("Balance", "balanceColumn", true)}
         {chooseColumn("Merchant", "merchantColumn", true)}{chooseColumn("Category", "categoryColumn", true)}{chooseColumn("External ID", "externalIdColumn", true)}{chooseColumn("Status (posted/pending only)", "statusColumn", true)}
-        <label className="grid gap-1 text-sm">Date format<select className="rounded border p-2" value={mapping.dateFormat} onChange={(e) => setMapping({ ...mapping, dateFormat: e.target.value as ImportMapping["dateFormat"] })}><option value="iso">YYYY-MM-DD</option><option value="dmy">DD/MM/YYYY</option><option value="mdy">MM/DD/YYYY</option></select></label>
-        <label className="grid gap-1 text-sm">Amount signs<select className="rounded border p-2" value={mapping.amountSign} onChange={(e) => setMapping({ ...mapping, amountSign: e.target.value as ImportMapping["amountSign"] })}><option value="signed">Positive is incoming</option><option value="outflow-positive">Positive is outgoing</option></select></label>
-        <div className="sm:col-span-2"><button type="button" className="rounded bg-black px-4 py-2 text-white" disabled={busy} onClick={() => void inspect(file, mapping)}>Preview correction</button></div>
+        <label className="grid gap-1 text-sm">Date format<select className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.dateFormat} onChange={(e) => setMapping({ ...mapping, dateFormat: e.target.value as ImportMapping["dateFormat"] })}><option value="iso">YYYY-MM-DD</option><option value="dmy">DD/MM/YYYY</option><option value="mdy">MM/DD/YYYY</option></select></label>
+        <label className="grid gap-1 text-sm">Amount signs<select className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.amountSign} onChange={(e) => setMapping({ ...mapping, amountSign: e.target.value as ImportMapping["amountSign"] })}><option value="signed">Positive is incoming</option><option value="outflow-positive">Positive is outgoing</option></select></label>
+        <div className="sm:col-span-2"><button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy} onClick={() => void inspect(file, mapping)}>Preview correction</button></div>
       </div>}
       <div className="flex gap-3">
-        {inspection.preview && !editing && <button type="button" className="rounded bg-black px-4 py-2 text-white" disabled={busy} onClick={() => void confirm()}>Continue</button>}
-        {inspection.preview && !editing && <button type="button" className="rounded border px-4 py-2" onClick={() => setEditing(true)}>Correct</button>}
-        <button type="button" className="rounded border px-4 py-2" onClick={() => { setFiles([]); setInspection(null); setMapping(null); }}>Cancel</button>
+        {inspection.preview && !editing && <button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy} onClick={() => void confirm()}>Continue</button>}
+        {inspection.preview && !editing && <button type="button" className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" onClick={() => setEditing(true)}>Correct</button>}
+        <button type="button" className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" onClick={() => { setFiles([]); setInspection(null); setMapping(null); }}>Cancel</button>
       </div>
     </section>}
   </main>;

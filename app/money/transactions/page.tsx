@@ -207,10 +207,10 @@ if (selected && selected.status === "posted" && selected.kind === "ordinary" && 
     };
   }
 
-  return <main className="mx-auto max-w-6xl px-6 py-10">
-    <header className="flex items-center justify-between"><div><Link href="/" className="text-sm text-muted-foreground">← Home</Link><h1 className="mt-2 text-3xl font-semibold">Transactions</h1><Link href="/money/recurring" className="mt-2 inline-block text-sm underline">Review recurring patterns</Link></div><Link href="/import" className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground">Import</Link></header>
+  return <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 text-slate-900 sm:px-8">
+    <header className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">Money / Ledger</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">Transactions</h1><p className="mt-1 text-sm text-slate-500">Search, review, and correct your ledger.</p></div><div className="flex flex-wrap gap-2"><Link href="/money/recurring" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50">Review recurring</Link><Link href="/import" className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-blue-800">Import statement</Link></div></header>
     {viewNotFound ? <p role="alert" className="mt-6">Saved view not found. Showing normal filters.</p> : null}
-    <form className="mt-8 flex flex-wrap gap-3" method="get">
+    <form className="flex flex-wrap items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm [&_input]:rounded-lg [&_input]:border-slate-200 [&_input]:bg-white [&_input]:px-3 [&_input]:py-2 [&_input]:text-xs [&_select]:rounded-lg [&_select]:border-slate-200 [&_select]:bg-white [&_select]:px-3 [&_select]:py-2 [&_select]:text-xs" method="get">
       <input name="q" defaultValue={filters.q} placeholder="Search descriptions" aria-label="Search descriptions" className="rounded border p-2" />
       <input name="from" type="date" defaultValue={filters.from} aria-label="From date" className="rounded border p-2" />
       <input name="to" type="date" defaultValue={filters.to} aria-label="To date" className="rounded border p-2" />
@@ -223,12 +223,12 @@ if (selected && selected.status === "posted" && selected.kind === "ordinary" && 
       <select name="kind" defaultValue={filters.kind ?? ""} aria-label="Type" className="rounded border p-2"><option value="">All types</option><option value="ordinary">Ordinary</option><option value="transfer">Transfer</option><option value="refund">Refund</option></select>
       <select name="direction" defaultValue={filters.direction ?? ""} aria-label="Direction" className="rounded border p-2"><option value="">Income and outflow</option><option value="income">Income</option><option value="outflow">Outflow</option></select>
       <select name="sort" defaultValue={filters.sort} aria-label="Sort order" className="rounded border p-2"><option value="date-desc">Newest first</option><option value="date-asc">Oldest first</option><option value="amount-desc">Largest amount first</option><option value="amount-asc">Smallest amount first</option></select>
-      <button className="rounded border px-4">Filter</button>
+      <button className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-medium text-white hover:bg-blue-800">Apply filters</button>
     </form>
     <SavedViewsPanel views={(savedViews ?? []).map(view => ({ id: view.id, name: view.name, created_at: view.created_at }))} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} />
     {error ? <p role="alert" className="mt-6">Could not load transactions: {error.message}</p> : <TransactionTable rows={rows} accountNames={names} merchantNames={merchantNames} query={current.toString()} sort={filters.sort} baseQuery={baseQuery} />}
     {next && <Link className="mt-5 inline-block underline" href={`/money/transactions?${nextParams}`}>Next page</Link>}
-    {selected && <aside aria-label="Transaction details" className="fixed inset-y-0 right-0 w-full max-w-md overflow-y-auto border-l bg-background p-6 shadow-xl">
+    {selected && <aside aria-label="Transaction details" className="fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto border-l border-slate-200 bg-white p-6 shadow-2xl [&_input:not([type=hidden])]:border-slate-200 [&_select]:border-slate-200 [&_textarea]:border-slate-200">
       <Link href={`/money/transactions?${current}`} className="text-sm underline">Close</Link>
       <h2 className="mt-6 text-xl font-semibold">{selected.description}</h2>
       <p className="mt-2">{selected.posted_on} · {selected.amount_minor} minor units {selected.currency_code}</p>
