@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireWorkspace } from "@/lib/auth";
-import { parseAmountMinor } from "@/lib/csv";
+import { parseManualAmount } from "@/app/money/transactions/input";
 
 async function editPlan(form: FormData, patch: Record<string, unknown>) {
   const { supabase } = await requireWorkspace();
@@ -24,14 +24,14 @@ export async function saveSpendingPlan(form: FormData) {
     const { data: plan, error } = await supabase.from("spending_plans").select("currency_code")
       .eq("workspace_id", workspace.id).eq("id", planId).maybeSingle();
     if (error || !plan) throw new Error("Spending plan not found");
-    const limit = parseAmountMinor(String(form.get("amount") ?? ""), plan.currency_code);
+    const limit = parseManualAmount(String(form.get("amount") ?? ""), plan.currency_code);
     if (limit <= 0n) throw new Error("Spending limit must be positive");
     await editPlan(form, { limit_minor: limit.toString() });
     return;
   }
   const categoryId = z.uuid().parse(form.get("categoryId"));
   const currency = z.string().regex(/^[A-Z]{3}$/).parse(form.get("currency"));
-  const limit = parseAmountMinor(String(form.get("amount") ?? ""), currency);
+  const limit = parseManualAmount(String(form.get("amount") ?? ""), currency);
   if (limit <= 0n) throw new Error("Spending limit must be positive");
   const { data: category } = await supabase.from("categories").select("id")
     .eq("workspace_id", workspace.id).eq("id", categoryId).maybeSingle();
@@ -51,4 +51,9 @@ export async function saveSpendingPlan(form: FormData) {
 export async function toggleSpendingPlan(form: FormData) {
   const enabled = z.enum(["true", "false"]).parse(form.get("enabled")) === "true";
   await editPlan(form, { enabled });
+}
+
+export async function setRollover(form: FormData) {
+  const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).parse(form.get("rolloverFrom"));
+  await editPlan(form, { rollover: form.get("rollover") === "on", rollover_from: `${month}-01` });
 }
