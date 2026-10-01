@@ -1,7 +1,7 @@
 import { generateObject } from "ai";
 import { getModel } from "@/lib/ai/provider";
 import { requireWorkspace } from "@/lib/auth";
-import { mappingSchema, parseCsv, parseExcel, previewImport, validateAiMapping } from "@/lib/csv";
+import { mappingSchema, parseCsv, parseExcel, previewImport, proposeAccountRoutes, validateAiMapping } from "@/lib/csv";
 
 export async function POST(request: Request) {
   let workspaceCurrency: string;
@@ -27,14 +27,14 @@ export async function POST(request: Request) {
     let preview;
     let aiError: string | undefined;
     if (typeof supplied === "string") {
-      mapping = mappingSchema.parse(JSON.parse(supplied));
+      mapping = proposeAccountRoutes(rows, JSON.parse(supplied));
       preview = previewImport(rows, mapping);
     } else {
       try {
         const result = await generateObject({
           model: getModel(),
           schema: mappingSchema,
-          prompt: `Return one JSON object with exactly these required keys: accountName (use the filename stem ${JSON.stringify(file.name.replace(/\.(csv|xlsx)$/i, ""))}), currencyCode (three uppercase letters), dateColumn, descriptionColumn, dateFormat (exactly "iso", "dmy", or "mdy"), and amountSign (exactly "signed" or "outflow-positive"). Optional keys are amountColumn, debitColumn, creditColumn, currencyColumn, balanceColumn, merchantColumn, categoryColumn, externalIdColumn, and statusColumn. Omit unused optional keys. Do not use keys such as "currency" or date formats such as "yyyy-MM-dd". Propose a financial statement column mapping. Return only values justified by headers and sample rows. Sign convention: positive means money entering the account; negative means money leaving it. Use amountSign "outflow-positive" only if positive amounts represent expenses. For separate debit/credit columns, include both and omit amountColumn. For a single amount column, include amountColumn and omit debitColumn/creditColumn. dateFormat must match the data. Currency is a three-letter code; when the file has no currency column, use workspace display currency ${workspaceCurrency} as a provisional default. Include merchantColumn only when a header clearly holds merchant/counterparty names, and categoryColumn only when a header clearly holds categories; otherwise omit them. Include statusColumn only when a header clearly holds an explicit posted/pending indicator (values like posted or pending); otherwise omit it and all rows default to posted. Do not invent columns.\nHeaders: ${JSON.stringify(headers)}\nSample rows: ${JSON.stringify(rows.slice(0, 8))}`,
+          prompt: `Return one JSON object with exactly these required keys: accountName (use the filename stem ${JSON.stringify(file.name.replace(/\.(csv|xlsx)$/i, ""))}), currencyCode (three uppercase letters), dateColumn, descriptionColumn, dateFormat (exactly "iso", "dmy", or "mdy"), and amountSign (exactly "signed" or "outflow-positive"). Optional keys are amountColumn, debitColumn, creditColumn, currencyColumn, balanceColumn, merchantColumn, categoryColumn, externalIdColumn, and statusColumn. Omit unused optional keys. Do not use keys such as "currency" or date formats such as "yyyy-MM-dd". Propose a financial statement column mapping. Return only values justified by headers and sample rows. Sign convention: positive means money entering the account; negative means money leaving it. Use amountSign "outflow-positive" only if positive amounts represent expenses. For separate debit/credit columns, include both and omit amountColumn. For a single amount column, include amountColumn and omit debitColumn/creditColumn. dateFormat must match the data. Currency is a three-letter code; when the file has no currency column, use workspace display currency ${workspaceCurrency} as a provisional default. Include merchantColumn only when a header clearly holds merchant/counterparty names, and categoryColumn only when a header clearly holds categories; otherwise omit them. Include statusColumn only when a header clearly holds an explicit posted/pending indicator (values like posted, pending, or COMPLETED); include accountColumn/productColumn for explicit account/product headers. Account routes will be proposed deterministically from all rows for user review; omit accountRoutes. Otherwise omit statusColumn and all rows default to posted. Do not invent columns.\nHeaders: ${JSON.stringify(headers)}\nSample rows: ${JSON.stringify(rows.slice(0, 8))}`,
         });
         mapping = validateAiMapping(result.object, rows, workspaceCurrency);
         preview = previewImport(rows, mapping);
@@ -45,6 +45,8 @@ export async function POST(request: Request) {
     }
     return Response.json({
       headers,
+      warnings: headers.some(header => /^(type|fee)$/i.test(header.trim()))
+        ? ["Source type and fee evidence is preserved. Transfers, refunds, exchanges and fees require transaction review; no internal movement or separate fee is guessed."] : [],
       sample: rows.slice(0, 5),
       mapping: mapping ?? null,
       preview: preview ? {

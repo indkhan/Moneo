@@ -3,24 +3,25 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { ImportMapping, SourceRow } from "@/lib/csv";
+import { formatMoney } from "@/lib/finance/format";
 
 type Preview = {
   accountName: string;
   currencyCode: string;
+  accounts?: { accountName: string; currencyCode: string; rows: number }[];
   totalRows: number;
   pendingRows?: number;
   postedRows?: number;
   dateRange: { from: string; to: string };
   examples: { postedOn: string; description: string; amountMinor: string; currencyCode: string; status?: string; merchant?: string; category?: string }[];
 };
-type Inspection = { headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string };
+type Inspection = { headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string; warnings?: string[] };
 type ImportStatus = { id: string; filename: string; status: string; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; rejected_rows: number; error: string | null; created_at: string };
 type UndoPreview = { import_id: string; filename: string; status: string; deletable_transactions: number; deletable_balances: number; blockers: string[]; safe: boolean };
 
 function formatMinor(value: string, currency: string) {
   const amount = BigInt(value);
-  const absolute = amount < 0n ? -amount : amount;
-  return `${amount < 0n ? "−" : "+"}${currency} ${absolute / 100n}.${(absolute % 100n).toString().padStart(2, "0")}`;
+  return `${amount >= 0n ? "+" : ""}${formatMoney(amount, currency)}`;
 }
 
 export default function ImportPage() {
@@ -175,7 +176,8 @@ export default function ImportPage() {
     <label className="grid gap-1 text-sm" key={key}>
       {label}
       <select className="rounded-lg border border-border bg-card px-3 py-2" value={String(mapping?.[key] ?? "")}
-        onChange={(event) => setMapping((current) => current && ({ ...current, [key]: event.target.value || undefined }))}>
+        onChange={(event) => setMapping((current) => current && ({ ...current, [key]: event.target.value || undefined,
+          ...(["accountColumn", "productColumn", "currencyColumn"].includes(key) ? { accountRoutes: undefined } : {}) }))}>
         {optional && <option value="">None</option>}
         {!optional && <option value="">Select column</option>}
         {inspection?.headers.map((header) => <option key={header} value={header}>{header}</option>)}
@@ -223,6 +225,8 @@ export default function ImportPage() {
         {inspection.sample.slice(0, 3).map((row, i) => <tr className="border-t border-border" key={i}>{inspection.headers.map((header) => <td key={header}>{row[header]}</td>)}</tr>)}
       </tbody></table></div>}
       {inspection.preview && <>
+        {inspection.preview.accounts?.map(account => <p key={`${account.accountName}:${account.currencyCode}`}><strong>{account.accountName}</strong> · {account.currencyCode} · {account.rows} rows</p>)}
+        {inspection.warnings?.map(warning => <p key={warning} className="text-sm text-amber-700 dark:text-amber-300">{warning}</p>)}
         <p><strong>Account:</strong> {inspection.preview.accountName} · <strong>Currency:</strong> {inspection.preview.currencyCode}</p>
         <p className="text-sm text-muted-foreground">Check the currency and incoming/outgoing amounts below. {mapping?.amountSign === "outflow-positive" ? "Positive source amounts are treated as outgoing; review this sign convention before continuing." : "Positive source amounts are treated as incoming."}</p>
         <p><strong>{inspection.preview.totalRows} rows</strong> · {inspection.preview.dateRange.from} to {inspection.preview.dateRange.to}{inspection.preview.pendingRows != null && inspection.preview.pendingRows > 0 ? ` · ${inspection.preview.pendingRows} pending (excluded from posted spending)` : ""}</p>
@@ -238,7 +242,9 @@ export default function ImportPage() {
         {chooseColumn("Amount", "amountColumn", true)}
         {chooseColumn("Debit", "debitColumn", true)}{chooseColumn("Credit", "creditColumn", true)}
         {chooseColumn("Currency", "currencyColumn", true)}{chooseColumn("Balance", "balanceColumn", true)}
-        {chooseColumn("Merchant", "merchantColumn", true)}{chooseColumn("Category", "categoryColumn", true)}{chooseColumn("External ID", "externalIdColumn", true)}{chooseColumn("Status (posted/pending only)", "statusColumn", true)}
+        {chooseColumn("Source account", "accountColumn", true)}{chooseColumn("Product", "productColumn", true)}
+        {mapping.accountRoutes?.map((route, routeIndex) => <label className="grid gap-1 text-sm" key={routeIndex}>Account for {[route.accountValue, route.productValue, route.currencyCode].filter(Boolean).join(" / ")}<input className="rounded-lg border border-border bg-card px-3 py-2" value={route.accountName} onChange={event => setMapping({ ...mapping, accountRoutes: mapping.accountRoutes?.map((item, i) => i === routeIndex ? { ...item, accountName: event.target.value } : item) })} /></label>)}
+        {chooseColumn("Merchant", "merchantColumn", true)}{chooseColumn("Category", "categoryColumn", true)}{chooseColumn("External ID", "externalIdColumn", true)}{chooseColumn("Status (posted/pending/completed)", "statusColumn", true)}
         <label className="grid gap-1 text-sm">Date format<select className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.dateFormat} onChange={(e) => setMapping({ ...mapping, dateFormat: e.target.value as ImportMapping["dateFormat"] })}><option value="iso">YYYY-MM-DD</option><option value="dmy">DD/MM/YYYY</option><option value="mdy">MM/DD/YYYY</option></select></label>
         <label className="grid gap-1 text-sm">Amount signs<select className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.amountSign} onChange={(e) => setMapping({ ...mapping, amountSign: e.target.value as ImportMapping["amountSign"] })}><option value="signed">Positive is incoming</option><option value="outflow-positive">Positive is outgoing</option></select></label>
         <div className="sm:col-span-2"><button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy} onClick={() => void inspect(file, mapping)}>Preview correction</button></div>

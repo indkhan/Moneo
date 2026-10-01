@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
-import { mapRows, parseAmountMinor, parseCsv, parseExcel, parseTransactionStatus, previewImport, validateMapping, validateAiMapping } from "./csv";
+import { mapRows, parseAmountMinor, parseCsv, parseExcel, parseTransactionStatus, previewImport, validateMapping, validateAiMapping, proposeAccountRoutes } from "./csv";
 
 const mapping = {
   accountName: "Checking",
@@ -13,6 +13,42 @@ const mapping = {
 };
 
 describe("financial import parsing", () => {
+  it("normalizes completed but refuses failed or reverted source states", () => {
+    expect(parseTransactionStatus("COMPLETED")).toBe("posted");
+    expect(() => parseTransactionStatus("FAILED")).toThrow("Invalid status");
+    expect(() => parseTransactionStatus("REVERTED")).toThrow("Invalid status");
+    const rows = parseCsv("Date,Description,Amount,State\n2026-09-01,Purchase,-12.50,FAILED");
+    expect(() => mapRows(rows, { ...mapping, dateFormat: "iso" })).toThrow("State");
+  });
+  it("proposes distinct routes for review from every row rather than a sample", () => {
+    const rows = parseCsv("Date,Description,Amount,Product,Currency\n2026-09-01,Purchase,-12.50,Current,EUR\n2026-09-02,Interest,1.25,Savings,EUR");
+    const proposed = proposeAccountRoutes(rows, { ...mapping, dateFormat: "iso", currencyColumn: "Currency" });
+    expect(proposed.productColumn).toBe("Product");
+    expect(proposed.accountRoutes?.map(route => route.accountName)).toEqual(["Checking · Current", "Checking · Savings"]);
+    expect(mapRows(rows, proposed).map(row => row.accountName)).toEqual(["Checking · Current", "Checking · Savings"]);
+  });
+
+  it("routes every product and currency explicitly and preserves evidence", () => {
+    const rows = parseCsv("Date,Description,Amount,Product,Currency,State\n2026-09-01,Purchase,-12.50,Current,EUR,COMPLETED\n2026-09-02,Interest,1.25,Savings,EUR,COMPLETED\n2026-09-03,Purchase,-100,Current,JPY,PENDING");
+    const routed = { ...mapping, dateFormat: "iso", productColumn: "Product", currencyColumn: "Currency", statusColumn: "State", accountRoutes: [
+      { productValue: "Current", currencyCode: "EUR", accountName: "Everyday" },
+      { productValue: "Savings", currencyCode: "EUR", accountName: "Reserve" },
+      { productValue: "Current", currencyCode: "JPY", accountName: "Yen" },
+    ] };
+    expect(mapRows(rows, routed)).toMatchObject([
+      { accountName: "Everyday", amountMinor: -1250n, status: "posted", sourceRow: rows[0] },
+      { accountName: "Reserve", amountMinor: 125n, status: "posted" },
+      { accountName: "Yen", amountMinor: -100n, status: "pending", currencyCode: "JPY" },
+    ]);
+    expect(previewImport(rows, routed).accounts).toEqual([
+      { accountName: "Everyday", currencyCode: "EUR", rows: 1 },
+      { accountName: "Reserve", currencyCode: "EUR", rows: 1 },
+      { accountName: "Yen", currencyCode: "JPY", rows: 1 },
+    ]);
+    expect(() => mapRows(rows, { ...routed, accountRoutes: routed.accountRoutes.slice(0, 2) })).toThrow("Review account routing");
+    expect(() => mapRows(rows, { ...routed, accountRoutes: [...routed.accountRoutes, routed.accountRoutes[0]] })).toThrow("Review account routing");
+    expect(() => mapRows(rows, { ...mapping, dateFormat: "iso", currencyColumn: "Currency" })).toThrow("Product");
+  });
   it("parses exact minor units from regional formats", () => {
     expect(parseAmountMinor("€1.234,56")).toBe(123456n);
     expect(parseAmountMinor("(1,234.56)")).toBe(-123456n);

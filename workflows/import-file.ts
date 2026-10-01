@@ -51,17 +51,23 @@ async function processImport(importId: string, workspaceId: string, from: number
     const extension = imported.storage_path.split(".").pop();
     const rows = extension === "csv" ? parseCsv(await blob.text()) : await parseExcel(await blob.arrayBuffer());
     const mapped = mapRows(rows, imported.mapping);
-    const mapping = imported.mapping as { accountName: string; currencyCode: string };
-    const existingAccount = checked(await db.from("accounts").select("id").eq("workspace_id", workspaceId).eq("name", mapping.accountName).eq("currency_code", mapping.currencyCode).limit(1))!;
-    const accountId = existingAccount[0]?.id ?? stableId(`${workspaceId}:account:${mapping.accountName}:${mapping.currencyCode}`);
-    if (!existingAccount.length) checked(await db.from("accounts").upsert({ id: accountId, workspace_id: workspaceId, name: mapping.accountName, currency_code: mapping.currencyCode }, { onConflict: "id", ignoreDuplicates: true }));
-    const sourceId = stableId(`${workspaceId}:source:${accountId}`);
-    checked(await db.from("data_sources").upsert({ id: sourceId, workspace_id: workspaceId, account_id: accountId, kind: "file", name: mapping.accountName }, { onConflict: "id", ignoreDuplicates: true }));
-    checked(await db.from("imports").update({ source_id: sourceId, total_rows: mapped.length }).eq("id", importId).eq("workspace_id", workspaceId));
+    const accountIds = new Map<string, string>();
+    for (const row of mapped) {
+      const routeKey = JSON.stringify([row.accountName, row.currencyCode]);
+      if (accountIds.has(routeKey)) continue;
+      const existingAccount = checked(await db.from("accounts").select("id").eq("workspace_id", workspaceId).eq("name", row.accountName).eq("currency_code", row.currencyCode).limit(2))!;
+      if (existingAccount.length > 1) throw new Error("Reviewed import account is ambiguous");
+      const accountId = existingAccount[0]?.id ?? stableId(`${workspaceId}:account:${row.accountName}:${row.currencyCode}`);
+      if (!existingAccount.length) checked(await db.from("accounts").upsert({ id: accountId, workspace_id: workspaceId, name: row.accountName, currency_code: row.currencyCode }, { onConflict: "id", ignoreDuplicates: true }));
+      accountIds.set(routeKey, accountId);
+      const sourceId = stableId(`${workspaceId}:source:${accountId}`);
+      checked(await db.from("data_sources").upsert({ id: sourceId, workspace_id: workspaceId, account_id: accountId, kind: "file", name: row.accountName }, { onConflict: "id", ignoreDuplicates: true }));
+      if (accountIds.size === 1) checked(await db.from("imports").update({ source_id: sourceId, total_rows: mapped.length }).eq("id", importId).eq("workspace_id", workspaceId));
+    }
 
     let { newRows, matchedRows, reviewRows } = prior;
     for (const row of mapped.slice(from, to)) {
-      const status = await importRow(db, workspaceId, importId, accountId, row);
+      const status = await importRow(db, workspaceId, importId, accountIds.get(JSON.stringify([row.accountName, row.currencyCode]))!, row);
       if (status === "new") newRows++;
       else if (status === "matched") matchedRows++;
       else if (status === "review") reviewRows++;

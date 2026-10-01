@@ -19,6 +19,14 @@ export const mappingSchema = z.object({
   categoryColumn: z.string().min(1).optional(),
   externalIdColumn: z.string().min(1).optional(),
   statusColumn: z.string().min(1).optional(),
+  accountColumn: z.string().min(1).optional(),
+  productColumn: z.string().min(1).optional(),
+  accountRoutes: z.array(z.object({
+    accountValue: z.string().optional(),
+    productValue: z.string().optional(),
+    currencyCode: z.string().regex(/^[A-Z]{3}$/),
+    accountName: z.string().trim().min(1).max(100),
+  }).strict()).max(1000).optional(),
   dateFormat: z.enum(["iso", "dmy", "mdy"]),
   amountSign: z.enum(["signed", "outflow-positive"]),
 }).strict().refine(
@@ -68,15 +76,42 @@ export function validateMapping(input: unknown, rows: SourceRow[]): ImportMappin
   const headers = Object.keys(rows[0]);
   for (const column of [mapping.dateColumn, mapping.descriptionColumn, mapping.amountColumn,
     mapping.debitColumn, mapping.creditColumn, mapping.currencyColumn, mapping.balanceColumn,
-    mapping.merchantColumn, mapping.categoryColumn, mapping.externalIdColumn, mapping.statusColumn]) {
+    mapping.merchantColumn, mapping.categoryColumn, mapping.externalIdColumn, mapping.statusColumn,
+    mapping.accountColumn, mapping.productColumn]) {
     if (column && !headers.includes(column)) throw new Error(`Unknown column: ${column}`);
   }
+  for (const [name, column] of [["product", mapping.productColumn], ["account", mapping.accountColumn]]) {
+    const detected = headers.find(header => header.trim().toLowerCase() === name);
+    if (detected && !column) throw new Error(`Review account routing: map ${detected}`);
+  }
+  const detectedStatus = headers.find(header => /^(status|state)$/i.test(header.trim()));
+  if (detectedStatus && !mapping.statusColumn) throw new Error(`Review source status: map ${detectedStatus}`);
   return mapping;
 }
 
 export function validateAiMapping(input: unknown, rows: SourceRow[], workspaceCurrency: string): ImportMapping {
-  const mapping = validateMapping(input, rows);
-  return mapping.currencyColumn ? mapping : { ...mapping, currencyCode: workspaceCurrency };
+  const mapping = mappingSchema.parse(input);
+  return validateMapping(proposeAccountRoutes(rows, mapping.currencyColumn ? mapping : { ...mapping, currencyCode: workspaceCurrency }), rows);
+}
+
+// Suggestions are displayed in the preview; confirmation validates the exact reviewed routes.
+export function proposeAccountRoutes(rows: SourceRow[], input: unknown): ImportMapping {
+  const mapping = mappingSchema.parse(input);
+  const headers = Object.keys(rows[0] ?? {});
+  const accountColumn = mapping.accountColumn ?? headers.find(header => header.trim().toLowerCase() === "account");
+  const productColumn = mapping.productColumn ?? headers.find(header => header.trim().toLowerCase() === "product");
+  const statusColumn = mapping.statusColumn ?? headers.find(header => /^(status|state)$/i.test(header.trim()));
+  if (mapping.accountRoutes || (!accountColumn && !productColumn)) return { ...mapping, accountColumn, productColumn, statusColumn };
+  const routes = new Map<string, NonNullable<ImportMapping["accountRoutes"]>[number]>();
+  for (const row of rows) {
+    const accountValue = accountColumn ? row[accountColumn]?.trim() : undefined;
+    const productValue = productColumn ? row[productColumn]?.trim() : undefined;
+    const currencyCode = (mapping.currencyColumn ? row[mapping.currencyColumn] : mapping.currencyCode)?.trim().toUpperCase();
+    const key = JSON.stringify([accountValue, productValue, currencyCode]);
+    routes.set(key, { accountValue, productValue, currencyCode,
+      accountName: [mapping.accountName, accountValue, productValue].filter(Boolean).join(" · ") });
+  }
+  return mappingSchema.parse({ ...mapping, accountColumn, productColumn, statusColumn, accountRoutes: [...routes.values()] });
 }
 
 function exactJsonMinor(amount: bigint): bigint {
@@ -130,6 +165,7 @@ function parseDate(input: string, format: ImportMapping["dateFormat"]): string {
 }
 
 export type MappedRow = {
+  accountName: string;
   rowNumber: number;
   postedOn: string;
   description: string;
@@ -143,14 +179,14 @@ export type MappedRow = {
   balanceMinor?: bigint;
 };
 
-// Explicit posted/pending indicator only. Empty means posted. Anything else
+// Explicit posted/pending/completed indicator only. Empty means posted. Anything else
 // throws so a mis-mapped column never silently flips pending/posted.
 export function parseTransactionStatus(input: string | undefined): "posted" | "pending" {
   if (input === undefined) return "posted";
   const value = input.trim().toLowerCase();
   if (!value) return "posted";
   if (value === "pending") return "pending";
-  if (value === "posted") return "posted";
+  if (value === "posted" || value === "completed") return "posted";
   throw new Error(`Invalid status: ${input}`);
 }
 
@@ -209,6 +245,13 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
       if (!description) throw new Error("Missing description");
       const currencyCode = (mapping.currencyColumn ? sourceRow[mapping.currencyColumn] : mapping.currencyCode).trim().toUpperCase();
       if (!/^[A-Z]{3}$/.test(currencyCode)) throw new Error("Invalid currency");
+      const accountValue = mapping.accountColumn ? sourceRow[mapping.accountColumn]?.trim() : undefined;
+      const productValue = mapping.productColumn ? sourceRow[mapping.productColumn]?.trim() : undefined;
+      const routes = mapping.accountRoutes?.filter(route => route.currencyCode === currencyCode &&
+        route.accountValue === accountValue && route.productValue === productValue);
+      if ((mapping.accountColumn || mapping.productColumn || mapping.accountRoutes) && routes?.length !== 1)
+        throw new Error("Review account routing: each account/product/currency requires exactly one route");
+      const accountName = routes?.[0]?.accountName ?? mapping.accountName;
       let amountMinor: bigint;
       if (mapping.amountColumn) {
         amountMinor = parseAmountMinor(sourceRow[mapping.amountColumn] ?? "", currencyCode);
@@ -224,6 +267,7 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
       }
       return {
         rowNumber: index + 2,
+        accountName,
         postedOn: parseDate(sourceRow[mapping.dateColumn] ?? "", mapping.dateFormat),
         description,
         amountMinor,
@@ -248,6 +292,13 @@ export function previewImport(rows: SourceRow[], input: unknown) {
   return {
     accountName: mapping.accountName,
     currencyCode: mapping.currencyCode,
+    accounts: Array.from(mapped.reduce((groups, row) => {
+      const key = JSON.stringify([row.accountName, row.currencyCode]);
+      const group = groups.get(key) ?? { accountName: row.accountName, currencyCode: row.currencyCode, rows: 0 };
+      group.rows++;
+      groups.set(key, group);
+      return groups;
+    }, new Map<string, { accountName: string; currencyCode: string; rows: number }>()).values()),
     totalRows: mapped.length,
     pendingRows: mapped.filter((row) => row.status === "pending").length,
     postedRows: mapped.filter((row) => row.status === "posted").length,
