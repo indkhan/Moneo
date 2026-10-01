@@ -11,6 +11,7 @@ import { goalContributionProjection } from "@/lib/finance/goals";
 import { GoalPlanEditor, GoalPlanHistory } from "./goal-plan";
 import { ForecastPreferenceEditor } from "./preferences";
 import { ScenarioEditor, ScenarioHistory } from "./scenarios";
+import { ModelSources } from "./model-sources";
 
 const field = "min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-brand focus:ring-2 focus:ring-brand/15";
 const button = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90";
@@ -97,10 +98,10 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
       {scenarioId && <form action={addScenarioEvent} className="mt-4 flex flex-wrap gap-2 rounded-lg bg-muted/50 p-4"><input type="hidden" name="scenarioId" value={scenarioId} /><input name="name" required aria-label="Hypothetical event name" placeholder="Laptop, raise…" className={field} /><input name="amount" required aria-label="Hypothetical change amount" placeholder="-1200.00" className={field} /><select name="accountId" aria-label="Account" className={field}>{accounts?.filter(account => !account.archived_at).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select><select name="cadence" aria-label="Cadence" className={field}><option value="once">Once</option><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="yearly">Yearly</option></select><input type="date" name="startsOn" defaultValue={today} required aria-label="Start date" className={field} /><button className={button}>Add hypothetical change</button></form>}
     </section>
     <ScenarioHistory />
-    <section className={card}><p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Inputs</p><h2 className="mt-1 text-lg font-semibold">Financial model</h2><p className="text-sm text-muted-foreground">Confirmed income and expenses shape the forecast. Positive amounts add cash; negative amounts spend it. Your edits are marked user-confirmed and take priority over later inferred recurring updates.</p>
+    <section className={card}><p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Inputs</p><h2 id="financial-model" className="mt-1 text-lg font-semibold">Financial model</h2><ModelSources db={supabase} workspace={workspace} /><p className="text-sm text-muted-foreground">Confirmed income and expenses shape the forecast. Positive amounts add cash; negative amounts spend it. Your edits are marked user-confirmed and take priority over later inferred recurring updates.</p>
       {assumptionsError && <p role="alert" className="mt-4">Could not load assumptions: {assumptionsError.message}</p>}
       {!assumptionsError && !(assumptions ?? []).length && <p className="mt-4 text-muted-foreground">No assumptions yet. Add one below or confirm a pattern in Money → Recurring.</p>}
-      <ul className="mt-4 space-y-3">{(assumptions ?? []).map(item => <li key={item.id} className="rounded-lg border border-border bg-muted/35 p-4 text-sm">
+      <ul className="mt-4 space-y-3">{(assumptions ?? []).map(item => <li key={`${item.id}:${item.version}`} className="rounded-lg border border-border bg-muted/35 p-4 text-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-medium">{item.name}{item.enabled ? "" : " (disabled)"}</h3><p>Current value: {formatMoney(item.amount_minor, item.currency_code)}</p></div>
         <p className="mt-1 text-muted-foreground">{item.cadence} from {item.starts_on}{item.ends_on ? ` until ${item.ends_on}` : ""}{item.account_id ? ` · ${accountNames.get(item.account_id) ?? "Unknown account"}` : " · no account"}</p>
         <p className="mt-1 text-muted-foreground">Source: {item.source} · Confidence: {item.confidence ?? "n/a"}{item.confidence != null ? "%" : ""} · {item.confirmed ? "user-confirmed" : "estimated"}{item.source === "user" ? " · edited by you" : ""} · {item.enabled ? "active in forecast" : "excluded from forecast"}</p>

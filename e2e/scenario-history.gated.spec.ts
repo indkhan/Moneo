@@ -33,6 +33,10 @@ test("scenario comparison, edits, removal and undo preserve actual cash", async 
     await db`insert into public.forecast_preferences(workspace_id,currency_code,uncertainty_bps) values(${workspace},'EUR',0)`;
     const page = await context.newPage();
     await page.goto("/plan");
+    await page.getByText("Balance, valuation and FX sources", { exact: true }).click();
+    await expect(page.locator("body")).toContainText("Scenario cash: EUR 1000.00");
+    await expect(page.getByRole("navigation", { name: "Financial model evidence", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Edit forecast defaults", exact: true })).toHaveAttribute("href", "#forecast-preferences");
     await page.getByLabel("New scenario name", { exact: true }).fill("Laptop decision");
     await page.getByRole("button", { name: "Create scenario", exact: true }).click();
     await expect(page).toHaveURL(/scenario=/);
