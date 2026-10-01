@@ -7,6 +7,7 @@ import { generateText } from "ai";
 import { requireWorkspace } from "@/lib/auth";
 import { settingsSchema } from "@/lib/settings";
 import { listFreeModels, modelForSettings } from "@/lib/ai/provider";
+import { minorDigits } from "@/lib/finance/fx";
 
 export async function saveSettings(_previous: { error?: string; saved?: boolean }, form: FormData): Promise<{ error?: string; saved?: boolean }> {
   try {
@@ -18,6 +19,7 @@ export async function saveSettings(_previous: { error?: string; saved?: boolean 
       summary_cadence: form.get("summary_cadence"), summary_time: form.get("summary_time"),
     });
     const currency = z.string().regex(/^[A-Z]{3}$/, "Use a three-letter currency code").parse(form.get("display_currency"));
+    minorDigits(currency);
     if (settings.openrouter_model && !(await listFreeModels()).some(model => model.id === settings.openrouter_model))
       throw new Error("Choose a currently verified free model with the required capabilities");
     if (settings.openrouter_model) {
@@ -25,10 +27,8 @@ export async function saveSettings(_previous: { error?: string; saved?: boolean 
         maxOutputTokens: 64, maxRetries: 0, abortSignal: AbortSignal.timeout(15000) });
       if (!check.text.trim()) throw new Error("The selected free model returned no usable response; choose another model");
     }
-    const currencyResult = await supabase.from("workspaces").update({ display_currency: currency }).eq("id", workspace.id);
-    if (currencyResult.error) throw new Error("Display currency could not be saved");
-    const result = await supabase.from("workspace_settings").upsert({ workspace_id: workspace.id, ...settings, updated_at: new Date().toISOString() });
-    if (result.error) throw new Error("Preferences could not be saved; reload to check your current settings");
+    const result = await supabase.rpc("save_workspace_preferences", { p_workspace_id: workspace.id, p_display_currency: currency, p_preferences: settings });
+    if (result.error) throw new Error("Preferences could not be saved; your previous settings are preserved");
     (await cookies()).set("moneo-theme", settings.theme, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 31536000 });
     revalidatePath("/", "layout");
     return { saved: true };

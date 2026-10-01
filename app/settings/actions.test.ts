@@ -32,9 +32,16 @@ it("authenticates before checking or calling the provider", async () => {
 });
 
 it("persists exact scoped preferences for the authenticated workspace", async () => {
-  const saved: Record<string, unknown>[] = [];
-  const builder = { update: vi.fn(() => builder), eq: vi.fn(async () => ({ error: null })), upsert: vi.fn(async (row: Record<string, unknown>) => { saved.push(row); return { error: null }; }) };
-  vi.mocked(requireWorkspace).mockResolvedValue({ workspace: { id: "owned" }, supabase: { from: () => builder } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  const rpc = vi.fn(async () => ({ error: null }));
+  vi.mocked(requireWorkspace).mockResolvedValue({ workspace: { id: "owned" }, supabase: { rpc } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
   expect(await saveSettings({}, form())).toEqual({ saved: true });
-  expect(saved).toContainEqual(expect.objectContaining({ workspace_id: "owned", theme: "dark", ai_data_scopes: ["accounts"], openrouter_model: null }));
+  expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({ p_workspace_id: "owned", p_display_currency: "EUR", p_preferences: expect.objectContaining({ theme: "dark", ai_data_scopes: ["accounts"], openrouter_model: null }) }));
+});
+
+it("rejects an unsupported display currency before persisting it", async () => {
+  const rpc = vi.fn();
+  vi.mocked(requireWorkspace).mockResolvedValue({ workspace: { id: "owned" }, supabase: { rpc } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  const data = form(); data.set("display_currency", "ZZZ");
+  expect(await saveSettings({}, data)).toMatchObject({ error: expect.stringContaining("Invalid currency") });
+  expect(rpc).not.toHaveBeenCalled();
 });

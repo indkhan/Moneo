@@ -15,7 +15,8 @@ function service() {
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
-async function summaryStillEnabled(db: ReturnType<typeof service>, jobId: string, workspaceId: string, settings: WorkspaceSettings) {
+async function summaryStillEnabled(db: ReturnType<typeof service>, jobId: string, workspaceId: string, settings: WorkspaceSettings, scheduled: boolean) {
+  if (!scheduled) return true;
   const receipt = await db.from("summary_runs").select("cadence").eq("job_id", jobId).eq("workspace_id", workspaceId).maybeSingle();
   if (receipt.error) throw receipt.error;
   if (!receipt.data || receipt.data.cadence === settings.summary_cadence) return true;
@@ -25,16 +26,16 @@ async function summaryStillEnabled(db: ReturnType<typeof service>, jobId: string
   return false;
 }
 
-export async function financialReview(jobId: string, workspaceId: string) {
+export async function financialReview(jobId: string, workspaceId: string, scheduled = false) {
   "use workflow";
-  const evidence = await gatherEvidence(jobId, workspaceId);
+  const evidence = await gatherEvidence(jobId, workspaceId, scheduled);
   if (!evidence) return;
-  const body = await writeReview(jobId, workspaceId, evidence);
+  const body = await writeReview(jobId, workspaceId, evidence, scheduled);
   if (!body) return;
-  await saveReview(jobId, workspaceId, evidence, body);
+  await saveReview(jobId, workspaceId, evidence, body, scheduled);
 }
 
-async function gatherEvidence(jobId: string, workspaceId: string) {
+async function gatherEvidence(jobId: string, workspaceId: string, scheduled: boolean) {
   "use step";
   const db = service();
   const job = await db.from("background_jobs").select("status, cancel_requested").eq("id", jobId).eq("workspace_id", workspaceId).single();
@@ -47,7 +48,7 @@ async function gatherEvidence(jobId: string, workspaceId: string) {
   await db.from("background_jobs").update({ status: "running", stage: "gathering_evidence", error: null, updated_at: new Date().toISOString() }).eq("id", jobId).eq("workspace_id", workspaceId);
   try {
     const settings = await loadWorkspaceSettings(db, workspaceId);
-    if (!await summaryStillEnabled(db, jobId, workspaceId, settings)) return null;
+    if (!await summaryStillEnabled(db, jobId, workspaceId, settings, scheduled)) return null;
     requireAiScope(settings, "accounts", "transactions");
     const balanceEvidence = await loadBalanceEvidence(db, workspaceId);
     const to = calendarDate(balanceEvidence.asOf, settings.timezone);
@@ -55,7 +56,7 @@ async function gatherEvidence(jobId: string, workspaceId: string) {
     const transactions: { amount_minor: string; currency_code: string; status: string; kind: string; review_reasons: string[] }[] = [];
     // ponytail: 10k-row ceiling; add a database aggregate if real workspaces outgrow it.
     for (let offset = 0; offset <= 10000; offset += 500) {
-      const page = await db.from("transactions").select("amount_minor::text, currency_code, status, kind, review_reasons")
+      const page = await db.from("effective_transactions").select("amount_minor::text, currency_code, status, kind, review_reasons")
         .eq("workspace_id", workspaceId).gte("posted_on", from).lte("posted_on", to)
         .order("id").range(offset, offset + 499);
       if (page.error) throw page.error;
@@ -70,7 +71,7 @@ async function gatherEvidence(jobId: string, workspaceId: string) {
   }
 }
 
-async function writeReview(jobId: string, workspaceId: string, evidence: ReturnType<typeof buildReviewEvidence>) {
+async function writeReview(jobId: string, workspaceId: string, evidence: ReturnType<typeof buildReviewEvidence>, scheduled: boolean) {
   "use step";
   const db = service();
   const job = await db.from("background_jobs").select("cancel_requested, status").eq("id", jobId).eq("workspace_id", workspaceId).single();
@@ -83,7 +84,7 @@ async function writeReview(jobId: string, workspaceId: string, evidence: ReturnT
   await db.from("background_jobs").update({ status: "running", stage: "writing_review", updated_at: new Date().toISOString() }).eq("id", jobId).eq("workspace_id", workspaceId);
   try {
     const settings = await loadWorkspaceSettings(db, workspaceId);
-    if (!await summaryStillEnabled(db, jobId, workspaceId, settings)) return null;
+    if (!await summaryStillEnabled(db, jobId, workspaceId, settings, scheduled)) return null;
     requireAiScope(settings, "accounts", "transactions");
     const result = await generateText({ model: await modelForSettings(settings), maxOutputTokens: 1200,
       system: "Write a concise personal-finance review using only the supplied evidence. Cite the exact account or currency and date period for every numerical claim. Call unknown balances unknown, keep currencies separate, and do not guess missing data. Give useful observations and limitations, not recommendations presented as certainty.",
@@ -96,7 +97,7 @@ async function writeReview(jobId: string, workspaceId: string, evidence: ReturnT
   }
 }
 
-async function saveReview(jobId: string, workspaceId: string, evidence: ReturnType<typeof buildReviewEvidence>, body: string) {
+async function saveReview(jobId: string, workspaceId: string, evidence: ReturnType<typeof buildReviewEvidence>, body: string, scheduled: boolean) {
   "use step";
   const db = service();
   const job = await db.from("background_jobs").select("cancel_requested, status").eq("id", jobId).eq("workspace_id", workspaceId).single();
@@ -108,7 +109,7 @@ async function saveReview(jobId: string, workspaceId: string, evidence: ReturnTy
   }
   try {
     const settings = await loadWorkspaceSettings(db, workspaceId);
-    if (!await summaryStillEnabled(db, jobId, workspaceId, settings)) return;
+    if (!await summaryStillEnabled(db, jobId, workspaceId, settings, scheduled)) return;
     requireAiScope(settings, "accounts", "transactions");
     const saved = await db.from("saved_analyses").upsert({ workspace_id: workspaceId, job_id: jobId,
       title: `Financial review ${evidence.period.to}`, body, evidence }, { onConflict: "job_id", ignoreDuplicates: true });

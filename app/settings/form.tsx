@@ -35,7 +35,7 @@ export function SettingsForm({ settings, currency, models, defaultModel, catalog
       <p className="text-sm text-muted-foreground">Mute insight types you do not want to see. Evidence and data-quality limits still apply.</p>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">{INSIGHT_TYPES.map(type => <label key={type} className="flex items-center gap-2 text-sm"><input type="checkbox" name="muted_insight_types" value={type} defaultChecked={settings.muted_insight_types.includes(type)} /><span>Mute {type.replaceAll("_", " ")}</span></label>)}</div>
       <div className="mt-5 grid gap-4 sm:grid-cols-2"><label className="grid gap-1 text-sm">In-app summary preference<select className={input} name="summary_cadence" defaultValue={settings.summary_cadence}><option value="none">Off</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label><label className="grid gap-1 text-sm">Preferred local time<input className={input} type="time" name="summary_time" defaultValue={settings.summary_time} required /></label></div>
-      <p className="mt-3 text-sm text-muted-foreground">Your summary preference is saved here. Scheduled execution is shown in Activity when scheduling is connected; no email or push notifications.</p>
+      <p className="mt-3 text-sm text-muted-foreground">Summaries appear in Activity. A daily check runs due weekly or monthly summaries when scheduling is configured; delivery may be delayed by a day.</p>
     </fieldset>
     {state.error && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">{state.error}</p>}
     {state.saved && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">Preferences saved.</p>}
