@@ -17,6 +17,12 @@ describe("minorDigits", () => {
     expect(minorDigits("jpy")).toBe(0);
   });
 
+  it("uses accounting precision rather than locale display rounding", () => {
+    for (const currency of ["AFN", "COP", "HUF", "IDR", "MGA"]) expect(minorDigits(currency)).toBe(2);
+    expect(minorDigits("IQD")).toBe(3);
+    expect(minorDigits("CLF")).toBe(4);
+  });
+
   it("throws for invalid currency codes", () => {
     expect(() => minorDigits("")).toThrow("Invalid currency code");
     expect(() => minorDigits("EU")).toThrow("Invalid currency code");
