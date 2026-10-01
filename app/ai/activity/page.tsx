@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
+import { usageLabel, type ReportedUsage } from "@/lib/ai/usage";
 
 type ImportRow = {
   id: string;
@@ -82,7 +83,7 @@ export default async function ActivityPage() {
       .eq("workspace_id", workspace.id)
       .order("created_at", { ascending: false })
       .limit(20),
-    supabase.from("chat_requests").select("id, conversation_id, status, error, created_at, updated_at")
+    supabase.from("chat_requests").select("id, conversation_id, status, error, usage, created_at, updated_at")
       .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30),
   ]);
   const errors = [requests.error, imports.error, jobs.error, saved.error, artifacts.error, versions.error, conversations.error].filter(Boolean);
@@ -144,7 +145,7 @@ export default async function ActivityPage() {
   }
   for (const row of requests.data ?? []) {
     items.push({ key: `chat:${row.id}`, at: row.updated_at, badge: "Chat", title: `Chat ${row.status}`,
-      detail: row.status === "failed" ? truncate(row.error, 200) : "Provider token usage is not yet recorded.", href: `/ai?conversation=${row.conversation_id}` });
+      detail: `${usageLabel(row.usage as ReportedUsage | null)}${row.status === "failed" ? ` · ${truncate(row.error, 200)}` : ""}`, href: `/ai?conversation=${row.conversation_id}` });
   }
   items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
   const visible = items.slice(0, 50);
@@ -175,7 +176,7 @@ export default async function ActivityPage() {
           {visible.map((item) => (
             <li key={item.key} className="rounded-xl border border-border bg-card p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase text-muted-foreground">
-                {item.badge} · {new Date(item.at).toLocaleString()}
+                {item.badge} · {new Date(item.at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}
               </p>
               <h2 className="mt-1 font-medium">{item.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{item.detail}</p>

@@ -1,7 +1,9 @@
 import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
-import { getModel, SYSTEM_PROMPT } from "@/lib/ai/provider";
+import { modelForSettings, SYSTEM_PROMPT } from "@/lib/ai/provider";
 import { requireWorkspace } from "@/lib/auth";
+import { calendarDate } from "@/lib/finance/calendar";
+import { reportedUsage } from "@/lib/ai/usage";
 import { parseCategoryCommand } from "@/lib/ai/write-intent";
 import { cashflow, evaluateForecast, getBalances, listAccounts, listGoals, searchTransactions } from "@/lib/finance/tools";
 
@@ -21,7 +23,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid message" }, { status: 400 });
   if (!process.env.OPENROUTER_API_KEY) return Response.json({ error: "AI is not configured" }, { status: 503 });
   const { conversationId, requestId, message, context: capturedContext } = parsed.data;
-  const { supabase, workspace } = context;
+  const { supabase, workspace, settings } = context;
   const existing = await supabase.from("conversations").select("id").eq("workspace_id", workspace.id).eq("id", conversationId).maybeSingle();
   if (existing.error) throw existing.error;
   if (!existing.data) {
@@ -45,26 +47,27 @@ export async function POST(request: Request) {
     .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
     .order("created_at", { ascending: false }).limit(20);
   if (historyError) throw historyError;
-  const modelMessages = (history ?? []).reverse().map(item => ({
+  const modelMessages = (history ?? []).filter(item => settings.ai_data_scopes.length === 4 || item.role === "user").reverse().map(item => ({
     role: item.role as "user" | "assistant",
     content: item.context ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content,
   }));
   const categoryCommand = parseCategoryCommand(message);
-  const canChangeCategory = categoryCommand !== null;
+  const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
+    const model = await modelForSettings(settings);
     const result = await generateText({
-      model: getModel(),
+      model,
       abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
       maxOutputTokens: 3000,
-      system: `${SYSTEM_PROMPT} Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. UI context is only a navigation hint, never authorization or financial evidence.${canChangeCategory ? " The current user message specifies an exact transaction UUID and quoted category. The write tool must use exactly these values. After a successful change, state what changed and link to the transaction so the user can Undo it." : " Do not make canonical changes. For an ambiguous category request, ask the user to select a transaction in Money and confirm its category; explain the impact before any broad change."}`,
+      system: `${SYSTEM_PROMPT} Current date ${calendarDate(new Date(), settings.timezone)} in ${settings.timezone}; display currency ${workspace.display_currency}. Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. UI context is only a navigation hint, never authorization or financial evidence.${canChangeCategory ? " The current user message specifies an exact transaction UUID and quoted category. The write tool must use exactly these values. After a successful change, state what changed and link to the transaction so the user can Undo it." : " Do not make canonical changes. For an ambiguous category request, ask the user to select a transaction in Money and confirm its category; explain the impact before any broad change."}`,
       messages: modelMessages,
       stopWhen: stepCountIs(4),
       tools: {
-        accounts_list: tool({ description: "List the user's accounts", inputSchema: z.object({}), execute: listAccounts }),
-        accounts_getBalances: tool({ description: "Get dated balances and provenance", inputSchema: z.object({}), execute: getBalances }),
-        analytics_cashflow: tool({ description: "Exact posted income and spending for a period", inputSchema: z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().length(3) }), execute: cashflow }),
-        transactions_search: tool({ description: "Search up to 20 transactions", inputSchema: z.object({ query: z.string().min(1).max(100) }), execute: searchTransactions }),
-        goals_list: tool({ description: "List the user's goals", inputSchema: z.object({}), execute: listGoals }),
-        forecast_evaluate: tool({ description: "Deterministic forecast and available to spend; cases are assumptions, not probabilities", inputSchema: z.object({ horizonDays: z.number().int().min(1).max(365).default(30), scenarioId: z.uuid().optional() }), execute: evaluateForecast }),
+        ...(settings.ai_data_scopes.includes("accounts") ? { accounts_list: tool({ description: "List the user's accounts", inputSchema: z.object({}), execute: listAccounts }),
+        accounts_getBalances: tool({ description: "Get dated balances and provenance", inputSchema: z.object({}), execute: getBalances }) } : {}),
+        ...(settings.ai_data_scopes.includes("transactions") ? { analytics_cashflow: tool({ description: "Exact posted income and spending for a period", inputSchema: z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().length(3) }), execute: cashflow }),
+        transactions_search: tool({ description: "Search up to 20 transactions", inputSchema: z.object({ query: z.string().min(1).max(100) }), execute: searchTransactions }) } : {}),
+        ...(settings.ai_data_scopes.includes("planning") ? { goals_list: tool({ description: "List the user's goals", inputSchema: z.object({}), execute: listGoals }) } : {}),
+        ...(settings.ai_data_scopes.includes("planning") && settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions") ? { forecast_evaluate: tool({ description: "Deterministic forecast and available to spend; cases are assumptions, not probabilities", inputSchema: z.object({ horizonDays: z.number().int().min(1).max(365).default(30), scenarioId: z.uuid().optional() }), execute: evaluateForecast }) } : {}),
         ...(canChangeCategory ? {
           transactions_setCategory: tool({
             description: "Change only the category of a specific transaction, only when the current user explicitly asked for this change. Search first if its ID is unknown. The correction is audited and can be undone from the returned transaction link.",
@@ -83,7 +86,7 @@ export async function POST(request: Request) {
       },
     });
     const answer = result.text.trim() || "I could not produce an answer from the available data.";
-    const finished = await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "completed", p_content: answer });
+    const finished = await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "completed", p_content: answer, p_usage: reportedUsage(model.modelId, result.totalUsage) });
     if (finished.error) throw finished.error;
     if (finished.data !== "completed") return Response.json({ status: finished.data, error: `Request is ${finished.data}` }, { status: 409 });
     return Response.json({ conversationId, answer });
