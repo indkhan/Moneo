@@ -38,5 +38,6 @@ Use npm (`package-lock.json` is authoritative).
 Run the smallest relevant test while iterating. Before finishing, run `npm test` and `npm run lint`; add `npm run build` for app/config/build changes and Playwright for changed user flows. Gated E2E requires configured Supabase/auth; see `e2e/README.md`.
 
 ## Context
-
+ 
+ 
 Read only what the task needs: `plan.md` for product behavior, `.env.example` for environment names, and `e2e/README.md` for browser-test setup.
