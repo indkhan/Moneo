@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { deleteTransactionView, saveTransactionView } from "./actions";
+import { randomUUID } from "node:crypto";
+import { deleteTransactionView, renameTransactionView, saveTransactionView, updateTransactionViewFilters } from "./actions";
 import type { SaveInput } from "./validate";
 
-export type SavedViewRow = { id: string; name: string; created_at: string };
+export type SavedViewRow = { id: string; name: string; created_at: string; version: number };
 
 /**
  * Save / list / open / delete for transaction views.
@@ -42,9 +43,21 @@ export function SavedViewsPanel({
               {view.id === activeViewId ? <span className="text-muted-foreground">(open)</span> : null}
               <form action={deleteTransactionView}>
                 <input type="hidden" name="viewId" value={view.id} />
+                <input type="hidden" name="version" value={view.version} />
+                <input type="hidden" name="requestId" value={randomUUID()} />
                 <button aria-label={`Delete saved view ${view.name}`} className="text-slate-500 hover:text-red-700 hover:underline">
                   Delete
                 </button>
+              </form>
+              <form action={updateTransactionViewFilters}>
+                <input type="hidden" name="viewId" value={view.id} /><input type="hidden" name="version" value={view.version} /><input type="hidden" name="requestId" value={randomUUID()} />
+                {Object.entries(saveDefaults).map(([name, value]) => value !== undefined ? <input key={name} type="hidden" name={name} value={value} /> : null)}
+                <button aria-label={`Update filters for saved view ${view.name}`}>Use current filters</button>
+              </form>
+              <form action={renameTransactionView} className="flex gap-2">
+                <input type="hidden" name="viewId" value={view.id} /><input type="hidden" name="version" value={view.version} /><input type="hidden" name="requestId" value={randomUUID()} />
+                <input name="name" defaultValue={view.name} aria-label={`Rename saved view ${view.name}`} maxLength={80} required className="max-w-40 rounded border p-1" />
+                <button>Rename</button>
               </form>
             </li>
           ))}
@@ -90,6 +103,7 @@ export function SavedViewsPanel({
       </form>
       <p className="mt-2 text-xs text-muted-foreground">
         Saved-view links contain only an opaque id; search terms and account ids stay server-side.
+        {" "}<Link className="underline" href="/money/accounts">View edit history and undo</Link>
       </p>
     </section>
   );

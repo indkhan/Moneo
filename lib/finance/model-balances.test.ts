@@ -1,11 +1,11 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { evaluatePlan } from "./model";
 
-const fixture = vi.hoisted(() => ({ asOf: "2026-09-28T12:00:00Z", pending: false, includeAssumptions: false, debt: false, preferences: null as null | { currency_code: string; safety_buffer_minor: string; daily_spending_minor: string; uncertainty_bps: number; spending_account_id: string | null; spending_starts_on: string | null; version: number } }));
+const fixture = vi.hoisted(() => ({ asOf: "2026-09-28T12:00:00Z", pending: false, includeAssumptions: false, debt: false, archived: false, preferences: null as null | { currency_code: string; safety_buffer_minor: string; daily_spending_minor: string; uncertainty_bps: number; spending_account_id: string | null; spending_starts_on: string | null; version: number } }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" },
   supabase: { from: (table: string) => {
     const filters = new Map<string, unknown>();
-    const data = table === "accounts" ? [{ id: "00000000-0000-4000-8000-000000000001", name: "Cash", type: "checking", currency_code: "EUR" }] :
+    const data = table === "accounts" ? [{ id: "00000000-0000-4000-8000-000000000001", name: "Cash", type: "checking", currency_code: "EUR", archived_at: fixture.archived ? "2026-10-01T10:00:00Z" : null }] :
       table === "balance_snapshots" ? [{ id: "balance", account_id: "00000000-0000-4000-8000-000000000001", amount_minor: "10000", currency_code: "EUR", as_of: fixture.asOf, provenance: "manual" }] :
         table === "transactions" && fixture.pending ? [{ id: "hold", account_id: "00000000-0000-4000-8000-000000000001", amount_minor: "-2000", currency_code: "EUR", posted_on: "2026-10-01", status: "pending" }] :
           table === "wealth_items" && fixture.debt ? [{ id: "loan", name: "Loan", kind: "debt", amount_minor: "-5000", currency_code: "EUR", as_of: "2026-10-01", payment_account_id: "00000000-0000-4000-8000-000000000001", annual_rate_text: "0", monthly_payment_minor: "2000", next_payment_on: "2026-10-01", payment_assumption_id: null, payment_transaction_id: fixture.pending ? "hold" : null, removed_at: null }] : [];
@@ -84,4 +84,15 @@ it("protects the buffer once and adds only the explicitly estimated variable spe
     fixture.preferences.currency_code = "USD";
     expect((await evaluatePlan(2)).available.status).toBe("unavailable");
   } finally { fixture.preferences = null; fixture.asOf = "2026-09-28T12:00:00Z"; }
+});
+
+it("keeps archived account evidence while excluding its cash and surfacing linked obligations", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
+  fixture.archived = true; fixture.includeAssumptions = true; fixture.asOf = "2026-10-01T08:00:00Z";
+  try {
+    const result = await evaluatePlan(30);
+    expect(result.input.accounts).toEqual([]);
+    expect(result.available.status).toBe("unavailable");
+    expect(result.input.missingInputs).toContain("assumption account");
+  } finally { fixture.archived = false; fixture.includeAssumptions = false; fixture.asOf = "2026-09-28T12:00:00Z"; }
 });

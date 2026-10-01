@@ -107,7 +107,7 @@ export async function addAssumption(form: FormData) {
   const cadence = z.enum(["once", "daily", "weekly", "monthly", "yearly"]).parse(form.get("cadence"));
   const start = date.parse(form.get("startsOn"));
   const { data: account, error: accountError } = await supabase.from("accounts").select("currency_code")
-    .eq("workspace_id", workspace.id).eq("id", accountId).single();
+    .eq("workspace_id", workspace.id).eq("id", accountId).is("archived_at", null).single();
   if (accountError || !account) throw new Error("Account not found");
   const amount = parseAmountMinor(String(form.get("amount") ?? ""), account.currency_code);
   const { error } = await supabase.from("financial_assumptions").insert({
@@ -175,7 +175,7 @@ export async function addScenarioEvent(form: FormData) {
   const cadence = z.enum(["once", "daily", "weekly", "monthly", "yearly"]).parse(form.get("cadence"));
   const start = date.parse(form.get("startsOn"));
   const { data: account } = await supabase.from("accounts").select("currency_code")
-    .eq("workspace_id", workspace.id).eq("id", accountId).maybeSingle();
+    .eq("workspace_id", workspace.id).eq("id", accountId).is("archived_at", null).maybeSingle();
   const { data: scenario } = await supabase.from("scenarios").select("id")
     .eq("workspace_id", workspace.id).eq("id", scenarioId).maybeSingle();
   if (!account || !scenario) throw new Error("Account or scenario not found");

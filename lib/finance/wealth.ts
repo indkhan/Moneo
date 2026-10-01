@@ -84,7 +84,7 @@ export async function loadWealthItems(client: SupabaseClient, workspaceId: strin
   }
 }
 
-export function buildDebtForecast(items: WealthItem[], accounts: { id: string; type?: string; currency_code: string }[], ledger: { id: string; account_id: string; amount_minor: string | number; currency_code: string; posted_on: string; status: string }[], assumptions: { id: string; account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null }[], today: string, days: number): { events: { date: string; accountId: string; currencyCode: string; amountMinor: bigint }[]; excludedAssumptionIds: string[]; missingInputs: string[] } {
+export function buildDebtForecast(items: WealthItem[], accounts: { id: string; type?: string; currency_code: string; archived_at?: string | null }[], ledger: { id: string; account_id: string; amount_minor: string | number; currency_code: string; posted_on: string; status: string }[], assumptions: { id: string; account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null }[], today: string, days: number): { events: { date: string; accountId: string; currencyCode: string; amountMinor: bigint }[]; excludedAssumptionIds: string[]; missingInputs: string[] } {
   const minor = (value: string | number) => { if (typeof value === "number" && !Number.isSafeInteger(value)) throw new Error("Unsafe debt ledger money"); return BigInt(value); };
   const events: { date: string; accountId: string; currencyCode: string; amountMinor: bigint }[] = [];
   const excludedAssumptionIds: string[] = []; const missingInputs: string[] = []; const provenance = new Set<string>();
@@ -93,7 +93,7 @@ export function buildDebtForecast(items: WealthItem[], accounts: { id: string; t
     if (BigInt(item.amount_minor) === 0n) continue;
     if (item.as_of !== today) { missing("principal valuation is historical"); continue; }
     const account = accounts.find(account => account.id === item.payment_account_id);
-    if (!account || !["checking", "savings", "cash", "wallet"].includes(account.type ?? "") || account.currency_code !== item.currency_code) { missing("liquid repayment account"); continue; }
+    if (!account || account.archived_at || !["checking", "savings", "cash", "wallet"].includes(account.type ?? "") || account.currency_code !== item.currency_code) { missing("liquid repayment account"); continue; }
     if (!item.next_payment_on || !item.annual_rate_text || BigInt(item.monthly_payment_minor ?? "0") <= 0n) { missing("repayment assumptions"); continue; }
     const keys = [item.payment_assumption_id ? `assumption:${item.payment_assumption_id}` : null, item.payment_transaction_id ? `pending:${item.payment_transaction_id}` : null].filter((key): key is string => key !== null);
     if (keys.some(key => provenance.has(key))) { missing("duplicate repayment provenance"); continue; }

@@ -16,6 +16,7 @@ it("reuses explicit repayment provenance and consumes an already-held payment on
   const accounts = [{ id: "cash", type: "checking", currency_code: "EUR" }];
   const ledger = [{ id: "hold", account_id: "cash", amount_minor: "-6000", currency_code: "EUR", posted_on: "2026-10-02", status: "pending" }];
   const assumptions = [{ id: "repayment", account_id: "cash", amount_minor: "-6000", currency_code: "EUR", cadence: "monthly", starts_on: "2026-10-02", ends_on: null }];
+  expect(buildDebtForecast([debt], [{ ...accounts[0], archived_at: "2026-10-02T12:00:00Z" }], ledger, assumptions, "2026-10-02", 60)).toEqual({ events: [], excludedAssumptionIds: [], missingInputs: ["debt:debt:liquid repayment account"] });
   expect(buildDebtForecast([debt], accounts, ledger, assumptions, "2026-10-02", 60)).toMatchObject({
     excludedAssumptionIds: ["repayment"], missingInputs: [], events: [{ date: "2026-11-02", accountId: "cash", amountMinor: -4000n }],
   });

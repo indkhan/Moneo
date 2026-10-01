@@ -64,7 +64,7 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
       supabase.from("forecast_preferences").select("currency_code, safety_buffer_minor::text, daily_spending_minor::text, uncertainty_bps, spending_account_id, spending_starts_on, version").eq("workspace_id", workspace.id).maybeSingle(),
       supabase.from("goal_allocations").select("account_id, amount_minor::text").eq("workspace_id", workspace.id),
       supabase.from("financial_assumptions").select("id, name, account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, enabled")
-        .eq("workspace_id", workspace.id).eq("enabled", true).eq("confirmed", true),
+        .eq("workspace_id", workspace.id).eq("enabled", true).eq("confirmed", true).is("removed_at", null),
       supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
         .eq("workspace_id", workspace.id).eq("to_currency", workspace.display_currency),
     ]);
@@ -81,7 +81,7 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
   const reserved = new Map<string, bigint>();
   for (const allocation of allocations ?? []) reserved.set(allocation.account_id, (reserved.get(allocation.account_id) ?? 0n) + BigInt(allocation.amount_minor));
   const spendable = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone)
-    .filter(account => ["checking", "savings", "cash", "wallet"].includes(account.type ?? ""));
+    .filter(account => !account.archived_at && ["checking", "savings", "cash", "wallet"].includes(account.type ?? ""));
   const startDate = calendarDate(balanceEvidence.asOf, workspace.timezone);
   const accountIds = new Set(spendable.map(account => account.id));
   const missingInputs = (assumptions ?? []).flatMap(item =>
