@@ -1,0 +1,31 @@
+import { test, expect } from "@playwright/test";
+import { e2eStorageStatePath, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
+const state = e2eStorageStatePath();
+if (state) test.use({ storageState: state });
+test.skip(!hasSupabaseEnv() || !state, gatedSkipReason());
+
+test("goal contributions, recorded savings and audit undo remain separate from cash reservations", async ({ page }) => {
+  test.setTimeout(90_000);
+  const name = `Goal QA ${crypto.randomUUID().slice(0, 8)}`;
+  await page.goto("/plan");
+  await page.getByPlaceholder("Goal name", { exact: true }).fill(name);
+  await page.getByPlaceholder("Target amount", { exact: true }).fill("1000.00");
+  await page.getByRole("button", { name: "Add goal", exact: true }).click();
+  const goal = page.locator("article").filter({ has: page.getByRole("heading", { name, exact: true }) });
+  await expect(goal).toBeVisible({ timeout: 30_000 });
+  await goal.getByText("Edit goal and contribution plan", { exact: true }).click();
+  await goal.getByLabel("Planned monthly contribution (EUR)", { exact: true }).fill("300.00");
+  await goal.getByLabel("First contribution date", { exact: true }).fill("2026-10-31");
+  await goal.getByLabel("Recorded actual savings (EUR)", { exact: true }).fill("100.00");
+  await goal.getByLabel("Savings evidence date", { exact: true }).fill("2026-10-01");
+  await goal.getByLabel("Target date", { exact: true }).fill("2027-01-31");
+  await goal.getByRole("button", { name: "Save goal plan", exact: true }).click();
+  await expect(goal).toContainText("Expected completion 2026-12-31", { timeout: 30_000 });
+  await expect(goal).toContainText("Virtual cash reservations: EUR 0.00");
+  await page.reload();
+  await expect(goal).toContainText("100.00 as of 2026-10-01");
+  await page.getByText("Goal history and undo", { exact: true }).click();
+  await page.locator("li").filter({ hasText: name }).getByRole("button", { name: "Undo goal change", exact: true }).first().click();
+  await expect(goal).toContainText("Recorded savings: Unknown", { timeout: 30_000 });
+  await expect(goal).toContainText("Virtual cash reservations: EUR 0.00");
+});

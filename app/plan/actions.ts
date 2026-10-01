@@ -5,10 +5,44 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireWorkspace } from "@/lib/auth";
 import { parseAmountMinor } from "@/lib/csv";
+import { parseManualAmount } from "@/app/money/transactions/input";
+import { calendarDate } from "@/lib/finance/calendar";
 
 const date = z.iso.date();
 const assumptionId = z.uuid();
 const assumptionCadence = z.enum(["once", "daily", "weekly", "monthly", "yearly"]);
+
+export async function updateGoalPlan(form: FormData) {
+  const { supabase, workspace } = await requireWorkspace();
+  const id = z.uuid().parse(form.get("goalId"));
+  const { data: goal, error: lookupError } = await supabase.from("goals").select("currency_code").eq("workspace_id", workspace.id).eq("id", id).single();
+  if (lookupError || !goal) throw new Error("Goal unavailable");
+  const amount = (name: string) => parseManualAmount(String(form.get(name) ?? ""), goal.currency_code);
+  const target = amount("target"), monthly = amount("monthly");
+  const saved = String(form.get("saved") ?? "").trim() ? amount("saved") : null;
+  if (target <= 0n || monthly < 0n || (saved !== null && saved < 0n)) throw new Error("Goal amounts must be nonnegative and the target positive");
+  const optionalDate = (name: string) => form.get(name) ? date.parse(form.get(name)) : null;
+  const savedAsOf = optionalDate("savedAsOf"), startsOn = optionalDate("startsOn");
+  if ((saved === null) !== (savedAsOf === null)) throw new Error("Recorded savings need their evidence date; leave both blank for unknown savings");
+  if (savedAsOf && savedAsOf > calendarDate(new Date(), workspace.timezone)) throw new Error("Savings evidence cannot be in the future");
+  if (monthly > 0n && !startsOn) throw new Error("A contribution plan needs its first payment date");
+  const { error } = await supabase.rpc("edit_goal_plan", {
+    p_goal_id: id, p_expected_version: z.coerce.number().int().min(0).max(2147483646).parse(form.get("version")), p_request_id: z.uuid().parse(form.get("requestId")),
+    p_patch: { name: z.string().trim().min(1).max(120).parse(form.get("name")), target_minor: target.toString(), target_date: optionalDate("targetDate"),
+      priority: z.coerce.number().int().min(0).max(100).parse(form.get("priority")), status: z.enum(["active", "paused", "completed", "archived"]).parse(form.get("status")),
+      notes: z.string().trim().max(1000).parse(form.get("notes") ?? ""), planned_monthly_minor: monthly.toString(), contribution_starts_on: startsOn,
+      recorded_saved_minor: saved?.toString() ?? null, saved_as_of: savedAsOf },
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/", "layout"); redirect("/plan");
+}
+
+export async function undoGoalPlan(form: FormData) {
+  const { supabase } = await requireWorkspace();
+  const { error } = await supabase.rpc("undo_goal_plan", { p_event_id: z.uuid().parse(form.get("eventId")), p_expected_version: z.coerce.number().int().min(0).max(2147483646).parse(form.get("version")) });
+  if (error) throw new Error(error.message);
+  revalidatePath("/", "layout"); redirect("/plan");
+}
 
 async function editAssumption(form: FormData, patch: Record<string, unknown>) {
   const { supabase } = await requireWorkspace();
@@ -38,19 +72,32 @@ export async function createGoal(form: FormData) {
 }
 
 export async function setAllocation(form: FormData) {
-  const { supabase } = await requireWorkspace();
+  const { supabase, workspace } = await requireWorkspace();
   const goalId = z.uuid().parse(form.get("goalId"));
   const accountId = z.uuid().parse(form.get("accountId"));
   const { data: goal } = await supabase.from("goals").select("currency_code")
-    .eq("id", goalId).maybeSingle();
+    .eq("workspace_id", workspace.id).eq("id", goalId).maybeSingle();
   if (!goal) throw new Error("Goal not found");
-  const amount = parseAmountMinor(String(form.get("amount") ?? ""), goal.currency_code);
+  const amount = parseManualAmount(String(form.get("amount") ?? ""), goal.currency_code);
   if (amount < 0n) throw new Error("Allocation cannot be negative");
-  const { error } = await supabase.rpc("set_goal_allocation", {
+  const { error } = await supabase.rpc("reserve_goal_funds", {
     p_goal_id: goalId, p_account_id: accountId, p_amount_minor: amount.toString(),
+    p_expected_version: z.coerce.number().int().min(0).max(2147483646).parse(form.get("version")),
+    p_request_id: z.uuid().parse(form.get("requestId")),
   });
   if (error) throw new Error(error.message);
+  revalidatePath("/", "layout");
   redirect("/plan");
+}
+
+export async function undoReservation(form: FormData) {
+  const { supabase } = await requireWorkspace();
+  const { error } = await supabase.rpc("undo_goal_reservation", {
+    p_event_id: z.uuid().parse(form.get("eventId")),
+    p_expected_version: z.coerce.number().int().min(1).max(2147483646).parse(form.get("version")),
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/", "layout"); redirect("/plan");
 }
 
 export async function addAssumption(form: FormData) {
