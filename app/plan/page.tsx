@@ -9,6 +9,7 @@ import { PlanningHistory } from "./history";
 import { calendarDate } from "@/lib/finance/calendar";
 import { goalContributionProjection } from "@/lib/finance/goals";
 import { GoalPlanEditor, GoalPlanHistory } from "./goal-plan";
+import { ForecastPreferenceEditor } from "./preferences";
 
 const field = "min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-brand focus:ring-2 focus:ring-brand/15";
 const button = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90";
@@ -52,6 +53,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const projection = await evaluatePlan(horizon, scenarioId);
   const today = calendarDate(new Date(), workspace.timezone);
   const currency = workspace.display_currency;
+  const monthlyContributions = (goals ?? []).filter(goal => goal.status === "active" && goal.currency_code === currency).reduce((sum, goal) => sum + BigInt(goal.planned_monthly_minor), 0n);
 
   return <main className="mx-auto max-w-7xl space-y-7 px-4 py-8 text-foreground sm:px-6 lg:px-10">
     <header className="flex flex-wrap items-end justify-between gap-4">
@@ -64,6 +66,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
       {projection.available.status === "available" ? <div className="mt-6"><p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Available to spend</p><p className="mt-1 font-mono text-3xl font-semibold tracking-tight">{formatMoney(projection.available.amountMinor, currency)}</p><p className="mt-1 text-xs text-muted-foreground">Conservative daily minimum on {projection.available.limitingDate}; includes confirmed assumptions and goal reservations.</p></div> : <div className="mt-6 rounded-lg bg-muted p-4 text-sm text-muted-foreground">Forecast unavailable: {projection.available.missingInputs.join(", ")}. Add dated balances and complete missing assumptions.</div>}
       {projection.forecast.status === "available" && <><ForecastChart days={projection.forecast.days} /><div className="mt-4 grid gap-3 sm:grid-cols-3">{([ ["Expected", projection.forecast.days.at(-1)!.expectedMinor], ["Conservative", projection.forecast.days.at(-1)!.conservativeMinor], ["Optimistic", projection.forecast.days.at(-1)!.optimisticMinor] ] as const).map(([label, amount]) => <div key={label} className="rounded-lg bg-muted/60 px-4 py-3"><p className="text-xs text-muted-foreground">{label} at horizon</p><p className="mt-1 font-mono text-base font-semibold">{formatMoney(amount, currency)}</p></div>)}</div></>}
     </section>
+    <ForecastPreferenceEditor preferences={projection.preferences} version={projection.preferencesVersion} accounts={accounts ?? []} today={today} />
     <section className={card}><div className="flex items-center justify-between"><div><p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Reservations</p><h2 className="mt-1 text-lg font-semibold">Goals</h2></div></div><p className="text-sm text-muted-foreground">A goal does not reserve money until you allocate cash to it.</p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">{goals?.map(goal => {
         const earmarks = (allocations ?? []).filter(item => item.goal_id === goal.id);
@@ -79,7 +82,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
           <GoalPlanEditor goal={goal} today={today} />
         </article>;
       })}</div>
-      <p className="mt-4 text-sm text-muted-foreground">Contribution plans in {currency} total {formatMoney((goals ?? []).filter(goal => goal.status === "active" && goal.currency_code === currency).reduce((sum, goal) => sum + BigInt(goal.planned_monthly_minor), 0n), currency)} per month. {projection.available.status === "available" ? "Compare this combined commitment with the conservative available funds above; repeated affordability depends on future obligations and income." : "Affordability is unavailable until the forecast has complete inputs."} Other currencies need dated conversion evidence.</p>
+      <p className="mt-4 text-sm text-muted-foreground">Contribution plans in {currency} total {formatMoney(monthlyContributions, currency)} per month. {projection.available.status === "available" ? (projection.available.amountMinor >= monthlyContributions ? `One planned month fits the current ${horizon}-day conservative minimum, leaving ${formatMoney(projection.available.amountMinor - monthlyContributions, currency)}. Repeated affordability depends on future obligations and income.` : `One planned month exceeds the current ${horizon}-day conservative minimum by ${formatMoney(monthlyContributions - projection.available.amountMinor, currency)}; reduce contributions or review obligations.`) : "Affordability is unavailable until the forecast has complete inputs."} Other currencies need dated conversion evidence.</p>
       <form action={createGoal} className="mt-5 flex flex-wrap items-end gap-2 rounded-lg bg-muted/50 p-4"><input type="hidden" name="requestId" value={crypto.randomUUID()} /><input name="name" required maxLength={120} placeholder="Goal name" className={field} /><input name="target" required placeholder="Target amount" className={field} /><input name="currency" defaultValue={currency} required maxLength={3} aria-label="Currency code" className={field + " w-20"} /><input name="targetDate" type="date" aria-label="Target date" className={field} /><button className={button}>Add goal</button></form>
     </section>
     <GoalPlanHistory />

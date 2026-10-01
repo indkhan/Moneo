@@ -62,6 +62,8 @@ export type ForecastEvent = {
   expectedMinor: bigint;
   conservativeMinor?: bigint;
   optimisticMinor?: bigint;
+  source?: "confirmed" | "estimated" | "debt" | "scenario";
+  name?: string;
 };
 
 export type ForecastInput = {

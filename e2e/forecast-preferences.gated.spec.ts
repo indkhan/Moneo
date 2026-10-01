@@ -1,0 +1,23 @@
+﻿import { test, expect } from "@playwright/test";
+import { e2eStorageStatePath, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
+const state = e2eStorageStatePath();
+if (state) test.use({ storageState: state });
+test.skip(!hasSupabaseEnv() || !state, gatedSkipReason());
+test("forecast buffer and case preferences persist and undo as assumptions", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.goto("/plan");
+  const section = page.locator("section").filter({ has: page.getByRole("heading", { name: "Forecast preferences", exact: true }) });
+  const previousBuffer = await section.getByLabel("Safety buffer", { exact: true }).inputValue();
+  const previousUncertainty = await section.getByLabel("Uncertainty (basis points; 1000 = 10%)", { exact: true }).inputValue();
+  await section.getByLabel("Safety buffer", { exact: true }).fill("12.34");
+  await section.getByLabel("Uncertainty (basis points; 1000 = 10%)", { exact: true }).fill("0");
+  await section.getByRole("button", { name: "Save forecast preferences", exact: true }).click();
+  await expect(section.getByLabel("Safety buffer", { exact: true })).toHaveValue("12.34", { timeout: 30_000 });
+  await page.reload();
+  await expect(section.getByLabel("Safety buffer", { exact: true })).toHaveValue("12.34");
+  await section.getByText("Forecast preference history and undo", { exact: true }).click();
+  await expect(section).toContainText("Buffer EUR 12.34");
+  await section.getByRole("button", { name: "Undo forecast preferences", exact: true }).first().click();
+  await expect(section.getByLabel("Safety buffer", { exact: true })).toHaveValue(previousBuffer, { timeout: 30_000 });
+  await expect(section.getByLabel("Uncertainty (basis points; 1000 = 10%)", { exact: true })).toHaveValue(previousUncertainty);
+});
