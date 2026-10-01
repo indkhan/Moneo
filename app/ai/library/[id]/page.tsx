@@ -129,8 +129,8 @@ async function SpendingExplorer({ id, query }: { id: string; query: string }) {
     <h2 className="text-xl font-semibold tracking-tight text-foreground">This month</h2>
     {"unavailable" in data.summary ? <p className="mt-3">{data.summary.unavailable}</p>
       : <p className="mt-3 text-2xl">Spending {money(data.summary.spendingMinor, data.currency)}</p>}
-    <p className="mt-1 text-sm text-muted-foreground">{data.from} to {data.to}. Posted ordinary transactions only; mixed currencies remain unavailable.</p>
-    <SpendingChart rows={data.transactions} />
+    <p className="mt-1 text-sm text-muted-foreground">{data.from} to {data.to} (Europe/Berlin). Posted transactions matching the filter, including refunds; transfers excluded. Mixed currencies require dated conversion evidence.</p>
+    {!("unavailable" in data.summary) && <SpendingChart rows={data.transactions} from={data.from} to={data.to} currency={data.currency} />}
     <form method="get" className="mt-5 flex gap-2">
       <input name="q" defaultValue={query} maxLength={100} aria-label="Filter transaction descriptions" className="flex-1 rounded-lg border border-border bg-card px-3 py-2" placeholder="Filter descriptions" />
       <button className="rounded-lg border border-border bg-card px-3 text-sm font-medium hover:bg-muted">Filter</button>
@@ -141,7 +141,6 @@ async function SpendingExplorer({ id, query }: { id: string; query: string }) {
         <span>{money(row.amount_minor, row.currency_code)}</span>
       </li>)}</ul>
     {!data.transactions.length && <p className="mt-4">No matching transactions.</p>}
-    {data.transactions.length === 50 && <p className="mt-2 text-xs text-muted-foreground">Showing the latest 50 matching transactions.</p>}
   </section>;
 }
 

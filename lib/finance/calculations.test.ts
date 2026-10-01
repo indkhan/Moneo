@@ -25,6 +25,17 @@ describe("exact financial calculations", () => {
     ], "EUR")).toBeNull();
   });
 
+  it("ignores foreign currencies on excluded pending and transfer rows", () => {
+    for (const excluded of [
+      { amountMinor: -100n, currencyCode: "USD", status: "pending" as const, kind: "ordinary" as const },
+      { amountMinor: -100n, currencyCode: "USD", status: "posted" as const, kind: "transfer" as const },
+    ]) {
+      expect(summarizeCashflow([
+        { amountMinor: -1000n, currencyCode: "EUR", status: "posted", kind: "ordinary" }, excluded,
+      ], "EUR")).toEqual({ incomeMinor: 0n, spendingMinor: 1000n, netMinor: -1000n });
+    }
+  });
+
   it("evaluates every day and finds an early shortfall, including reservations and pending only once", () => {
     const input = {
       startDate: "2026-10-01", horizonDays: 3, currencyCode: "EUR",

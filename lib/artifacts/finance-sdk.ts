@@ -1,7 +1,7 @@
 import { requireWorkspace } from "@/lib/auth";
-import { availableToSpend } from "@/lib/finance/calculations";
+import { availableToSpend, summarizeCashflow, type CashflowTransaction } from "@/lib/finance/calculations";
 import { evaluatePlan } from "@/lib/finance/model";
-import { cashflow, getBalances } from "@/lib/finance/tools";
+import { getBalances } from "@/lib/finance/tools";
 
 async function requirePermission(artifactId: string, permission: string) {
   const { supabase, workspace } = await requireWorkspace();
@@ -14,18 +14,28 @@ async function requirePermission(artifactId: string, permission: string) {
 
 export async function spendingForArtifact(artifactId: string, query: string) {
   const { supabase, workspace } = await requirePermission(artifactId, "spending");
-  const today = new Date();
-  const from = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)).toISOString().slice(0, 10);
-  const to = today.toISOString().slice(0, 10);
-  const summary = await cashflow({ from, to, currencyCode: workspace.display_currency });
-  let rows = supabase.from("transactions")
-    .select("id, posted_on, description, amount_minor, currency_code, category_id")
-    .eq("workspace_id", workspace.id).eq("status", "posted").eq("kind", "ordinary")
-    .gte("posted_on", from).lte("posted_on", to).order("posted_on", { ascending: false }).limit(50);
-  if (query) rows = rows.ilike("description", `%${query.replace(/[%_]/g, "\\$&")}%`);
-  const { data: transactions, error } = await rows;
-  if (error) throw error;
-  return { summary, transactions: transactions ?? [], currency: workspace.display_currency, from, to };
+  const to = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const from = `${to.slice(0, 7)}-01`;
+  const transactions = [];
+  for (let offset = 0; ; offset += 1000) {
+    let rows = supabase.from("transactions")
+      .select("id, posted_on, description, amount_minor, currency_code, category_id, status, kind")
+      .eq("workspace_id", workspace.id).eq("status", "posted").neq("kind", "transfer")
+      .gte("posted_on", from).lte("posted_on", to)
+      .order("posted_on", { ascending: false }).order("id");
+    if (query) rows = rows.ilike("description", `%${query.replace(/[%_]/g, "\\$&")}%`);
+    const { data, error } = await rows.range(offset, offset + 999);
+    if (error) throw error;
+    transactions.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+  }
+  const total = summarizeCashflow(transactions.map(row => ({
+    amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code,
+    status: row.status as CashflowTransaction["status"], kind: row.kind as CashflowTransaction["kind"],
+  })), workspace.display_currency);
+  const summary = total ? { incomeMinor: total.incomeMinor.toString(), spendingMinor: total.spendingMinor.toString(), netMinor: total.netMinor.toString() }
+    : { unavailable: "Some transactions require currency conversion" };
+  return { summary, transactions, currency: workspace.display_currency, from, to };
 }
 
 export async function tripForArtifact(artifactId: string, costMinor: bigint) {
@@ -52,5 +62,5 @@ export async function goalsForArtifact(artifactId: string) {
     getBalances(),
   ]);
   if (goalsError || allocationsError) throw goalsError ?? allocationsError;
-  return { goals: goals ?? [], allocations: allocations ?? [], balances };
+  return { goals: goals ?? [], allocations: allocations ?? [], balances, currency: workspace.display_currency };
 }

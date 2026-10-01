@@ -1,0 +1,50 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { requireWorkspace } from "@/lib/auth";
+import { spendingForArtifact } from "./finance-sdk";
+
+vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
+vi.mock("@/lib/finance/model", () => ({ evaluatePlan: vi.fn() }));
+
+describe("artifact spending coverage", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("pages all matched posted rows including refunds in the Berlin month", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-30T22:30:00Z"));
+    const ranges: number[][] = [];
+    const filters: unknown[][] = [];
+    const transactions = Array.from({ length: 1001 }, (_, index) => ({
+      id: String(index), posted_on: "2026-10-01", description: "Shop", amount_minor: "-100",
+      currency_code: "EUR", category_id: null, status: "posted", kind: "ordinary",
+    }));
+    transactions[1000] = { ...transactions[1000], amount_minor: "1000", kind: "refund" };
+    const unmatched = { ...transactions[0], description: "Other", currency_code: "USD" };
+    let filtered = false;
+    const builder: Record<string, unknown> = {};
+    for (const method of ["select", "eq", "neq", "gte", "lte", "order", "ilike", "limit"]) {
+      builder[method] = vi.fn((...args: unknown[]) => {
+        filters.push([method, ...args]);
+        if (method === "ilike") filtered = true;
+        return builder;
+      });
+    }
+    builder.range = vi.fn(async (from: number, to: number) => {
+      ranges.push([from, to]);
+      return { data: (filtered ? transactions : [...transactions, unmatched]).slice(from, to + 1), error: null };
+    });
+    builder.then = (resolve: (value: unknown) => unknown) => resolve({ data: transactions.slice(0, 50), error: null });
+    const permission = { select: () => permission, eq: () => permission,
+      single: async () => ({ data: { permissions: ["spending"], active_version_id: "v" }, error: null }) };
+    vi.mocked(requireWorkspace).mockResolvedValue({
+      workspace: { id: "w", display_currency: "EUR" },
+      supabase: { from: (table: string) => { filtered = false; return table === "artifacts" ? permission : builder; } },
+    } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+    const result = await spendingForArtifact("a", "Shop");
+    expect(result).toMatchObject({ from: "2026-10-01", to: "2026-10-01",
+      summary: { incomeMinor: "0", spendingMinor: "99000", netMinor: "-99000" } });
+    expect(result.transactions).toHaveLength(1001);
+    expect(ranges).toEqual([[0, 999], [1000, 1999]]);
+    expect(filters).toContainEqual(["neq", "kind", "transfer"]);
+    expect(filters).toContainEqual(["ilike", "description", "%Shop%"]);
+  });
+});
