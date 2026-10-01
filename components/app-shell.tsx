@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Bot, Home, Landmark, ListChecks, Upload, Wallet } from "lucide-react";
+import { Bell, Bot, Home, Landmark, ListChecks, Settings, Upload, Wallet } from "lucide-react";
 import { AiPanel } from "@/components/ai-panel";
 
 const navigation = [
@@ -12,9 +12,11 @@ const navigation = [
   { label: "AI", href: "/ai", icon: Bot },
   { label: "Import", href: "/import", icon: Upload },
   { label: "Activity", href: "/ai/activity", icon: ListChecks },
+  { label: "Settings", href: "/settings", icon: Settings },
 ];
 
 function activeSection(pathname: string) {
+  if (pathname.startsWith("/settings")) return "Settings";
   if (pathname === "/notifications") return "Notifications";
   if (pathname.startsWith("/ai/activity")) return "Activity";
   if (pathname.startsWith("/ai")) return "AI";
