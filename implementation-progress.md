@@ -45,10 +45,20 @@ Items are incomplete until integrated checks and live evidence establish them. E
 ## Commits / verification / blockers
 
 -55ff3dc progress ledger;17ec106 budget currency/calendar;cfba8d4 tool exactness;53b9687 schema parity;6c31a7e import routing/status;534c12b chat safety.
-- Latest integrated unit checkpoint:31 files/138 tests passed; lint passed. Initial build passed; final build and full authenticated suite remain required.
+- Latest integrated unit checkpoint:36 files/156 tests passed; lint passed; subsequent focused dashboard/manual-date/provider checks pass. Initial build passed; final build and full authenticated suite remain required.
 - Private first imports ran using pre022 workflow revisions; some rows appended after classification backfill may lack reasons. Final classification acceptance requires a fresh disposable workspace after022.
 - Real larger workflow persisted progress only at250; source rows continued increasing. First acceptance poll window expired while genuinely running, then subsequent verification completed.022 now recounts every25 rows and has replay regression.
 - Both original supplied files remain untracked/uncommitted; temporary auth/acceptance evidence remains in ignored test-results/e2e auth files.
 - No confirmed external blocker yet. Missing auth state is setup work, not a passing gated test.
 - Next: commit reviewed balance/classification/planning slices; fresh authenticated private acceptance; final integrated gates. Active owners:finance Money manual/bulk/tags/events024;schema settings/scopes025;root usage026;imports timestamp/chronology027.
 - Essential remaining product scope is explicitly incomplete: richer Home customization, Money splits/wealth, planning goals/scenario history/rollover, settings rollout/schedules/insights, broader tools/exports, complete AI orchestration and all live journeys. No completion claim.
+
+## Oct 2 integration checkpoint
+
+- Commits:5a57c92 planning audit/undo;356ce50 manual/bulk Money edits;a624159 preferences/free-model checks;a4cde02 scoped chat and reported usage.
+- Applied024?027 atomically with exact history hashes;029 dashboard layout applied after fresh/upgraded27 migrations and10 SQL regressions passed. Central schema aligned;028 splits and030 summaries in progress.
+- Home persisted built-in/saved-tool ordering/visibility, upcoming confirmed obligations, exact goal reservations and evidence-based warnings implemented; focused tests/typecheck pass before concurrent new slices. Agent review caught inherited widget names, payment ordering and historical west-of-UTC date; fixed with regressions/shared calendar boundary. Browser acceptance pending.
+- Money authenticated journey ran and failed at exact wrapped select label locator; correcting assertion to accessible combobox role, then rerun. This is not a pass.
+- Playwright clears its output folder, removing temporary evidence/helpers. Restored helpers and preserved authenticated user IDs/sessions in locally ignored `.qa/`; identified exactly2 disposable candidates for scoped cleanup. Private fixtures intact. New private timestamp/classification acceptance now running.
+- Provider prices now validated as exact zero decimal strings (positive underflow cannot qualify as free); focused red-green test passes. Settings atomic save follow-up031 required.
+- Scheduler daily polling supports Vercel Hobby precision with period deduplication; automatic deployment execution remains unverified. No Vercel CLI/token/project link discovered yet; investigate available browser/deployment integration before treating as external blocker.
