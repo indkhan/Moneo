@@ -1,9 +1,10 @@
 import { generateObject } from "ai";
 import { z } from "zod";
-import { getModel } from "@/lib/ai/provider";
+import { modelForSettings } from "@/lib/ai/provider";
 import { requireWorkspace } from "@/lib/auth";
+import { artifactKindSchema } from "@/lib/artifacts/spec";
 
-const artifactKind = z.enum(["spending_explorer", "trip_planner", "goal_tracker"]);
+const artifactKind = artifactKindSchema;
 
 // AI output is bounded: one trusted type plus a concise name and rationale.
 // The AI never chooses a workspace and never produces executable source.
@@ -60,11 +61,11 @@ export async function POST(request: Request) {
 
   try {
     const { object } = await generateObject({
-      model: getModel(),
+      model: await modelForSettings(context.settings),
       schema: proposalSchema,
       prompt:
         `Pick exactly one trusted financial-tool template for the request below. ` +
-        `Allowed kinds: spending_explorer (past spending), trip_planner (one-time trip cost), goal_tracker (savings goals). ` +
+        `Allowed kinds: spending_explorer (past spending), trip_planner (one-time trip cost), goal_tracker (savings goals), custom_planner (other financial plans), custom_tracker (tracking measures), custom_report (summaries), custom_comparison (scenario comparisons). ` +
         `Return a concise tool name (1–120 characters) and a one-sentence rationale. ` +
         `Do not choose a workspace. Do not generate code or source.\n` +
         `Request: ${proposeParsed.data.description}`,

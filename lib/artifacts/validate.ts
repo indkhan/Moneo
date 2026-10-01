@@ -82,6 +82,11 @@ function checkOutputShape(output: unknown): string[] {
 
 export function fixturesForKind(kind: ArtifactKind): CalculatorInput[] {
   const base = { runtime: CALCULATOR_RUNTIME };
+  if (kind.startsWith("custom_")) return [
+    { snapshot: { ...base, currency: "EUR", spending: { spendingMinor: "80000", incomeMinor: "120000", netMinor: "40000" }, balances: [{ id: "a", currency_code: "EUR", balance: { amount_minor: "150000", status: "current" } }], goals: [{ id: "g", currency: "EUR", targetMinor: "10000", savedMinor: "2500", remainingMinor: "7500" }], forecast: { currency: "EUR", baselineAvailableMinor: "150000" } }, params: {} },
+    { snapshot: { ...base, currency: "EUR", spending: { spendingMinor: "0", incomeMinor: "0", netMinor: "0" }, balances: [], goals: [], forecast: { unavailable: "No dated balance" } }, params: {} },
+    { snapshot: { ...base, unavailable: "Requested financial evidence is unavailable" }, params: {} },
+  ];
   if (kind === "spending_explorer") {
     return [
       { snapshot: { ...base, currency: "EUR", incomeMinor: "120000", spendingMinor: "80000", netMinor: "40000", daily: [{ date: "2026-09-01", spendingMinor: "1200" }] }, params: {} },
@@ -112,10 +117,7 @@ export async function validateGeneratedCandidate(args: {
 }): Promise<ValidationResult> {
   const errors: string[] = [];
   errors.push(...checkSourceAllowlist(args.source));
-  const manifestCheck = checkManifest(args.kind, args.manifest, [
-    ...(ALLOWED_SDK_BY_KIND[args.kind] ?? []),
-    ...(args.permissions ?? []),
-  ]);
+  const manifestCheck = checkManifest(args.kind, args.manifest, args.permissions ?? ALLOWED_SDK_BY_KIND[args.kind] ?? []);
   errors.push(...manifestCheck.errors);
   if (errors.length) return { ok: false, errors, manifest: manifestCheck.manifest };
 

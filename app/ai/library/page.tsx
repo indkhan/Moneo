@@ -8,6 +8,10 @@ const kinds = [
   { kind: "spending_explorer", name: "Spending Explorer" },
   { kind: "trip_planner", name: "Trip Planner" },
   { kind: "goal_tracker", name: "Goal Tracker" },
+  { kind: "custom_planner", name: "Custom Planner" },
+  { kind: "custom_tracker", name: "Custom Tracker" },
+  { kind: "custom_report", name: "Custom Report" },
+  { kind: "custom_comparison", name: "Custom Comparison" },
 ] as const;
 
 export default async function Library() {

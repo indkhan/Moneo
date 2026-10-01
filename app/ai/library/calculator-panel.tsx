@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { runIsolatedArtifact } from "@/lib/artifacts/run";
 import { saveCalculatorParams } from "./actions";
+import { calculatorExportText, downloadCalculatorPng, printCalculator } from "@/lib/artifacts/export";
 
 const Chart = dynamic(() => import("echarts-for-react"), { ssr: false });
 
@@ -22,12 +23,14 @@ export function CalculatorPanel({
   initialParams,
   versionLabel,
   artifactId,
+  title = "Financial calculator",
 }: {
   source: string;
   snapshot: unknown;
   initialParams: Record<string, number | string>;
   versionLabel: string;
   artifactId: string;
+  title?: string;
 }) {
   const [params, setParams] = useState(initialParams);
   const [output, setOutput] = useState<CalculatorOutput | null>(null);
@@ -65,11 +68,22 @@ export function CalculatorPanel({
     setStatus("stopped");
   }
 
+  function exportResult(format: "print" | "png") {
+    if (!output || status !== "done") return;
+    try {
+      const text = calculatorExportText(title, versionLabel, output, params, snapshot);
+      if (format === "print") printCalculator(text); else downloadCalculatorPng(text);
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "Export unavailable"); }
+  }
+
   return (
     <section aria-label="Generated calculator output" className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
+      {snapshot !== null && typeof snapshot === "object" && "partial" in snapshot && snapshot.partial === true && <p role="status" className="mb-4 text-sm text-amber-700">Partial financial data: transactions awaiting classification are excluded. Review them in Import before relying on these totals.</p>}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Generated calculator · {versionLabel}</h2>
         <div className="flex gap-2 text-sm">
+          <button type="button" disabled={status !== "done" || !output} onClick={() => exportResult("print")} className="rounded border px-3 py-1 disabled:opacity-50">Print / PDF</button>
+          <button type="button" disabled={status !== "done" || !output} onClick={() => exportResult("png")} className="rounded border px-3 py-1 disabled:opacity-50">Export PNG</button>
           <button type="button" onClick={stop} className="rounded border px-3 py-1">
             Stop
           </button>
@@ -93,8 +107,7 @@ export function CalculatorPanel({
         </div>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        Isolated QuickJS/Web Worker output (illustrative). Authoritative balances, forecasts, and
-        goals appear in the trusted sections above.
+        Illustrative results from dated financial evidence. Exports include inputs and evidence so unknown or partial data stays visible.
       </p>
 
       {paramEntries.length > 0 && (
@@ -122,6 +135,7 @@ export function CalculatorPanel({
         {status === "stopped" && "Stopped. Re-run to execute again."}
         {status === "error" && `Calculator failed: ${error}`}
       </p>
+      {error && status !== "error" && <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
 
       {status === "done" && output && (
         <div className="mt-3 text-sm">

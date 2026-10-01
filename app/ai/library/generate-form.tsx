@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import type { ArtifactKind } from "@/lib/artifacts/spec";
 
 type Proposal = {
-  kind: "spending_explorer" | "trip_planner" | "goal_tracker";
+  kind: ArtifactKind;
   name: string;
   rationale: string;
 };
@@ -13,6 +14,7 @@ const labels: Record<Proposal["kind"], string> = {
   spending_explorer: "Spending Explorer",
   trip_planner: "Trip Planner",
   goal_tracker: "Goal Tracker",
+  custom_planner: "Custom Planner", custom_tracker: "Custom Tracker", custom_report: "Custom Report", custom_comparison: "Custom Comparison",
 };
 
 export function GenerateForm() {

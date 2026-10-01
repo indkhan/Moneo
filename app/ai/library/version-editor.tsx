@@ -35,12 +35,12 @@ export function VersionEditor({
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
 
-  async function save() {
+  async function save(candidateSource = source, candidateManifest = manifestText) {
     setSaving(true);
     setStatus("");
     let manifest: unknown;
     try {
-      manifest = JSON.parse(manifestText);
+      manifest = JSON.parse(candidateManifest);
     } catch {
       setStatus("Manifest is not valid JSON");
       setSaving(false);
@@ -50,7 +50,7 @@ export function VersionEditor({
       const res = await fetch(`/api/artifacts/${artifactId}/versions`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ source, manifest }),
+        body: JSON.stringify({ source: candidateSource, manifest }),
       });
       const payload = await res.json().catch(() => null);
       if (!res.ok) throw new Error(payload?.error ?? "Save failed");
@@ -97,7 +97,7 @@ export function VersionEditor({
       <button
         type="button"
         disabled={saving || source.trim().length === 0}
-        onClick={save}
+        onClick={() => save()}
         className="mt-3 rounded-lg bg-brand px-3 py-2 font-medium text-white hover:opacity-90 text-sm disabled:opacity-50"
       >
         {saving ? "Validating…" : "Save new version"}
@@ -118,6 +118,7 @@ export function VersionEditor({
               <span className="ml-2 text-xs text-muted-foreground">{v.created_at}</span>
             </p>
             {v.error && <p className="mt-1 text-destructive">{v.error}</p>}
+            {v.status === "validated" && v.id !== activeVersionId && v.source && v.manifest !== null && typeof v.manifest === "object" && "runtime" in v.manifest && v.manifest.runtime === "quickjs-calculator-v1" && <button type="button" disabled={saving} onClick={() => save(v.source!, JSON.stringify(v.manifest))} className="mt-2 rounded border px-3 py-1 text-xs">Restore v{v.version} as a new version</button>}
             <details className="mt-1">
               <summary className="cursor-pointer underline">Manifest</summary>
               <pre className="mt-1 max-h-32 overflow-auto font-mono text-xs">

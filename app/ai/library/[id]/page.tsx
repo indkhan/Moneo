@@ -4,8 +4,10 @@ import { requireWorkspace } from "@/lib/auth";
 import { goalsForArtifact, spendingForArtifact, tripForArtifact } from "@/lib/artifacts/finance-sdk";
 import { buildCalculatorSnapshot } from "@/lib/artifacts/snapshot";
 import { defaultParams } from "@/lib/artifacts/validate";
-import { calculatorManifestSchema, type ArtifactKind } from "@/lib/artifacts/spec";
+import { artifactKindSchema, calculatorManifestSchema, type ArtifactKind } from "@/lib/artifacts/spec";
 import { parseAmountMinor } from "@/lib/csv";
+import { calendarDate } from "@/lib/finance/calendar";
+import { formatMoney } from "@/lib/finance/format";
 import { pinArtifact, renameArtifact, saveTripState, unpinArtifact } from "../actions";
 import { SpendingChart } from "../spending-chart";
 import { RuntimeCheck } from "../runtime-check";
@@ -14,12 +16,10 @@ import { GenerateCalculatorForm } from "../generate-calculator-form";
 import { VersionEditor } from "../version-editor";
 
 function money(minor: bigint | string | number, currency: string) {
-  const value = BigInt(minor);
-  const abs = value < 0n ? -value : value;
-  return `${value < 0n ? "−" : ""}${currency} ${abs / 100n}.${(abs % 100n).toString().padStart(2, "0")}`;
+  return formatMoney(minor, currency);
 }
 
-const kinds: ArtifactKind[] = ["spending_explorer", "trip_planner", "goal_tracker"];
+const kinds: ArtifactKind[] = artifactKindSchema.options;
 
 export default async function ArtifactPage({ params, searchParams }: {
   params: Promise<{ id: string }>;
@@ -55,6 +55,7 @@ export default async function ArtifactPage({ params, searchParams }: {
       const built = await buildCalculatorSnapshot(id, kind, {
         query: q.slice(0, 100),
         costMinor,
+        sdk: manifestParsed.data.sdk,
       });
       snapshot = built.snapshot;
       const defaults = defaultParams(manifestParsed.data);
@@ -98,6 +99,7 @@ export default async function ArtifactPage({ params, searchParams }: {
         initialParams={initialParams}
         versionLabel={`v${version.version}`}
         artifactId={id}
+        title={artifact.name}
       />
     )}
     {version && !isCalculator && (
@@ -124,12 +126,15 @@ export default async function ArtifactPage({ params, searchParams }: {
 }
 
 async function SpendingExplorer({ id, query }: { id: string; query: string }) {
-  const data = await spendingForArtifact(id, query);
+  let data: Awaited<ReturnType<typeof spendingForArtifact>>;
+  try { data = await spendingForArtifact(id, query); }
+  catch { return <p role="status" className="mt-8 rounded border p-5">Spending evidence is unavailable. Check this tool&apos;s permissions and AI data access in Settings.</p>; }
   return <section className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
     <h2 className="text-xl font-semibold tracking-tight text-foreground">This month</h2>
     {"unavailable" in data.summary ? <p className="mt-3">{data.summary.unavailable}</p>
       : <p className="mt-3 text-2xl">Spending {money(data.summary.spendingMinor, data.currency)}</p>}
-    <p className="mt-1 text-sm text-muted-foreground">{data.from} to {data.to} (Europe/Berlin). Posted transactions matching the filter, including refunds; transfers excluded. Mixed currencies require dated conversion evidence.</p>
+    <p className="mt-1 text-sm text-muted-foreground">{data.from} to {data.to} ({data.timezone}). Posted transactions matching the filter, including refunds; transfers excluded. Mixed currencies require dated conversion evidence.</p>
+    {!("unavailable" in data.summary) && data.summary.partial && <p role="status" className="mt-2 text-sm text-amber-700">Partial: {data.summary.excludedReviewRows} transactions need classification review and are excluded from these totals.</p>}
     {!("unavailable" in data.summary) && <SpendingChart rows={data.transactions} from={data.from} to={data.to} currency={data.currency} />}
     <form method="get" className="mt-5 flex gap-2">
       <input name="q" defaultValue={query} maxLength={100} aria-label="Filter transaction descriptions" className="flex-1 rounded-lg border border-border bg-card px-3 py-2" placeholder="Filter descriptions" />
@@ -145,7 +150,9 @@ async function SpendingExplorer({ id, query }: { id: string; query: string }) {
 }
 
 async function TripPlanner({ id, costMinor }: { id: string; costMinor: bigint }) {
-  const data = await tripForArtifact(id, costMinor);
+  let data: Awaited<ReturnType<typeof tripForArtifact>>;
+  try { data = await tripForArtifact(id, costMinor); }
+  catch { return <p role="status" className="mt-8 rounded border p-5">Forecast evidence is unavailable. Check this tool&apos;s permissions and AI data access in Settings.</p>; }
   return <section className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
     <h2 className="text-xl font-semibold tracking-tight text-foreground">Trip cost</h2>
     <form action={saveTripState} className="mt-4 flex flex-wrap items-end gap-3">
@@ -163,8 +170,10 @@ async function TripPlanner({ id, costMinor }: { id: string; costMinor: bigint })
 }
 
 async function GoalTracker({ id, scenarioGoalId, extra }: { id: string; scenarioGoalId: string; extra: string }) {
-  const data = await goalsForArtifact(id);
-  const today = new Date().toISOString().slice(0, 10);
+  let data: Awaited<ReturnType<typeof goalsForArtifact>>;
+  try { data = await goalsForArtifact(id); }
+  catch { return <p role="status" className="mt-8 rounded border p-5">Goal evidence is unavailable. Check this tool&apos;s permissions and AI data access in Settings.</p>; }
+  const today = calendarDate(new Date(), data.timezone);
   const accountCurrencies = new Map(data.balances.map(item => [item.id, item.currency_code]));
   const targetGoal = data.goals.find(g => g.id === scenarioGoalId);
   const extraCurrency = targetGoal?.currency_code ?? "EUR";
@@ -176,16 +185,18 @@ async function GoalTracker({ id, scenarioGoalId, extra }: { id: string; scenario
     <div className="mt-4 space-y-3">{data.goals.map(goal => {
       const goalAllocations = data.allocations.filter(item => item.goal_id === goal.id);
       const comparable = goalAllocations.every(item => accountCurrencies.get(item.account_id) === goal.currency_code);
-      const saved = goalAllocations
+      const reserved = goalAllocations
         .reduce((sum, item) => sum + BigInt(item.amount_minor), 0n);
-      const remaining = BigInt(goal.target_minor) > saved ? BigInt(goal.target_minor) - saved : 0n;
+      const saved = goal.recorded_saved_minor !== null && goal.saved_as_of && goal.saved_as_of <= today ? BigInt(goal.recorded_saved_minor) : null;
+      const remaining = saved === null ? null : BigInt(goal.target_minor) > saved ? BigInt(goal.target_minor) - saved : 0n;
       const days = goal.target_date ? Math.max(1, Math.ceil((Date.parse(`${goal.target_date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000)) : null;
-      const pace = days ? (remaining * 30n + BigInt(days) - 1n) / BigInt(days) : null;
-      const projected = days && comparable && scenarioGoalId === goal.id ? saved + extraMinor * BigInt(days) / 30n : null;
+      const pace = days && remaining !== null ? (remaining * 30n + BigInt(days) - 1n) / BigInt(days) : null;
+      const projected = days && saved !== null && scenarioGoalId === goal.id ? saved + extraMinor * BigInt(days) / 30n : null;
       return <article key={goal.id} className="rounded-xl border border-border bg-card p-5 shadow-sm">
         <h3 className="font-medium">{goal.name}</h3>
-        <p className="mt-2">Reserved {comparable ? money(saved, goal.currency_code) : "Unavailable across currencies"} of {money(goal.target_minor, goal.currency_code)}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{goal.target_date ? `Target ${goal.target_date} · ${comparable && pace ? `about ${money(pace, goal.currency_code)} per 30 days still needed` : "saving pace unavailable"}` : "No target date"}</p>
+        <p className="mt-2">Recorded savings {saved === null ? "unknown" : `${money(saved, goal.currency_code)} as of ${goal.saved_as_of}`} of {money(goal.target_minor, goal.currency_code)}</p>
+        <p className="mt-1 text-sm">Virtual reservations {comparable ? money(reserved, goal.currency_code) : "unavailable across currencies"}. Reservations are separate from recorded savings.</p>
+        <p className="mt-1 text-sm text-muted-foreground">{goal.target_date ? `Target ${goal.target_date} · ${pace !== null ? `about ${money(pace, goal.currency_code)} per 30 days still needed` : "saving pace unavailable"}` : "No target date"}</p>
         <form method="get" className="mt-3 flex flex-wrap items-end gap-2 text-sm">
           <input type="hidden" name="goalId" value={goal.id} />
           <label>What if I save monthly?<input name="extra" type="number" step="0.01" min="0" defaultValue={scenarioGoalId === goal.id ? extra : ""} className="mt-1 block w-32 rounded-lg border border-border bg-card px-3 py-2" /></label>

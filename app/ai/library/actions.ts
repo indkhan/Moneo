@@ -3,8 +3,9 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
+import { artifactKindSchema } from "@/lib/artifacts/spec";
 
-const kind = z.enum(["spending_explorer", "trip_planner", "goal_tracker"]);
+const kind = artifactKindSchema;
 
 export async function createArtifact(form: FormData) {
   const { supabase } = await requireWorkspace();

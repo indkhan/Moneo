@@ -16,10 +16,13 @@ describe("artifact spending coverage", () => {
     const transactions = Array.from({ length: 1001 }, (_, index) => ({
       id: String(index), posted_on: "2026-10-01", description: "Shop", amount_minor: "-100",
       currency_code: "EUR", category_id: null, status: "posted", kind: "ordinary",
+      review_reasons: [] as string[],
     }));
     transactions[1000] = { ...transactions[1000], amount_minor: "1000", kind: "refund" };
+    transactions[999].review_reasons = ["source_transfer"];
     const unmatched = { ...transactions[0], description: "Other", currency_code: "USD" };
     let filtered = false;
+    const tables: string[] = [];
     const builder: Record<string, unknown> = {};
     for (const method of ["select", "eq", "neq", "gte", "lte", "order", "ilike", "limit"]) {
       builder[method] = vi.fn((...args: unknown[]) => {
@@ -37,14 +40,16 @@ describe("artifact spending coverage", () => {
       single: async () => ({ data: { permissions: ["spending"], active_version_id: "v" }, error: null }) };
     vi.mocked(requireWorkspace).mockResolvedValue({
       workspace: { id: "w", display_currency: "EUR" },
-      supabase: { from: (table: string) => { filtered = false; return table === "artifacts" ? permission : builder; } },
+      supabase: { from: (table: string) => { tables.push(table); filtered = false; return table === "artifacts" ? permission : builder; } },
     } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
     const result = await spendingForArtifact("a", "Shop");
     expect(result).toMatchObject({ from: "2026-10-01", to: "2026-10-01",
-      summary: { incomeMinor: "0", spendingMinor: "99000", netMinor: "-99000" } });
-    expect(result.transactions).toHaveLength(1001);
+      summary: { incomeMinor: "0", spendingMinor: "98900", netMinor: "-98900", partial: true, excludedReviewRows: 1 } });
+    expect(result.transactions).toHaveLength(1000);
     expect(ranges).toEqual([[0, 999], [1000, 1999]]);
     expect(filters).toContainEqual(["neq", "kind", "transfer"]);
     expect(filters).toContainEqual(["ilike", "description", "%Shop%"]);
+    expect(tables).toContain("effective_transactions");
+    expect(tables).not.toContain("transactions");
   });
 });
