@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextMonthStart, spendingForCategory, type SpendingPlanTransaction } from "./spending-plans";
+import { monthPrefix, nextMonthStart, spendingForCategory, type SpendingPlanTransaction } from "./spending-plans";
 
 const MONTH = "2026-09";
 const CATEGORY = "groceries";
@@ -22,6 +22,16 @@ function row(partial: Partial<SpendingPlanTransaction> & { amountMinor: bigint }
 }
 
 describe("monthly category spending", () => {
+  it("attributes linked refunds to the purchase category while retaining their posting currency", () => {
+    const transactions = [row({ amountMinor: -4000n }), row({ amountMinor: 1000n, kind: "refund", currencyCode: "USD", categoryId: null, refundOfCategoryId: CATEGORY, refundOfCurrencyCode: EUR })];
+    expect(spendingForCategory(transactions, CATEGORY, EUR, MONTH)).toBe(4000n);
+    expect(spendingForCategory(transactions, CATEGORY, "USD", MONTH)).toBe(-1000n);
+  });
+
+  it("uses Berlin calendar months at UTC month boundaries", () => {
+    expect(monthPrefix(new Date("2026-03-31T22:30:00Z"))).toBe("2026-04");
+    expect(monthPrefix(new Date("2026-10-31T23:30:00Z"))).toBe("2026-11");
+  });
   it("nets posted ordinary expenses with linked refunds and excludes transfers, pending, income and other months", () => {
     const transactions = [
       row({ amountMinor: -4000n }),

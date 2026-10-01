@@ -1,9 +1,10 @@
 // Monthly category spending progress. All money is signed bigint minor
 // units; no floats. Spending = posted ordinary expenses (negative amounts)
 // as a positive total, minus refunds posted in the same month. Linked
-// refunds attribute to the ORIGINAL transaction's category/currency (a
+// refunds attribute to the ORIGINAL transaction's category (a
 // refund reduces spending in its posting period, even when the original is
-// older); standalone refunds use their own category. Transfers, pending,
+// older), retaining the refund's posting currency; standalone refunds use
+// their own category. Transfers, pending,
 // income, other currencies and other months are excluded.
 
 export type SpendingPlanTransaction = {
@@ -18,8 +19,9 @@ export type SpendingPlanTransaction = {
   refundOfCurrencyCode?: string | null;
 };
 
-export function monthPrefix(today = new Date()): string {
-  return today.toISOString().slice(0, 7);
+export function monthPrefix(today = new Date(), timeZone = "Europe/Berlin"): string {
+  const parts = new Intl.DateTimeFormat("en", { timeZone, year: "numeric", month: "2-digit" }).formatToParts(today);
+  return `${parts.find(part => part.type === "year")!.value}-${parts.find(part => part.type === "month")!.value}`;
 }
 
 export function nextMonthStart(month: string): string {
@@ -41,7 +43,7 @@ export function spendingForCategory(
     if (transaction.kind === "refund") {
       const linked = transaction.refundOfCategoryId !== undefined;
       const effectiveCategory = linked ? transaction.refundOfCategoryId : transaction.categoryId;
-      const effectiveCurrency = linked ? transaction.refundOfCurrencyCode : transaction.currencyCode;
+      const effectiveCurrency = transaction.currencyCode;
       if (effectiveCategory !== categoryId || effectiveCurrency !== currencyCode) continue;
       if (transaction.amountMinor <= 0n) continue;
       spent -= transaction.amountMinor;
