@@ -118,11 +118,11 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
   if (safetyBufferMinor === null) missingInputs.push("fx:safety buffer");
   let scenarioEvents: ForecastEvent[] = [];
   if (scenarioId) {
-    const { data: scenario } = await supabase.from("scenarios").select("id").eq("workspace_id", workspace.id).eq("id", scenarioId).maybeSingle();
+    const { data: scenario } = await supabase.from("scenarios").select("id").eq("workspace_id", workspace.id).eq("id", scenarioId).is("removed_at", null).maybeSingle();
     if (!scenario) throw new Error("Scenario not found");
     const { data: overrides, error } = await supabase.from("scenario_overrides")
       .select("id, name, account_id, amount_delta_minor::text, currency_code, cadence, starts_on, ends_on")
-      .eq("workspace_id", workspace.id).eq("scenario_id", scenarioId);
+      .eq("workspace_id", workspace.id).eq("scenario_id", scenarioId).is("removed_at", null);
     if (error) throw error;
     missingInputs.push(...(overrides ?? []).flatMap(item => !item.account_id || !accountIds.has(item.account_id) ? ["scenario account"] : []));
     scenarioEvents = (overrides ?? []).flatMap(item => item.account_id && accountIds.has(item.account_id)

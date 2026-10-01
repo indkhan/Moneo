@@ -177,7 +177,7 @@ export async function addScenarioEvent(form: FormData) {
   const { data: account } = await supabase.from("accounts").select("currency_code")
     .eq("workspace_id", workspace.id).eq("id", accountId).is("archived_at", null).maybeSingle();
   const { data: scenario } = await supabase.from("scenarios").select("id")
-    .eq("workspace_id", workspace.id).eq("id", scenarioId).maybeSingle();
+    .eq("workspace_id", workspace.id).eq("id", scenarioId).is("removed_at", null).maybeSingle();
   if (!account || !scenario) throw new Error("Account or scenario not found");
   const amount = parseAmountMinor(String(form.get("amount") ?? ""), account.currency_code);
   const { error } = await supabase.from("scenario_overrides").insert({ workspace_id: workspace.id,
