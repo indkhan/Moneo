@@ -4,7 +4,7 @@ import Home from "./page";
 
 vi.mock("@/lib/env", () => ({ hasSupabase: () => true }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => {
-  const query = { select: () => query, eq: () => query, order: () => query, limit: () => query, maybeSingle: async () => ({ data: null, error: null }), then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: [], count: 0, error: null }).then(resolve) };
+  const query = { select: () => query, eq: () => query, is: () => query, range: async () => ({ data: [], error: null }), order: () => query, limit: () => query, maybeSingle: async () => ({ data: null, error: null }), then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: [], count: 0, error: null }).then(resolve) };
   return { supabase: { from: () => query }, workspace: { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" } };
 } }));
 vi.mock("@/lib/finance/balances", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/finance/balances")>(), loadBalanceEvidence: async () => ({ accounts: [{ id: "cash", name: "Empty cash", currency_code: "EUR" }], snapshots: [], ledger: [], asOf: "2026-10-01T12:00:00Z" }) }));
