@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { start } from "workflow/api";
 import { requireWorkspace } from "@/lib/auth";
-import { mapRows, parseCsv, parseExcel, validateMapping } from "@/lib/csv";
+import { parseCsv, parseExcel, validateImportConfirmation } from "@/lib/csv";
 import { importFile } from "@/workflows/import-file";
 
 export async function POST(request: Request) {
@@ -21,8 +21,7 @@ export async function POST(request: Request) {
     if (extension !== "csv" && extension !== "xlsx") return NextResponse.json({ error: "Only CSV and XLSX are supported" }, { status: 400 });
     const bytes = Buffer.from(await file.arrayBuffer());
     const rows = extension === "csv" ? parseCsv(bytes.toString("utf8")) : await parseExcel(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-    const mapping = validateMapping(JSON.parse(mappingValue), rows);
-    mapRows(rows, mapping); // Confirm the proposed interpretation against the entire original file.
+    const mapping = validateImportConfirmation(rows, JSON.parse(mappingValue));
     const { supabase, workspace } = context;
     const hash = createHash("sha256").update(bytes).digest("hex");
     const existing = await supabase.from("imports").select("id, status").eq("workspace_id", workspace.id).eq("file_hash", hash).maybeSingle();

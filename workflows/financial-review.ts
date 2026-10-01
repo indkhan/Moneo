@@ -2,14 +2,27 @@
 
 import { generateText } from "ai";
 import { createClient } from "@supabase/supabase-js";
-import { getModel } from "@/lib/ai/provider";
+import { modelForSettings } from "@/lib/ai/provider";
+import { loadWorkspaceSettings, requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { buildReviewEvidence } from "@/lib/finance/review";
+import { loadBalanceEvidence } from "@/lib/finance/balances";
+import { calendarDate } from "@/lib/finance/calendar";
 
 function service() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("Financial review service is not configured");
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+
+async function summaryStillEnabled(db: ReturnType<typeof service>, jobId: string, workspaceId: string, settings: WorkspaceSettings) {
+  const receipt = await db.from("summary_runs").select("cadence").eq("job_id", jobId).eq("workspace_id", workspaceId).maybeSingle();
+  if (receipt.error) throw receipt.error;
+  if (!receipt.data || receipt.data.cadence === settings.summary_cadence) return true;
+  const canceled = await db.from("background_jobs").update({ status: "canceled", stage: "canceled", error: null,
+    updated_at: new Date().toISOString() }).eq("id", jobId).eq("workspace_id", workspaceId);
+  if (canceled.error) throw canceled.error;
+  return false;
 }
 
 export async function financialReview(jobId: string, workspaceId: string) {
@@ -33,16 +46,16 @@ async function gatherEvidence(jobId: string, workspaceId: string) {
   }
   await db.from("background_jobs").update({ status: "running", stage: "gathering_evidence", error: null, updated_at: new Date().toISOString() }).eq("id", jobId).eq("workspace_id", workspaceId);
   try {
-    const to = new Date().toISOString().slice(0, 10);
-    const from = new Date(Date.now() - 89 * 86400000).toISOString().slice(0, 10);
-    const accounts = await db.from("accounts").select("id, name, currency_code", { count: "exact" }).eq("workspace_id", workspaceId).limit(10000);
-    const snapshots = await db.from("balance_snapshots").select("account_id, amount_minor, currency_code, as_of, provenance", { count: "exact" }).eq("workspace_id", workspaceId).lte("as_of", new Date().toISOString()).limit(10000);
-    if (accounts.error || snapshots.error) throw accounts.error ?? snapshots.error;
-    if (accounts.count !== accounts.data.length || snapshots.count !== snapshots.data.length) throw new Error("Review evidence exceeds the current 10,000-row limit");
-    const transactions: { amount_minor: string; currency_code: string; status: string; kind: string }[] = [];
+    const settings = await loadWorkspaceSettings(db, workspaceId);
+    if (!await summaryStillEnabled(db, jobId, workspaceId, settings)) return null;
+    requireAiScope(settings, "accounts", "transactions");
+    const balanceEvidence = await loadBalanceEvidence(db, workspaceId);
+    const to = calendarDate(balanceEvidence.asOf, settings.timezone);
+    const from = new Date(Date.parse(`${to}T00:00:00Z`) - 89 * 86400000).toISOString().slice(0, 10);
+    const transactions: { amount_minor: string; currency_code: string; status: string; kind: string; review_reasons: string[] }[] = [];
     // ponytail: 10k-row ceiling; add a database aggregate if real workspaces outgrow it.
     for (let offset = 0; offset <= 10000; offset += 500) {
-      const page = await db.from("transactions").select("amount_minor, currency_code, status, kind")
+      const page = await db.from("transactions").select("amount_minor::text, currency_code, status, kind, review_reasons")
         .eq("workspace_id", workspaceId).gte("posted_on", from).lte("posted_on", to)
         .order("id").range(offset, offset + 499);
       if (page.error) throw page.error;
@@ -50,7 +63,7 @@ async function gatherEvidence(jobId: string, workspaceId: string) {
       transactions.push(...page.data);
       if (page.data.length < 500) break;
     }
-    return buildReviewEvidence(accounts.data, snapshots.data, transactions, from, to);
+    return buildReviewEvidence(balanceEvidence.accounts, balanceEvidence.snapshots, transactions, from, to, { ...balanceEvidence, timeZone: settings.timezone });
   } catch (error) {
     await db.from("background_jobs").update({ status: "failed", stage: "gathering_evidence", error: String(error), updated_at: new Date().toISOString() }).eq("id", jobId).eq("workspace_id", workspaceId);
     throw error;
@@ -69,7 +82,10 @@ async function writeReview(jobId: string, workspaceId: string, evidence: ReturnT
   }
   await db.from("background_jobs").update({ status: "running", stage: "writing_review", updated_at: new Date().toISOString() }).eq("id", jobId).eq("workspace_id", workspaceId);
   try {
-    const result = await generateText({ model: getModel(), maxOutputTokens: 1200,
+    const settings = await loadWorkspaceSettings(db, workspaceId);
+    if (!await summaryStillEnabled(db, jobId, workspaceId, settings)) return null;
+    requireAiScope(settings, "accounts", "transactions");
+    const result = await generateText({ model: await modelForSettings(settings), maxOutputTokens: 1200,
       system: "Write a concise personal-finance review using only the supplied evidence. Cite the exact account or currency and date period for every numerical claim. Call unknown balances unknown, keep currencies separate, and do not guess missing data. Give useful observations and limitations, not recommendations presented as certainty.",
       prompt: JSON.stringify(evidence) });
     if (!result.text.trim()) throw new Error("AI returned an empty review");
@@ -91,6 +107,9 @@ async function saveReview(jobId: string, workspaceId: string, evidence: ReturnTy
     return;
   }
   try {
+    const settings = await loadWorkspaceSettings(db, workspaceId);
+    if (!await summaryStillEnabled(db, jobId, workspaceId, settings)) return;
+    requireAiScope(settings, "accounts", "transactions");
     const saved = await db.from("saved_analyses").upsert({ workspace_id: workspaceId, job_id: jobId,
       title: `Financial review ${evidence.period.to}`, body, evidence }, { onConflict: "job_id", ignoreDuplicates: true });
     if (saved.error) throw saved.error;

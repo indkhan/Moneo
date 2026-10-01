@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { availableToSpend, forecastDaily, netWorth, summarizeCashflow } from "./calculations";
 
 describe("exact financial calculations", () => {
+  it("excludes unresolved classifications and labels cashflow partial", () => {
+    expect(summarizeCashflow([
+      { amountMinor: -1000n, currencyCode: "EUR", status: "posted", kind: "ordinary" },
+      { amountMinor: 5000n, currencyCode: "EUR", status: "posted", kind: "ordinary", reviewReasons: ["source_transfer"] },
+    ], "EUR")).toEqual({ incomeMinor: 0n, spendingMinor: 1000n, netMinor: -1000n, excludedReviewRows: 1, partial: true });
+  });
   it("keeps large minor-unit totals exact and unknown balances unknown", () => {
     expect(netWorth([{ amountMinor: 9007199254740993n, currencyCode: "EUR" }, { amountMinor: 7n, currencyCode: "EUR" }], "EUR")).toBe(9007199254741000n);
     expect(netWorth([{ amountMinor: null, currencyCode: "EUR" }], "EUR")).toBeNull();

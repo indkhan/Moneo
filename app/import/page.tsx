@@ -12,11 +12,13 @@ type Preview = {
   totalRows: number;
   pendingRows?: number;
   postedRows?: number;
+  classificationReviewRows?: number;
+  timestampReviewRequired?: boolean;
   dateRange: { from: string; to: string };
   examples: { postedOn: string; description: string; amountMinor: string; currencyCode: string; status?: string; merchant?: string; category?: string }[];
 };
 type Inspection = { headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string; warnings?: string[] };
-type ImportStatus = { id: string; filename: string; status: string; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; rejected_rows: number; error: string | null; created_at: string };
+type ImportStatus = { id: string; filename: string; status: string; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; classification_review_rows?: number; rejected_rows: number; error: string | null; created_at: string };
 type UndoPreview = { import_id: string; filename: string; status: string; deletable_transactions: number; deletable_balances: number; blockers: string[]; safe: boolean };
 
 function formatMinor(value: string, currency: string) {
@@ -202,7 +204,7 @@ export default function ImportPage() {
         <div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.filename}</strong><span role="status" className="rounded-lg bg-muted px-2.5 py-1 text-xs font-medium capitalize text-brand">{item.status}</span></div>
         <p className="text-sm">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows} for review · {item.rejected_rows} rejected · {item.total_rows} total</p>
         {item.error && <p className="text-sm text-red-700">{item.error}</p>}
-        {item.review_rows > 0 && <Link className="text-sm underline" href={`/import/${item.id}/review`}>Review rows</Link>}
+        {(item.review_rows > 0 || (item.classification_review_rows ?? 0) > 0) && <Link className="text-sm underline" href={`/import/${item.id}/review`}>Review rows{item.classification_review_rows ? ` · ${item.classification_review_rows} financial classifications` : ""}</Link>}
         {item.status === "failed" && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void retry(item.id)}>Retry</button>}
         {item.status === "completed" && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void showUndo(item.id)}>Undo import</button>}
         {undoId === item.id && preview && <div className="mt-3 space-y-2 rounded bg-muted p-3 text-sm">
@@ -225,6 +227,12 @@ export default function ImportPage() {
         {inspection.sample.slice(0, 3).map((row, i) => <tr className="border-t border-border" key={i}>{inspection.headers.map((header) => <td key={header}>{row[header]}</td>)}</tr>)}
       </tbody></table></div>}
       {inspection.preview && <>
+        {inspection.preview.timestampReviewRequired && mapping && <div className="space-y-2 rounded-lg border border-amber-300 p-3 text-sm">
+          <p>Source timestamps have no offset. The proposed timezone needs your confirmation; incorrect clock interpretation changes dates and balance order.</p>
+          <label className="grid gap-1">Source timestamp timezone<input className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.timestampTimezone ?? ""} onChange={event => { setMapping({ ...mapping, timestampTimezone: event.target.value, timestampTimezoneConfirmed: false }); setEditing(true); }} /></label>
+          <label className="flex gap-2"><input type="checkbox" checked={mapping.timestampTimezoneConfirmed ?? false} onChange={event => setMapping({ ...mapping, timestampTimezoneConfirmed: event.target.checked })} />I confirmed this timezone matches the statement&apos;s source clock.</label>
+        </div>}
+        {!!inspection.preview.classificationReviewRows && <p className="text-sm text-amber-700 dark:text-amber-300">{inspection.preview.classificationReviewRows} rows need financial classification. Their booked amounts will be preserved; income and spending remain partial until reviewed.</p>}
         {inspection.preview.accounts?.map(account => <p key={`${account.accountName}:${account.currencyCode}`}><strong>{account.accountName}</strong> · {account.currencyCode} · {account.rows} rows</p>)}
         {inspection.warnings?.map(warning => <p key={warning} className="text-sm text-amber-700 dark:text-amber-300">{warning}</p>)}
         <p><strong>Account:</strong> {inspection.preview.accountName} · <strong>Currency:</strong> {inspection.preview.currencyCode}</p>
@@ -243,6 +251,7 @@ export default function ImportPage() {
         {chooseColumn("Debit", "debitColumn", true)}{chooseColumn("Credit", "creditColumn", true)}
         {chooseColumn("Currency", "currencyColumn", true)}{chooseColumn("Balance", "balanceColumn", true)}
         {chooseColumn("Source account", "accountColumn", true)}{chooseColumn("Product", "productColumn", true)}
+        {chooseColumn("Source financial type", "typeColumn", true)}{chooseColumn("Source fee evidence", "feeColumn", true)}
         {mapping.accountRoutes?.map((route, routeIndex) => <label className="grid gap-1 text-sm" key={routeIndex}>Account for {[route.accountValue, route.productValue, route.currencyCode].filter(Boolean).join(" / ")}<input className="rounded-lg border border-border bg-card px-3 py-2" value={route.accountName} onChange={event => setMapping({ ...mapping, accountRoutes: mapping.accountRoutes?.map((item, i) => i === routeIndex ? { ...item, accountName: event.target.value } : item) })} /></label>)}
         {chooseColumn("Merchant", "merchantColumn", true)}{chooseColumn("Category", "categoryColumn", true)}{chooseColumn("External ID", "externalIdColumn", true)}{chooseColumn("Status (posted/pending/completed)", "statusColumn", true)}
         <label className="grid gap-1 text-sm">Date format<select className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.dateFormat} onChange={(e) => setMapping({ ...mapping, dateFormat: e.target.value as ImportMapping["dateFormat"] })}><option value="iso">YYYY-MM-DD</option><option value="dmy">DD/MM/YYYY</option><option value="mdy">MM/DD/YYYY</option></select></label>
@@ -250,7 +259,7 @@ export default function ImportPage() {
         <div className="sm:col-span-2"><button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy} onClick={() => void inspect(file, mapping)}>Preview correction</button></div>
       </div>}
       <div className="flex gap-3">
-        {inspection.preview && !editing && <button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy} onClick={() => void confirm()}>Continue</button>}
+        {inspection.preview && !editing && <button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy || (!!inspection.preview.timestampReviewRequired && !mapping?.timestampTimezoneConfirmed)} onClick={() => void confirm()}>Continue</button>}
         {inspection.preview && !editing && <button type="button" className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" onClick={() => setEditing(true)}>Correct</button>}
         <button type="button" className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" onClick={() => { setFiles([]); setInspection(null); setMapping(null); }}>Cancel</button>
       </div>

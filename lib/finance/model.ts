@@ -1,6 +1,8 @@
 import { availableToSpend, forecastDaily, type ForecastEvent, type ForecastInput } from "./calculations";
 import { convertFx } from "./fx";
 import { requireWorkspace } from "../auth";
+import { loadBalanceEvidence, resolveBalances } from "./balances";
+import { calendarDate } from "./calendar";
 
 type Scheduled = { account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; enabled?: boolean };
 
@@ -48,20 +50,17 @@ export function expandSchedule(item: Scheduled, start: string, days: number): Fo
 
 export async function evaluatePlan(horizonDays = 30, scenarioId?: string) {
   const { supabase, workspace } = await requireWorkspace();
-  const [{ data: accounts, error: accountsError }, { data: snapshots, error: snapshotsError },
+  const [balanceEvidence,
     { data: allocations, error: allocationsError }, { data: assumptions, error: assumptionsError },
     { data: rates, error: ratesError }] = await Promise.all([
-      supabase.from("accounts").select("id, type, currency_code").eq("workspace_id", workspace.id),
-      supabase.from("balance_snapshots").select("account_id, amount_minor, currency_code, as_of")
-        .eq("workspace_id", workspace.id).lte("as_of", new Date().toISOString())
-        .order("as_of", { ascending: false }).order("created_at", { ascending: false }),
-      supabase.from("goal_allocations").select("account_id, amount_minor").eq("workspace_id", workspace.id),
-      supabase.from("financial_assumptions").select("account_id, amount_minor, currency_code, cadence, starts_on, ends_on, enabled")
-        .eq("workspace_id", workspace.id).eq("enabled", true),
+      loadBalanceEvidence(supabase, workspace.id),
+      supabase.from("goal_allocations").select("account_id, amount_minor::text").eq("workspace_id", workspace.id),
+      supabase.from("financial_assumptions").select("account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, enabled")
+        .eq("workspace_id", workspace.id).eq("enabled", true).eq("confirmed", true),
       supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
         .eq("workspace_id", workspace.id).eq("to_currency", workspace.display_currency),
     ]);
-  for (const error of [accountsError, snapshotsError, allocationsError, assumptionsError, ratesError]) if (error) throw error;
+  for (const error of [allocationsError, assumptionsError, ratesError]) if (error) throw error;
   const convert = (amount: bigint, from: string, date: string) => {
     const rate = (rates ?? []).filter(row => row.from_currency === from && row.rate_date <= date)
       .sort((a, b) => b.rate_date.localeCompare(a.rate_date))[0];
@@ -69,12 +68,11 @@ export async function evaluatePlan(horizonDays = 30, scenarioId?: string) {
       rate: rate?.rate_text, source: rate?.source ?? "forecast", date: rate?.rate_date ?? date });
     return result.status === "available" ? result.converted.amountMinor : null;
   };
-  const latest = new Map<string, NonNullable<typeof snapshots>[number]>();
-  for (const snapshot of snapshots ?? []) if (!latest.has(snapshot.account_id)) latest.set(snapshot.account_id, snapshot);
   const reserved = new Map<string, bigint>();
   for (const allocation of allocations ?? []) reserved.set(allocation.account_id, (reserved.get(allocation.account_id) ?? 0n) + BigInt(allocation.amount_minor));
-  const spendable = (accounts ?? []).filter(account => ["checking", "savings", "cash", "wallet"].includes(account.type));
-  const startDate = new Date().toISOString().slice(0, 10);
+  const spendable = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone)
+    .filter(account => ["checking", "savings", "cash", "wallet"].includes(account.type ?? ""));
+  const startDate = calendarDate(balanceEvidence.asOf, workspace.timezone);
   const accountIds = new Set(spendable.map(account => account.id));
   const missingInputs = (assumptions ?? []).flatMap(item =>
     !item.account_id || !accountIds.has(item.account_id) ? [`assumption account`] :
@@ -91,7 +89,7 @@ export async function evaluatePlan(horizonDays = 30, scenarioId?: string) {
     const { data: scenario } = await supabase.from("scenarios").select("id").eq("workspace_id", workspace.id).eq("id", scenarioId).maybeSingle();
     if (!scenario) throw new Error("Scenario not found");
     const { data: overrides, error } = await supabase.from("scenario_overrides")
-      .select("id, account_id, amount_delta_minor, currency_code, cadence, starts_on, ends_on")
+      .select("id, account_id, amount_delta_minor::text, currency_code, cadence, starts_on, ends_on")
       .eq("workspace_id", workspace.id).eq("scenario_id", scenarioId);
     if (error) throw error;
     missingInputs.push(...(overrides ?? []).flatMap(item => !item.account_id || !accountIds.has(item.account_id) ? ["scenario account"] : []));
@@ -106,12 +104,21 @@ export async function evaluatePlan(horizonDays = 30, scenarioId?: string) {
   const input: ForecastInput = {
     startDate, horizonDays, currencyCode: workspace.display_currency,
     accounts: spendable.map(account => {
-      const snapshot = latest.get(account.id);
-      const balanceMinor = snapshot ? convert(BigInt(snapshot.amount_minor), snapshot.currency_code, snapshot.as_of.slice(0, 10)) : null;
+      const snapshot = account.balance;
+      const balanceMinor = snapshot.amount_minor !== null ? convert(BigInt(snapshot.amount_minor), snapshot.currency_code, startDate) : null;
       const reservedMinor = convert(reserved.get(account.id) ?? 0n, account.currency_code, startDate);
-      if (snapshot && balanceMinor === null) missingInputs.push(`fx:balance:${account.id}`);
+      if (snapshot.status !== "current") missingInputs.push(`balance:${account.id}:${snapshot.status}`);
+      else if (balanceMinor === null) missingInputs.push(`fx:balance:${account.id}`);
       if (reservedMinor === null) missingInputs.push(`fx:allocation:${account.id}`);
+      let pendingHoldMinor = 0n;
+      for (const row of balanceEvidence.ledger) {
+        if (row.account_id !== account.id || row.status !== "pending" || row.posted_on > startDate || BigInt(row.amount_minor) >= 0n) continue;
+        const hold = convert(-BigInt(row.amount_minor), row.currency_code, startDate);
+        if (hold === null) missingInputs.push(`fx:pending:${account.id}`);
+        else pendingHoldMinor += hold;
+      }
       return { id: account.id, currencyCode: workspace.display_currency, balanceMinor,
+        pendingHoldMinor,
         reservedMinor: reservedMinor ?? 0n };
     }),
     events, scenarioEvents, missingInputs,

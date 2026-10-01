@@ -11,19 +11,23 @@ export type CashflowTransaction = {
   currencyCode: string;
   status: "posted" | "pending";
   kind: "ordinary" | "transfer" | "refund";
+  reviewReasons?: string[];
 };
 
 export function summarizeCashflow(transactions: CashflowTransaction[], currencyCode: string) {
   let incomeMinor = 0n;
   let spendingMinor = 0n;
+  let excludedReviewRows = 0;
   for (const transaction of transactions) {
     if (transaction.status !== "posted" || transaction.kind === "transfer") continue;
+    if (transaction.reviewReasons?.length) { excludedReviewRows++; continue; }
     if (transaction.currencyCode !== currencyCode) return null;
     if (transaction.kind === "refund") spendingMinor -= transaction.amountMinor;
     else if (transaction.amountMinor > 0n) incomeMinor += transaction.amountMinor;
     else spendingMinor -= transaction.amountMinor;
   }
-  return { incomeMinor, spendingMinor, netMinor: incomeMinor - spendingMinor };
+  return { incomeMinor, spendingMinor, netMinor: incomeMinor - spendingMinor,
+    ...(excludedReviewRows ? { excludedReviewRows, partial: true as const } : {}) };
 }
 
 // Same posted, nontransfer, single-currency rows as the period cashflow.

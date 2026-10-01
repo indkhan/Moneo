@@ -2,6 +2,11 @@ import Papa from "papaparse";
 import ExcelJS from "exceljs";
 import { z } from "zod";
 import { minorDigits } from "@/lib/finance/fx";
+import { calendarDate, reviewedLocalTimestamp } from "@/lib/finance/calendar";
+
+const timezoneSchema = z.string().max(100).refine(value => {
+  try { new Intl.DateTimeFormat("en", { timeZone: value }); return true; } catch { return false; }
+}, "Invalid timestamp timezone");
 
 export type SourceRow = Record<string, string>;
 
@@ -19,6 +24,11 @@ export const mappingSchema = z.object({
   categoryColumn: z.string().min(1).optional(),
   externalIdColumn: z.string().min(1).optional(),
   statusColumn: z.string().min(1).optional(),
+  typeColumn: z.string().min(1).optional(),
+  feeColumn: z.string().min(1).optional(),
+  timestampTimezone: timezoneSchema.optional(),
+  timestampTimezoneConfirmed: z.boolean().optional(),
+  calendarTimezone: timezoneSchema.optional(),
   accountColumn: z.string().min(1).optional(),
   productColumn: z.string().min(1).optional(),
   accountRoutes: z.array(z.object({
@@ -35,6 +45,22 @@ export const mappingSchema = z.object({
 );
 
 export type ImportMapping = z.infer<typeof mappingSchema>;
+
+export function validateImportConfirmation(rows: SourceRow[], input: unknown): ImportMapping {
+  const mapping = validateMapping(input, rows);
+  const naive = rows.some(row => /[ T]\d{2}:\d{2}:\d{2}$/.test(row[mapping.dateColumn]?.trim() ?? ""));
+  if (naive && (!mapping.timestampTimezone || !mapping.timestampTimezoneConfirmed))
+    throw new Error("Review and confirm the source timestamp timezone before importing");
+  mapRows(rows, mapping);
+  return mapping;
+}
+
+export function proposeStatementTimezones(rows: SourceRow[], mapping: ImportMapping, workspaceTimezone = "Europe/Berlin"): ImportMapping {
+  const naive = rows.some(row => /[ T]\d{2}:\d{2}:\d{2}$/.test(row[mapping.dateColumn]?.trim() ?? ""));
+  return { ...mapping, calendarTimezone: workspaceTimezone,
+    ...(naive ? { timestampTimezone: mapping.timestampTimezone ?? workspaceTimezone,
+      timestampTimezoneConfirmed: mapping.timestampTimezoneConfirmed ?? false } : {}) };
+}
 
 export function parseCsv(text: string): SourceRow[] {
   const result = Papa.parse<SourceRow>(text.replace(/^\uFEFF/, ""), {
@@ -77,7 +103,7 @@ export function validateMapping(input: unknown, rows: SourceRow[]): ImportMappin
   for (const column of [mapping.dateColumn, mapping.descriptionColumn, mapping.amountColumn,
     mapping.debitColumn, mapping.creditColumn, mapping.currencyColumn, mapping.balanceColumn,
     mapping.merchantColumn, mapping.categoryColumn, mapping.externalIdColumn, mapping.statusColumn,
-    mapping.accountColumn, mapping.productColumn]) {
+    mapping.accountColumn, mapping.productColumn, mapping.typeColumn, mapping.feeColumn]) {
     if (column && !headers.includes(column)) throw new Error(`Unknown column: ${column}`);
   }
   for (const [name, column] of [["product", mapping.productColumn], ["account", mapping.accountColumn]]) {
@@ -152,7 +178,7 @@ function pow10(exponent: number): bigint {
 function parseDate(input: string, format: ImportMapping["dateFormat"]): string {
   const value = input.trim();
   const match = format === "iso"
-    ? /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)?$/.exec(value)
+    ? /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:Z|[+-]\d{2}:[0-5]\d)?)?$/.exec(value)
     : /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/.exec(value);
   if (!match) throw new Error(`Invalid date: ${input}`);
   const [year, month, day] = format === "iso"
@@ -164,14 +190,33 @@ function parseDate(input: string, format: ImportMapping["dateFormat"]): string {
   return date.toISOString().slice(0, 10);
 }
 
+function parseTimestamp(value: string, timeZone?: string): string | undefined {
+  const match = /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{2}):(\d{2}):(\d{2})(Z|[+-]\d{2}:\d{2})?$/.exec(value.trim());
+  if (!match) return undefined;
+  if (match[7]) {
+    const instant = new Date(value.trim().replace(" ", "T"));
+    if (!Number.isFinite(instant.getTime())) throw new Error("Invalid timestamp offset");
+    return instant.toISOString();
+  }
+  // Legacy mappings keep their original posting date; new confirmations require the timezone.
+  if (!timeZone) return undefined;
+  return reviewedLocalTimestamp(value, timeZone);
+}
+
 export type MappedRow = {
   accountName: string;
   rowNumber: number;
   postedOn: string;
+  postedAt?: string;
   description: string;
   amountMinor: bigint;
   currencyCode: string;
   status: "posted" | "pending";
+  kind: "ordinary" | "refund";
+  reviewReasons: string[];
+  sourceType?: string;
+  feeMinor?: bigint;
+  feeEvidence?: { treatment: "included" | "additional" | "unknown"; deltaMinor?: bigint; previousRowNumber?: number };
   sourceRow: SourceRow;
   merchant?: string;
   category?: string;
@@ -239,7 +284,7 @@ export function normalizeCategoryName(input: string | undefined): string | null 
 
 export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
   const mapping = validateMapping(input, rows);
-  return rows.map((sourceRow, index) => {
+  const mapped: MappedRow[] = rows.map((sourceRow, index) => {
     try {
       const description = sourceRow[mapping.descriptionColumn]?.trim();
       if (!description) throw new Error("Missing description");
@@ -265,14 +310,40 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
           throw new Error("Debit and credit values must be positive");
         if (amountMinor === 0n) throw new Error("Zero debit or credit");
       }
+      const header = (name: string) => Object.keys(sourceRow).find(key => key.trim().toLowerCase() === name);
+      const typeColumn = mapping.typeColumn ?? header("type");
+      const feeColumn = mapping.feeColumn ?? header("fee");
+      const sourceType = typeColumn ? sourceRow[typeColumn]?.trim() : undefined;
+      const type = sourceType?.toLowerCase();
+      const reviewReasons: string[] = [];
+      let kind: MappedRow["kind"] = "ordinary";
+      if (type === "transfer") reviewReasons.push("source_transfer");
+      else if (type === "exchange") reviewReasons.push("source_exchange");
+      else if (type === "card refund") {
+        if (amountMinor > 0n) kind = "refund";
+        else reviewReasons.push("refund_sign");
+      } else if (type && type !== "card payment") reviewReasons.push("source_type");
+      let feeMinor: bigint | undefined;
+      if (feeColumn && sourceRow[feeColumn]?.trim()) {
+        try { feeMinor = parseAmountMinor(sourceRow[feeColumn], currencyCode); }
+        catch { reviewReasons.push("fee_semantics"); }
+      }
+      if (feeMinor !== undefined && feeMinor !== 0n) reviewReasons.push("fee_semantics");
+      const sourceDate = sourceRow[mapping.dateColumn] ?? "";
+      const postedDate = parseDate(sourceDate, mapping.dateFormat);
+      const postedAt = mapping.dateFormat === "iso" ? parseTimestamp(sourceDate, mapping.timestampTimezone) : undefined;
       return {
         rowNumber: index + 2,
         accountName,
-        postedOn: parseDate(sourceRow[mapping.dateColumn] ?? "", mapping.dateFormat),
+        postedOn: postedAt ? calendarDate(postedAt, mapping.calendarTimezone) : postedDate,
+        ...(postedAt ? { postedAt } : {}),
         description,
         amountMinor,
         currencyCode,
         status: mapping.statusColumn ? parseTransactionStatus(sourceRow[mapping.statusColumn]) : "posted",
+        kind, reviewReasons,
+        ...(sourceType ? { sourceType } : {}),
+        ...(feeMinor !== undefined ? { feeMinor } : {}),
         sourceRow,
         ...(mapping.merchantColumn && sourceRow[mapping.merchantColumn]?.trim() ? { merchant: sourceRow[mapping.merchantColumn].trim() } : {}),
         ...(mapping.categoryColumn && sourceRow[mapping.categoryColumn]?.trim() ? { category: sourceRow[mapping.categoryColumn].trim() } : {}),
@@ -283,6 +354,27 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
       throw new Error(`Row ${index + 2}: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
+  const groups = new Map<string, MappedRow[]>();
+  for (const row of mapped) {
+    const key = JSON.stringify([row.accountName, row.currencyCode]);
+    const group = groups.get(key) ?? [];
+    group.push(row);
+    groups.set(key, group);
+    if (row.feeMinor !== undefined && row.feeMinor !== 0n) row.feeEvidence = { treatment: "unknown" };
+  }
+  for (const group of groups.values()) {
+    if (group.some(row => !row.postedAt)) continue;
+    group.sort((a, b) => a.postedAt!.localeCompare(b.postedAt!));
+    for (let index = 1; index < group.length; index++) {
+      const row = group[index], previous = group[index - 1], next = group[index + 1];
+      if (!row.feeEvidence || row.status !== "posted" || previous.status !== "posted" || row.balanceMinor === undefined || previous.balanceMinor === undefined ||
+          row.postedAt === previous.postedAt || row.postedAt === next?.postedAt) continue;
+      const deltaMinor = row.balanceMinor - previous.balanceMinor;
+      const fee = row.feeMinor! < 0n ? -row.feeMinor! : row.feeMinor!;
+      row.feeEvidence = { treatment: deltaMinor === row.amountMinor ? "included" : deltaMinor === row.amountMinor - fee ? "additional" : "unknown", deltaMinor, previousRowNumber: previous.rowNumber };
+    }
+  }
+  return mapped;
 }
 
 export function previewImport(rows: SourceRow[], input: unknown) {
@@ -302,6 +394,8 @@ export function previewImport(rows: SourceRow[], input: unknown) {
     totalRows: mapped.length,
     pendingRows: mapped.filter((row) => row.status === "pending").length,
     postedRows: mapped.filter((row) => row.status === "posted").length,
+    classificationReviewRows: mapped.filter(row => row.reviewReasons.length > 0).length,
+    timestampReviewRequired: rows.some(row => /[ T]\d{2}:\d{2}:\d{2}$/.test(row[mapping.dateColumn]?.trim() ?? "")),
     dateRange: { from: dates[0], to: dates[dates.length - 1] },
     examples: mapped.slice(0, 5),
   };

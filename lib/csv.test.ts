@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
-import { mapRows, parseAmountMinor, parseCsv, parseExcel, parseTransactionStatus, previewImport, validateMapping, validateAiMapping, proposeAccountRoutes } from "./csv";
+import { mapRows, parseAmountMinor, parseCsv, parseExcel, parseTransactionStatus, previewImport, validateMapping, validateAiMapping, proposeAccountRoutes, validateImportConfirmation } from "./csv";
 
 const mapping = {
   accountName: "Checking",
@@ -13,6 +13,43 @@ const mapping = {
 };
 
 describe("financial import parsing", () => {
+  it("requires reviewed timezone for new naive timestamps and preserves dated source evidence", () => {
+    const rows = parseCsv("Date,Description,Amount\n2026-09-30 22:30:00,Shop,-12.50");
+    expect(() => validateImportConfirmation(rows, { ...mapping, dateFormat: "iso" })).toThrow("timezone");
+    const confirmed = { ...mapping, dateFormat: "iso", timestampTimezone: "UTC", timestampTimezoneConfirmed: true };
+    expect(mapRows(rows, confirmed)[0]).toMatchObject({ postedOn: "2026-10-01", postedAt: "2026-09-30T22:30:00.000Z", sourceRow: rows[0] });
+    expect(() => validateImportConfirmation(rows, { ...confirmed, timestampTimezoneConfirmed: false })).toThrow("timezone");
+    expect(validateImportConfirmation(rows, confirmed)).toBeDefined();
+  });
+  it("does not guess repeated or nonexistent Berlin local DST timestamps", () => {
+    for (const date of ["2026-10-25 02:30:00", "2026-03-29 02:30:00"]) {
+      expect(() => mapRows([{ Date: date, Description: "Shop", Amount: "-12.50" }], { ...mapping, dateFormat: "iso", timestampTimezone: "Europe/Berlin", timestampTimezoneConfirmed: true })).toThrow("ambiguous or nonexistent");
+    }
+  });
+  it("validates chronological account balance deltas and fee evidence without file-order guesses", () => {
+    const rows = parseCsv("Date,Description,Amount,Balance,Fee\n2026-09-01 12:00:00,Second,-5.00,95.00,1.00\n2026-09-01 10:00:00,First,100.00,100.00,0\n2026-09-01 14:00:00,Third,-10.00,83.00,2.00");
+    const mapped = mapRows(rows, { ...mapping, dateFormat: "iso", balanceColumn: "Balance", timestampTimezone: "UTC", timestampTimezoneConfirmed: true });
+    expect(mapped[0].feeEvidence).toMatchObject({ treatment: "included", deltaMinor: -500n, previousRowNumber: 3 });
+    expect(mapped[2].feeEvidence).toMatchObject({ treatment: "additional", deltaMinor: -1200n, previousRowNumber: 2 });
+    const tied = mapRows([{ ...rows[0], Date: rows[1].Date }, rows[1]], { ...mapping, dateFormat: "iso", balanceColumn: "Balance", timestampTimezone: "UTC", timestampTimezoneConfirmed: true });
+    expect(tied[0].feeEvidence?.treatment).toBe("unknown");
+  });
+  it("keeps unsupported optional fee evidence reviewable without dropping valid booked money", () => {
+    const rows = parseCsv("Date,Description,Amount,Type,Fee\n2026-09-01,Shop,-12.50,Card Payment,N/A");
+    expect(mapRows(rows, { ...mapping, dateFormat: "iso" })[0]).toMatchObject({ amountMinor: -1250n, reviewReasons: ["fee_semantics"], sourceRow: rows[0] });
+  });
+  it("preserves uncertain type and fee evidence without inventing an internal transfer or fee", () => {
+    const rows = parseCsv("Date,Description,Amount,Type,Fee\n2026-09-01,Movement,-12.50,Transfer,0\n2026-09-02,Returned purchase,1.25,Card Refund,0\n2026-09-03,Conversion,-100,Exchange,2.00\n2026-09-04,Refund reversal,-1.25,Card Refund,0");
+    const mapped = mapRows(rows, { ...mapping, dateFormat: "iso" });
+    expect(mapped).toMatchObject([
+      { kind: "ordinary", reviewReasons: ["source_transfer"], amountMinor: -1250n },
+      { kind: "refund", reviewReasons: [], amountMinor: 125n },
+      { kind: "ordinary", feeMinor: 200n, reviewReasons: ["source_exchange", "fee_semantics"], amountMinor: -10000n },
+      { kind: "ordinary", reviewReasons: ["refund_sign"], amountMinor: -125n },
+    ]);
+    expect(mapped.map(row => row.sourceRow)).toEqual(rows);
+    expect(previewImport(rows, { ...mapping, dateFormat: "iso" }).classificationReviewRows).toBe(3);
+  });
   it("normalizes completed but refuses failed or reverted source states", () => {
     expect(parseTransactionStatus("COMPLETED")).toBe("posted");
     expect(() => parseTransactionStatus("FAILED")).toThrow("Invalid status");
