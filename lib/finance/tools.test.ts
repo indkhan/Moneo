@@ -9,6 +9,7 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
       range: async () => ({ data: table === "effective_transactions" ? [
         { amount_minor: "-9007199254740000", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [] },
         { amount_minor: "-993", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [] },
+        { amount_minor: "500", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: ["source_transfer"] },
       ] : [{ amount_minor: "-9007199254740993", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [] }], error: null }),
       limit: async () => ({ data: [{ id: "parent", amount_minor: "-9007199254740993" }], error: null }) };
     return query;
@@ -18,7 +19,8 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
 it("uses effective allocations for exact spending while search retains one canonical parent", async () => {
   fixture.tables.length = 0;
   expect(await cashflow({ from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR" })).toMatchObject({
-    spendingMinor: "9007199254740993", evidence: { transactionCount: 2 },
+    spendingMinor: "9007199254740993", evidence: { transactionCount: 3, includedTransactionCount: 2, partial: true,
+      limitation: "Excluded classifications are unknown; these partial totals are not upper or lower bounds." },
   });
   expect(await searchTransactions({ query: "receipt" })).toEqual([{ id: "parent", amount_minor: "-9007199254740993" }]);
   expect(fixture.tables).toEqual(["effective_transactions", "transactions"]);

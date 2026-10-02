@@ -45,7 +45,9 @@ export async function cashflow(input: unknown) {
     from, to, currencyCode, incomeMinor: total.incomeMinor.toString(),
     spendingMinor: total.spendingMinor.toString(), netMinor: total.netMinor.toString(),
     evidence: { transactionCount: rows.length, excludedPendingAndTransfers: true,
-      excludedReviewRows: total.excludedReviewRows ?? 0, partial: total.partial ?? false },
+      includedTransactionCount: rows.filter(row => row.status === "posted" && row.kind !== "transfer" && !row.review_reasons?.length).length,
+      excludedReviewRows: total.excludedReviewRows ?? 0, partial: total.partial ?? false,
+      ...(total.partial ? { limitation: "Excluded classifications are unknown; these partial totals are not upper or lower bounds." } : {}) },
   } : { unavailable: "Some transactions require currency conversion", from, to, currencyCode };
 }
 
