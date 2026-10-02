@@ -83,6 +83,17 @@ describe("generated calculator manifest", () => {
 });
 
 describe("generated calculator smoke validation", () => {
+  it("rejects invalid output in an allowed cashflow branch before activation", async () => {
+    const result = await validateGeneratedCandidate({
+      kind: "custom_tracker",
+      source: `(input) => input.snapshot.cashflow ? { summary: { period: "2026-09" } } : { unavailable: "No cashflow" }`,
+      manifest: { kind: "custom_tracker", runtime: "quickjs-calculator-v1", sdk: ["cashflow"], params: {}, renderer: "trusted" },
+      permissions: ["cashflow"],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(";")).toContain("Output summary must be a string");
+  });
+
   it("keeps fallback financial arithmetic exact beyond JavaScript's numeric ceiling", async () => {
     expect(await evaluateIsolated(FALLBACK_CALCULATORS.trip_planner.source, { snapshot: { baselineAvailableMinor: "9007199254740993" }, params: { costMinor: 1 } }))
       .toMatchObject({ numbers: { remainingMinor: "9007199254740992" } });

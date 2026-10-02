@@ -68,6 +68,11 @@ export async function validateGeneratedCandidate(args: {
   // Missing-data fixtures must not throw: return { unavailable } instead.
   for (let i = 0; i < 3; i++) {
     const fixture = fixturesForKind(args.kind)[i];
+    // Cashflow has the same host shape as spending; exercise that declared branch too.
+    if (args.kind.startsWith("custom_") && manifest.sdk.includes("cashflow")) {
+      const snapshot = fixture.snapshot as Record<string, unknown>;
+      if (snapshot.spending) snapshot.cashflow = snapshot.spending;
+    }
     const params: Record<string, number | string> = {};
     for (const [name, def] of Object.entries(manifest.params)) {
       params[name] = def.default;
