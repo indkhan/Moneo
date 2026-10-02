@@ -1,44 +1,22 @@
-# Moneo e2e (prompt.md §46)
+# Browser acceptance
 
-## What runs without an authenticated session
+Use `npm run test:e2e -- --workers=1 --output=.qa/final-e2e-results` with the configured local app and applied migrations. The config reads `.env`; it reuses a running port3000 server. Stop that server before building so build/dev do not write the same `.next` directory.
 
-- `e2e/core-journey.smoke.spec.ts` — boots the app, checks the home state
-  appropriate to the current `.env`, `/api/health`, the login OTP form, and
-  empty import history. It makes no OpenRouter calls.
-- `e2e/import-journey.mocked.spec.ts` — the most useful deterministic test:
-  full import UX (`Upload → AI mapping preview → Correct → Preview
-  correction → Continue → history → Cancel`) against `page.route` mocks
-  shaped exactly like the real `/api/imports*` responses, with synthetic
-  `AUGUST_CSV` from `e2e/fixtures.ts`. Fails on any `openrouter.ai` request.
+Authenticated specs require `E2E_STORAGE_STATE` pointing at an ignored Playwright storage state, or `e2e/.auth.json`. Other gated specs create their own disposable users and require `SUPABASE_DB_URL`, the public Supabase variables and `SUPABASE_SERVICE_ROLE_KEY`. No production authentication bypass is used and no test emails are sent. Never commit credentials, auth state, private statements or detailed private evidence. A skipped required authenticated spec is not a pass.
 
-## Enabling the partial live-backend journey
+Use an empty disposable workspace for the full suite: the core journey independently expects its initial two ledger entries. Run with one worker because several authenticated specs mutate the same supplied workspace/preferences. Specs that create users remove their exact fixtures in `finally`; ignored `.qa` recovery journals retain IDs if interrupted. Remove only those recorded QA records and storage objects after acceptance.
 
-`e2e/core-journey.gated.spec.ts` exercises login state, import completion,
-transaction visibility, real chat, goal creation, artifact pinning, and
-overlapping re-import against Supabase. It does not yet verify transaction
-corrections or scenario changes. It **skips** unless all of these exist
-(a skip is reported as skipped, never as a pass):
+## Coverage and limits
 
-1. Applied `supabase/migrations/*.sql` in filename order, plus `.env` with `NEXT_PUBLIC_SUPABASE_URL` and
-   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (see `.env.example`).
-2. A Playwright `storageState` file: sign in once via the running app
-   (`/login` magic link), then save the browser context:
-   `E2E_STORAGE_STATE=e2e/.auth.json` (or place the file at
-   `e2e/.auth.json`, which is git-ignored via `.auth.json` pattern — do not
-   commit it).
-3. Run: `npx playwright test --reporter=list`.
+- Anonymous smoke and mocked import journeys verify health, login, empty/error states and deterministic UI contracts.
+- `core-journey.gated.spec.ts` uses real auth, confirmation/import workflow, ledger, chat, goals and pinning; file interpretation/tool proposals/manual analysis start are explicitly mocked. It proves overlapping rows are held for review. Separate private-file and free-provider acceptance supplies the actual parsing/model evidence; mocks are not provider verification.
+- Money, verified-link, goal/reservation, wealth, budget-rollover and scenario specs exercise actual persisted actions, exact totals, history/undo, source preservation and unchanged canonical data for hypothetical scenarios.
+- `recurring-source.gated.spec.ts` independently asserts EUR990→1000→990 forecast when a confirmed source becomes a transfer then is undone.
+- `review-freshness.gated.spec.ts` asserts current→stale→unknown evidence, retained full saved review and live exact tool balances updating100000→90000 after a dated correction; denied scopes supply no balance data.
+- Artifact specs exercise actual compiled QuickJS workers, host/network denial, limits/recovery, native Stop, live output validation, real SDK permission revocation, direct edits/invalid revisions/restore and PNG/PDF exports. AI generation/edit and provider cancellation have separate actual acceptance evidence; deterministic fixtures do not claim model quality.
+- `two-user-isolation.gated.spec.ts` exercises owned and foreign pages/APIs/files/RPCs/workflows, account/view histories and deterministic insight dismissal/restore/muting/exact relevance settings. SQL fixtures cover every current table and service boundary.
+- `auth-refresh.gated.spec.ts` verifies persistent authenticated cookies; when supplied an actually expired session it also asserts rotation. Fresh-session acceptance alone does not prove rotation.
+- `accessibility.gated.spec.ts` checks eight routes at360px, persisted dark appearance, native modal keyboard/background focus blocking/Escape/focus return. Scenario acceptance adds skip-link/de-DE/invalid horizon checks. These targeted checks are not a blanket WCAG certification.
+- `import-control.gated.spec.ts` requires051 and exercises real partial Stop/Resume, worker fencing, exact progress/idempotency/source retention and full undo. Separate SQL/three-connection checks cover races; missing required migration fails explicitly.
 
-When enabled, the spec uses the configured free OpenRouter model for chat and
-the automatic first financial review. File interpretation, artifact proposals,
-and the manually started analysis are mocked. Import confirmation, goals,
-artifact creation/pinning, and Home use the real backend.
-
-## Coverage / gaps
-
-Covered deterministically: import UX core (§4–§5), empty-state Home/login/
-health. The live gated test additionally covers auth, Postgres persistence,
-overlapping-import review, and artifact pinning when configured.
-Gaps: workflow resume/cancel, full RLS isolation, artifact runtime with live
-data, and Deep Analysis synthesis quality.
-Finance math (§16–§17), CSV/XLSX parsing, and artifact sandbox boundaries
-are covered by Vitest unit tests, not duplicated here.
+Final acceptance also requires unit tests (enable live DB resolver parity), lint/build, fresh/upgraded schema checks and deployed revision/health/auth/journey checks. Production Vercel administration/cron/logs require actual project access; local success does not establish deployment success.

@@ -1,9 +1,8 @@
 // Shared deterministic fixtures for Moneo Playwright e2e (prompt.md §46).
 //
-// No live OpenRouter calls: every spec in this directory either drives the UI
-// against mocked `/api/*` responses or skips cleanly when real Supabase creds
-// are absent. See e2e/README.md for required env and how to enable the gated
-// full-journey spec.
+// Mocked journeys reuse these fixtures; authenticated specs also exercise real
+// Supabase workflows and configured free-provider calls. See e2e/README.md
+// for each check's limits and required authentication.
 import * as fs from "node:fs";
 
 // Minimal two-row statement. Amounts are exact decimal strings; the app owns
