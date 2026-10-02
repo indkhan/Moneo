@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
+import { reviewFreshness } from "@/lib/finance/review-freshness";
 
 function truncate(value: string | null | undefined, max = 280) {
   if (!value) return "";
@@ -45,6 +46,7 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
         .maybeSingle()
     : { data: null, error: null };
   const evidence = analysis?.evidence as { period?: { from?: string; to?: string } } | null;
+  const freshness = analysis ? await reviewFreshness(supabase, workspace, analysis.evidence) : null;
   const evidenceText = analysis?.evidence ? JSON.stringify(analysis.evidence) : "";
   const evidencePreview = evidenceText.length > 2000 ? `${evidenceText.slice(0, 2000)}…` : evidenceText;
 
@@ -80,7 +82,8 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
       )}
       {analysis && (
         <article className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
-          <p className="whitespace-pre-wrap text-sm">{truncate(analysis.body, 4000)}</p>
+          <p className="text-sm text-muted-foreground">Saved {new Date(analysis.created_at).toLocaleString()} · Evidence {freshness?.status}: {freshness?.reason}</p>
+          <p className="mt-3 whitespace-pre-wrap text-sm">{analysis.body}</p>
           {evidence?.period && (
             <p className="mt-3 text-sm text-muted-foreground">
               Evidence period {evidence.period.from ?? "?"} to {evidence.period.to ?? "?"}

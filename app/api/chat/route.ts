@@ -4,7 +4,10 @@ import { modelForSettings, SYSTEM_PROMPT } from "@/lib/ai/provider";
 import { requireWorkspace } from "@/lib/auth";
 import { calendarDate } from "@/lib/finance/calendar";
 import { reportedUsage } from "@/lib/ai/usage";
-import { parseCategoryCommand } from "@/lib/ai/write-intent";
+import { isExplicitReviewRequest, parseCategoryCommand } from "@/lib/ai/write-intent";
+import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
+import { startFinancialReview } from "@/lib/finance/start-review";
+import { categoryPreviewSchema, loadCategoryPreview } from "@/lib/finance/edit-preview";
 import { cashflow, evaluateForecast, getBalances, listAccounts, listGoals, searchTransactions } from "@/lib/finance/tools";
 
 const inputSchema = z.object({
@@ -53,6 +56,8 @@ export async function POST(request: Request) {
   }));
   const categoryCommand = parseCategoryCommand(message);
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
+  const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
+  const canStartReview = canInvestigate && isExplicitReviewRequest(message);
     const model = await modelForSettings(settings);
     const result = await generateText({
       model,
@@ -62,6 +67,21 @@ export async function POST(request: Request) {
       messages: modelMessages,
       stopWhen: stepCountIs(4),
       tools: {
+        ...(settings.ai_data_scopes.includes("transactions") ? { transactions_previewCategory: tool({ description: "Read-only impact preview for exact selected transaction UUIDs and an existing category UUID. Returns a link where the user reviews current entries and explicitly confirms an audited bulk change. Never changes any transaction.", inputSchema: categoryPreviewSchema, execute: async ({ transactionIds, categoryId }) => {
+          const latest = await requireWorkspace();
+          if (latest.workspace.id !== workspace.id || !latest.settings.ai_data_scopes.includes("transactions")) throw new Error("Transaction permission unavailable");
+          return loadCategoryPreview(latest.supabase, workspace.id, transactionIds, categoryId);
+        } }) } : {}),
+        ...(canInvestigate ? { reviews_investigate: tool({ description: "Investigate dated exact spending changes, account evidence, classification limitations and permitted planning evidence, with source links. Read-only.", inputSchema: z.object({}).strict(), execute: async () => {
+          const latest = await requireWorkspace();
+          if (latest.workspace.id !== workspace.id) throw new Error("Workspace changed");
+          return loadFinancialReviewEvidence(latest.supabase, latest.workspace, latest.settings);
+        } }) } : {}),
+        ...(canStartReview ? { reviews_start: tool({ description: "Start the deep financial review explicitly requested in this exact user message. Creates one durable, cancelable job; repeated calls reuse it. No financial data changes.", inputSchema: z.object({}).strict(), execute: async () => {
+          if (request.signal.aborted) throw new Error("Request canceled");
+          if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) throw new Error("Financial review service is not configured");
+          return { ...await startFinancialReview(supabase, workspace.id, requestId, requestId), href: "/ai" };
+        } }) } : {}),
         ...(settings.ai_data_scopes.includes("accounts") ? { accounts_list: tool({ description: "List the user's accounts", inputSchema: z.object({}), execute: listAccounts }),
         accounts_getBalances: tool({ description: "Get dated balances and provenance", inputSchema: z.object({}), execute: getBalances }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { analytics_cashflow: tool({ description: "Exact posted income and spending for a period", inputSchema: z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().length(3) }), execute: cashflow }),

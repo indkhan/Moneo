@@ -64,7 +64,7 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
       supabase.from("forecast_preferences").select("currency_code, safety_buffer_minor::text, daily_spending_minor::text, uncertainty_bps, spending_account_id, spending_starts_on, version").eq("workspace_id", workspace.id).maybeSingle(),
       supabase.from("goal_allocations").select("account_id, amount_minor::text").eq("workspace_id", workspace.id),
       supabase.from("financial_assumptions").select("id, name, account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, enabled")
-        .eq("workspace_id", workspace.id).eq("enabled", true).eq("confirmed", true).is("removed_at", null),
+        .eq("workspace_id", workspace.id).eq("enabled", true).eq("confirmed", true).is("removed_at", null).order("id"),
       supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
         .eq("workspace_id", workspace.id).eq("to_currency", workspace.display_currency),
     ]);
@@ -122,7 +122,7 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
     if (!scenario) throw new Error("Scenario not found");
     const { data: overrides, error } = await supabase.from("scenario_overrides")
       .select("id, name, account_id, amount_delta_minor::text, currency_code, cadence, starts_on, ends_on")
-      .eq("workspace_id", workspace.id).eq("scenario_id", scenarioId).is("removed_at", null);
+      .eq("workspace_id", workspace.id).eq("scenario_id", scenarioId).is("removed_at", null).order("id");
     if (error) throw error;
     missingInputs.push(...(overrides ?? []).flatMap(item => !item.account_id || !accountIds.has(item.account_id) ? ["scenario account"] : []));
     scenarioEvents = (overrides ?? []).flatMap(item => item.account_id && accountIds.has(item.account_id)

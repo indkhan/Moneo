@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { financialReview } from "./financial-review";
+import { generateText } from "ai";
 
-const fixture = vi.hoisted(() => ({ scheduled: true, disabledAt: 1, loads: 0, writes: [] as { table: string; value: Record<string, unknown> }[] }));
+const fixture = vi.hoisted(() => ({ scheduled: true, disabledAt: 1, loads: 0, finishStatus: "completed", writes: [] as { table: string; value: Record<string, unknown> }[] }));
+vi.mock("@/lib/finance/review-loader", () => ({ loadFinancialReviewEvidence: async () => ({ period: { from: "2026-07-05", to: "2026-10-02" }, planning: { unavailable: "Disabled" } }) }));
 vi.mock("@/lib/settings", async importOriginal => {
   const original = await importOriginal<typeof import("@/lib/settings")>();
   return { ...original, loadWorkspaceSettings: async () => original.settingsSchema.parse({ summary_cadence: ++fixture.loads >= fixture.disabledAt ? "none" : "weekly" }) };
@@ -9,8 +11,8 @@ vi.mock("@/lib/settings", async importOriginal => {
 vi.mock("@/lib/finance/balances", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/finance/balances")>(), loadBalanceEvidence: async () => ({ accounts: [], snapshots: [], ledger: [], asOf: "2026-10-01T12:00:00Z" }) }));
 vi.mock("@/lib/ai/provider", () => ({ modelForSettings: vi.fn(async () => ({})) }));
 vi.mock("ai", () => ({ generateText: vi.fn(async () => ({ text: "Evidence review" })) }));
-vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ from: (table: string) => {
-  const query = { select: () => query, eq: () => query, gte: () => query, lte: () => query, order: () => query,
+vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ rpc: async (name: string, value: Record<string, unknown>) => { fixture.writes.push({ table: name, value }); return { data: fixture.finishStatus, error: null }; }, from: (table: string) => {
+  const query = { select: () => query, eq: () => query, in: () => query, gte: () => query, lte: () => query, order: () => query,
     single: async () => ({ data: { status: "running", cancel_requested: false }, error: null }),
     maybeSingle: async () => ({ data: fixture.scheduled ? { cadence: "weekly" } : null, error: null }),
     range: async () => ({ data: [], error: null }),
@@ -19,7 +21,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ from: (table: s
     then: (resolve: (value: { data: null; error: null }) => unknown) => Promise.resolve({ data: null, error: null }).then(resolve) };
   return query;
 } }) }));
-beforeEach(() => { fixture.scheduled = true; fixture.disabledAt = 1; fixture.loads = 0; fixture.writes = []; vi.clearAllMocks(); vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test"); });
+beforeEach(() => { fixture.scheduled = true; fixture.disabledAt = 1; fixture.loads = 0; fixture.finishStatus = "completed"; fixture.writes = []; vi.clearAllMocks(); vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test"); });
 afterEach(() => vi.unstubAllEnvs());
 
 for (const step of [1, 2, 3]) it(`cancels a scheduled summary disabled before step ${step} without persisting analysis`, async () => {
@@ -31,5 +33,19 @@ for (const step of [1, 2, 3]) it(`cancels a scheduled summary disabled before st
 it("keeps a manually requested review available when scheduled summaries are disabled", async () => {
   fixture.scheduled = false;
   await financialReview("job", "workspace");
-  expect(fixture.writes.some(write => write.table === "saved_analyses")).toBe(true);
+  expect(fixture.writes.some(write => write.table === "finish_financial_review")).toBe(true);
+  expect(fixture.writes.some(write => write.table === "saved_analyses")).toBe(false);
+});
+it("accepts atomic cancellation during final save without separately completing a job", async () => {
+  fixture.scheduled = false; fixture.finishStatus = "canceled";
+  await financialReview("job", "workspace");
+  expect(fixture.writes.some(write => write.table === "finish_financial_review")).toBe(true);
+  expect(fixture.writes.some(write => write.value.status === "completed")).toBe(false);
+});
+it("bounds provider attempts and marks a token-limited saved review as incomplete", async () => {
+  fixture.scheduled = false;
+  vi.mocked(generateText).mockResolvedValueOnce({ text: "Partial review", finishReason: "length" } as unknown as Awaited<ReturnType<typeof generateText>>);
+  await financialReview("job", "workspace");
+  expect(vi.mocked(generateText).mock.calls[0][0]).toMatchObject({ maxRetries: 0, abortSignal: expect.any(AbortSignal) });
+  expect(fixture.writes.find(write => write.table === "finish_financial_review")?.value.p_body).toContain("Incomplete review");
 });
