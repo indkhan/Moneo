@@ -143,8 +143,8 @@ async function SpendingExplorer({ id, query }: { id: string; query: string }) {
     </form>
     <ul className="mt-4 divide-y rounded border">{data.transactions.map(row =>
       <li key={row.id} className="flex justify-between gap-3 p-3 text-sm">
-        <span>{row.posted_on} · <Link href="/money/transactions" className="underline">{row.description}</Link></span>
-        <span>{money(row.amount_minor, row.currency_code)}</span>
+        <span className="min-w-0 flex-1 break-words">{row.posted_on} · <Link href="/money/transactions" className="underline">{row.description}</Link></span>
+        <span className="shrink-0 whitespace-nowrap">{money(row.amount_minor, row.currency_code)}</span>
       </li>)}</ul>
     {!data.transactions.length && <p className="mt-4">No matching transactions.</p>}
   </section>;
