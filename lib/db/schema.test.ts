@@ -8,13 +8,16 @@ const table = (name: string) => tables.find((item) => item.name === name)!;
 
 describe("Drizzle migration contract", () => {
   it("represents every migrated public table and original column", () => {
-    const migrations = readdirSync("supabase/migrations").sort()
+    const migrations = readdirSync("supabase/migrations").filter(file => file.endsWith(".sql")).sort()
       .map((file) => readFileSync(`supabase/migrations/${file}`, "utf8")).join("\n");
     for (const match of migrations.matchAll(/create table public\.(\w+)\s*\(([\s\S]*?)\n\);/g)) {
       expect(table(match[1]), match[1]).toBeDefined();
       const columns = [...match[2].matchAll(/^\s{2}(\w+) (?:uuid|text|bigint|integer|boolean|jsonb|date|timestamptz)\b/gm)]
         .map((column) => column[1]);
       expect(table(match[1]).columns.map((column) => column.name)).toEqual(expect.arrayContaining(columns));
+    }
+    for (const match of migrations.matchAll(/alter table public\.(\w+)\s+add column (\w+)/g)) {
+      expect(table(match[1]).columns.map((column) => column.name)).toContain(match[2]);
     }
   });
 

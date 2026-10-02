@@ -1,8 +1,61 @@
 import { sql } from "drizzle-orm";
 import { pgTable, pgSchema, uuid, text, timestamp, date, bigint, integer, jsonb, boolean, uniqueIndex, unique, index, check, foreignKey, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 
+export const dashboardLayouts = pgTable("dashboard_layouts", {
+  workspaceId: uuid("workspace_id").primaryKey().references((): AnyPgColumn => workspaces.id, { onDelete: "cascade" }),
+  items: text("items").array().notNull(),
+  version: integer("version").notNull().default(1),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  check("dashboard_layouts_items_check", sql`cardinality(${table.items}) <= 50`),
+  check("dashboard_layouts_version_check", sql`${table.version} > 0`),
+]);
+
 // Supabase owns the rest of auth.users; only its referenced primary key belongs here.
 const authUsers = pgSchema("auth").table("users", { id: uuid("id").primaryKey() });
+
+export const summaryRuns = pgTable("summary_runs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references((): AnyPgColumn => workspaces.id, { onDelete: "cascade" }),
+  jobId: uuid("job_id").notNull().references((): AnyPgColumn => backgroundJobs.id),
+  periodStart: date("period_start").notNull(),
+  cadence: text("cadence").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  unique("summary_runs_workspace_id_cadence_period_start_key").on(table.workspaceId, table.cadence, table.periodStart),
+  check("summary_runs_cadence_check", sql`${table.cadence} in ('weekly','monthly')`),
+]);
+
+export const transactionSplitSets = pgTable("transaction_split_sets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references((): AnyPgColumn => workspaces.id),
+  transactionId: uuid("transaction_id").notNull().references((): AnyPgColumn => transactions.id),
+  requestId: uuid("request_id").notNull(),
+  actorId: uuid("actor_id").notNull().references(() => authUsers.id),
+  before: jsonb("before").notNull(), after: jsonb("after").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  undoneAt: timestamp("undone_at", { withTimezone: true }),
+  undoneBy: uuid("undone_by").references(() => authUsers.id),
+}, (table) => [
+  unique("transaction_split_sets_workspace_id_request_id_key").on(table.workspaceId, table.requestId),
+  uniqueIndex("transaction_split_sets_one_active").on(table.transactionId).where(sql`${table.undoneAt} is null`),
+]);
+
+export const transactionSplits = pgTable("transaction_splits", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references((): AnyPgColumn => workspaces.id),
+  parentTransactionId: uuid("parent_transaction_id").notNull().references((): AnyPgColumn => transactions.id),
+  splitSetId: uuid("split_set_id").notNull().references(() => transactionSplitSets.id),
+  categoryId: uuid("category_id").references((): AnyPgColumn => categories.id),
+  amountMinor: bigint("amount_minor", { mode: "bigint" }).notNull(),
+  note: text("note").notNull().default(""),
+  ordinal: integer("ordinal").notNull(),
+}, (table) => [
+  unique("transaction_splits_split_set_id_ordinal_key").on(table.splitSetId, table.ordinal),
+  check("transaction_splits_amount_minor_check", sql`${table.amountMinor} <> 0`),
+  check("transaction_splits_note_check", sql`char_length(${table.note}) <= 500`),
+  check("transaction_splits_ordinal_check", sql`${table.ordinal} between 1 and 20`),
+]);
 
 export const workspaces = pgTable("workspaces", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -18,6 +71,8 @@ export const accounts = pgTable("accounts", {
   name: text("name").notNull(),
   type: text("type").notNull().default("checking"),
   currencyCode: text("currency_code").notNull(),
+  version: integer("version").notNull().default(1),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -29,8 +84,12 @@ export const balanceSnapshots = pgTable("balance_snapshots", {
   currencyCode: text("currency_code").notNull(),
   asOf: timestamp("as_of", { withTimezone: true }).notNull(),
   provenance: text("provenance").notNull(),
+  boundaryKind: text("boundary_kind").notNull().default("date_only"),
+  sourceTransactionId: uuid("source_transaction_id").references((): AnyPgColumn => sourceTransactions.id),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  check("balance_snapshots_boundary_kind_check", sql`${table.boundaryKind} in ('date_only','after_transaction') and (${table.boundaryKind} <> 'after_transaction' or ${table.sourceTransactionId} is not null)`),
+]);
 
 export const dataSources = pgTable("data_sources", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -49,17 +108,36 @@ export const imports = pgTable("imports", {
   storagePath: text("storage_path").notNull(),
   fileHash: text("file_hash").notNull(),
   status: text("status").notNull().default("pending"),
+  runVersion: integer("run_version").notNull().default(1),
+  routeAccounts: jsonb("route_accounts").notNull().default({}),
   mapping: jsonb("mapping"),
   totalRows: integer("total_rows").notNull().default(0),
   newRows: integer("new_rows").notNull().default(0),
   matchedRows: integer("matched_rows").notNull().default(0),
   reviewRows: integer("review_rows").notNull().default(0),
+  classificationReviewRows: integer("classification_review_rows").notNull().default(0),
   rejectedRows: integer("rejected_rows").notNull().default(0),
   error: text("error"),
   undoneAt: timestamp("undone_at", { withTimezone: true }),
   undoneBy: uuid("undone_by").references(() => authUsers.id),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [unique("imports_workspace_hash_unique").on(table.workspaceId, table.fileHash)]);
+}, (table) => [
+  unique("imports_workspace_hash_unique").on(table.workspaceId, table.fileHash),
+  check("imports_classification_review_rows_check", sql`${table.classificationReviewRows} >= 0`),
+  check("imports_run_version_check", sql`${table.runVersion} > 0`),
+  check("imports_route_accounts_check", sql`jsonb_typeof(${table.routeAccounts}) = 'object'`),
+]);
+
+export const importControlEvents = pgTable("import_control_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  importId: uuid("import_id").notNull().references(() => imports.id),
+  requestId: uuid("request_id").notNull(), action: text("action").notNull(), result: jsonb("result").notNull(),
+  actorId: uuid("actor_id").notNull().references(() => authUsers.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [unique("import_control_events_workspace_id_request_id_key").on(table.workspaceId, table.requestId),
+  check("import_control_events_action_check", sql`${table.action} in ('cancel','resume')`),
+  check("import_control_events_result_check", sql`jsonb_typeof(${table.result}) = 'object'`)]);
 
 export const sourceTransactions = pgTable("source_transactions", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -67,9 +145,15 @@ export const sourceTransactions = pgTable("source_transactions", {
   importId: uuid("import_id").notNull().references(() => imports.id),
   rowNumber: integer("row_number").notNull(),
   originalRow: jsonb("original_row").notNull(),
+  feeEvidence: jsonb("fee_evidence"),
   externalId: text("external_id"),
+  reviewReasons: text("review_reasons").array().notNull().default(sql`'{}'::text[]`),
   status: text("status").notNull().default("new"),
-}, (table) => [unique("source_transactions_import_row_unique").on(table.importId, table.rowNumber)]);
+}, (table) => [
+  unique("source_transactions_import_row_unique").on(table.importId, table.rowNumber),
+  check("source_transactions_fee_evidence_check", sql`${table.feeEvidence} is null or (jsonb_typeof(${table.feeEvidence}) = 'object' and ${table.feeEvidence} ? 'treatment' and ${table.feeEvidence}->>'treatment' is not null and ${table.feeEvidence}->>'treatment' in ('included','additional','unknown'))`),
+  check("source_transactions_review_reasons_check", sql`${table.reviewReasons} <@ array['source_transfer','source_exchange','source_type','refund_sign','fee_semantics']::text[]`),
+]);
 
 export const categories = pgTable("categories", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -95,9 +179,13 @@ export const transactions = pgTable("transactions", {
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   accountId: uuid("account_id").notNull().references(() => accounts.id),
   postedOn: date("posted_on").notNull(),
+  postedAt: timestamp("posted_at", { withTimezone: true }),
   description: text("description").notNull(),
   amountMinor: bigint("amount_minor", { mode: "bigint" }).notNull(),
   currencyCode: text("currency_code").notNull(),
+  tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+  eventName: text("event_name"),
+  reviewReasons: text("review_reasons").array().notNull().default(sql`'{}'::text[]`),
   status: text("status").notNull().default("posted"),
   kind: text("kind").notNull().default("ordinary"),
   categoryId: uuid("category_id").references(() => categories.id),
@@ -109,8 +197,12 @@ export const transactions = pgTable("transactions", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("transactions_merchant_id_idx").on(table.merchantId).where(sql`${table.merchantId} is not null`),
+  index("transactions_account_posted_at_idx").on(table.workspaceId, table.accountId, table.postedAt).where(sql`${table.postedAt} is not null`),
   index("transactions_transfer_id_idx").on(table.transferId).where(sql`${table.transferId} is not null`),
   index("transactions_refund_of_id_idx").on(table.refundOfId).where(sql`${table.refundOfId} is not null`),
+  check("transactions_review_reasons_check", sql`${table.reviewReasons} <@ array['source_transfer','source_exchange','source_type','refund_sign','fee_semantics']::text[]`),
+  check("transactions_tags_count", sql`cardinality(${table.tags}) <= 20`),
+  check("transactions_event_name_length", sql`length(${table.eventName}) <= 120`),
   check("transactions_kind_check", sql`${table.kind} in ('ordinary', 'transfer', 'refund')`),
   check("transactions_no_self_transfer", sql`${table.transferId} is null or ${table.transferId} <> ${table.id}`),
   check("transactions_no_self_refund", sql`${table.refundOfId} is null or ${table.refundOfId} <> ${table.id}`),
@@ -137,6 +229,10 @@ export const goals = pgTable("goals", {
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   name: text("name").notNull(),
   targetMinor: bigint("target_minor", { mode: "bigint" }).notNull(),
+  plannedMonthlyMinor: bigint("planned_monthly_minor", { mode: "bigint" }).notNull().default(0n),
+  contributionStartsOn: date("contribution_starts_on"),
+  recordedSavedMinor: bigint("recorded_saved_minor", { mode: "bigint" }),
+  savedAsOf: date("saved_as_of"),
   currencyCode: text("currency_code").notNull(),
   targetDate: date("target_date"),
   priority: integer("priority").notNull().default(0),
@@ -148,7 +244,68 @@ export const goals = pgTable("goals", {
 }, (table) => [
   unique("goals_workspace_idempotency_unique").on(table.workspaceId, table.idempotencyKey),
   check("goals_target_minor_check", sql`${table.targetMinor} > 0`),
+  check("goals_planned_monthly_minor_check", sql`${table.plannedMonthlyMinor} >= 0`),
+  check("goals_recorded_saved_minor_check", sql`${table.recordedSavedMinor} >= 0`),
+  check("goals_saved_evidence_check", sql`(${table.recordedSavedMinor} is null) = (${table.savedAsOf} is null)`),
+  check("goals_contribution_date_check", sql`${table.plannedMonthlyMinor} = 0 or ${table.contributionStartsOn} is not null`),
 ]);
+
+export const goalEvents = pgTable("goal_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  goalId: uuid("goal_id").notNull().references(() => goals.id),
+  actorId: uuid("actor_id").references(() => authUsers.id),
+  before: jsonb("before"), after: jsonb("after").notNull(), requestId: uuid("request_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  undone: boolean("undone").notNull().default(false),
+  undoneAt: timestamp("undone_at", { withTimezone: true }),
+  undoneBy: uuid("undone_by").references(() => authUsers.id),
+}, (table) => [unique("goal_events_workspace_id_request_id_key").on(table.workspaceId, table.requestId)]);
+
+export const wealthItems = pgTable("wealth_items", {
+  id: uuid("id").primaryKey(), workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  kind: text("kind").notNull(), name: text("name").notNull(), currencyCode: text("currency_code").notNull(),
+  amountMinor: bigint("amount_minor", { mode: "bigint" }).notNull(), quantityText: text("quantity_text"), unitPriceText: text("unit_price_text"),
+  costBasisMinor: bigint("cost_basis_minor", { mode: "bigint" }), asOf: date("as_of").notNull(),
+  linkedAccountId: uuid("linked_account_id").references(() => accounts.id), paymentAccountId: uuid("payment_account_id").references(() => accounts.id),
+  annualRateText: text("annual_rate_text"), monthlyPaymentMinor: bigint("monthly_payment_minor", { mode: "bigint" }), nextPaymentOn: date("next_payment_on"),
+  paymentAssumptionId: uuid("payment_assumption_id").references((): AnyPgColumn => financialAssumptions.id), paymentTransactionId: uuid("payment_transaction_id").references(() => transactions.id),
+  version: integer("version").notNull().default(1), removedAt: timestamp("removed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  check("wealth_items_kind_check", sql`${table.kind} in ('holding','asset','debt')`),
+  check("wealth_items_name_check", sql`char_length(${table.name}) between 1 and 120`),
+  check("wealth_items_currency_code_check", sql`${table.currencyCode} ~ '^[A-Z]{3}$'`),
+  check("wealth_items_check", sql`(${table.kind} = 'debt' and ${table.amountMinor} <= 0) or (${table.kind} <> 'debt' and ${table.amountMinor} >= 0)`),
+  check("wealth_items_cost_basis_minor_check", sql`${table.costBasisMinor} is null or ${table.costBasisMinor} >= 0`),
+  check("wealth_items_monthly_payment_minor_check", sql`${table.monthlyPaymentMinor} is null or ${table.monthlyPaymentMinor} >= 0`),
+]);
+
+export const wealthEvents = pgTable("wealth_events", {
+  id: uuid("id").defaultRandom().primaryKey(), workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  itemId: uuid("item_id").notNull().references(() => wealthItems.id), actorId: uuid("actor_id").notNull().references(() => authUsers.id),
+  requestId: uuid("request_id").notNull(), before: jsonb("before"), after: jsonb("after").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  undoneAt: timestamp("undone_at", { withTimezone: true }), undoneBy: uuid("undone_by").references(() => authUsers.id),
+}, (table) => [unique("wealth_events_workspace_id_request_id_key").on(table.workspaceId, table.requestId)]);
+
+export const forecastPreferences = pgTable("forecast_preferences", {
+  workspaceId: uuid("workspace_id").primaryKey().references(() => workspaces.id), currencyCode: text("currency_code").notNull(),
+  safetyBufferMinor: bigint("safety_buffer_minor", { mode: "bigint" }).notNull().default(0n), dailySpendingMinor: bigint("daily_spending_minor", { mode: "bigint" }).notNull().default(0n),
+  uncertaintyBps: integer("uncertainty_bps").notNull().default(1000), spendingAccountId: uuid("spending_account_id").references(() => accounts.id), spendingStartsOn: date("spending_starts_on"),
+  version: integer("version").notNull().default(1), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  check("forecast_preferences_currency_code_check", sql`${table.currencyCode} ~ '^[A-Z]{3}$'`),
+  check("forecast_preferences_safety_buffer_minor_check", sql`${table.safetyBufferMinor} >= 0`), check("forecast_preferences_daily_spending_minor_check", sql`${table.dailySpendingMinor} >= 0`),
+  check("forecast_preferences_uncertainty_bps_check", sql`${table.uncertaintyBps} between 0 and 10000`), check("forecast_preferences_version_check", sql`${table.version} > 0`),
+  check("forecast_preferences_check", sql`${table.dailySpendingMinor} = 0 or (${table.spendingAccountId} is not null and ${table.spendingStartsOn} is not null)`),
+]);
+
+export const forecastPreferenceEvents = pgTable("forecast_preference_events", {
+  id: uuid("id").defaultRandom().primaryKey(), workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id), actorId: uuid("actor_id").notNull().references(() => authUsers.id),
+  before: jsonb("before"), after: jsonb("after").notNull(), requestId: uuid("request_id").notNull(), undoOf: uuid("undo_of").references((): AnyPgColumn => forecastPreferenceEvents.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(), undoneAt: timestamp("undone_at", { withTimezone: true }),
+}, (table) => [unique("forecast_preference_events_workspace_id_request_id_key").on(table.workspaceId, table.requestId)]);
 
 export const goalAllocations = pgTable("goal_allocations", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -156,10 +313,20 @@ export const goalAllocations = pgTable("goal_allocations", {
   goalId: uuid("goal_id").notNull().references(() => goals.id),
   accountId: uuid("account_id").notNull().references(() => accounts.id),
   amountMinor: bigint("amount_minor", { mode: "bigint" }).notNull(),
+  version: integer("version").notNull().default(1),
 }, (table) => [
   unique("goal_allocations_goal_account_unique").on(table.goalId, table.accountId),
-  check("goal_allocations_amount_minor_check", sql`${table.amountMinor} > 0`),
+  check("goal_allocations_amount_minor_check", sql`${table.amountMinor} >= 0`),
 ]);
+
+export const goalReservationEvents = pgTable("goal_reservation_events", {
+  id: uuid("id").defaultRandom().primaryKey(), workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  allocationId: uuid("allocation_id").notNull().references(() => goalAllocations.id), actorId: uuid("actor_id").notNull().references(() => authUsers.id),
+  before: jsonb("before").notNull(), after: jsonb("after").notNull(), requestId: uuid("request_id").notNull(),
+  undoOf: uuid("undo_of").references((): AnyPgColumn => goalReservationEvents.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  undoneAt: timestamp("undone_at", { withTimezone: true }), undoneBy: uuid("undone_by").references(() => authUsers.id),
+}, (table) => [unique("goal_reservation_events_workspace_id_request_id_key").on(table.workspaceId, table.requestId)]);
 
 export const financialAssumptions = pgTable("financial_assumptions", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -176,6 +343,8 @@ export const financialAssumptions = pgTable("financial_assumptions", {
   confidence: integer("confidence"),
   confirmed: boolean("confirmed").notNull().default(false),
   enabled: boolean("enabled").notNull().default(true),
+  version: integer("version").notNull().default(1),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   check("financial_assumptions_cadence_check", sql`${table.cadence} in ('once', 'daily', 'weekly', 'monthly', 'yearly')`),
@@ -188,6 +357,8 @@ export const scenarios = pgTable("scenarios", {
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   name: text("name").notNull(),
   description: text("description"),
+  version: integer("version").notNull().default(1),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -203,10 +374,19 @@ export const scenarioOverrides = pgTable("scenario_overrides", {
   cadence: text("cadence").notNull(),
   startsOn: date("starts_on").notNull(),
   endsOn: date("ends_on"),
+  version: integer("version").notNull().default(1),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
 }, (table) => [
   check("scenario_overrides_cadence_check", sql`${table.cadence} in ('once', 'daily', 'weekly', 'monthly', 'yearly')`),
   check("scenario_overrides_dates", sql`${table.endsOn} is null or ${table.endsOn} >= ${table.startsOn}`),
 ]);
+
+export const scenarioEvents = pgTable("scenario_events", {
+  id: uuid("id").defaultRandom().primaryKey(), workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  entityType: text("entity_type").notNull(), entityId: uuid("entity_id").notNull(), actorId: uuid("actor_id").references(() => authUsers.id),
+  before: jsonb("before"), after: jsonb("after").notNull(), requestId: uuid("request_id"), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  undone: boolean("undone").notNull().default(false), undoneAt: timestamp("undone_at", { withTimezone: true }), undoneBy: uuid("undone_by").references(() => authUsers.id),
+}, table => [unique("scenario_events_workspace_id_request_id_key").on(table.workspaceId,table.requestId),check("scenario_events_entity_type_check",sql`${table.entityType} in ('scenario','override')`)]);
 
 export const forecastRuns = pgTable("forecast_runs", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -225,6 +405,8 @@ export const backgroundJobs = pgTable("background_jobs", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   kind: text("kind").notNull(),
+  requestId: uuid("request_id"),
+  chatRequestId: uuid("chat_request_id").references((): AnyPgColumn => chatRequests.id, { onDelete: "set null" }),
   status: text("status").notNull().default("queued"),
   stage: text("stage").notNull().default("queued"),
   error: text("error"),
@@ -234,6 +416,7 @@ export const backgroundJobs = pgTable("background_jobs", {
 }, (table) => [
   check("background_jobs_kind_check", sql`${table.kind} = 'financial_review'`),
   check("background_jobs_status_check", sql`${table.status} in ('queued', 'running', 'completed', 'failed', 'canceled')`),
+  unique("background_jobs_workspace_request_key").on(table.workspaceId, table.requestId),
 ]);
 
 export const savedAnalyses = pgTable("saved_analyses", {
@@ -258,7 +441,7 @@ export const artifacts = pgTable("artifacts", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   foreignKey({ name: "artifacts_active_version_fk", columns: [table.activeVersionId], foreignColumns: [artifactVersions.id] }),
-  check("artifacts_kind_check", sql`${table.kind} in ('spending_explorer', 'trip_planner', 'goal_tracker')`),
+  check("artifacts_kind_check", sql`${table.kind} in ('spending_explorer','trip_planner','goal_tracker','custom_planner','custom_tracker','custom_report','custom_comparison')`),
 ]);
 
 export const artifactVersions = pgTable("artifact_versions", {
@@ -331,6 +514,8 @@ export const recurringSeries = pgTable("recurring_series", {
   confidence: integer("confidence"),
   status: text("status").notNull().default("pending"),
   assumptionId: uuid("assumption_id").references(() => financialAssumptions.id, { onDelete: "set null" }),
+  evidenceInvalidated: boolean("evidence_invalidated").notNull().default(false),
+  evidenceBaseline: jsonb("evidence_baseline"), assumptionRestore: jsonb("assumption_restore"), invalidatedAssumptionVersion: integer("invalidated_assumption_version"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   unique("recurring_series_workspace_unique").on(table.workspaceId, table.accountId, table.normalizedLabel, table.cadence, table.currencyCode),
@@ -378,6 +563,9 @@ export const spendingPlans = pgTable("spending_plans", {
   currencyCode: text("currency_code").notNull(),
   limitMinor: bigint("limit_minor", { mode: "bigint" }).notNull(),
   enabled: boolean("enabled").notNull().default(true),
+  rollover: boolean("rollover").notNull().default(false),
+  rolloverFrom: date("rollover_from").notNull().default(sql`date_trunc('month',now() at time zone 'Europe/Berlin')::date`),
+  version: integer("version").notNull().default(1),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
@@ -385,16 +573,167 @@ export const spendingPlans = pgTable("spending_plans", {
   index("spending_plans_workspace_idx").on(table.workspaceId),
   check("spending_plans_currency_code", sql`${table.currencyCode} ~ '^[A-Z]{3}$'`),
   check("spending_plans_limit_positive", sql`${table.limitMinor} > 0`),
+  check("spending_plans_rollover_from_check", sql`extract(day from ${table.rolloverFrom})=1`),
 ]);
+
+export const spendingPlanLimits = pgTable("spending_plan_limits", {
+  id: uuid("id").defaultRandom().primaryKey(), workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id), planId: uuid("plan_id").notNull(),
+  limitMinor: bigint("limit_minor", { mode: "bigint" }).notNull(), enabled: boolean("enabled").notNull(), version: integer("version").notNull(),
+  effectiveMonth: date("effective_month").notNull(), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [unique("spending_plan_limits_workspace_id_plan_id_version_key").on(table.workspaceId,table.planId,table.version),
+  check("spending_plan_limits_limit_minor_check",sql`${table.limitMinor}>0`), check("spending_plan_limits_version_check",sql`${table.version}>0`),
+  check("spending_plan_limits_effective_month_check",sql`extract(day from ${table.effectiveMonth})=1`)]);
+
+export const artifactGenerationRequests = pgTable("artifact_generation_requests", {
+  id: uuid("id").primaryKey(), workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  artifactId: uuid("artifact_id").references(() => artifacts.id, { onDelete: "cascade" }), purpose: text("purpose").notNull(), description: text("description").notNull(),
+  status: text("status").notNull().default("queued"), result: jsonb("result"), error: text("error"), usage: jsonb("usage"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [index("artifact_generation_requests_workspace_created_idx").on(table.workspaceId,table.createdAt.desc()),
+  check("artifact_generation_requests_purpose_check",sql`${table.purpose} in ('proposal','calculator')`),
+  check("artifact_generation_requests_description_check",sql`length(btrim(${table.description})) between 1 and 500`),
+  check("artifact_generation_requests_status_check",sql`${table.status} in ('queued','running','completed','failed','canceled')`),
+  check("artifact_generation_requests_result_check",sql`${table.result} is null or (jsonb_typeof(${table.result})='object' and octet_length(${table.result}::text)<=65536)`),
+  check("artifact_generation_requests_error_check",sql`${table.error} is null or length(${table.error})<=2000`),
+  check("artifact_generation_requests_usage_check",sql`${table.usage} is null or (jsonb_typeof(${table.usage})='object' and octet_length(${table.usage}::text)<=2000)`),
+  check("artifact_generation_requests_check",sql`(${table.purpose}='calculator' and ${table.artifactId} is not null) or (${table.purpose}='proposal' and ${table.artifactId} is null)`),
+  check("artifact_generation_requests_check1",sql`(${table.status}='completed' and ${table.result} is not null and ${table.error} is null) or (${table.status}<>'completed' and ${table.result} is null)`)]);
+
+export const insightPreferences = pgTable("insight_preferences", {
+  workspaceId: uuid("workspace_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }), importantOnly: boolean("important_only").notNull().default(true),
+  minimumChangeMinor: bigint("minimum_change_minor", { mode: "bigint" }).notNull().default(2000n), currencyCode: text("currency_code").notNull().default("EUR"),
+  upcomingDays: integer("upcoming_days").notNull().default(7), maxItems: integer("max_items").notNull().default(8), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [check("insight_preferences_minimum_change_minor_check",sql`${table.minimumChangeMinor}>=0`),check("insight_preferences_currency_code_check",sql`${table.currencyCode} ~ '^[A-Z]{3}$'`),
+  check("insight_preferences_upcoming_days_check",sql`${table.upcomingDays} between 1 and 30`),check("insight_preferences_max_items_check",sql`${table.maxItems} between 1 and 20`)]);
+
+export const insightDismissals = pgTable("insight_dismissals", {
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }), evidenceKey: text("evidence_key").notNull(), insightType: text("insight_type").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [primaryKey({ columns: [table.workspaceId,table.evidenceKey] }),check("insight_dismissals_evidence_key_check",sql`${table.evidenceKey} ~ '^[0-9a-f]{64}$'`),
+  check("insight_dismissals_insight_type_check",sql`${table.insightType} in ('spending_changes','budget_pressure','unusual_activity','recurring_changes','upcoming_obligations','cash_shortfall','goal_progress','asset_debt','data_quality')`)]);
+
+export const transactionLinks = pgTable("transaction_links", {
+  id: uuid("id").defaultRandom().primaryKey(), workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  primaryTransactionId: uuid("primary_transaction_id").notNull().references(() => transactions.id), counterpartTransactionId: uuid("counterpart_transaction_id").notNull().references(() => transactions.id),
+  operation: text("operation").notNull(), requestId: uuid("request_id").notNull(), input: jsonb("input").notNull(),
+  beforeRows: jsonb("before_rows").notNull(), afterRows: jsonb("after_rows").notNull(), fxEvidence: jsonb("fx_evidence"), originalEquivalentMinor: bigint("original_equivalent_minor", { mode: "bigint" }),
+  actorId: uuid("actor_id").notNull().references(() => authUsers.id), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  undoneAt: timestamp("undone_at", { withTimezone: true }), undoneBy: uuid("undone_by").references(() => authUsers.id),
+}, table => [unique("transaction_links_workspace_id_request_id_key").on(table.workspaceId,table.requestId),
+  uniqueIndex("transaction_links_active_primary").on(table.primaryTransactionId).where(sql`${table.undoneAt} is null`),check("transaction_links_operation_check",sql`${table.operation} in ('transfer','refund')`)]);
+
+export const transactionLinkFees = pgTable("transaction_link_fees", {
+  id: uuid("id").defaultRandom().primaryKey(), workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id), linkId: uuid("link_id").notNull().references(() => transactionLinks.id),
+  transactionId: uuid("transaction_id").notNull().references(() => transactions.id), feeMinor: bigint("fee_minor", { mode: "bigint" }).notNull(), treatment: text("treatment").notNull(),
+  categoryId: uuid("category_id").references(() => categories.id), note: text("note").notNull(),
+}, table => [unique("transaction_link_fees_link_id_transaction_id_key").on(table.linkId,table.transactionId), check("transaction_link_fees_fee_minor_check",sql`${table.feeMinor}>0`),
+  check("transaction_link_fees_treatment_check",sql`${table.treatment} in ('included','additional')`),check("transaction_link_fees_note_check",sql`length(btrim(${table.note})) between 1 and 500`)]);
 
 export const transactionViews = pgTable("transaction_views", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   filters: jsonb("filters").notNull().default({}),
+  version: integer("version").notNull().default(1),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("transaction_views_workspace_idx").on(table.workspaceId, table.createdAt.desc()),
   check("transaction_views_name_length", sql`char_length(${table.name}) between 1 and 80`),
   check("transaction_views_filters_object", sql`jsonb_typeof(${table.filters}) = 'object'`),
+]);
+
+export const moneyMetadataEvents = pgTable("money_metadata_events", {
+  id: uuid("id").defaultRandom().primaryKey(), workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  entityType: text("entity_type").notNull(), entityId: uuid("entity_id").notNull(), actorId: uuid("actor_id").notNull().references(() => authUsers.id),
+  before: jsonb("before").notNull(), after: jsonb("after").notNull(), input: jsonb("input").notNull(), requestId: uuid("request_id").notNull(),
+  undoOf: uuid("undo_of").references((): AnyPgColumn => moneyMetadataEvents.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  undoneAt: timestamp("undone_at", { withTimezone: true }), undoneBy: uuid("undone_by").references(() => authUsers.id),
+}, table => [unique("money_metadata_events_workspace_id_request_id_key").on(table.workspaceId, table.requestId),
+  check("money_metadata_events_entity_type_check", sql`${table.entityType} in ('account','transaction_view')`)]);
+
+export const planningEvents = pgTable("planning_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  entityType: text("entity_type").notNull(),
+  entityId: uuid("entity_id").notNull(),
+  actorId: uuid("actor_id").references(() => authUsers.id),
+  before: jsonb("before"),
+  after: jsonb("after"),
+  requestId: uuid("request_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  undone: boolean("undone").notNull().default(false),
+  undoneAt: timestamp("undone_at", { withTimezone: true }),
+  undoneBy: uuid("undone_by").references(() => authUsers.id),
+}, (table) => [
+  unique("planning_events_workspace_id_request_id_key").on(table.workspaceId, table.requestId),
+  index("planning_events_entity_idx").on(table.workspaceId, table.entityType, table.entityId, table.createdAt),
+  check("planning_events_entity_type_check", sql`${table.entityType} in ('assumption', 'spending_plan')`),
+]);
+
+export const chatRequests = pgTable("chat_requests", {
+  id: uuid("id").primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  message: text("message").notNull(),
+  context: jsonb("context").notNull().default({}),
+  status: text("status").notNull().default("running"),
+  allowedTransactionId: uuid("allowed_transaction_id"),
+  allowedCategory: text("allowed_category"),
+  actionResult: jsonb("action_result"),
+  usage: jsonb("usage"),
+  answer: text("answer"),
+  error: text("error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("chat_requests_workspace_created").on(table.workspaceId, table.createdAt),
+  check("chat_requests_status_check", sql`${table.status} in ('running','completed','failed','canceled')`),
+]);
+
+export const manualTransactionEntries = pgTable("manual_transaction_entries", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  transactionId: uuid("transaction_id").references(() => transactions.id, { onDelete: "set null" }),
+  requestId: uuid("request_id").notNull(),
+  actorId: uuid("actor_id").notNull().references(() => authUsers.id),
+  originalRecord: jsonb("original_record").notNull(),
+  version: integer("version").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  undoneAt: timestamp("undone_at", { withTimezone: true }),
+  undoneBy: uuid("undone_by").references(() => authUsers.id),
+}, (table) => [unique("manual_transaction_entries_workspace_id_request_id_key").on(table.workspaceId, table.requestId)]);
+
+export const transactionBatches = pgTable("transaction_batches", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  requestId: uuid("request_id").notNull(),
+  actorId: uuid("actor_id").notNull().references(() => authUsers.id),
+  selection: jsonb("selection").notNull(),
+  patch: jsonb("patch").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  undone: boolean("undone").notNull().default(false),
+}, (table) => [unique("transaction_batches_workspace_id_request_id_key").on(table.workspaceId, table.requestId)]);
+
+export const workspaceSettings = pgTable("workspace_settings", {
+  workspaceId: uuid("workspace_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
+  timezone: text("timezone").notNull().default("Europe/Berlin"),
+  locale: text("locale").notNull().default("en-GB"),
+  theme: text("theme").notNull().default("system"),
+  openrouterModel: text("openrouter_model"),
+  aiDataScopes: text("ai_data_scopes").array().notNull().default(sql`array['accounts','transactions','planning','imports']::text[]`),
+  mutedInsightTypes: text("muted_insight_types").array().notNull().default(sql`'{}'::text[]`),
+  summaryCadence: text("summary_cadence").notNull().default("none"),
+  summaryTime: text("summary_time").notNull().default("09:00"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  check("workspace_settings_timezone_check", sql`length(${table.timezone}) between 1 and 100`),
+  check("workspace_settings_locale_check", sql`length(${table.locale}) between 1 and 50`),
+  check("workspace_settings_theme_check", sql`${table.theme} in ('system','light','dark')`),
+  check("workspace_settings_openrouter_model_check", sql`length(${table.openrouterModel}) between 1 and 200`),
+  check("workspace_settings_ai_data_scopes_check", sql`${table.aiDataScopes} <@ array['accounts','transactions','planning','imports']::text[]`),
+  check("workspace_settings_muted_insight_types_check", sql`${table.mutedInsightTypes} <@ array['spending_changes','budget_pressure','unusual_activity','recurring_changes','upcoming_obligations','cash_shortfall','goal_progress','asset_debt','data_quality']::text[]`),
+  check("workspace_settings_summary_cadence_check", sql`${table.summaryCadence} in ('none','weekly','monthly')`),
+  check("workspace_settings_summary_time_check", sql`${table.summaryTime} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
 ]);
