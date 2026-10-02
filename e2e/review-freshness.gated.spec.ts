@@ -30,6 +30,7 @@ test("saved review stays historical while balance corrections and scopes change 
     expect((await auth.auth.signInWithPassword({ email, password })).error).toBeNull();
     await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: "localhost", path: "/", sameSite: "Lax" as const })));
     const account = randomUUID(), job = randomUUID();
+    await db`insert into public.workspace_settings(workspace_id,locale) values(${workspace.id},'de-DE')`;
     await db`insert into public.accounts(id,workspace_id,name,currency_code,type) values(${account},${workspace.id},'Review cash','EUR','checking')`;
     const initialDate = new Date(Date.now() - 60_000).toISOString(), correctedDate = new Date(Date.now() - 30_000).toISOString();
     await db`insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance) values(${workspace.id},${account},100000,'EUR',${initialDate},'manual')`;
@@ -43,6 +44,8 @@ test("saved review stays historical while balance corrections and scopes change 
     async function status() { const result = await context.request.get(`/api/analysis/${job}`); expect(result.ok()).toBe(true); return (await result.json()).analysis.freshness.status; }
     expect(await status()).toBe("current");
     await page.goto(`/ai/activity/${job}`);
+    const [{ created_at: savedAt }] = await db`select created_at from public.saved_analyses where job_id=${job}`;
+    await expect(page.getByText(`Saved ${new Date(savedAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}`, { exact: false })).toBeVisible();
     await expect(page.getByText(/Evidence current:/)).toBeVisible();
     await expect(page.locator("article")).toContainText(body);
     await page.goto("/ai/library");

@@ -5,7 +5,7 @@ import type { ReviewFreshness } from "@/lib/finance/review-freshness";
 
 type Review = { id: string; status: string; stage: string; error: string | null; analysis?: { title: string; body: string; evidence: unknown; created_at: string; freshness: ReviewFreshness } | null };
 
-export function AnalysisPanel() {
+export function AnalysisPanel({ locale, timezone }: { locale: string; timezone: string }) {
   const [jobId, setJobId] = useState<string | null>(null);
   const [review, setReview] = useState<Review | null>(null);
   const [jobs, setJobs] = useState<Review[]>([]);
@@ -58,7 +58,7 @@ export function AnalysisPanel() {
     {review && <div className="mt-4"><p className="text-sm">{review.status} · {review.stage}</p>
       {review.error && <p role="alert" className="text-sm text-red-700">{review.error}</p>}
       {["queued", "running"].includes(review.status) && <button onClick={cancel} className="mt-2 text-sm underline">Stop</button>}
-      {review.analysis && <p className="mt-3 text-sm text-muted-foreground">Saved {new Date(review.analysis.created_at).toLocaleString()} · Evidence {review.analysis.freshness.status}: {review.analysis.freshness.reason}</p>}
+      {review.analysis && <p className="mt-3 text-sm text-muted-foreground">Saved {new Date(review.analysis.created_at).toLocaleString(locale, { timeZone: timezone })} · Evidence {review.analysis.freshness.status}: {review.analysis.freshness.reason}</p>}
       {review.analysis && <article className="mt-4"><h3 className="font-semibold">{review.analysis.title}</h3><p className="mt-2 whitespace-pre-wrap text-sm">{review.analysis.body}</p><details className="mt-3"><summary className="text-sm underline">Evidence</summary><pre className="overflow-x-auto whitespace-pre-wrap text-xs">{JSON.stringify(review.analysis.evidence, null, 2)}</pre></details></article>}
     </div>}
   </section>;

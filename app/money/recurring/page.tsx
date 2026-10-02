@@ -92,7 +92,7 @@ export default async function RecurringPage() {
       </header>
 
       <p className="max-w-3xl text-sm text-slate-500">
-        Estimated patterns inferred from up to {MAX_TRANSACTIONS.toLocaleString()} posted transactions.
+        Estimated patterns inferred from up to {MAX_TRANSACTIONS.toLocaleString(workspace.locale)} posted transactions.
         Nothing here affects your forecast until you confirm it. Confirming creates one confirmed
         financial assumption used by the deterministic forecast; declining disables it.
       </p>

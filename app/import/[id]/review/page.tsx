@@ -54,7 +54,7 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
       {reviewHistory.error && <p role="alert">Could not load review history.</p>}
       {reviewHistory.data?.map(event => {
         const transaction = event.transactions as unknown as { version: number };
-        return <article className="rounded-lg border border-border p-3 text-sm" key={event.id}><p>Reviewed {new Date(event.created_at).toLocaleString()}{event.undone ? " · undone" : ""}</p>
+        return <article className="rounded-lg border border-border p-3 text-sm" key={event.id}><p>Reviewed {new Date(event.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{event.undone ? " · undone" : ""}</p>
           {!event.undone && <ClassificationActions importId={id} transactionId={event.transaction_id} version={transaction.version} eventId={event.id} />}
         </article>;
       })}

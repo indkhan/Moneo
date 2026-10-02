@@ -34,7 +34,7 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<{
     <section className="min-w-0 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6"><h2 className="border-b border-border pb-4 text-xl font-semibold tracking-tight text-foreground">{selected?.title ?? "New conversation"}</h2>
       <div className="mt-5 space-y-3" aria-live="polite">{messages?.map(item => <article key={item.id} className={`rounded-xl p-4 ${item.role === "user" ? "bg-muted" : "border border-border bg-background"}`}><p className="text-xs font-semibold uppercase text-muted-foreground">{item.role}</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{renderMessage(item.content)}</p></article>)}</div>
       <ChatForm conversationId={selected?.id ?? crypto.randomUUID()} />
-      <AnalysisPanel />
+      <AnalysisPanel locale={workspace.locale} timezone={workspace.timezone} />
     </section>
   </main>;
 }

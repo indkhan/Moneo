@@ -137,7 +137,7 @@ export default async function NotificationsPage() {
         <ul className="mt-6 space-y-3">
           {visible.map((notice) => (
             <li key={notice.key} className="rounded-xl border border-border bg-card p-5 shadow-sm">
-              <p className="text-xs text-muted-foreground">{new Date(notice.at).toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">{new Date(notice.at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}</p>
               <h2 className="mt-1 font-medium">{notice.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{notice.detail}</p>
               <Link href={notice.href} className="mt-2 inline-block text-sm underline">
