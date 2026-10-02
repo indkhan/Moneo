@@ -28,6 +28,8 @@ body {
   outline-offset: 2px;
 }
 
+fieldset { min-width: 0; }
+
 html[data-theme="dark"] {
   color-scheme: dark;
   --color-background: #101827;
@@ -44,3 +46,4 @@ html[data-theme="dark"] {
 }
 
 html[data-theme="dark"] .bg-white { background-color: var(--color-card); }
+html[data-theme="dark"] .bg-brand.text-white { color: var(--color-primary-foreground); }

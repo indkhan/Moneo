@@ -15,7 +15,7 @@ export default async function SettingsPage() {
   let models: { id: string; name: string }[] = [], catalogueError: string | undefined;
   try { models = await listFreeModels(); } catch (error) { catalogueError = error instanceof Error ? error.message : "Model availability could not be checked"; }
   return <main className="mx-auto max-w-4xl space-y-6 px-4 py-8 sm:px-6">
-    <div><h1 className="text-3xl font-semibold tracking-tight">Settings</h1><p className="mt-2 text-muted-foreground">Your private workspace · {user.email ?? "Signed in"}</p></div>
+    <div><h1 className="text-3xl font-semibold tracking-tight">Settings</h1><p className="mt-2 break-words text-muted-foreground">Your private workspace · {user.email ?? "Signed in"}</p></div>
     <SettingsForm settings={settings} currency={workspace.display_currency} models={models} catalogueError={catalogueError}
       defaultModel={process.env.OPENROUTER_MODEL ?? "qwen/qwen3.8-27b:free"} />
     <section className="rounded-xl border border-border bg-card p-5"><h2 className="font-semibold">Scheduled summaries</h2>

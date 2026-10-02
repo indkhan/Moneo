@@ -80,6 +80,9 @@ test("scenario comparison, edits, removal and undo preserve actual cash", async 
     await page.setViewportSize({ width: 360, height: 780 });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: ".qa/plan-mobile-dark.png", fullPage: true });
+    await page.goto("/plan?horizon=30.5");
+    await expect(page.getByRole("alert")).toContainText("Choose a whole forecast horizon");
+    await expect(page.getByRole("spinbutton", { name: "Horizon in days" })).toHaveValue("30");
     expect((await db`select amount_minor::text from public.balance_snapshots where workspace_id=${workspace}`)[0].amount_minor).toBe("100000");
     expect((await db`select count(*)::int as count from public.transactions where workspace_id=${workspace}`)[0].count).toBe(0);
     expect((await db`select count(*)::int as count from public.goal_allocations where workspace_id=${workspace}`)[0].count).toBe(0);

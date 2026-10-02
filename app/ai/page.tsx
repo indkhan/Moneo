@@ -23,8 +23,8 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<{
     .eq("workspace_id", workspace.id).eq("conversation_id", selected.id)
     .order("created_at").limit(100) : { data: [] };
 
-  return <main className="mx-auto grid max-w-6xl gap-5 px-5 py-8 lg:grid-cols-[15rem_minmax(0,1fr)] lg:px-8">
-    <aside className="h-fit rounded-xl border border-border bg-card p-4 shadow-sm"><h1 className="text-3xl font-semibold tracking-tight text-foreground">AI</h1>
+  return <main className="mx-auto grid max-w-6xl grid-cols-1 gap-5 px-5 py-8 lg:grid-cols-[15rem_minmax(0,1fr)] lg:px-8">
+    <aside className="h-fit min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm"><h1 className="text-3xl font-semibold tracking-tight text-foreground">AI</h1>
       <Link href="/ai?conversation=new" className="mt-5 block rounded-lg bg-brand px-3 py-2.5 text-center text-sm font-semibold text-white hover:opacity-90">New conversation</Link>
       <nav aria-label="Conversations" className="mt-5 space-y-1">{threads?.map(thread => <Link key={thread.id} href={`/ai?conversation=${thread.id}`} aria-current={selected?.id === thread.id ? "page" : undefined} className={`block truncate rounded-lg px-3 py-2 text-sm ${selected?.id === thread.id ? "bg-muted font-medium text-brand" : "text-muted-foreground hover:bg-muted"}`}>{thread.title}</Link>)}</nav>
       <Link href="/ai/library" className="mt-5 block text-sm underline">Saved tools and analyses</Link>

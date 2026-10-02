@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import { AI_DATA_SCOPES, INSIGHT_TYPES, type WorkspaceSettings } from "@/lib/settings";
 import { saveSettings } from "./actions";
 
-const input = "min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground";
+const input = "min-h-10 min-w-0 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground";
 const scopeDescriptions = { accounts: "Account names and dated balances", transactions: "Booked transactions, categories and spending evidence",
   planning: "Goals, budgets and forecast assumptions", imports: "Headers and up to eight source rows for import mapping" };
 

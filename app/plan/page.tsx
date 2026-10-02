@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { z } from "zod";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { evaluatePlan } from "@/lib/finance/model";
@@ -40,7 +41,8 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   try { context = await requireWorkspace(); } catch { redirect("/login"); }
   const { supabase, workspace } = context;
   const params = await searchParams;
-  const horizon = Math.min(365, Math.max(1, Number(params.horizon) || 30));
+  const requestedHorizon = z.coerce.number().int().min(1).max(365).safeParse(params.horizon ?? 30);
+  const horizon = requestedHorizon.success ? requestedHorizon.data : 30;
   const [{ data: goals }, { data: allocations }, { data: accounts }, { data: assumptions, error: assumptionsError }, { data: scenarios }] = await Promise.all([
     supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date, priority, status, notes, version, planned_monthly_minor::text, contribution_starts_on, recorded_saved_minor::text, saved_as_of")
       .eq("workspace_id", workspace.id).order("priority").order("created_at", { ascending: false }),
@@ -60,6 +62,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const monthlyContributions = (goals ?? []).filter(goal => goal.status === "active" && goal.currency_code === currency).reduce((sum, goal) => sum + BigInt(goal.planned_monthly_minor), 0n);
 
   return <main className="mx-auto max-w-7xl space-y-7 px-4 py-8 text-foreground sm:px-6 lg:px-10">
+    {!requestedHorizon.success && <p role="alert">Choose a whole forecast horizon from 1 to 365 days. Showing 30 days.</p>}
     <header className="flex flex-wrap items-end justify-between gap-4">
       <div><p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-brand">Financial planning</p><h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Financial horizon &amp; runway</h1><p className="mt-2 text-sm text-muted-foreground">Explore your forecast, cash reservations, and changes to your plan.</p></div>
       <div className="flex flex-wrap gap-2"><Link href="/plan/spending" className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted">Spending plans <ArrowRight className="ml-1 inline size-4" /></Link><Link href="/plan/currency" className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted">Currency <ArrowRight className="ml-1 inline size-4" /></Link></div>
