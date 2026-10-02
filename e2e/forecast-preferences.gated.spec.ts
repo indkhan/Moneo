@@ -9,9 +9,13 @@ test("forecast buffer and case preferences persist and undo as assumptions", asy
   const section = page.locator("section").filter({ has: page.getByRole("heading", { name: "Forecast preferences", exact: true }) });
   const previousBuffer = await section.getByLabel("Safety buffer", { exact: true }).inputValue();
   const previousUncertainty = await section.getByLabel("Uncertainty (basis points; 1000 = 10%)", { exact: true }).inputValue();
+  const version = section.locator('input[name="version"]').first();
+  const previousVersion = await version.inputValue();
   await section.getByLabel("Safety buffer", { exact: true }).fill("12.34");
   await section.getByLabel("Uncertainty (basis points; 1000 = 10%)", { exact: true }).fill("0");
   await section.getByRole("button", { name: "Save forecast preferences", exact: true }).click();
+  // The typed value already matches; wait for the persisted revision before reloading.
+  await expect(version).not.toHaveValue(previousVersion, { timeout: 30_000 });
   await expect(section.getByLabel("Safety buffer", { exact: true })).toHaveValue("12.34", { timeout: 30_000 });
   await page.reload();
   await expect(section.getByLabel("Safety buffer", { exact: true })).toHaveValue("12.34");
