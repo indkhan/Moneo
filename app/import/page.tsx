@@ -19,6 +19,7 @@ type Preview = {
 };
 type Inspection = { headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string; warnings?: string[] };
 type ImportStatus = { id: string; filename: string; status: string; run_version: number; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; classification_review_rows?: number; rejected_rows: number; error: string | null; created_at: string };
+type HistoryUpdate = Partial<ImportStatus> & Pick<ImportStatus, "id" | "status" | "run_version">;
 type UndoPreview = { import_id: string; filename: string; status: string; deletable_transactions: number; deletable_balances: number; blockers: string[]; safe: boolean };
 
 function formatMinor(value: string, currency: string) {
@@ -38,26 +39,53 @@ export default function ImportPage() {
   const [undoId, setUndoId] = useState<string | null>(null);
   const [preview, setPreview] = useState<UndoPreview | null>(null);
   const controlRequests = useRef(new Map<string, string>());
+  const historyRequest = useRef(0);
+  const historyApplied = useRef(new Map<string, number>());
   const file = files[index];
 
+  function mergeHistory(updates: HistoryUpdate[], requestOrder: number) {
+    setHistory((current) => {
+      const byId = new Map(current.map((item) => [item.id, item]));
+      for (const update of updates) {
+        const previous = byId.get(update.id);
+        const sameRun = previous && update.run_version === previous.run_version;
+        const stage = (status: string) => ["pending", "queued", "running"].indexOf(status);
+        const previousStage = previous ? stage(previous.status) : -1;
+        const nextStage = stage(update.status);
+        const regresses = previous && (previousStage < 0
+          ? update.status !== previous.status && !(previous.status === "completed" && update.status === "undone")
+          : nextStage >= 0 && nextStage < previousStage);
+        if (previous && (update.run_version < previous.run_version || (sameRun &&
+          (regresses || (update.status === previous.status && requestOrder < (historyApplied.current.get(update.id) ?? 0)))))) continue;
+        if (!previous && !update.filename) continue;
+        byId.set(update.id, { ...previous, ...update } as ImportStatus);
+        historyApplied.current.set(update.id, Math.max(requestOrder, historyApplied.current.get(update.id) ?? 0));
+      }
+      return [...byId.values()].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 30);
+    });
+  }
+
   async function loadHistory() {
+    const requestOrder = ++historyRequest.current;
     try {
       const response = await fetch("/api/imports", { cache: "no-store" });
       if (!response.ok) throw new Error("History unavailable");
-      setHistory(await response.json());
+      mergeHistory(await response.json(), requestOrder);
       setError((current) => current === "Import history is unavailable. Try again." ? "" : current);
     } catch { setError("Import history is unavailable. Try again."); }
   }
 
   useEffect(() => {
+    const requestOrder = ++historyRequest.current;
     fetch("/api/imports", { cache: "no-store" }).then(async (response) => {
       if (!response.ok) throw new Error("History unavailable");
-      setHistory(await response.json());
+      mergeHistory(await response.json(), requestOrder);
     }).catch(() => setError("Import history is unavailable. Try again."));
   }, []);
   useEffect(() => {
     if (!history.some((item) => item.status === "queued" || item.status === "running")) return;
     const timer = setInterval(async () => {
+      const requestOrder = ++historyRequest.current;
       try {
       const active = history.filter((item) => item.status === "queued" || item.status === "running");
       const updates = await Promise.all(active.map(async (item) => {
@@ -65,7 +93,7 @@ export default function ImportPage() {
         if (!response.ok) throw new Error("History unavailable");
         return await response.json() as ImportStatus;
       }));
-      setHistory((current) => current.map((item) => updates.find((update) => update.id === item.id) ?? item));
+      mergeHistory(updates, requestOrder);
       } catch { setError("Import history is unavailable. Try again."); }
     }, 3000);
     return () => clearInterval(timer);
@@ -138,6 +166,7 @@ export default function ImportPage() {
         body: JSON.stringify({ action, requestId: controlRequests.current.get(key) }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Retry failed");
+      mergeHistory([{ id: item.id, status: result.status, run_version: result.runVersion, total_rows: result.totalRows, error: null }], ++historyRequest.current);
       await loadHistory();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Retry failed");
