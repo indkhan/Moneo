@@ -7,7 +7,7 @@ import postgres from "postgres";
 
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires real disposable Supabase authentication, deployed051 and database fixtures");
 
-test("durable import Stop, Resume, byte deduplication and undo preserve exact sources", async ({ browser }) => {
+test("durable import Stop, Resume, byte deduplication and undo preserve exact sources", async ({ browser, baseURL }) => {
   test.setTimeout(240_000);
   const url=process.env.NEXT_PUBLIC_SUPABASE_URL!, connection=new URL(process.env.SUPABASE_DB_URL!);
   const project=new URL(url).hostname.split(".")[0];
@@ -21,7 +21,7 @@ test("durable import Stop, Resume, byte deduplication and undo preserve exact so
   const [{id:workspace}]=await db`select id from public.workspaces where owner_id=${user}`;
   const recovery=`.qa/import-control-${user}.json`;
   mkdirSync(".qa",{recursive:true});writeFileSync(recovery,JSON.stringify({project,user,workspace}));
-  const context=await browser.newContext({baseURL:"http://localhost:3000"});
+  const context=await browser.newContext({baseURL});
   try {
     const ready=await db`select to_regprocedure('public.control_import(uuid,text,uuid)') is not null as ready`;
     expect(ready[0].ready,"051 must be deployed; a missing required gate is not a pass").toBe(true);
@@ -95,13 +95,21 @@ test("durable import Stop, Resume, byte deduplication and undo preserve exact so
     expect(await originalFile.data!.text()).toBe(csv);
   } finally {
     await context.close().catch(()=>{});
+    // Cancel under the same ownership/version lock as ingestion before removing any sources.
+    // Once committed, every old worker's next write is rejected at the database boundary.
+    await db.begin(async tx=>{
+      await tx`select set_config('request.jwt.claim.sub',${user},true)`;
+      const active=await tx`select id from public.imports where workspace_id=${workspace} and status in('pending','queued','running')`;
+      for(const row of active)await tx`select public.control_import(${row.id},'cancel',${randomUUID()})`;
+      const reviews=await tx`select id from public.background_jobs where workspace_id=${workspace} and kind='financial_review' and status in('queued','running')`;
+      for(const row of reviews)await tx`select public.cancel_financial_review(${row.id})`;
+    });
     const files=await db`select storage_path from public.imports where workspace_id=${workspace}`;
     for(const file of files)expect(file.storage_path.startsWith(`${workspace}/`)).toBe(true);
     const stored=await admin.storage.from("imports").list(workspace,{limit:1000});expect(stored.error).toBeNull();
     const paths=(stored.data??[]).map(file=>{expect(file.name).toMatch(/^[a-f0-9]{64}\.csv$/);return `${workspace}/${file.name}`;});
     if(paths.length){const removed=await admin.storage.from("imports").remove(paths);expect(removed.error).toBeNull();}
     await db.begin(async tx=>{
-      await tx`update public.background_jobs set cancel_requested=true,status='canceled' where workspace_id=${workspace} and status in('queued','running')`;
       await tx`delete from public.transaction_sources where source_transaction_id in(select id from public.source_transactions where workspace_id=${workspace})`;
       for(const table of ["saved_analyses","background_jobs","import_control_events","balance_snapshots","transactions","source_transactions","imports","data_sources","accounts","merchants","categories"])await tx`delete from ${tx("public."+table)} where workspace_id=${workspace}`;
       await tx`delete from public.workspaces where id=${workspace} and owner_id=${user}`;
