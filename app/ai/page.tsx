@@ -5,9 +5,9 @@ import { ChatForm } from "./chat-form";
 import { AnalysisPanel } from "./analysis-panel";
 
 function renderMessage(content: string) {
-  const linkPattern = /(\/money\/transactions\?transaction=[0-9a-f-]{36})/gi;
-  return content.split(linkPattern).map((part, index) => part.startsWith("/money/transactions?transaction=")
-    ? <Link key={index} href={part} className="underline">Open transaction and Undo</Link>
+  const linkPattern = /(\/money\/transactions\?transaction=[0-9a-f-]{36}|\/ai\/library\/[0-9a-f-]{36})/gi;
+  return content.split(linkPattern).map((part, index) => /^\/(money|ai)\//.test(part)
+    ? <Link key={index} href={part} className="underline">{part.startsWith("/ai/") ? "Open saved tool" : "Open transaction and Undo"}</Link>
     : part);
 }
 

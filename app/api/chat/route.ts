@@ -58,6 +58,8 @@ export async function POST(request: Request) {
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
   const canStartReview = canInvestigate && isExplicitReviewRequest(message);
+  const canCreateArtifact = /(?:^|[.!?]\s+)(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:create|build|make)\b[^.!?]*\b(?:chart|artifact|tool|dashboard|tracker|planner)\b/i.test(message);
+  let createdArtifact: { id: string; href: string } | undefined;
     const model = await modelForSettings(settings);
     const result = await generateText({
       model,
@@ -67,6 +69,20 @@ export async function POST(request: Request) {
       messages: modelMessages,
       stopWhen: stepCountIs(4),
       tools: {
+        ...(canCreateArtifact ? { artifacts_create: tool({
+          description: "Create the trusted financial tool explicitly requested by the user and return its link. Spending Explorer provides a live spending chart; Trip Planner compares a trip cost; Goal Tracker shows savings goals. These are existing templates, not generated custom code. Do not claim unsupported account/category comparisons.",
+          inputSchema: z.object({ kind: z.enum(["spending_explorer", "trip_planner", "goal_tracker"]), name: z.string().trim().min(1).max(120) }).strict(),
+          execute: async ({ kind, name }) => {
+            if (request.signal.aborted) throw new Error("Request canceled");
+            if (createdArtifact) return createdArtifact;
+            const latest = await requireWorkspace();
+            if (latest.workspace.id !== workspace.id) throw new Error("Workspace changed");
+            const { data, error } = await latest.supabase.rpc("create_trusted_artifact", { p_kind: kind, p_name: name });
+            if (error || !data?.id) throw new Error(error?.message ?? "Artifact creation failed");
+            createdArtifact = { id: data.id, href: `/ai/library/${data.id}` };
+            return createdArtifact;
+          },
+        }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { transactions_previewCategory: tool({ description: "Read-only impact preview for exact selected transaction UUIDs and an existing category UUID. Returns a link where the user reviews current entries and explicitly confirms an audited bulk change. Never changes any transaction.", inputSchema: categoryPreviewSchema, execute: async ({ transactionIds, categoryId }) => {
           const latest = await requireWorkspace();
           if (latest.workspace.id !== workspace.id || !latest.settings.ai_data_scopes.includes("transactions")) throw new Error("Transaction permission unavailable");
