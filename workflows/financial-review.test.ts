@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { financialReview } from "./financial-review";
 import { generateText } from "ai";
+import { modelForSettings } from "@/lib/ai/provider";
 
 const fixture = vi.hoisted(() => ({ scheduled: true, disabledAt: 1, loads: 0, finishStatus: "completed", writes: [] as { table: string; value: Record<string, unknown> }[] }));
 vi.mock("@/lib/finance/review-loader", () => ({ loadFinancialReviewEvidence: async () => ({ period: { from: "2026-07-05", to: "2026-10-02" }, planning: { unavailable: "Disabled" } }) }));
@@ -47,5 +48,6 @@ it("bounds provider attempts and marks a token-limited saved review as incomplet
   vi.mocked(generateText).mockResolvedValueOnce({ text: "Partial review", finishReason: "length" } as unknown as Awaited<ReturnType<typeof generateText>>);
   await financialReview("job", "workspace");
   expect(vi.mocked(generateText).mock.calls[0][0]).toMatchObject({ maxRetries: 0, abortSignal: expect.any(AbortSignal) });
+  expect(modelForSettings).toHaveBeenCalledWith(expect.anything(), { effort: "minimal", exclude: true });
   expect(fixture.writes.find(write => write.table === "finish_financial_review")?.value.p_body).toContain("Incomplete review");
 });

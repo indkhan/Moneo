@@ -73,7 +73,7 @@ async function writeReview(jobId: string, workspaceId: string, evidence: Awaited
     if (!await summaryStillEnabled(db, jobId, workspaceId, settings, scheduled)) return null;
     requireAiScope(settings, "accounts", "transactions");
     if (!("unavailable" in evidence.planning)) requireAiScope(settings, "planning");
-    const result = await generateText({ model: await modelForSettings(settings), maxOutputTokens: 2200, maxRetries: 0, abortSignal: AbortSignal.timeout(90_000),
+    const result = await generateText({ model: await modelForSettings(settings, { effort: "minimal", exclude: true }), maxOutputTokens: 4000, maxRetries: 0, abortSignal: AbortSignal.timeout(90_000),
       system: "Write a personal-finance review using only supplied dated evidence. Cover period cashflow, category and merchant changes, budget pressure, confirmed obligations, goals, wealth/debt and forecast when available. Cite exact currency, period and supplied internal source links for numerical claims. Distinguish recorded savings from virtual reservations, booked balances from available funds, historical valuations from current net worth, and assumptions from forecasts. Call unavailable and partial evidence out explicitly. Group changes show evidence, not causes; never invent explanations or financial data. Offer conditional, reviewable next steps rather than certainty.",
       prompt: JSON.stringify(evidence) });
     if (!result.text.trim()) throw new Error("AI returned an empty review");
