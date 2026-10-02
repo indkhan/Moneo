@@ -33,7 +33,9 @@ export async function spendingForArtifact(artifactId: string, query: string, per
   nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
   const monthEnd = new Date(nextMonth.getTime() - 86400000).toISOString().slice(0, 10);
   const to = monthEnd < today ? monthEnd : today;
-  const transactions = [];
+  const transactions: { id: string; account_id: string; posted_on: string; description: string; amount_minor: string;
+    currency_code: string; category_id: string | null; status: CashflowTransaction["status"];
+    kind: CashflowTransaction["kind"]; review_reasons: string[] }[] = [];
   for (let offset = 0; ; offset += 1000) {
     let rows = supabase.from("effective_transactions")
       .select("id, account_id, posted_on, description, amount_minor::text, currency_code, category_id, status, kind, review_reasons")
