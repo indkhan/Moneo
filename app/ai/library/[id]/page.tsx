@@ -51,17 +51,18 @@ export default async function ArtifactPage({ params, searchParams }: {
   let initialParams: Record<string, number | string> = {};
   if (isCalculator && version) {
     try {
-      const built = await buildCalculatorSnapshot(id, kind, {
-        query: q.slice(0, 100),
-        costMinor,
-        sdk: manifestParsed.data.sdk,
-      });
-      snapshot = built.snapshot;
       const defaults = defaultParams(manifestParsed.data);
       initialParams = { ...defaults };
       for (const [k, v] of Object.entries(stateValue)) {
         if (k in defaults && typeof v === typeof defaults[k]) initialParams[k] = v as number | string;
       }
+      const built = await buildCalculatorSnapshot(id, kind, {
+        query: q.slice(0, 100),
+        month: typeof initialParams.month === "string" ? initialParams.month : undefined,
+        costMinor,
+        sdk: manifestParsed.data.sdk,
+      });
+      snapshot = built.snapshot;
       // Trip cost also flows from legacy trip state for compatibility.
       if (kind === "trip_planner" && "costMinor" in defaults) {
         initialParams.costMinor = Number(costMinor);

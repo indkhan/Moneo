@@ -64,6 +64,7 @@ describe("calculator financial snapshots", () => {
       ],
     } as Awaited<ReturnType<typeof spendingForArtifact>>);
     const snapshot = (await buildCalculatorSnapshot("a", "spending_explorer")).snapshot;
+    expect(snapshot).toMatchObject({ from: "2026-09-01", to: "2026-09-30" });
     expect("daily" in snapshot && snapshot.daily).toHaveLength(30);
     if ("daily" in snapshot) {
       expect(snapshot.daily?.[0]).toEqual({ date: "2026-09-01", spendingMinor: "1000" });

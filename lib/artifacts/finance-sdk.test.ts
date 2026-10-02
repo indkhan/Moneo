@@ -62,5 +62,8 @@ describe("artifact spending coverage", () => {
     expect(filters).toContainEqual(["ilike", "description", "%Shop%"]);
     expect(tables).toContain("effective_transactions");
     expect(tables).not.toContain("transactions");
+    const september = await spendingForArtifact("a", "Shop", "spending", "2026-09");
+    expect(september).toMatchObject({ from: "2026-09-01", to: "2026-09-30" });
+    await expect(spendingForArtifact("a", "Shop", "spending", "2026-99")).rejects.toThrow();
   });
 });

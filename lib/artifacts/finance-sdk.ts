@@ -4,6 +4,7 @@ import { evaluatePlan } from "@/lib/finance/model";
 import { getBalances } from "@/lib/finance/tools";
 import { calendarDate } from "@/lib/finance/calendar";
 import { requireAiScope } from "@/lib/settings";
+import { z } from "zod";
 
 async function requirePermission(artifactId: string, permission: string) {
   const { supabase, workspace, settings } = await requireWorkspace();
@@ -23,10 +24,15 @@ export async function balancesForArtifact(artifactId: string) {
   return { currency: workspace.display_currency, balances: await getBalances() };
 }
 
-export async function spendingForArtifact(artifactId: string, query: string, permission: "spending" | "cashflow" = "spending") {
+export async function spendingForArtifact(artifactId: string, query: string, permission: "spending" | "cashflow" = "spending", month?: string) {
   const { supabase, workspace } = await requirePermission(artifactId, permission);
-  const to = calendarDate(new Date(), workspace.timezone);
-  const from = `${to.slice(0, 7)}-01`;
+  const today = calendarDate(new Date(), workspace.timezone);
+  const from = z.iso.date().parse(`${month ?? today.slice(0, 7)}-01`);
+  if (from > today) throw new Error("Choose a current or past month");
+  const nextMonth = new Date(`${from}T00:00:00Z`);
+  nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
+  const monthEnd = new Date(nextMonth.getTime() - 86400000).toISOString().slice(0, 10);
+  const to = monthEnd < today ? monthEnd : today;
   const transactions = [];
   for (let offset = 0; ; offset += 1000) {
     let rows = supabase.from("effective_transactions")

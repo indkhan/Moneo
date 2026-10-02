@@ -42,6 +42,7 @@ export function CalculatorPanel({
   const runId = useRef(0);
   const stopped = useRef(false);
   const activeRun = useRef<AbortController | null>(null);
+  const monthChanged = typeof params.month === "string" && params.month !== initialParams.month;
 
   const paramEntries = useMemo(() => Object.entries(initialParams), [initialParams]);
 
@@ -55,6 +56,11 @@ export function CalculatorPanel({
       setStatus("running");
       setError("");
       try {
+        if (monthChanged) {
+          setOutput({ unavailable: "Save inputs to load financial evidence for the selected month." });
+          setStatus("done");
+          return;
+        }
         const result = (await runIsolatedArtifact(source, { snapshot, params }, controller.signal)) as CalculatorOutput;
         if (stopped.current || runId.current !== id) return;
         const outputErrors = checkOutputShape(result);
@@ -73,7 +79,7 @@ export function CalculatorPanel({
       controller.abort();
       if (activeRun.current === controller) activeRun.current = null;
     };
-  }, [source, snapshot, params]);
+  }, [source, snapshot, params, monthChanged]);
 
   function stop() {
     stopped.current = true;

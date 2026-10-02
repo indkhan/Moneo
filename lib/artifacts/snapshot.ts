@@ -16,6 +16,8 @@ export type CalculatorSnapshot =
   | {
       currency: string;
       incomeMinor?: string;
+      from?: string;
+      to?: string;
       spendingMinor?: string;
       netMinor?: string;
       daily?: { date: string; spendingMinor: string }[];
@@ -38,7 +40,7 @@ export type CalculatorSnapshot =
 export async function buildCalculatorSnapshot(
   artifactId: string,
   kind: ArtifactKind,
-  opts?: { query?: string; costMinor?: bigint; sdk?: string[]; spendingOperation?: "spending" | "cashflow" },
+  opts?: { query?: string; month?: string; costMinor?: bigint; sdk?: string[]; spendingOperation?: "spending" | "cashflow" },
 ): Promise<{ snapshot: CalculatorSnapshot; stateParams: Record<string, number | string> }> {
   if (kind.startsWith("custom_")) {
     const operations = [...new Set(opts?.sdk ?? [])];
@@ -68,7 +70,7 @@ export async function buildCalculatorSnapshot(
     return { snapshot, stateParams: {} };
   }
   if (kind === "spending_explorer") {
-    const data = await spendingForArtifact(artifactId, opts?.query ?? "", opts?.spendingOperation ?? "spending");
+    const data = await spendingForArtifact(artifactId, opts?.query ?? "", opts?.spendingOperation ?? "spending", opts?.month);
     if ("unavailable" in data.summary) {
       return {
         snapshot: { currency: data.currency, unavailable: data.summary.unavailable },
@@ -78,6 +80,8 @@ export async function buildCalculatorSnapshot(
     return {
       snapshot: {
         currency: data.currency,
+        from: data.from,
+        to: data.to,
         incomeMinor: data.summary.incomeMinor,
         spendingMinor: data.summary.spendingMinor,
         netMinor: data.summary.netMinor,

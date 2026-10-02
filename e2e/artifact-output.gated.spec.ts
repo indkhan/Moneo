@@ -18,3 +18,24 @@ test("data-dependent live output is rejected without losing the working version"
   await output.getByLabel("size",{exact:true}).fill("1");
   await expect(output.getByText("x",{exact:true})).toBeVisible();
 });
+
+test("saved calculator months load matching evidence and unsaved changes cannot relabel it", async ({ page }) => {
+  await page.goto("/ai/library");
+  const create = page.locator("form").filter({ has: page.getByLabel("Custom Tracker", { exact: true }) });
+  await create.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page).toHaveURL(/\/ai\/library\/[0-9a-f-]{36}$/);
+  const id = new URL(page.url()).pathname.split("/").at(-1)!;
+  const response = await page.request.post(`/api/artifacts/${id}/versions`, { data: {
+    source: `(input) => { const c = input.snapshot.cashflow; if (!c || c.unavailable) return { unavailable: "No cashflow" }; return { summary: (c.from || "Period") + " to " + (c.to || "end"), numbers: { spendingMinor: c.spendingMinor } }; }`,
+    manifest: { kind: "custom_tracker", runtime: "quickjs-calculator-v1", sdk: ["cashflow"], params: { month: { type: "string", default: "2026-09", maxLength: 7 } }, renderer: "trusted" },
+  } });
+  expect(response.ok(), await response.text()).toBe(true);
+  await page.reload();
+  const output = page.getByRole("region", { name: "Generated calculator output" });
+  await expect(output).toContainText("2026-09-01 to 2026-09-30");
+  await output.getByLabel("month", { exact: true }).fill("2026-08");
+  await expect(output).toContainText("Save inputs to load financial evidence for the selected month.");
+  await expect(output).not.toContainText("2026-09-01 to 2026-09-30");
+  await output.getByRole("button", { name: "Save inputs", exact: true }).click();
+  await expect(output).toContainText("2026-08-01 to 2026-08-31");
+});
