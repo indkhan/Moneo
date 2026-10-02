@@ -46,6 +46,14 @@ it("artifact questions do not expose a creation tool", async () => {
   await POST(request("How do I create a spending chart?"));
   expect(vi.mocked(generateText).mock.calls[0][0].tools).not.toHaveProperty("artifacts_create");
 });
+it("offers import status separately from financial balance freshness and respects import scope", async () => {
+  await POST(request("Have my imports completed?"));
+  expect(vi.mocked(generateText).mock.calls[0][0].tools).toHaveProperty("imports_status");
+  const context = await requireWorkspace();
+  vi.mocked(requireWorkspace).mockResolvedValue({ ...context, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: ["accounts", "transactions", "planning"] } });
+  await POST(request("Have my imports completed?"));
+  expect(vi.mocked(generateText).mock.calls[1][0].tools).not.toHaveProperty("imports_status");
+});
 it("broad category requests offer only an owned-selection preview, never an immediate write", async () => {
   await POST(request("Categorize all grocery transactions as Food"));
   const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, { execute: (input: unknown) => Promise<unknown> }>;

@@ -69,6 +69,18 @@ export async function POST(request: Request) {
       messages: modelMessages,
       stopWhen: stepCountIs(4),
       tools: {
+        ...(settings.ai_data_scopes.includes("imports") ? { imports_status: tool({
+          description: "Read recorded import workflow status and row counts. Completed means processing finished, not that all financial classifications or current balances are complete. Use this to answer whether imports are still running; do not infer status from balance freshness or filenames.",
+          inputSchema: z.object({}).strict(), execute: async () => {
+            const latest = await requireWorkspace();
+            if (latest.workspace.id !== workspace.id || !latest.settings.ai_data_scopes.includes("imports")) throw new Error("Import permission unavailable");
+            const { data, error } = await latest.supabase.from("imports")
+              .select("id, filename, status, total_rows, new_rows, matched_rows, review_rows, classification_review_rows, rejected_rows, error")
+              .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30);
+            if (error) throw error;
+            return { imports: data ?? [], limitation: "Latest 30 recorded imports; status does not prove complete financial coverage." };
+          },
+        }) } : {}),
         ...(canCreateArtifact ? { artifacts_create: tool({
           description: "Create the trusted financial tool explicitly requested by the user and return its link. Spending Explorer provides a live spending chart; Trip Planner compares a trip cost; Goal Tracker shows savings goals. These are existing templates, not generated custom code. Do not claim unsupported account/category comparisons.",
           inputSchema: z.object({ kind: z.enum(["spending_explorer", "trip_planner", "goal_tracker"]), name: z.string().trim().min(1).max(120) }).strict(),
