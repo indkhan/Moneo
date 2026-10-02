@@ -34,6 +34,7 @@ export default function ImportPage() {
   const [mapping, setMapping] = useState<ImportMapping | null>(null);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [interpreting, setInterpreting] = useState(false);
   const [error, setError] = useState("");
   const [history, setHistory] = useState<ImportStatus[]>([]);
   const [undoId, setUndoId] = useState<string | null>(null);
@@ -43,6 +44,8 @@ export default function ImportPage() {
   const historyRequest = useRef(0);
   const historyApplied = useRef(new Map<string, number>());
   const file = files[index];
+
+  useEffect(() => () => inspectionRequest.current?.abort(), []);
 
   function mergeHistory(updates: HistoryUpdate[], requestOrder: number) {
     setHistory((current) => {
@@ -104,6 +107,7 @@ export default function ImportPage() {
     inspectionRequest.current?.abort();
     const controller = new AbortController();
     inspectionRequest.current = controller;
+    setInterpreting(true);
     setBusy(true);
     setError("");
     try {
@@ -130,14 +134,14 @@ export default function ImportPage() {
       if (inspectionRequest.current !== controller) return;
       setError(cause instanceof Error ? cause.message : "Inspection failed");
     } finally {
-      if (inspectionRequest.current === controller) { inspectionRequest.current = null; setBusy(false); }
+      if (inspectionRequest.current === controller) { inspectionRequest.current = null; setBusy(false); setInterpreting(false); }
     }
   }
 
   function cancelInspection() {
     inspectionRequest.current?.abort();
     inspectionRequest.current = null;
-    setFiles([]); setInspection(null); setMapping(null); setBusy(false); setError("");
+    setFiles([]); setInspection(null); setMapping(null); setBusy(false); setInterpreting(false); setError("");
   }
 
   async function confirm() {
@@ -274,7 +278,7 @@ export default function ImportPage() {
         </div>}
       </article>)}
     </section>
-    {busy && <p role="status">Working…{inspectionRequest.current && <button type="button" className="ml-3 underline" onClick={cancelInspection}>Cancel interpretation</button>}</p>}
+    {busy && <p role="status">Working…{interpreting && <button type="button" className="ml-3 underline" onClick={cancelInspection}>Cancel interpretation</button>}</p>}
     {error && <p role="alert" className="text-red-700">{error}</p>}
     {file && inspection && <section className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 className="text-xl font-semibold tracking-tight text-foreground">{file.name} ({index + 1} of {files.length})</h2>
