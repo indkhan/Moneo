@@ -72,7 +72,7 @@ export default function ImportPage() {
   async function loadHistory() {
     const requestOrder = ++historyRequest.current;
     try {
-      const response = await fetch("/api/imports", { cache: "no-store" });
+      const response = await fetch("/api/imports", { cache: "no-store", signal: AbortSignal.timeout(10_000) });
       if (!response.ok) throw new Error("History unavailable");
       mergeHistory(await response.json(), requestOrder);
       setError((current) => current === "Import history is unavailable. Try again." ? "" : current);
@@ -81,7 +81,7 @@ export default function ImportPage() {
 
   useEffect(() => {
     const requestOrder = ++historyRequest.current;
-    fetch("/api/imports", { cache: "no-store" }).then(async (response) => {
+    fetch("/api/imports", { cache: "no-store", signal: AbortSignal.timeout(10_000) }).then(async (response) => {
       if (!response.ok) throw new Error("History unavailable");
       mergeHistory(await response.json(), requestOrder);
     }).catch(() => setError("Import history is unavailable. Try again."));
@@ -93,7 +93,7 @@ export default function ImportPage() {
       try {
       const active = history.filter((item) => item.status === "queued" || item.status === "running");
       const updates = await Promise.all(active.map(async (item) => {
-        const response = await fetch(`/api/imports/${item.id}`, { cache: "no-store" });
+        const response = await fetch(`/api/imports/${item.id}`, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
         if (!response.ok) throw new Error("History unavailable");
         return await response.json() as ImportStatus;
       }));
@@ -152,7 +152,7 @@ export default function ImportPage() {
       const form = new FormData();
       form.set("file", file);
       form.set("mapping", JSON.stringify(mapping));
-      const response = await fetch("/api/imports/confirm", { method: "POST", body: form });
+      const response = await fetch("/api/imports/confirm", { method: "POST", body: form, signal: AbortSignal.timeout(45_000) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Import failed");
       await loadHistory();
