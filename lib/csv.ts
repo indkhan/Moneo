@@ -140,10 +140,9 @@ export function proposeAccountRoutes(rows: SourceRow[], input: unknown): ImportM
   return mappingSchema.parse({ ...mapping, accountColumn, productColumn, statusColumn, accountRoutes: [...routes.values()] });
 }
 
-function exactJsonMinor(amount: bigint): bigint {
-  // ponytail: PostgREST emits bigint as JSON numbers; use text casts if amounts exceed this ceiling.
-  if (amount > BigInt(Number.MAX_SAFE_INTEGER) || amount < -BigInt(Number.MAX_SAFE_INTEGER))
-    throw new Error("Amount exceeds exact JSON range");
+function databaseMinor(amount: bigint): bigint {
+  if (amount > 9223372036854775807n || amount < -9223372036854775808n)
+    throw new Error("Amount exceeds database range");
   return amount;
 }
 
@@ -157,7 +156,7 @@ export function parseAmountMinor(input: string, currencyCode: string = "EUR"): b
   const dot = value.lastIndexOf(".");
   if ((comma < 0 || dot < 0) && /^\d{1,3}([.,]\d{3})+$/.test(value)) {
     const whole = BigInt(value.replace(/[.,]/g, ""));
-    return exactJsonMinor(whole * (negative ? -pow10(digits) : pow10(digits)));
+    return databaseMinor(whole * (negative ? -pow10(digits) : pow10(digits)));
   }
   const decimal = comma > dot ? "," : ".";
   const parts = value.split(decimal);
@@ -168,7 +167,7 @@ export function parseAmountMinor(input: string, currencyCode: string = "EUR"): b
   const whole = parts[0].replace(/[.,]/g, "");
   const fraction = (parts[1] ?? "").padEnd(digits, "0").slice(0, digits);
   const minor = BigInt(whole) * pow10(digits) + BigInt(fraction || "0");
-  return exactJsonMinor(negative ? -minor : minor);
+  return databaseMinor(negative ? -minor : minor);
 }
 
 function pow10(exponent: number): bigint {
@@ -208,6 +207,7 @@ export type MappedRow = {
   rowNumber: number;
   postedOn: string;
   postedAt?: string;
+  calendarTimezone?: string;
   description: string;
   amountMinor: bigint;
   currencyCode: string;
@@ -337,6 +337,7 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
         accountName,
         postedOn: postedAt ? calendarDate(postedAt, mapping.calendarTimezone) : postedDate,
         ...(postedAt ? { postedAt } : {}),
+        ...(mapping.calendarTimezone ? { calendarTimezone: mapping.calendarTimezone } : {}),
         description,
         amountMinor,
         currencyCode,

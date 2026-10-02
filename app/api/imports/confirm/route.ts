@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { start } from "workflow/api";
+import { createClient } from "@supabase/supabase-js";
 import { requireWorkspace } from "@/lib/auth";
 import { parseCsv, parseExcel, validateImportConfirmation } from "@/lib/csv";
 import { importFile } from "@/workflows/import-file";
@@ -26,13 +27,13 @@ export async function POST(request: Request) {
     const hash = createHash("sha256").update(bytes).digest("hex");
     const existing = await supabase.from("imports").select("id, status").eq("workspace_id", workspace.id).eq("file_hash", hash).maybeSingle();
     if (existing.error) throw existing.error;
-    if (existing.data && existing.data.status !== "failed")
+    if (existing.data)
       return NextResponse.json({ importId: existing.data.id, status: existing.data.status });
 
     const storagePath = `${workspace.id}/${hash}.${extension}`;
     const upload = await supabase.storage.from("imports").upload(storagePath, bytes, { contentType: extension === "csv" ? "text/csv" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", upsert: false });
     if (upload.error && !/already exists|duplicate/i.test(upload.error.message)) throw upload.error;
-    let importId = existing.data?.id;
+    let importId: string | undefined;
     if (!importId) {
       const inserted = await supabase.from("imports").insert({ workspace_id: workspace.id, filename: file.name, storage_path: storagePath, file_hash: hash, status: "queued", mapping, total_rows: rows.length }).select("id").single();
       if (inserted.error) {
@@ -43,10 +44,13 @@ export async function POST(request: Request) {
       }
       importId = inserted.data.id;
     }
+    if (!importId) throw new Error("Import identity was not persisted");
     try {
-      await start(importFile, [importId, workspace.id, rows.length]);
+      await start(importFile, [importId, workspace.id, rows.length, 1]);
     } catch (error) {
-      await supabase.from("imports").update({ status: "failed", error: String(error) }).eq("id", importId).eq("workspace_id", workspace.id);
+      const service = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+      const failed = await service.rpc("finish_import_run", { p_import_id: importId, p_workspace_id: workspace.id, p_run_version: 1, p_error: String(error) });
+      if (failed.error) throw failed.error;
       throw error;
     }
     return NextResponse.json({ importId, status: "queued" });

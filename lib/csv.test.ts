@@ -92,7 +92,9 @@ describe("financial import parsing", () => {
     expect(parseAmountMinor("0.01")).toBe(1n);
     expect(parseAmountMinor("1,234")).toBe(123400n);
     expect(() => parseAmountMinor("1.2345")).toThrow();
-    expect(() => parseAmountMinor("90071992547409.92", "EUR")).toThrow("Amount exceeds exact JSON range");
+    expect(parseAmountMinor("90071992547409.92", "EUR")).toBe(9007199254740992n);
+    expect(parseAmountMinor("-92233720368547758.08", "EUR")).toBe(-9223372036854775808n);
+    expect(() => parseAmountMinor("92233720368547758.08", "EUR")).toThrow("database range");
   });
 
   it("parses EUR (2 digits) and JPY (0 digits) correctly", () => {

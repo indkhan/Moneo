@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ImportMapping, SourceRow } from "@/lib/csv";
 import { formatMoney } from "@/lib/finance/format";
@@ -18,7 +18,7 @@ type Preview = {
   examples: { postedOn: string; description: string; amountMinor: string; currencyCode: string; status?: string; merchant?: string; category?: string }[];
 };
 type Inspection = { headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string; warnings?: string[] };
-type ImportStatus = { id: string; filename: string; status: string; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; classification_review_rows?: number; rejected_rows: number; error: string | null; created_at: string };
+type ImportStatus = { id: string; filename: string; status: string; run_version: number; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; classification_review_rows?: number; rejected_rows: number; error: string | null; created_at: string };
 type UndoPreview = { import_id: string; filename: string; status: string; deletable_transactions: number; deletable_balances: number; blockers: string[]; safe: boolean };
 
 function formatMinor(value: string, currency: string) {
@@ -37,27 +37,36 @@ export default function ImportPage() {
   const [history, setHistory] = useState<ImportStatus[]>([]);
   const [undoId, setUndoId] = useState<string | null>(null);
   const [preview, setPreview] = useState<UndoPreview | null>(null);
+  const controlRequests = useRef(new Map<string, string>());
   const file = files[index];
 
   async function loadHistory() {
-    const response = await fetch("/api/imports", { cache: "no-store" });
-    if (response.ok) setHistory(await response.json());
+    try {
+      const response = await fetch("/api/imports", { cache: "no-store" });
+      if (!response.ok) throw new Error("History unavailable");
+      setHistory(await response.json());
+      setError((current) => current === "Import history is unavailable. Try again." ? "" : current);
+    } catch { setError("Import history is unavailable. Try again."); }
   }
 
   useEffect(() => {
     fetch("/api/imports", { cache: "no-store" }).then(async (response) => {
-      if (response.ok) setHistory(await response.json());
-    }).catch(() => {});
+      if (!response.ok) throw new Error("History unavailable");
+      setHistory(await response.json());
+    }).catch(() => setError("Import history is unavailable. Try again."));
   }, []);
   useEffect(() => {
     if (!history.some((item) => item.status === "queued" || item.status === "running")) return;
     const timer = setInterval(async () => {
+      try {
       const active = history.filter((item) => item.status === "queued" || item.status === "running");
       const updates = await Promise.all(active.map(async (item) => {
         const response = await fetch(`/api/imports/${item.id}`, { cache: "no-store" });
-        return response.ok ? await response.json() as ImportStatus : item;
+        if (!response.ok) throw new Error("History unavailable");
+        return await response.json() as ImportStatus;
       }));
       setHistory((current) => current.map((item) => updates.find((update) => update.id === item.id) ?? item));
+      } catch { setError("Import history is unavailable. Try again."); }
     }, 3000);
     return () => clearInterval(timer);
   }, [history]);
@@ -119,11 +128,14 @@ export default function ImportPage() {
     }
   }
 
-  async function retry(id: string) {
+  async function control(item: ImportStatus, action: "cancel" | "resume") {
     setBusy(true);
     setError("");
     try {
-      const response = await fetch(`/api/imports/${id}/retry`, { method: "POST" });
+      const key = `${item.id}:${item.run_version}:${action}`;
+      if (!controlRequests.current.has(key)) controlRequests.current.set(key, crypto.randomUUID());
+      const response = await fetch(`/api/imports/${item.id}/control`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, requestId: controlRequests.current.get(key) }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Retry failed");
       await loadHistory();
@@ -199,13 +211,16 @@ export default function ImportPage() {
       }} /></label>
     <section className="space-y-3" aria-label="Import history">
       <h2 className="text-xl font-semibold tracking-tight text-foreground">Import history</h2>
-      {!history.length && <p>No imports yet.</p>}
+      {error === "Import history is unavailable. Try again." && <button type="button" className="text-sm underline" onClick={() => void loadHistory()}>Reload history</button>}
+      {!history.length && error !== "Import history is unavailable. Try again." && <p>No imports yet.</p>}
       {history.map((item) => <article key={item.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.filename}</strong><span role="status" className="rounded-lg bg-muted px-2.5 py-1 text-xs font-medium capitalize text-brand">{item.status}</span></div>
         <p className="text-sm">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows} for review · {item.rejected_rows} rejected · {item.total_rows} total</p>
         {item.error && <p className="text-sm text-red-700">{item.error}</p>}
         {(item.review_rows > 0 || (item.classification_review_rows ?? 0) > 0) && <Link className="text-sm underline" href={`/import/${item.id}/review`}>Review rows{item.classification_review_rows ? ` · ${item.classification_review_rows} financial classifications` : ""}</Link>}
-        {item.status === "failed" && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void retry(item.id)}>Retry</button>}
+        {["queued", "running"].includes(item.status) && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void control(item, "cancel")}>Stop import</button>}
+        {["failed", "canceled"].includes(item.status) && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void control(item, "resume")}>{item.status === "canceled" ? "Resume import" : "Retry"}</button>}
+        {item.status === "canceled" && <p className="mt-2 text-xs text-muted-foreground">Stopped. Already imported rows and their sources remain saved; resume continues the same file without duplicating them.</p>}
         {item.status === "completed" && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void showUndo(item.id)}>Undo import</button>}
         {undoId === item.id && preview && <div className="mt-3 space-y-2 rounded bg-muted p-3 text-sm">
           <p><strong>Undo impact:</strong> remove {preview.deletable_transactions} transactions and {preview.deletable_balances} balance snapshots. Source file, import history and matched links are kept.</p>
