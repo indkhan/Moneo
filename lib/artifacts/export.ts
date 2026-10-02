@@ -1,28 +1,28 @@
 import { formatMoney } from "@/lib/finance/format";
 
-function readableEvidence(value: unknown, currency?: string, path = "Evidence"): string[] {
-  if (Array.isArray(value)) return value.flatMap((row, index) => readableEvidence(row, currency, `${path} ${index + 1}`));
+function readableEvidence(value: unknown, currency?: string, path = "Evidence", locale?: string): string[] {
+  if (Array.isArray(value)) return value.flatMap((row, index) => readableEvidence(row, currency, `${path} ${index + 1}`, locale));
   if (!value || typeof value !== "object") return [`${path}: ${value === null ? "Unknown" : String(value)}`];
   const fields = value as Record<string, unknown>;
   const code = [fields.currency, fields.currency_code, fields.currencyCode, currency].find(item => typeof item === "string" && /^[A-Z]{3}$/.test(item)) as string | undefined;
   return Object.entries(fields).flatMap(([key, item]) => {
     const label = `${path} / ${key}`;
-    if (item !== null && typeof item === "object") return readableEvidence(item, code, label);
+    if (item !== null && typeof item === "object") return readableEvidence(item, code, label, locale);
     if (/(?:Minor|_minor)$/.test(key)) {
       if (item === null) return [`${label}: Unknown`];
       if (code && typeof item === "string" && /^-?\d+$/.test(item)) {
-        try { return [`${label}: ${formatMoney(item, code)}`]; } catch { /* Retain invalid or unsupported evidence literally. */ }
+        try { return [`${label}: ${formatMoney(item, code, locale)}`]; } catch { /* Retain invalid or unsupported evidence literally. */ }
       }
     }
     return [`${label}: ${item === null ? "Unknown" : String(item)}`];
   });
 }
 
-export function calculatorExportText(title: string, version: string, output: unknown, params: Record<string, string | number>, snapshot: unknown): string {
+export function calculatorExportText(title: string, version: string, output: unknown, params: Record<string, string | number>, snapshot: unknown, locale?: string): string {
   const partial = snapshot !== null && typeof snapshot === "object" && "partial" in snapshot && snapshot.partial === true;
   return [title, version, `Exported ${new Date().toISOString()}`, "Calculator results are illustrative; dated evidence and its limitations are included below.",
     ...(partial ? ["Partial data: unreviewed classifications are excluded."] : []), "", "Result", JSON.stringify(output, null, 2), "", "Inputs", JSON.stringify(params, null, 2),
-    "", "Dated financial evidence", ...readableEvidence(snapshot), "", "Exact evidence appendix", JSON.stringify(snapshot, null, 2)].join("\n");
+    "", "Dated financial evidence", ...readableEvidence(snapshot, undefined, "Evidence", locale), "", "Exact evidence appendix", JSON.stringify(snapshot, null, 2)].join("\n");
 }
 
 export function printCalculator(text: string) {

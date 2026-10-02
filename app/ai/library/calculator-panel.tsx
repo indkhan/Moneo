@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { runIsolatedArtifact } from "@/lib/artifacts/run";
+import { checkOutputShape } from "@/lib/artifacts/output";
 import { saveCalculatorParams } from "./actions";
 import { calculatorExportText, downloadCalculatorPng, printCalculator } from "@/lib/artifacts/export";
 
@@ -24,6 +25,7 @@ export function CalculatorPanel({
   versionLabel,
   artifactId,
   title = "Financial calculator",
+  locale,
 }: {
   source: string;
   snapshot: unknown;
@@ -31,6 +33,7 @@ export function CalculatorPanel({
   versionLabel: string;
   artifactId: string;
   title?: string;
+  locale?: string;
 }) {
   const [params, setParams] = useState(initialParams);
   const [output, setOutput] = useState<CalculatorOutput | null>(null);
@@ -38,19 +41,24 @@ export function CalculatorPanel({
   const [error, setError] = useState("");
   const runId = useRef(0);
   const stopped = useRef(false);
+  const activeRun = useRef<AbortController | null>(null);
 
   const paramEntries = useMemo(() => Object.entries(initialParams), [initialParams]);
 
   useEffect(() => {
     stopped.current = false;
     const id = ++runId.current;
+    const controller = new AbortController();
+    activeRun.current = controller;
     const timer = setTimeout(async () => {
       if (stopped.current || runId.current !== id) return;
       setStatus("running");
       setError("");
       try {
-        const result = (await runIsolatedArtifact(source, { snapshot, params })) as CalculatorOutput;
+        const result = (await runIsolatedArtifact(source, { snapshot, params }, controller.signal)) as CalculatorOutput;
         if (stopped.current || runId.current !== id) return;
+        const outputErrors = checkOutputShape(result);
+        if (outputErrors.length) throw new Error(outputErrors.join("; "));
         setOutput(result && typeof result === "object" ? result : null);
         setStatus("done");
       } catch (err) {
@@ -59,19 +67,25 @@ export function CalculatorPanel({
         setStatus("error");
       }
     }, 300);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (runId.current === id) runId.current += 1;
+      controller.abort();
+      if (activeRun.current === controller) activeRun.current = null;
+    };
   }, [source, snapshot, params]);
 
   function stop() {
     stopped.current = true;
     runId.current += 1;
+    activeRun.current?.abort();
     setStatus("stopped");
   }
 
   function exportResult(format: "print" | "png") {
     if (!output || status !== "done") return;
     try {
-      const text = calculatorExportText(title, versionLabel, output, params, snapshot);
+      const text = calculatorExportText(title, versionLabel, output, params, snapshot, locale);
       if (format === "print") printCalculator(text); else downloadCalculatorPng(text);
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Export unavailable"); }
   }

@@ -10,7 +10,6 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { pinArtifact, renameArtifact, saveTripState, unpinArtifact } from "../actions";
 import { SpendingChart } from "../spending-chart";
-import { RuntimeCheck } from "../runtime-check";
 import { CalculatorPanel } from "../calculator-panel";
 import { GenerateCalculatorForm } from "../generate-calculator-form";
 import { VersionEditor } from "../version-editor";
@@ -123,7 +122,6 @@ export default async function ArtifactPage({ params, searchParams }: {
         currentManifest={version.manifest}
       />
     )}
-    {version && <RuntimeCheck source={version.source} input={{ kind: artifact.kind, snapshot, params: initialParams }} />}
   </main>;
 }
 

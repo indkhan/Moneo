@@ -2,7 +2,6 @@ import Link from "next/link";
 import { requireWorkspace } from "@/lib/auth";
 import { createArtifact } from "./actions";
 import { GenerateForm } from "./generate-form";
-import { RuntimeCheck } from "./runtime-check";
 
 const kinds = [
   { kind: "spending_explorer", name: "Spending Explorer" },
@@ -38,6 +37,5 @@ export default async function Library() {
     <ul className="mt-3 space-y-2">{artifacts?.map(artifact =>
       <li key={artifact.id} className="rounded-xl border border-border bg-card p-4 shadow-sm"><Link className="underline" href={`/ai/library/${artifact.id}`}>{artifact.name}</Link>
         <span className="ml-3 text-xs text-muted-foreground">{artifact.kind.replaceAll("_", " ")}{artifact.active_version_id ? "" : " · unavailable"}</span></li>)}</ul>
-    <RuntimeCheck />
   </main>;
 }

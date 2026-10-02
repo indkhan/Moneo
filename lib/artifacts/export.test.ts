@@ -18,3 +18,8 @@ it("refuses an oversized image instead of allocating an unsupported canvas", () 
   expect(() => calculatorPngLines("x".repeat(1000000))).toThrow("Use Print / PDF");
   expect(calculatorPngLines("Readable report")).toEqual(["Readable report"]);
 });
+it("localizes readable exact evidence while retaining the decimal audit appendix", () => {
+  const text = calculatorExportText("Balances", "v1", {}, {}, { currency: "EUR", amount_minor: "9007199254740993" }, "de-DE");
+  expect(text).toContain("EUR 90071992547409,93");
+  expect(text).toContain('"amount_minor": "9007199254740993"');
+});

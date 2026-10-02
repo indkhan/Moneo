@@ -122,6 +122,13 @@ describe("generated calculator smoke validation", () => {
     // prior active version via save_generated_artifact_version.
   });
 
+  it("rejects caught calculation failures for complete local inputs before activation", async () => {
+    const result = await validateGeneratedCandidate({ kind: "custom_comparison", source: `(input) => { try { const safe = (value) => { const n = n >= 0 ? value : 0; return BigInt(n); }; return {numbers:{amount:safe(input.params.costMinor).toString()}}; } catch (_) { return {unavailable:"Unable to compare"}; } }`,
+      manifest: { kind: "custom_comparison", runtime: "quickjs-calculator-v1", sdk: [], params: { costMinor: { type: "number", default: 10000, min: 0, max: 10000000 } }, renderer: "trusted" }, permissions: [] });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(";")).toContain("Normal-input test returned unavailable");
+  });
+
   it("fails an infinite loop via the QuickJS interrupt", async () => {
     const result = await validateGeneratedCandidate({
       kind: "spending_explorer",

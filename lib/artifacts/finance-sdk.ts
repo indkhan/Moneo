@@ -54,7 +54,8 @@ export async function spendingForArtifact(artifactId: string, query: string, per
 export async function tripForArtifact(artifactId: string, costMinor: bigint) {
   const { workspace } = await requirePermission(artifactId, "forecast");
   const baseline = await evaluatePlan(30);
-  const tripDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  const today = calendarDate(new Date(), workspace.timezone);
+  const tripDate = new Date(Date.parse(`${today}T00:00:00Z`) + 7 * 86400000).toISOString().slice(0, 10);
   const account = baseline.input.accounts.find(item => item.currencyCode === workspace.display_currency && item.balanceMinor !== null);
   const withTrip = account ? availableToSpend({ ...baseline.input, scenarioEvents: [
     ...(baseline.input.scenarioEvents ?? []),

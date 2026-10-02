@@ -1,12 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { requireWorkspace } from "@/lib/auth";
-import { spendingForArtifact } from "./finance-sdk";
+import { spendingForArtifact, tripForArtifact } from "./finance-sdk";
+import { evaluatePlan } from "@/lib/finance/model";
 
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/finance/model", () => ({ evaluatePlan: vi.fn() }));
 
 describe("artifact spending coverage", () => {
   afterEach(() => vi.useRealTimers());
+
+  it("dates the default trip seven calendar days ahead in the workspace timezone", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-30T22:30:00Z"));
+    const permission = { select: () => permission, eq: () => permission,
+      single: async () => ({ data: { permissions: ["forecast"], active_version_id: "v" }, error: null }) };
+    vi.mocked(requireWorkspace).mockResolvedValue({ workspace: { id: "w", display_currency: "EUR", timezone: "Europe/Berlin" },
+      supabase: { from: () => permission } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+    vi.mocked(evaluatePlan).mockResolvedValue({ input: { accounts: [] }, available: { status: "unavailable" } } as unknown as Awaited<ReturnType<typeof evaluatePlan>>);
+    expect((await tripForArtifact("a", 100n)).tripDate).toBe("2026-10-08");
+  });
 
   it("pages all matched posted rows including refunds in the Berlin month", async () => {
     vi.useFakeTimers();
