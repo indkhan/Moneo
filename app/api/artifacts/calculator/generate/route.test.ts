@@ -19,6 +19,7 @@ it("validates a real JSON text draft without requiring provider json_schema supp
   expect(response.status).toBe(200);
   expect((await response.json()).validation).toEqual({ ok: true, warnings: [] });
   expect(fixture.generateText).toHaveBeenCalledWith(expect.objectContaining({ maxOutputTokens: 4000, abortSignal: expect.any(AbortSignal), output: expect.objectContaining({ name: "json" }) }));
+  expect(fixture.generateText.mock.calls[0][0].prompt).toContain("summary must be a string");
 });
 it("rejects malformed or out-of-contract JSON rather than fabricating a draft", async () => {
   vi.stubEnv("OPENROUTER_API_KEY", "test"); fixture.generateText.mockResolvedValue({ text: "Here is some guessed code" });

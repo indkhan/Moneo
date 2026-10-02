@@ -92,6 +92,7 @@ export async function POST(request: Request) {
         `Output a pure function expression like (input) => ({...}) plus a manifest and one-sentence rationale. ` +
         `Rules: read ONLY input.snapshot and input.params; never use window, document, cookies, storage, fetch, network, eval, Function, import, require, React, DOM, database, tokens, or SDK handles. ` +
         `Keep output a small JSON object with one of summary/rows/numbers/chart/unavailable/warning (no HTML, no scripts). ` +
+        `Output contract: summary must be a string (max 500 characters); warning and unavailable must be strings; rows must be an array of objects; numbers maps names to strings or finite numbers; chart is {labels:string[],values:number[]} with equal lengths. ` +
         `Handle missing data by returning { unavailable: "..." } instead of throwing. ` +
         `Manifest kind must be ${kind.data}, runtime quickjs-calculator-v1, sdk a subset of [${allowedSdk.join(", ")}], params only artifact-local numbers/strings. ` +
         `Snapshot shapes: spending_explorer {currency,incomeMinor,spendingMinor,netMinor,daily[{date,spendingMinor}],unavailable?}; ` +
