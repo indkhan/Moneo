@@ -1,3 +1,4 @@
+import { InsightSettings } from "./insights";
 import { requireWorkspace } from "@/lib/auth";
 import { listFreeModels } from "@/lib/ai/provider";
 import { SettingsForm } from "./form";
@@ -23,6 +24,7 @@ export default async function SettingsPage() {
       {scheduled.error || jobs?.error ? <p role="alert" className="mt-3 text-sm text-red-700">Scheduled status is unavailable. Try again later.</p> : <SummaryRuns initial={runs} />}
       <p className="mt-3 text-sm text-muted-foreground">If a scheduled review fails, you can run a fresh review from AI. Completed summaries appear in Activity.</p>
     </section>
+    <InsightSettings />
     <section className="rounded-xl border border-border bg-card p-5"><h2 className="font-semibold">AI usage</h2><p className="mt-2 text-sm text-muted-foreground">Provider usage is shown when available in Activity. Missing token counts or costs are unknown; they are not reported as zero.</p></section>
   </main>;
 }

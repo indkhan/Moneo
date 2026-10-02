@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ImportantInsights } from "./insights/panel";
 import type { ReactNode } from "react";
 import { BUILTIN_WIDGETS, dashboardItems, dashboardLayoutSchema } from "@/lib/dashboard";
 import { saveDashboard } from "./dashboard-actions";
@@ -15,8 +16,6 @@ import { cashflow } from "@/lib/finance/tools";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { ArrowRight, Landmark, Plus, Wallet } from "lucide-react";
 
-const money = formatMoney;
-
 export default async function Home() {
   if (!hasSupabase()) return <main className="mx-auto max-w-3xl p-8">Configure Supabase in .env to start Moneo.</main>;
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -26,7 +25,7 @@ export default async function Home() {
     redirect("/login");
   }
   const { supabase, workspace } = context;
-  const mutedInsights = context.settings?.muted_insight_types ?? [];
+  const money = (amount: bigint | string | number, currency: string) => formatMoney(amount, currency, workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);
   const [balanceEvidence, ledgerCount, projection, spending, wealthItems] = await Promise.all([
     loadBalanceEvidence(supabase, workspace.id),
@@ -127,7 +126,7 @@ export default async function Home() {
         </section>,
     upcoming: <section className="rounded-xl border border-border bg-card p-5"><h2 className="font-semibold">Upcoming payments</h2><p className="mt-1 text-xs text-muted-foreground">Confirmed forecast obligations over the next 30 days, in {displayCurrency}. Review the Financial Model for sources and assumptions.</p><ul className="mt-3 space-y-2">{(projection.input?.events ?? []).filter(event => event.expectedMinor < 0n && event.source !== "estimated").sort((a, b) => a.date.localeCompare(b.date)).slice(0, 10).map((event, index) => <li key={`${event.accountId}:${event.date}:${index}`} className="flex justify-between gap-3 text-sm"><span>{event.date} ? {accounts.find(account => account.id === event.accountId)?.name ?? "Account"}</span><span>{money(event.expectedMinor, displayCurrency)}</span></li>)}</ul>{!(projection.input?.events ?? []).some(event => event.expectedMinor < 0n && event.source !== "estimated") && <p className="mt-3 text-sm text-muted-foreground">No confirmed payments in this forecast. Missing obligations may still exist.</p>}<Link href="/money/recurring" className="mt-3 inline-block text-sm underline">Review recurring payments</Link></section>,
     goals: <section className="rounded-xl border border-border bg-card p-5"><h2 className="font-semibold">Goals</h2><p className="mt-1 text-xs text-muted-foreground">Virtual reservations do not move money. Original currencies are preserved.</p><ul className="mt-3 space-y-3">{(goals.data ?? []).map(goal => { const reservations = (allocations.data ?? []).filter(row => row.goal_id === goal.id); const comparable = reservations.every(row => accounts.find(account => account.id === row.account_id)?.currency_code === goal.currency_code); const reserved = reservations.reduce((sum, row) => sum + BigInt(row.amount_minor), 0n); return <li key={goal.id} className="text-sm"><Link href="/plan" className="font-medium underline">{goal.name}</Link><p className="text-muted-foreground">{comparable ? money(reserved, goal.currency_code) : "Reservation conversion required"} reserved of {money(goal.target_minor, goal.currency_code)}{goal.target_date ? ` ? target ${goal.target_date}` : ""}</p></li>; })}</ul>{!goals.data?.length && <p className="mt-3 text-sm text-muted-foreground">No goals yet. <Link href="/plan" className="underline">Create a goal</Link>.</p>}</section>,
-    insights: <section className="rounded-xl border border-border bg-card p-5"><h2 className="font-semibold">Important insights</h2><ul className="mt-3 space-y-2 text-sm">{!mutedInsights.includes("data_quality") && missingInputs.length > 0 && <li><Link href="/plan/currency" className="underline">Resolve {missingInputs.length} missing balance or currency inputs</Link> before relying on net worth.</li>}{!mutedInsights.includes("cash_shortfall") && projection.available.status === "available" && projection.available.amountMinor < 0n && <li><Link href="/plan" className="underline">Forecast cash shortfall</Link> at {projection.available.limitingDate}: {money(projection.available.amountMinor, displayCurrency)}.</li>}{!mutedInsights.includes("data_quality") && !("unavailable" in spending) && spending.evidence.partial && <li><Link href="/import" className="underline">Review {spending.evidence.excludedReviewRows} uncertain transactions</Link> to complete spending totals.</li>}</ul><p className="mt-3 text-xs text-muted-foreground">Calculated from current evidence; no unsupported anomaly or probability claims.</p></section>,
+    insights: <ImportantInsights db={supabase} workspaceId={workspace.id} currency={displayCurrency} today={today} settings={context.settings} projection={projection} missingInputs={missingInputs} wealth={wealthItems} />,
   };
   for (const artifact of pinnedArtifacts ?? []) widgets[`tool:${artifact.id}`] = <section className="rounded-xl border border-border bg-card p-5"><p className="text-xs text-muted-foreground">Saved tool ? {artifact.kind.replaceAll("_", " ")}</p><Link href={`/ai/library/${artifact.id}`} className="mt-2 inline-flex items-center gap-2 font-semibold underline">{artifact.name}<ArrowRight size={15} /></Link><p className="mt-2 text-xs text-muted-foreground">Open for current scoped data and remembered settings.</p></section>;
 

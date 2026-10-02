@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import Home from "./page";
+vi.mock("./insights/panel", () => ({ ImportantInsights: () => null }));
 
 vi.mock("@/lib/env", () => ({ hasSupabase: () => true }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => {

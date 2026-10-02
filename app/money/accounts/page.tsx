@@ -25,7 +25,7 @@ export default async function AccountsPage() {
     <section className="space-y-3" aria-label="Your accounts">
       {(accounts ?? []).map(account => <article className="rounded-xl border p-4" key={account.id}>
         <div className="mb-3 flex gap-3 text-sm"><strong>{account.name}</strong><span>{account.currency_code}</span>{account.archived_at ? <span>Archived</span> : null}</div>
-        <AccountForm account={account} requestId={randomUUID()} />
+        <AccountForm key={`${account.id}:${account.version}`} account={account} requestId={randomUUID()} />
         <p className="mt-2 text-xs text-muted-foreground">Currency is fixed after creation so recorded amounts keep their meaning.</p>
       </article>)}
     </section>
