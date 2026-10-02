@@ -101,7 +101,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
       ).toBeVisible();
       // Deterministic assertion: the salary row from the synthetic fixture
       // is listed server-side (no full-DB client filtering per §7).
-      await expect(page.getByText("Salary Acme").first()).toBeVisible();
+      await expect(page.getByRole("table").getByRole("link", { name: "Salary Acme", exact: true })).toBeVisible();
     });
 
     await test.step("view Home with trusted metrics", async () => {

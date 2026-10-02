@@ -44,7 +44,7 @@ test.describe("core journey smoke (no session, no live AI)", () => {
     ).toBeVisible();
   });
 
-  test("import page renders picker and empty history without credentials", async ({
+  test("import page renders picker and an honest history error without credentials", async ({
     page,
   }) => {
     await page.goto("/import");
@@ -54,8 +54,9 @@ test.describe("core journey smoke (no session, no live AI)", () => {
     await expect(
       page.getByLabel("Financial statement files"),
     ).toBeVisible();
-    // Without a session GET /api/imports is 401; the page keeps an empty
-    // history ("No imports yet.") rather than showing fake rows.
-    await expect(page.getByText("No imports yet.")).toBeVisible();
+    // An unavailable authenticated history must not look like an empty ledger.
+    await expect(page.getByRole("alert").filter({ hasText: "Import history is unavailable. Try again." })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Reload history" })).toBeVisible();
+    await expect(page.getByText("No imports yet.")).toHaveCount(0);
   });
 });

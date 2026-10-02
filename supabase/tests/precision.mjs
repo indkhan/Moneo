@@ -1,6 +1,7 @@
 // Actual PostgREST verification with synthetic records and targeted cleanup.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
 
 process.loadEnvFile(".env");
@@ -13,6 +14,10 @@ const user = randomUUID(), account = randomUUID(), transaction = randomUUID();
 const category = randomUUID(), plan = randomUUID();
 const exact = "9007199254740993";
 let workspace;
+const recoveryPath = ".qa/precision-recovery.json";
+assert(!existsSync(recoveryPath), "Recover the exact previous precision fixture before rerunning");
+mkdirSync(".qa", { recursive: true });
+writeFileSync(recoveryPath, JSON.stringify({ project, user, account, transaction, category, plan }));
 try {
   await db.begin(async tx => {
     await tx`insert into auth.users(id,email) values(${user},${`qa-${user}@example.invalid`})`;
@@ -24,6 +29,7 @@ try {
     await tx`insert into public.spending_plans(id,workspace_id,category_id,currency_code,limit_minor)
       values(${plan},${workspace},${category},'EUR',${exact})`;
   });
+  writeFileSync(recoveryPath, JSON.stringify({ project, user, workspace, account, transaction, category, plan }));
   const url = new URL("/rest/v1/transactions", endpoint);
   url.searchParams.set("id", `eq.${transaction}`);
   // Read the actual page selectors so wildcard detail reads are checked too.
@@ -52,14 +58,16 @@ try {
 } finally {
   await db.begin(async tx => {
     await tx`delete from public.spending_plans where id=${plan} and workspace_id=${workspace ?? null}`;
+    await tx`delete from public.spending_plan_limits where workspace_id=${workspace ?? null}`;
     if ((await tx`select to_regclass('public.planning_events') present`)[0].present)
       await tx`delete from public.planning_events where workspace_id=${workspace ?? null}`;
-    await tx`delete from public.categories where id=${category} and workspace_id=${workspace ?? null}`;
+    await tx`delete from public.categories where workspace_id=${workspace ?? null}`;
     await tx`delete from public.transactions where id=${transaction} and workspace_id=${workspace ?? null}`;
     await tx`delete from public.accounts where id=${account} and workspace_id=${workspace ?? null}`;
     await tx`delete from public.workspaces where id=${workspace ?? null} and owner_id=${user}`;
     await tx`delete from auth.users where id=${user}`;
   });
   assert.equal((await db`select 1 from auth.users where id=${user}`).length, 0, "Synthetic user cleanup must complete");
+  unlinkSync(recoveryPath);
   await db.end();
 }
