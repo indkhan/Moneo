@@ -14,7 +14,10 @@ const db = postgres(connection.toString(), { ssl: "require", max: 1, connect_tim
 const files = readdirSync("supabase/migrations").filter(file => file.endsWith(".sql")).sort();
 const migrations = files.map(file => ({ file, version: file.split("_")[0], sql: readFileSync(`supabase/migrations/${file}`, "utf8") }));
 const regressionFiles = readdirSync("supabase/tests").filter(file => file.endsWith(".sql")).sort();
-const functionNames = [...new Set(migrations.flatMap(migration => [...migration.sql.matchAll(/create (?:or replace )?function public\.(\w+)/g)].map(match => match[1])))];
+const functionNames = [...new Set(migrations.flatMap(migration => [
+  ...migration.sql.matchAll(/create (?:or replace )?function public\.(\w+)/g),
+  ...migration.sql.matchAll(/alter function public\.\w+\([^;]*\) rename to (\w+)/g),
+].map(match => match[1])))];
 const schema = `moneo_migration_qa_${Date.now()}`;
 const rollback = new Error("Successful rollback-only verification");
 
