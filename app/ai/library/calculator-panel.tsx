@@ -6,6 +6,7 @@ import { runIsolatedArtifact } from "@/lib/artifacts/run";
 import { checkOutputShape } from "@/lib/artifacts/output";
 import { saveCalculatorParams } from "./actions";
 import { calculatorExportText, downloadCalculatorPng, printCalculator } from "@/lib/artifacts/export";
+import { CalculatorRows } from "./calculator-rows";
 
 const Chart = dynamic(() => import("echarts-for-react"), { ssr: false });
 
@@ -186,14 +187,7 @@ export function CalculatorPanel({
             </div>
           )}
           {output.rows && output.rows.length > 0 && (
-            <ul className="mt-3 divide-y rounded border">
-              {output.rows.slice(0, 20).map((row, i) => (
-                <li key={String(row.id ?? i)} className="p-2 font-mono text-xs">
-                  {row.name ? `${row.name} · ` : ""}
-                  {JSON.stringify(row)}
-                </li>
-              ))}
-            </ul>
+            <CalculatorRows rows={output.rows} locale={locale} currency={snapshot !== null && typeof snapshot === "object" && "currency" in snapshot && typeof snapshot.currency === "string" ? snapshot.currency : undefined} />
           )}
         </div>
       )}
