@@ -1,11 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { resolveBalances } from "./balances";
+import { loadBalanceEvidence, resolveBalances } from "./balances";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { calendarDate, calendarDayBoundary, reviewedLocalTimestamp } from "./calendar";
 
 const accounts = [{ id: "cash", name: "Cash", currency_code: "EUR" }];
 const snapshot = { id: "snapshot", account_id: "cash", amount_minor: "10000", currency_code: "EUR", as_of: "2026-09-28T12:00:00Z", provenance: "manual" };
 const transaction = { id: "transaction", account_id: "cash", amount_minor: "-1250", currency_code: "EUR", posted_on: "2026-09-29", status: "posted" };
 const now = "2026-10-01T12:00:00Z";
+
+it("loads active additional fees exactly once while retaining canonical source boundaries", async () => {
+  const dated = { ...snapshot, as_of: "2026-10-01T08:00:00Z", boundary_kind: "after_transaction", source_transaction_id: "source" };
+  const canonical = [
+    { ...transaction, posted_at: dated.as_of, posted_on: "2026-10-01", transaction_sources: [{ source_transaction_id: "source" }] },
+    { ...transaction, id: "later", posted_at: "2026-10-01T10:00:00Z", posted_on: "2026-10-01" },
+  ];
+  const tables: Record<string, unknown[]> = { accounts, balance_snapshots: [dated], transactions: canonical,
+    transaction_link_fees: [
+      { transaction_id: "transaction", fee_minor: "100", treatment: "additional", transaction_links: { undone_at: null } },
+      { transaction_id: "later", fee_minor: "25", treatment: "additional", transaction_links: { undone_at: null } },
+      { transaction_id: "later", fee_minor: "500", treatment: "included", transaction_links: { undone_at: null } },
+      { transaction_id: "later", fee_minor: "500", treatment: "additional", transaction_links: { undone_at: "2026-10-01" } },
+    ] };
+  const from = (table: string) => {
+    const query = { select: () => query, eq: () => query, order: () => query, range: async () => ({ data: tables[table], error: null }) };
+    return query;
+  };
+  const evidence = await loadBalanceEvidence({ from } as unknown as SupabaseClient, "workspace", now);
+  expect(evidence.ledger.map(row => row.amount_minor)).toEqual(["-1350", "-1275"]);
+  expect(canonical[0].amount_minor).toBe("-1250");
+  expect(evidence.ledger[0].source_transaction_ids).toEqual(["source"]);
+  expect(resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, now)[0].balance)
+    .toMatchObject({ amount_minor: "8725", status: "current", reconciled_rows: 1 });
+});
 
 describe("evidenced account balances", () => {
   it("reconciles same-day activity only across a preserved after-transaction boundary", () => {

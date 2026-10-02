@@ -76,10 +76,21 @@ export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: strin
       if (!page.data || page.data.length < 500) return result;
     }
   }
-  const [accounts, snapshots, ledger] = await Promise.all([
+  const [accounts, snapshots, ledger, fees] = await Promise.all([
     rows<BalanceAccount>("accounts", "id, name, type, currency_code, archived_at"),
     rows<BalanceSnapshot>("balance_snapshots", "id, account_id, amount_minor::text, currency_code, as_of, provenance, boundary_kind, source_transaction_id"),
     rows<BalanceTransaction & { transaction_sources?: { source_transaction_id: string }[] }>("transactions", "id, account_id, amount_minor::text, currency_code, posted_on, posted_at, status, transaction_sources(source_transaction_id)"),
+    rows<{ transaction_id: string; fee_minor: string; treatment: string; transaction_links: { undone_at: string | null } }>("transaction_link_fees", "id, transaction_id, fee_minor::text, treatment, transaction_links!inner(undone_at)"),
   ]);
-  return { accounts, snapshots, ledger: ledger.map(row => ({ ...row, source_transaction_ids: row.transaction_sources?.map(source => source.source_transaction_id) ?? [] })), asOf };
+  const additionalFees = new Map<string, bigint>();
+  for (const fee of fees) {
+    if (fee.treatment !== "additional" || fee.transaction_links.undone_at !== null) continue;
+    const amount = exactMinor(fee.fee_minor);
+    if (amount <= 0n) throw new Error("Invalid verified additional fee");
+    additionalFees.set(fee.transaction_id, (additionalFees.get(fee.transaction_id) ?? 0n) + amount);
+  }
+  return { accounts, snapshots, ledger: ledger.map(row => ({ ...row,
+    // This is derived balance evidence; the source posting and its boundary identity remain unchanged.
+    amount_minor: additionalFees.has(row.id) ? (exactMinor(row.amount_minor) - additionalFees.get(row.id)!).toString() : row.amount_minor,
+    source_transaction_ids: row.transaction_sources?.map(source => source.source_transaction_id) ?? [] })), asOf };
 }

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { bulkInput, parseManualAmount, versionedRows } from "./input";
+import { bulkInput, parseManualAmount, splitInput, versionedRows } from "./input";
 
 const uuidPattern = /^[0-9a-f-]{36}$/i;
 
@@ -48,16 +48,36 @@ export async function undoCorrection(form: FormData) {
   if (lookupError || !event) throw new Error("Correction not found");
   const operation = (event.after as { operation?: string }).operation;
   const procedure = operation === "metadata" ? "undo_transaction_metadata" : operation === "classification_review" ? "undo_transaction_classification" : "undo_transaction_correction";
-  const { error } = await supabase.rpc(procedure, {
-    p_event_id: eventId,
-    p_expected_version: version,
-  });
+  const { error } = operation === "verified_link"
+    ? await supabase.rpc("undo_transaction_link", { p_link_id:z.uuid().parse((event.after as { link_id?:string }).link_id), p_rows:versionedRows.max(2).parse(JSON.parse(z.string().max(500).parse(form.get("rows")))) })
+    : operation === "split"
+    ? await supabase.rpc("undo_transaction_splits", { p_set_id: z.uuid().parse((event.after as { split_set_id?: string }).split_set_id), p_expected_version: version })
+    : await supabase.rpc(procedure, { p_event_id: eventId, p_expected_version: version });
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout");
   redirect(`${returnPath(form)}&transaction=${transactionId}`);
 }
 
 const version = z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(0).max(2147483647));
+
+export async function verifiedLink(form: FormData) {
+  const { supabase } = await requireWorkspace();
+  z.literal("true").parse(form.get("confirmed"));
+  const fees = z.array(z.object({ transaction_id: z.uuid(), fee_minor: z.string().regex(/^\d{1,19}$/).refine(value => BigInt(value)>0n && BigInt(value)<=9223372036854775807n), treatment:z.enum(["included","additional"]), category_id:z.uuid().nullable(), note:z.string().trim().min(1).max(500) }).strict()).max(2).parse(JSON.parse(z.string().max(4000).parse(form.get("fees"))));
+  const { error } = await supabase.rpc("link_transactions", { p_operation:z.enum(["transfer","refund"]).parse(form.get("operation")),
+    p_primary_id:z.uuid().parse(form.get("id")), p_expected_version:version.parse(form.get("version")), p_other_id:z.uuid().parse(form.get("otherId")),
+    p_other_version:version.parse(form.get("otherVersion")), p_fx_rate_id:form.get("fxRateId")?z.uuid().parse(form.get("fxRateId")):null,
+    p_fees:fees, p_request_id:z.uuid().parse(form.get("requestId")) });
+  if(error) throw new Error(error.message);
+  revalidatePath("/", "layout"); redirect(`${returnPath(form)}&transaction=${z.uuid().parse(form.get("id"))}`);
+}
+
+export async function undoVerifiedLink(form: FormData) {
+  const { supabase } = await requireWorkspace();
+  const { error } = await supabase.rpc("undo_transaction_link", { p_link_id:z.uuid().parse(form.get("linkId")), p_rows:versionedRows.max(2).parse(JSON.parse(z.string().max(500).parse(form.get("rows")))) });
+  if(error) throw new Error(error.message);
+  revalidatePath("/", "layout"); redirect(`${returnPath(form)}&transaction=${z.uuid().parse(form.get("id"))}`);
+}
 
 export async function createManualTransaction(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
@@ -149,8 +169,16 @@ export async function markRefund(form: FormData) {
 }
 
 export async function clearLink(form: FormData) {
-  const { supabase } = await requireWorkspace();
+  const { supabase, workspace } = await requireWorkspace();
   const { id, version } = linkInput(form);
+  const receipt=await supabase.from("transaction_links").select("id").eq("workspace_id",workspace.id).is("undone_at",null)
+    .or(`primary_transaction_id.eq.${id},and(operation.eq.transfer,counterpart_transaction_id.eq.${id})`).maybeSingle();
+  if(receipt.error) throw new Error(receipt.error.message);
+  if(receipt.data) {
+    const {error}=await supabase.rpc("undo_transaction_link",{p_link_id:receipt.data.id,p_rows:versionedRows.max(2).parse(JSON.parse(z.string().max(500).parse(form.get("rows"))))});
+    if(error) throw new Error(error.message);
+    revalidatePath("/", "layout"); redirect(`${returnPath(form)}&transaction=${id}`);
+  }
   const { error } = await supabase.rpc("clear_transaction_link", {
     p_transaction_id: id,
     p_expected_version: version,
@@ -158,4 +186,27 @@ export async function clearLink(form: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout");
   redirect(`${returnPath(form)}&transaction=${id}`);
+}
+
+export async function splitTransaction(form: FormData) {
+  const { supabase, workspace } = await requireWorkspace();
+  const id = z.uuid().parse(form.get("id"));
+  if (form.get("confirmed") !== "true") throw new Error("Preview the allocations before confirming");
+  const { data: parent, error: lookupError } = await supabase.from("transactions").select("amount_minor::text, currency_code")
+    .eq("workspace_id", workspace.id).eq("id", id).maybeSingle();
+  if (lookupError || !parent) throw new Error("Transaction not found");
+  const children = splitInput(JSON.parse(z.string().max(30000).parse(form.get("children"))), parent.currency_code, BigInt(parent.amount_minor));
+  const { error } = await supabase.rpc("split_transaction", { p_transaction_id: id, p_expected_version: version.parse(form.get("version")),
+    p_children: children, p_request_id: z.uuid().parse(form.get("requestId")) });
+  if (error) throw new Error(error.message);
+  revalidatePath("/", "layout");
+  redirect(`${returnPath(form)}&transaction=${id}`);
+}
+
+export async function undoTransactionSplits(form: FormData) {
+  const { supabase } = await requireWorkspace();
+  const { error } = await supabase.rpc("undo_transaction_splits", { p_set_id: z.uuid().parse(form.get("setId")), p_expected_version: version.parse(form.get("version")) });
+  if (error) throw new Error(error.message);
+  revalidatePath("/", "layout");
+  redirect(`${returnPath(form)}&transaction=${z.uuid().parse(form.get("id"))}`);
 }

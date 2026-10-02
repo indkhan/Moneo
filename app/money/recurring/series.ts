@@ -1,4 +1,4 @@
-import { minorDigits } from "@/lib/finance/fx";
+import { formatMoney as formatCurrency } from "@/lib/finance/format";
 
 export function normalizeLabel(label: string): string {
   return label.trim().replace(/\s+/g, " ").toLowerCase();
@@ -13,12 +13,10 @@ export function seriesKey(args: {
   return [args.accountId, args.currencyCode, args.cadence, normalizeLabel(args.label)].join("\0");
 }
 
-export function formatMoney(minor: string | bigint, currency: string): string {
+export function formatMoney(minor: string | bigint, currency: string, locale?:string): string {
   const value = typeof minor === "bigint" ? minor : BigInt(minor);
   const abs = value < 0n ? -value : value;
-  const digits = minorDigits(currency);
-  const base = 10n ** BigInt(digits);
-  return `${value < 0n ? "−" : ""}${currency} ${abs / base}${digits ? `.${(abs % base).toString().padStart(digits, "0")}` : ""}`;
+  return `${value < 0n ? "−" : ""}${formatCurrency(abs,currency,locale)}`;
 }
 
 export function confidenceToPercent(confidence: number): number {

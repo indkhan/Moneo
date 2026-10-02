@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { calendarDate } from "@/lib/finance/calendar";
 import { debtPayments, loadWealthItems, wealthEvidence, type WealthItem } from "@/lib/finance/wealth";
-import { formatMoney } from "@/lib/finance/format";
+import { formatMoney as formatCurrency } from "@/lib/finance/format";
 import { WealthForm } from "./form";
 import { removeWealthItem, undoWealthEvent } from "./actions";
 
@@ -11,10 +11,11 @@ export default async function WealthPage() {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { redirect("/login"); }
   const { supabase, workspace } = context;
+  const formatMoney=(amount:Parameters<typeof formatCurrency>[0],currency:string)=>formatCurrency(amount,currency,workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);
   const [items, accounts, assumptions, pending, history] = await Promise.all([
     loadWealthItems(supabase, workspace.id, true),
-    supabase.from("accounts").select("id, name, type, currency_code").eq("workspace_id", workspace.id).order("name"),
+    supabase.from("accounts").select("id, name, type, currency_code, archived_at").eq("workspace_id", workspace.id).order("name"),
     supabase.from("financial_assumptions").select("id, name, amount_minor::text, currency_code, starts_on").eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).eq("cadence", "monthly").is("removed_at", null).order("name"),
     supabase.from("transactions").select("id, description, amount_minor::text, currency_code, posted_on").eq("workspace_id", workspace.id).eq("status", "pending").order("posted_on", { ascending: false }).limit(100),
     supabase.from("wealth_events").select("id, item_id, before, after, created_at, undone_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(50),

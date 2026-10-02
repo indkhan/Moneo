@@ -21,3 +21,12 @@ export function bulkInput(value: unknown) {
   else patch = { tags: z.array(z.string().min(1).max(40)).max(20).parse([...new Set(input.value.split(",").map(tag => tag.trim().toLowerCase()).filter(Boolean))].sort()) };
   return { rows: input.rows, requestId: input.requestId, patch };
 }
+
+export function splitInput(value: unknown, currency: string, parentMinor: bigint) {
+  const rows = z.array(z.object({ amount: z.string(), categoryId: z.uuid().nullable(), note: z.string().trim().max(500) }).strict()).min(2).max(20).parse(value);
+  const result = rows.map(row => ({ amount_minor: parseManualAmount(row.amount, currency).toString(), category_id: row.categoryId, note: row.note }));
+  const amounts = result.map(row => BigInt(row.amount_minor));
+  if (amounts.some(amount => amount === 0n || (amount > 0n) !== (parentMinor > 0n)) || amounts.reduce((sum, amount) => sum + amount, 0n) !== parentMinor)
+    throw new Error("Allocations must have the source direction and exactly equal its amount");
+  return result;
+}

@@ -22,6 +22,9 @@ function row(partial: Partial<SpendingPlanTransaction> & { amountMinor: bigint }
 }
 
 describe("monthly category spending", () => {
+  it("does not treat unresolved source transfers as category spending", () => {
+    expect(spendingForCategory([row({ amountMinor: -4000n }), row({ amountMinor: -10000n, reviewReasons: ["source_transfer"] })], CATEGORY, EUR, MONTH)).toBe(4000n);
+  });
   it("attributes linked refunds to the purchase category while retaining their posting currency", () => {
     const transactions = [row({ amountMinor: -4000n }), row({ amountMinor: 1000n, kind: "refund", currencyCode: "USD", categoryId: null, refundOfCategoryId: CATEGORY, refundOfCurrencyCode: EUR })];
     expect(spendingForCategory(transactions, CATEGORY, EUR, MONTH)).toBe(4000n);

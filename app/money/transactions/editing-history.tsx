@@ -1,9 +1,10 @@
 import { requireWorkspace } from "@/lib/auth";
-import { formatMoney } from "@/lib/finance/format";
+import { formatMoney as formatCurrency } from "@/lib/finance/format";
 import { restoreManualTransaction, undoManualTransaction, undoTransactionBatch } from "./actions";
 
 export async function EditingHistory({ query }: { query: string }) {
   const { supabase, workspace } = await requireWorkspace();
+  const formatMoney=(amount:Parameters<typeof formatCurrency>[0],currency:string)=>formatCurrency(amount,currency,workspace.locale);
   const [{ data: entries, error: entryError }, { data: batches, error: batchError }] = await Promise.all([
     supabase.from("manual_transaction_entries").select("id, transaction_id, original_record, version, created_at, undone_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(10),
     supabase.from("transaction_batches").select("id, selection, patch, created_at, undone").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(10),
