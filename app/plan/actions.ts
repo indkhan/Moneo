@@ -68,6 +68,7 @@ export async function createGoal(form: FormData) {
     target_minor: target.toString(), currency_code: currency, target_date: targetDate,
     idempotency_key: String(form.get("requestId") ?? "") });
   if (error && error.code !== "23505") throw error;
+  revalidatePath("/", "layout");
   redirect("/plan");
 }
 

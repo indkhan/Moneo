@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { requireWorkspace } from "@/lib/auth";
-import { deleteAssumption, toggleAssumption, updateAssumption, updateGoalPlan, setAllocation } from "./actions";
+import { createGoal, deleteAssumption, toggleAssumption, updateAssumption, updateGoalPlan, setAllocation } from "./actions";
+import { revalidatePath } from "next/cache";
 
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
@@ -18,6 +19,13 @@ beforeEach(() => {
 it("reserves exact cash with the rendered allocation version and request identity", async () => {
   await setAllocation(form({ goalId: id, accountId: id, amount: "90071992547409.93", version: "4" }));
   expect(rpc).toHaveBeenCalledWith("reserve_goal_funds", { p_goal_id: id, p_account_id: id, p_amount_minor: "9007199254740993", p_expected_version: 4, p_request_id: request });
+});
+it("refreshes Plan and Home after creating a goal", async () => {
+  const insert = vi.fn(async () => ({ error: null }));
+  vi.mocked(requireWorkspace).mockResolvedValue({ workspace: { id }, supabase: { from: () => ({ insert }) } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  await createGoal(form({ name: "Trip", currency: "EUR", target: "1000.00" }));
+  expect(insert).toHaveBeenCalledWith(expect.objectContaining({ target_minor: "100000" }));
+  expect(revalidatePath).toHaveBeenCalledWith("/", "layout");
 });
 function form(fields: Record<string, string>) {
   const result = new FormData();
