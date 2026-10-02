@@ -39,7 +39,8 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
   test("authenticate → import → home → ask → goal → mocked analysis → pin artifact → re-import", async ({
     page,
   }) => {
-    test.setTimeout(120_000);
+    // Two durable imports and a live free-provider request each retain their own bounds.
+    test.setTimeout(240_000);
 
     // Mock ONLY the AI-proposing inspect (no-mapping POST). Correction
     // previews carry an explicit mapping and go to the real backend, which
@@ -181,11 +182,14 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
               title: "Mocked deterministic review",
               body: "Balances, cash flow and recurring commitments from exact tool results.",
               evidence: { cashflow: "deterministic", transactionsRead: 2 },
+              created_at: "2026-10-01T12:00:00Z",
+              freshness: { status: "current", reason: "Deterministic fixture evidence is unchanged." },
             },
           }),
         }),
       );
       await page.goto("/ai");
+      await expect(page.getByRole("heading", { name: "Deep Financial Analysis", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Run review" }).click();
       await expect(page.getByText("Mocked deterministic review")).toBeVisible();
     });
