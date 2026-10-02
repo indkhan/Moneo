@@ -37,7 +37,10 @@ export async function POST(request: Request) {
       try {
         requireAiScope(settings, "imports");
         const result = await generateObject({
-          model: await modelForSettings(settings),
+          model: await modelForSettings(settings, { effort: "minimal", exclude: true }),
+          abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(30_000)]),
+          maxRetries: 0,
+          maxOutputTokens: 1800,
           schema: mappingSchema,
           prompt: `Return one JSON object with exactly these required keys: accountName (use the filename stem ${JSON.stringify(file.name.replace(/\.(csv|xlsx)$/i, ""))}), currencyCode (three uppercase letters), dateColumn, descriptionColumn, dateFormat (exactly "iso", "dmy", or "mdy"), and amountSign (exactly "signed" or "outflow-positive"). Optional keys are amountColumn, debitColumn, creditColumn, currencyColumn, balanceColumn, merchantColumn, categoryColumn, externalIdColumn, and statusColumn. Omit unused optional keys. Do not use keys such as "currency" or date formats such as "yyyy-MM-dd". Propose a financial statement column mapping. Return only values justified by headers and sample rows. Sign convention: positive means money entering the account; negative means money leaving it. Use amountSign "outflow-positive" only if positive amounts represent expenses. For separate debit/credit columns, include both and omit amountColumn. For a single amount column, include amountColumn and omit debitColumn/creditColumn. dateFormat must match the data. Currency is a three-letter code; when the file has no currency column, use workspace display currency ${workspaceCurrency} as a provisional default. Include merchantColumn only when a header clearly holds merchant/counterparty names, and categoryColumn only when a header clearly holds categories; otherwise omit them. Include statusColumn only when a header clearly holds an explicit posted/pending indicator (values like posted, pending, or COMPLETED); include accountColumn/productColumn for explicit account/product headers. Account routes will be proposed deterministically from all rows for user review; omit accountRoutes. Otherwise omit statusColumn and all rows default to posted. Do not invent columns.\nHeaders: ${JSON.stringify(headers)}\nSample rows: ${JSON.stringify(rows.slice(0, 8))}`,
         });

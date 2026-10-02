@@ -39,6 +39,7 @@ export default function ImportPage() {
   const [undoId, setUndoId] = useState<string | null>(null);
   const [preview, setPreview] = useState<UndoPreview | null>(null);
   const controlRequests = useRef(new Map<string, string>());
+  const inspectionRequest = useRef<AbortController | null>(null);
   const historyRequest = useRef(0);
   const historyApplied = useRef(new Map<string, number>());
   const file = files[index];
@@ -100,14 +101,18 @@ export default function ImportPage() {
   }, [history]);
 
   async function inspect(target: File, corrected?: ImportMapping) {
+    inspectionRequest.current?.abort();
+    const controller = new AbortController();
+    inspectionRequest.current = controller;
     setBusy(true);
     setError("");
     try {
       const form = new FormData();
       form.set("file", target);
       if (corrected) form.set("mapping", JSON.stringify(corrected));
-      const response = await fetch("/api/imports/inspect", { method: "POST", body: form });
+      const response = await fetch("/api/imports/inspect", { method: "POST", body: form, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(45_000)]) });
       const result = await response.json();
+      if (inspectionRequest.current !== controller) return;
       if (!response.ok) throw new Error(result.error ?? "Inspection failed");
       setInspection(result);
       const column = (name: string) => result.headers.find((header: string) => header.toLowerCase() === name);
@@ -122,10 +127,17 @@ export default function ImportPage() {
       });
       setEditing(!result.mapping || result.mapping.amountSign === "outflow-positive");
     } catch (cause) {
+      if (inspectionRequest.current !== controller) return;
       setError(cause instanceof Error ? cause.message : "Inspection failed");
     } finally {
-      setBusy(false);
+      if (inspectionRequest.current === controller) { inspectionRequest.current = null; setBusy(false); }
     }
+  }
+
+  function cancelInspection() {
+    inspectionRequest.current?.abort();
+    inspectionRequest.current = null;
+    setFiles([]); setInspection(null); setMapping(null); setBusy(false); setError("");
   }
 
   async function confirm() {
@@ -262,7 +274,7 @@ export default function ImportPage() {
         </div>}
       </article>)}
     </section>
-    {busy && <p role="status">Working…</p>}
+    {busy && <p role="status">Working…{inspectionRequest.current && <button type="button" className="ml-3 underline" onClick={cancelInspection}>Cancel interpretation</button>}</p>}
     {error && <p role="alert" className="text-red-700">{error}</p>}
     {file && inspection && <section className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 className="text-xl font-semibold tracking-tight text-foreground">{file.name} ({index + 1} of {files.length})</h2>
