@@ -78,7 +78,7 @@ export async function POST(request: Request) {
               .select("id, filename, status, total_rows, new_rows, matched_rows, review_rows, classification_review_rows, rejected_rows, error")
               .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30);
             if (error) throw error;
-            return { imports: data ?? [], limitation: "Latest 30 recorded imports; status does not prove complete financial coverage." };
+            return { imports: data ?? [], limitation: "Latest 30 recorded imports; status does not prove complete financial coverage. Classification review means the financial kind is unresolved, not merely a missing category. Excluded rows can include income, spending, refunds or transfers; totals may rise or fall. Missing categories alone do not exclude cashflow rows. Bulk category changes do not resolve financial kind." };
           },
         }) } : {}),
         ...(canCreateArtifact ? { artifacts_create: tool({
