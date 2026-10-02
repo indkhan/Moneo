@@ -10,6 +10,13 @@ test("accepts the configured OpenRouter model without a suffix restriction", () 
   expect(getModel().modelId).toBe("example/model");
 });
 
+test("bounds draft reasoning while retaining the zero-price provider ceiling", () => {
+  vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+  const model = getModel("verified-free", { effort: "minimal", exclude: true });
+  expect(model.settings.reasoning).toEqual({ effort: "minimal", exclude: true });
+  expect(model.settings.provider?.max_price).toEqual({ prompt: 0, completion: 0, request: 0, image: 0, audio: 0 });
+});
+
 test("offers only zero-price models with tools and structured response support", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: [
     { id: "free", name: "Free", pricing: { prompt: "0", completion: "0" }, supported_parameters: ["tools", "response_format"] },

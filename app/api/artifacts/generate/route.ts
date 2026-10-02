@@ -1,8 +1,10 @@
-import { generateObject } from "ai";
+import { generateText, Output } from "ai";
 import { z } from "zod";
 import { modelForSettings } from "@/lib/ai/provider";
 import { requireWorkspace } from "@/lib/auth";
 import { artifactKindSchema } from "@/lib/artifacts/spec";
+import { runArtifactGeneration } from "@/lib/artifacts/generation";
+import { reportedUsage } from "@/lib/ai/usage";
 
 const artifactKind = artifactKindSchema;
 
@@ -16,6 +18,7 @@ const proposalSchema = z.object({
 
 const proposeRequestSchema = z.object({
   description: z.string().trim().min(1).max(500),
+  requestId: z.uuid().optional(),
 }).strict();
 
 const confirmRequestSchema = z.object({
@@ -59,10 +62,12 @@ export async function POST(request: Request) {
   if (!process.env.OPENROUTER_API_KEY)
     return Response.json({ error: "AI is not configured" }, { status: 503 });
 
-  try {
-    const { object } = await generateObject({
-      model: await modelForSettings(context.settings),
-      schema: proposalSchema,
+  return runArtifactGeneration(context.supabase, request, { requestId: proposeParsed.data.requestId ?? crypto.randomUUID(), purpose: "proposal", description: proposeParsed.data.description }, async () => {
+    const model = await modelForSettings(context.settings, { effort: "minimal", exclude: true });
+    const generated = await generateText({
+      model, output: Output.json(), maxOutputTokens: 800,
+      abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
+      system: `Return only JSON, without Markdown, matching this schema: ${JSON.stringify(z.toJSONSchema(proposalSchema))}`,
       prompt:
         `Pick exactly one trusted financial-tool template for the request below. ` +
         `Allowed kinds: spending_explorer (past spending), trip_planner (one-time trip cost), goal_tracker (savings goals), custom_planner (other financial plans), custom_tracker (tracking measures), custom_report (summaries), custom_comparison (scenario comparisons). ` +
@@ -70,11 +75,6 @@ export async function POST(request: Request) {
         `Do not choose a workspace. Do not generate code or source.\n` +
         `Request: ${proposeParsed.data.description}`,
     });
-    return Response.json(object);
-  } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "AI request failed" },
-      { status: 502 },
-    );
-  }
+    return { result: proposalSchema.strict().parse(JSON.parse(generated.text)), usage: reportedUsage(model.modelId, generated.totalUsage) };
+  });
 }

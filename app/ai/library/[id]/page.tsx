@@ -94,12 +94,14 @@ export default async function ArtifactPage({ params, searchParams }: {
     {artifact.kind === "goal_tracker" && <GoalTracker id={id} scenarioGoalId={goalId} extra={extra} />}
     {version && isCalculator && (
       <CalculatorPanel
+        key={artifact.active_version_id}
         source={version.source}
         snapshot={snapshot}
         initialParams={initialParams}
         versionLabel={`v${version.version}`}
         artifactId={id}
         title={artifact.name}
+        locale={workspace.locale}
       />
     )}
     {version && !isCalculator && (

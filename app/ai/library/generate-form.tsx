@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ArtifactKind } from "@/lib/artifacts/spec";
 
@@ -25,27 +25,44 @@ export function GenerateForm() {
   const [status, setStatus] = useState("");
   const [suggesting, setSuggesting] = useState(false);
   const [creating, setCreating] = useState(false);
+  const active = useRef<{ id: string; controller: AbortController } | null>(null);
 
   async function suggest() {
     setSuggesting(true);
     setStatus("");
     setProposal(null);
+    const generation = { id: crypto.randomUUID(), controller: new AbortController() };
+    active.current = generation;
     try {
       const response = await fetch("/api/artifacts/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ description }),
+        body: JSON.stringify({ description, requestId: generation.id }),
+        signal: generation.controller.signal,
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error ?? "Suggestion failed");
       setProposal(payload as Proposal);
       setName((payload as Proposal).name);
-      setStatus("");
+      setStatus("Completed. Review the proposal before creating the tool.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Suggestion failed");
+      setStatus(generation.controller.signal.aborted ? "Canceled" : error instanceof Error ? error.message : "Suggestion failed");
     } finally {
       setSuggesting(false);
+      if (active.current?.id === generation.id) active.current = null;
     }
+  }
+
+  async function stop() {
+    const generation = active.current;
+    if (!generation) return;
+    try {
+      const response = await fetch(`/api/artifacts/generation/${generation.id}`, { method: "DELETE" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Could not stop generation");
+      if (payload.status === "canceled") { generation.controller.abort(); setProposal(null); setStatus("Canceled"); }
+      else setStatus(`Request is ${payload.status}`);
+    } catch (error) { setStatus(error instanceof Error ? error.message : "Could not stop generation"); }
   }
 
   async function continueWithProposal() {
@@ -93,6 +110,7 @@ export function GenerateForm() {
       >
         {suggesting ? "Suggesting…" : "Suggest a tool"}
       </button>
+      {suggesting && <button type="button" onClick={stop} className="ml-3 rounded border px-3 py-2 text-sm">Stop generation</button>}
 
       {proposal && (
         <div className="mt-4 rounded-xl border border-border bg-card p-4 shadow-sm text-sm">

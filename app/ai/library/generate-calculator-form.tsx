@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FALLBACK_CALCULATORS } from "@/lib/artifacts/templates";
 import type { ArtifactKind } from "@/lib/artifacts/spec";
@@ -25,25 +25,43 @@ export function GenerateCalculatorForm({
   const [status, setStatus] = useState("");
   const [working, setWorking] = useState(false);
   const [saving, setSaving] = useState(false);
+  const active = useRef<{ id: string; controller: AbortController } | null>(null);
 
   async function suggest() {
     setWorking(true);
     setStatus("");
     setDraft(null);
+    const generation = { id: crypto.randomUUID(), controller: new AbortController() };
+    active.current = generation;
     try {
       const res = await fetch("/api/artifacts/calculator/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ artifactId, description }),
+        body: JSON.stringify({ artifactId, description, requestId: generation.id }),
+        signal: generation.controller.signal,
       });
       const payload = await res.json().catch(() => null);
       if (!res.ok) throw new Error(payload?.error ?? "AI suggestion failed");
       setDraft(payload as Draft);
+      setStatus("Completed. Draft retained in Activity; review it before saving a version.");
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : "AI suggestion failed");
+      setStatus(generation.controller.signal.aborted ? "Canceled" : err instanceof Error ? err.message : "AI suggestion failed");
     } finally {
       setWorking(false);
+      if (active.current?.id === generation.id) active.current = null;
     }
+  }
+
+  async function stop() {
+    const generation = active.current;
+    if (!generation) return;
+    try {
+      const response = await fetch(`/api/artifacts/generation/${generation.id}`, { method: "DELETE" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Could not stop generation");
+      if (payload.status === "canceled") { generation.controller.abort(); setDraft(null); setStatus("Canceled"); }
+      else setStatus(`Request is ${payload.status}`);
+    } catch (error) { setStatus(error instanceof Error ? error.message : "Could not stop generation"); }
   }
 
   async function save(source: string, manifest: unknown) {
@@ -111,7 +129,8 @@ export function GenerateCalculatorForm({
         >
           {working ? "Asking AI…" : "Suggest calculator"}
         </button>
-        <button type="button" onClick={useFallback} className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted">
+        {working && <button type="button" onClick={stop} className="rounded border px-3 py-2 text-sm">Stop generation</button>}
+        <button type="button" onClick={useFallback} disabled={working} className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50">
           Use safe fallback
         </button>
         {draft && (
