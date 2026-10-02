@@ -1,0 +1,66 @@
+import { test, expect } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { e2eStorageStatePath, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
+
+const state = e2eStorageStatePath();
+if (state) test.use({ storageState: state });
+test.skip(!hasSupabaseEnv() || !state, gatedSkipReason());
+
+test("custom tool exact results, rename, code versions, restore, failed edit preservation and PNG export", async ({ page }) => {
+  test.setTimeout(120_000);
+  const suffix = crypto.randomUUID().slice(0, 8), name = `Comparison QA ${suffix}`;
+  await page.goto("/ai/library");
+  const create = page.locator("form").filter({ has: page.getByLabel("Custom Comparison", { exact: true }) });
+  await create.getByLabel("Custom Comparison", { exact: true }).fill(name);
+  await create.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  const editor = page.getByRole("region", { name: "Edit calculator version" });
+  const manifest = { kind: "custom_comparison", runtime: "quickjs-calculator-v1", sdk: [], params: { amount: { type: "number", min: 0, max: 1000, default: 111 } }, renderer: "trusted" };
+  await editor.locator(".cm-content").fill(`(input) => ({ summary: "First comparison", numbers: { exactMinor: "9007199254740993", inputMinor: String(input.params.amount) } })`);
+  await editor.getByLabel("Manifest (JSON)").fill(JSON.stringify(manifest));
+  await editor.getByRole("button", { name: "Save new version", exact: true }).click();
+  const output = page.getByRole("region", { name: "Generated calculator output" });
+  await expect(output).toContainText("First comparison", { timeout: 20_000 }); await expect(output).toContainText("9007199254740993");
+  await expect(output.getByLabel("amount", { exact: true })).toHaveValue("111");
+  await page.getByLabel("Artifact name").fill(`${name} renamed`);
+  const rename = page.locator("form").filter({ has: page.getByLabel("Artifact name") });
+  await rename.getByRole("button", { name: "Save new version", exact: true }).click();
+  await expect(page.getByRole("heading", { name: `${name} renamed`, exact: true })).toBeVisible();
+  await expect(output).toContainText("First comparison");
+  await editor.locator(".cm-content").fill(`(input) => ({ summary: "Second comparison" })`);
+  await editor.getByLabel("Manifest (JSON)").fill(JSON.stringify({ ...manifest, params: { amount: { ...manifest.params.amount, default: 222 } } }));
+  await editor.getByRole("button", { name: "Save new version", exact: true }).click();
+  await expect(output).toContainText("Second comparison");
+  await expect(output.getByLabel("amount", { exact: true })).toHaveValue("222");
+  await editor.getByRole("button", { name: "Restore v2 as a new version", exact: true }).click();
+  await expect(output).toContainText("First comparison");
+  await expect(output.getByLabel("amount", { exact: true })).toHaveValue("111");
+  await editor.locator(".cm-content").fill(`(input) => fetch("https://example.invalid")`);
+  await editor.getByRole("button", { name: "Save new version", exact: true }).click();
+  await expect(editor.getByRole("status")).toContainText("recorded as failed; active version preserved");
+  await expect(output).toContainText("First comparison");
+  const downloadPromise = page.waitForEvent("download");
+  await output.getByRole("button", { name: "Export PNG", exact: true }).click();
+  const download = await downloadPromise, path = await download.path(); expect(path).toBeTruthy();
+  expect((await readFile(path!)).subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+  await expect(output.getByRole("button", { name: "Print / PDF", exact: true })).toBeEnabled();
+  // Capture the actual trusted print document without opening a native dialog.
+  await page.evaluate(() => {
+    const append = document.body.append.bind(document.body);
+    document.body.append = (...nodes) => { append(...nodes); for (const node of nodes) if (node instanceof HTMLIFrameElement && node.contentWindow) node.contentWindow.print = () => {}; };
+  });
+  await output.getByRole("button", { name: "Print / PDF", exact: true }).click();
+  const printable = page.frameLocator('iframe[title="Printable calculator report"]');
+  await expect(printable.locator("pre")).toContainText("First comparison");
+  await expect(printable.locator("pre")).toContainText("9007199254740993");
+  await page.locator('iframe[title="Printable calculator report"]').evaluate(frame => { frame.style.cssText = "position:fixed;inset:0;width:100%;height:100%;background:white;z-index:9999;"; });
+  await page.screenshot({ path: ".qa/export-print-preview.png" });
+  await page.pdf({ path: ".qa/calculator-print.pdf", printBackground: true });
+  expect((await readFile(".qa/calculator-print.pdf")).subarray(0, 4).toString()).toBe("%PDF");
+  await page.evaluate(() => document.querySelector('iframe[title="Printable calculator report"]')?.remove());
+  await editor.locator(".cm-content").fill(`(input) => ({ summary: "Overflow report", rows: Array.from({length:50}, (_,i) => ({name:"Row " + i,a:"1",b:"2",c:"3",d:"4"})) })`);
+  await editor.getByRole("button", { name: "Save new version", exact: true }).click();
+  await expect(output).toContainText("Overflow report");
+  await output.getByRole("button", { name: "Export PNG", exact: true }).click();
+  await expect(output.getByRole("alert")).toContainText("Use Print / PDF");
+});

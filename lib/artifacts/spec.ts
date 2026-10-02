@@ -4,6 +4,7 @@ export const artifactKindSchema = z.enum([
   "spending_explorer",
   "trip_planner",
   "goal_tracker",
+  "custom_planner", "custom_tracker", "custom_report", "custom_comparison",
 ]);
 export type ArtifactKind = z.infer<typeof artifactKindSchema>;
 
@@ -18,6 +19,10 @@ export const ALLOWED_SDK_BY_KIND: Record<ArtifactKind, string[]> = {
   spending_explorer: ["spending", "cashflow"],
   trip_planner: ["balances", "goals", "forecast"],
   goal_tracker: ["goals", "balances", "forecast"],
+  custom_planner: ["spending", "cashflow", "balances", "goals", "forecast"],
+  custom_tracker: ["spending", "cashflow", "balances", "goals", "forecast"],
+  custom_report: ["spending", "cashflow", "balances", "goals", "forecast"],
+  custom_comparison: ["spending", "cashflow", "balances", "goals", "forecast"],
 };
 
 export const calculatorManifestSchema = z
@@ -148,7 +153,7 @@ export function checkManifest(
   if (parsed.data.kind !== kind) {
     errors.push(`Manifest kind ${parsed.data.kind} does not match artifact kind ${kind}`);
   }
-  const allowed = new Set([...(ALLOWED_SDK_BY_KIND[kind] ?? []), ...(permissions ?? [])]);
+  const allowed = new Set((ALLOWED_SDK_BY_KIND[kind] ?? []).filter(operation => permissions.includes(operation)));
   for (const op of parsed.data.sdk) {
     if (!allowed.has(op)) {
       errors.push(`Unauthorized Finance SDK operation: ${op}`);

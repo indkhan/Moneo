@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
+import { usageLabel, type ReportedUsage } from "@/lib/ai/usage";
 
 type ImportRow = {
   id: string;
@@ -44,7 +45,7 @@ export default async function ActivityPage() {
     redirect("/login");
   }
   const { supabase, workspace } = context;
-  const [imports, jobs, saved, artifacts, versions, conversations] = await Promise.all([
+  const [imports, jobs, saved, artifacts, versions, conversations, requests, generations] = await Promise.all([
     supabase
       .from("imports")
       .select("id, filename, status, total_rows, new_rows, matched_rows, review_rows, rejected_rows, error, created_at")
@@ -82,8 +83,12 @@ export default async function ActivityPage() {
       .eq("workspace_id", workspace.id)
       .order("created_at", { ascending: false })
       .limit(20),
+    supabase.from("chat_requests").select("id, conversation_id, status, error, usage, created_at, updated_at")
+      .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30),
+    supabase.from("artifact_generation_requests").select("id, purpose, description, status, error, usage, created_at, updated_at")
+      .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30),
   ]);
-  const errors = [imports.error, jobs.error, saved.error, artifacts.error, versions.error, conversations.error].filter(Boolean);
+  const errors = [generations.error, requests.error, imports.error, jobs.error, saved.error, artifacts.error, versions.error, conversations.error].filter(Boolean);
   const savedByJob = new Map<string, SavedRow>();
   for (const row of (saved.data ?? []) as SavedRow[]) savedByJob.set(row.job_id, row);
   const versionByArtifact = new Map<string, number>();
@@ -140,6 +145,14 @@ export default async function ActivityPage() {
       href: `/ai?conversation=${row.id}`,
     });
   }
+  for (const row of requests.data ?? []) {
+    items.push({ key: `chat:${row.id}`, at: row.updated_at, badge: "Chat", title: `Chat ${row.status}`,
+      detail: `${usageLabel(row.usage as ReportedUsage | null)}${row.status === "failed" ? ` · ${truncate(row.error, 200)}` : ""}`, href: `/ai?conversation=${row.conversation_id}` });
+  }
+  for (const row of generations.data ?? []) {
+    items.push({ key: `generation:${row.id}`, at: row.updated_at, badge: "Generation", title: `${row.purpose === "calculator" ? "Calculator draft" : "Tool proposal"} ${row.status}`,
+      detail: `${truncate(row.description, 120)} · ${usageLabel(row.usage as ReportedUsage | null)}${row.status === "failed" ? ` · ${truncate(row.error, 200)}` : ""}`, href: `/ai/activity/generation/${row.id}` });
+  }
   items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
   const visible = items.slice(0, 50);
 
@@ -169,7 +182,7 @@ export default async function ActivityPage() {
           {visible.map((item) => (
             <li key={item.key} className="rounded-xl border border-border bg-card p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase text-muted-foreground">
-                {item.badge} · {new Date(item.at).toLocaleString()}
+                {item.badge} · {new Date(item.at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}
               </p>
               <h2 className="mt-1 font-medium">{item.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{item.detail}</p>

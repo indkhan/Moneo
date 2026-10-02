@@ -1,12 +1,16 @@
 import { generateObject } from "ai";
-import { getModel } from "@/lib/ai/provider";
+import { modelForSettings } from "@/lib/ai/provider";
+import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { requireWorkspace } from "@/lib/auth";
-import { mappingSchema, parseCsv, parseExcel, previewImport, validateAiMapping } from "@/lib/csv";
+import { mappingSchema, parseCsv, parseExcel, previewImport, proposeAccountRoutes, proposeStatementTimezones, validateAiMapping } from "@/lib/csv";
 
 export async function POST(request: Request) {
   let workspaceCurrency: string;
+  let settings: WorkspaceSettings | undefined;
   try {
-    workspaceCurrency = (await requireWorkspace()).workspace.display_currency;
+    const context = await requireWorkspace();
+    workspaceCurrency = context.workspace.display_currency;
+    settings = context.settings;
   } catch {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -27,36 +31,32 @@ export async function POST(request: Request) {
     let preview;
     let aiError: string | undefined;
     if (typeof supplied === "string") {
-      mapping = mappingSchema.parse(JSON.parse(supplied));
+      mapping = proposeStatementTimezones(rows, proposeAccountRoutes(rows, JSON.parse(supplied)), settings?.timezone);
       preview = previewImport(rows, mapping);
     } else {
       try {
+        requireAiScope(settings, "imports");
         const result = await generateObject({
-          model: getModel(),
+          model: await modelForSettings(settings),
           schema: mappingSchema,
-          prompt: `Return one JSON object with exactly these required keys: accountName (use the filename stem ${JSON.stringify(file.name.replace(/\.(csv|xlsx)$/i, ""))}), currencyCode (three uppercase letters), dateColumn, descriptionColumn, dateFormat (exactly "iso", "dmy", or "mdy"), and amountSign (exactly "signed" or "outflow-positive"). Optional keys are amountColumn, debitColumn, creditColumn, currencyColumn, balanceColumn, merchantColumn, categoryColumn, externalIdColumn, and statusColumn. Omit unused optional keys. Do not use keys such as "currency" or date formats such as "yyyy-MM-dd". Propose a financial statement column mapping. Return only values justified by headers and sample rows. Sign convention: positive means money entering the account; negative means money leaving it. Use amountSign "outflow-positive" only if positive amounts represent expenses. For separate debit/credit columns, include both and omit amountColumn. For a single amount column, include amountColumn and omit debitColumn/creditColumn. dateFormat must match the data. Currency is a three-letter code; when the file has no currency column, use workspace display currency ${workspaceCurrency} as a provisional default. Include merchantColumn only when a header clearly holds merchant/counterparty names, and categoryColumn only when a header clearly holds categories; otherwise omit them. Include statusColumn only when a header clearly holds an explicit posted/pending indicator (values like posted or pending); otherwise omit it and all rows default to posted. Do not invent columns.\nHeaders: ${JSON.stringify(headers)}\nSample rows: ${JSON.stringify(rows.slice(0, 8))}`,
+          prompt: `Return one JSON object with exactly these required keys: accountName (use the filename stem ${JSON.stringify(file.name.replace(/\.(csv|xlsx)$/i, ""))}), currencyCode (three uppercase letters), dateColumn, descriptionColumn, dateFormat (exactly "iso", "dmy", or "mdy"), and amountSign (exactly "signed" or "outflow-positive"). Optional keys are amountColumn, debitColumn, creditColumn, currencyColumn, balanceColumn, merchantColumn, categoryColumn, externalIdColumn, and statusColumn. Omit unused optional keys. Do not use keys such as "currency" or date formats such as "yyyy-MM-dd". Propose a financial statement column mapping. Return only values justified by headers and sample rows. Sign convention: positive means money entering the account; negative means money leaving it. Use amountSign "outflow-positive" only if positive amounts represent expenses. For separate debit/credit columns, include both and omit amountColumn. For a single amount column, include amountColumn and omit debitColumn/creditColumn. dateFormat must match the data. Currency is a three-letter code; when the file has no currency column, use workspace display currency ${workspaceCurrency} as a provisional default. Include merchantColumn only when a header clearly holds merchant/counterparty names, and categoryColumn only when a header clearly holds categories; otherwise omit them. Include statusColumn only when a header clearly holds an explicit posted/pending indicator (values like posted, pending, or COMPLETED); include accountColumn/productColumn for explicit account/product headers. Account routes will be proposed deterministically from all rows for user review; omit accountRoutes. Otherwise omit statusColumn and all rows default to posted. Do not invent columns.\nHeaders: ${JSON.stringify(headers)}\nSample rows: ${JSON.stringify(rows.slice(0, 8))}`,
         });
-        mapping = validateAiMapping(result.object, rows, workspaceCurrency);
+        mapping = proposeStatementTimezones(rows, { ...validateAiMapping(result.object, rows, workspaceCurrency), timestampTimezoneConfirmed: false }, settings?.timezone);
         preview = previewImport(rows, mapping);
       } catch (error) {
         aiError = error instanceof Error ? error.message : "AI mapping unavailable";
         mapping = undefined;
       }
     }
-    return Response.json({
+    return new Response(JSON.stringify({
       headers,
+      warnings: headers.some(header => /^(type|fee)$/i.test(header.trim()))
+        ? ["Source type and fee evidence is preserved. Transfers, refunds, exchanges and fees require transaction review; no internal movement or separate fee is guessed."] : [],
       sample: rows.slice(0, 5),
       mapping: mapping ?? null,
-      preview: preview ? {
-        ...preview,
-        examples: preview.examples.map((row) => ({
-          ...row,
-          amountMinor: row.amountMinor.toString(),
-          ...(row.balanceMinor !== undefined ? { balanceMinor: row.balanceMinor.toString() } : {}),
-        })),
-      } : null,
+      preview: preview ?? null,
       ...(aiError ? { aiError } : {}),
-    });
+    }, (_key, value) => typeof value === "bigint" ? value.toString() : value), { headers: { "Content-Type": "application/json" } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Could not inspect file" }, { status: 400 });
   }

@@ -12,6 +12,7 @@ describe("recurring review helpers", () => {
     expect(formatMoney("-1099", "EUR")).toBe("−EUR 10.99");
     expect(formatMoney(2500n, "USD")).toBe("USD 25.00");
     expect(formatMoney(2500n, "JPY")).toBe("JPY 2500");
+    expect(formatMoney("-9007199254740993", "EUR", "de-DE")).toBe("−EUR 90071992547409,93");
   });
 
   it("maps detector confidence to assumption percent", () => {

@@ -1,3 +1,4 @@
+import { calendarDate } from "@/lib/finance/calendar";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
@@ -24,7 +25,7 @@ export default async function CurrencyPage() {
     ...(accounts ?? []).map((account) => account.currency_code),
     ...(rates ?? []).flatMap((rate) => [rate.from_currency, rate.to_currency]),
   ])].sort();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = calendarDate(new Date(), workspace.timezone);
 
   return (
     <main className="mx-auto max-w-7xl space-y-7 px-4 py-8 text-foreground sm:px-6 lg:px-10">
@@ -42,7 +43,7 @@ export default async function CurrencyPage() {
         <p className="mt-1 text-sm text-muted-foreground">Currently {workspace.display_currency}. Enter any ISO 4217 currency code; conversions without a saved rate remain unavailable.</p>
         <form action={setDisplayCurrency} className="mt-4 flex flex-wrap items-end gap-2">
           <label className="grid gap-1 text-sm">Currency
-            <input name="currency" list="currency-codes" defaultValue={workspace.display_currency} pattern="[A-Za-z]{3}" maxLength={3} required aria-label="Display currency" className="min-h-10 w-24 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
+            <input name="currency" list="currency-codes" defaultValue={workspace.display_currency} pattern="[A-Za-z]{3}" maxLength={3} required aria-label="Display currency" className="min-h-10 w-24 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
           </label>
           <button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">Save display currency</button>
         </form>
@@ -54,19 +55,19 @@ export default async function CurrencyPage() {
         <datalist id="currency-codes">{currencies.map((code) => <option key={code} value={code} />)}</datalist>
         <form action={addFxRate} className="mt-4 flex flex-wrap items-end gap-2">
           <label className="grid gap-1 text-sm">From
-            <input name="from" list="currency-codes" defaultValue={currencies[0] ?? "EUR"} pattern="[A-Za-z]{3}" maxLength={3} required aria-label="From currency" className="min-h-10 w-24 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
+            <input name="from" list="currency-codes" defaultValue={currencies[0] ?? "EUR"} pattern="[A-Za-z]{3}" maxLength={3} required aria-label="From currency" className="min-h-10 w-24 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
           </label>
           <label className="grid gap-1 text-sm">To
-            <input name="to" list="currency-codes" defaultValue={currencies[1] ?? "USD"} pattern="[A-Za-z]{3}" maxLength={3} required aria-label="To currency" className="min-h-10 w-24 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
+            <input name="to" list="currency-codes" defaultValue={currencies[1] ?? "USD"} pattern="[A-Za-z]{3}" maxLength={3} required aria-label="To currency" className="min-h-10 w-24 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
           </label>
           <label className="grid gap-1 text-sm">Rate
-            <input name="rate" required placeholder="1.08" inputMode="decimal" aria-label="Rate" className="min-h-10 w-32 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
+            <input name="rate" required placeholder="1.08" inputMode="decimal" aria-label="Rate" className="min-h-10 w-32 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
           </label>
           <label className="grid gap-1 text-sm">Rate date
-            <input name="rateDate" required type="date" defaultValue={today} max={today} aria-label="Rate date" className="min-h-10 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
+            <input name="rateDate" required type="date" defaultValue={today} max={today} aria-label="Rate date" className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
           </label>
           <label className="grid gap-1 text-sm">Source
-            <input name="source" defaultValue="manual" maxLength={120} aria-label="Rate source" className="min-h-10 w-32 rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
+            <input name="source" defaultValue="manual" maxLength={120} aria-label="Rate source" className="min-h-10 w-32 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
           </label>
           <button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">Add rate</button>
         </form>

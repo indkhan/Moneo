@@ -1,0 +1,43 @@
+import { readFileSync } from "node:fs";
+import { createServerClient } from "@supabase/ssr";
+import { expect, test } from "@playwright/test";
+import { e2eStorageStatePath, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
+const state = e2eStorageStatePath();
+if (state) test.use({ storageState: state });
+test.skip(!hasSupabaseEnv() || !state, gatedSkipReason());
+
+test("budget rollover rules persist and undo while historical missing targets stay unknown", async ({ page }) => {
+  test.setTimeout(90_000);
+  // Authenticated disposable fixtures use the same owner policies as the browser.
+  const cookies = JSON.parse(readFileSync(state!, "utf8")).cookies;
+  const db = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { cookies: { getAll: () => cookies, setAll: () => {} } });
+  const { data: { user }, error: authError } = await db.auth.getUser();
+  expect(authError).toBeNull(); expect(user).not.toBeNull();
+  const { data: workspace, error: workspaceError } = await db.from("workspaces").select("id").eq("owner_id", user!.id).single();
+  expect(workspaceError).toBeNull();
+  const categoryId = crypto.randomUUID(), name = `Rollover QA ${categoryId.slice(0, 8)}`;
+  const { error: categoryError } = await db.from("categories").insert({ id: categoryId, workspace_id: workspace!.id, name });
+  expect(categoryError).toBeNull();
+  await page.goto("/plan/spending");
+  await page.getByRole("combobox", { name: "Category", exact: true }).selectOption(categoryId);
+  await page.getByRole("textbox", { name: "Monthly limit", exact: true }).fill("100.00");
+  await page.getByRole("button", { name: "Save plan", exact: true }).click();
+  const plan = page.locator("li").filter({ has: page.getByRole("heading", { name, exact: true }) });
+  await expect(plan).toBeVisible({ timeout: 30_000 });
+  await plan.getByRole("checkbox", { name: "Carry remaining budget into the next month", exact: true }).check();
+  await plan.getByRole("button", { name: "Save rollover rule", exact: true }).click();
+  await expect(plan).toContainText("Carry from earlier months: EUR 0.00", { timeout: 30_000 });
+  await page.reload();
+  await expect(plan.getByRole("checkbox")).toBeChecked();
+  await page.getByText("Spending plan history and undo", { exact: true }).click();
+  const record = (await db.from("spending_plans").select("id").eq("workspace_id", workspace!.id).eq("category_id", categoryId).single()).data!;
+  const event = (await db.from("planning_events").select("id").eq("entity_id", record.id).eq("entity_type", "spending_plan").order("created_at", { ascending: false }).limit(1).single()).data!;
+  const undo = page.locator("form").filter({ has: page.locator(`input[name="eventId"][value="${event.id}"]`) });
+  await undo.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(plan.getByRole("checkbox")).not.toBeChecked({ timeout: 30_000 });
+  const month = await page.getByLabel("Calendar month", { exact: true }).inputValue();
+  const year = Number(month.slice(0, 4));
+  await page.getByLabel("Calendar month", { exact: true }).fill(`${year - 1}-01`);
+  await page.getByRole("button", { name: "View month", exact: true }).click();
+  await expect(plan).toContainText("Unknown historical target", { timeout: 30_000 });
+});

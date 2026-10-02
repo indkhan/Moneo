@@ -1,26 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ImportMapping, SourceRow } from "@/lib/csv";
+import { formatMoney } from "@/lib/finance/format";
 
 type Preview = {
   accountName: string;
   currencyCode: string;
+  accounts?: { accountName: string; currencyCode: string; rows: number }[];
   totalRows: number;
   pendingRows?: number;
   postedRows?: number;
+  classificationReviewRows?: number;
+  timestampReviewRequired?: boolean;
   dateRange: { from: string; to: string };
   examples: { postedOn: string; description: string; amountMinor: string; currencyCode: string; status?: string; merchant?: string; category?: string }[];
 };
-type Inspection = { headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string };
-type ImportStatus = { id: string; filename: string; status: string; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; rejected_rows: number; error: string | null; created_at: string };
+type Inspection = { headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string; warnings?: string[] };
+type ImportStatus = { id: string; filename: string; status: string; run_version: number; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; classification_review_rows?: number; rejected_rows: number; error: string | null; created_at: string };
+type HistoryUpdate = Partial<ImportStatus> & Pick<ImportStatus, "id" | "status" | "run_version">;
 type UndoPreview = { import_id: string; filename: string; status: string; deletable_transactions: number; deletable_balances: number; blockers: string[]; safe: boolean };
 
 function formatMinor(value: string, currency: string) {
   const amount = BigInt(value);
-  const absolute = amount < 0n ? -amount : amount;
-  return `${amount < 0n ? "−" : "+"}${currency} ${absolute / 100n}.${(absolute % 100n).toString().padStart(2, "0")}`;
+  return `${amount >= 0n ? "+" : ""}${formatMoney(amount, currency)}`;
 }
 
 export default function ImportPage() {
@@ -34,27 +38,63 @@ export default function ImportPage() {
   const [history, setHistory] = useState<ImportStatus[]>([]);
   const [undoId, setUndoId] = useState<string | null>(null);
   const [preview, setPreview] = useState<UndoPreview | null>(null);
+  const controlRequests = useRef(new Map<string, string>());
+  const historyRequest = useRef(0);
+  const historyApplied = useRef(new Map<string, number>());
   const file = files[index];
 
+  function mergeHistory(updates: HistoryUpdate[], requestOrder: number) {
+    setHistory((current) => {
+      const byId = new Map(current.map((item) => [item.id, item]));
+      for (const update of updates) {
+        const previous = byId.get(update.id);
+        const sameRun = previous && update.run_version === previous.run_version;
+        const stage = (status: string) => ["pending", "queued", "running"].indexOf(status);
+        const previousStage = previous ? stage(previous.status) : -1;
+        const nextStage = stage(update.status);
+        const regresses = previous && (previousStage < 0
+          ? update.status !== previous.status && !(previous.status === "completed" && update.status === "undone")
+          : nextStage >= 0 && nextStage < previousStage);
+        if (previous && (update.run_version < previous.run_version || (sameRun &&
+          (regresses || (update.status === previous.status && requestOrder < (historyApplied.current.get(update.id) ?? 0)))))) continue;
+        if (!previous && !update.filename) continue;
+        byId.set(update.id, { ...previous, ...update } as ImportStatus);
+        historyApplied.current.set(update.id, Math.max(requestOrder, historyApplied.current.get(update.id) ?? 0));
+      }
+      return [...byId.values()].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 30);
+    });
+  }
+
   async function loadHistory() {
-    const response = await fetch("/api/imports", { cache: "no-store" });
-    if (response.ok) setHistory(await response.json());
+    const requestOrder = ++historyRequest.current;
+    try {
+      const response = await fetch("/api/imports", { cache: "no-store" });
+      if (!response.ok) throw new Error("History unavailable");
+      mergeHistory(await response.json(), requestOrder);
+      setError((current) => current === "Import history is unavailable. Try again." ? "" : current);
+    } catch { setError("Import history is unavailable. Try again."); }
   }
 
   useEffect(() => {
+    const requestOrder = ++historyRequest.current;
     fetch("/api/imports", { cache: "no-store" }).then(async (response) => {
-      if (response.ok) setHistory(await response.json());
-    }).catch(() => {});
+      if (!response.ok) throw new Error("History unavailable");
+      mergeHistory(await response.json(), requestOrder);
+    }).catch(() => setError("Import history is unavailable. Try again."));
   }, []);
   useEffect(() => {
     if (!history.some((item) => item.status === "queued" || item.status === "running")) return;
     const timer = setInterval(async () => {
+      const requestOrder = ++historyRequest.current;
+      try {
       const active = history.filter((item) => item.status === "queued" || item.status === "running");
       const updates = await Promise.all(active.map(async (item) => {
         const response = await fetch(`/api/imports/${item.id}`, { cache: "no-store" });
-        return response.ok ? await response.json() as ImportStatus : item;
+        if (!response.ok) throw new Error("History unavailable");
+        return await response.json() as ImportStatus;
       }));
-      setHistory((current) => current.map((item) => updates.find((update) => update.id === item.id) ?? item));
+      mergeHistory(updates, requestOrder);
+      } catch { setError("Import history is unavailable. Try again."); }
     }, 3000);
     return () => clearInterval(timer);
   }, [history]);
@@ -116,13 +156,17 @@ export default function ImportPage() {
     }
   }
 
-  async function retry(id: string) {
+  async function control(item: ImportStatus, action: "cancel" | "resume") {
     setBusy(true);
     setError("");
     try {
-      const response = await fetch(`/api/imports/${id}/retry`, { method: "POST" });
+      const key = `${item.id}:${item.run_version}:${action}`;
+      if (!controlRequests.current.has(key)) controlRequests.current.set(key, crypto.randomUUID());
+      const response = await fetch(`/api/imports/${item.id}/control`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, requestId: controlRequests.current.get(key) }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Retry failed");
+      mergeHistory([{ id: item.id, status: result.status, run_version: result.runVersion, total_rows: result.totalRows, error: null }], ++historyRequest.current);
       await loadHistory();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Retry failed");
@@ -175,7 +219,8 @@ export default function ImportPage() {
     <label className="grid gap-1 text-sm" key={key}>
       {label}
       <select className="rounded-lg border border-border bg-card px-3 py-2" value={String(mapping?.[key] ?? "")}
-        onChange={(event) => setMapping((current) => current && ({ ...current, [key]: event.target.value || undefined }))}>
+        onChange={(event) => setMapping((current) => current && ({ ...current, [key]: event.target.value || undefined,
+          ...(["accountColumn", "productColumn", "currencyColumn"].includes(key) ? { accountRoutes: undefined } : {}) }))}>
         {optional && <option value="">None</option>}
         {!optional && <option value="">Select column</option>}
         {inspection?.headers.map((header) => <option key={header} value={header}>{header}</option>)}
@@ -195,13 +240,16 @@ export default function ImportPage() {
       }} /></label>
     <section className="space-y-3" aria-label="Import history">
       <h2 className="text-xl font-semibold tracking-tight text-foreground">Import history</h2>
-      {!history.length && <p>No imports yet.</p>}
+      {error === "Import history is unavailable. Try again." && <button type="button" className="text-sm underline" onClick={() => void loadHistory()}>Reload history</button>}
+      {!history.length && error !== "Import history is unavailable. Try again." && <p>No imports yet.</p>}
       {history.map((item) => <article key={item.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.filename}</strong><span role="status" className="rounded-lg bg-muted px-2.5 py-1 text-xs font-medium capitalize text-brand">{item.status}</span></div>
         <p className="text-sm">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows} for review · {item.rejected_rows} rejected · {item.total_rows} total</p>
         {item.error && <p className="text-sm text-red-700">{item.error}</p>}
-        {item.review_rows > 0 && <Link className="text-sm underline" href={`/import/${item.id}/review`}>Review rows</Link>}
-        {item.status === "failed" && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void retry(item.id)}>Retry</button>}
+        {(item.review_rows > 0 || (item.classification_review_rows ?? 0) > 0) && <Link className="text-sm underline" href={`/import/${item.id}/review`}>Review rows{item.classification_review_rows ? ` · ${item.classification_review_rows} financial classifications` : ""}</Link>}
+        {["queued", "running"].includes(item.status) && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void control(item, "cancel")}>Stop import</button>}
+        {["failed", "canceled"].includes(item.status) && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void control(item, "resume")}>{item.status === "canceled" ? "Resume import" : "Retry"}</button>}
+        {item.status === "canceled" && <p className="mt-2 text-xs text-muted-foreground">Stopped. Already imported rows and their sources remain saved; resume continues the same file without duplicating them.</p>}
         {item.status === "completed" && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void showUndo(item.id)}>Undo import</button>}
         {undoId === item.id && preview && <div className="mt-3 space-y-2 rounded bg-muted p-3 text-sm">
           <p><strong>Undo impact:</strong> remove {preview.deletable_transactions} transactions and {preview.deletable_balances} balance snapshots. Source file, import history and matched links are kept.</p>
@@ -223,6 +271,14 @@ export default function ImportPage() {
         {inspection.sample.slice(0, 3).map((row, i) => <tr className="border-t border-border" key={i}>{inspection.headers.map((header) => <td key={header}>{row[header]}</td>)}</tr>)}
       </tbody></table></div>}
       {inspection.preview && <>
+        {inspection.preview.timestampReviewRequired && mapping && <div className="space-y-2 rounded-lg border border-amber-300 p-3 text-sm">
+          <p>Source timestamps have no offset. The proposed timezone needs your confirmation; incorrect clock interpretation changes dates and balance order.</p>
+          <label className="grid gap-1">Source timestamp timezone<input className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.timestampTimezone ?? ""} onChange={event => { setMapping({ ...mapping, timestampTimezone: event.target.value, timestampTimezoneConfirmed: false }); setEditing(true); }} /></label>
+          <label className="flex gap-2"><input type="checkbox" checked={mapping.timestampTimezoneConfirmed ?? false} onChange={event => setMapping({ ...mapping, timestampTimezoneConfirmed: event.target.checked })} />I confirmed this timezone matches the statement&apos;s source clock.</label>
+        </div>}
+        {!!inspection.preview.classificationReviewRows && <p className="text-sm text-amber-700 dark:text-amber-300">{inspection.preview.classificationReviewRows} rows need financial classification. Their booked amounts will be preserved; income and spending remain partial until reviewed.</p>}
+        {inspection.preview.accounts?.map(account => <p key={`${account.accountName}:${account.currencyCode}`}><strong>{account.accountName}</strong> · {account.currencyCode} · {account.rows} rows</p>)}
+        {inspection.warnings?.map(warning => <p key={warning} className="text-sm text-amber-700 dark:text-amber-300">{warning}</p>)}
         <p><strong>Account:</strong> {inspection.preview.accountName} · <strong>Currency:</strong> {inspection.preview.currencyCode}</p>
         <p className="text-sm text-muted-foreground">Check the currency and incoming/outgoing amounts below. {mapping?.amountSign === "outflow-positive" ? "Positive source amounts are treated as outgoing; review this sign convention before continuing." : "Positive source amounts are treated as incoming."}</p>
         <p><strong>{inspection.preview.totalRows} rows</strong> · {inspection.preview.dateRange.from} to {inspection.preview.dateRange.to}{inspection.preview.pendingRows != null && inspection.preview.pendingRows > 0 ? ` · ${inspection.preview.pendingRows} pending (excluded from posted spending)` : ""}</p>
@@ -238,13 +294,16 @@ export default function ImportPage() {
         {chooseColumn("Amount", "amountColumn", true)}
         {chooseColumn("Debit", "debitColumn", true)}{chooseColumn("Credit", "creditColumn", true)}
         {chooseColumn("Currency", "currencyColumn", true)}{chooseColumn("Balance", "balanceColumn", true)}
-        {chooseColumn("Merchant", "merchantColumn", true)}{chooseColumn("Category", "categoryColumn", true)}{chooseColumn("External ID", "externalIdColumn", true)}{chooseColumn("Status (posted/pending only)", "statusColumn", true)}
+        {chooseColumn("Source account", "accountColumn", true)}{chooseColumn("Product", "productColumn", true)}
+        {chooseColumn("Source financial type", "typeColumn", true)}{chooseColumn("Source fee evidence", "feeColumn", true)}
+        {mapping.accountRoutes?.map((route, routeIndex) => <label className="grid gap-1 text-sm" key={routeIndex}>Account for {[route.accountValue, route.productValue, route.currencyCode].filter(Boolean).join(" / ")}<input className="rounded-lg border border-border bg-card px-3 py-2" value={route.accountName} onChange={event => setMapping({ ...mapping, accountRoutes: mapping.accountRoutes?.map((item, i) => i === routeIndex ? { ...item, accountName: event.target.value } : item) })} /></label>)}
+        {chooseColumn("Merchant", "merchantColumn", true)}{chooseColumn("Category", "categoryColumn", true)}{chooseColumn("External ID", "externalIdColumn", true)}{chooseColumn("Status (posted/pending/completed)", "statusColumn", true)}
         <label className="grid gap-1 text-sm">Date format<select className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.dateFormat} onChange={(e) => setMapping({ ...mapping, dateFormat: e.target.value as ImportMapping["dateFormat"] })}><option value="iso">YYYY-MM-DD</option><option value="dmy">DD/MM/YYYY</option><option value="mdy">MM/DD/YYYY</option></select></label>
         <label className="grid gap-1 text-sm">Amount signs<select className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.amountSign} onChange={(e) => setMapping({ ...mapping, amountSign: e.target.value as ImportMapping["amountSign"] })}><option value="signed">Positive is incoming</option><option value="outflow-positive">Positive is outgoing</option></select></label>
         <div className="sm:col-span-2"><button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy} onClick={() => void inspect(file, mapping)}>Preview correction</button></div>
       </div>}
       <div className="flex gap-3">
-        {inspection.preview && !editing && <button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy} onClick={() => void confirm()}>Continue</button>}
+        {inspection.preview && !editing && <button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy || (!!inspection.preview.timestampReviewRequired && !mapping?.timestampTimezoneConfirmed)} onClick={() => void confirm()}>Continue</button>}
         {inspection.preview && !editing && <button type="button" className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" onClick={() => setEditing(true)}>Correct</button>}
         <button type="button" className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" onClick={() => { setFiles([]); setInspection(null); setMapping(null); }}>Cancel</button>
       </div>

@@ -1,5 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme {
   --font-sans: "Inter", Arial, sans-serif;
@@ -26,3 +27,23 @@ body {
   outline: 2px solid var(--color-brand);
   outline-offset: 2px;
 }
+
+fieldset { min-width: 0; }
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --color-background: #101827;
+  --color-card: #172235;
+  --color-foreground: #e7eef9;
+  --color-muted: #223147;
+  --color-muted-foreground: #b1c0d5;
+  --color-border: #3a4a62;
+  --color-primary: #d4e3ff;
+  --color-primary-foreground: #142038;
+  --color-accent: #263b5b;
+  --color-accent-foreground: #e7eef9;
+  --color-brand: #83b3ff;
+}
+
+html[data-theme="dark"] .bg-white { background-color: var(--color-card); }
+html[data-theme="dark"] .bg-brand.text-white { color: var(--color-primary-foreground); }

@@ -1,8 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
-import { start } from "workflow/api";
+import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { getModel } from "@/lib/ai/provider";
-import { financialReview } from "@/workflows/financial-review";
+import { modelForSettings } from "@/lib/ai/provider";
+import { requireAiScope } from "@/lib/settings";
+import { startFinancialReview } from "@/lib/finance/start-review";
 
 export async function GET() {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -13,22 +13,22 @@ export async function GET() {
   return result.error ? Response.json({ error: result.error.message }, { status: 500 }) : Response.json(result.data);
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); }
   catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.OPENROUTER_API_KEY)
     return Response.json({ error: "Financial review service is not configured" }, { status: 503 });
-  try { getModel(); }
+  const parsed = z.object({ requestId: z.uuid() }).strict().safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return Response.json({ error: "Provide a review request ID" }, { status: 400 });
+  try { requireAiScope(context.settings, "accounts", "transactions"); }
+  catch (error) { return Response.json({ error: String(error) }, { status: 403 }); }
+  try { await modelForSettings(context.settings); }
   catch (error) { return Response.json({ error: String(error) }, { status: 503 }); }
-  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-  const inserted = await db.from("background_jobs").insert({ workspace_id: context.workspace.id, kind: "financial_review" }).select("id").single();
-  if (inserted.error) return Response.json({ error: inserted.error.message }, { status: 500 });
   try {
-    await start(financialReview, [inserted.data.id, context.workspace.id]);
-    return Response.json({ jobId: inserted.data.id, status: "queued" }, { status: 202 });
+    const result = await startFinancialReview(context.supabase, context.workspace.id, parsed.data.requestId);
+    return Response.json(result, { status: 202 });
   } catch (error) {
-    await db.from("background_jobs").update({ status: "failed", stage: "starting", error: String(error) }).eq("id", inserted.data.id).eq("workspace_id", context.workspace.id);
-    return Response.json({ error: "Could not start financial review", jobId: inserted.data.id }, { status: 503 });
+    return Response.json({ error: error instanceof Error ? error.message : "Could not start financial review" }, { status: 503 });
   }
 }

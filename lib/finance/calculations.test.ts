@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { availableToSpend, forecastDaily, netWorth, summarizeCashflow } from "./calculations";
 
 describe("exact financial calculations", () => {
+  it("excludes unresolved classifications and labels cashflow partial", () => {
+    expect(summarizeCashflow([
+      { amountMinor: -1000n, currencyCode: "EUR", status: "posted", kind: "ordinary" },
+      { amountMinor: 5000n, currencyCode: "EUR", status: "posted", kind: "ordinary", reviewReasons: ["source_transfer"] },
+    ], "EUR")).toEqual({ incomeMinor: 0n, spendingMinor: 1000n, netMinor: -1000n, excludedReviewRows: 1, partial: true });
+  });
   it("keeps large minor-unit totals exact and unknown balances unknown", () => {
     expect(netWorth([{ amountMinor: 9007199254740993n, currencyCode: "EUR" }, { amountMinor: 7n, currencyCode: "EUR" }], "EUR")).toBe(9007199254741000n);
     expect(netWorth([{ amountMinor: null, currencyCode: "EUR" }], "EUR")).toBeNull();
@@ -23,6 +29,17 @@ describe("exact financial calculations", () => {
       { amountMinor: 100n, currencyCode: "EUR", status: "posted", kind: "ordinary" },
       { amountMinor: 100n, currencyCode: "USD", status: "posted", kind: "ordinary" },
     ], "EUR")).toBeNull();
+  });
+
+  it("ignores foreign currencies on excluded pending and transfer rows", () => {
+    for (const excluded of [
+      { amountMinor: -100n, currencyCode: "USD", status: "pending" as const, kind: "ordinary" as const },
+      { amountMinor: -100n, currencyCode: "USD", status: "posted" as const, kind: "transfer" as const },
+    ]) {
+      expect(summarizeCashflow([
+        { amountMinor: -1000n, currencyCode: "EUR", status: "posted", kind: "ordinary" }, excluded,
+      ], "EUR")).toEqual({ incomeMinor: 0n, spendingMinor: 1000n, netMinor: -1000n });
+    }
   });
 
   it("evaluates every day and finds an early shortfall, including reservations and pending only once", () => {

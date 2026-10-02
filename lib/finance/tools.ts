@@ -2,6 +2,7 @@ import { z } from "zod";
 import { summarizeCashflow } from "./calculations";
 import { requireWorkspace } from "@/lib/auth";
 import { evaluatePlan } from "./model";
+import { loadBalanceEvidence, resolveBalances } from "./balances";
 
 const periodInput = z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().regex(/^[A-Z]{3}$/) });
 const searchInput = z.object({ query: z.string().min(1).max(100) });
@@ -16,16 +17,8 @@ export async function listAccounts() {
 
 export async function getBalances() {
   const { supabase, workspace } = await requireWorkspace();
-  const [{ data: accounts, error: accountsError }, { data: snapshots, error: snapshotsError }] = await Promise.all([
-    supabase.from("accounts").select("id, name, currency_code").eq("workspace_id", workspace.id),
-    supabase.from("balance_snapshots").select("account_id, amount_minor, currency_code, as_of, provenance")
-      .eq("workspace_id", workspace.id).order("as_of", { ascending: false }),
-  ]);
-  if (accountsError) throw accountsError;
-  if (snapshotsError) throw snapshotsError;
-  const latest = new Map<string, NonNullable<typeof snapshots>[number]>();
-  for (const snapshot of snapshots ?? []) if (!latest.has(snapshot.account_id)) latest.set(snapshot.account_id, snapshot);
-  return accounts?.map(account => ({ ...account, balance: latest.get(account.id) ?? null })) ?? [];
+  const evidence = await loadBalanceEvidence(supabase, workspace.id);
+  return resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone);
 }
 
 export async function cashflow(input: unknown) {
@@ -34,8 +27,8 @@ export async function cashflow(input: unknown) {
   const { supabase, workspace } = await requireWorkspace();
   const rows = [];
   for (let offset = 0; ; offset += 1000) {
-    const { data, error } = await supabase.from("transactions")
-      .select("amount_minor, currency_code, status, kind")
+    const { data, error } = await supabase.from("effective_transactions")
+      .select("amount_minor::text, currency_code, status, kind, review_reasons")
       .eq("workspace_id", workspace.id).gte("posted_on", from).lte("posted_on", to)
       .order("id")
       .range(offset, offset + 999);
@@ -46,11 +39,13 @@ export async function cashflow(input: unknown) {
   const total = summarizeCashflow(rows.map(row => ({
     amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code,
     status: row.status as "posted" | "pending", kind: row.kind as "ordinary" | "transfer" | "refund",
+    reviewReasons: row.review_reasons,
   })), currencyCode);
   return total ? {
     from, to, currencyCode, incomeMinor: total.incomeMinor.toString(),
     spendingMinor: total.spendingMinor.toString(), netMinor: total.netMinor.toString(),
-    evidence: { transactionCount: rows.length, excludedPendingAndTransfers: true },
+    evidence: { transactionCount: rows.length, excludedPendingAndTransfers: true,
+      excludedReviewRows: total.excludedReviewRows ?? 0, partial: total.partial ?? false },
   } : { unavailable: "Some transactions require currency conversion", from, to, currencyCode };
 }
 
@@ -58,7 +53,7 @@ export async function searchTransactions(input: unknown) {
   const { query } = searchInput.parse(input);
   const { supabase, workspace } = await requireWorkspace();
   const { data, error } = await supabase.from("transactions")
-    .select("id, posted_on, description, amount_minor, currency_code, status, kind")
+    .select("id, posted_on, description, amount_minor::text, currency_code, status, kind")
     .eq("workspace_id", workspace.id).ilike("description", `%${query.replace(/[%_]/g, "\\$&")}%`)
     .order("posted_on", { ascending: false }).limit(20);
   if (error) throw error;
@@ -68,7 +63,7 @@ export async function searchTransactions(input: unknown) {
 export async function listGoals() {
   const { supabase, workspace } = await requireWorkspace();
   const { data, error } = await supabase.from("goals")
-    .select("id, name, target_minor, currency_code, target_date, status")
+    .select("id, name, target_minor::text, currency_code, target_date, status")
     .eq("workspace_id", workspace.id).order("created_at", { ascending: false });
   if (error) throw error;
   return data;

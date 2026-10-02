@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { loadWorkspaceSettings } from "@/lib/settings";
 
 export async function requireWorkspace() {
   const supabase = await createClient();
@@ -10,5 +11,6 @@ export async function requireWorkspace() {
     .eq("owner_id", user.id)
     .single();
   if (error || !workspace) throw new Error("Workspace unavailable");
-  return { supabase, user, workspace };
+  const settings = await loadWorkspaceSettings(supabase, workspace.id);
+  return { supabase, user, settings, workspace: { ...workspace, timezone: settings.timezone, locale: settings.locale, settings } };
 }

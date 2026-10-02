@@ -40,6 +40,13 @@
     "workflow": "^4.8.9",
     "zod": "^4.6.5"
   },
+  "overrides": {
+    "@workflow/core": {
+      "devalue": "5.9.3",
+      "nanoid": "5.1.16"
+    },
+    "undici": "7.30.0"
+  },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
@@ -51,6 +58,7 @@
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.6",
     "postcss": "^8.5.28",
+    "postgres": "3.4.9",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "vitest": "^5.0.2"

@@ -1,3 +1,4 @@
+import { checkOutputShape } from "./output";
 import { evaluateIsolated } from "./isolate";
 import {
   ALLOWED_SDK_BY_KIND,
@@ -19,69 +20,13 @@ export type ValidationResult =
   | { ok: true; manifest: CalculatorManifest; warnings: string[] }
   | { ok: false; errors: string[]; manifest?: CalculatorManifest };
 
-const MAX_OUTPUT_CHARS = 20_000;
-
-function isPlainJson(value: unknown, depth = 0): string | null {
-  if (depth > 4) return "output is nested too deeply (max 4)";
-  if (value === null) return null;
-  const t = typeof value;
-  if (t === "string" || t === "number" || t === "boolean") return null;
-  if (t === "function" || t === "symbol" || t === "undefined")
-    return `output contains ${t}, only JSON values are allowed`;
-  if (Array.isArray(value)) {
-    if (value.length > 50) return "output array has more than 50 items";
-    for (const item of value) {
-      const err = isPlainJson(item, depth + 1);
-      if (err) return err;
-    }
-    return null;
-  }
-  if (t === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length > 30) return "output object has more than 30 keys";
-    for (const [key, item] of entries) {
-      if (key.length > 60) return `output key ${key} is too long`;
-      const err = isPlainJson(item, depth + 1);
-      if (err) return err;
-    }
-    return null;
-  }
-  return `output contains ${t}, only JSON values are allowed`;
-}
-
-function checkOutputShape(output: unknown): string[] {
-  if (typeof output !== "object" || output === null || Array.isArray(output)) {
-    return ["Smoke test must return a JSON object such as { summary, rows }"];
-  }
-  const errors: string[] = [];
-  const json = JSON.stringify(output);
-  if (json.length > MAX_OUTPUT_CHARS) {
-    errors.push(`Output is too large (${json.length} chars, max ${MAX_OUTPUT_CHARS})`);
-  }
-  const plain = isPlainJson(output);
-  if (plain) errors.push(plain);
-  const text = json.toLowerCase();
-  if (text.includes("<script") || text.includes("<iframe") || text.includes("javascript:")) {
-    errors.push("Output contains forbidden markup");
-  }
-  const record = output as Record<string, unknown>;
-  const hasKnownKey =
-    "summary" in record || "rows" in record || "numbers" in record ||
-    "chart" in record || "unavailable" in record || "warning" in record;
-  if (!hasKnownKey) {
-    errors.push("Output must include one of: summary, rows, numbers, chart, unavailable, warning");
-  }
-  if ("summary" in record && record.summary !== undefined && typeof record.summary !== "string") {
-    errors.push("Output summary must be a string");
-  }
-  if (typeof record.summary === "string" && record.summary.length > 500) {
-    errors.push("Output summary is too long (max 500 chars)");
-  }
-  return errors;
-}
-
 export function fixturesForKind(kind: ArtifactKind): CalculatorInput[] {
   const base = { runtime: CALCULATOR_RUNTIME };
+  if (kind.startsWith("custom_")) return [
+    { snapshot: { ...base, currency: "EUR", spending: { spendingMinor: "80000", incomeMinor: "120000", netMinor: "40000" }, balances: [{ id: "a", currency_code: "EUR", balance: { amount_minor: "150000", status: "current" } }], goals: [{ id: "g", currency: "EUR", targetMinor: "10000", savedMinor: "2500", remainingMinor: "7500" }], forecast: { currency: "EUR", baselineAvailableMinor: "150000" } }, params: {} },
+    { snapshot: { ...base, currency: "EUR", spending: { spendingMinor: "0", incomeMinor: "0", netMinor: "0" }, balances: [], goals: [], forecast: { unavailable: "No dated balance" } }, params: {} },
+    { snapshot: { ...base, unavailable: "Requested financial evidence is unavailable" }, params: {} },
+  ];
   if (kind === "spending_explorer") {
     return [
       { snapshot: { ...base, currency: "EUR", incomeMinor: "120000", spendingMinor: "80000", netMinor: "40000", daily: [{ date: "2026-09-01", spendingMinor: "1200" }] }, params: {} },
@@ -112,10 +57,7 @@ export async function validateGeneratedCandidate(args: {
 }): Promise<ValidationResult> {
   const errors: string[] = [];
   errors.push(...checkSourceAllowlist(args.source));
-  const manifestCheck = checkManifest(args.kind, args.manifest, [
-    ...(ALLOWED_SDK_BY_KIND[args.kind] ?? []),
-    ...(args.permissions ?? []),
-  ]);
+  const manifestCheck = checkManifest(args.kind, args.manifest, args.permissions ?? ALLOWED_SDK_BY_KIND[args.kind] ?? []);
   errors.push(...manifestCheck.errors);
   if (errors.length) return { ok: false, errors, manifest: manifestCheck.manifest };
 
@@ -151,6 +93,12 @@ export async function validateGeneratedCandidate(args: {
     const shapeErrors = checkOutputShape(output);
     if (shapeErrors.length) {
       return { ok: false, manifest, errors: shapeErrors.map((e) => `Smoke test ${i + 1}: ${e}`) };
+    }
+    if (i === 0 && manifest.sdk.length === 0 && Object.values(params).every(value => typeof value !== "string" || value.trim().length > 0)) {
+      const normal = output as Record<string, unknown>;
+      if (normal.unavailable && !normal.summary && !normal.numbers && !normal.chart && !normal.rows) {
+        return { ok: false, manifest, errors: ["Normal-input test returned unavailable despite complete local inputs; check the calculation before saving"] };
+      }
     }
   }
 

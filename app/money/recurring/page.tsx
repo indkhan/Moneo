@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { detectRecurring } from "@/lib/finance/recurring";
 import { confirmSeries, declineSeries } from "./actions";
-import { confidenceToPercent, formatMoney, seriesKey } from "./series";
+import { confidenceToPercent, formatMoney as formatCurrency, seriesKey } from "./series";
 
 const MAX_TRANSACTIONS = 10_000;
 const PAGE_SIZE = 1000;
@@ -25,11 +25,12 @@ export default async function RecurringPage() {
     redirect("/login");
   }
   const { supabase, workspace } = context;
+  const formatMoney=(amount:string|bigint,currency:string)=>formatCurrency(amount,currency,workspace.locale);
 
   const [{ data: accounts, error: accountsError }, { data: stored, error: storedError }] = await Promise.all([
     supabase.from("accounts").select("id, name, currency_code").eq("workspace_id", workspace.id).order("name"),
     supabase.from("recurring_series")
-      .select("account_id, normalized_label, cadence, currency_code, status, assumption_id, label")
+      .select("id, account_id, normalized_label, cadence, currency_code, status, assumption_id, label, evidence_invalidated, evidence_baseline")
       .eq("workspace_id", workspace.id),
   ]);
 
@@ -37,10 +38,10 @@ export default async function RecurringPage() {
   let queryError: string | null = null;
   for (let offset = 0; offset < MAX_TRANSACTIONS; offset += PAGE_SIZE) {
     const { data, error } = await supabase.from("transactions")
-      .select("id, posted_on, description, amount_minor, currency_code, account_id")
+      .select("id, posted_on, description, amount_minor::text, currency_code, account_id")
       .eq("workspace_id", workspace.id)
       .eq("status", "posted")
-      .eq("kind", "ordinary")
+      .eq("kind", "ordinary").eq("review_reasons", "{}")
       .order("id")
       .range(offset, offset + PAGE_SIZE - 1);
     if (error) {
@@ -91,11 +92,12 @@ export default async function RecurringPage() {
       </header>
 
       <p className="max-w-3xl text-sm text-slate-500">
-        Estimated patterns inferred from up to {MAX_TRANSACTIONS.toLocaleString()} posted transactions.
+        Estimated patterns inferred from up to {MAX_TRANSACTIONS.toLocaleString(workspace.locale)} posted transactions.
         Nothing here affects your forecast until you confirm it. Confirming creates one confirmed
         financial assumption used by the deterministic forecast; declining disables it.
       </p>
 
+      {(stored??[]).some(series=>series.evidence_invalidated) && <section aria-label="Recurring source changes" className="rounded-lg border border-amber-500 p-4"><h2 className="font-medium">Confirmed source evidence changed</h2><p className="mt-2 text-sm">Inferred assumptions are disabled when their transaction evidence is reclassified. Intentional user assumptions are retained. Undo the source correction to restore unchanged inference, or review a new valid pattern before confirming it.</p><ul className="mt-3 space-y-3">{(stored??[]).filter(series=>series.evidence_invalidated).map(series=><li key={series.id} className="text-sm"><p>{series.label} · {names[series.account_id]??"Account"}</p><div className="flex flex-wrap gap-3">{((series.evidence_baseline??[]) as {id:string;posted_on:string}[]).map(source=><Link key={source.id} href={`/money/transactions?transaction=${source.id}`} className="underline">Source {source.posted_on}</Link>)}<Link href="/plan" className="underline">Review assumption in Plan</Link></div></li>)}</ul></section>}
       {accountsError && <p role="alert" className="mt-6">Could not load accounts: {accountsError.message}</p>}
       {storedError && <p role="alert" className="mt-6">Could not load review state: {storedError.message}</p>}
       {queryError && <p role="alert" className="mt-6">Could not load transactions: {queryError}</p>}

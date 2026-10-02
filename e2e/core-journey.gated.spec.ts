@@ -39,7 +39,8 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
   test("authenticate → import → home → ask → goal → mocked analysis → pin artifact → re-import", async ({
     page,
   }) => {
-    test.setTimeout(120_000);
+    // Two durable imports and a live free-provider request each retain their own bounds.
+    test.setTimeout(240_000);
 
     // Mock ONLY the AI-proposing inspect (no-mapping POST). Correction
     // previews carry an explicit mapping and go to the real backend, which
@@ -101,7 +102,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
       ).toBeVisible();
       // Deterministic assertion: the salary row from the synthetic fixture
       // is listed server-side (no full-DB client filtering per §7).
-      await expect(page.getByText("Salary Acme").first()).toBeVisible();
+      await expect(page.getByRole("table").getByRole("link", { name: "Salary Acme", exact: true })).toBeVisible();
     });
 
     await test.step("view Home with trusted metrics", async () => {
@@ -109,7 +110,13 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
       await expect(
         page.getByRole("heading", { name: "Home" }),
       ).toBeVisible();
-      await expect(page.getByRole("heading", { name: "Net worth" })).toBeVisible();
+      await expect(page.getByText("Net worth", { exact: true })).toBeVisible();
+      await expect(page.getByText("Accepted ledger entries", { exact: true })).toBeVisible();
+      await expect(page.getByRole("link").filter({ hasText: "Accepted ledger entries" })).toContainText("2");
+      // Establish an independent known opening balance through the actual form.
+      await page.getByLabel("Checking balance", { exact: true }).fill("1000.00");
+      await page.getByLabel("Checking balance", { exact: true }).locator("..").getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByText("EUR 1000.00", { exact: true }).first()).toBeVisible();
     });
 
     await test.step("ask a grounded AI question", async () => {
@@ -124,7 +131,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
     await test.step("create a goal and view forecast availability", async () => {
       await page.goto("/plan");
       await expect(
-        page.getByRole("heading", { name: "Plan" }),
+        page.getByRole("heading", { name: "Financial horizon & runway" }),
       ).toBeVisible();
       await page.getByPlaceholder("Goal name").fill("E2E Japan");
       await page.getByPlaceholder("Target amount").fill("3500.00");
@@ -133,8 +140,9 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
         .click();
       await expect(page.getByRole("heading", { name: "E2E Japan" }).first()).toBeVisible();
       await expect(
-        page.getByRole("heading", { name: "Available to spend" }),
+        page.getByText("Available to spend", { exact: true }),
       ).toBeVisible();
+      await expect(page.getByText("EUR 1000.00", { exact: true }).first()).toBeVisible();
     });
 
     await test.step("complete Deep Analysis (mocked completion)", async () => {
@@ -174,11 +182,14 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
               title: "Mocked deterministic review",
               body: "Balances, cash flow and recurring commitments from exact tool results.",
               evidence: { cashflow: "deterministic", transactionsRead: 2 },
+              created_at: "2026-10-01T12:00:00Z",
+              freshness: { status: "current", reason: "Deterministic fixture evidence is unchanged." },
             },
           }),
         }),
       );
       await page.goto("/ai");
+      await expect(page.getByRole("heading", { name: "Deep Financial Analysis", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Run review" }).click();
       await expect(page.getByText("Mocked deterministic review")).toBeVisible();
     });
@@ -236,7 +247,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
       await expect(
         page.getByRole("heading", { name: "Home" }),
       ).toBeVisible();
-      await expect(page.getByText("4 accepted transactions")).toBeVisible();
+      await expect(page.getByRole("link").filter({ hasText: "Accepted ledger entries" })).toContainText("4");
       await expect(page.getByRole("link", { name: /E2E Spending Explorer/ }).first()).toBeVisible();
     });
 

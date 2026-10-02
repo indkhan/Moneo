@@ -1,0 +1,20 @@
+import { test, expect } from "@playwright/test";
+import { e2eStorageStatePath, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
+const state=e2eStorageStatePath();if(state)test.use({storageState:state});test.skip(!hasSupabaseEnv()||!state,gatedSkipReason());
+test("data-dependent live output is rejected without losing the working version",async({page})=>{
+  test.setTimeout(90_000);await page.goto("/ai/library");
+  const create=page.locator("form").filter({has:page.getByLabel("Custom Comparison",{exact:true})});
+  await create.getByLabel("Custom Comparison",{exact:true}).fill(`Output QA ${crypto.randomUUID().slice(0,8)}`);
+  await create.getByRole("button",{name:"Create",exact:true}).click();
+  const editor=page.getByRole("region",{name:"Edit calculator version"});
+  await editor.locator(".cm-content").fill(`input=>({summary:"x".repeat(Number(input.params.size||1))})`);
+  await editor.getByLabel("Manifest (JSON)").fill(JSON.stringify({kind:"custom_comparison",runtime:"quickjs-calculator-v1",sdk:[],params:{size:{type:"number",min:1,max:1000,default:1}},renderer:"trusted"}));
+  await editor.getByRole("button",{name:"Save new version",exact:true}).click();
+  const output=page.getByRole("region",{name:"Generated calculator output"});
+  await expect(output.getByText("x",{exact:true})).toBeVisible({timeout:20_000});
+  await output.getByLabel("size",{exact:true}).fill("600");
+  await expect(output.getByRole("status")).toContainText("Output summary is too long",{timeout:10_000});
+  await expect(output.getByRole("button",{name:"Export PNG",exact:true})).toBeDisabled();
+  await output.getByLabel("size",{exact:true}).fill("1");
+  await expect(output.getByText("x",{exact:true})).toBeVisible();
+});

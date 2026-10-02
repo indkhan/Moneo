@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const { supabase, workspace } = context;
     const result = await supabase.from("imports")
-      .select("id, filename, status, total_rows, new_rows, matched_rows, review_rows, rejected_rows, error, created_at")
+      .select("id, filename, status, run_version, total_rows, new_rows, matched_rows, review_rows, classification_review_rows, rejected_rows, error, created_at")
       .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30);
     if (result.error) throw result.error;
     return Response.json(result.data);

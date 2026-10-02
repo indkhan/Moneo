@@ -5,12 +5,18 @@ function exactMinor(value: bigint | string | number): bigint {
   return BigInt(value);
 }
 
-export function formatMoney(amountMinor: bigint | string | number, currencyCode: string): string {
+export function formatMoney(amountMinor: bigint | string | number, currencyCode: string, locale?: string): string {
   const value = exactMinor(amountMinor);
   const abs = value < 0n ? -value : value;
   const digits = minorDigits(currencyCode);
   const divisor = 10n ** BigInt(digits);
   const whole = abs / divisor;
+  if (locale) {
+    const integer = new Intl.NumberFormat(locale, { useGrouping: false, maximumFractionDigits: 0 }).format(whole);
+    const decimal = new Intl.NumberFormat(locale).formatToParts(1.1).find(part => part.type === "decimal")?.value ?? ".";
+    const fraction = new Intl.NumberFormat(locale, { useGrouping: false, minimumIntegerDigits: Math.max(1, digits), maximumFractionDigits: 0 }).format(abs % divisor);
+    return `${value < 0n ? "-" : ""}${currencyCode} ${integer}${digits ? decimal + fraction : ""}`;
+  }
   if (digits === 0) {
     return `${value < 0n ? "-" : ""}${currencyCode} ${whole}`;
   }

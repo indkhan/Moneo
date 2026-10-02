@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
+import { calendarDate } from "@/lib/finance/calendar";
 import { minorDigits } from "@/lib/finance/fx";
 
 function parseCurrency(raw: unknown): string {
@@ -37,7 +38,7 @@ export async function addFxRate(form: FormData) {
   if (from === to) throw new Error("Rate pair must be two different currencies");
   const rateText = parseRateText(form.get("rate"));
   const rateDate = z.iso.date().parse(form.get("rateDate"));
-  if (rateDate > new Date().toISOString().slice(0, 10)) throw new Error("Rate date cannot be in the future");
+  if (rateDate > calendarDate(new Date(), workspace.timezone)) throw new Error("Rate date cannot be in the future");
   const sourceRaw = String(form.get("source") ?? "manual").trim() || "manual";
   const source = z.string().trim().min(1).max(120).parse(sourceRaw);
   // Manual dated rate only; never rewrites original financial records.

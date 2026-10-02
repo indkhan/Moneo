@@ -1,0 +1,35 @@
+do $$
+declare actor uuid:=gen_random_uuid(); workspace uuid; account uuid; goal uuid; other_goal uuid; investment uuid; evidence jsonb; result jsonb; second jsonb; request uuid:=gen_random_uuid(); today date:=(now() at time zone 'Europe/Berlin')::date;
+begin
+  insert into auth.users(id,email) values(actor,'qa-'||actor||'@example.invalid');
+  select id into strict workspace from public.workspaces where owner_id=actor;
+  perform set_config('request.jwt.claim.sub',actor::text,true);
+  insert into public.accounts(workspace_id,name,currency_code) values(workspace,'Reserve account','EUR') returning id into account;
+  insert into public.accounts(workspace_id,name,currency_code,type) values(workspace,'Investment','EUR','investment') returning id into investment;
+  insert into public.goals(workspace_id,name,target_minor,currency_code) values(workspace,'Reserve goal',1000000,'EUR') returning id into goal;
+  insert into public.goals(workspace_id,name,target_minor,currency_code) values(workspace,'Foreign currency goal',1000000,'USD') returning id into other_goal;
+  insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance) values(workspace,account,10000,'EUR',now(),'synthetic');
+  insert into public.transactions(workspace_id,account_id,posted_on,description,amount_minor,currency_code,status) values(workspace,account,today,'Pending debit',-2000,'EUR','pending');
+  evidence:=public.reservation_balance_evidence(account,now(),'Europe/Berlin');
+  if evidence->>'status'<>'current' or evidence->>'amount_minor'<>'10000' or evidence->>'pending_hold_minor'<>'2000' then raise exception 'Current cash or pending holds incorrectly resolved'; end if;
+  execute 'set local role authenticated';
+  begin perform public.reserve_goal_funds(goal,account,'8001',0,gen_random_uuid()); raise exception 'Pending hold overreserved' using errcode='ZX001'; exception when sqlstate '22003' then null; end;
+  begin perform public.reserve_goal_funds(other_goal,account,'100',0,gen_random_uuid()); raise exception 'Cross-currency reservation accepted' using errcode='ZX001'; exception when sqlstate '22023' then null; end;
+  begin perform public.reserve_goal_funds(goal,investment,'100',0,gen_random_uuid()); raise exception 'Investment treated as cash' using errcode='ZX001'; exception when sqlstate '22023' then null; end;
+  result:=public.reserve_goal_funds(goal,account,'8000',0,request);
+  if public.reserve_goal_funds(goal,account,'8000',0,request)<>result then raise exception 'Reservation retry duplicated event'; end if;
+  begin perform public.reserve_goal_funds(goal,account,'8000',1,request); raise exception 'Reservation retry changed expected version' using errcode='ZX001'; exception when sqlstate '22023' then null; end;
+  begin perform public.reserve_goal_funds(goal,account,'10',0,gen_random_uuid()); raise exception 'Stale reservation version accepted' using errcode='ZX001'; exception when sqlstate '40001' then null; end;
+  second:=public.reserve_goal_funds(goal,account,'5000',1,gen_random_uuid());
+  begin perform public.undo_goal_reservation((result->>'eventId')::uuid,2); raise exception 'Older reservation undo accepted' using errcode='ZX001'; exception when sqlstate '40001' then null; end;
+  perform public.undo_goal_reservation((second->>'eventId')::uuid,2);
+  perform public.undo_goal_reservation((result->>'eventId')::uuid,3);
+  if not exists(select 1 from public.goal_allocations where goal_id=goal and account_id=account and amount_minor=0 and version=4) then raise exception 'Release lost continuous version/evidence'; end if;
+  execute 'reset role';
+  insert into public.transactions(workspace_id,account_id,posted_on,description,amount_minor,currency_code) values(workspace,account,today,'Same day unknown boundary',-1,'EUR');
+  if public.reservation_balance_evidence(account,now(),'Europe/Berlin')->>'status'<>'ambiguous' then raise exception 'Date-only same-day activity resolved without evidence'; end if;
+  execute 'set local role authenticated';
+  begin perform public.reserve_goal_funds(goal,account,'1',4,gen_random_uuid()); raise exception 'Ambiguous cash reserved' using errcode='ZX001'; exception when sqlstate '22023' then null; end;
+  execute 'reset role';
+end;
+$$;
