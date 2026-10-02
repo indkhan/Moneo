@@ -59,7 +59,7 @@ export async function POST(request: Request) {
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
   const canStartReview = canInvestigate && isExplicitReviewRequest(message);
   const canCreateArtifact = /(?:^|[.!?]\s+)(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:create|build|make)\b[^.!?]*\b(?:chart|artifact|tool|dashboard|tracker|planner)\b/i.test(message);
-  let createdArtifact: { id: string; href: string } | undefined;
+  let createdArtifact: Promise<{ id: string; href: string }> | undefined;
     const model = await modelForSettings(settings);
     const result = await generateText({
       model,
@@ -74,13 +74,13 @@ export async function POST(request: Request) {
           inputSchema: z.object({ kind: z.enum(["spending_explorer", "trip_planner", "goal_tracker"]), name: z.string().trim().min(1).max(120) }).strict(),
           execute: async ({ kind, name }) => {
             if (request.signal.aborted) throw new Error("Request canceled");
-            if (createdArtifact) return createdArtifact;
+            return createdArtifact ??= (async () => {
             const latest = await requireWorkspace();
             if (latest.workspace.id !== workspace.id) throw new Error("Workspace changed");
             const { data, error } = await latest.supabase.rpc("create_trusted_artifact", { p_kind: kind, p_name: name });
             if (error || !data?.id) throw new Error(error?.message ?? "Artifact creation failed");
-            createdArtifact = { id: data.id, href: `/ai/library/${data.id}` };
-            return createdArtifact;
+            return { id: data.id, href: `/ai/library/${data.id}` };
+            })();
           },
         }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { transactions_previewCategory: tool({ description: "Read-only impact preview for exact selected transaction UUIDs and an existing category UUID. Returns a link where the user reviews current entries and explicitly confirms an audited bulk change. Never changes any transaction.", inputSchema: categoryPreviewSchema, execute: async ({ transactionIds, categoryId }) => {

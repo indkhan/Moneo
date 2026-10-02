@@ -37,8 +37,8 @@ it("creates a trusted chart only for an explicit artifact request and reuses it 
   vi.mocked(context.supabase.rpc).mockResolvedValueOnce({ data: { id: requestId }, error: null } as never);
   const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, { execute: (input: unknown) => Promise<unknown> }>;
   const input = { kind: "spending_explorer", name: "Monthly spending" };
-  expect(await tools.artifacts_create.execute(input)).toMatchObject({ href: `/ai/library/${requestId}` });
-  await tools.artifacts_create.execute(input);
+  const results = await Promise.all([tools.artifacts_create.execute(input), tools.artifacts_create.execute(input)]);
+  expect(results).toEqual([{ id: requestId, href: `/ai/library/${requestId}` }, { id: requestId, href: `/ai/library/${requestId}` }]);
   expect(context.supabase.rpc).toHaveBeenCalledWith("create_trusted_artifact", { p_kind: input.kind, p_name: input.name });
   expect(vi.mocked(context.supabase.rpc).mock.calls.filter(call => call[0] === "create_trusted_artifact")).toHaveLength(1);
 });
