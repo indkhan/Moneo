@@ -80,7 +80,7 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
     const known = history.at(-1);
     const limit = month === currentMonth ? BigInt(plan.limit_minor) : known ? BigInt(known.limit_minor) : null;
     const rollover = plan.rollover && limit !== null ? rolloverBudget(rows, plan.category_id, plan.currency_code, plan.rollover_from.slice(0, 7), month, limit, history) : null;
-    return { ...plan, periodEnabled: month === currentMonth ? plan.enabled : known?.enabled ?? null, spent, limit, rolloverResult: rollover, remaining: limit === null ? null : rollover?.status === "available" ? rollover.remainingMinor : limit - spent };
+    return { ...plan, periodEnabled: month === currentMonth ? plan.enabled : known?.enabled ?? null, spent, limit, rolloverResult: rollover, remaining: limit === null || rollover?.status === "unavailable" ? null : rollover?.status === "available" ? rollover.remainingMinor : limit - spent };
   });
 
   return <main className="mx-auto max-w-7xl space-y-7 px-4 py-8 text-foreground sm:px-6 lg:px-10">
@@ -101,13 +101,13 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
         <li key={`${plan.id}:${plan.version}`} className="rounded-lg border border-border bg-muted/35 p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h3 className="font-medium">{names.get(plan.category_id) ?? "Unknown category"}{plan.periodEnabled === false ? " (disabled that month)" : ""}</h3>
-            <p className="font-mono text-sm text-muted-foreground">{formatMoney(plan.spent, plan.currency_code)} of {plan.limit === null ? "Unknown historical target" : formatMoney(plan.limit, plan.currency_code)}</p>
+            <p className="font-mono text-sm text-muted-foreground">{formatMoney(plan.spent, plan.currency_code, workspace.locale)} of {plan.limit === null ? "Unknown historical target" : formatMoney(plan.limit, plan.currency_code, workspace.locale)}</p>
           </div>
           <p className="mt-2 font-mono text-sm font-medium">{plan.periodEnabled !== false
-            ? (plan.remaining === null ? "Historical target unavailable" : plan.rolloverResult?.status === "unavailable" ? `Rollover unavailable: ${plan.rolloverResult.missingInput}` : plan.remaining >= 0n ? `${formatMoney(plan.remaining, plan.currency_code)} left` : `${formatMoney(-plan.remaining, plan.currency_code)} over plan`)
+            ? (plan.rolloverResult?.status === "unavailable" ? `Rollover unavailable: ${plan.rolloverResult.missingInput}` : plan.remaining === null ? "Historical target unavailable" : plan.remaining >= 0n ? `${formatMoney(plan.remaining, plan.currency_code, workspace.locale)} left` : `${formatMoney(-plan.remaining, plan.currency_code, workspace.locale)} over plan`)
             : "Disabled: not counted as an active target."}</p>
           {plan.periodEnabled === true && plan.limit !== null && <progress className="mt-3 h-1.5 w-full accent-brand" max={Number(plan.limit)} value={Math.max(0, Number(plan.spent))} aria-label={`${names.get(plan.category_id) ?? "Category"} plan used`} />}
-          {plan.rolloverResult?.status === "available" && <p className="mt-2 text-xs text-muted-foreground">Carry from earlier months: {formatMoney(plan.rolloverResult.carriedMinor, plan.currency_code)}. Effective allowance: {formatMoney(plan.rolloverResult.allowanceMinor, plan.currency_code)}.</p>}
+          {plan.rolloverResult?.status === "available" && <p className="mt-2 text-xs text-muted-foreground">Carry from earlier months: {formatMoney(plan.rolloverResult.carriedMinor, plan.currency_code, workspace.locale)}. Effective allowance: {formatMoney(plan.rolloverResult.allowanceMinor, plan.currency_code, workspace.locale)}.</p>}
           <form action={setRollover} className="mt-3 flex flex-wrap items-end gap-3 text-sm"><input type="hidden" name="planId" value={plan.id} /><input type="hidden" name="version" value={plan.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><label className="flex gap-2"><input type="checkbox" name="rollover" defaultChecked={plan.rollover} />Carry remaining budget into the next month</label><label className="grid gap-1 text-xs">Rollover starts<input type="month" name="rolloverFrom" required defaultValue={plan.rollover_from.slice(0, 7)} className="rounded border border-border bg-card px-3 py-2" /></label><button className="text-brand underline">Save rollover rule</button><p className="w-full text-xs text-muted-foreground">Positive and negative remainders carry; disabled months reset carry. Each month uses its recorded target. Missing history or uncertain classifications make carry unavailable. Budgets never add a second forecast expense.</p></form>
           <div className="mt-3 flex flex-wrap gap-2">
             <form action={saveSpendingPlan} className="flex flex-wrap gap-2">

@@ -32,6 +32,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const current = activeSection(pathname);
 
   return <div className="min-h-screen bg-background">
+    <a href="#main-content" className="sr-only z-50 rounded bg-card p-3 text-sm underline focus:not-sr-only focus:fixed focus:left-3 focus:top-3">Skip to content</a>
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border bg-card lg:flex">
       <Link href="/" className="flex h-14 items-center gap-2.5 border-b border-border px-5" aria-label="Moneo home">
         <span className="flex size-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">M</span>
@@ -52,7 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <nav aria-label="Main mobile" className="flex gap-1 overflow-x-auto border-b border-border bg-card px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:hidden">
         {navigation.map(({ label, href, icon: Icon }) => <Link key={href} href={href} aria-current={current === label ? "page" : undefined} className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs ${current === label ? "bg-accent font-semibold text-foreground" : "text-muted-foreground"}`}><Icon className="size-4" aria-hidden="true" />{label}</Link>)}
       </nav>
-      {children}
+      <div id="main-content" tabIndex={-1}>{children}</div>
     </div>
   </div>;
 }

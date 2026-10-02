@@ -24,7 +24,7 @@ export async function PlanningHistory({ entityType, destination }: { entityType:
       const version = versions.get(event.entity_id);
       return <li key={event.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
         <div><p className="font-medium">{String(value?.name ?? "Spending plan")} · {after?.removed_at ? "Removed" : !before ? "Created" : "Changed"}</p>
-          <p className="text-muted-foreground">{typeof amount === "string" && typeof value?.currency_code === "string" ? `${formatMoney(amount, value.currency_code)} · ` : ""}{new Date(event.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{event.undone ? " · Undone" : ""}</p></div>
+          <p className="text-muted-foreground">{typeof amount === "string" && typeof value?.currency_code === "string" ? `${formatMoney(amount, value.currency_code, workspace.locale)} · ` : ""}{new Date(event.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{event.undone ? " · Undone" : ""}</p></div>
         {!event.undone && version !== undefined && <form action={undoPlanningEvent}>
           <input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="version" value={version} /><input type="hidden" name="destination" value={destination} />
           <button className="font-medium text-brand hover:underline">Undo</button>
