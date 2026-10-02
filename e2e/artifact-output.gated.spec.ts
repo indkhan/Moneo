@@ -26,13 +26,14 @@ test("saved calculator months load matching evidence and unsaved changes cannot 
   await expect(page).toHaveURL(/\/ai\/library\/[0-9a-f-]{36}$/);
   const id = new URL(page.url()).pathname.split("/").at(-1)!;
   const response = await page.request.post(`/api/artifacts/${id}/versions`, { data: {
-    source: `(input) => { const c = input.snapshot.cashflow; if (!c || c.unavailable) return { unavailable: "No cashflow" }; return { summary: (c.from || "Period") + " to " + (c.to || "end"), numbers: { spendingMinor: c.spendingMinor } }; }`,
+    source: `(input) => { const c = input.snapshot.cashflow; if (!c || c.unavailable) return { unavailable: "No cashflow" }; const accounts = c.byAccount || []; return { summary: (c.from || "Period") + " to " + (c.to || "end"), numbers: { spendingMinor: c.spendingMinor }, rows: accounts.length ? accounts.map(a => ({ account: a.id, spendingMinor: a.spendingMinor })) : [{ account: "No posted rows", spendingMinor: "0" }] }; }`,
     manifest: { kind: "custom_tracker", runtime: "quickjs-calculator-v1", sdk: ["cashflow"], params: { month: { type: "string", default: "2026-09", maxLength: 7 } }, renderer: "trusted" },
   } });
   expect(response.ok(), await response.text()).toBe(true);
   await page.reload();
   const output = page.getByRole("region", { name: "Generated calculator output" });
   await expect(output).toContainText("2026-09-01 to 2026-09-30");
+  await expect(output.getByRole("table", { name: "Calculator results" })).toContainText("EUR ");
   await output.getByLabel("month", { exact: true }).fill("2026-08");
   await expect(output).toContainText("Save inputs to load financial evidence for the selected month.");
   await expect(output).not.toContainText("2026-09-01 to 2026-09-30");
