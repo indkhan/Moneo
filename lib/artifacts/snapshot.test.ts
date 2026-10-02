@@ -58,13 +58,14 @@ describe("calculator financial snapshots", () => {
     vi.mocked(spendingForArtifact).mockResolvedValue({
       currency: "EUR", from: "2026-09-01", to: "2026-09-30",
       summary: { incomeMinor: "0", spendingMinor: "800", netMinor: "-800" },
+      byAccount: [{ id: "cash", incomeMinor: "0", spendingMinor: "800", netMinor: "-800", partial: false, excludedReviewRows: 0 }],
       transactions: [
         { posted_on: "2026-09-01", amount_minor: "-1000", kind: "ordinary" },
         { posted_on: "2026-09-30", amount_minor: "200", kind: "refund" },
       ],
     } as Awaited<ReturnType<typeof spendingForArtifact>>);
     const snapshot = (await buildCalculatorSnapshot("a", "spending_explorer")).snapshot;
-    expect(snapshot).toMatchObject({ from: "2026-09-01", to: "2026-09-30" });
+    expect(snapshot).toMatchObject({ from: "2026-09-01", to: "2026-09-30", byAccount: [{ id: "cash", spendingMinor: "800" }] });
     expect("daily" in snapshot && snapshot.daily).toHaveLength(30);
     if ("daily" in snapshot) {
       expect(snapshot.daily?.[0]).toEqual({ date: "2026-09-01", spendingMinor: "1000" });

@@ -21,6 +21,7 @@ export type CalculatorSnapshot =
       spendingMinor?: string;
       netMinor?: string;
       daily?: { date: string; spendingMinor: string }[];
+      byAccount?: Awaited<ReturnType<typeof spendingForArtifact>>["byAccount"];
       unavailable?: string;
       partial?: boolean;
       excludedReviewRows?: number;
@@ -87,6 +88,7 @@ export async function buildCalculatorSnapshot(
         netMinor: data.summary.netMinor,
         partial: data.summary.partial,
         excludedReviewRows: data.summary.excludedReviewRows,
+        byAccount: data.byAccount,
         daily: dailySpending(data.transactions.map(row => ({ date: row.posted_on, amountMinor: BigInt(row.amount_minor), kind: row.kind })), data.from, data.to),
       },
       stateParams: {},

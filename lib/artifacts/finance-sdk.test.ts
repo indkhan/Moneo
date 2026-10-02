@@ -26,10 +26,10 @@ describe("artifact spending coverage", () => {
     const filters: unknown[][] = [];
     const transactions = Array.from({ length: 1001 }, (_, index) => ({
       id: String(index), posted_on: "2026-10-01", description: "Shop", amount_minor: "-100",
-      currency_code: "EUR", category_id: null, status: "posted", kind: "ordinary",
+      currency_code: "EUR", account_id: "checking", category_id: null, status: "posted", kind: "ordinary",
       review_reasons: [] as string[],
     }));
-    transactions[1000] = { ...transactions[1000], amount_minor: "1000", kind: "refund" };
+    transactions[1000] = { ...transactions[1000], account_id: "savings", amount_minor: "1000", kind: "refund" };
     transactions[999].review_reasons = ["source_transfer"];
     const unmatched = { ...transactions[0], description: "Other", currency_code: "USD" };
     let filtered = false;
@@ -57,6 +57,10 @@ describe("artifact spending coverage", () => {
     expect(result).toMatchObject({ from: "2026-10-01", to: "2026-10-01",
       summary: { incomeMinor: "0", spendingMinor: "98900", netMinor: "-98900", partial: true, excludedReviewRows: 1 } });
     expect(result.transactions).toHaveLength(1000);
+    expect(result.byAccount).toEqual([
+      { id: "checking", incomeMinor: "0", spendingMinor: "99900", netMinor: "-99900", partial: true, excludedReviewRows: 1 },
+      { id: "savings", incomeMinor: "0", spendingMinor: "-1000", netMinor: "1000", partial: false, excludedReviewRows: 0 },
+    ]);
     expect(ranges).toEqual([[0, 999], [1000, 1999]]);
     expect(filters).toContainEqual(["neq", "kind", "transfer"]);
     expect(filters).toContainEqual(["ilike", "description", "%Shop%"]);

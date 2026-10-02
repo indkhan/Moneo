@@ -36,7 +36,7 @@ export async function spendingForArtifact(artifactId: string, query: string, per
   const transactions = [];
   for (let offset = 0; ; offset += 1000) {
     let rows = supabase.from("effective_transactions")
-      .select("id, posted_on, description, amount_minor::text, currency_code, category_id, status, kind, review_reasons")
+      .select("id, account_id, posted_on, description, amount_minor::text, currency_code, category_id, status, kind, review_reasons")
       .eq("workspace_id", workspace.id).eq("status", "posted").neq("kind", "transfer")
       .gte("posted_on", from).lte("posted_on", to)
       .order("posted_on", { ascending: false }).order("id");
@@ -46,15 +46,25 @@ export async function spendingForArtifact(artifactId: string, query: string, per
     transactions.push(...(data ?? []));
     if (!data || data.length < 1000) break;
   }
-  const total = summarizeCashflow(transactions.map(row => ({
+  const summarize = (rows: typeof transactions) => {
+  const total = summarizeCashflow(rows.map(row => ({
     amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code,
     status: row.status as CashflowTransaction["status"], kind: row.kind as CashflowTransaction["kind"],
     reviewReasons: row.review_reasons,
   })), workspace.display_currency);
-  const summary = total ? { incomeMinor: total.incomeMinor.toString(), spendingMinor: total.spendingMinor.toString(), netMinor: total.netMinor.toString(),
+  return total ? { incomeMinor: total.incomeMinor.toString(), spendingMinor: total.spendingMinor.toString(), netMinor: total.netMinor.toString(),
     excludedReviewRows: total.excludedReviewRows ?? 0, partial: total.partial ?? false }
     : { unavailable: "Some transactions require currency conversion" };
-  return { summary, transactions: transactions.filter(row => !row.review_reasons?.length), currency: workspace.display_currency, from, to, timezone: workspace.timezone ?? "Europe/Berlin" };
+  };
+  const accounts = new Map<string, typeof transactions>();
+  for (const row of transactions) {
+    if (!row.account_id) continue;
+    const group = accounts.get(row.account_id) ?? [];
+    group.push(row); accounts.set(row.account_id, group);
+  }
+  const summary = summarize(transactions);
+  const byAccount = [...accounts].map(([id, rows]) => ({ id, ...summarize(rows) }));
+  return { summary, byAccount, transactions: transactions.filter(row => !row.review_reasons?.length), currency: workspace.display_currency, from, to, timezone: workspace.timezone ?? "Europe/Berlin" };
 }
 
 export async function tripForArtifact(artifactId: string, costMinor: bigint) {

@@ -23,8 +23,8 @@ export type ValidationResult =
 export function fixturesForKind(kind: ArtifactKind): CalculatorInput[] {
   const base = { runtime: CALCULATOR_RUNTIME };
   if (kind.startsWith("custom_")) return [
-    { snapshot: { ...base, currency: "EUR", spending: { spendingMinor: "80000", incomeMinor: "120000", netMinor: "40000" }, balances: [{ id: "a", currency_code: "EUR", balance: { amount_minor: "150000", status: "current" } }], goals: [{ id: "g", currency: "EUR", targetMinor: "10000", savedMinor: "2500", remainingMinor: "7500" }], forecast: { currency: "EUR", baselineAvailableMinor: "150000" } }, params: {} },
-    { snapshot: { ...base, currency: "EUR", spending: { spendingMinor: "0", incomeMinor: "0", netMinor: "0" }, balances: [], goals: [], forecast: { unavailable: "No dated balance" } }, params: {} },
+    { snapshot: { ...base, currency: "EUR", spending: { from: "2026-09-01", to: "2026-09-30", spendingMinor: "80000", incomeMinor: "120000", netMinor: "40000", byAccount: [{ id: "a", incomeMinor: "120000", spendingMinor: "80000", netMinor: "40000", partial: false, excludedReviewRows: 0 }] }, balances: [{ id: "a", name: "Cash", currency_code: "EUR", balance: { amount_minor: "150000", status: "current" } }], goals: [{ id: "g", currency: "EUR", targetMinor: "10000", savedMinor: "2500", remainingMinor: "7500" }], forecast: { currency: "EUR", baselineAvailableMinor: "150000" } }, params: {} },
+    { snapshot: { ...base, currency: "EUR", spending: { from: "2026-09-01", to: "2026-09-30", spendingMinor: "0", incomeMinor: "0", netMinor: "0", byAccount: [] }, balances: [], goals: [], forecast: { unavailable: "No dated balance" } }, params: {} },
     { snapshot: { ...base, unavailable: "Requested financial evidence is unavailable" }, params: {} },
   ];
   if (kind === "spending_explorer") {
