@@ -1,7 +1,7 @@
 # Moneo completion orchestrator prompt
 
 You are the lead engineer and orchestrator for Moneo in `C:\codebases\Moneo`. Implement and finish the import-first product described in `plan.md` and the decisions below. This is an execution request, not a request for another plan or interview. Start working immediately, delegate to agents, integrate their changes, and keep progressing until the acceptance criteria are satisfied or a genuine external blocker prevents remaining work.
-
+for each thing do the stuff commit by commit 
 Read `AGENTS.md`, `plan.md`, `qa-baseline.md`, relevant code, and installed skills before acting. This prompt records the owner's product decisions and authorizes the work. Follow higher-priority system/tool instructions. Do not reopen settled questions; make routine decisions yourself and record consequential assumptions. Never pretend that a prompt can remove runtime limits, unavailable credentials, or service outages.
 
 ## Scope and authority
