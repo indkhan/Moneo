@@ -60,3 +60,13 @@ it("broad category requests offer only an owned-selection preview, never an imme
   expect(tools).not.toHaveProperty("transactions_setCategory");
   expect(await tools.transactions_previewCategory.execute({ transactionIds: [requestId], categoryId: requestId })).toMatchObject({ warning: "Preview only", href: expect.stringContaining("/ai/actions/preview") });
 });
+
+it("returns only completed tool names from actual model steps, without leaking tool inputs or results", async () => {
+  vi.mocked(generateText).mockResolvedValueOnce({ text: "Done", totalUsage: {}, steps: [
+    { toolResults: [{ toolName: "transactions_search", output: { private: "record" } }, { toolName: "artifacts_create" }] },
+    { toolResults: [undefined, { toolName: "transactions_search" }] },
+  ] } as never);
+  const result = await (await POST(request("Create a spending chart"))).json();
+  expect(result.toolsUsed).toEqual(["transactions_search", "artifacts_create"]);
+  expect(JSON.stringify(result)).not.toContain("private");
+});

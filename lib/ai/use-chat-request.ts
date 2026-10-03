@@ -20,7 +20,7 @@ export function useChatRequest() {
       if (active.current !== run) return null;
       if (!response.ok) throw new Error(result.error ?? "Could not answer");
       setStatus("completed");
-      return result as { answer: string; conversationId: string };
+      return result as { answer: string; conversationId: string; toolsUsed?: string[] };
     } catch (cause) {
       if (active.current === run) { setStatus("failed"); setError(cause instanceof Error ? cause.message : "Could not answer"); }
       return null;
