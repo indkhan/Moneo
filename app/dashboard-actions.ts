@@ -21,5 +21,6 @@ export async function saveDashboard(form: FormData) {
   if (result.error) throw new Error("Dashboard could not be saved; reload before retrying");
   if (!result.data) throw new Error("Dashboard changed; reload before saving");
   revalidatePath("/");
-  redirect("/");
+  revalidatePath("/settings");
+  redirect("/settings");
 }
