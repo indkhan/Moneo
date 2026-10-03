@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { ImportantInsights } from "./insights/panel";
 import type { ReactNode } from "react";
-import { BUILTIN_WIDGETS, dashboardItems, dashboardLayoutSchema } from "@/lib/dashboard";
-import { saveDashboard } from "./dashboard-actions";
+import { dashboardItems, dashboardLayoutSchema } from "@/lib/dashboard";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { hasSupabase } from "@/lib/env";
@@ -91,7 +90,6 @@ export default async function Home() {
   const { data: pinnedArtifacts } = pins?.length ? await supabase.from("artifacts")
     .select("id, name, kind").eq("workspace_id", workspace.id).in("id", pins.map(pin => pin.artifact_id))
     : { data: [] as { id: string; name: string; kind: string }[] };
-  const pinnedById = new Map(pinnedArtifacts?.map(artifact => [artifact.id, artifact]));
 
   const [layout, goals, allocations] = await Promise.all([
     supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle(),
@@ -100,9 +98,8 @@ export default async function Home() {
   ]);
   for (const error of [layout.error, goals.error, allocations.error]) if (error) throw error;
   const parsedLayout = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
-  if (parsedLayout && !parsedLayout.success) throw new Error("Dashboard preferences are invalid; reset them in Home");
+  if (parsedLayout && !parsedLayout.success) throw new Error("Dashboard preferences are invalid; review them in Settings");
   const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null, (pins ?? []).map(pin => pin.artifact_id));
-  const choices = [...new Set([...ordered, ...Object.keys(BUILTIN_WIDGETS), ...(pins ?? []).map(pin => `tool:${pin.artifact_id}`)])];
   const widgets: Record<string, ReactNode> = {
     overview: <section aria-label="Overview" className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(250px,1fr)]">
         <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
@@ -136,7 +133,6 @@ export default async function Home() {
         <div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Workspace overview</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">Home</h1><p className="mt-1 text-sm text-muted-foreground">Your accounts, ledger, and saved tools in one place. Enter booked balances before pending holds; available bank balances already include holds and are not supported here.</p></div>
         <Link href="/import" className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:opacity-90"><Plus size={15} /> Import statement</Link>
       </header>
-      <details className="rounded-xl border border-border bg-card p-4"><summary className="cursor-pointer font-medium">Customize Home</summary><form action={saveDashboard} className="mt-4 space-y-3"><input type="hidden" name="version" value={layout.data?.version ?? 0} />{choices.map((key, index) => <div key={key} className="flex flex-wrap items-center gap-3"><label className="flex flex-1 items-center gap-2 text-sm"><input type="checkbox" name="enabled" value={key} defaultChecked={ordered.includes(key)} disabled={key.startsWith("tool:")} />{key.startsWith("tool:") && <input type="hidden" name="enabled" value={key} />}{Object.hasOwn(BUILTIN_WIDGETS, key) ? BUILTIN_WIDGETS[key as keyof typeof BUILTIN_WIDGETS] : pinnedById.get(key.slice(5))?.name}</label><label className="flex items-center gap-2 text-xs">Position<input type="number" name={`position:${key}`} min="1" max="50" defaultValue={ordered.includes(key) ? ordered.indexOf(key) + 1 : index + 1} className="w-16 rounded border border-border bg-background p-2" /></label></div>)}<button className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground">Save dashboard</button><p className="text-xs text-muted-foreground">Pin or unpin tools in the <Link href="/ai/library" className="underline">Library</Link>. Lower positions appear first.</p></form></details>
       {ordered.map(key => <div key={key}>{widgets[key]}</div>)}
     </main>
   );
