@@ -221,6 +221,8 @@ export default function ImportPage() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Undo failed");
+      const item = history.find((item) => item.id === preview.import_id);
+      if (item) mergeHistory([{ id: item.id, status: "undone", run_version: item.run_version }], ++historyRequest.current);
       setUndoId(null);
       setPreview(null);
       await loadHistory();
@@ -244,6 +246,8 @@ export default function ImportPage() {
     </label>
   );
 
+  const visibleHistory = history.filter((item) => item.status !== "undone");
+
   return <main className="mx-auto max-w-5xl space-y-6 px-5 py-8 lg:px-8">
     <div><p className="text-xs font-semibold uppercase tracking-widest text-brand">Money / Import</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Import financial data</h1><p className="mt-2 text-sm text-muted-foreground">Choose CSV or XLSX statements. We&apos;ll propose an interpretation for you to review before importing.</p></div>
     <label className="block rounded-xl border border-dashed border-blue-300 bg-card p-8 text-center shadow-sm hover:bg-muted/40"><span className="block text-base font-semibold">Choose statements to import</span><span className="mt-1 block text-sm text-muted-foreground">CSV or XLSX files · You can select more than one</span><input className="mt-5 w-full max-w-xs text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-brand file:px-4 file:py-2 file:font-medium file:text-white" type="file" accept=".csv,.xlsx" multiple disabled={busy} aria-label="Financial statement files"
@@ -257,8 +261,8 @@ export default function ImportPage() {
     <section className="space-y-3" aria-label="Import history">
       <h2 className="text-xl font-semibold tracking-tight text-foreground">Import history</h2>
       {error === "Import history is unavailable. Try again." && <button type="button" className="text-sm underline" onClick={() => void loadHistory()}>Reload history</button>}
-      {!history.length && error !== "Import history is unavailable. Try again." && <p>No imports yet.</p>}
-      {history.map((item) => <article key={item.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+      {!visibleHistory.length && error !== "Import history is unavailable. Try again." && <p>No imports yet.</p>}
+      {visibleHistory.map((item) => <article key={item.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.filename}</strong><span role="status" className="rounded-lg bg-muted px-2.5 py-1 text-xs font-medium capitalize text-brand">{item.status}</span></div>
         <p className="text-sm">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows} for review · {item.rejected_rows} rejected · {item.total_rows} total</p>
         {item.error && <p className="text-sm text-red-700">{item.error}</p>}
@@ -268,7 +272,7 @@ export default function ImportPage() {
         {item.status === "canceled" && <p className="mt-2 text-xs text-muted-foreground">Stopped. Already imported rows and their sources remain saved; resume continues the same file without duplicating them.</p>}
         {item.status === "completed" && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void showUndo(item.id)}>Undo import</button>}
         {undoId === item.id && preview && <div className="mt-3 space-y-2 rounded bg-muted p-3 text-sm">
-          <p><strong>Undo impact:</strong> remove {preview.deletable_transactions} transactions and {preview.deletable_balances} balance snapshots. Source file, import history and matched links are kept.</p>
+          <p><strong>Undo impact:</strong> remove {preview.deletable_transactions} transactions and {preview.deletable_balances} balance snapshots. This import will disappear from history. Source file and matched links are kept.</p>
           {preview.blockers.length > 0
             ? <ul className="list-disc pl-5">{preview.blockers.map((reason) => <li key={reason}>{reason}</li>)}</ul>
             : <div className="flex flex-wrap gap-2">
