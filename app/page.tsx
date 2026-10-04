@@ -26,21 +26,24 @@ export default async function Home() {
   const { supabase, workspace } = context;
   const money = (amount: bigint | string | number, currency: string) => formatMoney(amount, currency, workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);
-  const [balanceEvidence, ledgerCount, projection, spending, wealthItems] = await Promise.all([
+  const [balanceEvidence, ledgerCount, projection, spending, wealthItems, rates, pinnedItems, layout, goals, allocations] = await Promise.all([
     loadBalanceEvidence(supabase, workspace.id),
     supabase.from("transactions").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id),
     evaluatePlan(),
     cashflow({ from: `${today.slice(0, 7)}-01`, to: today, currencyCode: workspace.display_currency }),
     loadWealthItems(supabase, workspace.id),
+    supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
+      .eq("workspace_id", workspace.id).order("rate_date", { ascending: false }).order("created_at", { ascending: false }),
+    supabase.from("dashboard_items").select("artifact_id, position").eq("workspace_id", workspace.id).order("position"),
+    supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle(),
+    supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date").eq("workspace_id", workspace.id).eq("status", "active").order("priority").limit(10),
+    supabase.from("goal_allocations").select("goal_id, account_id, amount_minor::text").eq("workspace_id", workspace.id),
   ]);
-  if (ledgerCount.error) throw ledgerCount.error;
+  for (const error of [ledgerCount.error, rates.error, pinnedItems.error, layout.error, goals.error, allocations.error]) if (error) throw error;
   const transactionCount = ledgerCount.count;
   const accounts = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone);
   const latest = new Map(accounts.map(account => [account.id, account.balance]));
-  const { data: fxRates } = await supabase.from("fx_rates")
-    .select("from_currency, to_currency, rate_text, rate_date, source")
-    .eq("workspace_id", workspace.id)
-    .order("rate_date", { ascending: false }).order("created_at", { ascending: false });
+  const fxRates = rates.data;
   const displayCurrency: string = workspace.display_currency;
   const missingInputs: string[] = [];
   let netWorthMinor = 0n;
@@ -85,18 +88,11 @@ export default async function Home() {
     if (result.status === "available") { netWorthMinor += result.converted.amountMinor; convertedCount += 1; }
     else missingInputs.push(...result.missingInputs.map(input => `${input} for ${valuation.name}`));
   }
-  const { data: pins } = await supabase.from("dashboard_items")
-    .select("artifact_id, position").eq("workspace_id", workspace.id).order("position");
-  const { data: pinnedArtifacts } = pins?.length ? await supabase.from("artifacts")
+  const pins = pinnedItems.data;
+  const { data: pinnedArtifacts, error: artifactsError } = pins?.length ? await supabase.from("artifacts")
     .select("id, name, kind").eq("workspace_id", workspace.id).in("id", pins.map(pin => pin.artifact_id))
-    : { data: [] as { id: string; name: string; kind: string }[] };
-
-  const [layout, goals, allocations] = await Promise.all([
-    supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle(),
-    supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date").eq("workspace_id", workspace.id).eq("status", "active").order("priority").limit(10),
-    supabase.from("goal_allocations").select("goal_id, account_id, amount_minor::text").eq("workspace_id", workspace.id),
-  ]);
-  for (const error of [layout.error, goals.error, allocations.error]) if (error) throw error;
+    : { data: [] as { id: string; name: string; kind: string }[], error: null };
+  if (artifactsError) throw artifactsError;
   const parsedLayout = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
   if (parsedLayout && !parsedLayout.success) throw new Error("Dashboard preferences are invalid; review them in Settings");
   const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null, (pins ?? []).map(pin => pin.artifact_id));
