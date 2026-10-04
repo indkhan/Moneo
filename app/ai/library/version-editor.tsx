@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CodeEditor } from "@/components/code-editor";
+import dynamic from "next/dynamic";
+
+const CodeEditor = dynamic(() => import("@/components/code-editor").then(module => module.CodeEditor), {
+  ssr: false,
+  loading: () => <p role="status" className="h-[280px] rounded-lg border border-border bg-muted p-3 text-sm text-muted-foreground">Loading source editor…</p>,
+});
 
 type VersionRow = {
   id: string;
