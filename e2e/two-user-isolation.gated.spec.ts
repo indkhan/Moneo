@@ -70,7 +70,10 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     const stranger = await foreign.newPage();
     for (const path of [`/import/${imported}/review`, `/ai/library/${artifact}`, `/ai/activity/${job}`]) {
       const response = await stranger.goto(path);
-      expect(response?.status()).toBe(404);
+      // loading.tsx may stream headers before the owned-resource lookup finishes.
+      expect([200, 404]).toContain(response?.status());
+      await expect(stranger.getByRole("heading", { name: "404", exact: true })).toBeVisible();
+      await expect(stranger.locator('meta[name="robots"]').first()).toHaveAttribute("content", "noindex");
       await expect(stranger.locator("body")).not.toContainText(secret);
     }
     await stranger.goto(`/money/transactions?transaction=${transaction}&view=${savedView}`);
