@@ -13,6 +13,18 @@ const mapping = {
 };
 
 describe("financial import parsing", () => {
+  it("recognizes booked bank debits while keeping transfers and ambiguous cash reviewable", () => {
+    const rows = parseCsv("Date,Description,Amount,Type\n2026-09-01,Card debit,-12.50,Debit\n2026-09-02,Direct debit,-30.00,Debit\n2026-09-03,Incoming movement,100.00,Transfer (realtime)\n2026-09-04,Cash movement,-20.00,Cash deposit/withdrawal\n2026-09-05,Unexpected debit credit,10.00,Debit");
+    const mapped = mapRows(rows, { ...mapping, dateFormat: "iso" });
+    expect(mapped.map(row => ({ kind: row.kind, reviewReasons: row.reviewReasons }))).toEqual([
+      { kind: "ordinary", reviewReasons: [] },
+      { kind: "ordinary", reviewReasons: [] },
+      { kind: "ordinary", reviewReasons: ["source_transfer"] },
+      { kind: "ordinary", reviewReasons: ["source_type"] },
+      { kind: "ordinary", reviewReasons: ["source_type"] },
+    ]);
+    expect(mapped.map(row => row.sourceRow)).toEqual(rows);
+  });
   it("requires reviewed timezone for new naive timestamps and preserves dated source evidence", () => {
     const rows = parseCsv("Date,Description,Amount\n2026-09-30 22:30:00,Shop,-12.50");
     expect(() => validateImportConfirmation(rows, { ...mapping, dateFormat: "iso" })).toThrow("timezone");

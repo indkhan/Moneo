@@ -331,12 +331,12 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
       const type = sourceType?.toLowerCase();
       const reviewReasons: string[] = [];
       let kind: MappedRow["kind"] = "ordinary";
-      if (type === "transfer") reviewReasons.push("source_transfer");
+      if (type === "transfer" || type === "transfer (realtime)") reviewReasons.push("source_transfer");
       else if (type === "exchange") reviewReasons.push("source_exchange");
       else if (type === "card refund") {
         if (amountMinor > 0n) kind = "refund";
         else reviewReasons.push("refund_sign");
-      } else if (type && type !== "card payment") reviewReasons.push("source_type");
+      } else if (type && type !== "card payment" && !(type === "debit" && amountMinor < 0n)) reviewReasons.push("source_type");
       let feeMinor: bigint | undefined;
       if (feeColumn && sourceRow[feeColumn]?.trim()) {
         try { feeMinor = parseAmountMinor(sourceRow[feeColumn], currencyCode); }
