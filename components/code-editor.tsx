@@ -4,6 +4,8 @@ import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { oneDark } from "@codemirror/theme-one-dark";
 
+const extensions = [javascript({ typescript: true })];
+
 export function CodeEditor({
   value,
   onChange,
@@ -15,7 +17,7 @@ export function CodeEditor({
     <CodeMirror
       value={value}
       height="280px"
-      extensions={[javascript({ typescript: true })]}
+      extensions={extensions}
       theme={oneDark}
       onChange={onChange}
       indentWithTab={false}

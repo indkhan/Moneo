@@ -86,7 +86,7 @@ export function VersionEditor({
         Source (pure function of input.snapshot + input.params)
       </label>
       <div id="version-source" className="mt-2">
-        <CodeEditor value={source} onChange={(v) => setSource(v)} />
+        <CodeEditor value={source} onChange={setSource} />
       </div>
       <label className="mt-3 block text-sm font-medium" htmlFor="version-manifest">
         Manifest (JSON)
