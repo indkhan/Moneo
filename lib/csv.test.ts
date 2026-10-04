@@ -13,6 +13,9 @@ const mapping = {
 };
 
 describe("financial import parsing", () => {
+  it("rejects duplicate financial headers even when the CSV parser renames them", () => {
+    expect(() => parseCsv("Date,Description,Amount,Amount\n2026-09-01,Shop,-12.50,-1250")).toThrow("Duplicate CSV headers");
+  });
   it("recognizes booked bank debits while keeping transfers and ambiguous cash reviewable", () => {
     const rows = parseCsv("Date,Description,Amount,Type\n2026-09-01,Card debit,-12.50,Debit\n2026-09-02,Direct debit,-30.00,Debit\n2026-09-03,Incoming movement,100.00,Transfer (realtime)\n2026-09-04,Cash movement,-20.00,Cash deposit/withdrawal\n2026-09-05,Unexpected debit credit,10.00,Debit");
     const mapped = mapRows(rows, { ...mapping, dateFormat: "iso" });

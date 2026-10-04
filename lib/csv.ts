@@ -82,7 +82,8 @@ export function parseCsv(text: string): SourceRow[] {
     skipEmptyLines: "greedy",
   });
   if (result.errors.length) throw new Error(`CSV parse error: ${result.errors[0].message}`);
-  if (new Set(result.meta.fields).size !== result.meta.fields?.length) throw new Error("Duplicate CSV headers");
+  if (Object.keys(result.meta.renamedHeaders ?? {}).length || new Set(result.meta.fields).size !== result.meta.fields?.length)
+    throw new Error("Duplicate CSV headers");
   return result.data;
 }
 
