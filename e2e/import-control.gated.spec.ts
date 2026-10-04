@@ -7,7 +7,7 @@ import postgres from "postgres";
 
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires real disposable Supabase authentication, deployed051 and database fixtures");
 
-test("durable import Stop, Resume, byte deduplication and undo preserve exact sources", async ({ browser, baseURL }) => {
+test("durable import Stop, Resume, byte deduplication, undo and reimport preserve exact sources", async ({ browser, baseURL }) => {
   test.setTimeout(240_000);
   const url=process.env.NEXT_PUBLIC_SUPABASE_URL!, connection=new URL(process.env.SUPABASE_DB_URL!);
   const project=new URL(url).hostname.split(".")[0];
@@ -79,13 +79,15 @@ test("durable import Stop, Resume, byte deduplication and undo preserve exact so
     expect(await db`select id,row_number,original_row from public.source_transactions where import_id=${importId} order by row_number limit ${initial.length}`).toEqual(initial);
     const oldAfterResume=await admin.rpc("ingest_import_row",{p_import_id:importId,p_workspace_id:workspace,p_run_version:stoppedVersion-1,p_account_id:account,p_row:{transactionId:randomUUID()}});
     expect(oldAfterResume.error?.code).toBe("57014");
-    const repeated=await context.request.post("/api/imports/confirm",{multipart:{file:{name:filename,mimeType:"text/csv",buffer:Buffer.from(csv)},mapping:JSON.stringify({accountName,currencyCode:"EUR",dateColumn:"date",descriptionColumn:"description",amountColumn:"amount",externalIdColumn:"id",dateFormat:"iso",amountSign:"signed"})}});
+    const multipart={file:{name:filename,mimeType:"text/csv",buffer:Buffer.from(csv)},mapping:JSON.stringify({accountName,currencyCode:"EUR",dateColumn:"date",descriptionColumn:"description",amountColumn:"amount",externalIdColumn:"id",dateFormat:"iso",amountSign:"signed"})};
+    const repeated=await context.request.post("/api/imports/confirm",{multipart});
     expect(repeated.ok()).toBe(true);expect((await repeated.json()).importId).toBe(importId);
     expect((await db`select count(*)::int as count from public.imports where workspace_id=${workspace}`)[0].count).toBe(1);
     await history.getByRole("button",{name:"Undo import",exact:true}).click();
     await expect(history).toContainText("remove 75 transactions and 0 balance snapshots");
     await history.getByRole("button",{name:"Confirm undo 75 transactions",exact:true}).click();
-    await expect(history.getByRole("status")).toHaveText("undone");
+    await expect(history).toHaveCount(0);
+    expect((await db`select status from public.imports where id=${importId}`)[0].status).toBe("undone");
     await expect.poll(async()=> (await counts()).transactions).toBe(0);
     expect((await counts()).sources).toBe(75);
     expect((await db`select count(*)::int as count from public.transaction_sources l join public.source_transactions s on s.id=l.source_transaction_id where s.workspace_id=${workspace}`)[0].count).toBe(0);
@@ -94,6 +96,21 @@ test("durable import Stop, Resume, byte deduplication and undo preserve exact so
     expect(storagePath.startsWith(`${workspace}/`)).toBe(true);
     const originalFile=await admin.storage.from("imports").download(storagePath);expect(originalFile.error).toBeNull();
     expect(await originalFile.data!.text()).toBe(csv);
+    const undoneSources=await db`select id,row_number,original_row,status from public.source_transactions where import_id=${importId} order by row_number`;
+    const reimport=await context.request.post("/api/imports/confirm",{multipart});
+    expect(reimport.ok()).toBe(true);
+    const fresh=await reimport.json();expect(fresh.importId).not.toBe(importId);expect(fresh.status).toBe("queued");
+    await expect.poll(async()=> (await db`select status from public.imports where id=${fresh.importId}`)[0].status,{timeout:90_000}).toBe("completed");
+    await page.reload();
+    await expect(history.getByRole("status")).toHaveText("completed");
+    const [reimported]=await db`select count(*)::int as count,count(distinct id)::int as unique_ids,sum(amount_minor)::text as total from public.transactions where workspace_id=${workspace}`;
+    expect(reimported).toEqual({count:75,unique_ids:75,total:"-7575"});
+    expect(await db`select id,row_number,original_row,status from public.source_transactions where import_id=${importId} order by row_number`).toEqual(undoneSources);
+    expect((await db`select count(*)::int as count from public.source_transactions where import_id=${fresh.importId}`)[0].count).toBe(75);
+    expect((await db`select count(*)::int as count from public.transaction_sources l join public.source_transactions s on s.id=l.source_transaction_id where s.workspace_id=${workspace}`)[0].count).toBe(75);
+    const freshDuplicate=await context.request.post("/api/imports/confirm",{multipart});
+    expect(freshDuplicate.ok()).toBe(true);expect((await freshDuplicate.json()).importId).toBe(fresh.importId);
+    expect((await db`select count(*)::int as count from public.imports where workspace_id=${workspace}`)[0].count).toBe(2);
   } finally {
     await context.close().catch(()=>{});
     // Cancel under the same ownership/version lock as ingestion before removing any sources.
