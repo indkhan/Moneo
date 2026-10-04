@@ -39,7 +39,7 @@ export function AiPanelDialog({ open, onClose }: { open: boolean; onClose: () =>
         {error && <p role="alert" className="mt-2 text-sm text-red-300">{error}</p>}
         {status === "canceled" && <p role="status" className="mt-2 text-sm">Canceled. Completed edits remain in transaction history.</p>}
         {busy && <button type="button" onClick={() => void cancel()} className="mt-3 mr-3 rounded border px-3 py-2 text-sm">Stop</button>}
-        <div className="mt-3 flex items-center justify-between gap-3"><span role="status" className="font-mono text-[10px] text-muted-foreground">{busy ? "Request running · waiting for response" : "Code is displayed, never executed here"}</span><button disabled={busy || !question.trim()} aria-label="Send" className="rounded-lg bg-primary p-2 text-sm text-primary-foreground disabled:opacity-50"><ArrowUp className="size-4" aria-hidden="true" /></button></div></form>
+        <div className="mt-3 flex items-center justify-between gap-3"><span role={busy ? "status" : undefined} className="font-mono text-[10px] text-muted-foreground">{busy ? "Request running · waiting for response" : "Code is displayed, never executed here"}</span><button disabled={busy || !question.trim()} aria-label="Send" className="rounded-lg bg-primary p-2 text-sm text-primary-foreground disabled:opacity-50"><ArrowUp className="size-4" aria-hidden="true" /></button></div></form>
       <Link href={`/ai?conversation=${conversationId ?? "new"}`} onClick={onClose} className="mt-5 block border-t border-border pt-4 text-xs text-brand">Continue in AI workspace ↗</Link>
     </dialog>;
 }
