@@ -3,18 +3,18 @@ import { evaluatePlan, evaluatePlanForWorkspace } from "./model";
 import { requireWorkspace } from "@/lib/auth";
 import { loadBalanceEvidence } from "./balances";
 
-const fixture = vi.hoisted(() => ({ asOf: "2026-09-28T12:00:00Z", pending: false, includeAssumptions: false, debt: false, archived: false, preferences: null as null | { currency_code: string; safety_buffer_minor: string; daily_spending_minor: string; uncertainty_bps: number; spending_account_id: string | null; spending_starts_on: string | null; version: number } }));
+const fixture = vi.hoisted(() => ({ asOf: "2026-09-28T12:00:00Z", allocations: 0, pending: false, includeAssumptions: false, debt: false, archived: false, preferences: null as null | { currency_code: string; safety_buffer_minor: string; daily_spending_minor: string; uncertainty_bps: number; spending_account_id: string | null; spending_starts_on: string | null; version: number } }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" },
   supabase: { from: (table: string) => {
     const filters = new Map<string, unknown>();
-    const data = table === "accounts" ? [{ id: "00000000-0000-4000-8000-000000000001", name: "Cash", type: "checking", currency_code: "EUR", archived_at: fixture.archived ? "2026-10-01T10:00:00Z" : null }] :
+    const data = table === "goal_allocations" ? Array.from({ length: fixture.allocations }, (_, i) => ({ account_id: "00000000-0000-4000-8000-000000000001", amount_minor: i === 1000 ? "9999" : "1" })) : table === "accounts" ? [{ id: "00000000-0000-4000-8000-000000000001", name: "Cash", type: "checking", currency_code: "EUR", archived_at: fixture.archived ? "2026-10-01T10:00:00Z" : null }] :
       table === "balance_snapshots" ? [{ id: "balance", account_id: "00000000-0000-4000-8000-000000000001", amount_minor: "10000", currency_code: "EUR", as_of: fixture.asOf, provenance: "manual" }] :
         table === "transactions" && fixture.pending ? [{ id: "hold", account_id: "00000000-0000-4000-8000-000000000001", amount_minor: "-2000", currency_code: "EUR", posted_on: "2026-10-01", status: "pending" }] :
-          table === "wealth_items" && fixture.debt ? [{ id: "loan", name: "Loan", kind: "debt", amount_minor: "-5000", currency_code: "EUR", as_of: "2026-10-01", payment_account_id: "00000000-0000-4000-8000-000000000001", annual_rate_text: "0", monthly_payment_minor: "2000", next_payment_on: "2026-10-01", payment_assumption_id: null, payment_transaction_id: fixture.pending ? "hold" : null, removed_at: null }] : [];
-    const query = { select: () => query, eq: (key: string, value: unknown) => { filters.set(key, value); return query; }, is: () => query, maybeSingle: async () => ({ data: fixture.preferences, error: null }), order: () => query, range: async () => ({ data, error: null }),
+          table === "financial_assumptions" && fixture.includeAssumptions ? [{ account_id: "00000000-0000-4000-8000-000000000001", amount_minor: "-1000", currency_code: "EUR", cadence: "once", starts_on: "2026-10-02", ends_on: null, enabled: true, confirmed: true }] : table === "wealth_items" && fixture.debt ? [{ id: "loan", name: "Loan", kind: "debt", amount_minor: "-5000", currency_code: "EUR", as_of: "2026-10-01", payment_account_id: "00000000-0000-4000-8000-000000000001", annual_rate_text: "0", monthly_payment_minor: "2000", next_payment_on: "2026-10-01", payment_assumption_id: null, payment_transaction_id: fixture.pending ? "hold" : null, removed_at: null }] : [];
+    const query = { select: () => query, eq: (key: string, value: unknown) => { filters.set(key, value); return query; }, is: () => query, maybeSingle: async () => ({ data: fixture.preferences, error: null }), order: () => query, range: async (from: number, to: number) => ({ data: data.slice(from, to + 1), error: null }),
       then: (resolve: (result: { data: unknown[]; error: null }) => unknown) => {
         const assumptions = [true, false].map(confirmed => ({ account_id: "00000000-0000-4000-8000-000000000001", amount_minor: "-1000", currency_code: "EUR", cadence: "once", starts_on: "2026-10-02", ends_on: null, enabled: true, confirmed }));
-        return Promise.resolve({ data: table === "financial_assumptions" && fixture.includeAssumptions ? assumptions.filter(item => filters.get("confirmed") === undefined || item.confirmed === filters.get("confirmed")) : data, error: null }).then(resolve);
+        return Promise.resolve({ data: table === "financial_assumptions" && fixture.includeAssumptions ? assumptions.filter(item => filters.get("confirmed") === undefined || item.confirmed === filters.get("confirmed")) : data.slice(0, 1000), error: null }).then(resolve);
       } };
     return query;
   } },
@@ -107,4 +107,11 @@ it("keeps archived account evidence while excluding its cash and surfacing linke
     expect(result.available.status).toBe("unavailable");
     expect(result.input.missingInputs).toContain("assumption account");
   } finally { fixture.archived = false; fixture.includeAssumptions = false; fixture.asOf = "2026-09-28T12:00:00Z"; }
+});
+
+it("includes reservations beyond the Supabase first-page limit", async () => {
+  fixture.allocations = 1001;
+  try {
+    expect((await evaluatePlan()).input.accounts[0].reservedMinor).toBe(10999n);
+  } finally { fixture.allocations = 0; }
 });

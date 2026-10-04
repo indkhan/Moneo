@@ -57,19 +57,27 @@ export async function evaluatePlan(horizonDays = 30, scenarioId?: string) {
 export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspace: { id: string; display_currency: string; timezone: string }, horizonDays = 30, scenarioId?: string,
   evidence?: { balanceEvidence: ReturnType<typeof loadBalanceEvidence>; wealth: ReturnType<typeof loadWealthItems> }) {
   if (!Number.isInteger(horizonDays) || horizonDays < 1 || horizonDays > 365) throw new Error("Invalid forecast horizon");
+  async function allRows<T>(query: { range(from: number, to: number): PromiseLike<{ data: T[] | null; error: unknown }> }) {
+    const rows: T[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const page = await query.range(offset, offset + 499);
+      if (page.error) throw page.error;
+      rows.push(...(page.data ?? []));
+      if (!page.data || page.data.length < 500) return rows;
+    }
+  }
   const [balanceEvidence, wealth, preferencesResult,
-    { data: allocations, error: allocationsError }, { data: assumptions, error: assumptionsError },
-    { data: rates, error: ratesError }] = await Promise.all([
+    allocations, assumptions, rates] = await Promise.all([
       evidence?.balanceEvidence ?? loadBalanceEvidence(supabase, workspace.id),
       evidence?.wealth ?? loadWealthItems(supabase, workspace.id),
       supabase.from("forecast_preferences").select("currency_code, safety_buffer_minor::text, daily_spending_minor::text, uncertainty_bps, spending_account_id, spending_starts_on, version").eq("workspace_id", workspace.id).maybeSingle(),
-      supabase.from("goal_allocations").select("account_id, amount_minor::text").eq("workspace_id", workspace.id),
-      supabase.from("financial_assumptions").select("id, name, account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, enabled")
-        .eq("workspace_id", workspace.id).eq("enabled", true).eq("confirmed", true).is("removed_at", null).order("id"),
-      supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
-        .eq("workspace_id", workspace.id).eq("to_currency", workspace.display_currency),
+      allRows(supabase.from("goal_allocations").select("account_id, amount_minor::text").eq("workspace_id", workspace.id).order("id")),
+      allRows(supabase.from("financial_assumptions").select("id, name, account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, enabled")
+        .eq("workspace_id", workspace.id).eq("enabled", true).eq("confirmed", true).is("removed_at", null).order("id")),
+      allRows(supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
+        .eq("workspace_id", workspace.id).eq("to_currency", workspace.display_currency).order("id")),
     ]);
-  for (const error of [preferencesResult.error, allocationsError, assumptionsError, ratesError]) if (error) throw error;
+  if (preferencesResult.error) throw preferencesResult.error;
   const preferences = preferencesResult.data ? forecastPreferencesSchema.parse(preferencesResult.data) : defaultForecastPreferences(workspace.display_currency);
   const preferencesVersion = preferencesResult.data?.version ?? 0;
   const convert = (amount: bigint, from: string, date: string) => {
@@ -121,10 +129,9 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
   if (scenarioId) {
     const { data: scenario } = await supabase.from("scenarios").select("id").eq("workspace_id", workspace.id).eq("id", scenarioId).is("removed_at", null).maybeSingle();
     if (!scenario) throw new Error("Scenario not found");
-    const { data: overrides, error } = await supabase.from("scenario_overrides")
+    const overrides = await allRows(supabase.from("scenario_overrides")
       .select("id, name, account_id, amount_delta_minor::text, currency_code, cadence, starts_on, ends_on")
-      .eq("workspace_id", workspace.id).eq("scenario_id", scenarioId).is("removed_at", null).order("id");
-    if (error) throw error;
+      .eq("workspace_id", workspace.id).eq("scenario_id", scenarioId).is("removed_at", null).order("id"));
     missingInputs.push(...(overrides ?? []).flatMap(item => !item.account_id || !accountIds.has(item.account_id) ? ["scenario account"] : []));
     scenarioEvents = (overrides ?? []).flatMap(item => item.account_id && accountIds.has(item.account_id)
       ? expandSchedule({ ...item, amount_minor: item.amount_delta_minor }, startDate, horizonDays, preferences.uncertainty_bps).flatMap(event => {
