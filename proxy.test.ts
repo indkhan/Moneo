@@ -1,9 +1,16 @@
 import { expect, it, vi } from "vitest";
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest } from "next/server";
-import { proxy } from "./proxy";
+import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
+import { proxy, config } from "./proxy";
 
 vi.mock("@supabase/ssr", () => ({ createServerClient: vi.fn() }));
+
+it("lets internal Workflow requests reach the executor without session proxying", () => {
+  for (const url of ["/.well-known/workflow/v1/flow", "/.well-known/workflow/v1/step", "/.well-known/workflow/v1/webhook/token"])
+    expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url })).toBe(false);
+  expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: "/plan" })).toBe(true);
+});
 
 it("forwards refreshed cookies to rendering and the browser without caching session responses", async () => {
   const request = new NextRequest("http://localhost:3000/plan", { headers: { cookie: "session=expired" } });
