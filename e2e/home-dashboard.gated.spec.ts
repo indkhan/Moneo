@@ -10,7 +10,7 @@ test("Settings customizes Home and remembers hidden and reordered widgets", asyn
   await expect(page.getByText("Customize Home", { exact: true })).toHaveCount(0);
   await page.goto("/settings");
   await page.getByText("Customize Home", { exact: true }).click();
-  const form = page.locator("form").filter({ has: page.getByRole("button", { name: "Save dashboard", exact: true }) });
+  const form = page.locator("form").filter({ has: page.getByRole("button", { name: "Save dashboard", exact: true, includeHidden: true }) });
   await form.getByRole("checkbox", { name: "Net worth and ledger", exact: true }).uncheck();
   await form.locator('input[name="position:accounts"]').fill("1");
   await form.locator('input[name="position:planning"]').fill("2");
