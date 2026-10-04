@@ -1,0 +1,73 @@
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { POST } from "./route";
+import { start } from "workflow/api";
+
+const fixture = vi.hoisted(() => ({
+  imports: [] as { id: string; status: string }[], inserts: [] as Record<string, unknown>[], race: false,
+}));
+vi.mock("workflow/api", () => ({ start: vi.fn() }));
+vi.mock("@/workflows/import-file", () => ({ importFile: vi.fn() }));
+vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({
+  workspace: { id: "workspace" },
+  supabase: {
+    storage: { from: () => ({ upload: async () => ({ error: { message: "The resource already exists" } }) }) },
+    from: () => {
+      let excludedStatus: string | undefined;
+      let insertion: Record<string, unknown> | undefined;
+      const result = () => ({ data: fixture.imports.find(item => item.status !== excludedStatus) ?? null, error: null });
+      const query = {
+        select: () => query, eq: () => query,
+        neq: (_column: string, value: string) => { excludedStatus = value; return query; },
+        insert: (value: Record<string, unknown>) => { insertion = value; fixture.inserts.push(value); return query; },
+        maybeSingle: async () => result(),
+        single: async () => {
+          if (!insertion) return result();
+          if (fixture.race) {
+            fixture.imports.push({ id: "concurrent-import", status: "queued" });
+            return { data: null, error: { code: "23505", message: "duplicate active file" } };
+          }
+          fixture.imports.push({ id: "new-import", status: String(insertion.status) });
+          return { data: { id: "new-import" }, error: null };
+        },
+      };
+      return query;
+    },
+  },
+}) }));
+
+beforeEach(() => {
+  vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic-key");
+  fixture.imports = [{ id: "old-import", status: "undone" }];
+  fixture.inserts = [];
+  fixture.race = false;
+});
+afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
+
+function request() {
+  const form = new FormData();
+  form.set("file", new File(["Date,Description,Amount\n2026-10-01,Coffee,-2.00"], "synthetic.csv"));
+  form.set("mapping", JSON.stringify({ accountName: "Checking", currencyCode: "EUR", dateColumn: "Date", descriptionColumn: "Description", amountColumn: "Amount", dateFormat: "iso", amountSign: "signed" }));
+  return new Request("http://localhost/api/imports/confirm", { method: "POST", body: form });
+}
+
+it("starts a fresh import of undone bytes without changing historical evidence", async () => {
+  const response = await POST(request());
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ importId: "new-import", status: "queued" });
+  expect(fixture.imports[0]).toEqual({ id: "old-import", status: "undone" });
+  expect(fixture.inserts).toHaveLength(1);
+  expect(start).toHaveBeenCalledOnce();
+});
+
+it("deduplicates active bytes even when an older undone import exists", async () => {
+  fixture.imports.push({ id: "active-import", status: "completed" });
+  expect(await (await POST(request())).json()).toEqual({ importId: "active-import", status: "completed" });
+  expect(fixture.inserts).toHaveLength(0);
+  expect(start).not.toHaveBeenCalled();
+});
+
+it("returns the concurrent active import rather than an undone historical import", async () => {
+  fixture.race = true;
+  expect(await (await POST(request())).json()).toEqual({ importId: "concurrent-import", status: "queued" });
+  expect(start).not.toHaveBeenCalled();
+});

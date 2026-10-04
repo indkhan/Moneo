@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const mapping = validateImportConfirmation(rows, JSON.parse(mappingValue));
     const { supabase, workspace } = context;
     const hash = createHash("sha256").update(bytes).digest("hex");
-    const existing = await supabase.from("imports").select("id, status").eq("workspace_id", workspace.id).eq("file_hash", hash).maybeSingle();
+    const existing = await supabase.from("imports").select("id, status").eq("workspace_id", workspace.id).eq("file_hash", hash).neq("status", "undone").maybeSingle();
     if (existing.error) throw existing.error;
     if (existing.data)
       return NextResponse.json({ importId: existing.data.id, status: existing.data.status });
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       const inserted = await supabase.from("imports").insert({ workspace_id: workspace.id, filename: file.name, storage_path: storagePath, file_hash: hash, status: "queued", mapping, total_rows: rows.length }).select("id").single();
       if (inserted.error) {
         if (inserted.error.code !== "23505") throw inserted.error;
-        const duplicate = await supabase.from("imports").select("id, status").eq("workspace_id", workspace.id).eq("file_hash", hash).single();
+        const duplicate = await supabase.from("imports").select("id, status").eq("workspace_id", workspace.id).eq("file_hash", hash).neq("status", "undone").single();
         if (duplicate.error) throw duplicate.error;
         return NextResponse.json({ importId: duplicate.data.id, status: duplicate.data.status });
       }

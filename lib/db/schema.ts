@@ -122,7 +122,7 @@ export const imports = pgTable("imports", {
   undoneBy: uuid("undone_by").references(() => authUsers.id),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
-  unique("imports_workspace_hash_unique").on(table.workspaceId, table.fileHash),
+    uniqueIndex("imports_workspace_hash_unique").on(table.workspaceId, table.fileHash).where(sql`${table.status} <> 'undone'`),
   check("imports_classification_review_rows_check", sql`${table.classificationReviewRows} >= 0`),
   check("imports_run_version_check", sql`${table.runVersion} > 0`),
   check("imports_route_accounts_check", sql`jsonb_typeof(${table.routeAccounts}) = 'object'`),
