@@ -18,6 +18,8 @@ export function CodeEditor({
       extensions={[javascript({ typescript: true })]}
       theme={oneDark}
       onChange={onChange}
+      indentWithTab={false}
+      onCreateEditor={view => view.contentDOM.setAttribute("aria-label", "Calculator source")}
     />
   );
 }
