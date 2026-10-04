@@ -35,6 +35,7 @@ test("durable import Stop, Resume, byte deduplication and undo preserve exact so
     const csv=["date,description,amount,id",...Array.from({length:75},(_,i)=>`2026-09-01,Synthetic expense ${String(i+1).padStart(3,"0")},-1.01,controlled-${i+1}`),""].join("\n");
     const file={name:filename,mimeType:"text/csv",buffer:Buffer.from(csv)};
     await page.goto("/import");
+    await expect(page.getByLabel("Financial statement files")).toBeEnabled();
     await page.getByLabel("Financial statement files").setInputFiles(file);
     await expect(page.getByText("Automatic interpretation unavailable. Choose the columns below.",{exact:true})).toBeVisible();
     await page.getByLabel("Account name",{exact:true}).fill(accountName);

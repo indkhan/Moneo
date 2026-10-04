@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import type { ImportMapping, SourceRow } from "@/lib/csv";
 import { formatMoney } from "@/lib/finance/format";
@@ -27,7 +27,10 @@ function formatMinor(value: string, currency: string) {
   return `${amount >= 0n ? "+" : ""}${formatMoney(amount, currency)}`;
 }
 
+const subscribeToHydration = () => () => {};
+
 export default function ImportPage() {
+  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const [files, setFiles] = useState<File[]>([]);
   const [index, setIndex] = useState(0);
   const [inspection, setInspection] = useState<Inspection | null>(null);
@@ -250,7 +253,7 @@ export default function ImportPage() {
 
   return <main className="mx-auto max-w-5xl space-y-6 px-5 py-8 lg:px-8">
     <div><p className="text-xs font-semibold uppercase tracking-widest text-brand">Money / Import</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Import financial data</h1><p className="mt-2 text-sm text-muted-foreground">Choose CSV or XLSX statements. We&apos;ll propose an interpretation for you to review before importing.</p></div>
-    <label className="block rounded-xl border border-dashed border-blue-300 bg-card p-8 text-center shadow-sm hover:bg-muted/40"><span className="block text-base font-semibold">Choose statements to import</span><span className="mt-1 block text-sm text-muted-foreground">CSV or XLSX files · You can select more than one</span><input className="mt-5 w-full max-w-xs text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-brand file:px-4 file:py-2 file:font-medium file:text-white" type="file" accept=".csv,.xlsx" multiple disabled={busy} aria-label="Financial statement files"
+    <label className="block rounded-xl border border-dashed border-blue-300 bg-card p-8 text-center shadow-sm hover:bg-muted/40"><span className="block text-base font-semibold">Choose statements to import</span><span className="mt-1 block text-sm text-muted-foreground">CSV or XLSX files · You can select more than one</span><input className="mt-5 w-full max-w-xs text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-brand file:px-4 file:py-2 file:font-medium file:text-white" type="file" accept=".csv,.xlsx" multiple disabled={!hydrated || busy} aria-label="Financial statement files"
       onChange={(event) => {
         const selected = Array.from(event.target.files ?? []);
         setFiles(selected);

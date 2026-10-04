@@ -25,6 +25,20 @@ import {
 } from "./fixtures";
 
 test.describe("deterministic import journey (mocked AI mapping, no credentials)", () => {
+  test("keeps the statement picker disabled until its upload handler hydrates", async ({ page }) => {
+    let releaseScripts!: () => void;
+    const scriptsReady = new Promise<void>(resolve => { releaseScripts = resolve; });
+    await page.route("**/_next/static/**/*.js*", async route => { await scriptsReady; await route.continue(); });
+    await page.route("**/api/imports", route => route.fulfill({ json: [] }));
+    await page.route("**/api/imports/inspect", route => route.fulfill({ json: mockInspectResponse() }));
+    try {
+      await page.goto("/import", { waitUntil: "commit" });
+      await expect(page.getByLabel("Financial statement files")).toBeDisabled();
+    } finally { releaseScripts(); }
+    await expect(page.getByLabel("Financial statement files")).toBeEnabled();
+    await page.getByLabel("Financial statement files").setInputFiles({ name: "august.csv", mimeType: "text/csv", buffer: Buffer.from(AUGUST_CSV) });
+    await expect(page.getByText("august.csv (1 of 1)")).toBeVisible();
+  });
   test("a stalled history refresh cannot leave a confirmed import busy forever", async ({ page }) => {
     let confirmed = false;
     await page.route("**/api/imports", async route => {
@@ -35,6 +49,7 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await page.route("**/api/imports/confirm", async route => { confirmed = true; await route.fulfill({ json: { importId: "import-1", status: "queued" } }); });
     await page.goto("/import");
     await expect(page.getByText("No imports yet.")).toBeVisible();
+    await expect(page.getByLabel("Financial statement files")).toBeEnabled();
     await page.getByLabel("Financial statement files").setInputFiles({ name: "august.csv", mimeType: "text/csv", buffer: Buffer.from(AUGUST_CSV) });
     await page.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(page.locator("main").getByRole("alert")).toHaveText("Import history is unavailable. Try again.", { timeout: 15_000 });
@@ -102,6 +117,7 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await expect(page.getByText("No imports yet.")).toBeVisible();
 
     // 1. Upload — the file input inspects automatically.
+    await expect(page.getByLabel("Financial statement files")).toBeEnabled();
     await page
       .getByLabel("Financial statement files")
       .setInputFiles({
@@ -188,6 +204,7 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     });
 
     await page.goto("/import");
+    await expect(page.getByLabel("Financial statement files")).toBeEnabled();
     await page
       .getByLabel("Financial statement files")
       .setInputFiles({
@@ -218,6 +235,7 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
       });
     });
     await page.goto("/import");
+    await expect(page.getByLabel("Financial statement files")).toBeEnabled();
     await page.getByLabel("Financial statement files").setInputFiles({
       name: "august.csv", mimeType: "text/csv", buffer: Buffer.from(AUGUST_CSV, "utf-8"),
     });
@@ -242,6 +260,7 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
       }),
     }));
     await page.goto("/import");
+    await expect(page.getByLabel("Financial statement files")).toBeEnabled();
     await page.getByLabel("Financial statement files").setInputFiles({
       name: "statement.csv", mimeType: "text/csv", buffer: Buffer.from("Type,Product,Started Date,Completed Date,Description,Amount\nTransfer,Savings,2025-11-10 17:04:58,2025-11-10 17:04:58,Transfer,100.00"),
     });

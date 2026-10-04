@@ -77,6 +77,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
 
     await test.step("upload sample file and confirm AI mapping", async () => {
       await page.goto("/import");
+      await expect(page.getByLabel("Financial statement files")).toBeEnabled();
       await page.getByLabel("Financial statement files").setInputFiles({
         name: "august.csv",
         mimeType: "text/csv",
@@ -230,6 +231,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
 
     await test.step("submit newer overlapping data", async () => {
       await page.goto("/import");
+      await expect(page.getByLabel("Financial statement files")).toBeEnabled();
       await page.getByLabel("Financial statement files").setInputFiles({
         name: "september.csv",
         mimeType: "text/csv",
