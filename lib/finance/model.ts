@@ -54,13 +54,14 @@ export async function evaluatePlan(horizonDays = 30, scenarioId?: string) {
   return evaluatePlanForWorkspace(supabase, workspace, horizonDays, scenarioId);
 }
 
-export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspace: { id: string; display_currency: string; timezone: string }, horizonDays = 30, scenarioId?: string) {
+export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspace: { id: string; display_currency: string; timezone: string }, horizonDays = 30, scenarioId?: string,
+  evidence?: { balanceEvidence: ReturnType<typeof loadBalanceEvidence>; wealth: ReturnType<typeof loadWealthItems> }) {
   if (!Number.isInteger(horizonDays) || horizonDays < 1 || horizonDays > 365) throw new Error("Invalid forecast horizon");
   const [balanceEvidence, wealth, preferencesResult,
     { data: allocations, error: allocationsError }, { data: assumptions, error: assumptionsError },
     { data: rates, error: ratesError }] = await Promise.all([
-      loadBalanceEvidence(supabase, workspace.id),
-      loadWealthItems(supabase, workspace.id),
+      evidence?.balanceEvidence ?? loadBalanceEvidence(supabase, workspace.id),
+      evidence?.wealth ?? loadWealthItems(supabase, workspace.id),
       supabase.from("forecast_preferences").select("currency_code, safety_buffer_minor::text, daily_spending_minor::text, uncertainty_bps, spending_account_id, spending_starts_on, version").eq("workspace_id", workspace.id).maybeSingle(),
       supabase.from("goal_allocations").select("account_id, amount_minor::text").eq("workspace_id", workspace.id),
       supabase.from("financial_assumptions").select("id, name, account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, enabled")

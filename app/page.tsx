@@ -10,7 +10,7 @@ import { createAccount, setManualBalance } from "./actions";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
-import { evaluatePlan } from "@/lib/finance/model";
+import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { cashflow } from "@/lib/finance/tools";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { ArrowRight, Landmark, Plus, Wallet } from "lucide-react";
@@ -26,12 +26,14 @@ export default async function Home() {
   const { supabase, workspace } = context;
   const money = (amount: bigint | string | number, currency: string) => formatMoney(amount, currency, workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);
+  const balanceEvidencePromise = loadBalanceEvidence(supabase, workspace.id);
+  const wealthPromise = loadWealthItems(supabase, workspace.id);
   const [balanceEvidence, ledgerCount, projection, spending, wealthItems, rates, pinnedItems, layout, goals, allocations] = await Promise.all([
-    loadBalanceEvidence(supabase, workspace.id),
+    balanceEvidencePromise,
     supabase.from("transactions").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id),
-    evaluatePlan(),
+    evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise }),
     cashflow({ from: `${today.slice(0, 7)}-01`, to: today, currencyCode: workspace.display_currency }),
-    loadWealthItems(supabase, workspace.id),
+    wealthPromise,
     supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
       .eq("workspace_id", workspace.id).order("rate_date", { ascending: false }).order("created_at", { ascending: false }),
     supabase.from("dashboard_items").select("artifact_id, position").eq("workspace_id", workspace.id).order("position"),

@@ -1,5 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { evaluatePlan } from "./model";
+import { evaluatePlan, evaluatePlanForWorkspace } from "./model";
+import { requireWorkspace } from "@/lib/auth";
+import { loadBalanceEvidence } from "./balances";
 
 const fixture = vi.hoisted(() => ({ asOf: "2026-09-28T12:00:00Z", pending: false, includeAssumptions: false, debt: false, archived: false, preferences: null as null | { currency_code: string; safety_buffer_minor: string; daily_spending_minor: string; uncertainty_bps: number; spending_account_id: string | null; spending_starts_on: string | null; version: number } }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" },
@@ -18,6 +20,16 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
   } },
 }) }));
 afterEach(() => vi.useRealTimers());
+
+it("reuses the page's in-flight evidence without scanning the ledger and wealth again", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
+  const { supabase, workspace } = await requireWorkspace();
+  const balanceEvidence = Promise.resolve(await loadBalanceEvidence(supabase, workspace.id));
+  const queries = vi.spyOn(supabase, "from");
+  const result = await evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence, wealth: Promise.resolve([]) });
+  expect(result.input.missingInputs).toContain("balance:00000000-0000-4000-8000-000000000001:stale");
+  expect(queries.mock.calls.map(([table]) => table).filter(table => ["accounts", "balance_snapshots", "transactions", "transaction_link_fees", "wealth_items"].includes(table))).toEqual([]);
+});
 
 it("uses confirmed recurring assumptions rather than unreviewed inferences", async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
