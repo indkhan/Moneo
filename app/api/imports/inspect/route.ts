@@ -2,7 +2,7 @@ import { generateObject } from "ai";
 import { modelForSettings } from "@/lib/ai/provider";
 import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { requireWorkspace } from "@/lib/auth";
-import { mappingSchema, parseCsv, parseExcel, previewImport, proposeAccountRoutes, proposeStatementTimezones, validateAiMapping } from "@/lib/csv";
+import { mappingSchema, parseCsv, parseExcel, previewImport, proposeAccountRoutes, proposeKnownStatementMapping, proposeStatementTimezones, validateAiMapping } from "@/lib/csv";
 
 export async function POST(request: Request) {
   let workspaceCurrency: string;
@@ -27,11 +27,15 @@ export async function POST(request: Request) {
     if (!rows.length) throw new Error("File has no data rows");
     const headers = Object.keys(rows[0]);
     const supplied = form.get("mapping");
+    const knownMapping = proposeKnownStatementMapping(rows, file.name.replace(/\.(csv|xlsx)$/i, ""), workspaceCurrency);
     let mapping;
     let preview;
     let aiError: string | undefined;
     if (typeof supplied === "string") {
       mapping = proposeStatementTimezones(rows, proposeAccountRoutes(rows, JSON.parse(supplied)), settings?.timezone);
+      preview = previewImport(rows, mapping);
+    } else if (knownMapping) {
+      mapping = proposeStatementTimezones(rows, knownMapping, settings?.timezone);
       preview = previewImport(rows, mapping);
     } else {
       try {

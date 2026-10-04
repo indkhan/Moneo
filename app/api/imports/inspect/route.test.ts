@@ -23,3 +23,25 @@ it("cancels provider mapping when the upload request is canceled", async () => {
   controller.abort();
   expect(await (await response).json()).toMatchObject({ mapping: null, aiError: "Mapping canceled" });
 });
+
+it.each([
+  {
+    filename: "revolut.csv",
+    csv: "Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance\nCard Payment,Current,2026-09-01 10:00:00,2026-09-01 12:00:00,Shop,-12.50,0.00,EUR,COMPLETED,100.00",
+    expected: { dateColumn: "Completed Date", descriptionColumn: "Description", productColumn: "Product", statusColumn: "State", balanceColumn: "Balance", typeColumn: "Type", feeColumn: "Fee", dateFormat: "iso", timestampTimezoneConfirmed: false },
+  },
+  {
+    filename: "bank.csv",
+    csv: "Booking date,Value date,Transaction type,Booking text,Amount,Currency,Account IBAN,Category,Sender,Recipient,Transfer purpose\n01.09.2026,01.09.2026,Card payment,Shop,-12.50,EUR,synthetic-account,Shopping,,,",
+    expected: { dateColumn: "Booking date", descriptionColumn: "Booking text", categoryColumn: "Category", typeColumn: "Transaction type", accountColumn: "Account IBAN", dateFormat: "dmy" },
+  },
+])("previews $filename immediately without an AI mapping call", async ({ filename, csv, expected }) => {
+  const form = new FormData();
+  form.set("file", new File([csv], filename));
+  const response = await POST(new Request("http://localhost/api/imports/inspect", { method: "POST", body: form }));
+  const result = await response.json();
+  expect(response.status).toBe(200);
+  expect(result.mapping).toMatchObject({ ...expected, currencyColumn: "Currency", amountColumn: "Amount", amountSign: "signed" });
+  expect(result.preview).toMatchObject({ totalRows: 1, examples: [{ amountMinor: "-1250", postedOn: "2026-09-01" }] });
+  expect(generateObject).not.toHaveBeenCalled();
+});

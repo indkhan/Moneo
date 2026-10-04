@@ -46,6 +46,20 @@ export const mappingSchema = z.object({
 
 export type ImportMapping = z.infer<typeof mappingSchema>;
 
+// Recognized statement formats avoid a provider round trip; every proposal still needs review.
+export function proposeKnownStatementMapping(rows: SourceRow[], accountName: string, currencyCode: string): ImportMapping | undefined {
+  const headers = Object.keys(rows[0] ?? {});
+  const has = (columns: string[]) => columns.every(column => headers.includes(column));
+  const base = { accountName, currencyCode, amountColumn: "Amount", currencyColumn: "Currency", amountSign: "signed" as const };
+  if (has(["Type", "Product", "Started Date", "Completed Date", "Description", "Amount", "Fee", "Currency", "State", "Balance"]))
+    return proposeAccountRoutes(rows, { ...base, dateColumn: "Completed Date", descriptionColumn: "Description", dateFormat: "iso",
+      productColumn: "Product", statusColumn: "State", balanceColumn: "Balance", typeColumn: "Type", feeColumn: "Fee" });
+  if (has(["Booking date", "Value date", "Transaction type", "Booking text", "Amount", "Currency", "Account IBAN", "Category", "Sender", "Recipient", "Transfer purpose"]))
+    return proposeAccountRoutes(rows, { ...base, dateColumn: "Booking date", descriptionColumn: "Booking text", dateFormat: "dmy",
+      categoryColumn: "Category", typeColumn: "Transaction type", accountColumn: "Account IBAN" });
+  return undefined;
+}
+
 export function validateImportConfirmation(rows: SourceRow[], input: unknown): ImportMapping {
   const mapping = validateMapping(input, rows);
   const naive = rows.some(row => /[ T]\d{2}:\d{2}:\d{2}$/.test(row[mapping.dateColumn]?.trim() ?? ""));
