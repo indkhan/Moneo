@@ -137,7 +137,8 @@ export async function POST(request: Request) {
     const finished = await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "completed", p_content: answer, p_usage: reportedUsage(model.modelId, result.totalUsage) });
     if (finished.error) throw finished.error;
     if (finished.data !== "completed") return Response.json({ status: finished.data, error: `Request is ${finished.data}` }, { status: 409 });
-    return Response.json({ conversationId, answer });
+    const toolsUsed = [...new Set((result.steps ?? []).flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [toolResult.toolName] : [])))];
+    return Response.json({ conversationId, answer, toolsUsed });
   } catch (error) {
     const failure = error instanceof Error ? error.message : "AI request failed";
     if (request.signal.aborted) await supabase.rpc("cancel_chat_request", { p_request_id: requestId });

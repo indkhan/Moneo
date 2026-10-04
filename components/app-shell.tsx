@@ -31,7 +31,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (pathname === "/login") return <>{children}</>;
   const current = activeSection(pathname);
 
-  return <div className="min-h-screen bg-background">
+  return <div className={`min-h-screen bg-background ${pathname === "/ai" ? "ai-evidence" : ""}`}>
     <a href="#main-content" className="sr-only z-50 rounded bg-card p-3 text-sm underline focus:not-sr-only focus:fixed focus:left-3 focus:top-3">Skip to content</a>
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border bg-card lg:flex">
       <Link href="/" className="flex h-14 items-center gap-2.5 border-b border-border px-5" aria-label="Moneo home">
