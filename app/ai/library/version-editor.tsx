@@ -64,6 +64,8 @@ export function VersionEditor({
           `Version ${payload?.version?.version ?? "?"} recorded as failed; active version preserved. Errors: ${(payload?.validation?.errors ?? []).join("; ")}`,
         );
       } else {
+        if (candidateSource !== source) setSource(candidateSource);
+        if (candidateManifest !== manifestText) setManifestText(candidateManifest);
         setStatus(`Version ${payload?.version?.version ?? "?"} validated and activated.`);
       }
       router.refresh();

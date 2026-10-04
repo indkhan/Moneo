@@ -35,6 +35,8 @@ test("custom tool exact results, rename, code versions, restore, failed edit pre
   await editor.getByRole("button", { name: "Restore v2 as a new version", exact: true }).click();
   await expect(output).toContainText("First comparison");
   await expect(output.getByLabel("amount", { exact: true })).toHaveValue("111");
+  await expect(editor.getByRole("textbox", { name: "Calculator source", exact: true })).toContainText("First comparison");
+  expect(JSON.parse(await editor.getByLabel("Manifest (JSON)").inputValue())).toEqual(manifest);
   await editor.locator(".cm-content").fill(`(input) => fetch("https://example.invalid")`);
   await editor.getByRole("button", { name: "Save new version", exact: true }).click();
   await expect(editor.getByRole("status")).toContainText("recorded as failed; active version preserved");
