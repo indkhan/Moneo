@@ -1,7 +1,8 @@
 "use workflow";
 
-import { generateText } from "ai";
+import { APICallError, generateText } from "ai";
 import { createClient } from "@supabase/supabase-js";
+import { FatalError, RetryableError, getStepMetadata, getWorkflowMetadata } from "workflow";
 import { modelForSettings } from "@/lib/ai/provider";
 import { loadWorkspaceSettings, requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
@@ -9,8 +10,52 @@ import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
 function service() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Financial review service is not configured");
+  if (!url || !key) throw new FatalError("Financial review service is not configured");
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+
+function reviewScopes(settings: WorkspaceSettings, planning = false) {
+  try { requireAiScope(settings, "accounts", "transactions", ...(planning ? ["planning" as const] : [])); }
+  catch (error) { throw new FatalError(String(error)); }
+}
+
+function retryFailure(error: unknown): never {
+  if (error instanceof FatalError) throw error;
+  if (APICallError.isInstance(error) && !error.isRetryable) throw new FatalError(error.message);
+  const code = error && typeof error === "object" && "code" in error ? error.code : null;
+  if (["22023", "42501", "28000", "P0002"].includes(String(code))) throw new FatalError(String(error));
+  throw new RetryableError(String(error).slice(0, 2000), { retryAfter: getStepMetadata().attempt ** 2 * 1000 });
+}
+
+async function enterStage(db: ReturnType<typeof service>, jobId: string, workspaceId: string, runId: string, stage: string) {
+  const job = await db.from("background_jobs").select("status, cancel_requested, workflow_run_id").eq("id", jobId).eq("workspace_id", workspaceId).single();
+  if (job.error) throw job.error;
+  if (["completed", "canceled", "failed"].includes(job.data.status) || job.data.workflow_run_id !== runId) return false;
+  const value = job.data.cancel_requested ? { status: "canceled", stage: "canceled" } : { status: "running", stage };
+  const changed = await db.from("background_jobs").update({ ...value, error: null, updated_at: new Date().toISOString() })
+    .eq("id", jobId).eq("workspace_id", workspaceId).eq("workflow_run_id", runId).in("status", ["queued", "running"])
+    .eq("cancel_requested", job.data.cancel_requested).select("id").maybeSingle();
+  if (changed.error) throw changed.error;
+  return Boolean(changed.data) && !job.data.cancel_requested;
+}
+
+async function registerRun(jobId: string, workspaceId: string, runId: string) {
+  "use step";
+  try {
+    const receipt = await service().rpc("register_financial_review_run", { p_job_id: jobId, p_workspace_id: workspaceId, p_run_id: runId });
+    if (receipt.error) throw receipt.error;
+    if (typeof receipt.data !== "boolean") throw new FatalError("Invalid financial review run receipt");
+    return receipt.data;
+  } catch (error) { retryFailure(error); }
+}
+
+async function failReview(jobId: string, workspaceId: string, runId: string, stage: string, error: string) {
+  "use step";
+  try {
+    const failed = await service().rpc("fail_financial_review", { p_job_id: jobId, p_workspace_id: workspaceId, p_run_id: runId, p_stage: stage, p_error: error.slice(0, 2000) });
+    if (failed.error) throw failed.error;
+    if (!["queued", "running", "failed", "completed", "canceled"].includes(failed.data)) throw new FatalError("Invalid financial review failure receipt");
+  } catch (failure) { retryFailure(failure); }
 }
 
 async function summaryStillEnabled(db: ReturnType<typeof service>, jobId: string, workspaceId: string, settings: WorkspaceSettings, scheduled: boolean) {
@@ -26,84 +71,78 @@ async function summaryStillEnabled(db: ReturnType<typeof service>, jobId: string
 
 export async function financialReview(jobId: string, workspaceId: string, scheduled = false) {
   "use workflow";
-  const evidence = await gatherEvidence(jobId, workspaceId, scheduled);
-  if (!evidence) return;
-  const body = await writeReview(jobId, workspaceId, evidence, scheduled);
-  if (!body) return;
-  await saveReview(jobId, workspaceId, evidence, body, scheduled);
-}
-
-async function gatherEvidence(jobId: string, workspaceId: string, scheduled: boolean) {
-  "use step";
-  const db = service();
-  const job = await db.from("background_jobs").select("status, cancel_requested").eq("id", jobId).eq("workspace_id", workspaceId).single();
-  if (job.error) throw job.error;
-  if (["completed", "canceled", "failed"].includes(job.data.status)) return null;
-  if (job.data.cancel_requested) {
-    await db.from("background_jobs").update({ status: "canceled", stage: "canceled", updated_at: new Date().toISOString() }).eq("id", jobId).eq("workspace_id", workspaceId).in("status", ["queued", "running"]);
-    return null;
-  }
-  await db.from("background_jobs").update({ status: "running", stage: "gathering_evidence", error: null, updated_at: new Date().toISOString() }).eq("id", jobId).eq("workspace_id", workspaceId).in("status", ["queued", "running"]);
+  const runId = getWorkflowMetadata().workflowRunId;
+  let stage = "starting";
   try {
-    const settings = await loadWorkspaceSettings(db, workspaceId);
-    if (!await summaryStillEnabled(db, jobId, workspaceId, settings, scheduled)) return null;
-    requireAiScope(settings, "accounts", "transactions");
-    const workspace = await db.from("workspaces").select("id, display_currency").eq("id", workspaceId).single();
-    if (workspace.error) throw workspace.error;
-    return loadFinancialReviewEvidence(db, { ...workspace.data, timezone: settings.timezone }, settings);
+    if (!await registerRun(jobId, workspaceId, runId)) return;
+    stage = "gathering_evidence";
+    const evidence = await gatherEvidence(jobId, workspaceId, scheduled, runId);
+    if (!evidence) return;
+    stage = "writing_review";
+    const body = await writeReview(jobId, workspaceId, evidence, scheduled, runId);
+    if (!body) return;
+    stage = "saving_review";
+    await saveReview(jobId, workspaceId, evidence, body, scheduled, runId);
   } catch (error) {
-    await db.from("background_jobs").update({ status: "failed", stage: "gathering_evidence", error: String(error), updated_at: new Date().toISOString() }).eq("id", jobId).eq("workspace_id", workspaceId).in("status", ["queued", "running"]);
+    await failReview(jobId, workspaceId, runId, stage, String(error));
     throw error;
   }
 }
 
-async function writeReview(jobId: string, workspaceId: string, evidence: Awaited<ReturnType<typeof loadFinancialReviewEvidence>>, scheduled: boolean) {
+async function gatherEvidence(jobId: string, workspaceId: string, scheduled: boolean, runId: string) {
   "use step";
-  const db = service();
-  const job = await db.from("background_jobs").select("cancel_requested, status").eq("id", jobId).eq("workspace_id", workspaceId).single();
-  if (job.error) throw job.error;
-  if (["completed", "canceled", "failed"].includes(job.data.status)) return null;
-  if (job.data.cancel_requested) {
-    await db.from("background_jobs").update({ status: "canceled", stage: "canceled", updated_at: new Date().toISOString() }).eq("id", jobId).eq("workspace_id", workspaceId).in("status", ["queued", "running"]);
-    return null;
-  }
-  await db.from("background_jobs").update({ status: "running", stage: "writing_review", updated_at: new Date().toISOString() }).eq("id", jobId).eq("workspace_id", workspaceId).in("status", ["queued", "running"]);
   try {
+    const db = service();
+    if (!await enterStage(db, jobId, workspaceId, runId, "gathering_evidence")) return null;
     const settings = await loadWorkspaceSettings(db, workspaceId);
     if (!await summaryStillEnabled(db, jobId, workspaceId, settings, scheduled)) return null;
-    requireAiScope(settings, "accounts", "transactions");
-    if (!("unavailable" in evidence.planning)) requireAiScope(settings, "planning");
+    reviewScopes(settings);
+    const workspace = await db.from("workspaces").select("id, display_currency").eq("id", workspaceId).single();
+    if (workspace.error) throw workspace.error;
+    return await loadFinancialReviewEvidence(db, { ...workspace.data, timezone: settings.timezone }, settings);
+  } catch (error) {
+    retryFailure(error);
+  }
+}
+
+async function writeReview(jobId: string, workspaceId: string, evidence: Awaited<ReturnType<typeof loadFinancialReviewEvidence>>, scheduled: boolean, runId: string) {
+  "use step";
+  try {
+    const db = service();
+    if (!await enterStage(db, jobId, workspaceId, runId, "writing_review")) return null;
+    const settings = await loadWorkspaceSettings(db, workspaceId);
+    if (!await summaryStillEnabled(db, jobId, workspaceId, settings, scheduled)) return null;
+    reviewScopes(settings, !("unavailable" in evidence.planning));
     const result = await generateText({ model: await modelForSettings(settings, { effort: "minimal", exclude: true }), maxOutputTokens: 4000, maxRetries: 0, abortSignal: AbortSignal.timeout(90_000),
       system: "Write a personal-finance review using only supplied dated evidence. Cover period cashflow, category and merchant changes, budget pressure, confirmed obligations, goals, wealth/debt and forecast when available. Cite exact currency, period and supplied internal source links for numerical claims. Distinguish recorded savings from virtual reservations, booked balances from available funds, historical valuations from current net worth, and assumptions from forecasts. Call unavailable and partial evidence out explicitly. Group changes show evidence, not causes; never invent explanations or financial data. Offer conditional, reviewable next steps rather than certainty.",
       prompt: JSON.stringify(evidence) });
     if (!result.text.trim()) throw new Error("AI returned an empty review");
     return result.text.trim() + (result.finishReason === "length" ? "\n\nIncomplete review: the provider reached its output limit. The saved evidence remains available; further findings may be missing." : "");
   } catch (error) {
-    await db.from("background_jobs").update({ status: "failed", stage: "writing_review", error: String(error), updated_at: new Date().toISOString() }).eq("id", jobId).eq("workspace_id", workspaceId).in("status", ["queued", "running"]);
-    throw error;
+    retryFailure(error);
   }
 }
 
-async function saveReview(jobId: string, workspaceId: string, evidence: Awaited<ReturnType<typeof loadFinancialReviewEvidence>>, body: string, scheduled: boolean) {
+async function saveReview(jobId: string, workspaceId: string, evidence: Awaited<ReturnType<typeof loadFinancialReviewEvidence>>, body: string, scheduled: boolean, runId: string) {
   "use step";
-  const db = service();
-  const job = await db.from("background_jobs").select("cancel_requested, status").eq("id", jobId).eq("workspace_id", workspaceId).single();
-  if (job.error) throw job.error;
-  if (["completed", "canceled", "failed"].includes(job.data.status)) return;
-  if (job.data.cancel_requested) {
-    await db.from("background_jobs").update({ status: "canceled", stage: "canceled", updated_at: new Date().toISOString() }).eq("id", jobId).eq("workspace_id", workspaceId).in("status", ["queued", "running"]);
-    return;
-  }
   try {
+    const db = service();
+    if (!await enterStage(db, jobId, workspaceId, runId, "saving_review")) return;
     const settings = await loadWorkspaceSettings(db, workspaceId);
     if (!await summaryStillEnabled(db, jobId, workspaceId, settings, scheduled)) return;
-    requireAiScope(settings, "accounts", "transactions");
-    if (!("unavailable" in evidence.planning)) requireAiScope(settings, "planning");
+    reviewScopes(settings, !("unavailable" in evidence.planning));
     const saved = await db.rpc("finish_financial_review", { p_job_id: jobId, p_workspace_id: workspaceId,
       p_title: `Financial review ${evidence.period.to}`, p_body: body, p_evidence: evidence, p_scheduled: scheduled });
     if (saved.error) throw saved.error;
+    if (!["completed", "canceled"].includes(saved.data)) throw new FatalError("Financial review publication was not completed or canceled");
   } catch (error) {
-    await db.from("background_jobs").update({ status: "failed", stage: "saving_review", error: String(error), updated_at: new Date().toISOString() }).eq("id", jobId).eq("workspace_id", workspaceId).in("status", ["queued", "running"]);
-    throw error;
+    retryFailure(error);
   }
 }
+
+// Explicitly bound every durable attempt, including dispatch registration and terminal cleanup.
+registerRun.maxRetries = 3;
+gatherEvidence.maxRetries = 3;
+writeReview.maxRetries = 3;
+saveReview.maxRetries = 3;
+failReview.maxRetries = 3;
