@@ -32,6 +32,9 @@ export type CalculatorSnapshot = { coverage?: SnapshotCoverage } & (
       baselineAvailableMinor?: string | null;
       unavailable?: string | null;
       tripDate?: string;
+      accountId?: string | null;
+      liquidity?: Awaited<ReturnType<typeof tripForArtifact>>["liquidity"];
+      tripLiquidity?: Awaited<ReturnType<typeof tripForArtifact>>["tripLiquidity"];
     }
   | {
       currency: string;
@@ -42,7 +45,7 @@ export type CalculatorSnapshot = { coverage?: SnapshotCoverage } & (
 export async function buildCalculatorSnapshot(
   artifactId: string,
   kind: ArtifactKind,
-  opts?: { query?: string; month?: string; costMinor?: bigint; sdk?: string[]; spendingOperation?: "spending" | "cashflow" },
+  opts?: { query?: string; month?: string; costMinor?: bigint; accountId?: string; sdk?: string[]; spendingOperation?: "spending" | "cashflow" },
 ): Promise<{ snapshot: CalculatorSnapshot; stateParams: Record<string, number | string> }> {
   if (kind.startsWith("custom_")) {
     const operations = [...new Set(opts?.sdk ?? [])];
@@ -100,7 +103,7 @@ export async function buildCalculatorSnapshot(
     };
   }
   if (kind === "trip_planner") {
-    const data = await tripForArtifact(artifactId, opts?.costMinor ?? 90000n);
+    const data = await tripForArtifact(artifactId, opts?.costMinor ?? 90000n, opts?.accountId);
     return {
       snapshot: {
         currency: data.currency,
@@ -108,6 +111,7 @@ export async function buildCalculatorSnapshot(
           data.baseline.status === "available" ? data.baseline.amountMinor.toString() : null,
         unavailable: data.unavailable ?? (data.baseline.status === "available" ? null : "Forecast unavailable"),
         tripDate: data.tripDate,
+        ...(data.liquidity ? { accountId: data.accountId, liquidity: data.liquidity, tripLiquidity: data.tripLiquidity } : {}),
       },
       stateParams: { costMinor: Number(opts?.costMinor ?? 90000n) },
     };

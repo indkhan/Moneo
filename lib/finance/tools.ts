@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { summarizeCashflow } from "./calculations";
+import { accountLiquidity, availableToSpend, forecastDaily, internalFundingEvents, serializeAccountLiquidity, summarizeCashflow } from "./calculations";
 import { requireWorkspace } from "@/lib/auth";
 import { evaluatePlan, evaluatePlanForWorkspace } from "./model";
 import { loadBalanceEvidence, resolveBalances } from "./balances";
@@ -8,6 +8,14 @@ type FinanceContext = Awaited<ReturnType<typeof requireWorkspace>>;
 
 const periodInput = z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().regex(/^[A-Z]{3}$/) });
 const searchInput = z.object({ query: z.string().min(1).max(100) });
+export const forecastInput = z.object({
+  horizonDays: z.number().int().min(1).max(365).default(30), scenarioId: z.uuid().optional(),
+  accountId: z.string().min(1).max(100).optional(),
+  funding: z.array(z.object({ date: z.iso.date(), currencyCode: z.string().regex(/^[A-Z]{3}$/),
+    fromAccountId: z.string().min(1).max(100), toAccountId: z.string().min(1).max(100),
+    amountMinor: z.string().regex(/^[1-9]\d{0,18}$/).refine(value => BigInt(value) <= 9223372036854775807n),
+  })).max(100).optional(),
+});
 
 export async function listAccounts(context?: FinanceContext) {
   const { supabase, workspace } = context ?? await requireWorkspace();
@@ -74,18 +82,31 @@ export async function listGoals(context?: FinanceContext) {
 }
 
 export async function evaluateForecast(input: unknown, context?: FinanceContext) {
-  const args = z.object({ horizonDays: z.number().int().min(1).max(365).default(30), scenarioId: z.uuid().optional() }).parse(input);
-  const { forecast, available, input: assumptions } = (context ? await evaluatePlanForWorkspace(context.supabase, context.workspace, args.horizonDays, args.scenarioId) : await evaluatePlan(args.horizonDays, args.scenarioId));
+  const args = forecastInput.parse(input);
+  const plan = context ? await evaluatePlanForWorkspace(context.supabase, context.workspace, args.horizonDays, args.scenarioId) : await evaluatePlan(args.horizonDays, args.scenarioId);
+  const fundingEvents = (args.funding ?? []).flatMap(funding => {
+    if (funding.currencyCode !== plan.input.currencyCode) throw new Error("Funding currency must match forecast currency; convert explicitly first");
+    if (funding.date < plan.input.startDate || funding.date >= new Date(Date.parse(`${plan.input.startDate}T00:00:00Z`) + plan.input.horizonDays * 86400000).toISOString().slice(0, 10)) throw new Error("Funding date outside forecast horizon");
+    return internalFundingEvents({ ...funding, amountMinor: BigInt(funding.amountMinor) });
+  });
+  const assumptions = { ...plan.input, scenarioEvents: [...(plan.input.scenarioEvents ?? []), ...fundingEvents] };
+  const forecast = forecastDaily(assumptions), available = availableToSpend(assumptions);
   if (forecast.status === "unavailable" || available.status === "unavailable")
     return { status: "unavailable", missingInputs: [...new Set([
       ...(forecast.status === "unavailable" ? forecast.missingInputs : []),
       ...(available.status === "unavailable" ? available.missingInputs : []),
     ])] };
   const last = forecast.days.at(-1)!;
+  const liquidity = accountLiquidity(assumptions);
+  if (liquidity.status === "unavailable") return liquidity;
+  const account = args.accountId ? liquidity.accounts.find(account => account.accountId === args.accountId) : undefined;
+  if (args.accountId && !account) throw new Error("Unknown account");
   return { status: "available", currencyCode: assumptions.currencyCode, horizonDays: args.horizonDays,
     expectedMinor: last.expectedMinor.toString(), conservativeMinor: last.conservativeMinor.toString(),
-    optimisticMinor: last.optimisticMinor.toString(), availableToSpendMinor: available.amountMinor.toString(),
-    limitingDate: available.limitingDate, casesAreAssumptionsNotProbabilities: true };
+    optimisticMinor: last.optimisticMinor.toString(), availableToSpendMinor: account?.amountMinor.toString() ?? null,
+    accountId: account?.accountId ?? null, limitingDate: account?.limitingDate ?? null,
+    aggregateAvailableMinor: available.amountMinor.toString(), aggregateLimitingDate: available.limitingDate,
+    aggregateRequiresExplicitFunding: true, liquidity: serializeAccountLiquidity(liquidity), casesAreAssumptionsNotProbabilities: true };
 }
 
 export const financeToolSchemas = { periodInput, searchInput };

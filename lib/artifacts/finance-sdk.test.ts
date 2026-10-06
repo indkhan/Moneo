@@ -15,7 +15,7 @@ describe("artifact spending coverage", () => {
       single: async () => ({ data: { permissions: ["forecast"], active_version_id: "v" }, error: null }) };
     vi.mocked(requireWorkspace).mockResolvedValue({ workspace: { id: "w", display_currency: "EUR", timezone: "Europe/Berlin" },
       supabase: { from: () => permission } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
-    vi.mocked(evaluatePlan).mockResolvedValue({ input: { accounts: [] }, available: { status: "unavailable" } } as unknown as Awaited<ReturnType<typeof evaluatePlan>>);
+    vi.mocked(evaluatePlan).mockResolvedValue({ input: { startDate: "2026-10-01", horizonDays: 30, currencyCode: "EUR", accounts: [], events: [] }, available: { status: "unavailable" } } as unknown as Awaited<ReturnType<typeof evaluatePlan>>);
     expect((await tripForArtifact("a", 100n)).tripDate).toBe("2026-10-08");
   });
 
