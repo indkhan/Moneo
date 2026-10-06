@@ -5,6 +5,7 @@ import { AppShell } from "@/components/app-shell";
 import { cookies } from "next/headers";
 import { ThemePreference } from "@/components/theme-preference";
 import { createClient } from "@/lib/supabase/server";
+import { hasSupabase } from "@/lib/env";
 import { loadWorkspaceSettings } from "@/lib/settings";
 
 export const metadata: Metadata = {
@@ -15,6 +16,15 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const cookieTheme = (await cookies()).get("moneo-theme")?.value;
   let theme: "light" | "dark" | "system" = cookieTheme === "light" || cookieTheme === "dark" ? cookieTheme : "system";
+  if (!hasSupabase()) {
+    return (
+      <html lang="en" data-theme={theme} suppressHydrationWarning>
+        <body className="min-h-screen bg-background font-sans text-foreground antialiased">
+          <ThemePreference preference={theme} /><Providers><AppShell>{children}</AppShell></Providers>
+        </body>
+      </html>
+    );
+  }
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {

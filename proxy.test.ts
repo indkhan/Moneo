@@ -1,10 +1,16 @@
-import { expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest } from "next/server";
 import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { proxy, config } from "./proxy";
 
 vi.mock("@supabase/ssr", () => ({ createServerClient: vi.fn() }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "test-publishable-key";
+});
 
 it("lets internal Workflow requests reach the executor without session proxying", () => {
   for (const url of ["/.well-known/workflow/v1/flow", "/.well-known/workflow/v1/step", "/.well-known/workflow/v1/webhook/token"])

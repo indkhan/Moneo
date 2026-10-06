@@ -5,7 +5,7 @@ vi.mock("./insights/panel", () => ({ ImportantInsights: () => null }));
 const fixture = vi.hoisted(() => ({ started: [] as string[], errorTable: "", balanceGate: null as Promise<void> | null }));
 beforeEach(() => { fixture.started = []; fixture.errorTable = ""; fixture.balanceGate = null; });
 
-vi.mock("@/lib/env", () => ({ hasSupabase: () => true }));
+vi.mock("@/lib/env", () => ({ hasSupabase: () => true, getSupabaseConfig: () => ({ status: "configured", detail: "Supabase configuration is present." }) }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => {
   return { supabase: { from: (table: string) => {
     const result = () => { fixture.started.push(table); return { data: table === "dashboard_items" && fixture.errorTable === "artifacts" ? [{ artifact_id: "tool" }] : [], count: 0, error: fixture.errorTable === table ? new Error(`${table} unavailable`) : null }; };

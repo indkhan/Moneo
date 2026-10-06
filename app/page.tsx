@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { dashboardItems, dashboardLayoutSchema } from "@/lib/dashboard";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
-import { hasSupabase } from "@/lib/env";
+import { getSupabaseConfig } from "@/lib/env";
 import { convertFx } from "@/lib/finance/fx";
 import { createAccount } from "./actions";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
@@ -17,7 +17,8 @@ import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { ArrowRight, Landmark, Plus, Wallet } from "lucide-react";
 
 export default async function Home() {
-  if (!hasSupabase()) return <main className="mx-auto max-w-3xl p-8">Configure Supabase in .env to start Moneo.</main>;
+  const supabaseConfig = getSupabaseConfig();
+  if (supabaseConfig.status !== "configured") return <main className="mx-auto max-w-3xl p-8">{supabaseConfig.detail}</main>;
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try {
     context = await requireWorkspace();
