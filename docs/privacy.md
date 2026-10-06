@@ -1,0 +1,7 @@
+# Private financial acceptance inputs
+
+Keep real statements in ignored `.private-inputs/` and identifying acceptance evidence in ignored `.private-evidence/` or `.qa/`. Never add real identities, purchases, account identifiers or attachments to tracked documents. Public acceptance notes contain redacted outcomes only. Use inline synthetic fixtures for parser coverage. Existing `lib/csv.test.ts` covers debit and transfer review, product/currency routing, regional amounts, refunds, fees, balances and retained source evidence without the private exports.
+
+`npm run check:privacy` checks tracked index paths without reading source data or logging filenames. Normal unit and lint commands run this gate first. Financial export formats are prohibited throughout the tracked repository, including synthetic export files; keep synthetic fixture strings in test source instead. This intentionally conservative gate cannot detect private values pasted into arbitrary code or documents, disguised formats, or past commits. Review remains necessary.
+
+Removing tracked files in a new commit preserves earlier Git objects. The repository owner must privately assess branches, tags, pull requests, hosted caches, forks, clones and downloaded copies, then coordinate any sensitive-history remediation with collaborators and the hosting provider. A local fix does not establish that external copies have been removed. Do not publish identifying evidence in remediation issues or logs.

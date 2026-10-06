@@ -42,3 +42,15 @@ next-env.d.ts
 /drizzle/*.sql
 /supabase/.temp/
 /.swc
+
+# Private financial inputs and identifying acceptance evidence
+/.private-inputs/
+/.private-evidence/
+/.qa/
+*.csv
+*.xls
+*.xlsx
+*.ofx
+*.qfx
+*.qif
+*.mt940
