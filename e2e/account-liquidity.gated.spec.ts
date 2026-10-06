@@ -101,9 +101,47 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     const artifact = randomUUID(), version = randomUUID();
     const fallback = FALLBACK_CALCULATORS.trip_planner;
     await db`insert into public.artifacts(id,workspace_id,kind,name,permissions) values(${artifact},${workspace!},'trip_planner','Synthetic dated trip QA','["balances","forecast"]'::jsonb)`;
-    await db`insert into public.artifact_versions(id,workspace_id,artifact_id,version,source,manifest,status) values(${version},${workspace!},${artifact},1,${fallback.source},${db.json(JSON.parse(JSON.stringify(fallback.manifest)))},'validated')`;
+    // First exercise only the trusted builtin; no CalculatorPanel/fallback is present.
+    await db`insert into public.artifact_versions(id,workspace_id,artifact_id,version,source,manifest,status) values(${version},${workspace!},${artifact},1,'(input) => ({ready:true})','{"kind":"trip_planner","runtime":"trusted","sdk":[],"params":{},"renderer":"trusted"}'::jsonb,'validated')`;
     await db`update public.artifacts set active_version_id=${version} where id=${artifact} and workspace_id=${workspace!}`;
     await db`insert into public.artifact_state(artifact_id,workspace_id,state) values(${artifact},${workspace!},'{"costMinor":10000}'::jsonb)`;
+    await page.goto(`/ai/library/${artifact}`);
+    const nativeTrip = page.locator("section").filter({ has: page.getByRole("heading", { name: "Trip cost", exact: true }) });
+    await expect(page.getByRole("region", { name: "Generated calculator output" })).toHaveCount(0);
+    await expect(nativeTrip).toContainText("Chosen-account headroom"); await expect(nativeTrip).toContainText("Aggregate headroom: EUR 600.00");
+    await expect(nativeTrip).toContainText(`${checking} funding shortfall: EUR 400.00`);
+    await expect(nativeTrip).toContainText("Recurring bill QA"); await expect(nativeTrip).toContainText(tomorrow);
+    await expect(nativeTrip).toContainText("Dated trip evidence"); await expect(nativeTrip).toContainText(`${checking} funding shortfall: EUR 500.00`);
+    await expect(nativeTrip).toContainText("No automatic funding"); await expect(nativeTrip).not.toContainText("Available to spend now");
+    await page.screenshot({ path: testInfo.outputPath("artifact-builtin-only-checking.png"), fullPage: true });
+    // Nonzero workspace buffer and either UUID-order position, still builtin-only.
+    await db`update public.financial_assumptions set removed_at=now() where workspace_id=${workspace!}`;
+    for (const funded of [checking, savings]) {
+      await db`update public.forecast_preferences set spending_account_id=${funded}, safety_buffer_minor=10000 where workspace_id=${workspace!}`;
+      await db`update public.balance_snapshots set amount_minor=case when account_id=${funded} then 100000 else 0 end where workspace_id=${workspace!}`;
+      await page.reload(); await expect(nativeTrip).toContainText("Workspace buffer: EUR 100.00");
+      await expect(nativeTrip).toContainText(`Chosen-account headroom - ${funded}: EUR 900.00`);
+      await expect(nativeTrip).toContainText(`Chosen-account headroom - ${funded}: EUR 800.00`);
+      await expect(nativeTrip).not.toContainText("funding shortfall:");
+      await expect(page.getByRole("region", { name: "Generated calculator output" })).toHaveCount(0);
+    }
+    await page.screenshot({ path: testInfo.outputPath("artifact-builtin-only-buffer.png"), fullPage: true });
+    const goalArtifact = randomUUID(), goalVersion = randomUUID();
+    await db`insert into public.artifacts(id,workspace_id,kind,name,permissions) values(${goalArtifact},${workspace!},'goal_tracker','Synthetic native goals QA','["balances","goals"]'::jsonb)`;
+    await db`insert into public.artifact_versions(id,workspace_id,artifact_id,version,source,manifest,status) values(${goalVersion},${workspace!},${goalArtifact},1,'(input) => ({ready:true})','{"kind":"goal_tracker","runtime":"trusted","sdk":[],"params":{},"renderer":"trusted"}'::jsonb,'validated')`;
+    await db`update public.artifacts set active_version_id=${goalVersion} where id=${goalArtifact} and workspace_id=${workspace!}`;
+    await page.goto(`/ai/library/${goalArtifact}`);
+    await expect(page.getByRole("region", { name: "Generated calculator output" })).toHaveCount(0);
+    await expect(page.locator("main")).toContainText("Illustrative saving pace is not an affordability result");
+    await expect(page.locator("main")).toContainText("Recorded savings unknown");
+    await expect(page.getByRole("link", { name: "dated account headroom and protections", exact: true })).toHaveAttribute("href", "/plan");
+    // Preserve the prior native version and then verify deterministic fallback separately.
+    await db`update public.forecast_preferences set spending_account_id=${checking}, safety_buffer_minor=0 where workspace_id=${workspace!}`;
+    await db`update public.balance_snapshots set amount_minor=case when account_id=${checking} then 10000 else 100000 end where workspace_id=${workspace!}`;
+    await db`update public.financial_assumptions set removed_at=null where workspace_id=${workspace!}`;
+    const fallbackVersion = randomUUID();
+    await db`insert into public.artifact_versions(id,workspace_id,artifact_id,version,source,manifest,status) values(${fallbackVersion},${workspace!},${artifact},2,${fallback.source},${db.json(JSON.parse(JSON.stringify(fallback.manifest)))},'validated')`;
+    await db`update public.artifacts set active_version_id=${fallbackVersion} where id=${artifact} and workspace_id=${workspace!}`;
     await page.goto(`/ai/library/${artifact}`);
     const calculator = page.getByRole("region", { name: "Generated calculator output" });
     await expect(calculator).toContainText("Aggregate headroom: EUR 600.00");

@@ -20,6 +20,10 @@ it("validates a real JSON text draft without requiring provider json_schema supp
   expect((await response.json()).validation).toEqual({ ok: true, warnings: [] });
   expect(fixture.generateText).toHaveBeenCalledWith(expect.objectContaining({ maxOutputTokens: 4000, abortSignal: expect.any(AbortSignal), output: expect.objectContaining({ name: "json" }) }));
   expect(fixture.generateText.mock.calls[0][0].prompt).toContain("summary must be a string");
+  const prompt = fixture.generateText.mock.calls[0][0].prompt;
+  expect(prompt).toContain("withTripAvailableMinor"); expect(prompt).toContain("spendingLimitingDate");
+  expect(prompt).toContain("Never subtract cost from baselineAvailableMinor");
+  expect(prompt).toContain("explicit paired dated funding");
 });
 it("retains the source version used to generate a draft, including Activity recovery", async () => {
   vi.stubEnv("OPENROUTER_API_KEY", "test");
