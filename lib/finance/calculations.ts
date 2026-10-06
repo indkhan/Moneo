@@ -149,3 +149,48 @@ export function availableToSpend(input: ForecastInput):
   const limitingDay = forecast.days.reduce((lowest, day) => day.conservativeMinor < lowest.conservativeMinor ? day : lowest);
   return { status: "available", amountMinor: limitingDay.conservativeMinor - protectedMinor, limitingDate: limitingDay.date };
 }
+
+// These amounts are in input.currencyCode, after explicit dated FX conversion by the loader.
+export function accountLiquidity(input: ForecastInput) {
+  const forecast = forecastDaily(input);
+  if (forecast.status === "unavailable") return forecast;
+  const aggregate = availableToSpend(input);
+  if (aggregate.status === "unavailable") return aggregate;
+  const accounts = input.accounts.map(account => {
+    const protectedMinor = (account.reservedMinor ?? 0n) + (account.safetyBufferMinor ?? 0n) + (account.minimumMinor ?? 0n);
+    const limitingDay = forecast.days.reduce((lowest, day) =>
+      day.conservativeByAccount[account.id] < lowest.conservativeByAccount[account.id] ? day : lowest);
+    const amountMinor = limitingDay.conservativeByAccount[account.id] - protectedMinor;
+    const firstShortfallDate = forecast.days.find(day => day.conservativeByAccount[account.id] < protectedMinor)?.date ?? null;
+    return { accountId: account.id, amountMinor, protectedMinor, limitingDate: limitingDay.date,
+      shortfallMinor: amountMinor < 0n ? -amountMinor : 0n, firstShortfallDate,
+      supportingEvents: [...input.events, ...(input.scenarioEvents ?? [])].filter(event =>
+        event.accountId === account.id && event.date >= input.startDate && event.date <= limitingDay.date),
+    };
+  });
+  return { status: "available" as const, currencyCode: input.currencyCode, aggregate, accounts,
+    hasShortfall: accounts.some(account => account.shortfallMinor > 0n) };
+}
+
+// Paired movements in the forecast currency; never an inferred cross-currency transfer.
+export function internalFundingEvents(input: { date: string; fromAccountId: string; toAccountId: string; amountMinor: bigint }): ForecastEvent[] {
+  parseDate(input.date);
+  if (!input.fromAccountId || !input.toAccountId || input.fromAccountId === input.toAccountId || input.amountMinor <= 0n)
+    throw new Error("Invalid internal funding");
+  return [
+    { date: input.date, accountId: input.fromAccountId, expectedMinor: -input.amountMinor, source: "scenario", name: "Internal funding out" },
+    { date: input.date, accountId: input.toAccountId, expectedMinor: input.amountMinor, source: "scenario", name: "Internal funding in" },
+  ];
+}
+
+export function serializeAccountLiquidity(result: ReturnType<typeof accountLiquidity>) {
+  if (result.status === "unavailable") return result;
+  return { ...result, aggregate: { ...result.aggregate, amountMinor: result.aggregate.amountMinor.toString() },
+    accounts: result.accounts.map(account => ({ ...account, amountMinor: account.amountMinor.toString(),
+      protectedMinor: account.protectedMinor.toString(), shortfallMinor: account.shortfallMinor.toString(),
+      supportingEvents: account.supportingEvents.map(event => ({ ...event, expectedMinor: event.expectedMinor.toString(),
+        conservativeMinor: (event.conservativeMinor ?? event.expectedMinor).toString(),
+        optimisticMinor: (event.optimisticMinor ?? event.expectedMinor).toString() })),
+    })),
+  };
+}

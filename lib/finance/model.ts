@@ -1,4 +1,4 @@
-import { availableToSpend, forecastDaily, type ForecastEvent, type ForecastInput } from "./calculations";
+import { accountLiquidity, availableToSpend, forecastDaily, type ForecastEvent, type ForecastInput } from "./calculations";
 import { convertFx } from "./fx";
 import { requireWorkspace } from "../auth";
 import { loadBalanceEvidence, resolveBalances } from "./balances";
@@ -198,5 +198,5 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
   };
   const forecast = forecastDaily(input);
   const available = availableToSpend(input);
-  return { forecast, available, input, preferences, preferencesVersion };
+  return { forecast, available, liquidity: accountLiquidity(input), input, preferences, preferencesVersion };
 }
