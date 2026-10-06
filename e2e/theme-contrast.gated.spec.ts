@@ -123,7 +123,21 @@ test("money and import text stays readable in persisted light, dark and system t
       await expectReadable(page, page.locator('section[aria-label="Invalid saved view"]').getByRole("alert"), `${theme} saved-view error`);
     }
 
+    // Read-only Plan probes: this route belongs to MNE005 (no edits there),
+    // readable now that the MNE-003 covered_transactions columns deployed.
+    // A balance-free workspace deterministically shows "Forecast unavailable".
+    async function expectPlanReadable(theme: string) {
+      await page.goto("/plan");
+      await expect(page.getByRole("heading", { name: "Financial horizon & runway" })).toBeVisible();
+      await expectReadable(page, page.getByText("Explore your forecast, cash reservations, and changes to your plan.", { exact: true }), `${theme} plan subtitle`);
+      await expect(page.getByText("Forecast unavailable", { exact: false })).toBeVisible();
+      await expectReadable(page, page.getByText("Forecast unavailable", { exact: false }), `${theme} plan unavailable`);
+    }
+
     await expectMoneyReadable("light");
+    await expectPlanReadable("light");
+    await page.goto("/money/transactions");
+    await expect(page.getByText("2 shown", { exact: true })).toBeVisible();
     await page.screenshot({ path: ".qa/mne044-transactions-light.png" });
     await page.goto("/settings");
     const appearance = page.getByRole("combobox", { name: "Appearance", exact: true });
@@ -134,10 +148,12 @@ test("money and import text stays readable in persisted light, dark and system t
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await expectMoneyReadable("dark");
+    await expectPlanReadable("dark");
     await page.goto("/import");
     await expect(page.getByRole("heading", { name: "Import financial data" })).toBeVisible();
     await expectReadable(page, page.getByText("Choose CSV or XLSX statements.", { exact: false }), "dark import muted");
     await page.goto("/money/transactions");
+    await expect(page.getByText("2 shown", { exact: true })).toBeVisible();
     await page.screenshot({ path: ".qa/mne044-transactions-dark.png", fullPage: true });
     await page.goto("/settings");
     await page.getByRole("combobox", { name: "Appearance", exact: true }).selectOption(originalTheme);
