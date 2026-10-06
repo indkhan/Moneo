@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { expect, it } from "vitest";
@@ -9,12 +9,17 @@ it.skipIf(process.env.RUN_IMPORT_EXCLUSION_DB_TESTS !== "1")("preserves exclusio
   expect(connection.hostname === `db.${endpoint.hostname.split(".")[0]}.supabase.co` || connection.username.endsWith(`.${endpoint.hostname.split(".")[0]}`)).toBe(true);
   const db = postgres(connection.toString(), { ssl: "require", max: 1, onnotice: () => {} });
   const rollback = new Error("Successful rollback");
+  const actor = randomUUID();
   try {
     try { await db.begin(async tx => {
-      const migration = "supabase/migrations/202610060002_import_row_exclusions.sql";
-      if (existsSync(migration)) await tx.unsafe(readFileSync(migration, "utf8"));
+      // Test the deployed schema, never replay an applied migration in the fixture.
+      const [applied] = await tx`select name,statements from supabase_migrations.schema_migrations where version='202610060002'`;
+      expect(applied, "Deploy migration 202610060002 before running this live test").toBeDefined();
+      expect(applied.name).toBe("import_row_exclusions");
+      expect(applied.statements.join("\n").replaceAll("\r\n", "\n").trim(), "Deployed migration must match the checked-in SQL").toBe(
+        readFileSync("supabase/migrations/202610060002_import_row_exclusions.sql", "utf8").replaceAll("\r\n", "\n").trim(),
+      );
       expect((await tx`select to_regprocedure('public.record_import_exclusion(uuid,uuid,integer,jsonb)') present`)[0].present).not.toBeNull();
-      const actor = randomUUID();
       await tx`insert into auth.users(id,email) values(${actor},${`qa-${actor}@example.invalid`})`;
       const [{ id: workspace }] = await tx`select id from public.workspaces where owner_id=${actor}`;
       const imported = randomUUID(), source = randomUUID();
@@ -66,5 +71,7 @@ it.skipIf(process.env.RUN_IMPORT_EXCLUSION_DB_TESTS !== "1")("preserves exclusio
       expect((await tx`select new_rows,review_rows,rejected_rows from public.imports where id=${reviewedImport}`)[0]).toMatchObject({ new_rows: 2, review_rows: 0, rejected_rows: 1 });
       throw rollback;
     }); } catch (error) { if (error !== rollback) throw error; }
+    expect(await db`select id from auth.users where id=${actor}`).toHaveLength(0);
+    expect(await db`select id from public.workspaces where owner_id=${actor}`).toHaveLength(0);
   } finally { await db.end(); }
 }, 30000);
