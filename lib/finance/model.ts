@@ -113,6 +113,12 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
     }
     return planned.flatMap(event => {
       const explicit = settlements.filter(link => link.assumption_id === item.id && link.scheduled_on === event.date);
+      // Retiring an explicit association does not retire the independently confirmed anchor evidence.
+      if (!explicit.some(link => !link.undone_at) && item.source === "recurring_confirmed" && event.date === item.starts_on && recurringSeries.some(series =>
+        series.assumption_id === item.id && series.recurring_series_transactions.some((link: { transaction_id: string }) =>
+          balanceEvidence.ledger.some(row => row.id === link.transaction_id && row.account_id === item.account_id &&
+            row.currency_code === item.currency_code && row.status === "posted" && row.posted_on === event.date &&
+            (!row.posted_at || Date.parse(row.posted_at) <= Date.parse(balanceEvidence.asOf)))))) return [];
       for (const link of explicit) if (!link.undone_at && !settlementPosting(item, link, balanceEvidence.ledger))
         missingInputs.push(`occurrence:${item.name}:${event.date}:${link.id}:evidence changed; undo or review the association`);
       if (explicit.length) return reconcileOccurrence(item, event.date, explicit, balanceEvidence.ledger, balanceEvidence.asOf, startDate, workspace.timezone).flatMap(movement => {
@@ -125,13 +131,6 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
         if (expectedMinor === null || conservativeMinor === null || optimisticMinor === null) { missingInputs.push(`fx:assumption:${item.account_id}`); return []; }
         return [{ ...event, date: movement.date, expectedMinor, conservativeMinor, optimisticMinor, source: "confirmed" as const, name: item.name }];
       });
-      // Confirmation explicitly identifies the historical anchor; it is not a new cash movement.
-      // A current resolved opening already includes every posted row through the evaluation time.
-      if (item.source === "recurring_confirmed" && event.date === item.starts_on && recurringSeries.some(series =>
-        series.assumption_id === item.id && series.recurring_series_transactions.some((link: { transaction_id: string }) =>
-          balanceEvidence.ledger.some(row => row.id === link.transaction_id && row.account_id === item.account_id &&
-            row.currency_code === item.currency_code && row.status === "posted" && row.posted_on === event.date &&
-            (!row.posted_at || Date.parse(row.posted_at) <= Date.parse(balanceEvidence.asOf)))))) return [];
       const cv = (amount: bigint) => convert(amount, item.currency_code, event.date);
       const expectedMinor = cv(event.expectedMinor), conservativeMinor = cv(event.conservativeMinor!), optimisticMinor = cv(event.optimisticMinor!);
       if (expectedMinor === null || conservativeMinor === null || optimisticMinor === null) { missingInputs.push(`fx:assumption:${item.account_id}`); return []; }

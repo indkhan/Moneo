@@ -63,3 +63,10 @@ it("surfaces changed association evidence instead of claiming an exact forecast"
   expect(result.available.status).toBe("unavailable");
   expect(result.input.missingInputs).toContain("occurrence:Monthly:2026-10-06:link:evidence changed; undo or review the association");
 });
+it.each([100000n, -100000n])("retains observed generated anchor evidence after association undo (%s)", async amount => {
+  const observed = { ...posting, amount_minor: amount.toString() };
+  const undone: OccurrenceSettlement = { ...association, completes_occurrence: true, undone_at: "2026-10-06T10:00:00Z", receipt: { ...association.receipt, amount_minor: amount.toString() } };
+  const result = await evaluateFixture({ ...assumption, amount_minor: amount.toString() }, [observed], snapshot, [undone], 1);
+  expect(result.input.events).toEqual([]);
+  expect(result.available).toMatchObject({ status: "available", amountMinor: 200000n });
+});
