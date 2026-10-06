@@ -1,5 +1,17 @@
 # Browser acceptance
 
+## Repository release gates
+
+Run `npm run acceptance:fast` (unit tests, lint, build), then `npm run acceptance:required` (rollback-only fresh/upgrade SQL regressions, unit tests with live DB balance parity, and the deterministic browser suite with one worker). Both commands must pass for local release acceptance. Fast validation alone permits the default live DB test skip and is not release evidence.
+
+The required tier fails on absent prerequisites, failed commands, empty reports, any unit/browser skip, or flaky browser results. Configure `.env` with `SUPABASE_DB_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; supply `E2E_STORAGE_STATE` (or `e2e/.auth.json`) for an empty disposable synthetic workspace. Install Playwright Chromium and apply the repository migration head through your normal reviewed deployment process before browser acceptance. Stop any existing port3000 server before the fast build; stop any port3000 server before the required tier too: it starts a fresh local server with the provider key disabled.
+
+Each invocation writes an ignored `.qa/acceptance-<tier>-<timestamp>/result.json` with tested commit, worktree-dirty flag, migration filename head, command outcomes and local environment label. Detailed logs, reports and browser artifacts stay in that ignored directory because they may contain identifying evidence. Run against a clean committed checkout for revision-bound evidence; dirty results explicitly describe an uncommitted tree. No credentials or auth contents are included in the summary.
+
+Fresh application schema replay and SQL fixtures run in a disposable schema and roll back before upgrading the configured database inside a separate rollback-only transaction. Upgrade failure does not negate the separately logged fresh pass. Schema changed outside `supabase_migrations.schema_migrations` can make a pending migration fail; reconcile that discrepancy through the normal reviewed database process, never skip or mark SQL applied merely to turn this gate green. The harness neither applies migrations permanently nor rewrites migration history.
+
+Actual provider quality/cancellation evaluation is a separate optional, explicitly budgeted tier, not run by either command. The existing `core-journey.gated.spec.ts` invokes the live provider and is explicitly excluded from the required tier and recorded in its summary; run that journey separately when provider evaluation is authorized. Browser AI mocks remain deterministic contracts. Local gates do not establish deployed revision/health/auth/journey or Vercel administration acceptance; record those separately. New issue-specific regression journeys remain necessary where existing tests do not cover their failures.
+
 Use `npm run test:e2e -- --workers=1 --output=.qa/final-e2e-results` with the configured local app and applied migrations. The config reads `.env`; it reuses a running port3000 server. Stop that server before building so build/dev do not write the same `.next` directory.
 
 Authenticated specs require `E2E_STORAGE_STATE` pointing at an ignored Playwright storage state, or `e2e/.auth.json`. Other gated specs create their own disposable users and require `SUPABASE_DB_URL`, the public Supabase variables and `SUPABASE_SERVICE_ROLE_KEY`. No production authentication bypass is used and no test emails are sent. Never commit credentials, auth state, private statements or detailed private evidence. A skipped required authenticated spec is not a pass.
