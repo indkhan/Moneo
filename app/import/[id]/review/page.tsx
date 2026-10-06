@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { ClassificationActions, ReviewActions } from "./actions";
 import { formatMoney } from "@/lib/finance/format";
-import { mappingSchema } from "@/lib/csv";
+import { mappingSchema, mapImportReviewRow, type SourceRow } from "@/lib/csv";
 
 export default async function ImportReviewPage({ params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -11,7 +11,7 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
   catch { redirect("/login"); }
   const { id } = await params;
   const { supabase, workspace } = context;
-  const { data: imported } = await supabase.from("imports").select("id, filename, status, total_rows, new_rows, matched_rows, rejected_rows, mapping, review_rows, classification_review_rows")
+  const { data: imported } = await supabase.from("imports").select("id, filename, status, total_rows, new_rows, matched_rows, rejected_rows, route_accounts, mapping, review_rows, classification_review_rows")
     .eq("workspace_id", workspace.id).eq("id", id).maybeSingle();
   if (!imported) notFound();
   const interpretation = mappingSchema.safeParse(imported.mapping);
@@ -19,9 +19,11 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
   const decisionRows = decisions.length ? await supabase.from("source_transactions").select("id, row_number, original_row, status")
     .eq("workspace_id", workspace.id).eq("import_id", id).in("row_number", decisions.map(row => row.rowNumber)).order("row_number").limit(100) : null;
   const { data: rows, error } = await supabase.from("source_transactions")
-    .select("id, row_number, original_row, external_id")
+    .select("id, row_number, original_row, external_id, normalized_row")
     .eq("workspace_id", workspace.id).eq("import_id", id).eq("status", "review")
     .order("row_number").limit(100);
+  const destinations = await supabase.from("accounts").select("id, name, currency_code, version, archived_at")
+    .eq("workspace_id", workspace.id).order("name").limit(1000);
   const classifications = await supabase.from("transactions")
     .select("id, description, amount_minor::text, currency_code, version, review_reasons, transaction_sources!inner(source_transactions!inner(import_id, row_number, original_row))")
     .eq("workspace_id", workspace.id).eq("transaction_sources.source_transactions.import_id", id)
@@ -36,12 +38,27 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
     <div><p className="text-xs font-semibold uppercase tracking-widest text-brand">Money / Import review</p><h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">Review: {imported.filename}</h1><p className="mt-2 text-sm text-muted-foreground">{imported.review_rows} ambiguous rows. They are excluded from accepted totals.</p></div>
     {error && <p role="alert">Could not load review rows: {error.message}</p>}
     {!error && !rows?.length && <p>No rows awaiting review.</p>}
-    {rows?.map((row) => <article className="rounded-xl border border-border bg-card p-5 shadow-sm" key={row.id}>
+    {rows?.map((row) => {
+      const normalized = row.normalized_row as { accountId?: string | null; row?: { currencyCode: string } } | null;
+      let currency = normalized?.row?.currencyCode;
+      let frozenId = normalized?.accountId ?? null;
+      if (!normalized) try {
+        const mapped = mapImportReviewRow(row.original_row as SourceRow, row.row_number, imported.mapping);
+        currency = mapped.currencyCode;
+        frozenId = Object.entries(imported.route_accounts ?? {}).find(([key]) => {
+          const route = JSON.parse(key);
+          return route[0] === mapped.accountName && route[1] === mapped.currencyCode;
+        })?.[1] as string ?? null;
+      } catch { /* The server reports unavailable legacy interpretation on acceptance. */ }
+      const frozen = destinations.data?.find(account => account.id === frozenId);
+      return <article className="rounded-xl border border-border bg-card p-5 shadow-sm" key={row.id}>
       <h2 className="font-medium">Source row {row.row_number}</h2>
       {row.external_id && <p className="text-sm">Source ID: {row.external_id}</p>}
       <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded bg-muted p-3 text-sm">{JSON.stringify(row.original_row, null, 2)}</pre>
-      {imported.status === "completed" && <ReviewActions importId={id} sourceId={row.id} />}
-    </article>)}
+      {imported.status === "completed" && <ReviewActions importId={id} sourceId={row.id} frozenId={frozenId} frozenName={frozen?.name}
+        unavailable={!frozen || !!frozen.archived_at || frozen.currency_code !== currency}
+        destinations={destinations.error ? [] : (destinations.data ?? []).filter(account => !account.archived_at && account.currency_code === currency)} />}
+    </article>; })}
     {rows?.length === 100 && <p>Showing the first 100 rows.</p>}
     <section className="space-y-3" aria-label="Source coverage and reviewed interpretation">
       <h2 className="text-xl font-semibold">Source coverage</h2>
