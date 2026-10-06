@@ -28,7 +28,7 @@ export function SavedViewsPanel({
   disableSave?: boolean;
 }) {
   return (
-    <section aria-label="Saved views" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section aria-label="Saved views" className="rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 className="text-sm font-semibold">Saved views</h2>
       {activeViewId ? (
         <p className="mt-2 text-sm">
@@ -41,8 +41,8 @@ export function SavedViewsPanel({
       {views.length ? (
         <ul className="mt-3 flex flex-wrap gap-2 text-xs">
           {views.map((view) => (
-            <li key={view.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-              <Link className="font-medium text-blue-700 hover:underline" href={`/money/transactions?view=${view.id}`}>
+            <li key={view.id} className="flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2">
+              <Link className="font-medium text-brand hover:underline" href={`/money/transactions?view=${view.id}`}>
                 {view.name}
               </Link>
               {view.id === activeViewId ? <span className="text-muted-foreground">(open)</span> : null}
@@ -50,7 +50,7 @@ export function SavedViewsPanel({
                 <input type="hidden" name="viewId" value={view.id} />
                 <input type="hidden" name="version" value={view.version} />
                 <input type="hidden" name="requestId" value={randomUUID()} />
-                <button aria-label={`Delete saved view ${view.name}`} className="text-slate-500 hover:text-red-700 hover:underline">
+                <button aria-label={`Delete saved view ${view.name}`} className="text-muted-foreground hover:text-red-700 hover:underline dark:hover:text-red-300">
                   Delete
                 </button>
               </form>
@@ -73,7 +73,7 @@ export function SavedViewsPanel({
         <p className="mt-2 text-sm text-muted-foreground">No saved views yet.</p>
       )}
       {!disableSave ? (
-      <form action={saveTransactionView} className="mt-4 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-4">
+      <form action={saveTransactionView} className="mt-4 flex flex-wrap items-end gap-2 border-t border-border pt-4">
         <label className="block text-sm">
           Save current filters as
           <input
@@ -82,7 +82,7 @@ export function SavedViewsPanel({
             maxLength={80}
             placeholder="e.g. Restaurants over €20"
             aria-label="Saved view name"
-            className="ml-2 rounded-lg border border-slate-200 bg-white p-2 text-xs"
+            className="ml-2 rounded-lg border border-border bg-card p-2 text-xs"
           />
         </label>
         {saveDefaults.q !== undefined ? <input type="hidden" name="q" value={saveDefaults.q} /> : null}
@@ -113,7 +113,7 @@ export function SavedViewsPanel({
           <input type="hidden" name="maxAmount" value={saveDefaults.maxAmount} />
         ) : null}
         {saveDefaults.sort !== undefined ? <input type="hidden" name="sort" value={saveDefaults.sort} /> : null}
-        <button className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium hover:bg-slate-50">Save view</button>
+        <button className="rounded-lg border border-border px-4 py-2 text-xs font-medium hover:bg-muted">Save view</button>
       </form>
       ) : null}
       <p className="mt-2 text-xs text-muted-foreground">

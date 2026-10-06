@@ -81,18 +81,18 @@ export default async function RecurringPage() {
   );
 
   return (
-    <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 text-slate-900 sm:px-8">
+    <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 text-foreground sm:px-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">
             Money / Recurring
           </p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Recurring review</h1>
         </div>
-        <Link href="/money/transactions" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50">Back to transactions</Link>
+        <Link href="/money/transactions" className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium hover:bg-muted">Back to transactions</Link>
       </header>
 
-      <p className="max-w-3xl text-sm text-slate-500">
+      <p className="max-w-3xl text-sm text-muted-foreground">
         Estimated patterns inferred from up to {MAX_TRANSACTIONS.toLocaleString(workspace.locale)} posted transactions.
         Nothing here affects your forecast until you confirm it. Confirming creates one confirmed
         financial assumption used by the deterministic forecast; declining disables it.
@@ -106,7 +106,7 @@ export default async function RecurringPage() {
       {truncated && <p className="mt-6 text-sm text-muted-foreground">Showing the first 10,000 posted transactions.</p>}
 
       {!queryError && !detectError && detected.length === 0 && (
-        <p className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">No estimated recurring patterns found. Import more history to improve detection.</p>
+        <p className="rounded-xl border border-border bg-card p-8 text-sm text-muted-foreground">No estimated recurring patterns found. Import more history to improve detection.</p>
       )}
 
       <OccurrenceReview supabase={supabase} workspace={workspace} accountNames={names} />
@@ -123,7 +123,7 @@ export default async function RecurringPage() {
           const percent = confidenceToPercent(series.confidence);
           const evidence = series.transactionIds.map((id) => byId.get(id)).filter((row): row is TxRow => Boolean(row));
           return (
-            <article key={key} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <article key={key} className="rounded-xl border border-border bg-card p-5 shadow-sm">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-base font-semibold">{series.label}</h2>
                 <span className="rounded bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700">Estimated · {series.cadence}</span>
@@ -136,7 +136,7 @@ export default async function RecurringPage() {
                 {" · "}{names[series.accountId] ?? "Unknown account"}
                 {" · "}{series.occurrences} payments · confidence {percent}%
               </p>
-              <details className="mt-4 border-t border-slate-100 pt-3 text-xs">
+              <details className="mt-4 border-t border-border pt-3 text-xs">
                 <summary className="cursor-pointer underline">Evidence ({evidence.length} posted transactions)</summary>
                 <ul className="mt-2 space-y-1">
                   {evidence.slice(0, 8).map((row) => (
@@ -158,7 +158,7 @@ export default async function RecurringPage() {
                   <input type="hidden" name="occurrences" value={series.occurrences} />
                   <input type="hidden" name="confidence" value={percent} />
                   <input type="hidden" name="transactionIds" value={series.transactionIds.join(",")} />
-                  <button className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-medium text-white hover:bg-blue-800">Confirm</button>
+                  <button className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:opacity-90">Confirm</button>
                 </form>
                 <form action={declineSeries}>
                   <input type="hidden" name="accountId" value={series.accountId} />
@@ -170,7 +170,7 @@ export default async function RecurringPage() {
                   <input type="hidden" name="occurrences" value={series.occurrences} />
                   <input type="hidden" name="confidence" value={percent} />
                   <input type="hidden" name="transactionIds" value={series.transactionIds.join(",")} />
-                  <button className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium hover:bg-slate-50">Not recurring</button>
+                  <button className="rounded-lg border border-border px-4 py-2 text-xs font-medium hover:bg-muted">Not recurring</button>
                 </form>
               </div>
             </article>
