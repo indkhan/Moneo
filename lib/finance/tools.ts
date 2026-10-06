@@ -98,8 +98,8 @@ export async function evaluateForecast(input: unknown, context?: FinanceContext)
   if (args.accountId && !account) throw new Error("Unknown account");
   return { status: "available", currencyCode: assumptions.currencyCode, horizonDays: args.horizonDays,
     expectedMinor: last.expectedMinor.toString(), conservativeMinor: last.conservativeMinor.toString(),
-    optimisticMinor: last.optimisticMinor.toString(), availableToSpendMinor: account?.amountMinor.toString() ?? null,
-    accountId: account?.accountId ?? null, limitingDate: account?.limitingDate ?? null,
+    optimisticMinor: last.optimisticMinor.toString(), availableToSpendMinor: account?.spendableMinor.toString() ?? null,
+    accountId: account?.accountId ?? null, limitingDate: account?.spendingLimitingDate ?? null,
     aggregateAvailableMinor: available.amountMinor.toString(), aggregateLimitingDate: available.limitingDate,
     aggregateRequiresExplicitFunding: true, liquidity: serializeAccountLiquidity(liquidity), casesAreAssumptionsNotProbabilities: true };
 }

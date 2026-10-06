@@ -86,8 +86,8 @@ export async function tripForArtifact(artifactId: string, costMinor: bigint, acc
       conservativeMinor: -costMinor, optimisticMinor: -costMinor },
   ] }) : null;
   const withTrip = tripLiquidity?.status === "available" ? tripLiquidity.accounts.find(item => item.accountId === account!.id) : null;
-  return { baseline: selected ? { status: "available" as const, ...selected } : { status: "unavailable" as const },
-    withTrip: withTrip ? { status: "available" as const, ...withTrip } : null,
+  return { baseline: selected ? { status: "available" as const, ...selected, amountMinor: selected.spendableMinor, limitingDate: selected.spendingLimitingDate } : { status: "unavailable" as const },
+    withTrip: withTrip ? { status: "available" as const, ...withTrip, amountMinor: withTrip.spendableMinor, limitingDate: withTrip.spendingLimitingDate } : null,
     tripDate, currency: workspace.display_currency, accountId: account?.id ?? null,
     liquidity: serializeAccountLiquidity(liquidity),
     tripLiquidity: tripLiquidity ? serializeAccountLiquidity(tripLiquidity) : null,

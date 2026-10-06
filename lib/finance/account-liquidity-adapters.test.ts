@@ -4,7 +4,7 @@ import { evaluateForecast } from "./tools";
 import { tripForArtifact } from "../artifacts/finance-sdk";
 import { buildCalculatorSnapshot } from "../artifacts/snapshot";
 const fixture = vi.hoisted(() => ({ spendingAccountId: "checking" as string | null, input: {
-  startDate: "2026-10-07", horizonDays: 30, currencyCode: "EUR",
+  workspaceBufferMinor: 0n, startDate: "2026-10-07", horizonDays: 30, currencyCode: "EUR",
   accounts: [{ id: "checking", currencyCode: "EUR", balanceMinor: 10000n }, { id: "savings", currencyCode: "EUR", balanceMinor: 100000n }],
   events: [{ date: "2026-10-08", accountId: "checking", expectedMinor: -50000n, name: "Bill" }],
 } }));
@@ -47,4 +47,14 @@ it("artifact with no paying account exposes gaps but cannot claim pooled spendin
       liquidity: { aggregate: { amountMinor: "60000" }, hasShortfall: true },
       unavailable: "Choose a paying account; aggregate cash requires explicit funding" });
   } finally { fixture.spendingAccountId = "checking"; }
+});
+
+it("AI, artifact SDK and snapshot cap chosen-account spending by workspace protection", async () => {
+  fixture.input.workspaceBufferMinor = 10000n;
+  try {
+    const expected = serializeAccountLiquidity(accountLiquidity(fixture.input));
+    expect(await evaluateForecast({ accountId: "savings" })).toMatchObject({ availableToSpendMinor: "50000", limitingDate: "2026-10-08", liquidity: expected });
+    expect(await tripForArtifact("synthetic", 100n, "savings")).toMatchObject({ baseline: { amountMinor: 50000n, limitingDate: "2026-10-08" }, liquidity: expected });
+    expect((await buildCalculatorSnapshot("synthetic", "trip_planner", { costMinor: 100n, accountId: "savings" })).snapshot).toMatchObject({ baselineAvailableMinor: "50000", liquidity: expected });
+  } finally { fixture.input.workspaceBufferMinor = 0n; }
 });

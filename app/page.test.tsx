@@ -45,10 +45,23 @@ it("Home retains per-account reservations and donor limitation", async () => {
   vi.mocked(evaluatePlanForWorkspace).mockResolvedValue({ input: protectedInput, forecast: forecastDaily(protectedInput), available: availableToSpend(protectedInput), liquidity: accountLiquidity(protectedInput) } as Awaited<ReturnType<typeof evaluatePlanForWorkspace>>);
   const html = await render("savings");
   expect(html).toContain("Checking funding shortfall: EUR 410.00"); expect(html).toContain("Protected funds: EUR 900.00");
-  expect(html).toContain("EUR 100.00"); expect(html).toContain("No automatic transfer");
+  expect(html).toContain("-EUR 310.00"); expect(html).toContain("No automatic transfer");
 });
 it("Home preserves unavailable evidence rather than displaying pooled spending", async () => {
   const unknown = { ...input, missingInputs: ["balance:checking:unreviewed"] };
   vi.mocked(evaluatePlanForWorkspace).mockResolvedValue({ input: unknown, forecast: forecastDaily(unknown), available: availableToSpend(unknown), liquidity: accountLiquidity(unknown) } as Awaited<ReturnType<typeof evaluatePlanForWorkspace>>);
   const html = await render("checking"); expect(html).toContain("unreviewed"); expect(html).not.toContain("EUR 600.00");
+});
+
+it("chosen-account spending respects a separately owned workspace buffer", async () => {
+  input.workspaceBufferMinor = 10000n;
+  try {
+    // Re-evaluate mocked loader after changing the input.
+    vi.mocked(evaluatePlanForWorkspace).mockResolvedValue({ input, forecast: forecastDaily(input), available: availableToSpend(input), liquidity: accountLiquidity(input), preferences: { spending_account_id: null }, preferencesVersion: 0 } as Awaited<ReturnType<typeof evaluatePlanForWorkspace>>);
+    const html = await render("savings");
+    expect(html).toContain("Workspace buffer: EUR 100.00");
+    expect(html).toContain("EUR 500.00");
+    expect(html).toContain("Checking funding shortfall: EUR 400.00");
+    expect(html).toContain("limited by both account liquidity and aggregate headroom");
+  } finally { input.workspaceBufferMinor = 0n; }
 });

@@ -175,7 +175,8 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
   }
   const input: ForecastInput = {
     startDate, horizonDays, currencyCode: workspace.display_currency,
-    accounts: spendable.map((account, index) => {
+    workspaceBufferMinor: safetyBufferMinor ?? 0n,
+    accounts: spendable.map(account => {
       const snapshot = account.balance;
       const balanceMinor = snapshot.amount_minor !== null ? convert(BigInt(snapshot.amount_minor), snapshot.currency_code, startDate) : null;
       const reservedMinor = convert(reserved.get(account.id) ?? 0n, account.currency_code, startDate);
@@ -191,7 +192,6 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
       }
       return { id: account.id, currencyCode: workspace.display_currency, balanceMinor,
         pendingHoldMinor,
-        safetyBufferMinor: index === 0 ? safetyBufferMinor ?? 0n : 0n,
         reservedMinor: reservedMinor ?? 0n };
     }),
     events, scenarioEvents, missingInputs,

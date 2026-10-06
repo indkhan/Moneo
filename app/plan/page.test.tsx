@@ -84,3 +84,16 @@ it("renders account-specific protections and keeps horizon/scenario/account/fund
   expect(html).toContain("Minimum balance: EUR 20.00"); expect(html).toContain("Goal reservations: EUR 300.00");
   expect(html).toContain('name="scenario"'); expect(html).toContain('name="account"'); expect(html).toContain('value="3"');
 });
+
+it("chosen-account spending respects a separately owned workspace buffer", async () => {
+  input.workspaceBufferMinor = 10000n;
+  try {
+    // Re-evaluate mocked loader after changing the input.
+    vi.mocked(evaluatePlan).mockResolvedValue({ input, forecast: forecastDaily(input), available: availableToSpend(input), liquidity: accountLiquidity(input), preferences: { spending_account_id: null }, preferencesVersion: 0 } as Awaited<ReturnType<typeof evaluatePlan>>);
+    const html = await render({ account: "savings", horizon: "3" });
+    expect(html).toContain("Workspace buffer: EUR 100.00");
+    expect(html).toContain("EUR 500.00");
+    expect(html).toContain("Checking funding shortfall: EUR 400.00");
+    expect(html).toContain("limited by both account liquidity and aggregate headroom");
+  } finally { input.workspaceBufferMinor = 0n; }
+});

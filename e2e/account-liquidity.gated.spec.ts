@@ -76,6 +76,22 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     expect((await db`select count(*)::int as count from public.transactions where workspace_id=${workspace!}`)[0].count).toBe(0);
     expect((await db`select count(*)::int as count from public.scenario_overrides where workspace_id=${workspace!}`)[0].count).toBe(0);
     expect((await db`select amount_minor::text from public.balance_snapshots where account_id=${checking}`)[0].amount_minor).toBe("10000");
+    // Same disposable accounts, both UUID-order placements of the funded account.
+    await db`delete from public.goal_allocations where workspace_id=${workspace!}`;
+    await db`update public.financial_assumptions set removed_at=now() where workspace_id=${workspace!}`;
+    await db`update public.forecast_preferences set safety_buffer_minor=10000 where workspace_id=${workspace!}`;
+    for (const funded of [checking, savings]) {
+      await db`update public.balance_snapshots set amount_minor=case when account_id=${funded} then 100000 else 0 end where workspace_id=${workspace!}`;
+      await page.goto(`/?account=${funded}`);
+      await expect(home).toContainText("Workspace buffer: EUR 100.00");
+      await expect(home).not.toContainText("funding shortfall");
+      await expect(home.locator("div").filter({ has: page.getByRole("heading", { name: /Chosen-account headroom/ }) }).last()).toContainText("EUR 900.00");
+      await page.goto(`/plan?account=${funded}&horizon=3`);
+      await expect(forecast).toContainText("Workspace buffer: EUR 100.00");
+      await expect(forecast).not.toContainText("funding shortfall:");
+      await expect(forecast.getByRole("heading", { name: /Chosen-account headroom/ }).locator("..")).toContainText("EUR 900.00");
+    }
+    await page.screenshot({ path: testInfo.outputPath("plan-workspace-buffer.png"), fullPage: true });
     expect(providerCalls).toEqual([]);
   } finally {
     await context.close().catch(() => {});

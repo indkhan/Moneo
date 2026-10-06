@@ -67,6 +67,7 @@ export type ForecastEvent = {
 };
 
 export type ForecastInput = {
+  workspaceBufferMinor?: bigint;
   startDate: string;
   horizonDays: number;
   currencyCode: string;
@@ -145,7 +146,7 @@ export function availableToSpend(input: ForecastInput):
   | { status: "available"; amountMinor: bigint; limitingDate: string } {
   const forecast = forecastDaily(input);
   if (forecast.status === "unavailable") return forecast;
-  const protectedMinor = input.accounts.reduce((sum, account) => sum + (account.reservedMinor ?? 0n) + (account.safetyBufferMinor ?? 0n) + (account.minimumMinor ?? 0n), 0n);
+  const protectedMinor = (input.workspaceBufferMinor ?? 0n) + input.accounts.reduce((sum, account) => sum + (account.reservedMinor ?? 0n) + (account.safetyBufferMinor ?? 0n) + (account.minimumMinor ?? 0n), 0n);
   const limitingDay = forecast.days.reduce((lowest, day) => day.conservativeMinor < lowest.conservativeMinor ? day : lowest);
   return { status: "available", amountMinor: limitingDay.conservativeMinor - protectedMinor, limitingDate: limitingDay.date };
 }
@@ -163,13 +164,19 @@ export function accountLiquidity(input: ForecastInput) {
     const amountMinor = limitingDay.conservativeByAccount[account.id] - protectedMinor;
     const firstShortfallDate = forecast.days.find(day => day.conservativeByAccount[account.id] < protectedMinor)?.date ?? null;
     return { accountId: account.id, amountMinor, protectedMinor, limitingDate: limitingDay.date,
+      spendableMinor: amountMinor < aggregate.amountMinor ? amountMinor : aggregate.amountMinor,
+      spendingLimitingDate: amountMinor <= aggregate.amountMinor ? limitingDay.date : aggregate.limitingDate,
       shortfallMinor: amountMinor < 0n ? -amountMinor : 0n, firstShortfallDate,
       supportingEvents: [...input.events, ...(input.scenarioEvents ?? [])].filter(event =>
         event.accountId === account.id && event.date >= input.startDate && event.date <= limitingDay.date),
     };
   });
-  return { status: "available" as const, currencyCode: input.currencyCode, aggregate, accounts,
-    hasShortfall: accounts.some(account => account.shortfallMinor > 0n) };
+  const workspaceBufferMinor = input.workspaceBufferMinor ?? 0n;
+  const beforeBuffer = aggregate.amountMinor + workspaceBufferMinor;
+  const coveredBuffer = beforeBuffer > 0n ? beforeBuffer : 0n;
+  const workspaceBufferPressureMinor = coveredBuffer < workspaceBufferMinor ? workspaceBufferMinor - coveredBuffer : 0n;
+  return { status: "available" as const, currencyCode: input.currencyCode, aggregate, accounts, workspaceBufferMinor, workspaceBufferPressureMinor,
+    hasShortfall: aggregate.amountMinor < 0n || accounts.some(account => account.shortfallMinor > 0n) };
 }
 
 // Paired movements in the forecast currency; never an inferred cross-currency transfer.
@@ -196,9 +203,9 @@ export function withInternalFunding(input: ForecastInput, funding: { date: strin
 
 export function serializeAccountLiquidity(result: ReturnType<typeof accountLiquidity>) {
   if (result.status === "unavailable") return result;
-  return { ...result, aggregate: { ...result.aggregate, amountMinor: result.aggregate.amountMinor.toString() },
+  return { ...result, workspaceBufferMinor: result.workspaceBufferMinor.toString(), workspaceBufferPressureMinor: result.workspaceBufferPressureMinor.toString(), aggregate: { ...result.aggregate, amountMinor: result.aggregate.amountMinor.toString() },
     accounts: result.accounts.map(account => ({ ...account, amountMinor: account.amountMinor.toString(),
-      protectedMinor: account.protectedMinor.toString(), shortfallMinor: account.shortfallMinor.toString(),
+      spendableMinor: account.spendableMinor.toString(), protectedMinor: account.protectedMinor.toString(), shortfallMinor: account.shortfallMinor.toString(),
       supportingEvents: account.supportingEvents.map(event => ({ ...event, expectedMinor: event.expectedMinor.toString(),
         conservativeMinor: (event.conservativeMinor ?? event.expectedMinor).toString(),
         optimisticMinor: (event.optimisticMinor ?? event.expectedMinor).toString() })),
