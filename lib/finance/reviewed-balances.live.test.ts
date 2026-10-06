@@ -10,9 +10,15 @@ it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches reviewed SQL an
   expect(connection.hostname === `db.${endpoint.hostname.split(".")[0]}.supabase.co` || connection.username.endsWith(`.${endpoint.hostname.split(".")[0]}`)).toBe(true);
   const db = postgres(connection.toString(), { ssl: "require", max: 1, onnotice: () => {} });
   const rollback = new Error("Successful rollback");
+  const actor = randomUUID();
   try { try { await db.begin(async tx => {
-    await tx.unsafe(readFileSync("supabase/migrations/202610060001_reviewed_balance_boundary.sql", "utf8"));
-    const actor = randomUUID();
+    // Test the deployed schema, never replay an applied migration in the fixture.
+    const [applied] = await tx`select name,statements from supabase_migrations.schema_migrations where version='202610060001'`;
+    expect(applied, "Deploy migration 202610060001 before running this live test").toBeDefined();
+    expect(applied.name).toBe("reviewed_balance_boundary");
+    expect(applied.statements.join("\n").replaceAll("\r\n", "\n").trim(), "Deployed migration must match the checked-in SQL").toBe(
+      readFileSync("supabase/migrations/202610060001_reviewed_balance_boundary.sql", "utf8").replaceAll("\r\n", "\n").trim(),
+    );
     await tx`insert into auth.users(id,email) values(${actor},${`qa-${actor}@example.invalid`})`;
     const [{ id: workspace }] = await tx`select id from public.workspaces where owner_id=${actor}`;
     const account = { id: randomUUID(), name: "Synthetic fee parity", currency_code: "EUR" };
@@ -53,5 +59,8 @@ it.skipIf(process.env.RUN_RESERVATION_DB_TESTS !== "1")("matches reviewed SQL an
     snapshot.undone_at = asOf;
     await parity(null);
     throw rollback;
-  }); } catch (error) { if (error !== rollback) throw error; } } finally { await db.end(); }
+  }); } catch (error) { if (error !== rollback) throw error; }
+    expect(await db`select id from auth.users where id=${actor}`).toHaveLength(0);
+    expect(await db`select id from public.workspaces where owner_id=${actor}`).toHaveLength(0);
+  } finally { await db.end(); }
 }, 30000);

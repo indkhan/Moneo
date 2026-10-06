@@ -37,7 +37,8 @@ try {
     run("privacy", "scripts/check-private-data.mjs");
     run("migrations", "supabase/tests/migrations.mjs");
     const units = `${directory}/units.json`, browser = `${directory}/browser.json`;
-    run("units", "node_modules/vitest/vitest.mjs", ["run", "--reporter=json", `--outputFile=${units}`], { RUN_RESERVATION_DB_TESTS: "1" });
+    // Required tier runs every gated live-DB check; any skip fails the gate below.
+    run("units", "node_modules/vitest/vitest.mjs", ["run", "--reporter=json", `--outputFile=${units}`], { RUN_RESERVATION_DB_TESTS: "1", RUN_IMPORT_EXCLUSION_DB_TESTS: "1" });
     const unitReport = JSON.parse(readFileSync(units, "utf8"));
     result.units = { total: unitReport.numTotalTests, failed: unitReport.numFailedTests, skipped: unitReport.numPendingTests };
     assertRequiredResults("vitest", unitReport);
