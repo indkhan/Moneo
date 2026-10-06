@@ -10,7 +10,7 @@ import { BulkEditor } from "./bulk-editor";
 import { EditingHistory } from "./editing-history";
 import { calendarDate } from "@/lib/finance/calendar";
 import { DEFAULT_SORT, SORT_ORDER, cursorClause, nextCursorForRow, parseTransactionParams, toQueryParams, type ParsedTransactionParams } from "./filters";
-import { parseStoredFilters, parseViewId, type SaveInput } from "../views/validate";
+import { invalidStoredViewScope, normalizeEventName, normalizeTag, parseStoredFilters, parseViewId, type SaveInput } from "../views/validate";
 import { SavedViewsPanel } from "../views/panel";
 
 type Filters = { linkSearch?: string; q?: string; from?: string; to?: string; account?: string; status?: string; kind?: string; direction?: string; category?: string; merchant?: string; minAmount?: string; maxAmount?: string; sort?: string; cursor?: string; transaction?: string; view?: string; tag?: string; event?: string };
@@ -37,6 +37,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   ]);
   let activeView: { id: string; name: string } | null = null;
   let savedFilters = null as ReturnType<typeof parseStoredFilters> | null;
+  let savedViewScopeError: string | null = null;
   let viewNotFound = false;
   if (viewId) {
     const { data } = await supabase.from("transaction_views")
@@ -44,9 +45,29 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     if (!data) viewNotFound = true;
     else {
       activeView = { id: data.id, name: data.name };
+      savedViewScopeError = invalidStoredViewScope(data.filters as unknown);
       savedFilters = parseStoredFilters(data.filters as unknown);
     }
   }
+  const pageHeader = (<header className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">Money / Ledger</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">Transactions</h1><p className="mt-1 text-sm text-slate-500">Search, review, and correct your ledger.</p></div><div className="flex flex-wrap gap-2"><Link href="/money/accounts" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50">Accounts</Link><Link href="/money/wealth" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50">Investments, assets and debts</Link><Link href="/money/recurring" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50">Review recurring</Link><Link href="/import" className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-blue-800">Import statement</Link></div></header>);
+  const viewRows = (savedViews ?? []).map(view => ({ id: view.id, name: view.name, created_at: view.created_at, version: view.version }));
+
+  // An invalid persisted scope never reaches the ledger query: no rows or
+  // financial results render under the saved-view title. The panel below
+  // keeps rename/delete so the broken view can be removed; saving is
+  // disabled so the broadened scope cannot be re-saved.
+  if (savedViewScopeError && activeView) {
+    return <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 text-slate-900 sm:px-8">
+      {pageHeader}
+      <section aria-label="Invalid saved view" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <p role="alert" className="text-sm text-red-700">{savedViewScopeError}</p>
+        <p className="mt-2 text-sm text-slate-600">Set the tag and spending group with normal filters, save a corrected view, then delete this broken view below.</p>
+        <Link className="mt-3 inline-block underline" href="/money/transactions">Back to normal filters</Link>
+      </section>
+      <SavedViewsPanel views={viewRows} activeViewId={activeView.id} activeViewName={activeView.name} saveDefaults={{}} disableSave />
+    </main>;
+  }
+
   const urlFilters = parseTransactionParams(params as Record<string, string | undefined>);
   const urlMerchantRaw = typeof params.merchant === "string" ? params.merchant : undefined;
   const urlMerchantId = urlMerchantRaw && /^[0-9a-f-]{36}$/i.test(urlMerchantRaw) ? urlMerchantRaw : undefined;
@@ -86,8 +107,12 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     .select("id, posted_on, description, amount_minor::text, currency_code, status, kind, account_id, category_id, merchant_id, note, version, tags, event_name, review_reasons")
     .eq("workspace_id", workspace.id).order(column, { ascending }).order("id", { ascending }).limit(51);
   if (filters.q) query = query.ilike("description", `%${filters.q.replace(/[%_]/g, "\\$&")}%`);
-  const tag = typeof params.tag === "string" && params.tag.trim().length <= 40 ? params.tag.trim().toLowerCase() : "";
-  const eventName = typeof params.event === "string" && params.event.trim().length <= 120 ? params.event.trim() : "";
+  const urlTag = normalizeTag(typeof params.tag === "string" ? params.tag : undefined) ?? "";
+  const urlEventName = normalizeEventName(typeof params.event === "string" ? params.event : undefined) ?? "";
+  // In view mode the opaque link carries no filter params, so the scope
+  // comes from saved JSON; otherwise the live URL params apply unchanged.
+  const tag = activeView && savedFilters ? (savedFilters.tag ?? "") : urlTag;
+  const eventName = activeView && savedFilters ? (savedFilters.eventName ?? "") : urlEventName;
   if (tag) query = query.contains("tags", [tag]);
   if (eventName) query = query.eq("event_name", eventName);
   if (filters.from) query = query.gte("posted_on", filters.from);
@@ -194,6 +219,8 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       ...(filters.direction ? { direction: filters.direction } : {}),
       ...(filters.uncategorized ? { category: "none" } : filters.categoryId ? { category: filters.categoryId } : {}),
       ...(merchantUnknown ? { merchant: "none" } : merchantId ? { merchant: merchantId } : {}),
+      ...(tag ? { tag } : {}),
+      ...(eventName ? { event: eventName } : {}),
       ...(filters.minAmountMinor !== undefined ? { minAmount: filters.minAmountMinor } : {}),
       ...(filters.maxAmountMinor !== undefined ? { maxAmount: filters.maxAmountMinor } : {}),
       ...(filters.sort !== DEFAULT_SORT ? { sort: filters.sort } : {}),
@@ -220,6 +247,8 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       ...(filters.direction ? { direction: filters.direction } : {}),
       ...(filters.uncategorized ? { category: "none" } : filters.categoryId ? { category: filters.categoryId } : {}),
       ...(merchantUnknown ? { merchant: "none" } : merchantId ? { merchant: merchantId } : {}),
+      ...(tag ? { tag } : {}),
+      ...(eventName ? { event: eventName } : {}),
       ...(filters.minAmountMinor !== undefined ? { minAmount: filters.minAmountMinor } : {}),
       ...(filters.maxAmountMinor !== undefined ? { maxAmount: filters.maxAmountMinor } : {}),
       ...(filters.sort !== DEFAULT_SORT ? { sort: filters.sort } : {}),
@@ -238,7 +267,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   }
 
   return <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 text-slate-900 sm:px-8">
-    <header className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">Money / Ledger</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">Transactions</h1><p className="mt-1 text-sm text-slate-500">Search, review, and correct your ledger.</p></div><div className="flex flex-wrap gap-2"><Link href="/money/accounts" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50">Accounts</Link><Link href="/money/wealth" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50">Investments, assets and debts</Link><Link href="/money/recurring" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50">Review recurring</Link><Link href="/import" className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-blue-800">Import statement</Link></div></header>
+    {pageHeader}
     {viewNotFound ? <p role="alert" className="mt-6">Saved view not found. Showing normal filters.</p> : null}
     <details className="rounded-xl border border-border bg-card p-4">
       <summary className="cursor-pointer text-sm font-semibold">Add a manual transaction</summary>
@@ -271,7 +300,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       <select name="sort" defaultValue={filters.sort} aria-label="Sort order" className="rounded border p-2"><option value="date-desc">Newest first</option><option value="date-asc">Oldest first</option><option value="amount-desc">Largest amount first</option><option value="amount-asc">Smallest amount first</option></select>
       <button className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-medium text-white hover:bg-blue-800">Apply filters</button>
     </form>
-    <SavedViewsPanel views={(savedViews ?? []).map(view => ({ id: view.id, name: view.name, created_at: view.created_at, version: view.version }))} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} />
+    <SavedViewsPanel views={viewRows} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} />
     {!!rows.length && <BulkEditor locale={workspace.locale} rows={rows} categories={categories ?? []} query={current.toString()} requestId={crypto.randomUUID()} />}
     {error ? <p role="alert" className="mt-6">Could not load transactions: {error.message}</p> : <TransactionTable locale={workspace.locale} rows={rows} accountNames={names} merchantNames={merchantNames} query={current.toString()} sort={filters.sort} baseQuery={baseQuery} />}
     {next && <Link className="mt-5 inline-block underline" href={`/money/transactions?${nextParams}`}>Next page</Link>}

@@ -41,6 +41,8 @@ function currentFilters(form: FormData) {
     direction: str(form.get("direction")),
     category: str(form.get("category")),
     merchant: str(form.get("merchant")),
+    tag: str(form.get("tag")),
+    event: str(form.get("event")),
     minAmount: str(form.get("minAmount")),
     maxAmount: str(form.get("maxAmount")),
     sort: str(form.get("sort")),

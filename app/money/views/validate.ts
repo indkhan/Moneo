@@ -1,8 +1,10 @@
 // Validation for minimal saved transaction views (prompt.md §7).
 //
 // Only the allowlisted keys below are ever stored in
-// public.transaction_views.filters. Cursor and open-transaction ids are
-// never stored. Opening a view uses the opaque row UUID (?view=<uuid>)
+// public.transaction_views.filters (q/from/to/account/status/kind/
+// direction/category/merchant/tag/event/amount range/sort). Cursor and
+// open-transaction ids are never stored. Opening a view uses the opaque
+// row UUID (?view=<uuid>)
 // loaded server-side, so search terms and account/category/merchant UUIDs
 // stay in workspace-scoped storage and never appear in the saved-view link.
 
@@ -20,6 +22,10 @@ export type SavedViewFilters = {
   uncategorized?: boolean;
   merchantId?: string;
   merchantUnknown?: boolean;
+  /** Single tag, normalized like the live query and bulk tagging (trimmed, lowercase, ≤40 chars). */
+  tag?: string;
+  /** Spending-group identity, matched exactly (trimmed, case preserved, ≤120 chars). */
+  eventName?: string;
   minAmountMinor?: string;
   maxAmountMinor?: string;
   sort?: TransactionSort;
@@ -63,10 +69,36 @@ export type SaveInput = {
   direction?: string;
   category?: string;
   merchant?: string;
+  tag?: string;
+  event?: string;
   minAmount?: string;
   maxAmount?: string;
   sort?: string;
 };
+
+/**
+ * Tolerant tag normalizer shared by the live URL path and the saved-view
+ * loader. Returns the stored form (trimmed, lowercase) or undefined when
+ * empty/invalid. The strict save path throws on invalid instead.
+ */
+export function normalizeTag(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const tag = raw.trim().toLowerCase();
+  if (!tag || tag.length > 40) return undefined;
+  return tag;
+}
+
+/**
+ * Tolerant spending-group normalizer. Identity is the trimmed text with
+ * case preserved (exact `event_name` match), or undefined when
+ * empty/invalid.
+ */
+export function normalizeEventName(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const eventName = raw.trim();
+  if (!eventName || eventName.length > 120) return undefined;
+  return eventName;
+}
 
 function emptyToUndefined(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
@@ -131,6 +163,20 @@ export function buildSavedFilters(input: SaveInput): SavedViewFilters {
     else throw new Error("Invalid merchant");
   }
 
+  const tag = emptyToUndefined(input.tag);
+  if (tag !== undefined) {
+    const normalized = normalizeTag(tag);
+    if (normalized === undefined) throw new Error("Invalid tag");
+    filters.tag = normalized;
+  }
+
+  const event = emptyToUndefined(input.event);
+  if (event !== undefined) {
+    const normalized = normalizeEventName(event);
+    if (normalized === undefined) throw new Error("Invalid event");
+    filters.eventName = normalized;
+  }
+
   const minAmount = emptyToUndefined(input.minAmount);
   if (minAmount !== undefined) {
     const parsed = parseMinorUnits(minAmount);
@@ -154,8 +200,31 @@ export function buildSavedFilters(input: SaveInput): SavedViewFilters {
 }
 
 /**
+ * Actionable scope check for a persisted view. Returns an error message
+ * when tag/event scope is present but invalid (e.g. oversized), so a saved
+ * view is never silently broadened. Returns null when the stored scope is
+ * usable; legacy rows without tag/event keys stay compatible (null).
+ * Other fields keep the tolerant loader behavior below.
+ */
+export function invalidStoredViewScope(raw: unknown): string | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return "Saved view filters are invalid, so its results are hidden. Repair or delete this view.";
+  }
+  const input = raw as Record<string, unknown>;
+  if ("tag" in input && normalizeTag(input.tag) === undefined) {
+    return "Saved view has an invalid tag filter (1–40 characters), so its results are hidden. Repair or delete this view.";
+  }
+  if ("eventName" in input && normalizeEventName(input.eventName) === undefined) {
+    return "Saved view has an invalid spending-group filter (1–120 characters), so its results are hidden. Repair or delete this view.";
+  }
+  return null;
+}
+
+/**
  * Tolerant loader for the JSONB column. Never throws: unknown keys and
  * invalid values are dropped so one bad row can never break the browser.
+ * Use invalidStoredViewScope first when a present-but-invalid tag/event
+ * scope must surface instead of broadening.
  */
 export function parseStoredFilters(raw: unknown): SavedViewFilters {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
@@ -182,6 +251,10 @@ export function parseStoredFilters(raw: unknown): SavedViewFilters {
   } else if (typeof input.merchantId === "string" && UUID_PATTERN.test(input.merchantId)) {
     filters.merchantId = input.merchantId;
   }
+  const storedTag = normalizeTag(input.tag);
+  if (storedTag) filters.tag = storedTag;
+  const storedEvent = normalizeEventName(input.eventName);
+  if (storedEvent) filters.eventName = storedEvent;
   if (typeof input.minAmountMinor === "string" && parseMinorUnits(input.minAmountMinor) !== undefined) {
     filters.minAmountMinor = parseMinorUnits(input.minAmountMinor);
   }
