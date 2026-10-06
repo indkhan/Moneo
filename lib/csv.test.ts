@@ -15,6 +15,81 @@ const mapping = {
 };
 
 describe("financial import parsing", () => {
+  it("quarantines row-local CSV field-count errors while preserving valid neighbors and extra cells", () => {
+    const input = { ...mapping, dateFormat: "iso" };
+    for (const malformed of ["2026-09-02,Missing amount", "2026-09-02,Extra cell,2,unmapped evidence"]) {
+      const rows = parseCsv(`Date,Description,Amount\n2026-09-01,Valid neighbor,1\n${malformed}`);
+      const preview = previewImport(rows, input);
+      expect(rows[1].__moneo_csv_field_count).toBe(malformed.includes("unmapped evidence") ? "4" : "2");
+      expect(preview).toMatchObject({ totalRows: 2, acceptedRows: 1 });
+      expect(preview.unresolvedRows.map(row => row.rowNumber)).toEqual([3]);
+      expect(() => validateImportConfirmation(rows, input)).toThrow("field mismatch");
+      const excluded = validateImportConfirmation(rows, { ...input, rowDecisions: [{ rowNumber: 3, action: "exclude", reason: "Malformed footer" }] });
+      expect(mapRows(rows, excluded).map(row => row.description)).toEqual(["Valid neighbor"]);
+      expect(() => validateImportConfirmation(rows, { ...input, rowDecisions: [{ rowNumber: 3, action: "correct", values: { Amount: "2" } }] })).toThrow("mapped cells");
+      const corrected = validateImportConfirmation(rows, { ...input, rowDecisions: [{ rowNumber: 3, action: "correct", values: { Date: "2026-09-02", Description: "Reviewed posting", Amount: "2" } }] });
+      expect(mapRows(rows, corrected)[1]).toMatchObject({ rowNumber: 3, description: "Reviewed posting", amountMinor: 200n, sourceRow: rows[1] });
+      if (malformed.includes("unmapped evidence")) expect(JSON.stringify(rows[1])).toContain("unmapped evidence");
+    }
+    expect(() => parseCsv('Date,Description,Amount\n2026-09-01,Valid,1\n2026-09-02,"unclosed,2')).toThrow("CSV parse error");
+  });
+  it("keeps routed valid observations previewable when a footer has no currency", () => {
+    const rows = [
+      { Date: "01/09/2026", Description: "Posting", Amount: "1", Currency: "EUR", Product: "Current" },
+      { Date: "", Description: "Footer", Amount: "1", Currency: "", Product: "" },
+    ];
+    const proposed = proposeAccountRoutes(rows, { ...mapping, currencyColumn: "Currency", productColumn: "Product" });
+    const preview = previewImport(rows, proposed);
+    expect(preview.acceptedRows).toBe(1);
+    expect(preview.unresolvedRows.map(row => row.rowNumber)).toEqual([3]);
+    expect(preview.unresolvedRows[0].sourceRow).toEqual(rows[1]);
+  });
+  it("quarantines escaped source evidence that would exceed the ingest record boundary", () => {
+    const rows = [{ Date: "01/09/2026", Description: "Valid display", Amount: "1", Evidence: "\\".repeat(5_600_000) }];
+    const preview = previewImport(rows, mapping);
+    expect(preview.unresolvedRows).toHaveLength(1);
+    expect(preview.unresolvedRows[0].message).toContain("record limit");
+    expect(() => validateImportConfirmation(rows, mapping)).toThrow("record limit");
+    expect(validateImportConfirmation(rows, { ...mapping, rowDecisions: [{ rowNumber: 2, action: "exclude", reason: "Oversized observation" }] })).toMatchObject({ rowContractVersion: "normalized-row-v1" });
+  });
+  it("does not infer fee treatment across an excluded observation", () => {
+    const rows = [
+      { Date: "2026-09-01T10:00:00Z", Description: "First", Amount: "-1", Balance: "100", Fee: "0" },
+      { Date: "2026-09-01T11:00:00Z", Description: "Unresolved", Amount: "bad", Balance: "99", Fee: "0" },
+      { Date: "2026-09-01T12:00:00Z", Description: "Last", Amount: "-10", Balance: "90", Fee: "1" },
+    ];
+    const preview = previewImport(rows, { ...mapping, dateFormat: "iso", balanceColumn: "Balance", feeColumn: "Fee",
+      rowDecisions: [{ rowNumber: 3, action: "exclude", reason: "Unsupported source observation" }] });
+    expect(preview.examples[1].feeEvidence).toEqual({ treatment: "unknown" });
+  });
+  it("freezes explicit corrections and exclusions without altering original evidence or row identity", () => {
+    const rows = [
+      { Date: "01/09/2026", Description: "First", Amount: "1" },
+      { Date: "bad", Description: "Correction", Amount: "2" },
+      { Date: "", Description: "Total", Amount: "3" },
+      { Date: "02/09/2026", Description: "Last", Amount: "4" },
+    ];
+    const original = structuredClone(rows);
+    const input = { ...mapping, rowDecisions: [
+      { rowNumber: 3, action: "correct", values: { Date: "02/09/2026" } },
+      { rowNumber: 4, action: "exclude", reason: "Statement summary, not a posting" },
+    ] };
+    const confirmed = validateImportConfirmation(rows, input);
+    const preview = previewImport(rows, confirmed);
+    expect(preview).toMatchObject({ totalRows: 4, acceptedRows: 3, correctedRows: 1, excludedRows: [{ rowNumber: 4, sourceRow: original[2] }], unresolvedRows: [] });
+    expect(mapRows(rows, confirmed).map(row => row.rowNumber)).toEqual([2, 3, 5]);
+    expect(mapRows(rows, confirmed)[1]).toMatchObject({ postedOn: "2026-09-02", sourceRow: original[1] });
+    expect(rows).toEqual(original);
+    expect(mapRows(rows, confirmed)).toEqual(mapRows(rows, confirmed));
+  });
+  it("rejects duplicate, unknown and out-of-range source review decisions", () => {
+    const rows = [{ Date: "01/09/2026", Description: "First", Amount: "1" }];
+    for (const rowDecisions of [
+      [{ rowNumber: 9, action: "exclude", reason: "Footer" }],
+      [{ rowNumber: 2, action: "exclude", reason: "Footer" }, { rowNumber: 2, action: "exclude", reason: "Footer" }],
+      [{ rowNumber: 2, action: "correct", values: { Other: "1" } }],
+    ]) expect(() => validateImportConfirmation(rows, { ...mapping, rowDecisions })).toThrow();
+  });
   it("previews valid neighbors without hiding malformed, unsupported or footer observations", () => {
     const rows = [
       { Date: "01/09/2026", Description: "First", Amount: "1", State: "posted" },

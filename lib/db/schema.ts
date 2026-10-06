@@ -159,7 +159,7 @@ export const sourceTransactions = pgTable("source_transactions", {
 }, (table) => [
   unique("source_transactions_import_row_unique").on(table.importId, table.rowNumber),
   check("source_transactions_fee_evidence_check", sql`${table.feeEvidence} is null or (jsonb_typeof(${table.feeEvidence}) = 'object' and ${table.feeEvidence} ? 'treatment' and ${table.feeEvidence}->>'treatment' is not null and ${table.feeEvidence}->>'treatment' in ('included','additional','unknown'))`),
-  check("source_transactions_review_reasons_check", sql`${table.reviewReasons} <@ array['source_transfer','source_exchange','source_type','refund_sign','fee_semantics']::text[]`),
+  check("source_transactions_review_reasons_check", sql`${table.reviewReasons} <@ array['source_transfer','source_exchange','source_type','refund_sign','fee_semantics','excluded_by_review']::text[]`),
 ]);
 
 export const categories = pgTable("categories", {

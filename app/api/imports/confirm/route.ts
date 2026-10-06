@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const file = form.get("file");
     const mappingValue = form.get("mapping");
-    if (!(file instanceof File) || typeof mappingValue !== "string" || file.size > 10_000_000)
+    if (!(file instanceof File) || typeof mappingValue !== "string" || mappingValue.length > 10_000_000 || file.size > 10_000_000)
       return NextResponse.json({ error: "File and mapping are required (10 MB maximum)" }, { status: 400 });
     const extension = file.name.toLowerCase().split(".").pop();
     if (extension !== "csv" && extension !== "xlsx") return NextResponse.json({ error: "Only CSV and XLSX are supported" }, { status: 400 });

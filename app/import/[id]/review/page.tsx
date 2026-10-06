@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { ClassificationActions, ReviewActions } from "./actions";
 import { formatMoney } from "@/lib/finance/format";
+import { mappingSchema } from "@/lib/csv";
 
 export default async function ImportReviewPage({ params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -10,9 +11,13 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
   catch { redirect("/login"); }
   const { id } = await params;
   const { supabase, workspace } = context;
-  const { data: imported } = await supabase.from("imports").select("id, filename, status, review_rows, classification_review_rows")
+  const { data: imported } = await supabase.from("imports").select("id, filename, status, total_rows, new_rows, matched_rows, rejected_rows, mapping, review_rows, classification_review_rows")
     .eq("workspace_id", workspace.id).eq("id", id).maybeSingle();
   if (!imported) notFound();
+  const interpretation = mappingSchema.safeParse(imported.mapping);
+  const decisions = interpretation.success ? interpretation.data.rowDecisions ?? [] : [];
+  const decisionRows = decisions.length ? await supabase.from("source_transactions").select("id, row_number, original_row, status")
+    .eq("workspace_id", workspace.id).eq("import_id", id).in("row_number", decisions.map(row => row.rowNumber)).order("row_number").limit(100) : null;
   const { data: rows, error } = await supabase.from("source_transactions")
     .select("id, row_number, original_row, external_id")
     .eq("workspace_id", workspace.id).eq("import_id", id).eq("status", "review")
@@ -38,6 +43,19 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
       {imported.status === "completed" && <ReviewActions importId={id} sourceId={row.id} />}
     </article>)}
     {rows?.length === 100 && <p>Showing the first 100 rows.</p>}
+    <section className="space-y-3" aria-label="Source coverage and reviewed interpretation">
+      <h2 className="text-xl font-semibold">Source coverage</h2>
+      <p>{imported.new_rows + imported.matched_rows} accepted · {imported.rejected_rows} excluded · {imported.review_rows} unresolved · {imported.total_rows} original observations</p>
+      {decisionRows?.error && <p role="alert">Could not load reviewed source evidence.</p>}
+      {decisionRows?.data?.map(row => {
+        const decision = decisions.find(item => item.rowNumber === row.row_number)!;
+        return <article key={row.id} className="rounded-lg border border-border p-3 text-sm"><h3 className="font-medium">Source row {row.row_number} · {decision.action === "exclude" ? "Excluded" : "Corrected"} · {row.status}</h3>
+          {decision.action === "exclude" ? <p>{decision.reason}</p> : <dl>{Object.entries(decision.values).map(([column, value]) => <div key={column}><dt className="font-medium">{column}</dt><dd>{value}</dd></div>)}</dl>}
+          <details><summary>Original source evidence</summary><pre className="overflow-x-auto whitespace-pre-wrap">{JSON.stringify(row.original_row, null, 2)}</pre></details>
+        </article>;
+      })}
+      {decisionRows?.data?.length === 100 && <p>Showing the first 100 reviewed source observations.</p>}
+    </section>
     <section className="space-y-4" aria-label="Financial classification review">
       <h2 className="text-xl font-semibold">Financial meaning</h2>
       <p>{imported.classification_review_rows} source rows await classification. Their booked amounts remain in account balances; income and spending are partial until reviewed.</p>
