@@ -1,30 +1,32 @@
 import { z } from "zod";
 import { summarizeCashflow } from "./calculations";
 import { requireWorkspace } from "@/lib/auth";
-import { evaluatePlan } from "./model";
+import { evaluatePlan, evaluatePlanForWorkspace } from "./model";
 import { loadBalanceEvidence, resolveBalances } from "./balances";
+
+type FinanceContext = Awaited<ReturnType<typeof requireWorkspace>>;
 
 const periodInput = z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().regex(/^[A-Z]{3}$/) });
 const searchInput = z.object({ query: z.string().min(1).max(100) });
 
-export async function listAccounts() {
-  const { supabase, workspace } = await requireWorkspace();
+export async function listAccounts(context?: FinanceContext) {
+  const { supabase, workspace } = context ?? await requireWorkspace();
   const { data, error } = await supabase.from("accounts").select("id, name, type, currency_code")
     .eq("workspace_id", workspace.id).order("name");
   if (error) throw error;
   return data;
 }
 
-export async function getBalances() {
-  const { supabase, workspace } = await requireWorkspace();
+export async function getBalances(context?: FinanceContext) {
+  const { supabase, workspace } = context ?? await requireWorkspace();
   const evidence = await loadBalanceEvidence(supabase, workspace.id);
   return resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone);
 }
 
-export async function cashflow(input: unknown) {
+export async function cashflow(input: unknown, context?: FinanceContext) {
   const { from, to, currencyCode } = periodInput.parse(input);
   if (from > to) throw new Error("From date is after to date");
-  const { supabase, workspace } = await requireWorkspace();
+  const { supabase, workspace } = context ?? await requireWorkspace();
   const rows = [];
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await supabase.from("effective_transactions")
@@ -51,9 +53,9 @@ export async function cashflow(input: unknown) {
   } : { unavailable: "Some transactions require currency conversion", from, to, currencyCode };
 }
 
-export async function searchTransactions(input: unknown) {
+export async function searchTransactions(input: unknown, context?: FinanceContext) {
   const { query } = searchInput.parse(input);
-  const { supabase, workspace } = await requireWorkspace();
+  const { supabase, workspace } = context ?? await requireWorkspace();
   const { data, error } = await supabase.from("transactions")
     .select("id, posted_on, description, amount_minor::text, currency_code, status, kind")
     .eq("workspace_id", workspace.id).ilike("description", `%${query.replace(/[%_]/g, "\\$&")}%`)
@@ -62,8 +64,8 @@ export async function searchTransactions(input: unknown) {
   return data;
 }
 
-export async function listGoals() {
-  const { supabase, workspace } = await requireWorkspace();
+export async function listGoals(context?: FinanceContext) {
+  const { supabase, workspace } = context ?? await requireWorkspace();
   const { data, error } = await supabase.from("goals")
     .select("id, name, target_minor::text, currency_code, target_date, status")
     .eq("workspace_id", workspace.id).order("created_at", { ascending: false });
@@ -71,9 +73,9 @@ export async function listGoals() {
   return data;
 }
 
-export async function evaluateForecast(input: unknown) {
+export async function evaluateForecast(input: unknown, context?: FinanceContext) {
   const args = z.object({ horizonDays: z.number().int().min(1).max(365).default(30), scenarioId: z.uuid().optional() }).parse(input);
-  const { forecast, available, input: assumptions } = await evaluatePlan(args.horizonDays, args.scenarioId);
+  const { forecast, available, input: assumptions } = (context ? await evaluatePlanForWorkspace(context.supabase, context.workspace, args.horizonDays, args.scenarioId) : await evaluatePlan(args.horizonDays, args.scenarioId));
   if (forecast.status === "unavailable" || available.status === "unavailable")
     return { status: "unavailable", missingInputs: [...new Set([
       ...(forecast.status === "unavailable" ? forecast.missingInputs : []),

@@ -2,6 +2,7 @@ import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
 import { modelForSettings, SYSTEM_PROMPT } from "@/lib/ai/provider";
 import { requireWorkspace } from "@/lib/auth";
+import { requireAiScope, type AiDataScope } from "@/lib/settings";
 import { calendarDate } from "@/lib/finance/calendar";
 import { reportedUsage } from "@/lib/ai/usage";
 import { isExplicitReviewRequest, parseCategoryCommand } from "@/lib/ai/write-intent";
@@ -59,6 +60,18 @@ export async function POST(request: Request) {
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
   const canStartReview = canInvestigate && isExplicitReviewRequest(message);
   const canCreateArtifact = /(?:^|[.!?]\s+)(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:create|build|make)\b[^.!?]*\b(?:chart|artifact|tool|dashboard|tracker|planner)\b/i.test(message);
+  // These checks govern new tool results, not evidence already sent to the provider.
+  async function aiEvidence<T>(scopes: AiDataScope[], read: (latest: typeof context) => Promise<T>, includePlanning = false): Promise<T> {
+    const latest = await requireWorkspace();
+    if (latest.workspace.id !== workspace.id) throw new Error("Workspace changed");
+    requireAiScope(latest.settings, ...scopes);
+    const usedScopes = includePlanning && latest.settings.ai_data_scopes.includes("planning") ? [...scopes, "planning" as const] : scopes;
+    const result = await read(latest);
+    const current = await requireWorkspace();
+    if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
+    requireAiScope(current.settings, ...usedScopes);
+    return result;
+  }
   let createdArtifact: Promise<{ id: string; href: string }> | undefined;
     const model = await modelForSettings(settings);
     const result = await generateText({
@@ -71,15 +84,13 @@ export async function POST(request: Request) {
       tools: {
         ...(settings.ai_data_scopes.includes("imports") ? { imports_status: tool({
           description: "Read recorded import workflow status and row counts. Completed means processing finished, not that all financial classifications or current balances are complete. Use this to answer whether imports are still running; do not infer status from balance freshness or filenames.",
-          inputSchema: z.object({}).strict(), execute: async () => {
-            const latest = await requireWorkspace();
-            if (latest.workspace.id !== workspace.id || !latest.settings.ai_data_scopes.includes("imports")) throw new Error("Import permission unavailable");
+          inputSchema: z.object({}).strict(), execute: () => aiEvidence(["imports"], async latest => {
             const { data, error } = await latest.supabase.from("imports")
               .select("id, filename, status, total_rows, new_rows, matched_rows, review_rows, classification_review_rows, rejected_rows, error")
               .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30);
             if (error) throw error;
             return { imports: data ?? [], limitation: "Latest 30 recorded imports; status does not prove complete financial coverage. Classification review means the financial kind is unresolved, not merely a missing category. Excluded rows can include income, spending, refunds or transfers; totals may rise or fall. Missing categories alone do not exclude cashflow rows. Bulk category changes do not resolve financial kind." };
-          },
+          }),
         }) } : {}),
         ...(canCreateArtifact ? { artifacts_create: tool({
           description: "Create the trusted financial tool explicitly requested by the user and return its link. Spending Explorer provides a live spending chart; Trip Planner compares a trip cost; Goal Tracker shows savings goals. These are existing templates, not generated custom code. Do not claim unsupported account/category comparisons.",
@@ -95,27 +106,21 @@ export async function POST(request: Request) {
             })();
           },
         }) } : {}),
-        ...(settings.ai_data_scopes.includes("transactions") ? { transactions_previewCategory: tool({ description: "Read-only impact preview for exact selected transaction UUIDs and an existing category UUID. Returns a link where the user reviews current entries and explicitly confirms an audited bulk change. Never changes any transaction.", inputSchema: categoryPreviewSchema, execute: async ({ transactionIds, categoryId }) => {
-          const latest = await requireWorkspace();
-          if (latest.workspace.id !== workspace.id || !latest.settings.ai_data_scopes.includes("transactions")) throw new Error("Transaction permission unavailable");
-          return loadCategoryPreview(latest.supabase, workspace.id, transactionIds, categoryId);
-        } }) } : {}),
-        ...(canInvestigate ? { reviews_investigate: tool({ description: "Investigate dated exact spending changes, account evidence, classification limitations and permitted planning evidence, with source links. Read-only.", inputSchema: z.object({}).strict(), execute: async () => {
-          const latest = await requireWorkspace();
-          if (latest.workspace.id !== workspace.id) throw new Error("Workspace changed");
-          return loadFinancialReviewEvidence(latest.supabase, latest.workspace, latest.settings);
-        } }) } : {}),
-        ...(canStartReview ? { reviews_start: tool({ description: "Start the deep financial review explicitly requested in this exact user message. Creates one durable, cancelable job; repeated calls reuse it. No financial data changes.", inputSchema: z.object({}).strict(), execute: async () => {
+        ...(settings.ai_data_scopes.includes("transactions") ? { transactions_previewCategory: tool({ description: "Read-only impact preview for exact selected transaction UUIDs and an existing category UUID. Returns a link where the user reviews current entries and explicitly confirms an audited bulk change. Never changes any transaction.", inputSchema: categoryPreviewSchema, execute: ({ transactionIds, categoryId }) => aiEvidence(["transactions"], latest =>
+          loadCategoryPreview(latest.supabase, workspace.id, transactionIds, categoryId)) }) } : {}),
+        ...(canInvestigate ? { reviews_investigate: tool({ description: "Investigate dated exact spending changes, account evidence, classification limitations and permitted planning evidence, with source links. Read-only.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], latest =>
+          loadFinancialReviewEvidence(latest.supabase, latest.workspace, latest.settings), true) }) } : {}),
+        ...(canStartReview ? { reviews_start: tool({ description: "Start the deep financial review explicitly requested in this exact user message. Creates one durable, cancelable job; repeated calls reuse it. No financial data changes.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], async latest => {
           if (request.signal.aborted) throw new Error("Request canceled");
           if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) throw new Error("Financial review service is not configured");
-          return { ...await startFinancialReview(supabase, workspace.id, requestId, requestId), href: "/ai" };
-        } }) } : {}),
-        ...(settings.ai_data_scopes.includes("accounts") ? { accounts_list: tool({ description: "List the user's accounts", inputSchema: z.object({}), execute: listAccounts }),
-        accounts_getBalances: tool({ description: "Get dated balances and provenance", inputSchema: z.object({}), execute: getBalances }) } : {}),
-        ...(settings.ai_data_scopes.includes("transactions") ? { analytics_cashflow: tool({ description: "Exact posted income and spending for a period", inputSchema: z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().length(3) }), execute: cashflow }),
-        transactions_search: tool({ description: "Search up to 20 transactions", inputSchema: z.object({ query: z.string().min(1).max(100) }), execute: searchTransactions }) } : {}),
-        ...(settings.ai_data_scopes.includes("planning") ? { goals_list: tool({ description: "List the user's goals", inputSchema: z.object({}), execute: listGoals }) } : {}),
-        ...(settings.ai_data_scopes.includes("planning") && settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions") ? { forecast_evaluate: tool({ description: "Deterministic forecast and available to spend; cases are assumptions, not probabilities", inputSchema: z.object({ horizonDays: z.number().int().min(1).max(365).default(30), scenarioId: z.uuid().optional() }), execute: evaluateForecast }) } : {}),
+          return { ...await startFinancialReview(latest.supabase, workspace.id, requestId, requestId), href: "/ai" };
+        }) }) } : {}),
+        ...(settings.ai_data_scopes.includes("accounts") ? { accounts_list: tool({ description: "List the user's accounts", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => listAccounts(latest)) }),
+        accounts_getBalances: tool({ description: "Get dated balances and provenance", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => getBalances(latest)) }) } : {}),
+        ...(settings.ai_data_scopes.includes("transactions") ? { analytics_cashflow: tool({ description: "Exact posted income and spending for a period", inputSchema: z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().length(3) }), execute: input => aiEvidence(["transactions"], latest => cashflow(input, latest)) }),
+        transactions_search: tool({ description: "Search up to 20 transactions", inputSchema: z.object({ query: z.string().min(1).max(100) }), execute: input => aiEvidence(["transactions"], latest => searchTransactions(input, latest)) }) } : {}),
+        ...(settings.ai_data_scopes.includes("planning") ? { goals_list: tool({ description: "List the user's goals", inputSchema: z.object({}), execute: () => aiEvidence(["planning"], latest => listGoals(latest)) }) } : {}),
+        ...(settings.ai_data_scopes.includes("planning") && settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions") ? { forecast_evaluate: tool({ description: "Deterministic forecast and available to spend; cases are assumptions, not probabilities", inputSchema: z.object({ horizonDays: z.number().int().min(1).max(365).default(30), scenarioId: z.uuid().optional() }), execute: input => aiEvidence(["accounts", "transactions", "planning"], latest => evaluateForecast(input, latest)) }) } : {}),
         ...(canChangeCategory ? {
           transactions_setCategory: tool({
             description: "Change only the category of a specific transaction, only when the current user explicitly asked for this change. Search first if its ID is unknown. The correction is audited and can be undone from the returned transaction link.",
