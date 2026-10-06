@@ -51,6 +51,10 @@ export function snapshotFixtures(kind: ArtifactKind, sdk: string[]): CalculatorI
       });
       add(missing);
     }
+    // Currency-conversion failures retain a present period without its metrics.
+    for (const operation of operations.filter(op => op === "spending" || op === "cashflow")) {
+      add({ ...structuredClone(normal), [operation]: { currency: "EUR", unavailable: "Some transactions require currency conversion" }, unavailable: `${operation}: Some transactions require currency conversion` });
+    }
     const nullable = structuredClone(normal);
     if (sdk.includes("balances")) nullable.balances = balances("missing");
     if (sdk.includes("goals")) nullable.goals = [goal(null)];

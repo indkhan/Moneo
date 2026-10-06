@@ -201,3 +201,26 @@ it("exercises resolver-shaped current, stale, ambiguous and missing balances", (
   expect(new Set(rows.map(row => row.balance.status))).toEqual(new Set(["current", "missing", "stale", "ambiguous"]));
   expect(rows.every(row => "estimated_amount_minor" in row.balance && Array.isArray(row.balance.warnings))).toBe(true);
 });
+
+
+it("rejects present spending and cashflow evidence whose metrics are unavailable", async () => {
+  for (const operation of ["spending", "cashflow"]) {
+    const source = `(input) => { const evidence = input.snapshot.${operation}; return evidence ? {summary: evidence.spendingMinor.toString()} : {unavailable: input.snapshot.unavailable || "No evidence"}; }`;
+    expect(await validateGeneratedCandidate({ kind: "custom_report", source, manifest: { kind: "custom_report", runtime: "quickjs-calculator-v1", sdk: [operation], params: {} } }), operation).toMatchObject({ok: false});
+  }
+});
+
+it("includes nested unavailable periods while retaining successful sibling evidence in every SDK subset", () => {
+  const operations = ["spending", "cashflow", "balances", "goals", "forecast"];
+  for (let mask = 1; mask < 32; mask++) {
+    const sdk = operations.filter((_, index) => mask & (1 << index));
+    const fixtures = fixturesForKind("custom_report", sdk);
+    for (const operation of sdk.filter(op => op === "spending" || op === "cashflow")) {
+      const snapshot = fixtures.map(f => f.snapshot as Record<string, unknown>).find(s => (s[operation] as {unavailable?: string})?.unavailable === "Some transactions require currency conversion");
+      expect(snapshot, sdk.join(",") + ":" + operation).toBeDefined();
+      expect(snapshot?.[operation]).toEqual({currency: "EUR", unavailable: "Some transactions require currency conversion"});
+      expect(snapshot?.unavailable).toBe(`${operation}: Some transactions require currency conversion`);
+      for (const sibling of sdk.filter(op => op !== operation)) expect(snapshot?.[sibling]).toEqual((fixtures[0].snapshot as Record<string, unknown>)[sibling]);
+    }
+  }
+});
