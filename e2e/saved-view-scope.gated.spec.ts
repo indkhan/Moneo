@@ -68,6 +68,13 @@ test("saved transaction view preserves tag and event scope across save, reopen, 
       (${legacyView},${workspace.id},'QA legacy scope',${db.json({ status: "posted" })})`;
     await page.goto(`/money/transactions?view=${invalidView}`);
     await expect(page.getByText("Saved view has an invalid tag filter", { exact: false })).toBeVisible();
+    await expect(page.getByRole("table")).toHaveCount(0);
+    await expect(page.getByText(/shown/, { exact: false })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Use current filters" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Save view", exact: true })).toHaveCount(0);
+    await page.getByRole("link", { name: "Back to normal filters" }).click();
+    await page.waitForURL("http://localhost:3000/money/transactions");
+    await expect(page.getByText("4 shown", { exact: true })).toBeVisible();
     await page.goto(`/money/transactions?view=${legacyView}`);
     await expect(page.getByText("Saved view has an invalid tag filter", { exact: false })).toHaveCount(0);
     await expect(page.getByText("4 shown", { exact: true })).toBeVisible();

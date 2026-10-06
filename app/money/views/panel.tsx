@@ -16,11 +16,16 @@ export function SavedViewsPanel({
   activeViewId,
   activeViewName,
   saveDefaults,
+  disableSave,
 }: {
   views: SavedViewRow[];
   activeViewId: string | null;
   activeViewName: string | null;
   saveDefaults: SaveInput;
+  /** Hides the save/update-filter forms when the open view's scope is
+   * invalid, so a broken scope can never be re-saved broader. The view
+   * list with rename/delete stays available. */
+  disableSave?: boolean;
 }) {
   return (
     <section aria-label="Saved views" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -49,11 +54,13 @@ export function SavedViewsPanel({
                   Delete
                 </button>
               </form>
+              {!disableSave ? (
               <form action={updateTransactionViewFilters}>
                 <input type="hidden" name="viewId" value={view.id} /><input type="hidden" name="version" value={view.version} /><input type="hidden" name="requestId" value={randomUUID()} />
                 {Object.entries(saveDefaults).map(([name, value]) => value !== undefined ? <input key={name} type="hidden" name={name} value={value} /> : null)}
                 <button aria-label={`Update filters for saved view ${view.name}`}>Use current filters</button>
               </form>
+              ) : null}
               <form action={renameTransactionView} className="flex gap-2">
                 <input type="hidden" name="viewId" value={view.id} /><input type="hidden" name="version" value={view.version} /><input type="hidden" name="requestId" value={randomUUID()} />
                 <input name="name" defaultValue={view.name} aria-label={`Rename saved view ${view.name}`} maxLength={80} required className="max-w-40 rounded border p-1" />
@@ -65,6 +72,7 @@ export function SavedViewsPanel({
       ) : (
         <p className="mt-2 text-sm text-muted-foreground">No saved views yet.</p>
       )}
+      {!disableSave ? (
       <form action={saveTransactionView} className="mt-4 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-4">
         <label className="block text-sm">
           Save current filters as
@@ -107,6 +115,7 @@ export function SavedViewsPanel({
         {saveDefaults.sort !== undefined ? <input type="hidden" name="sort" value={saveDefaults.sort} /> : null}
         <button className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium hover:bg-slate-50">Save view</button>
       </form>
+      ) : null}
       <p className="mt-2 text-xs text-muted-foreground">
         Saved-view links contain only an opaque id; search terms and account ids stay server-side.
         {" "}<Link className="underline" href="/money/accounts">View edit history and undo</Link>

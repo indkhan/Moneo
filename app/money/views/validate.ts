@@ -208,14 +208,14 @@ export function buildSavedFilters(input: SaveInput): SavedViewFilters {
  */
 export function invalidStoredViewScope(raw: unknown): string | null {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return "Saved view filters are invalid. Use current filters to repair this view, or delete it.";
+    return "Saved view filters are invalid, so its results are hidden. Repair or delete this view.";
   }
   const input = raw as Record<string, unknown>;
   if ("tag" in input && normalizeTag(input.tag) === undefined) {
-    return "Saved view has an invalid tag filter. Use current filters to repair this view, or delete it.";
+    return "Saved view has an invalid tag filter (1–40 characters), so its results are hidden. Repair or delete this view.";
   }
   if ("eventName" in input && normalizeEventName(input.eventName) === undefined) {
-    return "Saved view has an invalid spending-group filter. Use current filters to repair this view, or delete it.";
+    return "Saved view has an invalid spending-group filter (1–120 characters), so its results are hidden. Repair or delete this view.";
   }
   return null;
 }
