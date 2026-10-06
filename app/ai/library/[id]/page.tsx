@@ -9,6 +9,7 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { pinArtifact, renameArtifact, saveTripState, unpinArtifact } from "../actions";
 import { SpendingChart } from "../spending-chart";
+import { ForecastEvidence } from "../forecast-evidence";
 import { CalculatorPanel } from "../calculator-panel";
 import { GenerateCalculatorForm } from "../generate-calculator-form";
 import { VersionEditor } from "../version-editor";
@@ -154,9 +155,11 @@ async function TripPlanner({ id, costMinor }: { id: string; costMinor: bigint })
     <p className="mt-3 text-sm text-muted-foreground">Hypothetical one-time cost on {data.tripDate}; no goal or account is changed.</p>
     {data.unavailable && <p className="mt-4">{data.unavailable}</p>}
     <div className="mt-5 grid gap-3 sm:grid-cols-2">
-      <div className="rounded-xl border border-border bg-card p-5 shadow-sm"><h3>Available to spend now</h3><p className="mt-2 text-xl">{data.baseline.status === "available" ? money(data.baseline.amountMinor, data.currency) : "Unavailable"}</p></div>
-      <div className="rounded-xl border border-border bg-card p-5 shadow-sm"><h3>With trip cost</h3><p className="mt-2 text-xl">{data.withTrip?.status === "available" ? money(data.withTrip.amountMinor, data.currency) : "Unavailable"}</p></div>
+      <div className="rounded-xl border border-border bg-card p-5 shadow-sm"><h3>Chosen-account headroom</h3><p className="mt-2 text-xl">{data.baseline.status === "available" ? money(data.baseline.amountMinor, data.currency) : "Unavailable"}</p></div>
+      <div className="rounded-xl border border-border bg-card p-5 shadow-sm"><h3>With dated trip cost</h3><p className="mt-2 text-xl">{data.withTrip?.status === "available" ? money(data.withTrip.amountMinor, data.currency) : "Unavailable"}</p></div>
     </div>
+    <ForecastEvidence evidence={data} />
+    {data.tripLiquidity && <div className="mt-4"><h3 className="font-semibold">Dated trip evidence</h3><ForecastEvidence evidence={{ accountId: data.accountId, liquidity: data.tripLiquidity }} /></div>}
   </section>;
 }
 
@@ -196,6 +199,6 @@ async function GoalTracker({ id, scenarioGoalId, extra }: { id: string; scenario
         {projected !== null && <p className="mt-2 text-sm">Illustrative amount at target date: {money(projected, goal.currency_code)}</p>}
       </article>;
     })}</div>
-    <p className="mt-4 text-xs text-muted-foreground">Reservations are virtual. Different account currencies require conversion before totals can be compared.</p>
+    <p className="mt-4 text-xs text-muted-foreground">Reservations are virtual. Different account currencies require conversion before totals can be compared. Illustrative saving pace is not an affordability result. Review <Link href="/plan" className="text-brand underline">dated account headroom and protections</Link> before committing contributions; funding from another account must be explicit and dated.</p>
   </section>;
 }

@@ -23,7 +23,7 @@ test("Settings customizes Home and remembers hidden and reordered widgets", asyn
   await page.reload();
   await expect(page.getByRole("region", { name: "Overview", exact: true })).toHaveCount(0);
   const headings = await page.getByRole("heading", { level: 2 }).allTextContents();
-  expect(headings.indexOf("Accounts")).toBeLessThan(headings.indexOf("Available to spend"));
+  expect(headings.indexOf("Accounts")).toBeLessThan(headings.indexOf("Aggregate headroom"));
   await page.goto("/settings");
   await page.getByText("Customize Home", { exact: true }).click();
   await form.getByRole("checkbox", { name: "Net worth and ledger", exact: true }).check();

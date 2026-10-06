@@ -92,7 +92,8 @@ it("protects the buffer once and adds only the explicitly estimated variable spe
     const result = await evaluatePlan(2);
     expect(result.forecast).toMatchObject({ status: "available", days: [{ expectedMinor: 9000n, conservativeMinor: 8900n }, { expectedMinor: 8000n, conservativeMinor: 7800n }] });
     expect(result.available).toMatchObject({ status: "available", amountMinor: 7300n, limitingDate: "2026-10-02" });
-    expect(result.input.accounts.reduce((sum, account) => sum + (account.safetyBufferMinor ?? 0n), 0n)).toBe(500n);
+    expect(result.input.workspaceBufferMinor).toBe(500n);
+    expect(result.input.accounts.every(account => !account.safetyBufferMinor)).toBe(true);
     fixture.preferences.currency_code = "USD";
     expect((await evaluatePlan(2)).available.status).toBe("unavailable");
   } finally { fixture.preferences = null; fixture.asOf = "2026-09-28T12:00:00Z"; }

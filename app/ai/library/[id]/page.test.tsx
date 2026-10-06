@@ -48,3 +48,41 @@ it("never reuses an uncontrolled rename value with a refreshed expected revision
   const form = typeof element.type === "function" ? (element.type as (props: unknown) => ReactElement)(element.props) : element;
   expect(form.key).toBe("version");
 });
+
+import React, { cloneElement, isValidElement, type ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { tripForArtifact, goalsForArtifact } from "@/lib/artifacts/finance-sdk";
+import { accountLiquidity, serializeAccountLiquidity } from "@/lib/finance/calculations";
+vi.mock("next/link", () => ({ default: "a" }));
+async function resolveNative(node: ReactNode): Promise<ReactNode> {
+  if (Array.isArray(node)) return Promise.all(React.Children.toArray(node).map(resolveNative));
+  if (!isValidElement(node)) return node;
+  const element = node as ReactElement<{ children?: ReactNode }>;
+  if (typeof element.type === "function") return resolveNative(await (element.type as (props: unknown) => ReactNode)(element.props));
+  const children = await resolveNative(element.props.children);
+  return cloneElement(element, {}, ...(Array.isArray(children) ? React.Children.toArray(children) : [children]));
+}
+async function native(kind: "trip_planner" | "goal_tracker") {
+  const from = (table: string) => {
+    const data = table === "artifacts" ? { kind, name: "Synthetic builtin", active_version_id: "version" } : table === "artifact_state" ? { state: { costMinor: 10000 } } : table === "artifact_versions" ? { version: 1, source: "input => ({ready:true})", manifest: { kind, runtime: "trusted" } } : null;
+    const query = { select: () => query, eq: () => query, order: () => query, single: async () => ({ data }), maybeSingle: async () => ({ data }), limit: async () => ({ data: [] }) }; return query;
+  };
+  vi.mocked(requireWorkspace).mockResolvedValue({ supabase: { from }, workspace: { id: "workspace", display_currency: "EUR" } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  return renderToStaticMarkup(await resolveNative(await ArtifactPage({ params: Promise.resolve({ id: "synthetic" }), searchParams: Promise.resolve({}) })));
+}
+it("trusted builtin trip renders chosen-account and dated scenario evidence without a calculator", async () => {
+  const input = { startDate: "2026-10-07", horizonDays: 30, currencyCode: "EUR", accounts: [{ id: "checking", currencyCode: "EUR", balanceMinor: 10000n }, { id: "savings", currencyCode: "EUR", balanceMinor: 100000n }], events: [{ date: "2026-10-08", accountId: "checking", expectedMinor: -50000n, name: "Tomorrow bill" }] };
+  const liquidity = accountLiquidity(input), tripLiquidity = accountLiquidity({ ...input, scenarioEvents: [{ date: "2026-10-14", accountId: "checking", expectedMinor: -10000n, name: "Trip" }] });
+  if (liquidity.status !== "available" || tripLiquidity.status !== "available") throw new Error("Expected available");
+  vi.mocked(tripForArtifact).mockResolvedValue({ currency: "EUR", tripDate: "2026-10-14", accountId: "checking", liquidity: serializeAccountLiquidity(liquidity), tripLiquidity: serializeAccountLiquidity(tripLiquidity), baseline: { status: "available", ...liquidity.accounts[0] }, withTrip: { status: "available", ...tripLiquidity.accounts[0] }, unavailable: null });
+  const html = await native("trip_planner");
+  expect(html).toContain("Chosen-account headroom"); expect(html).toContain("Aggregate headroom: EUR 600.00");
+  expect(html).toContain("checking funding shortfall: EUR 400.00"); expect(html).toContain("2026-10-08"); expect(html).toContain("Tomorrow bill");
+  expect(html).toContain("Dated trip evidence"); expect(html).toContain("checking funding shortfall: EUR 500.00"); expect(html).toContain("2026-10-14");
+  expect(html).toContain("No automatic funding"); expect(html).not.toContain("Available to spend now"); expect(html).not.toContain("Generated calculator");
+});
+it("trusted goal illustration does not establish paying-account affordability", async () => {
+  vi.mocked(goalsForArtifact).mockResolvedValue({ currency: "EUR", timezone: "UTC", balances: [], allocations: [], goals: [] });
+  const html = await native("goal_tracker");
+  expect(html).toContain("Illustrative saving pace is not an affordability result"); expect(html).toContain("dated account headroom and protections");
+});

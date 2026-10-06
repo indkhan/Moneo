@@ -28,7 +28,7 @@ export function snapshotFixtures(kind: ArtifactKind, sdk: string[]): CalculatorI
   if (kind.startsWith("custom_")) {
     const operations = [...new Set(sdk)];
     const normal: Record<string, unknown> = { currency: operations.length ? "EUR" : "" };
-    for (const operation of operations) normal[operation] = operation === "balances" ? balances() : operation === "goals" ? [goal()] : operation === "forecast" ? { currency: "EUR", baselineAvailableMinor: "150000", unavailable: null, tripDate: "2026-10-03" } : spending();
+    for (const operation of operations) normal[operation] = operation === "balances" ? balances() : operation === "goals" ? [goal()] : operation === "forecast" ? { currency: "EUR", baselineAvailableMinor: "150000", evaluatedCostMinor: "90000", withTripAvailableMinor: "60000", unavailable: null, tripDate: "2026-10-03" } : spending();
     if (sdk.includes("balances") || sdk.includes("goals")) normal.coverage = {
       ...(sdk.includes("balances") ? { balances: evidenceCoverage(1, "balances") } : {}),
       ...(sdk.includes("goals") ? { goals: evidenceCoverage(1, "goals") } : {}),
@@ -67,7 +67,7 @@ export function snapshotFixtures(kind: ArtifactKind, sdk: string[]): CalculatorI
     const huge = structuredClone(normal);
     for (const op of operations.filter(op => op === "spending" || op === "cashflow")) huge[op] = spending("EUR", "9007199254740993");
     if (sdk.includes("balances")) huge.balances = balances("current", "EUR", "9007199254740993");
-    if (sdk.includes("forecast")) huge.forecast = { currency: "EUR", baselineAvailableMinor: "9007199254740993", unavailable: null, tripDate: "2026-10-03" };
+    if (sdk.includes("forecast")) huge.forecast = { currency: "EUR", baselineAvailableMinor: "9007199254740993", evaluatedCostMinor: "0", withTripAvailableMinor: "9007199254740993", unavailable: null, tripDate: "2026-10-03" };
     add(huge);
     const capped = structuredClone(normal);
     if (sdk.includes("balances")) capped.balances = Array.from({ length: SNAPSHOT_LIMITS.balances }, (_, i) => ({ ...balances()[0], id: `a${i}` }));
@@ -96,8 +96,8 @@ export function snapshotFixtures(kind: ArtifactKind, sdk: string[]): CalculatorI
     { snapshot: spending("USD", "9007199254740993", true), params: {} },
   ];
   if (kind === "trip_planner") return [
-    { snapshot: { currency: "EUR", baselineAvailableMinor: "150000", unavailable: null, tripDate: "2026-10-03" }, params: { costMinor: 90000 } },
-    { snapshot: { currency: "EUR", baselineAvailableMinor: "0", unavailable: null, tripDate: "2026-10-03" }, params: { costMinor: 0 } },
+    { snapshot: { currency: "EUR", baselineAvailableMinor: "150000", evaluatedCostMinor: "90000", withTripAvailableMinor: "60000", unavailable: null, tripDate: "2026-10-03" }, params: { costMinor: 90000 } },
+    { snapshot: { currency: "EUR", baselineAvailableMinor: "0", evaluatedCostMinor: "0", withTripAvailableMinor: "0", unavailable: null, tripDate: "2026-10-03" }, params: { costMinor: 0 } },
     { snapshot: { currency: "EUR", baselineAvailableMinor: null, unavailable: "A dated balance in the display currency is required", tripDate: "2026-10-03" }, params: { costMinor: 90000 } },
   ];
   return [

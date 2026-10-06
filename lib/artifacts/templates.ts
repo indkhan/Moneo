@@ -44,12 +44,13 @@ export const FALLBACK_CALCULATORS: Record<ArtifactKind, { source: string; manife
   const s = input && input.snapshot ? input.snapshot : {};
   if (s.unavailable || s.baselineAvailableMinor === null || s.baselineAvailableMinor === undefined)
     return { unavailable: s.unavailable || "A dated balance in the display currency is required" };
-  const base = BigInt(s.baselineAvailableMinor || "0");
-  const cost = BigInt(input && input.params ? input.params.costMinor : 0);
-  const rest = base - cost;
+  const cost = String(input && input.params ? input.params.costMinor : 0);
+  if (cost !== s.evaluatedCostMinor || s.withTripAvailableMinor === null || s.withTripAvailableMinor === undefined)
+    return { unavailable: "Save inputs to load the host's dated trip scenario for this cost." };
+  const rest = s.withTripAvailableMinor;
   return {
-    summary: "Remaining after trip: " + String(rest) + " minor units.",
-    numbers: { baselineMinor: s.baselineAvailableMinor, costMinor: String(cost), remainingMinor: String(rest) }
+    summary: "Chosen-account headroom after dated trip: " + String(rest) + " minor units.",
+    numbers: { baselineMinor: s.baselineAvailableMinor, costMinor: String(cost), remainingMinor: rest }
   };
 }`,
     manifest: {
@@ -73,7 +74,7 @@ export const FALLBACK_CALCULATORS: Record<ArtifactKind, { source: string; manife
     const months = remaining !== null && extra > 0n ? String((remaining + extra - 1n) / extra) : null;
     return { id: g.id, name: g.name, savedMinor: g.savedMinor, savedAsOf: g.savedAsOf, reservedMinor: g.reservedMinor, remainingMinor: g.remainingMinor, monthsAtExtraPace: months };
   });
-  return { summary: rows.length + " goal(s) at illustrative pace.", warning: "Recorded dated savings are separate from virtual reservations. Unknown savings leave pace unavailable.", rows, numbers: { extraMonthlyMinor: String(extra) } };
+  return { summary: rows.length + " goal(s) at illustrative pace.", warning: "Recorded dated savings are separate from virtual reservations. Unknown savings leave pace unavailable. Illustrative pace does not establish paying-account affordability; review dated account headroom in Plan.", rows, numbers: { extraMonthlyMinor: String(extra) } };
 }`,
     manifest: {
       kind: "goal_tracker",
