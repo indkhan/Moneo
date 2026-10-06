@@ -3,9 +3,28 @@ import { calendarDate } from "./calendar";
 
 export type BalanceAccount = { id: string; name: string; currency_code: string; type?: string; archived_at?: string | null };
 export type BalanceSnapshot = { id?: string; account_id: string; amount_minor: string | number; currency_code: string; as_of: string; provenance: string;
-  boundary_kind?: string; source_transaction_id?: string | null };
+  boundary_kind?: string; source_transaction_id?: string | null; covered_transactions?: CoveredTransaction[] | null;
+  actor_id?: string | null; undone_at?: string | null; version?: number; created_at?: string };
 export type BalanceTransaction = { id: string; account_id: string; amount_minor: string | number; currency_code: string; posted_on: string; status: string;
-  posted_at?: string | null; source_transaction_ids?: string[] };
+  posted_at?: string | null; source_transaction_ids?: string[]; version?: number; description?: string };
+export type CoveredTransaction = { id: string; version: number; amount_minor: string; currency_code: string; posted_on: string; posted_at: string | null };
+
+// A review records financial fields and canonical identity, never ingestion order.
+export function coveredTransaction(row: BalanceTransaction): CoveredTransaction {
+  return { id: row.id, version: row.version ?? 0, amount_minor: exactMinor(row.amount_minor).toString(),
+    currency_code: row.currency_code, posted_on: row.posted_on, posted_at: row.posted_at ? new Date(row.posted_at).toISOString() : null };
+}
+export function balanceReviewRows(ledger: BalanceTransaction[], accountId: string, asOf: string, timeZone: string) {
+  const today = calendarDate(asOf, timeZone);
+  return ledger.filter(row => row.account_id === accountId && row.status === "posted" && exactMinor(row.amount_minor) !== 0n &&
+    (row.posted_at ? calendarDate(row.posted_at, timeZone) === today && Date.parse(row.posted_at) <= Date.parse(asOf) : row.posted_on === today))
+    .map(coveredTransaction).sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function boundaryEvidence(snapshot: BalanceSnapshot) {
+  return JSON.stringify([snapshot.boundary_kind ?? "date_only", snapshot.source_transaction_id ?? null,
+    [...(snapshot.covered_transactions ?? [])].map(row => coveredTransaction({ ...row, account_id: snapshot.account_id, status: "posted" })).sort((a, b) => a.id.localeCompare(b.id))]);
+}
 
 function exactMinor(value: string | number): bigint {
   if (typeof value === "number" && !Number.isSafeInteger(value)) throw new Error("Unsafe numeric balance evidence");
@@ -15,7 +34,7 @@ function exactMinor(value: string | number): bigint {
 export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapshots: BalanceSnapshot[], ledger: BalanceTransaction[], asOf = new Date().toISOString(), timeZone = "Europe/Berlin") {
   const today = calendarDate(asOf, timeZone);
   return accounts.map(account => {
-    const candidates = snapshots.filter(snapshot => snapshot.account_id === account.id && Number.isFinite(Date.parse(snapshot.as_of)) && Date.parse(snapshot.as_of) <= Date.parse(asOf))
+    const candidates = snapshots.filter(snapshot => snapshot.account_id === account.id && !snapshot.undone_at && Number.isFinite(Date.parse(snapshot.as_of)) && Date.parse(snapshot.as_of) <= Date.parse(asOf))
       .sort((a, b) => Date.parse(b.as_of) - Date.parse(a.as_of));
     const snapshot = candidates[0];
     const balance = { amount_minor: null as string | null, snapshot_amount_minor: null as string | null,
@@ -29,18 +48,33 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
       balance.snapshot_amount_minor = amount.toString();
       if (snapshot.currency_code !== account.currency_code) throw new Error("Snapshot currency differs from account currency");
       const ties = candidates.filter(item => Date.parse(item.as_of) === Date.parse(snapshot.as_of));
-      if (ties.some(item => item.currency_code !== snapshot.currency_code || exactMinor(item.amount_minor) !== amount))
+      if (ties.some(item => item.currency_code !== snapshot.currency_code || exactMinor(item.amount_minor) !== amount || boundaryEvidence(item) !== boundaryEvidence(snapshot)))
         throw new Error("Conflicting snapshots have no evidenced financial order");
       const boundaryDate = calendarDate(snapshot.as_of, timeZone);
+      const covered = new Set<string>();
+      if (snapshot.boundary_kind === "reviewed_activity") {
+        if (!Array.isArray(snapshot.covered_transactions)) throw new Error("Reviewed activity evidence is missing");
+        const rowsById = new Map(ledger.filter(row => row.account_id === account.id && row.status === "posted").map(row => [row.id, row]));
+        for (const receipt of snapshot.covered_transactions) {
+          const row = rowsById.get(receipt.id);
+          if (covered.has(receipt.id) || !row || JSON.stringify(coveredTransaction(row)) !== JSON.stringify(coveredTransaction({ ...receipt, account_id: account.id, status: "posted" })) ||
+              row.currency_code !== account.currency_code || (row.posted_at && Date.parse(row.posted_at) > Date.parse(snapshot.as_of)))
+            throw new Error("Reviewed activity changed; review the booked balance again");
+          covered.add(receipt.id);
+        }
+      }
       let estimate = amount;
       for (const row of ledger) {
-        if (row.account_id !== account.id || row.status !== "posted") continue;
+        if (row.account_id !== account.id || row.status !== "posted" || covered.has(row.id)) continue;
         const postingDate = row.posted_at ? calendarDate(row.posted_at, timeZone) : row.posted_on;
         if (postingDate < boundaryDate || postingDate > today ||
             (row.posted_at && Date.parse(row.posted_at) > Date.parse(asOf))) continue;
         const delta = exactMinor(row.amount_minor);
         if (delta === 0n) continue;
-        if (row.posted_at && snapshot.boundary_kind === "after_transaction" && snapshot.source_transaction_id) {
+        if (snapshot.boundary_kind === "reviewed_activity" && postingDate === boundaryDate) {
+          if (!row.posted_at || Date.parse(row.posted_at) <= Date.parse(snapshot.as_of))
+            throw new Error("Same-day activity was not covered by the booked balance review");
+        } else if (row.posted_at && snapshot.boundary_kind === "after_transaction" && snapshot.source_transaction_id) {
           const postingTime = Date.parse(row.posted_at), boundaryTime = Date.parse(snapshot.as_of);
           if (postingTime < boundaryTime) continue;
           if (postingTime === boundaryTime) {
@@ -78,8 +112,8 @@ export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: strin
   }
   const [accounts, snapshots, ledger, fees] = await Promise.all([
     rows<BalanceAccount>("accounts", "id, name, type, currency_code, archived_at"),
-    rows<BalanceSnapshot>("balance_snapshots", "id, account_id, amount_minor::text, currency_code, as_of, provenance, boundary_kind, source_transaction_id"),
-    rows<BalanceTransaction & { transaction_sources?: { source_transaction_id: string }[] }>("transactions", "id, account_id, amount_minor::text, currency_code, posted_on, posted_at, status, transaction_sources(source_transaction_id)"),
+    rows<BalanceSnapshot>("balance_snapshots", "id, account_id, amount_minor::text, currency_code, as_of, provenance, boundary_kind, source_transaction_id, covered_transactions, actor_id, undone_at, version, created_at"),
+    rows<BalanceTransaction & { transaction_sources?: { source_transaction_id: string }[] }>("transactions", "id, account_id, amount_minor::text, currency_code, posted_on, posted_at, status, version, description, transaction_sources(source_transaction_id)"),
     rows<{ transaction_id: string; fee_minor: string; treatment: string; transaction_links: { undone_at: string | null } }>("transaction_link_fees", "id, transaction_id, fee_minor::text, treatment, transaction_links!inner(undone_at)"),
   ]);
   const additionalFees = new Map<string, bigint>();

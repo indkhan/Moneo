@@ -86,9 +86,16 @@ export const balanceSnapshots = pgTable("balance_snapshots", {
   provenance: text("provenance").notNull(),
   boundaryKind: text("boundary_kind").notNull().default("date_only"),
   sourceTransactionId: uuid("source_transaction_id").references((): AnyPgColumn => sourceTransactions.id),
+  coveredTransactions: jsonb("covered_transactions"),
+  actorId: uuid("actor_id").references(() => authUsers.id),
+  commandInput: jsonb("command_input"),
+  version: integer("version").notNull().default(1),
+  undoneAt: timestamp("undone_at", { withTimezone: true }),
+  undoneBy: uuid("undone_by").references(() => authUsers.id),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
-  check("balance_snapshots_boundary_kind_check", sql`${table.boundaryKind} in ('date_only','after_transaction') and (${table.boundaryKind} <> 'after_transaction' or ${table.sourceTransactionId} is not null)`),
+  check("balance_snapshots_boundary_kind_check", sql`${table.boundaryKind} in ('date_only','after_transaction','reviewed_activity') and (${table.boundaryKind} <> 'after_transaction' or ${table.sourceTransactionId} is not null) and (${table.boundaryKind} <> 'reviewed_activity' or (${table.coveredTransactions} is not null and jsonb_typeof(${table.coveredTransactions}) = 'array' and ${table.actorId} is not null))`),
+  check("balance_snapshots_version_check", sql`${table.version} > 0`),
 ]);
 
 export const dataSources = pgTable("data_sources", {
