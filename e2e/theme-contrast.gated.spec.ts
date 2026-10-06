@@ -11,9 +11,9 @@ import postgres from "postgres";
 // the browser canvas resolve every color, so the same assertions fail on the
 // old hard-coded slate-on-remapped-card pairs and pass on the shared semantic
 // foreground/background/border tokens. Selectors use roles/text, not class
-// names, so they survive the token swap. Plan is intentionally omitted:
-// /plan is unrunnable until the MNE-003 covered_transactions deployment lands
-// (that route belongs to MNE005). Reported as unverified in .qa/mne044-report.md.
+// names, so they survive the token swap. Plan is covered read-only
+// (that route belongs to MNE005): heading, subtitle and the deterministic
+// "Forecast unavailable" state in light and dark.
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires real disposable Supabase authentication");
 
 type RGB = [number, number, number];
@@ -67,6 +67,18 @@ async function expectReadable(page: Page, target: Locator, label: string) {
   const value = ratio(fg, bg);
   const theme = await page.locator("html").getAttribute("data-theme");
   expect(value, `${label} [theme=${theme}]: rgb(${fg.map(Math.round)}) on rgb(${bg.map(Math.round)}) = ${value.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+}
+
+// Saving settings settles the server action (auth + RPC + layout
+// revalidation) in ~1-3s locally but varies past 5s under load, while the
+// Save button leaving pending is the exact settled signal. Waiting on it
+// (bounded) instead of racing the default 5s status timeout keeps a stuck
+// action a loud failure instead of a flake.
+async function expectSaved(target: Page, theme: string) {
+  await target.getByRole("button", { name: "Save preferences", exact: true }).click();
+  await expect(target.getByRole("button", { name: "Save preferences", exact: true })).toBeEnabled({ timeout: 20_000 });
+  await expect(target.getByRole("status")).toContainText("Preferences saved");
+  await expect(target.locator("html")).toHaveAttribute("data-theme", theme);
 }
 
 test("money and import text stays readable in persisted light, dark and system themes", async ({ browser, baseURL }) => {
@@ -143,8 +155,7 @@ test("money and import text stays readable in persisted light, dark and system t
     const appearance = page.getByRole("combobox", { name: "Appearance", exact: true });
     const originalTheme = await appearance.inputValue();
     await appearance.selectOption("dark");
-    await page.getByRole("button", { name: "Save preferences", exact: true }).click();
-    await expect(page.getByRole("status")).toContainText("Preferences saved");
+    await expectSaved(page, "dark");
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await expectMoneyReadable("dark");
@@ -157,8 +168,7 @@ test("money and import text stays readable in persisted light, dark and system t
     await page.screenshot({ path: ".qa/mne044-transactions-dark.png", fullPage: true });
     await page.goto("/settings");
     await page.getByRole("combobox", { name: "Appearance", exact: true }).selectOption(originalTheme);
-    await page.getByRole("button", { name: "Save preferences", exact: true }).click();
-    await expect(page.getByRole("status")).toContainText("Preferences saved");
+    await expectSaved(page, originalTheme === "dark" ? "dark" : "light");
     await page.close();
 
     const systemContext = await browser.newContext({ baseURL, colorScheme: "dark" });
@@ -167,8 +177,7 @@ test("money and import text stays readable in persisted light, dark and system t
       const system = await systemContext.newPage();
       await system.goto("/settings");
       await system.getByRole("combobox", { name: "Appearance", exact: true }).selectOption("system");
-      await system.getByRole("button", { name: "Save preferences", exact: true }).click();
-      await expect(system.getByRole("status")).toContainText("Preferences saved");
+      await expectSaved(system, "dark");
       await system.goto("/money/transactions");
       await expect(system.locator("html")).toHaveAttribute("data-theme", "dark");
       await expectReadable(system, system.getByRole("link", { name: outDesc }), "system-dark description");
