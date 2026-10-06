@@ -15,6 +15,14 @@ const mapping = {
 };
 
 describe("financial import parsing", () => {
+  it("rejects an entire NUL-containing source before correction or exclusion can hide incompatible evidence", () => {
+    const rows = [{ Date: "01/09/2026", Description: "Valid neighbor", Amount: "1" }, { Date: "02/09/2026", Description: "A\0B", Amount: "2" }];
+    for (const rowDecisions of [undefined, [{ rowNumber: 3, action: "correct", values: { Description: "Corrected" } }], [{ rowNumber: 3, action: "exclude", reason: "Unsupported evidence" }]]) {
+      expect(() => validateImportConfirmation(rows, { ...mapping, rowDecisions })).toThrow("NUL");
+    }
+    expect(() => parseCsv("Date,Description,Amount\n2026-09-01,Valid,1\n2026-09-02,A\0B,2")).toThrow("NUL");
+    expect(() => validateImportConfirmation([{ Date: "01/09/2026", Description: "Valid", Amount: "1", "Source\0Key": "Original" }], mapping)).toThrow("NUL");
+  });
   it("quarantines row-local CSV field-count errors while preserving valid neighbors and extra cells", () => {
     const input = { ...mapping, dateFormat: "iso" };
     for (const malformed of ["2026-09-02,Missing amount", "2026-09-02,Extra cell,2,unmapped evidence"]) {

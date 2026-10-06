@@ -12,6 +12,14 @@ export type SourceRow = Record<string, string>;
 const csvIssueColumn = "__moneo_csv_issue";
 const csvExtraColumn = "__moneo_csv_extra_cells";
 
+function assertStorageCompatible(value: unknown): void {
+  if (typeof value === "string" && value.includes("\0")) throw new Error("Source or reviewed mapping contains NUL characters that PostgreSQL cannot preserve");
+  if (value && typeof value === "object") for (const [key, item] of Object.entries(value)) {
+    assertStorageCompatible(key);
+    assertStorageCompatible(item);
+  }
+}
+
 export const mappingSchema = z.object({
   accountName: z.string().trim().min(1).refine(value => Array.from(value).length <= 100, "Account name exceeds 100 characters"),
   currencyCode: z.string().regex(/^[A-Z]{3}$/),
@@ -88,6 +96,7 @@ export function proposeStatementTimezones(rows: SourceRow[], mapping: ImportMapp
 }
 
 export function parseCsv(text: string): SourceRow[] {
+  assertStorageCompatible(text);
   const result = Papa.parse<SourceRow>(text.replace(/^\uFEFF/, ""), {
     header: true,
     skipEmptyLines: "greedy",
@@ -130,11 +139,15 @@ export async function parseExcel(file: ArrayBuffer): Promise<SourceRow[]> {
     if (rowNumber === 1 || !row.hasValues) return;
     rows.push(Object.fromEntries(headers.map((header, i) => [header, cellText(row.getCell(i + 1))])));
   });
+  assertStorageCompatible(rows);
   return rows;
 }
 
 export function validateMapping(input: unknown, rows: SourceRow[]): ImportMapping {
   const mapping = mappingSchema.parse(input);
+  // Exclusions and corrections never rewrite incompatible original evidence.
+  assertStorageCompatible(rows);
+  assertStorageCompatible(mapping);
   if (!rows.length) throw new Error("File has no data rows");
   const headers = Object.keys(rows[0]).filter(header => !header.startsWith("__moneo_csv_"));
   const decisions = new Set<number>();

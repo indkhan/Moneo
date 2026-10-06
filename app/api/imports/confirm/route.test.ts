@@ -82,6 +82,19 @@ it("rejects worker-incompatible descriptions without launching or creating an im
   expect(start).not.toHaveBeenCalled();
 });
 
+it("rejects NUL source evidence before effects even when corrected or excluded", async () => {
+  for (const decision of [{ rowNumber: 3, action: "correct", values: { Description: "Corrected" } }, { rowNumber: 3, action: "exclude", reason: "Incompatible evidence" }]) {
+    const form = await request().formData();
+    form.set("file", new File(["Date,Description,Amount\n2026-10-01,Valid neighbor,1\n2026-10-02,A\0B,2"], "synthetic.csv"));
+    form.set("mapping", JSON.stringify({ ...JSON.parse(String(form.get("mapping"))), rowDecisions: [decision] }));
+    const response = await POST(new Request("http://localhost/api/imports/confirm", { method: "POST", body: form }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining("NUL") });
+    expect(fixture.inserts).toHaveLength(0);
+    expect(start).not.toHaveBeenCalled();
+  }
+});
+
 it("persists reviewed correction/exclusion decisions while retaining the full source row count", async () => {
   const form = await request().formData();
   form.set("file", new File(["Date,Description,Amount\n2026-10-01,First,1\nbad,Second,2\n,Footer,3"], "synthetic.csv"));
