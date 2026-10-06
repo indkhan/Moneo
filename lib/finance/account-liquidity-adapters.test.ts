@@ -58,3 +58,10 @@ it("AI, artifact SDK and snapshot cap chosen-account spending by workspace prote
     expect((await buildCalculatorSnapshot("synthetic", "trip_planner", { costMinor: 100n, accountId: "savings" })).snapshot).toMatchObject({ baselineAvailableMinor: "50000", liquidity: expected });
   } finally { fixture.input.workspaceBufferMinor = 0n; }
 });
+
+it("artifact SDK uses the same explicit paired funding dates as AI", async () => {
+  const funding = { date: "2026-10-08", currencyCode: "EUR", fromAccountId: "savings", toAccountId: "checking", amountMinor: 40000n };
+  expect(await tripForArtifact("synthetic", 0n, "checking", [funding])).toMatchObject({ baseline: { amountMinor: 0n } });
+  expect(await tripForArtifact("synthetic", 0n, "checking", [{ ...funding, date: "2026-10-09" }])).toMatchObject({ baseline: { amountMinor: -40000n, limitingDate: "2026-10-08" } });
+  expect(fixture.input.events).toHaveLength(1);
+});

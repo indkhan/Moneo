@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
+import { FALLBACK_CALCULATORS } from "../lib/artifacts/templates";
 
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires disposable synthetic auth and reviewed migration head");
 test("Home and Plan retain paying-account gaps, timely funding, donor protections and recurring bills", async ({ browser }, testInfo) => {
@@ -92,12 +93,39 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
       await expect(forecast.getByRole("heading", { name: /Chosen-account headroom/ }).locator("..")).toContainText("EUR 900.00");
     }
     await page.screenshot({ path: testInfo.outputPath("plan-workspace-buffer.png"), fullPage: true });
+    // Standalone validated deterministic fallback, no generation provider or 006 RPC.
+    await db`update public.workspace_settings set ai_data_scopes=ARRAY['accounts','transactions','planning']::text[] where workspace_id=${workspace!}`;
+    await db`update public.forecast_preferences set spending_account_id=${checking}, safety_buffer_minor=0 where workspace_id=${workspace!}`;
+    await db`update public.balance_snapshots set amount_minor=case when account_id=${checking} then 10000 else 100000 end where workspace_id=${workspace!}`;
+    await db`update public.financial_assumptions set removed_at=null where workspace_id=${workspace!}`;
+    const artifact = randomUUID(), version = randomUUID();
+    const fallback = FALLBACK_CALCULATORS.trip_planner;
+    await db`insert into public.artifacts(id,workspace_id,kind,name,permissions) values(${artifact},${workspace!},'trip_planner','Synthetic dated trip QA','["balances","forecast"]'::jsonb)`;
+    await db`insert into public.artifact_versions(id,workspace_id,artifact_id,version,source,manifest,status) values(${version},${workspace!},${artifact},1,${fallback.source},${db.json(JSON.parse(JSON.stringify(fallback.manifest)))},'validated')`;
+    await db`update public.artifacts set active_version_id=${version} where id=${artifact} and workspace_id=${workspace!}`;
+    await db`insert into public.artifact_state(artifact_id,workspace_id,state) values(${artifact},${workspace!},'{"costMinor":10000}'::jsonb)`;
+    await page.goto(`/ai/library/${artifact}`);
+    const calculator = page.getByRole("region", { name: "Generated calculator output" });
+    await expect(calculator).toContainText("Aggregate headroom: EUR 600.00");
+    await expect(calculator).toContainText("Chosen-account headroom"); await expect(calculator).toContainText("-EUR 400.00");
+    await expect(calculator).toContainText("funding shortfall: EUR 400.00"); await expect(calculator).toContainText(tomorrow);
+    await expect(calculator).toContainText("Recurring bill QA"); await expect(calculator).toContainText("No automatic funding");
+    await expect(calculator).toContainText("Chosen-account headroom after dated trip: -50000 minor units.");
+    await page.screenshot({ path: testInfo.outputPath("artifact-dated-checking.png"), fullPage: true });
+    await db`update public.forecast_preferences set spending_account_id=${savings}, safety_buffer_minor=10000 where workspace_id=${workspace!}`;
+    await db`update public.financial_assumptions set removed_at=now() where workspace_id=${workspace!}`;
+    await db`update public.balance_snapshots set amount_minor=case when account_id=${savings} then 100000 else 0 end where workspace_id=${workspace!}`;
+    await page.reload(); await expect(calculator).toContainText("Workspace buffer: EUR 100.00");
+    await expect(calculator).toContainText("Aggregate headroom: EUR 900.00");
+    await expect(calculator).toContainText("Chosen-account headroom after dated trip: 80000 minor units.");
+    await expect(calculator).not.toContainText("funding shortfall:");
     expect(providerCalls).toEqual([]);
   } finally {
     await context.close().catch(() => {});
     try {
       if (workspace) await db.begin(async tx => {
-        for (const table of ["insight_dismissals", "goal_reservation_events", "goal_allocations", "goal_events", "goals", "planning_events", "financial_assumptions", "forecast_preference_events", "forecast_preferences", "balance_snapshots", "accounts"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
+        await tx`update public.artifacts set active_version_id=null where workspace_id=${workspace!}`;
+        for (const table of ["dashboard_items", "artifact_state", "artifact_versions", "artifacts", "insight_dismissals", "goal_reservation_events", "goal_allocations", "goal_events", "goals", "planning_events", "financial_assumptions", "forecast_preference_events", "forecast_preferences", "balance_snapshots", "accounts"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
         await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
       });
       if (user) expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();

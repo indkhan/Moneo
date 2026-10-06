@@ -1,5 +1,5 @@
 import { requireWorkspace } from "@/lib/auth";
-import { accountLiquidity, serializeAccountLiquidity, summarizeCashflow, type CashflowTransaction } from "@/lib/finance/calculations";
+import { accountLiquidity, serializeAccountLiquidity, withInternalFunding, summarizeCashflow, type CashflowTransaction } from "@/lib/finance/calculations";
 import { evaluatePlan } from "@/lib/finance/model";
 import { getBalances } from "@/lib/finance/tools";
 import { calendarDate } from "@/lib/finance/calendar";
@@ -69,7 +69,7 @@ export async function spendingForArtifact(artifactId: string, query: string, per
   return { summary, byAccount, transactions: transactions.filter(row => !row.review_reasons?.length), currency: workspace.display_currency, from, to, timezone: workspace.timezone ?? "Europe/Berlin" };
 }
 
-export async function tripForArtifact(artifactId: string, costMinor: bigint, accountId?: string) {
+export async function tripForArtifact(artifactId: string, costMinor: bigint, accountId?: string, funding: Parameters<typeof withInternalFunding>[1] = []) {
   if (typeof costMinor !== "bigint" || costMinor < 0n) throw new Error("Invalid trip cost");
   const { workspace } = await requirePermission(artifactId, "forecast");
   const baseline = await evaluatePlan(30);
@@ -78,10 +78,11 @@ export async function tripForArtifact(artifactId: string, costMinor: bigint, acc
   const selectedId = accountId ?? baseline.preferences?.spending_account_id ?? (baseline.input.accounts.length === 1 ? baseline.input.accounts[0].id : undefined);
   const account = baseline.input.accounts.find(item => item.id === selectedId);
   if (accountId && !account) throw new Error("Unknown account");
-  const liquidity = accountLiquidity(baseline.input);
+  const input = withInternalFunding(baseline.input, funding);
+  const liquidity = accountLiquidity(input);
   const selected = account && liquidity.status === "available" ? liquidity.accounts.find(item => item.accountId === account.id) : null;
-  const tripLiquidity = account ? accountLiquidity({ ...baseline.input, scenarioEvents: [
-    ...(baseline.input.scenarioEvents ?? []),
+  const tripLiquidity = account ? accountLiquidity({ ...input, scenarioEvents: [
+    ...(input.scenarioEvents ?? []),
     { date: tripDate, accountId: account.id, expectedMinor: -costMinor,
       conservativeMinor: -costMinor, optimisticMinor: -costMinor },
   ] }) : null;
