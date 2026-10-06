@@ -6,6 +6,7 @@ import { runIsolatedArtifact } from "@/lib/artifacts/run";
 import { checkOutputShape } from "@/lib/artifacts/output";
 import { saveCalculatorParams } from "./actions";
 import { calculatorExportText, downloadCalculatorPng, printCalculator } from "@/lib/artifacts/export";
+import { coverageWarnings } from "@/lib/artifacts/coverage";
 import { CalculatorRows } from "./calculator-rows";
 
 const Chart = dynamic(() => import("echarts-for-react"), { ssr: false });
@@ -101,6 +102,7 @@ export function CalculatorPanel({
     <section aria-label="Generated calculator output" className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
       {snapshot !== null && typeof snapshot === "object" && "partial" in snapshot && snapshot.partial === true && <p role="status" className="mb-4 text-sm text-amber-700">Partial financial data: transactions awaiting classification are excluded. Review them in Import before relying on these totals.</p>}
       {snapshot !== null && typeof snapshot === "object" && "unavailable" in snapshot && typeof snapshot.unavailable === "string" && snapshot.unavailable && <p role="alert" className="mb-4 text-sm text-muted-foreground">{snapshot.unavailable}</p>}
+      {coverageWarnings(snapshot).map(warning => <p key={warning} role="status" className="mb-4 text-sm text-amber-700">{warning}</p>)}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Generated calculator · {versionLabel}</h2>
         <div className="flex gap-2 text-sm">
@@ -129,7 +131,7 @@ export function CalculatorPanel({
         </div>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        Illustrative results from dated financial evidence. Exports include inputs and evidence so unknown or partial data stays visible.
+        Illustrative results from dated financial evidence. Validation checks execution and output shape; it does not verify financial claims. Exports include inputs and evidence so unknown or partial data stays visible.
       </p>
 
       {paramEntries.length > 0 && (

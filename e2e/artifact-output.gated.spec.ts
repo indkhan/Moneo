@@ -26,10 +26,11 @@ test("saved calculator months load matching evidence and unsaved changes cannot 
   await expect(page).toHaveURL(/\/ai\/library\/[0-9a-f-]{36}$/);
   const id = new URL(page.url()).pathname.split("/").at(-1)!;
   const response = await page.request.post(`/api/artifacts/${id}/versions`, { data: {
-    source: `(input) => { const c = input.snapshot.cashflow; if (!c || c.unavailable) return { unavailable: "No cashflow" }; const accounts = c.byAccount || []; return { summary: (c.from || "Period") + " to " + (c.to || "end"), numbers: { spendingMinor: c.spendingMinor }, rows: accounts.length ? accounts.map(a => ({ account: a.id, spendingMinor: a.spendingMinor })) : [{ account: "No posted rows", spendingMinor: "0" }] }; }`,
+    source: `(input) => { const c = input.snapshot.cashflow; if (!c || c.unavailable) return { unavailable: "No cashflow" }; const accounts = c.byAccount || []; return { summary: (c.from || "Period") + " to " + (c.to || "end"), numbers: { spendingMinor: c.spendingMinor }, rows: accounts.length ? accounts.slice(0, 50).map(a => ({ account: a.id, spendingMinor: a.spendingMinor })) : [{ account: "No posted rows", spendingMinor: "0" }] }; }`,
     manifest: { kind: "custom_tracker", runtime: "quickjs-calculator-v1", sdk: ["cashflow"], params: { month: { type: "string", default: "2026-09", maxLength: 7 } }, renderer: "trusted" },
   } });
   expect(response.ok(), await response.text()).toBe(true);
+  expect(await response.json()).toMatchObject({ status: "validated", validation: { ok: true } });
   await page.reload();
   const output = page.getByRole("region", { name: "Generated calculator output" });
   await expect(output).toContainText("2026-09-01 to 2026-09-30");
@@ -39,4 +40,28 @@ test("saved calculator months load matching evidence and unsaved changes cannot 
   await expect(output).not.toContainText("2026-09-01 to 2026-09-30");
   await output.getByRole("button", { name: "Save inputs", exact: true }).click();
   await expect(output).toContainText("2026-08-01 to 2026-08-31");
+});
+
+
+test("undeclared SDK reads are failed revisions and preserve the active calculator", async ({ page }) => {
+  await page.goto("/ai/library");
+  const create = page.locator("form").filter({ has: page.getByLabel("Custom Report", { exact: true }) });
+  await create.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page).toHaveURL(/\/ai\/library\/[0-9a-f-]{36}$/);
+  const id = new URL(page.url()).pathname.split("/").at(-1)!;
+  const endpoint = `/api/artifacts/${id}/versions`;
+  const beforeResponse = await page.request.get(endpoint);
+  expect(beforeResponse.ok()).toBe(true);
+  const before = await beforeResponse.json();
+  const response = await page.request.post(endpoint, { data: {
+    source: `(input) => input.snapshot.unavailable ? {unavailable: input.snapshot.unavailable} : {summary: String(input.snapshot.balances.length)}`,
+    manifest: { kind: "custom_report", runtime: "quickjs-calculator-v1", sdk: ["spending"], params: {}, renderer: "trusted" },
+  } });
+  expect(response.ok()).toBe(true);
+  expect(await response.json()).toMatchObject({status: "failed", activeVersionPreserved: before.activeVersionId, validation: {ok: false}});
+  const afterResponse = await page.request.get(endpoint);
+  expect(afterResponse.ok()).toBe(true);
+  const after = await afterResponse.json();
+  expect(after.activeVersionId).toBe(before.activeVersionId);
+  expect(after.versions[0].status).toBe("failed");
 });
