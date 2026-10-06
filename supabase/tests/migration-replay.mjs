@@ -10,7 +10,7 @@ export async function replayMigrations(tx, migrations, path) {
 // Historical pg_get_functiondef bodies retain checkout newlines. Only code
 // whitespace is equivalent; quoted data and the generated header stay exact.
 export function canonicalFunctionDefinition(definition) {
-  const opening = /^[ \t]*AS (\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$)/m.exec(definition);
+  const opening = /^[ \t]*AS (\$(?:[A-Za-z_\u0080-\uffff][A-Za-z_0-9\u0080-\uffff]*)?\$)/m.exec(definition);
   if (!opening || !/\bLANGUAGE (?:sql|plpgsql)\b/.test(definition.slice(0, opening.index))) return definition;
   const start = opening.index + opening[0].length;
   const end = definition.lastIndexOf(opening[1]);
@@ -20,7 +20,7 @@ export function canonicalFunctionDefinition(definition) {
   for (let index = 0; index < body.length;) {
     const from = index, quote = body[index];
     if (quote === "'" || quote === '"') {
-      const escaped = quote === "'" && /[eE]/.test(body[index - 1] ?? "") && !/[\w$]/.test(body[index - 2] ?? "");
+      const escaped = quote === "'" && /[eE]/.test(body[index - 1] ?? "") && !/[\w$\u0080-\uffff]/.test(body[index - 2] ?? "");
       index++;
       while (index < body.length) {
         // Unknown standard_conforming_strings: fail closed on ambiguous quotes.
@@ -43,7 +43,7 @@ export function canonicalFunctionDefinition(definition) {
       }
       normalized += body.slice(from, index).replaceAll("\r\n", "\n");
     } else {
-      const delimiter = !/[\w$]/.test(body[index - 1] ?? "") && /^(\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$)/.exec(body.slice(index));
+      const delimiter = !/[\w$\u0080-\uffff]/.test(body[index - 1] ?? "") && /^(\$(?:[A-Za-z_\u0080-\uffff][A-Za-z_0-9\u0080-\uffff]*)?\$)/.exec(body.slice(index));
       if (delimiter) {
         const closing = body.indexOf(delimiter[1], index + delimiter[1].length);
         if (closing < 0) return definition;

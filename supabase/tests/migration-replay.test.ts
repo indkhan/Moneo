@@ -49,3 +49,12 @@ it("handles SQL bodies and quoted comment markers without interpreting data as c
   expect(canonicalFunctionDefinition(mixed)).toBe(lf);
   expect(canonicalFunctionDefinition(mixed.replace("marker\nvalue", "marker\r\nvalue"))).not.toBe(lf);
 });
+
+it.each(["\u00e9", "\u4e2d\u6587", "tag_\u00e92"])("preserves Unicode dollar tag %s data while normalizing outer code", tag => {
+  const quoted = `$${tag}$line\nvalue$${tag}$`;
+  const lf = definition(`\nbegin\nreturn ${quoted};\nend\n`);
+  const mixed = definition(`\r\nbegin\r\nreturn ${quoted};\r\nend\r\n`);
+  expect(canonicalFunctionDefinition(mixed)).toBe(lf);
+  expect(canonicalFunctionDefinition(mixed.replace("line\nvalue", "line\r\nvalue"))).not.toBe(lf);
+  expect(canonicalFunctionDefinition(mixed.replace("line\nvalue", "line\r\nvalue"))).toContain("line\r\nvalue");
+});
