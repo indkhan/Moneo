@@ -194,4 +194,3 @@ begin
   return jsonb_build_object('eventId',event_id,'allocationId',allocation.id,'version',allocation.version,'undone',false);
 end;
 $$;
-
