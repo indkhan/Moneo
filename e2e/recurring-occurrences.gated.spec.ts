@@ -30,7 +30,7 @@ test("explicit partial/full occurrence association changes the forecast once and
       await tx`insert into public.accounts(id,workspace_id,name,currency_code,type) values(${account},${workspace!},'Occurrence cash QA','EUR','checking')`;
       await tx`insert into public.transactions(id,workspace_id,account_id,posted_on,posted_at,description,amount_minor,currency_code,status,kind) values(${transaction},${workspace!},${account},${today},${now},${label},-4000,'EUR','posted','ordinary')`;
       const covered = [{ id: transaction, version: 0, amount_minor: "-4000", currency_code: "EUR", posted_on: today, posted_at: now }];
-      await tx`insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance,boundary_kind,covered_transactions) values(${workspace!},${account},100000,'EUR',${now},'synthetic reviewed opening','reviewed_activity',${tx.json(covered)})`;
+      await tx`insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance,boundary_kind,covered_transactions,actor_id) values(${workspace!},${account},100000,'EUR',${now},'synthetic reviewed opening','reviewed_activity',${tx.json(covered)},${user!})`;
       await tx`insert into public.financial_assumptions(id,workspace_id,account_id,kind,name,amount_minor,currency_code,cadence,starts_on,ends_on,source,confirmed,enabled) values(${assumption},${workspace!},${account},'expense',${label},-10000,'EUR','monthly',${today},${today},'user',true,true)`;
       await tx`insert into public.forecast_preferences(workspace_id,currency_code,uncertainty_bps) values(${workspace!},'EUR',0)`;
     });
