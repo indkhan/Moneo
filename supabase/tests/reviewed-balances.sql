@@ -24,6 +24,8 @@ begin
   execute 'set local role authenticated';
   begin perform public.record_manual_balance(foreign_account,'10000',today,true,'[]',null,0,gen_random_uuid()); raise exception 'Foreign balance accepted' using errcode='ZX001'; exception when sqlstate 'P0002' then null; end;
   begin insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance) values(workspace,account,1,'EUR',now(),'forged'); raise exception 'Direct snapshot forge allowed' using errcode='ZX001'; exception when insufficient_privilege then null; end;
+  begin update public.balance_snapshots set amount_minor=1 where id=baseline; raise exception 'Direct snapshot edit allowed' using errcode='ZX001'; exception when insufficient_privilege then null; end;
+  begin delete from public.balance_snapshots where id=baseline; raise exception 'Direct snapshot delete allowed' using errcode='ZX001'; exception when insufficient_privilege then null; end;
   begin perform public.record_manual_balance(account,'10000',today,true,'[]',baseline,1,gen_random_uuid()); raise exception 'Incomplete preview accepted' using errcode='ZX001'; exception when sqlstate '40001' then null; end;
   result:=public.record_manual_balance(account,'10000',today,true,receipt,baseline,1,request);
   if public.record_manual_balance(account,'10000',today,true,receipt,baseline,1,request)<>result then raise exception 'Retry duplicated history'; end if;
