@@ -8,21 +8,21 @@ begin
     artifact:=public.create_trusted_artifact(kind,'Synthetic custom tool');
     if artifact.kind<>kind or jsonb_array_length(artifact.permissions)<>5 then raise exception 'Custom template permissions incorrect'; end if;
     fixture_manifest:=jsonb_build_object('kind',kind,'runtime','quickjs-calculator-v1','sdk',jsonb_build_array('spending'),'params','{}'::jsonb,'renderer','trusted');
-    candidate:=public.save_generated_artifact_version(artifact.id,'return {summary:"Exact reviewed tool",rows:[]};',fixture_manifest,'validated',null);
+    candidate:=public.save_generated_artifact_version(artifact.id,'return {summary:"Exact reviewed tool",rows:[]};',fixture_manifest,'validated',null,artifact.active_version_id);
     active:=candidate.id;
-    candidate:=public.save_generated_artifact_version(artifact.id,'return {};',fixture_manifest,'failed','Synthetic validation failure');
+    candidate:=public.save_generated_artifact_version(artifact.id,'return {};',fixture_manifest,'failed','Synthetic validation failure',active);
     if not exists(select 1 from public.artifacts where id=artifact.id and active_version_id=active) then raise exception 'Failed candidate replaced active calculator'; end if;
-    artifact:=public.rename_trusted_artifact(artifact.id,'Renamed reviewed calculator');
+    artifact:=public.rename_trusted_artifact(artifact.id,'Renamed reviewed calculator',active);
     if not exists(select 1 from public.artifact_versions where id=artifact.active_version_id and source='return {summary:"Exact reviewed tool",rows:[]};' and manifest=fixture_manifest) then raise exception 'Rename discarded reviewed calculator'; end if;
     begin
-      perform public.save_generated_artifact_version(artifact.id,'return {};',jsonb_set(fixture_manifest,'{sdk}','["network"]'),'validated',null);
+      perform public.save_generated_artifact_version(artifact.id,'return {};',jsonb_set(fixture_manifest,'{sdk}','["network"]'),'validated',null,artifact.active_version_id);
       raise exception 'Unknown host SDK allowed' using errcode='ZX001';
     exception when insufficient_privilege then null; end;
     execute 'reset role';
     update public.artifacts set permissions='[]' where id=artifact.id;
     execute 'set local role authenticated';
     begin
-      perform public.save_generated_artifact_version(artifact.id,'return {};',fixture_manifest,'validated',null);
+      perform public.save_generated_artifact_version(artifact.id,'return {};',fixture_manifest,'validated',null,artifact.active_version_id);
       raise exception 'Revoked artifact permission allowed' using errcode='ZX001';
     exception when insufficient_privilege then null; end;
   end loop;

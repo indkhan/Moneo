@@ -76,6 +76,7 @@ export default async function ArtifactPage({ params, searchParams }: {
     <p className="mt-2 text-sm text-muted-foreground">Live financial data · trusted {artifact.kind.replaceAll("_", " ")} v{version?.version ?? "?"}</p>
     <form action={renameArtifact} className="mt-4 flex flex-wrap gap-2 text-sm">
       <input type="hidden" name="artifactId" value={id} />
+      <input type="hidden" name="expectedActiveVersionId" value={artifact.active_version_id} />
       <input name="name" defaultValue={artifact.name} required maxLength={120} aria-label="Artifact name" className="rounded-lg border border-border bg-card px-3 py-2" />
       <button className="rounded-lg border border-border bg-card px-3 text-sm font-medium hover:bg-muted">Save new version</button>
     </form>
@@ -103,7 +104,7 @@ export default async function ArtifactPage({ params, searchParams }: {
         generator below to draft the first validated calculator version.
       </p>
     )}
-    <GenerateCalculatorForm artifactId={id} kind={kind} />
+    <GenerateCalculatorForm artifactId={id} kind={kind} activeVersionId={artifact.active_version_id} />
     {version && (
       <VersionEditor
         artifactId={id}
