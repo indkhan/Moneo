@@ -2,11 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { selectConversation } from "@/lib/ai/selected-conversation";
 
 import { useChatRequest } from "@/lib/ai/use-chat-request";
 import { AiToolActivity } from "@/components/ai-tool-activity";
 
-export function ChatForm({ conversationId }: { conversationId: string }) {
+export function ChatForm({ conversationId, selectionKey }: { conversationId: string; selectionKey: string }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [tools, setTools] = useState<string[]>([]);
@@ -17,6 +18,7 @@ export function ChatForm({ conversationId }: { conversationId: string }) {
     if (!message.trim() || busy) return;
     const result = await send({ conversationId, message });
     if (result) {
+      selectConversation(selectionKey, conversationId);
       setTools(result.toolsUsed ?? []);
       setMessage("");
       router.push(`/ai?conversation=${conversationId}`);
