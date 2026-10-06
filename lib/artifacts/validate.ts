@@ -7,6 +7,7 @@ import {
   checkManifest,
   checkSourceAllowlist,
   checkStateCompatibility,
+  normalizeCalculatorParams,
   type ArtifactKind,
   type CalculatorManifest,
 } from "./spec";
@@ -45,11 +46,7 @@ export async function validateGeneratedCandidate(args: {
   const fixtures = fixturesForKind(args.kind, manifest.sdk);
   for (let i = 0; i < fixtures.length; i++) {
     const fixture = fixtures[i];
-    const params: Record<string, number | string> = {};
-    for (const [name, def] of Object.entries(manifest.params)) {
-      params[name] = def.default;
-    }
-    Object.assign(params, fixture.params);
+    const params = normalizeCalculatorParams(manifest, fixture.params, "restore");
     let output: unknown;
     try {
       output = await evaluateIsolated(args.source, {
@@ -86,5 +83,5 @@ export async function validateGeneratedCandidate(args: {
 }
 
 export function defaultParams(manifest: CalculatorManifest): Record<string, number | string> {
-  return Object.fromEntries(Object.entries(manifest.params).map(([k, v]) => [k, v.default]));
+  return normalizeCalculatorParams(manifest);
 }

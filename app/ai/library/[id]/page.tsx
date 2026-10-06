@@ -3,8 +3,7 @@ import { notFound } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { goalsForArtifact, spendingForArtifact, tripForArtifact } from "@/lib/artifacts/finance-sdk";
 import { buildCalculatorSnapshot } from "@/lib/artifacts/snapshot";
-import { defaultParams } from "@/lib/artifacts/validate";
-import { artifactKindSchema, calculatorManifestSchema, type ArtifactKind } from "@/lib/artifacts/spec";
+import { artifactKindSchema, calculatorManifestSchema, normalizeCalculatorParams, checkStateCompatibility, type ArtifactKind } from "@/lib/artifacts/spec";
 import { parseManualAmount } from "@/app/money/transactions/input";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
@@ -50,26 +49,17 @@ export default async function ArtifactPage({ params, searchParams }: {
   let snapshot: unknown = { kind };
   let initialParams: Record<string, number | string> = {};
   if (isCalculator && version) {
+    initialParams = normalizeCalculatorParams(manifestParsed.data, stateValue, "restore");
     try {
-      const defaults = defaultParams(manifestParsed.data);
-      initialParams = { ...defaults };
-      for (const [k, v] of Object.entries(stateValue)) {
-        if (k in defaults && typeof v === typeof defaults[k]) initialParams[k] = v as number | string;
-      }
       const built = await buildCalculatorSnapshot(id, kind, {
         query: q.slice(0, 100),
         month: typeof initialParams.month === "string" ? initialParams.month : undefined,
-        costMinor,
+        costMinor: typeof initialParams.costMinor === "number" && Number.isSafeInteger(initialParams.costMinor) ? BigInt(initialParams.costMinor) : typeof initialParams.costMinor === "string" && /^-?\d+$/.test(initialParams.costMinor) ? BigInt(initialParams.costMinor) : costMinor,
         sdk: manifestParsed.data.sdk,
       });
       snapshot = built.snapshot;
-      // Trip cost also flows from legacy trip state for compatibility.
-      if (kind === "trip_planner" && "costMinor" in defaults) {
-        initialParams.costMinor = Number(costMinor);
-      }
     } catch {
       snapshot = { unavailable: "Snapshot unavailable" };
-      initialParams = manifestParsed.success ? defaultParams(manifestParsed.data) : {};
     }
   }
 
@@ -98,6 +88,9 @@ export default async function ArtifactPage({ params, searchParams }: {
         source={version.source}
         snapshot={snapshot}
         initialParams={initialParams}
+        manifest={manifestParsed.data}
+        inputWarnings={checkStateCompatibility(stateValue, manifestParsed.data)}
+        currency={workspace.display_currency}
         versionLabel={`v${version.version}`}
         artifactId={id}
         title={artifact.name}

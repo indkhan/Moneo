@@ -38,6 +38,17 @@ describe("generated calculator allowlist", () => {
 });
 
 describe("generated calculator manifest", () => {
+  it("rejects defaults outside the declared input contract and accepts boundaries", () => {
+    const manifest = { kind: "custom_report", runtime: "quickjs-calculator-v1", sdk: [], params: {
+      amount: { type: "number", default: 500, min: 0, max: 100 },
+    } };
+    expect(checkManifest("custom_report", manifest, []).errors.join(";")).toMatch(/amount/);
+    for (const value of [0, 100]) {
+      manifest.params.amount.default = value;
+      expect(checkManifest("custom_report", manifest, []).errors).toEqual([]);
+    }
+    expect(checkManifest("custom_report", { ...manifest, params: { reference: { type: "string", default: "00123", maxLength: 4 } } }, []).errors.join(";")).toMatch(/reference/);
+  });
   it("supports custom purposes with only reviewed host operations and unchanged sandbox rejection", () => {
     for (const kind of ["custom_planner", "custom_tracker", "custom_report", "custom_comparison"] as const) {
       const manifest = { kind, runtime: "quickjs-calculator-v1", sdk: ["spending"], params: {} };
