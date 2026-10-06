@@ -543,6 +543,24 @@ export const recurringSeriesTransactions = pgTable("recurring_series_transaction
   index("recurring_series_transactions_transaction").on(table.transactionId),
 ]);
 
+export const recurringOccurrenceSettlements = pgTable("recurring_occurrence_settlements", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  assumptionId: uuid("assumption_id").notNull(),
+  scheduledOn: date("scheduled_on").notNull(),
+  transactionId: uuid("transaction_id").notNull(),
+  completesOccurrence: boolean("completes_occurrence").notNull(),
+  receipt: jsonb("receipt").notNull(),
+  actorId: uuid("actor_id").notNull().references(() => authUsers.id),
+  version: integer("version").notNull().default(1),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  undoneAt: timestamp("undone_at", { withTimezone: true }),
+}, (table) => [
+  uniqueIndex("recurring_occurrence_active_transaction").on(table.transactionId).where(sql`${table.undoneAt} is null`),
+  index("recurring_occurrence_workspace").on(table.workspaceId, table.assumptionId, table.scheduledOn),
+  check("recurring_occurrence_settlements_receipt_check", sql`jsonb_typeof(${table.receipt}) = 'object'`),
+]);
+
 export const fxRates = pgTable("fx_rates", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),

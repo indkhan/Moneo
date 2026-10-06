@@ -6,6 +6,7 @@ import { calendarDate } from "./calendar";
 import { buildDebtForecast, loadWealthItems } from "./wealth";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { defaultForecastPreferences, forecastCases, forecastPreferencesSchema } from "./preferences";
+import { reconcileOccurrence, settlementPosting, type OccurrenceSettlement } from "./recurring-occurrences";
 
 type Scheduled = { account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; enabled?: boolean };
 
@@ -67,7 +68,7 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
     }
   }
   const [balanceEvidence, wealth, preferencesResult,
-    allocations, assumptions, rates, recurringSeries] = await Promise.all([
+    allocations, assumptions, rates, recurringSeries, settlements] = await Promise.all([
       evidence?.balanceEvidence ?? loadBalanceEvidence(supabase, workspace.id),
       evidence?.wealth ?? loadWealthItems(supabase, workspace.id),
       supabase.from("forecast_preferences").select("currency_code, safety_buffer_minor::text, daily_spending_minor::text, uncertainty_bps, spending_account_id, spending_starts_on, version").eq("workspace_id", workspace.id).maybeSingle(),
@@ -78,6 +79,9 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
         .eq("workspace_id", workspace.id).eq("to_currency", workspace.display_currency).order("id")),
       allRows(supabase.from("recurring_series").select("id, assumption_id, recurring_series_transactions(transaction_id)")
         .eq("workspace_id", workspace.id).eq("status", "confirmed").eq("evidence_invalidated", false).order("id")),
+      allRows<OccurrenceSettlement>(supabase.from("recurring_occurrence_settlements")
+        .select("id, assumption_id, scheduled_on, transaction_id, completes_occurrence, receipt, undone_at, version")
+        .eq("workspace_id", workspace.id).order("id")),
     ]);
   if (preferencesResult.error) throw preferencesResult.error;
   const preferences = preferencesResult.data ? forecastPreferencesSchema.parse(preferencesResult.data) : defaultForecastPreferences(workspace.display_currency);
@@ -100,8 +104,27 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
       []);
   const debts = buildDebtForecast(wealth, balanceEvidence.accounts, balanceEvidence.ledger, assumptions ?? [], startDate, horizonDays);
   missingInputs.push(...debts.missingInputs);
-  const events: ForecastEvent[] = (assumptions ?? []).filter(item => item.account_id && accountIds.has(item.account_id) && !debts.excludedAssumptionIds.includes(item.id)).flatMap(item =>
-    expandSchedule(item, startDate, horizonDays, preferences.uncertainty_bps).flatMap(event => {
+  const events: ForecastEvent[] = (assumptions ?? []).filter(item => item.account_id && accountIds.has(item.account_id) && !debts.excludedAssumptionIds.includes(item.id)).flatMap(item => {
+    const planned = expandSchedule(item, startDate, horizonDays, preferences.uncertainty_bps);
+    // Retain overdue explicit occurrences, including those reopened by undo or changed evidence.
+    for (const date of new Set(settlements.filter(link => link.assumption_id === item.id && link.scheduled_on < startDate).map(link => link.scheduled_on))) {
+      const past = expandSchedule(item, date, 1, preferences.uncertainty_bps);
+      if (past[0]?.date === date) planned.push(past[0]);
+    }
+    return planned.flatMap(event => {
+      const explicit = settlements.filter(link => link.assumption_id === item.id && link.scheduled_on === event.date);
+      for (const link of explicit) if (!link.undone_at && !settlementPosting(item, link, balanceEvidence.ledger))
+        missingInputs.push(`occurrence:${item.name}:${event.date}:${link.id}:evidence changed; undo or review the association`);
+      if (explicit.length) return reconcileOccurrence(item, event.date, explicit, balanceEvidence.ledger, balanceEvidence.asOf, startDate, workspace.timezone).flatMap(movement => {
+        const horizonEnd = new Date(`${startDate}T00:00:00Z`).getTime() + horizonDays * 86400000;
+        if (Date.parse(`${movement.date}T00:00:00Z`) >= horizonEnd) return [];
+        const cases = forecastCases(movement.amountMinor, movement.observed ? 0 : preferences.uncertainty_bps);
+        const expectedMinor = convert(cases.expectedMinor, item.currency_code, movement.date);
+        const conservativeMinor = convert(cases.conservativeMinor!, item.currency_code, movement.date);
+        const optimisticMinor = convert(cases.optimisticMinor!, item.currency_code, movement.date);
+        if (expectedMinor === null || conservativeMinor === null || optimisticMinor === null) { missingInputs.push(`fx:assumption:${item.account_id}`); return []; }
+        return [{ ...event, date: movement.date, expectedMinor, conservativeMinor, optimisticMinor, source: "confirmed" as const, name: item.name }];
+      });
       // Confirmation explicitly identifies the historical anchor; it is not a new cash movement.
       // A current resolved opening already includes every posted row through the evaluation time.
       if (item.source === "recurring_confirmed" && event.date === item.starts_on && recurringSeries.some(series =>
@@ -113,7 +136,8 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
       const expectedMinor = cv(event.expectedMinor), conservativeMinor = cv(event.conservativeMinor!), optimisticMinor = cv(event.optimisticMinor!);
       if (expectedMinor === null || conservativeMinor === null || optimisticMinor === null) { missingInputs.push(`fx:assumption:${item.account_id}`); return []; }
       return [{ ...event, expectedMinor, conservativeMinor, optimisticMinor, source: "confirmed" as const, name: item.name }];
-    }));
+    });
+  });
   for (const repayment of debts.events) {
     const amount = convert(repayment.amountMinor, repayment.currencyCode, repayment.date);
     if (amount === null) { missingInputs.push(`fx:debt:${repayment.accountId}`); continue; }

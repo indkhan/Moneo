@@ -4,6 +4,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { detectRecurring } from "@/lib/finance/recurring";
 import { confirmSeries, declineSeries } from "./actions";
 import { confidenceToPercent, formatMoney as formatCurrency, seriesKey } from "./series";
+import { OccurrenceReview } from "./occurrences";
 
 const MAX_TRANSACTIONS = 10_000;
 const PAGE_SIZE = 1000;
@@ -108,6 +109,7 @@ export default async function RecurringPage() {
         <p className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">No estimated recurring patterns found. Import more history to improve detection.</p>
       )}
 
+      <OccurrenceReview supabase={supabase} workspace={workspace} accountNames={names} />
       <div className="grid gap-4 lg:grid-cols-2">
         {detected.map((series) => {
           const key = seriesKey({

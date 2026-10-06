@@ -6,7 +6,8 @@ export type BalanceSnapshot = { id?: string; account_id: string; amount_minor: s
   boundary_kind?: string; source_transaction_id?: string | null; covered_transactions?: CoveredTransaction[] | null;
   actor_id?: string | null; undone_at?: string | null; version?: number; created_at?: string };
 export type BalanceTransaction = { id: string; account_id: string; amount_minor: string | number; currency_code: string; posted_on: string; status: string;
-  posted_at?: string | null; source_transaction_ids?: string[]; version?: number; description?: string };
+  posted_at?: string | null; source_transaction_ids?: string[]; version?: number; description?: string;
+  kind?: string; review_reasons?: string[]; canonical_amount_minor?: string | number };
 export type CoveredTransaction = { id: string; version: number; amount_minor: string; currency_code: string; posted_on: string; posted_at: string | null };
 
 // A review records financial fields and canonical identity, never ingestion order.
@@ -100,7 +101,9 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
 }
 
 // Every reader gets complete, workspace-scoped evidence instead of a silently truncated first page.
-export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: string, asOf = new Date().toISOString()) {
+export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: string, asOf = new Date().toISOString()): Promise<{
+  accounts: BalanceAccount[]; snapshots: BalanceSnapshot[]; ledger: BalanceTransaction[]; asOf: string;
+}> {
   async function rows<T>(table: string, columns: string) {
     const result: T[] = [];
     for (let offset = 0; ; offset += 500) {
@@ -113,7 +116,7 @@ export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: strin
   const [accounts, snapshots, ledger, fees] = await Promise.all([
     rows<BalanceAccount>("accounts", "id, name, type, currency_code, archived_at"),
     rows<BalanceSnapshot>("balance_snapshots", "id, account_id, amount_minor::text, currency_code, as_of, provenance, boundary_kind, source_transaction_id, covered_transactions, actor_id, undone_at, version, created_at"),
-    rows<BalanceTransaction & { transaction_sources?: { source_transaction_id: string }[] }>("transactions", "id, account_id, amount_minor::text, currency_code, posted_on, posted_at, status, version, description, transaction_sources(source_transaction_id)"),
+    rows<BalanceTransaction & { transaction_sources?: { source_transaction_id: string }[] }>("transactions", "id, account_id, amount_minor::text, currency_code, posted_on, posted_at, status, version, description, kind, review_reasons, transaction_sources(source_transaction_id)"),
     rows<{ transaction_id: string; fee_minor: string; treatment: string; transaction_links: { undone_at: string | null } }>("transaction_link_fees", "id, transaction_id, fee_minor::text, treatment, transaction_links!inner(undone_at)"),
   ]);
   const additionalFees = new Map<string, bigint>();
@@ -124,6 +127,7 @@ export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: strin
     additionalFees.set(fee.transaction_id, (additionalFees.get(fee.transaction_id) ?? 0n) + amount);
   }
   return { accounts, snapshots, ledger: ledger.map(row => ({ ...row,
+    canonical_amount_minor: row.amount_minor,
     // This is derived balance evidence; the source posting and its boundary identity remain unchanged.
     amount_minor: additionalFees.has(row.id) ? (exactMinor(row.amount_minor) - additionalFees.get(row.id)!).toString() : row.amount_minor,
     source_transaction_ids: row.transaction_sources?.map(source => source.source_transaction_id) ?? [] })), asOf };
