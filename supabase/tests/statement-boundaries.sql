@@ -15,12 +15,16 @@ begin
     values(workspace,account,'2026-10-01','2026-10-01T12:30:00Z','Boundary transaction',-100,'EUR') returning id into transaction;
   insert into public.transaction_sources(transaction_id,source_transaction_id) values(transaction,source);
   perform set_config('request.jwt.claim.sub',actor::text,true);
-  execute 'set local role authenticated';
+  -- Imported source boundaries are fixture setup, not direct authenticated writes.
+  -- The owner connection arranges them; user visibility stays authenticated below.
   insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance,boundary_kind,source_transaction_id)
     values(workspace,account,1000,'EUR','2026-10-01T12:30:00Z','synthetic','after_transaction',source);
+  execute 'set local role authenticated';
   if not exists(select 1 from public.transactions where id=transaction and posted_at='2026-10-01T14:30:00+02:00'::timestamptz) then
     raise exception 'Offset timestamp did not preserve exact instant';
   end if;
+  execute 'reset role';
+  -- Exercise the storage constraints independently of the authenticated RPC-only boundary.
   begin
     insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance,boundary_kind,source_transaction_id)
       values(workspace,foreign_account,1000,'EUR',now(),'synthetic','after_transaction',source);
@@ -36,7 +40,6 @@ begin
       values(workspace,account,1000,'EUR',now(),'synthetic','after_transaction');
     raise exception 'After-row boundary without source accepted' using errcode='ZX001';
   exception when check_violation then null; end;
-  execute 'reset role';
   begin
     update public.source_transactions set fee_evidence='{"treatment":null}' where id=source;
     raise exception 'Null fee treatment accepted' using errcode='ZX001';
