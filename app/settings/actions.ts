@@ -11,7 +11,7 @@ import { minorDigits } from "@/lib/finance/fx";
 
 export async function saveSettings(_previous: { error?: string; saved?: boolean }, form: FormData): Promise<{ error?: string; saved?: boolean }> {
   try {
-    const { supabase, workspace } = await requireWorkspace();
+    const { supabase, workspace, settings: previous } = await requireWorkspace();
     const settings = settingsSchema.parse({
       timezone: form.get("timezone"), locale: form.get("locale"), theme: form.get("theme"),
       openrouter_model: String(form.get("openrouter_model") ?? "").trim() || null,
@@ -20,9 +20,10 @@ export async function saveSettings(_previous: { error?: string; saved?: boolean 
     });
     const currency = z.string().regex(/^[A-Z]{3}$/, "Use a three-letter currency code").parse(form.get("display_currency"));
     minorDigits(currency);
-    if (settings.openrouter_model && !(await listFreeModels()).some(model => model.id === settings.openrouter_model))
-      throw new Error("Choose a currently verified free model with the required capabilities");
-    if (settings.openrouter_model) {
+    const modelChanged = settings.openrouter_model !== previous?.openrouter_model;
+    if (settings.openrouter_model && modelChanged) {
+      if (!(await listFreeModels()).some(model => model.id === settings.openrouter_model))
+        throw new Error("Choose a currently verified free model with the required capabilities");
       const check = await generateText({ model: await modelForSettings(settings), prompt: "Reply with the single word OK.",
         maxOutputTokens: 64, maxRetries: 0, abortSignal: AbortSignal.timeout(15000) });
       if (!check.text.trim()) throw new Error("The selected free model returned no usable response; choose another model");
