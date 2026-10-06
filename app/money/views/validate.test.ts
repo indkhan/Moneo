@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSavedFilters, parseStoredFilters, parseViewId, parseViewName } from "./validate";
+import { buildSavedFilters, invalidStoredViewScope, parseStoredFilters, parseViewId, parseViewName } from "./validate";
 
 const UUID = "123e4567-e89b-12d3-a456-426614174000";
 const UUID2 = "123e4567-e89b-12d3-a456-426614174001";
@@ -99,6 +99,17 @@ describe("saved tag/event scope (MNE-041)", () => {
     expect(() => buildSavedFilters({ tag: "x".repeat(41) })).toThrow();
     expect(() => buildSavedFilters({ event: "x".repeat(121) })).toThrow();
     expect(buildSavedFilters({ tag: "   ", event: "" })).toEqual({});
+  });
+
+  it("flags a present-but-invalid persisted scope instead of broadening it", () => {
+    expect(invalidStoredViewScope({ status: "posted" })).toBeNull();
+    expect(invalidStoredViewScope({})).toBeNull();
+    expect(invalidStoredViewScope({ tag: "holiday", eventName: "Berlin trip" })).toBeNull();
+    expect(invalidStoredViewScope({ tag: "x".repeat(41) })).toMatch(/invalid tag/);
+    expect(invalidStoredViewScope({ eventName: "x".repeat(121) })).toMatch(/invalid spending-group/);
+    expect(invalidStoredViewScope({ tag: 7 })).toMatch(/invalid tag/);
+    expect(invalidStoredViewScope(null)).toMatch(/invalid/);
+    expect(invalidStoredViewScope("evil")).toMatch(/invalid/);
   });
 
   it("loads legacy views and never restores cursor or open-transaction ids", () => {

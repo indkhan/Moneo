@@ -200,8 +200,31 @@ export function buildSavedFilters(input: SaveInput): SavedViewFilters {
 }
 
 /**
+ * Actionable scope check for a persisted view. Returns an error message
+ * when tag/event scope is present but invalid (e.g. oversized), so a saved
+ * view is never silently broadened. Returns null when the stored scope is
+ * usable; legacy rows without tag/event keys stay compatible (null).
+ * Other fields keep the tolerant loader behavior below.
+ */
+export function invalidStoredViewScope(raw: unknown): string | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return "Saved view filters are invalid. Use current filters to repair this view, or delete it.";
+  }
+  const input = raw as Record<string, unknown>;
+  if ("tag" in input && normalizeTag(input.tag) === undefined) {
+    return "Saved view has an invalid tag filter. Use current filters to repair this view, or delete it.";
+  }
+  if ("eventName" in input && normalizeEventName(input.eventName) === undefined) {
+    return "Saved view has an invalid spending-group filter. Use current filters to repair this view, or delete it.";
+  }
+  return null;
+}
+
+/**
  * Tolerant loader for the JSONB column. Never throws: unknown keys and
  * invalid values are dropped so one bad row can never break the browser.
+ * Use invalidStoredViewScope first when a present-but-invalid tag/event
+ * scope must surface instead of broadening.
  */
 export function parseStoredFilters(raw: unknown): SavedViewFilters {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};

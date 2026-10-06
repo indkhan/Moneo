@@ -10,7 +10,7 @@ import { BulkEditor } from "./bulk-editor";
 import { EditingHistory } from "./editing-history";
 import { calendarDate } from "@/lib/finance/calendar";
 import { DEFAULT_SORT, SORT_ORDER, cursorClause, nextCursorForRow, parseTransactionParams, toQueryParams, type ParsedTransactionParams } from "./filters";
-import { normalizeEventName, normalizeTag, parseStoredFilters, parseViewId, type SaveInput } from "../views/validate";
+import { invalidStoredViewScope, normalizeEventName, normalizeTag, parseStoredFilters, parseViewId, type SaveInput } from "../views/validate";
 import { SavedViewsPanel } from "../views/panel";
 
 type Filters = { linkSearch?: string; q?: string; from?: string; to?: string; account?: string; status?: string; kind?: string; direction?: string; category?: string; merchant?: string; minAmount?: string; maxAmount?: string; sort?: string; cursor?: string; transaction?: string; view?: string; tag?: string; event?: string };
@@ -37,6 +37,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   ]);
   let activeView: { id: string; name: string } | null = null;
   let savedFilters = null as ReturnType<typeof parseStoredFilters> | null;
+  let savedViewScopeError: string | null = null;
   let viewNotFound = false;
   if (viewId) {
     const { data } = await supabase.from("transaction_views")
@@ -44,6 +45,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     if (!data) viewNotFound = true;
     else {
       activeView = { id: data.id, name: data.name };
+      savedViewScopeError = invalidStoredViewScope(data.filters as unknown);
       savedFilters = parseStoredFilters(data.filters as unknown);
     }
   }
@@ -248,6 +250,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   return <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 text-slate-900 sm:px-8">
     <header className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">Money / Ledger</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">Transactions</h1><p className="mt-1 text-sm text-slate-500">Search, review, and correct your ledger.</p></div><div className="flex flex-wrap gap-2"><Link href="/money/accounts" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50">Accounts</Link><Link href="/money/wealth" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50">Investments, assets and debts</Link><Link href="/money/recurring" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50">Review recurring</Link><Link href="/import" className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-blue-800">Import statement</Link></div></header>
     {viewNotFound ? <p role="alert" className="mt-6">Saved view not found. Showing normal filters.</p> : null}
+    {savedViewScopeError ? <p role="alert" className="mt-6">{savedViewScopeError}</p> : null}
     <details className="rounded-xl border border-border bg-card p-4">
       <summary className="cursor-pointer text-sm font-semibold">Add a manual transaction</summary>
       {!accounts?.some(account => !account.archived_at) ? <p className="mt-3 text-sm text-muted-foreground">Add or restore an active account before entering a transaction.</p> : <form action={createManualTransaction} className="mt-4 flex flex-wrap items-end gap-3">
