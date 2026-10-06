@@ -26,7 +26,11 @@ returns public.recurring_occurrence_settlements language plpgsql security define
 declare a public.financial_assumptions%rowtype; t public.transactions%rowtype; result public.recurring_occurrence_settlements%rowtype;
   month_distance integer; expected_date date;
 begin
-  select * into a from public.financial_assumptions where id=p_assumption_id and public.owns_workspace(workspace_id) for update;
+  -- Transaction corrections acquire their posting before the recurring-evidence trigger locks its assumption.
+  -- Keep the same order, then recheck both owned records and versions under those locks.
+  select * into t from public.transactions where id=p_transaction_id and public.owns_workspace(workspace_id) for update;
+  if not found then raise exception 'Transaction not found' using errcode='P0002'; end if;
+  select * into a from public.financial_assumptions where id=p_assumption_id and workspace_id=t.workspace_id and public.owns_workspace(workspace_id) for update;
   if not found then raise exception 'Assumption not found' using errcode='P0002'; end if;
   if p_assumption_version is null or a.version<>p_assumption_version then raise exception 'Assumption changed; reload before associating' using errcode='40001'; end if;
   if not a.confirmed or not a.enabled or a.removed_at is not null or a.account_id is null or a.amount_minor=0 or a.cadence not in ('weekly','monthly') then
@@ -40,8 +44,6 @@ begin
     expected_date:=(a.starts_on+make_interval(months=>month_distance))::date;
     if expected_date<>p_scheduled_on then raise exception 'Date is not a scheduled occurrence' using errcode='22023'; end if;
   end if;
-  select * into t from public.transactions where id=p_transaction_id and workspace_id=a.workspace_id for update;
-  if not found then raise exception 'Transaction not found' using errcode='P0002'; end if;
   if p_transaction_version is null or t.version<>p_transaction_version then raise exception 'Transaction changed; reload before associating' using errcode='40001'; end if;
   if t.account_id<>a.account_id or t.currency_code<>a.currency_code or t.status not in ('pending','posted') or t.kind<>'ordinary' or cardinality(t.review_reasons)<>0 or t.amount_minor=0 or sign(t.amount_minor)<>sign(a.amount_minor) or p_completes_occurrence is null then
     raise exception 'Transaction does not fit this obligation' using errcode='22023';
