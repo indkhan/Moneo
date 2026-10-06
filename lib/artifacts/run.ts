@@ -1,4 +1,6 @@
-export function runIsolatedArtifact(source: string, input: unknown, signal?: AbortSignal): Promise<unknown> {
+import { type CalculatorManifest } from "./spec";
+
+export function runIsolatedArtifact(source: string, input: unknown, signal?: AbortSignal, manifest?: CalculatorManifest): Promise<unknown> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(new DOMException("Artifact stopped", "AbortError")); return; }
     const worker = new Worker(new URL("./runtime.worker.ts", import.meta.url), { type: "module" });
@@ -18,6 +20,6 @@ export function runIsolatedArtifact(source: string, input: unknown, signal?: Abo
       event.data.error ? finish(new Error(event.data.error)) : finish(event.data.output);
     worker.onerror = () => finish(new Error("Artifact worker failed"));
     signal?.addEventListener("abort", abort, { once: true });
-    try { worker.postMessage({ source, input }); } catch (error) { finish(error, true); }
+    try { worker.postMessage({ source, input, manifest }); } catch (error) { finish(error, true); }
   });
 }

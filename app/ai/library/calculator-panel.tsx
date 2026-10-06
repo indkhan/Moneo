@@ -7,6 +7,8 @@ import { checkOutputShape } from "@/lib/artifacts/output";
 import { saveCalculatorParams } from "./actions";
 import { calculatorExportText, downloadCalculatorPng, printCalculator } from "@/lib/artifacts/export";
 import { coverageWarnings } from "@/lib/artifacts/coverage";
+import { calculatorManifestSchema, normalizeCalculatorParams, isMinorParam, type CalculatorManifest } from "@/lib/artifacts/spec";
+import { formatMoney } from "@/lib/finance/format";
 import { CalculatorRows } from "./calculator-rows";
 
 const Chart = dynamic(() => import("echarts-for-react"), { ssr: false });
@@ -28,6 +30,9 @@ export function CalculatorPanel({
   artifactId,
   title = "Financial calculator",
   locale,
+  manifest,
+  inputWarnings = [],
+  currency,
 }: {
   source: string;
   snapshot: unknown;
@@ -36,6 +41,9 @@ export function CalculatorPanel({
   artifactId: string;
   title?: string;
   locale?: string;
+  manifest: CalculatorManifest;
+  inputWarnings?: string[];
+  currency?: string;
 }) {
   const [params, setParams] = useState(initialParams);
   const [output, setOutput] = useState<CalculatorOutput | null>(null);
@@ -46,7 +54,12 @@ export function CalculatorPanel({
   const activeRun = useRef<AbortController | null>(null);
   const monthChanged = typeof params.month === "string" && params.month !== initialParams.month;
 
-  const paramEntries = useMemo(() => Object.entries(initialParams), [initialParams]);
+  const paramEntries = useMemo(() => Object.entries(manifest.params), [manifest.params]);
+
+  const inputError = useMemo(() => {
+    try { normalizeCalculatorParams(calculatorManifestSchema.parse(manifest), params); return ""; }
+    catch (failure) { return failure instanceof Error ? failure.message : "Invalid inputs"; }
+  }, [manifest, params]);
 
   useEffect(() => {
     stopped.current = false;
@@ -58,12 +71,13 @@ export function CalculatorPanel({
       setStatus("running");
       setError("");
       try {
+        if (inputError) throw new Error(inputError);
         if (monthChanged) {
           setOutput({ unavailable: "Save inputs to load financial evidence for the selected month." });
           setStatus("done");
           return;
         }
-        const result = (await runIsolatedArtifact(source, { snapshot, params }, controller.signal)) as CalculatorOutput;
+        const result = (await runIsolatedArtifact(source, { snapshot, params }, controller.signal, manifest)) as CalculatorOutput;
         if (stopped.current || runId.current !== id) return;
         const outputErrors = checkOutputShape(result);
         if (outputErrors.length) throw new Error(outputErrors.join("; "));
@@ -81,7 +95,7 @@ export function CalculatorPanel({
       controller.abort();
       if (activeRun.current === controller) activeRun.current = null;
     };
-  }, [source, snapshot, params, monthChanged]);
+  }, [source, snapshot, params, monthChanged, manifest, inputError]);
 
   function stop() {
     stopped.current = true;
@@ -103,6 +117,7 @@ export function CalculatorPanel({
       {snapshot !== null && typeof snapshot === "object" && "partial" in snapshot && snapshot.partial === true && <p role="status" className="mb-4 text-sm text-amber-700">Partial financial data: transactions awaiting classification are excluded. Review them in Import before relying on these totals.</p>}
       {snapshot !== null && typeof snapshot === "object" && "unavailable" in snapshot && typeof snapshot.unavailable === "string" && snapshot.unavailable && <p role="alert" className="mb-4 text-sm text-muted-foreground">{snapshot.unavailable}</p>}
       {coverageWarnings(snapshot).map(warning => <p key={warning} role="status" className="mb-4 text-sm text-amber-700">{warning}</p>)}
+      {inputWarnings.map(warning => <p key={warning} role="status" className="mb-4 text-sm text-amber-700">{warning}</p>)}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Generated calculator · {versionLabel}</h2>
         <div className="flex gap-2 text-sm">
@@ -124,7 +139,7 @@ export function CalculatorPanel({
           <form action={saveCalculatorParams} className="inline">
             <input type="hidden" name="artifactId" value={artifactId} />
             <input type="hidden" name="params" value={JSON.stringify(params)} />
-            <button type="submit" className="rounded border px-3 py-1">
+            <button type="submit" disabled={Boolean(inputError)} className="rounded border px-3 py-1 disabled:opacity-50">
               Save inputs
             </button>
           </form>
@@ -136,19 +151,25 @@ export function CalculatorPanel({
 
       {paramEntries.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-3">
-          {paramEntries.map(([name]) => (
+          {paramEntries.map(([name, def]) => (
             <label key={name} className="text-sm">
-              {name}
+              {def.label ?? name}{isMinorParam(name, def) ? ` (minor units, ${def.currency ?? currency ?? "currency unavailable"})` : def.unit ? ` (${def.unit})` : ""}
               <input
                 value={String(params[name] ?? "")}
                 onChange={(e) => {
                   const raw = e.target.value;
-                  const num = Number(raw);
-                  setParams((p) => ({ ...p, [name]: raw !== "" && Number.isFinite(num) ? num : raw }));
+                  setParams((p) => ({ ...p, [name]: def.type === "number" && raw.trim() !== "" ? Number(raw) : raw }));
                 }}
-                inputMode="decimal"
+                type={def.type === "number" ? "number" : "text"}
+                min={def.type === "number" ? def.min : undefined}
+                max={def.type === "number" ? def.max : undefined}
+                step={isMinorParam(name, def) ? "1" : "any"}
+                maxLength={def.type === "string" ? def.maxLength ?? 200 : undefined}
+                inputMode={isMinorParam(name, def) ? "numeric" : def.type === "number" ? "decimal" : "text"}
+                aria-invalid={Boolean(inputError)}
                 className="mt-1 block w-40 rounded-lg border border-border bg-card px-3 py-2"
               />
+              {isMinorParam(name, def) && (def.currency ?? currency) && <span className="mt-1 block text-xs text-muted-foreground">100 minor units = {formatMoney(100n, (def.currency ?? currency)!, locale)}. Stored as exact minor units.</span>}
             </label>
           ))}
         </div>

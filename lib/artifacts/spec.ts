@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { minorDigits } from "@/lib/finance/fx";
 
 export const artifactKindSchema = z.enum([
   "spending_explorer",
@@ -25,6 +26,45 @@ export const ALLOWED_SDK_BY_KIND: Record<ArtifactKind, string[]> = {
   custom_comparison: ["spending", "cashflow", "balances", "goals", "forecast"],
 };
 
+const calculatorParamSchema = z.object({
+  type: z.enum(["number", "string"]),
+  default: z.union([z.number(), z.string()]),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  maxLength: z.number().int().min(1).max(200).optional(),
+  label: z.string().max(80).optional(),
+  unit: z.string().min(1).max(40).optional(),
+  currency: z.string().regex(/^[A-Z]{3}$/).refine(value => {
+    try { minorDigits(value); return true; } catch { return false; }
+  }, "Unsupported currency").optional(),
+});
+export type CalculatorParam = z.infer<typeof calculatorParamSchema>;
+
+// Existing *Minor fields store integer minor units, never rounded display money.
+export function isMinorParam(name: string, def: CalculatorParam): boolean {
+  return name.endsWith("Minor") || def.unit === "minor";
+}
+
+function paramValueSchema(name: string, def: CalculatorParam) {
+  if (def.type === "number") {
+    let schema = z.number().finite();
+    if (isMinorParam(name, def)) schema = schema.int().refine(Number.isSafeInteger, "Use an exact integer string beyond the safe numeric range");
+    if (def.min !== undefined) schema = schema.min(def.min);
+    if (def.max !== undefined) schema = schema.max(def.max);
+    return schema;
+  }
+  let schema = z.string().max(def.maxLength ?? 200);
+  if (isMinorParam(name, def)) {
+    schema = schema.regex(/^-?\d+$/, "Minor units must be an integer string").refine(value => {
+      if (!/^-?\d+$/.test(value)) return false;
+      const amount = BigInt(value);
+      return (def.min === undefined || amount >= BigInt(Math.ceil(def.min))) &&
+        (def.max === undefined || amount <= BigInt(Math.floor(def.max)));
+    }, "Minor units are outside bounds");
+  }
+  return schema;
+}
+
 export const calculatorManifestSchema = z
   .object({
     kind: artifactKindSchema,
@@ -37,19 +77,21 @@ export const calculatorManifestSchema = z
     params: z
       .record(
         z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,31}$/),
-        z.object({
-          type: z.enum(["number", "string"]),
-          default: z.union([z.number(), z.string()]),
-          min: z.number().optional(),
-          max: z.number().optional(),
-          maxLength: z.number().int().min(1).max(200).optional(),
-          label: z.string().max(80).optional(),
-        }),
+        calculatorParamSchema,
       )
       .default({}),
     renderer: z.literal("trusted").default("trusted"),
   })
-  .strict();
+  .strict()
+  .superRefine((manifest, context) => {
+    for (const [name, def] of Object.entries(manifest.params)) {
+      if (def.min !== undefined && def.max !== undefined && def.min > def.max) {
+        context.addIssue({ code: "custom", path: ["params", name], message: "min is greater than max" });
+      }
+      const parsed = paramValueSchema(name, def).safeParse(def.default);
+      if (!parsed.success) context.addIssue({ code: "custom", path: ["params", name, "default"], message: parsed.error.issues.map(issue => issue.message).join("; ") });
+    }
+  });
 
 export type CalculatorManifest = z.infer<typeof calculatorManifestSchema>;
 
@@ -159,17 +201,6 @@ export function checkManifest(
       errors.push(`Unauthorized Finance SDK operation: ${op}`);
     }
   }
-  for (const [name, def] of Object.entries(parsed.data.params)) {
-    if (def.type === "number" && typeof def.default !== "number") {
-      errors.push(`Param ${name} default must be a number`);
-    }
-    if (def.type === "string" && typeof def.default !== "string") {
-      errors.push(`Param ${name} default must be a string`);
-    }
-    if (def.min !== undefined && def.max !== undefined && def.min > def.max) {
-      errors.push(`Param ${name} min is greater than max`);
-    }
-  }
   if (errors.length) return { errors };
   return { manifest: parsed.data, errors: [] };
 }
@@ -177,29 +208,26 @@ export function checkManifest(
 // Old artifact-local state stays intact on every edit (the versions RPC
 // never touches artifact_state). New code is compatible when every stored
 // value still satisfies the new manifest, otherwise defaults apply.
-export function checkStateCompatibility(
-  state: Record<string, unknown>,
+export function normalizeCalculatorParams(
   manifest: CalculatorManifest,
-): string[] {
-  const warnings: string[] = [];
-  for (const [name, value] of Object.entries(state ?? {})) {
-    const def = manifest.params[name];
-    if (!def) continue; // extra stored keys are preserved, ignored by new code
-    if (def.type === "number") {
-      if (typeof value !== "number" || !Number.isFinite(value)) {
-        warnings.push(`Stored param ${name} is not a number; default applies`);
-      } else {
-        if (def.min !== undefined && value < def.min) warnings.push(`Stored param ${name} is below min; default applies`);
-        if (def.max !== undefined && value > def.max) warnings.push(`Stored param ${name} is above max; default applies`);
-      }
-    }
-    if (def.type === "string") {
-      if (typeof value !== "string") {
-        warnings.push(`Stored param ${name} is not a string; default applies`);
-      } else if (def.maxLength !== undefined && value.length > def.maxLength) {
-        warnings.push(`Stored param ${name} is too long; default applies`);
-      }
-    }
+  state: Record<string, unknown> = {},
+  mode: "strict" | "restore" = "strict",
+): Record<string, number | string> {
+  const next: Record<string, number | string> = {};
+  for (const [name, def] of Object.entries(manifest.params)) {
+    const value = Object.hasOwn(state, name) ? state[name] : def.default;
+    const parsed = paramValueSchema(name, def).safeParse(value);
+    if (!parsed.success && mode === "strict") throw new Error(`Param ${name}: ${parsed.error.issues.map(issue => issue.message).join("; ")}`);
+    next[name] = parsed.success ? parsed.data : def.default;
   }
-  return warnings;
+  return next;
+}
+
+export function checkStateCompatibility(state: Record<string, unknown>, manifest: CalculatorManifest): string[] {
+  return Object.entries(state ?? {}).flatMap(([name, value]) => {
+    const def = manifest.params[name];
+    if (!def) return [];
+    const parsed = paramValueSchema(name, def).safeParse(value);
+    return parsed.success ? [] : [`Stored param ${name} is incompatible (${parsed.error.issues.map(issue => issue.message).join("; ")}); default applies`];
+  });
 }
