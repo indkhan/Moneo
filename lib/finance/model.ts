@@ -67,15 +67,17 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
     }
   }
   const [balanceEvidence, wealth, preferencesResult,
-    allocations, assumptions, rates] = await Promise.all([
+    allocations, assumptions, rates, recurringSeries] = await Promise.all([
       evidence?.balanceEvidence ?? loadBalanceEvidence(supabase, workspace.id),
       evidence?.wealth ?? loadWealthItems(supabase, workspace.id),
       supabase.from("forecast_preferences").select("currency_code, safety_buffer_minor::text, daily_spending_minor::text, uncertainty_bps, spending_account_id, spending_starts_on, version").eq("workspace_id", workspace.id).maybeSingle(),
       allRows(supabase.from("goal_allocations").select("account_id, amount_minor::text").eq("workspace_id", workspace.id).order("id")),
-      allRows(supabase.from("financial_assumptions").select("id, name, account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, enabled")
+      allRows(supabase.from("financial_assumptions").select("id, name, source, account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, enabled")
         .eq("workspace_id", workspace.id).eq("enabled", true).eq("confirmed", true).is("removed_at", null).order("id")),
       allRows(supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
         .eq("workspace_id", workspace.id).eq("to_currency", workspace.display_currency).order("id")),
+      allRows(supabase.from("recurring_series").select("id, assumption_id, recurring_series_transactions(transaction_id)")
+        .eq("workspace_id", workspace.id).eq("status", "confirmed").eq("evidence_invalidated", false).order("id")),
     ]);
   if (preferencesResult.error) throw preferencesResult.error;
   const preferences = preferencesResult.data ? forecastPreferencesSchema.parse(preferencesResult.data) : defaultForecastPreferences(workspace.display_currency);
@@ -100,6 +102,13 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
   missingInputs.push(...debts.missingInputs);
   const events: ForecastEvent[] = (assumptions ?? []).filter(item => item.account_id && accountIds.has(item.account_id) && !debts.excludedAssumptionIds.includes(item.id)).flatMap(item =>
     expandSchedule(item, startDate, horizonDays, preferences.uncertainty_bps).flatMap(event => {
+      // Confirmation explicitly identifies the historical anchor; it is not a new cash movement.
+      // A current resolved opening already includes every posted row through the evaluation time.
+      if (item.source === "recurring_confirmed" && event.date === item.starts_on && recurringSeries.some(series =>
+        series.assumption_id === item.id && series.recurring_series_transactions.some((link: { transaction_id: string }) =>
+          balanceEvidence.ledger.some(row => row.id === link.transaction_id && row.account_id === item.account_id &&
+            row.currency_code === item.currency_code && row.status === "posted" && row.posted_on === event.date &&
+            (!row.posted_at || Date.parse(row.posted_at) <= Date.parse(balanceEvidence.asOf)))))) return [];
       const cv = (amount: bigint) => convert(amount, item.currency_code, event.date);
       const expectedMinor = cv(event.expectedMinor), conservativeMinor = cv(event.conservativeMinor!), optimisticMinor = cv(event.optimisticMinor!);
       if (expectedMinor === null || conservativeMinor === null || optimisticMinor === null) { missingInputs.push(`fx:assumption:${item.account_id}`); return []; }
