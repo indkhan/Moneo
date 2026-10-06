@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import postgres from "postgres";
+import { replayMigrations } from "./migration-replay.mjs";
 
 process.loadEnvFile(".env");
 if (!process.env.SUPABASE_DB_URL) throw new Error("SUPABASE_DB_URL is required");
@@ -49,27 +50,29 @@ async function rolledBack(work) {
 try {
   const applied = await db`select version from supabase_migrations.schema_migrations order by version`;
   const pending = migrations.filter(migration => !applied.some(row => row.version === migration.version));
-  let upgraded;
-  await rolledBack(async tx => {
-    for (const migration of pending) await tx.unsafe(migration.sql);
-    for (const file of regressionFiles) await tx.unsafe(readFileSync(`supabase/tests/${file}`, "utf8"));
-    upgraded = await metadata(tx, "public");
-  });
+  let fresh, upgraded;
   await rolledBack(async tx => {
     await tx.unsafe(`create schema ${schema}; create table ${schema}.auth_users (id uuid primary key, email text)`);
     // Supabase supplies schema USAGE; grant it only on the disposable replay schema.
     await tx.unsafe(`grant usage on schema ${schema} to authenticated, service_role`);
     const isolated = sql => sql.replace(/\bpublic\./g, `${schema}.`).replace(/\bauth\.users\b/g, `${schema}.auth_users`);
-    for (const migration of migrations) {
+    const isolatedMigrations = migrations.map(migration => {
       let text = migration.sql;
       if (migration.file.endsWith("_initial.sql")) text = text.slice(0, text.indexOf("insert into storage.buckets"));
-      await tx.unsafe(isolated(text));
-    }
+      return { ...migration, sql: isolated(text) };
+    });
+    await replayMigrations(tx, isolatedMigrations, "fresh");
     for (const file of regressionFiles) await tx.unsafe(isolated(readFileSync(`supabase/tests/${file}`, "utf8")));
-    const fresh = await metadata(tx, schema);
-    for (const key of Object.keys(fresh)) assert.deepEqual(normalize(fresh[key]), normalize(upgraded[key]), `${key}: fresh and upgraded schema differ`);
+    fresh = await metadata(tx, schema);
   });
   assert.equal((await db`select 1 from pg_namespace where nspname=${schema}`).length, 0, "QA schema must be rolled back");
+  console.log(`PASS: fresh replay ${migrations.length} migrations and ${regressionFiles.length} SQL regressions; disposable schema rollback verified`);
+  await rolledBack(async tx => {
+    await replayMigrations(tx, pending, "upgrade");
+    for (const file of regressionFiles) await tx.unsafe(readFileSync(`supabase/tests/${file}`, "utf8"));
+    upgraded = await metadata(tx, "public");
+  });
+  for (const key of Object.keys(fresh)) assert.deepEqual(normalize(fresh[key]), normalize(upgraded[key]), `${key}: fresh and upgraded schema differ`);
   assert.deepEqual(await db`select version from supabase_migrations.schema_migrations order by version`, applied,
     "Rollback-only verification must not change migration history");
   console.log(`PASS: ${migrations.length} migrations, ${pending.length} pending upgrades, ${regressionFiles.length} SQL regressions; columns/constraints/indexes/RLS/policies/views/triggers/functions match; rollback verified`);
