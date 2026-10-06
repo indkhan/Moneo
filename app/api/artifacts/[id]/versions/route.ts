@@ -10,6 +10,7 @@ const saveSchema = z
     expectedActiveVersionId: z.uuid().nullable(),
   })
   .strict();
+const restoreSchema = z.object({ restoreTrustedVersionId: z.uuid(), expectedActiveVersionId: z.uuid().nullable() }).strict();
 
 export async function GET(
   request: Request,
@@ -70,7 +71,7 @@ export async function POST(
     return Response.json({ error: "Invalid artifact id" }, { status: 400 });
   }
   const body = await request.json().catch(() => null);
-  const parsed = saveSchema.safeParse(body);
+  const parsed = z.union([saveSchema, restoreSchema]).safeParse(body);
   if (!parsed.success) {
     return Response.json({ error: "Provide source (1–8000 chars) and manifest" }, { status: 400 });
   }
@@ -85,6 +86,23 @@ export async function POST(
   if (!artifact) return Response.json({ error: "Artifact not found" }, { status: 404 });
   const kind = artifactKindSchema.safeParse(artifact.kind);
   if (!kind.success) return Response.json({ error: "Unsupported artifact kind" }, { status: 400 });
+  async function failedSave(error: { code?: string; message?: string } | null) {
+    if (error?.code === "40001") {
+      const { data: current } = await supabase.from("artifacts").select("active_version_id")
+        .eq("workspace_id", workspace.id).eq("id", id).maybeSingle();
+      return Response.json({ error: "Active version changed. Your local work is preserved; reload the current version or review it before explicitly replacing it.", activeVersionId: current?.active_version_id ?? null }, { status: 409 });
+    }
+    return Response.json({ error: error?.message ?? "Version save failed" }, { status: error?.code === "P0002" ? 404 : error?.code === "42501" ? 403 : 500 });
+  }
+  if ("restoreTrustedVersionId" in parsed.data) {
+    // No client source/manifest/status can enter this constrained builtin restore.
+    const { data: saved, error } = await supabase.rpc("restore_trusted_artifact_version", {
+      p_artifact_id: id, p_version_id: parsed.data.restoreTrustedVersionId,
+      p_expected_active_version_id: parsed.data.expectedActiveVersionId,
+    });
+    if (error || !saved) return failedSave(error);
+    return Response.json({ version: Array.isArray(saved) ? saved[0] : saved, status: "validated" });
+  }
   const permissions = Array.isArray(artifact.permissions) ? (artifact.permissions as string[]) : [];
 
   const { data: stateRow } = await supabase
@@ -122,12 +140,7 @@ export async function POST(
     },
   );
   if (saveError || !saved) {
-    if (saveError?.code === "40001") {
-      const { data: current } = await supabase.from("artifacts").select("active_version_id")
-        .eq("workspace_id", workspace.id).eq("id", id).maybeSingle();
-      return Response.json({ error: "Active version changed. Your local work is preserved; reload the current version or review it before explicitly replacing it.", activeVersionId: current?.active_version_id ?? null }, { status: 409 });
-    }
-    return Response.json({ error: saveError?.message ?? "Version save failed" }, { status: 500 });
+    return failedSave(saveError);
   }
   const row = Array.isArray(saved) ? saved[0] : saved;
   return Response.json({

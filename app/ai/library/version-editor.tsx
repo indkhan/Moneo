@@ -57,7 +57,7 @@ export function VersionEditor({
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
 
-  async function save(candidateSource = source, candidateManifest = manifestText, expectedActiveVersionId = baseVersionId) {
+  async function save(candidateSource = source, candidateManifest = manifestText, expectedActiveVersionId = baseVersionId, restoreTrustedVersionId?: string) {
     setSaving(true);
     setStatus("");
     let manifest: unknown;
@@ -72,7 +72,7 @@ export function VersionEditor({
       const res = await fetch(`/api/artifacts/${artifactId}/versions`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ source: candidateSource, manifest, expectedActiveVersionId }),
+        body: JSON.stringify(restoreTrustedVersionId ? { restoreTrustedVersionId, expectedActiveVersionId } : { source: candidateSource, manifest, expectedActiveVersionId }),
       });
       const payload = await res.json().catch(() => null);
       if (!res.ok) {
@@ -174,7 +174,7 @@ export function VersionEditor({
               <summary className="cursor-pointer underline">Source</summary>
               <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap font-mono text-xs">{v.source}</pre>
             </details>}
-            {v.status === "validated" && v.id !== activeVersionId && v.source && v.manifest !== null && typeof v.manifest === "object" && "runtime" in v.manifest && v.manifest.runtime === "quickjs-calculator-v1" && <button type="button" disabled={saving || dirty || serverConflict} onClick={() => save(v.source!, JSON.stringify(v.manifest), activeVersionId)} className="mt-2 rounded border px-3 py-1 text-xs">Restore v{v.version} as a new version</button>}
+            {v.status === "validated" && v.id !== activeVersionId && v.source && v.manifest !== null && typeof v.manifest === "object" && "runtime" in v.manifest && (v.manifest.runtime === "quickjs-calculator-v1" || v.manifest.runtime === "trusted") && <button type="button" disabled={saving || dirty || serverConflict} onClick={() => save(v.source!, JSON.stringify(v.manifest), activeVersionId, (v.manifest as { runtime: string }).runtime === "trusted" ? v.id : undefined)} className="mt-2 rounded border px-3 py-1 text-xs">Restore v{v.version} as a new version</button>}
             <details className="mt-1">
               <summary className="cursor-pointer underline">Manifest</summary>
               <pre className="mt-1 max-h-32 overflow-auto font-mono text-xs">
