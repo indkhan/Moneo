@@ -79,14 +79,18 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     await page.goto(`/ai?${new URLSearchParams({ conversation: selected, messagesBefore: message101Cursor! })}`, { waitUntil: "domcontentloaded" });
     await expect(page.getByText("Synthetic message 101", { exact: true })).toBeVisible();
     await page.getByRole("link", { name: "Latest messages", exact: true }).click();
+    let delayedReply: Promise<void> | undefined;
+    let delayedStarted: (() => void) | undefined;
     await page.route("**/api/chat", async route => {
+      expect(route.request().method()).toBe("POST");
       const payload = route.request().postDataJSON();
+      if (payload.message.startsWith("Synthetic delayed ")) { delayedStarted?.(); await delayedReply; }
       if (payload.message === "Synthetic new panel question") {
         expect(payload.conversationId).not.toBe(selected);
         threadIds.push(payload.conversationId); record();
         await db`insert into public.conversations(id,workspace_id,title) values(${payload.conversationId},${workspaceIds[0]},'Synthetic new panel thread')`;
       } else expect(payload.conversationId).toBe(selected);
-      const answer = payload.message === "Synthetic new panel question" ? "Synthetic new panel answer" : payload.message === "Synthetic panel follow-up" ? "Synthetic panel post-send answer" : "Synthetic newest post-send answer";
+      const answer = payload.message.startsWith("Synthetic delayed ") ? payload.message.replace("Synthetic delayed ", "Synthetic delayed answer ") : payload.message === "Synthetic new panel question" ? "Synthetic new panel answer" : payload.message === "Synthetic panel follow-up" ? "Synthetic panel post-send answer" : "Synthetic newest post-send answer";
       const ids = [randomUUID(), randomUUID()]; messageIds.push(...ids); record();
       await db`insert into public.messages ${db(ids.map((id, i) => ({ id, workspace_id: workspaceIds[0], conversation_id: payload.conversationId, role: i ? "assistant" : "user", content: i ? answer : payload.message, created_at: new Date(Date.now() + i).toISOString() })))}`;
       await route.fulfill({ json: { conversationId: payload.conversationId, answer } });
@@ -112,10 +116,56 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     await expect(page).toHaveURL(new RegExp(selected));
     console.log("MNE024: panel reload and fullpage share selected identity");
     await page.getByRole("link", { name: "Older conversations", exact: true }).click();
+    await expect(page).toHaveURL(/threadsBefore=/);
     await expect(page.getByRole("navigation", { name: "Conversations" }).getByRole("link")).toHaveCount(30);
     await expect(page.getByRole("navigation", { name: "Conversations" }).getByText("Synthetic new arrival", { exact: true })).toHaveCount(0);
     await page.getByRole("link", { name: "Latest conversations", exact: true }).click();
+    await expect(page).not.toHaveURL(/threadsBefore=/);
     await expect(page.getByRole("navigation", { name: "Conversations" }).getByText("Synthetic new arrival", { exact: true })).toBeVisible();
+    for (const destination of ["B", "New", "navigation"] as const) {
+      await page.goto(`/ai?conversation=${selected}`, { waitUntil: "domcontentloaded" });
+      await expect(page.locator("html")).toHaveAttribute("data-mne024-ready", "true");
+      await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
+      let release!: () => void;
+      delayedReply = new Promise<void>(resolve => { release = resolve; });
+      const started = new Promise<void>(resolve => { delayedStarted = resolve; });
+      const question = `Synthetic delayed ${destination}`, answer = `Synthetic delayed answer ${destination}`;
+      await panel.getByLabel("Question", { exact: true }).fill(question);
+      await panel.getByRole("button", { name: "Send", exact: true }).click();
+      await started;
+      await panel.getByRole("button", { name: "Close AI assistant" }).click();
+      const other = owned[99], identity = destination === "New" ? "new" : other;
+      if (destination === "New") await page.getByRole("link", { name: "New conversation", exact: true }).click();
+      else await page.getByRole("navigation", { name: "Conversations" }).locator(`a[href="/ai?conversation=${other}"]`).click();
+      await expect(page.locator("main").getByRole("heading", { name: destination === "New" ? "New conversation" : `Synthetic thread ${other}`, exact: true })).toBeVisible();
+      if (destination === "navigation") {
+        await page.getByRole("link", { name: "Settings", exact: true }).click();
+        await expect(page).toHaveURL(/\/settings$/);
+      }
+      await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
+      await expect(panel).toBeVisible();
+      await expect(panel.getByText("Loading conversation...", { exact: true })).toHaveCount(0);
+      const staleNavigations: string[] = [];
+      const navigation = (request: import("@playwright/test").Request) => {
+        const target = new URL(request.url());
+        if (target.pathname === "/ai" && target.searchParams.get("conversation") === selected) staleNavigations.push(target.pathname);
+      };
+      page.on("request", navigation);
+      const completed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/chat" && response.request().postDataJSON().message === question);
+      release(); await completed;
+      await expect(panel.getByText(/Request running/)).toHaveCount(0);
+      await expect(panel.getByText("Loading conversation...", { exact: true })).toHaveCount(0);
+      const selectedCookie = (await context.cookies()).find(cookie => cookie.name === initial.selectionKey)?.value;
+      expect.soft(selectedCookie, `Delayed A must preserve ${destination} identity`).toBe(identity);
+      await expect.soft(page).toHaveURL(destination === "navigation" ? /\/settings$/ : new RegExp(`conversation=${identity}`), { timeout: 1000 });
+      await expect.soft(panel.getByText(answer, { exact: true })).toHaveCount(0, { timeout: 1000 });
+      expect.soft(staleNavigations, "Completion must not navigate using captured /ai pathname").toEqual([]);
+      page.off("request", navigation);
+      const saved = await db`select id from public.messages where workspace_id=${workspaceIds[0]} and conversation_id=${selected} and content=${answer}`;
+      expect(saved).toHaveLength(1); // Work completed on A; only its obsolete UI projection is dropped.
+      delayedReply = undefined; delayedStarted = undefined;
+      console.log(`MNE024: checked delayed A completion after ${destination} and persisted server work`);
+    }
     for (const id of [threadIds[100], randomUUID()]) {
       await page.goto(`/ai?conversation=${id}`, { waitUntil: "domcontentloaded" });
       await expect(page.locator("main").getByRole("alert")).toContainText("Conversation unavailable");
@@ -156,6 +206,7 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
     await expect(panel.getByRole("alert")).toContainText("Synthetic database failure");
     await expect(panel.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
+    expect(runtimeErrors, "No browser JavaScript runtime errors are expected, including the synthetic HTTP 500").toEqual([]);
   } catch (cause) {
     await page.screenshot({ path: ".qa/mne024-failure.png" }).catch(() => {});
     writeFileSync(".qa/mne024-failure.txt", JSON.stringify({ errors: runtimeErrors, body: await page.locator("body").innerText({ timeout: 5000 }).catch(() => "Unavailable") }));
