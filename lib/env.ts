@@ -22,11 +22,53 @@ export function getEnv(): Env {
   });
 }
 
+export type SupabaseConfigStatus = "configured" | "missing" | "partial" | "invalid";
+
+export interface SupabaseConfig {
+  status: SupabaseConfigStatus;
+  detail: string;
+}
+
+// Shared runtime check for the public Supabase configuration. Reads only the
+// public variable names/presence and never logs secret values.
+export function getSupabaseConfig(): SupabaseConfig {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
+  if (!url && !key) {
+    return {
+      status: "missing",
+      detail: "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env to start Moneo.",
+    };
+  }
+  if (!url || !key) {
+    const missing = !url ? "NEXT_PUBLIC_SUPABASE_URL" : "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY";
+    return {
+      status: "partial",
+      detail: `Supabase configuration is incomplete. Missing ${missing}; set both NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env.`,
+    };
+  }
+  // WHATWG URL parsing normalizes a missing scheme delimiter that the
+  // Supabase SDK rejects, so require its absolute scheme prefix first.
+  if (!/^https?:\/\//i.test(url)) {
+    return {
+      status: "invalid",
+      detail: "NEXT_PUBLIC_SUPABASE_URL must be a valid http(s) URL, for example https://xyzcompany.supabase.co.",
+    };
+  }
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("unsupported protocol");
+  } catch {
+    return {
+      status: "invalid",
+      detail: "NEXT_PUBLIC_SUPABASE_URL must be a valid http(s) URL, for example https://xyzcompany.supabase.co.",
+    };
+  }
+  return { status: "configured", detail: "Supabase configuration is present." };
+}
+
 export function hasSupabase() {
-  return Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-  );
+  return getSupabaseConfig().status === "configured";
 }
 
 export function hasOpenRouter() {

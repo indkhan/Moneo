@@ -17,7 +17,7 @@ test.describe("core journey smoke (no session, no live AI)", () => {
     const health = await (await request.get("/api/health")).json();
     await page.goto("/");
     if (health.supabase) await expect(page).toHaveURL(/\/login$/);
-    else await expect(page.getByText("Configure Supabase in .env to start Moneo.")).toBeVisible();
+    else await expect(page.getByText(/to start Moneo\./)).toBeVisible();
     expect(openRouterCalls).toEqual([]);
   });
 
