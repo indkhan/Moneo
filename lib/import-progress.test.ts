@@ -3,8 +3,8 @@ import { importFile } from "@/workflows/import-file";
 import { createHash } from "node:crypto";
 
 const state = vi.hoisted(() => ({ sources: new Map<string, Record<string, unknown>>(), links: new Map<string, Record<string, unknown>>(),
-  transactions: new Map<string, Record<string, unknown>>(), snapshots: new Map<string, Record<string, unknown>>(), progress: [] as number[], importsWrites: [] as Record<string, unknown>[], timestamped: false, accountArchived: false, importStatus: "queued", runVersion: 1, cancelAt: 0, legacyAccountId: "" }));
-function syntheticCsv() { return "Date,Description,Amount,Type,Fee,Balance\n" + Array.from({ length: 27 }, (_, i) => `${state.timestamped ? `2026-10-01T10:${String(i).padStart(2,"0")}:00Z` : "2026-09-01"},Row ${i},-1.00,${i === 0 ? "Transfer" : "Card Payment"},${state.timestamped && i === 1 ? "0.10" : "0"},${state.timestamped ? String(100-i) : ""}`).join("\n"); }
+  transactions: new Map<string, Record<string, unknown>>(), snapshots: new Map<string, Record<string, unknown>>(), progress: [] as number[], importsWrites: [] as Record<string, unknown>[], timestamped: false, threeDecimal: false, accountArchived: false, importStatus: "queued", runVersion: 1, cancelAt: 0, legacyAccountId: "" }));
+function syntheticCsv() { return "Date,Description,Amount,Type,Fee,Balance\n" + Array.from({ length: 27 }, (_, i) => `${state.timestamped ? `2026-10-01T10:${String(i).padStart(2,"0")}:00Z` : "2026-09-01"},Row ${i},${state.threeDecimal ? "-0.123" : "-1.00"},${i === 0 ? "Transfer" : "Card Payment"},${state.threeDecimal ? "0.001" : state.timestamped && i === 1 ? "0.10" : "0"},${state.threeDecimal ? "1.234" : state.timestamped ? String(100-i) : ""}`).join("\n"); }
 vi.mock("workflow/api", () => ({ start: vi.fn() }));
 vi.mock("@/workflows/financial-review", () => ({ financialReview: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ getModel: vi.fn() }));
@@ -25,7 +25,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
     if (!state.sources.has(sourceId)) state.sources.set(sourceId, { id: sourceId, row_number: row.rowNumber, status: row.action, original_row: row.originalRow, fee_evidence: row.feeEvidence, review_reasons: row.reviewReasons });
     if (!state.transactions.has(transactionId)) state.transactions.set(transactionId, { id: transactionId, account_id: args.p_account_id, amount_minor: row.amountMinor, posted_at: row.postedAt, kind: row.kind, review_reasons: row.reviewReasons });
     if (!state.links.has(sourceId)) state.links.set(sourceId, { transaction_id: transactionId, source_transaction_id: sourceId });
-    if (row.balanceMinor !== null) state.snapshots.set(String(row.balanceId), { as_of: row.balanceAsOf, boundary_kind: row.postedAt ? "after_transaction" : "date_only", source_transaction_id: sourceId });
+    if (row.balanceMinor !== null) state.snapshots.set(String(row.balanceId), { amount_minor: row.balanceMinor, as_of: row.balanceAsOf, boundary_kind: row.postedAt ? "after_transaction" : "date_only", source_transaction_id: sourceId });
     if (row.reportProgress) {
       state.progress.push(state.links.size);
       if (state.cancelAt && state.links.size >= state.cancelAt) { state.importStatus = "canceled"; state.runVersion++; }
@@ -44,7 +44,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
       limit: async () => ({ data: state.accountArchived ? [{ id: "archived", archived_at: "2026-10-01T00:00:00Z" }] : [], error: null }),
       single: async () => ({ data: table === "data_sources" ? { account_id: state.legacyAccountId } : table === "source_transactions" ? state.sources.get(String(filters.get("id"))) : table === "transactions" ? state.transactions.get(String(filters.get("id"))) : {
         status: state.importStatus, run_version: state.runVersion, source_id: state.legacyAccountId ? "legacy-source" : null, storage_path: "workspace/synthetic.csv", file_hash: createHash("sha256").update(syntheticCsv()).digest("hex"), new_rows: state.links.size, matched_rows: 0, review_rows: 0,
-        mapping: { accountName: "Cash", currencyCode: "EUR", dateColumn: "Date", descriptionColumn: "Description", amountColumn: "Amount", dateFormat: "iso", amountSign: "signed", ...(state.timestamped ? { balanceColumn: "Balance" } : {}) },
+        mapping: { accountName: "Cash", currencyCode: state.threeDecimal ? "KWD" : "EUR", dateColumn: "Date", descriptionColumn: "Description", amountColumn: "Amount", dateFormat: "iso", amountSign: "signed", ...(state.timestamped ? { balanceColumn: "Balance" } : {}), ...(state.threeDecimal ? { numericConvention: "decimal-dot", parserVersion: "numeric-convention-v2" } : {}) },
       }, error: null }),
       maybeSingle: async () => ({ data: (table === "source_transactions" ? state.sources.get(String(filters.get("id"))) : state.links.get(String(filters.get("source_transaction_id")))) ?? null, error: null }),
       then: (resolve: (result: { data: unknown[]; error: null }) => unknown) => {
@@ -63,6 +63,21 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
     return query;
   },
 }) }));
+
+it("writes reviewed three-decimal amounts, fees and balances as exact strings with original evidence", async () => {
+  state.sources.clear(); state.links.clear(); state.transactions.clear(); state.snapshots.clear(); state.timestamped = true; state.threeDecimal = true; state.importStatus = "queued";
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key"); vi.stubEnv("OPENROUTER_API_KEY", "");
+  try {
+    await importFile("decimal-import", "workspace", 27);
+    expect(state.importStatus).toBe("completed");
+    expect([...state.transactions.values()][1].amount_minor).toBe("-123");
+    expect([...state.snapshots.values()][1].amount_minor).toBe("1234");
+    expect([...state.sources.values()][1]).toMatchObject({ original_row: { Amount: "-0.123", Fee: "0.001", Balance: "1.234" }, fee_evidence: { feeMinor: "1" } });
+  } finally {
+    state.sources.clear(); state.links.clear(); state.transactions.clear(); state.snapshots.clear(); state.progress.length = 0; state.importsWrites = [];
+    state.timestamped = false; state.threeDecimal = false; state.importStatus = "queued"; vi.unstubAllEnvs();
+  }
+});
 
 it("reports persisted progress by row25 and keeps counts/idempotent ledger stable on replay", async () => {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid");

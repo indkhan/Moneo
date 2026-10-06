@@ -17,7 +17,7 @@ type Preview = {
   dateRange: { from: string; to: string };
   examples: { postedOn: string; description: string; amountMinor: string; currencyCode: string; status?: string; merchant?: string; category?: string }[];
 };
-type Inspection = { headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string; warnings?: string[] };
+type Inspection = { headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string; previewError?: string; warnings?: string[] };
 type ImportStatus = { id: string; filename: string; status: string; run_version: number; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; classification_review_rows?: number; rejected_rows: number; error: string | null; created_at: string };
 type HistoryUpdate = Partial<ImportStatus> & Pick<ImportStatus, "id" | "status" | "run_version">;
 type UndoPreview = { import_id: string; filename: string; status: string; deletable_transactions: number; deletable_balances: number; blockers: string[]; safe: boolean };
@@ -132,7 +132,7 @@ export default function ImportPage() {
         dateFormat: "iso",
         amountSign: "signed",
       });
-      setEditing(!result.mapping || result.mapping.amountSign === "outflow-positive");
+      setEditing(!result.mapping || !result.preview || result.mapping.amountSign === "outflow-positive");
     } catch (cause) {
       if (inspectionRequest.current !== controller) return;
       setError(cause instanceof Error ? cause.message : "Inspection failed");
@@ -290,6 +290,15 @@ export default function ImportPage() {
     {file && inspection && <section className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 className="text-xl font-semibold tracking-tight text-foreground">{file.name} ({index + 1} of {files.length})</h2>
       {inspection.aiError && <p>Automatic interpretation unavailable. Choose the columns below.</p>}
+      {inspection.previewError && <p role="alert">{inspection.previewError}</p>}
+      {mapping && <label className="grid gap-1 text-sm">Source numeric convention
+        <select className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.numericConvention ?? ""} onChange={event => { setMapping({ ...mapping, numericConvention: event.target.value as ImportMapping["numericConvention"] || undefined }); setEditing(true); }}>
+          <option value="">Select the statement&apos;s number format</option>
+          <option value="decimal-dot">Decimal dot, comma grouping: 1,234.567</option>
+          <option value="decimal-comma">Decimal comma, dot grouping: 1.234,567</option>
+        </select>
+        <span className="text-muted-foreground">Check the original amounts, fees and balances, then preview this convention before continuing.</span>
+      </label>}
       {editing && <div className="overflow-x-auto rounded-lg border border-border"><table className="w-full text-left text-sm [&_th]:bg-muted [&_th]:px-3 [&_th]:py-2.5 [&_th]:text-xs [&_th]:font-semibold [&_td]:px-3 [&_td]:py-3"><thead><tr>{inspection.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>
         {inspection.sample.slice(0, 3).map((row, i) => <tr className="border-t border-border" key={i}>{inspection.headers.map((header) => <td key={header}>{row[header]}</td>)}</tr>)}
       </tbody></table></div>}
@@ -326,7 +335,7 @@ export default function ImportPage() {
         <div className="sm:col-span-2"><button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy} onClick={() => void inspect(file, mapping)}>Preview correction</button></div>
       </div>}
       <div className="flex gap-3">
-        {inspection.preview && !editing && <button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy || (!!inspection.preview.timestampReviewRequired && !mapping?.timestampTimezoneConfirmed)} onClick={() => void confirm()}>Continue</button>}
+        {inspection.preview && !editing && <button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy || !mapping?.numericConvention || (!!inspection.preview.timestampReviewRequired && !mapping?.timestampTimezoneConfirmed)} onClick={() => void confirm()}>Continue</button>}
         {inspection.preview && !editing && <button type="button" className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" onClick={() => setEditing(true)}>Correct</button>}
         <button type="button" className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" onClick={() => { setFiles([]); setInspection(null); setMapping(null); }}>Cancel</button>
       </div>

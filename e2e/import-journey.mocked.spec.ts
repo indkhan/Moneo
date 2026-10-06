@@ -25,6 +25,24 @@ import {
 } from "./fixtures";
 
 test.describe("deterministic import journey (mocked AI mapping, no credentials)", () => {
+  test("requires a reviewed numeric convention and previews it before confirmation", async ({ page }) => {
+    let selected: string | undefined;
+    await page.route("**/api/imports", route => route.fulfill({ json: [] }));
+    await page.route("**/api/imports/inspect", route => {
+      const response = mockInspectResponse();
+      selected = route.request().postData()?.includes("decimal-comma") ? "decimal-comma" : undefined;
+      return route.fulfill({ json: { ...response, mapping: { ...response.mapping, numericConvention: selected } } });
+    });
+    await page.goto("/import");
+    await expect(page.getByLabel("Financial statement files")).toBeEnabled();
+    await page.getByLabel("Financial statement files").setInputFiles({ name: "synthetic.csv", mimeType: "text/csv", buffer: Buffer.from(AUGUST_CSV) });
+    await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
+    await page.getByRole("combobox", { name: "Source numeric convention" }).selectOption("decimal-comma");
+    await expect(page.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Preview correction" }).click();
+    await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
+    expect(selected).toBe("decimal-comma");
+  });
   test("keeps the statement picker disabled until its upload handler hydrates", async ({ page }) => {
     let releaseScripts!: () => void;
     const scriptsReady = new Promise<void>(resolve => { releaseScripts = resolve; });

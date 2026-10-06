@@ -7,6 +7,15 @@ vi.mock("@/lib/ai/provider", () => ({ modelForSettings: async () => ({}) }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { display_currency: "EUR" } }) }));
 afterEach(() => vi.clearAllMocks());
 
+it("returns an editable mapping when source money needs numeric clarification", async () => {
+  const form = new FormData();
+  form.set("file", new File(["Date,Description,Amount\n2026-10-01,Synthetic,1.234"], "synthetic.csv"));
+  form.set("mapping", JSON.stringify({ accountName: "Cash", currencyCode: "KWD", dateColumn: "Date", descriptionColumn: "Description", amountColumn: "Amount", dateFormat: "iso", amountSign: "signed" }));
+  const response = await POST(new Request("http://localhost/api/imports/inspect", { method: "POST", body: form }));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ mapping: { currencyCode: "KWD" }, preview: null, previewError: expect.stringContaining("numeric convention") });
+});
+
 it("cancels provider mapping when the upload request is canceled", async () => {
   const controller = new AbortController();
   let started!: () => void;

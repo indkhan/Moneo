@@ -43,6 +43,7 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     await page.getByRole("combobox",{name:"Description",exact:true}).selectOption("description");
     await page.getByRole("combobox",{name:"Amount",exact:true}).selectOption("amount");
     await page.getByRole("combobox",{name:"External ID",exact:true}).selectOption("id");
+    await page.getByRole("combobox",{name:"Source numeric convention"}).selectOption("decimal-dot");
     await page.getByRole("button",{name:"Preview correction",exact:true}).click();
     await expect(page.getByText("75 rows",{exact:true})).toBeVisible();
     const confirmResponse=page.waitForResponse(response=>response.url().endsWith("/api/imports/confirm")&&response.request().method()==="POST");

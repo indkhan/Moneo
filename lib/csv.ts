@@ -39,6 +39,8 @@ export const mappingSchema = z.object({
   }).strict()).max(1000).optional(),
   dateFormat: z.enum(["iso", "dmy", "mdy"]),
   amountSign: z.enum(["signed", "outflow-positive"]),
+  numericConvention: z.enum(["decimal-dot", "decimal-comma"]).optional(),
+  parserVersion: z.literal("numeric-convention-v2").optional(),
 }).strict().refine(
   (m) => m.amountColumn ? !m.debitColumn && !m.creditColumn : Boolean(m.debitColumn && m.creditColumn),
   "Choose either one amount column or both debit and credit columns",
@@ -62,11 +64,12 @@ export function proposeKnownStatementMapping(rows: SourceRow[], accountName: str
 
 export function validateImportConfirmation(rows: SourceRow[], input: unknown): ImportMapping {
   const mapping = validateMapping(input, rows);
+  if (!mapping.numericConvention) throw new Error("Review and select the source numeric convention before importing");
   const naive = rows.some(row => /[ T]\d{2}:\d{2}:\d{2}$/.test(row[mapping.dateColumn]?.trim() ?? ""));
   if (naive && (!mapping.timestampTimezone || !mapping.timestampTimezoneConfirmed))
     throw new Error("Review and confirm the source timestamp timezone before importing");
   mapRows(rows, mapping);
-  return mapping;
+  return { ...mapping, parserVersion: "numeric-convention-v2" };
 }
 
 export function proposeStatementTimezones(rows: SourceRow[], mapping: ImportMapping, workspaceTimezone = "Europe/Berlin"): ImportMapping {
@@ -131,7 +134,8 @@ export function validateMapping(input: unknown, rows: SourceRow[]): ImportMappin
 }
 
 export function validateAiMapping(input: unknown, rows: SourceRow[], workspaceCurrency: string): ImportMapping {
-  const mapping = mappingSchema.parse(input);
+  // Only the user chooses the source convention; provenance is stamped by confirmation.
+  const mapping = { ...mappingSchema.parse(input), numericConvention: undefined, parserVersion: undefined };
   return validateMapping(proposeAccountRoutes(rows, mapping.currencyColumn ? mapping : { ...mapping, currencyCode: workspaceCurrency }), rows);
 }
 
@@ -161,7 +165,7 @@ function databaseMinor(amount: bigint): bigint {
   return amount;
 }
 
-export function parseAmountMinor(input: string, currencyCode: string = "EUR"): bigint {
+export function parseAmountMinor(input: string, currencyCode: string = "EUR", convention?: ImportMapping["numericConvention"]): bigint {
   const digits = minorDigits(currencyCode);
   let value = input.trim().replace(/\s/g, "").replace(/[€$£]/g, "");
   if (!/^(?:\(\d[\d.,]*\)|[-+]?\d[\d.,]*|\d[\d.,]*-)$/.test(value)) throw new Error(`Invalid amount: ${input}`);
@@ -169,13 +173,13 @@ export function parseAmountMinor(input: string, currencyCode: string = "EUR"): b
   value = value.replace(/[()\-+]/g, "");
   const comma = value.lastIndexOf(",");
   const dot = value.lastIndexOf(".");
-  if ((comma < 0 || dot < 0) && /^\d{1,3}([.,]\d{3})+$/.test(value)) {
-    const whole = BigInt(value.replace(/[.,]/g, ""));
-    return databaseMinor(whole * (negative ? -pow10(digits) : pow10(digits)));
-  }
-  const decimal = comma > dot ? "," : ".";
+  if (!convention && (comma < 0 || dot < 0) && /^\d{1,3}([.,]\d{3})+$/.test(value))
+    throw new Error("Review the source numeric convention: separator could represent decimals or grouping");
+  const decimal = convention ? (convention === "decimal-dot" ? "." : ",") : comma > dot ? "," : ".";
+  const grouping = decimal === "." ? "," : ".";
   const parts = value.split(decimal);
-  if (parts.length > 2 || !/^(\d{1,3}([.,]\d{3})*|\d+)$/.test(parts[0]) ||
+  const wholePattern = grouping === "," ? /^(\d{1,3}(,\d{3})+|\d+)$/ : /^(\d{1,3}(\.\d{3})+|\d+)$/;
+  if (parts.length > 2 || !wholePattern.test(parts[0]) ||
       (parts[1] !== undefined && (!/^\d+$/.test(parts[1]) || parts[1].length > digits))) {
     throw new Error(`Invalid amount: ${input}`);
   }
@@ -314,13 +318,13 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
       const accountName = routes?.[0]?.accountName ?? mapping.accountName;
       let amountMinor: bigint;
       if (mapping.amountColumn) {
-        amountMinor = parseAmountMinor(sourceRow[mapping.amountColumn] ?? "", currencyCode);
+        amountMinor = parseAmountMinor(sourceRow[mapping.amountColumn] ?? "", currencyCode, mapping.numericConvention);
         if (mapping.amountSign === "outflow-positive") amountMinor = -amountMinor;
       } else {
         const debit = sourceRow[mapping.debitColumn!] ?? "";
         const credit = sourceRow[mapping.creditColumn!] ?? "";
         if (Boolean(debit.trim()) === Boolean(credit.trim())) throw new Error("Expected exactly one debit or credit value");
-        amountMinor = credit.trim() ? parseAmountMinor(credit, currencyCode) : -parseAmountMinor(debit, currencyCode);
+        amountMinor = credit.trim() ? parseAmountMinor(credit, currencyCode, mapping.numericConvention) : -parseAmountMinor(debit, currencyCode, mapping.numericConvention);
         if ((credit.trim() && amountMinor < 0n) || (debit.trim() && amountMinor > 0n))
           throw new Error("Debit and credit values must be positive");
         if (amountMinor === 0n) throw new Error("Zero debit or credit");
@@ -340,8 +344,11 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
       } else if (type && type !== "card payment" && !(type === "debit" && amountMinor < 0n)) reviewReasons.push("source_type");
       let feeMinor: bigint | undefined;
       if (feeColumn && sourceRow[feeColumn]?.trim()) {
-        try { feeMinor = parseAmountMinor(sourceRow[feeColumn], currencyCode); }
-        catch { reviewReasons.push("fee_semantics"); }
+        try { feeMinor = parseAmountMinor(sourceRow[feeColumn], currencyCode, mapping.numericConvention); }
+        catch (error) {
+          if (error instanceof Error && error.message.includes("numeric convention")) throw error;
+          reviewReasons.push("fee_semantics");
+        }
       }
       if (feeMinor !== undefined && feeMinor !== 0n) reviewReasons.push("fee_semantics");
       const sourceDate = sourceRow[mapping.dateColumn] ?? "";
@@ -364,7 +371,7 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
         ...(mapping.merchantColumn && sourceRow[mapping.merchantColumn]?.trim() ? { merchant: sourceRow[mapping.merchantColumn].trim() } : {}),
         ...(mapping.categoryColumn && sourceRow[mapping.categoryColumn]?.trim() ? { category: sourceRow[mapping.categoryColumn].trim() } : {}),
         ...(mapping.externalIdColumn && sourceRow[mapping.externalIdColumn]?.trim() ? { externalId: sourceRow[mapping.externalIdColumn].trim() } : {}),
-        ...(mapping.balanceColumn && sourceRow[mapping.balanceColumn]?.trim() ? { balanceMinor: parseAmountMinor(sourceRow[mapping.balanceColumn], currencyCode) } : {}),
+        ...(mapping.balanceColumn && sourceRow[mapping.balanceColumn]?.trim() ? { balanceMinor: parseAmountMinor(sourceRow[mapping.balanceColumn], currencyCode, mapping.numericConvention) } : {}),
       };
     } catch (error) {
       throw new Error(`Row ${index + 2}: ${error instanceof Error ? error.message : String(error)}`);

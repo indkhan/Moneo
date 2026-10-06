@@ -46,7 +46,7 @@ afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
 function request() {
   const form = new FormData();
   form.set("file", new File(["Date,Description,Amount\n2026-10-01,Coffee,-2.00"], "synthetic.csv"));
-  form.set("mapping", JSON.stringify({ accountName: "Checking", currencyCode: "EUR", dateColumn: "Date", descriptionColumn: "Description", amountColumn: "Amount", dateFormat: "iso", amountSign: "signed" }));
+  form.set("mapping", JSON.stringify({ accountName: "Checking", currencyCode: "EUR", dateColumn: "Date", descriptionColumn: "Description", amountColumn: "Amount", dateFormat: "iso", amountSign: "signed", numericConvention: "decimal-dot" }));
   return new Request("http://localhost/api/imports/confirm", { method: "POST", body: form });
 }
 
@@ -57,6 +57,19 @@ it("starts a fresh import of undone bytes without changing historical evidence",
   expect(fixture.imports[0]).toEqual({ id: "old-import", status: "undone" });
   expect(fixture.inserts).toHaveLength(1);
   expect(start).toHaveBeenCalledOnce();
+  expect(fixture.inserts[0].mapping).toMatchObject({ numericConvention: "decimal-dot", parserVersion: "numeric-convention-v2" });
+});
+
+it("refuses an unreviewed numeric convention before storage or workflow effects", async () => {
+  const form = await request().formData();
+  const mapping = JSON.parse(String(form.get("mapping")));
+  delete mapping.numericConvention;
+  form.set("mapping", JSON.stringify(mapping));
+  const response = await POST(new Request("http://localhost/api/imports/confirm", { method: "POST", body: form }));
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({ error: expect.stringContaining("numeric convention") });
+  expect(fixture.inserts).toHaveLength(0);
+  expect(start).not.toHaveBeenCalled();
 });
 
 it("deduplicates active bytes even when an older undone import exists", async () => {
