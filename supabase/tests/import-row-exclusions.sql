@@ -57,15 +57,15 @@ begin
       '{"accountName":"Reviewed synthetic","currencyCode":"EUR","currencyColumn":"Currency","statusColumn":"State","typeColumn":"Type","merchantColumn":"Merchant","categoryColumn":"Category","rowContractVersion":"normalized-row-v1","rowDecisions":[{"rowNumber":2,"action":"correct","values":{"Currency":"EUR","State":"pending","Type":"Card refund","Merchant":"IKEA","Category":"Reviewed"}},{"rowNumber":3,"action":"exclude","reason":"Statement footer"}]}');
   perform public.prepare_import_route(reviewed_import,workspace,1,account,route_source,'Reviewed synthetic','EUR',2);
   original:=jsonb_build_object('Currency','USD','State','unsupported','Type','Transfer','Merchant','Amazon','Category','Original');
-  payload:=jsonb_build_object('sourceId',overlap,'transactionId',null,'balanceId',gen_random_uuid(),'rowNumber',2,'originalRow',original,'postedOn','2026-09-02','description','Reviewed refund','amountMinor','200','currencyCode','EUR','status','pending','kind','refund','reviewReasons','[]'::jsonb,'action','review');
+  payload:=jsonb_build_object('accountName','Reviewed synthetic','merchantName','IKEA','merchantNormalizedName','ikea','merchantId',public.stable_import_uuid(workspace::text||':merchant:ikea'),'categoryName','Reviewed','categoryId',public.stable_import_uuid(workspace::text||':category:Reviewed'),'sourceId',overlap,'transactionId',null,'balanceId',gen_random_uuid(),'rowNumber',2,'originalRow',original,'postedOn','2026-09-02','description','Reviewed refund','amountMinor','200','currencyCode','EUR','status','pending','kind','refund','reviewReasons','[]'::jsonb,'action','review');
   perform public.ingest_import_row(reviewed_import,workspace,1,account,payload);
   perform public.record_import_exclusion(reviewed_import,workspace,1,jsonb_build_object('sourceId',footer,'rowNumber',3,'reason','Statement footer','originalRow',jsonb_build_object('Description','Footer')));
   perform public.finish_import_run(reviewed_import,workspace,1,null);
   insert into public.merchants(id,workspace_id,name,normalized_name) values(gen_random_uuid(),workspace,'IKEA','ikea');
   insert into public.categories(id,workspace_id,name) values(gen_random_uuid(),workspace,'Reviewed');
   execute 'set local role authenticated';
-  perform public.resolve_import_review(overlap,'accept','2026-09-02','Reviewed refund',200,'EUR');
-  perform public.resolve_import_review(overlap,'accept','2026-09-02','Reviewed refund',200,'EUR');
+  perform public.resolve_normalized_import_review(overlap,'accept');
+  perform public.resolve_normalized_import_review(overlap,'accept');
   begin
     perform public.reviewed_import_source_row(overlap);
     raise exception 'Private reviewed-source helper callable directly' using errcode='ZX001';

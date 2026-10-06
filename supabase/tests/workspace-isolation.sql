@@ -116,6 +116,7 @@ begin
     format('select public.mark_transaction_refund(%L,0,null)',foreign_transaction),
     format('select public.clear_transaction_link(%L,0)',foreign_transaction),
     format('select public.set_goal_allocation(%L,%L,100)',foreign_goal,foreign_account),
+    format('select public.resolve_normalized_import_review(%L,%L)',foreign_source,'reject'),
     format('select public.resolve_import_review(%L,%L)',foreign_source,'reject'),
     format('select public.preview_import_undo(%L)',foreign_import),
     format('select public.undo_import(%L,1,0)',foreign_import),

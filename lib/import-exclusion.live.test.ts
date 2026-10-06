@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
@@ -18,6 +19,12 @@ it.skipIf(process.env.RUN_IMPORT_EXCLUSION_DB_TESTS !== "1")("preserves exclusio
       expect(applied.name).toBe("import_row_exclusions");
       expect(applied.statements.join("\n").replaceAll("\r\n", "\n").trim(), "Deployed migration must match the checked-in SQL").toBe(
         readFileSync("supabase/migrations/202610060002_import_row_exclusions.sql", "utf8").replaceAll("\r\n", "\n").trim(),
+      );
+      const [reviewApplied] = await tx`select name,statements from supabase_migrations.schema_migrations where version='202610060007'`;
+      expect(reviewApplied, "Deploy migration 202610060007 before running this live test").toBeDefined();
+      expect(reviewApplied.name).toBe("normalized_import_review");
+      expect(reviewApplied.statements.join("\n").replaceAll("\r\n", "\n").trim(), "Deployed review migration must match the checked-in SQL").toBe(
+        readFileSync("supabase/migrations/202610060007_normalized_import_review.sql", "utf8").replaceAll("\r\n", "\n").trim(),
       );
       expect((await tx`select to_regprocedure('public.record_import_exclusion(uuid,uuid,integer,jsonb)') present`)[0].present).not.toBeNull();
       await tx`insert into auth.users(id,email) values(${actor},${`qa-${actor}@example.invalid`})`;
@@ -55,15 +62,17 @@ it.skipIf(process.env.RUN_IMPORT_EXCLUSION_DB_TESTS !== "1")("preserves exclusio
       ] };
       await tx`insert into public.imports(id,workspace_id,filename,storage_path,file_hash,status,total_rows,mapping) values(${reviewedImport},${workspace},'synthetic-review.csv','synthetic',${reviewedImport},'queued',3,${tx.json(reviewedMapping)})`;
       await tx`select public.prepare_import_route(${reviewedImport},${workspace},1,${account},${routeSource},'Reviewed synthetic','EUR',3)`;
-      const payload = { transactionId: randomUUID(), balanceId: randomUUID(), rowNumber: 2, sourceId: neighbor, originalRow: { Description: "Neighbor" }, description: "Neighbor", postedOn: "2026-09-01", amountMinor: "100", currencyCode: "EUR", status: "posted", kind: "ordinary", reviewReasons: [], action: "new" };
+      const payload = { accountName: "Reviewed synthetic", transactionId: randomUUID(), balanceId: randomUUID(), rowNumber: 2, sourceId: neighbor, originalRow: { Description: "Neighbor" }, description: "Neighbor", postedOn: "2026-09-01", amountMinor: "100", currencyCode: "EUR", status: "posted", kind: "ordinary", reviewReasons: [], action: "new" };
       await tx`select public.ingest_import_row(${reviewedImport},${workspace},1,${account},${tx.json(payload)})`;
       await tx`select public.ingest_import_row(${reviewedImport},${workspace},1,${account},${tx.json({ ...payload, transactionId: null, sourceId: overlap, rowNumber: 3, originalRow: original, description: "Reviewed refund", postedOn: "2026-09-02", amountMinor: "200", status: "pending", kind: "refund", action: "review" })})`;
       await tx`select public.record_import_exclusion(${reviewedImport},${workspace},1,${tx.json({ sourceId: footer, rowNumber: 4, reason: "Statement footer", originalRow: { Description: "Footer" } })})`;
       await tx`select public.finish_import_run(${reviewedImport},${workspace},1,null)`;
       await tx`insert into public.merchants(id,workspace_id,name,normalized_name) values(${randomUUID()},${workspace},'IKEA','ikea')`;
       await tx`insert into public.categories(id,workspace_id,name) values(${randomUUID()},${workspace},'Reviewed')`;
-      await tx`select public.resolve_import_review(${overlap},'accept','2026-09-02','Reviewed refund',200,'EUR')`;
-      await tx`select public.resolve_import_review(${overlap},'accept','2026-09-02','Reviewed refund',200,'EUR')`;
+      await tx`set local role authenticated`;
+      await tx`select public.resolve_normalized_import_review(${overlap},'accept')`;
+      await tx`select public.resolve_normalized_import_review(${overlap},'accept')`;
+      await tx`reset role`;
       const accepted = await tx`select t.currency_code,t.status,t.kind,m.name merchant,c.name category from public.transactions t join public.transaction_sources l on l.transaction_id=t.id left join public.merchants m on m.id=t.merchant_id left join public.categories c on c.id=t.category_id where l.source_transaction_id=${overlap}`;
       expect(accepted).toHaveLength(1);
       expect(accepted[0]).toMatchObject({ currency_code: "EUR", status: "pending", kind: "refund", merchant: "IKEA", category: "Reviewed" });
@@ -75,3 +84,11 @@ it.skipIf(process.env.RUN_IMPORT_EXCLUSION_DB_TESTS !== "1")("preserves exclusio
     expect(await db`select id from public.workspaces where owner_id=${actor}`).toHaveLength(0);
   } finally { await db.end(); }
 }, 30000);
+
+
+it.skipIf(process.env.RUN_IMPORT_EXCLUSION_DB_TESTS !== "1")("preserves corrected/excluded originals, normalized acceptance and worker fencing in an authenticated disposable SQL replay", () => {
+  const output = execFileSync(process.execPath, ["supabase/tests/run-import-review.mjs"], { encoding: "utf8", timeout: 60_000 });
+  expect(output).toContain("PASS import-row-exclusions.sql");
+  expect(output).toContain("PASS import-review.sql");
+  expect(output).toContain("PASS exact disposable schema rollback and unchanged applied migration history");
+}, 65_000);
