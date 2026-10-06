@@ -13,8 +13,9 @@ const modules = {
     import {VersionEditor} from "/app/ai/library/version-editor.tsx";
     import {GenerateCalculatorForm} from "/app/ai/library/generate-calculator-form.tsx";
     import {GenerationActions} from "/app/ai/activity/generation/[id]/generation-actions.tsx";
+    import {RenameArtifactForm} from "/app/ai/library/rename-form.tsx";
     function Fixture() { const [props, update] = React.useState(window.initialFixture); window.updateFixture = update;
-      return React.createElement(React.Fragment, null, React.createElement(VersionEditor, props), React.createElement(GenerateCalculatorForm, {artifactId: props.artifactId, kind: "custom_comparison", activeVersionId: props.activeVersionId}), React.createElement("section", {"aria-label":"Retained draft"}, React.createElement(GenerationActions, {id:"retained",artifactId:props.artifactId,purpose:"calculator",status:"completed",activeVersionId:props.activeVersionId,result:{source:'input => ({summary:"Retained"})',manifest:${JSON.stringify(manifest)},validation:{ok:true},baseVersionId:"v1"}}))); }
+      return React.createElement(React.Fragment, null, React.createElement(RenameArtifactForm, {artifactId:props.artifactId,activeVersionId:props.activeVersionId,name:props.currentName,action:async form => {window.renameBody=Object.fromEntries(form);}}), React.createElement(VersionEditor, props), React.createElement(GenerateCalculatorForm, {artifactId: props.artifactId, kind: "custom_comparison", activeVersionId: props.activeVersionId}), React.createElement("section", {"aria-label":"Retained draft"}, React.createElement(GenerationActions, {id:"retained",artifactId:props.artifactId,purpose:"calculator",status:"completed",activeVersionId:props.activeVersionId,result:{source:'input => ({summary:"Retained"})',manifest:${JSON.stringify(manifest)},validation:{ok:true},baseVersionId:"v1"}}))); }
     createRoot(document.getElementById("root")).render(React.createElement(Fixture));`,
 };
 const server = await createServer({ configFile: false, root: process.cwd(), server: { host: "127.0.0.1", port: 3035, strictPort: true },
@@ -32,8 +33,8 @@ try {
   await server.listen();
   browser = await chromium.launch();
   const page = await browser.newPage();
-  const props = (version, label, versions = [row(version, label)]) => ({ artifactId: "synthetic", activeVersionId: `v${version}`, currentSource: source(label), currentManifest: manifest, versions });
-  let current = props(1, "A"), requests = [], nextVersion = 2, releaseGeneration, generationStarted = false;
+  const props = (version, label, versions = [row(version, label)]) => ({ currentName: label, artifactId: "synthetic", activeVersionId: `v${version}`, currentSource: source(label), currentManifest: manifest, versions });
+  let current = props(1, "A"), requests = [], nextVersion = 2, releaseGeneration, generationStarted = false, trustedHistory = false;
   await page.addInitScript(initial => { window.initialFixture = initial; window.refreshFixture = () => {}; }, current);
   await page.route("**/api/artifacts/**", async route => {
     const request = route.request();
@@ -43,7 +44,7 @@ try {
       await new Promise(resolve => { releaseGeneration = resolve; });
       return route.fulfill({ json: { source: source("Generated"), manifest, validation: { ok: true }, baseVersionId } });
     }
-    if (request.method() === "GET") return route.fulfill({ json: { versions: [row(1, "Oldest")], nextCursor: null, activeVersionId: current.activeVersionId } });
+    if (request.method() === "GET") return route.fulfill({ json: { versions: [trustedHistory ? {...row(1, "Oldest"),manifest:{kind:"custom_comparison",runtime:"trusted"}} : row(1, "Oldest")], nextCursor: null, activeVersionId: current.activeVersionId } });
     const body = request.postDataJSON(); requests.push(body);
     if (body.expectedActiveVersionId !== current.activeVersionId) return route.fulfill({ status: 409, json: { error: "Active version changed. Local work preserved.", activeVersionId: current.activeVersionId } });
     const version = nextVersion++;
@@ -55,7 +56,13 @@ try {
   const code = editor.getByRole("textbox", { name: "Calculator source", exact: true });
   const update = async value => { current = value; await page.evaluate(value => window.updateFixture(value), value); };
   await expect(code).toContainText('"A"');
+  const name = page.getByLabel("Artifact name", {exact:true});
+  await name.fill("Dirty rename");
   await update(props(2, "B"));
+  await expect(name).toHaveValue("B");
+  await page.locator("form").filter({has:name}).getByRole("button", {name:"Save new version",exact:true}).click();
+  expect(await page.evaluate(() => window.renameBody)).toMatchObject({name:"B",expectedActiveVersionId:"v2"});
+  console.log("PASS rename refresh discards old dirty name with clear copy and fresh CAS pairing");
   await expect(code).toContainText('"B"');
   console.log("PASS clean editor follows refreshed active source");
   await code.fill(source("Local"));
@@ -74,11 +81,14 @@ try {
   await editor.getByRole("button", { name: "Reload current version", exact: true }).click();
   await expect(code).toContainText('"D"');
   // A second tab activated E, without refreshing this tab's props.
-  await code.fill(source("Tab local")); current = props(5, "E");
+  await code.fill(source("Tab local")); await name.fill("Dirty name before conflict"); current = props(5, "E");
+  await page.evaluate(value => {window.refreshFixture=()=>window.updateFixture(value);}, current);
   await editor.getByRole("button", { name: "Save new version", exact: true }).click();
   await expect(editor.getByRole("status")).toContainText("preserved");
   await expect(code).toContainText('"Tab local"');
-  console.log("PASS unseen two-tab conflict retains local source");
+  await expect(name).toHaveValue("E");
+  await page.evaluate(() => {window.refreshFixture=()=>{};});
+  console.log("PASS unseen calculator409 refresh retains local source and resets rename draft to current saved name");
   await update(props(5, "E"));
   const generator = page.getByRole("region", { name: "AI-generated calculator" });
   await generator.getByRole("button", { name: "Use safe fallback", exact: true }).click();
@@ -110,6 +120,13 @@ try {
   await expect(editor.getByRole("status")).toContainText("activated");
   expect(requests.at(-1)).toMatchObject({ source: source("Oldest"), expectedActiveVersionId: "v25" });
   console.log("PASS version beyond first 20 reachable; restore submits a new CAS version");
+  trustedHistory = true;
+  await update(props(40, "Newest", Array.from({length:20}, (_, i) => row(40-i))));
+  await editor.getByRole("button", { name: "Load older versions", exact: true }).click();
+  await editor.getByRole("button", {name:"Restore v1 as a new version",exact:true}).click();
+  await expect(editor.getByRole("status")).toContainText("activated");
+  expect(requests.at(-1)).toEqual({restoreTrustedVersionId:"v1",expectedActiveVersionId:"v40"});
+  console.log("PASS trusted v1 beyond twenty restores by identity without client source/manifest/status");
   await update(props(30, "Activity current"));
   const retained = page.getByRole("region", {name:"Retained draft",exact:true});
   await retained.getByRole("button", {name:"Save reviewed draft as a new version",exact:true}).click();

@@ -23,6 +23,7 @@ test("active version CAS preserves clean/dirty editors, two-tab drafts and histo
     expect(response.ok(), `Requires deployed 202610060006 RPC: ${await response.text()}`).toBe(true);
     return (await response.json()).version;
   };
+  const initial = (await read()).versions[0];
   const first = await save("A");
   await page.reload();
   const editor = page.getByRole("region", { name: "Edit calculator version" });
@@ -49,12 +50,18 @@ test("active version CAS preserves clean/dirty editors, two-tab drafts and histo
     await tab.goto(url);
     const tabEditor = tab.getByRole("region", { name: "Edit calculator version" });
     await code.fill(source("Tab local"));
+    await page.getByLabel("Artifact name", {exact:true}).fill("Unsaved local rename");
     await tabEditor.getByRole("textbox", { name: "Calculator source", exact: true }).fill(source("Tab winner"));
     await tabEditor.getByRole("button", { name: "Save new version", exact: true }).click();
     await expect(tab.getByRole("region", { name: "Generated calculator output" })).toContainText("Tab winner");
+    await tab.getByLabel("Artifact name", {exact:true}).fill("Synthetic winning rename");
+    await tab.locator("form").filter({has:tab.getByLabel("Artifact name", {exact:true})}).getByRole("button", {name:"Save new version",exact:true}).click();
+    await expect(tab.getByRole("heading", {name:"Synthetic winning rename",exact:true})).toBeVisible();
     await editor.getByRole("button", { name: "Save new version", exact: true }).click();
     await expect(editor.getByRole("status")).toContainText("preserved");
     await expect(code).toContainText('"Tab local"');
+    await expect(page.getByLabel("Artifact name", {exact:true})).toHaveValue("Synthetic winning rename");
+    await expect(page.getByText("When the active version changes, this field resets to the saved name. Re-enter unsaved names before saving.", {exact:true})).toBeVisible();
     const winner = (await read()).activeVersionId;
     await editor.getByRole("button", { name: "Reload current version", exact: true }).click();
     await expect(code).toContainText('"Tab winner"');
@@ -83,4 +90,11 @@ test("active version CAS preserves clean/dirty editors, two-tab drafts and histo
   expect(restored.versions[0].id).not.toBe(first.id);
   expect(restored.versions[0].source).toBe(source("A"));
   expect((await (await page.request.get(`${endpoint}?before=3`)).json()).versions).toContainEqual(expect.objectContaining({ id: first.id }));
+  await editor.getByRole("button", {name:"Load older versions",exact:true}).click();
+  await editor.getByRole("button", {name:"Restore v1 as a new version",exact:true}).click();
+  await expect(editor.getByRole("status")).toContainText("activated");
+  const builtin = await read();
+  expect(builtin.versions[0]).toMatchObject({status:"validated",source:initial.source,manifest:initial.manifest});
+  expect(builtin.versions[0].id).not.toBe(initial.id);
+  expect(builtin.versions[0].version).toBeGreaterThan(restored.versions[0].version);
 });

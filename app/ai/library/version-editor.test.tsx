@@ -11,3 +11,7 @@ it("reserves editor space with accessible loading feedback before loading CodeMi
   expect(html).not.toContain("cm-theme");
   expect(html).toContain("Save new version");
 });
+it("offers restore for an immutable validated trusted history row", () => {
+  const html = renderToStaticMarkup(<VersionEditor artifactId="test" activeVersionId="new" versions={[{id:"old",version:1,status:"validated",error:null,created_at:"synthetic",source:"input => ({})",manifest:{kind:"custom_report",runtime:"trusted"}}]} currentSource="input => ({})" currentManifest={{}} />);
+  expect(html).toContain("Restore v1 as a new version");
+});

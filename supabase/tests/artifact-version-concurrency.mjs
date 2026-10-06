@@ -1,7 +1,7 @@
 // Authenticated RPCs in an isolated schema; no permanent public SQL or data changes.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readFileSync, readdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, unlinkSync, mkdirSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import postgres from "postgres";
 import { replayMigrations } from "./migration-replay.mjs";
@@ -29,7 +29,7 @@ const save = (tx, base, label = "Synthetic", status = "validated", target = arti
 try {
   const ledger = await db`select version from supabase_migrations.schema_migrations order by version`;
   const publicAcl = await db`select nspacl::text from pg_namespace where nspname='public'`;
-  writeFileSync(recovery, JSON.stringify({ schema, project }));
+  mkdirSync(".qa", {recursive:true}); writeFileSync(recovery, JSON.stringify({ schema, project }));
   await db.begin(async tx => {
     await tx.unsafe(`create schema ${schema}; create table ${schema}.auth_users(id uuid primary key,email text); grant usage on schema ${schema} to authenticated,service_role`);
     const migrations = readdirSync("supabase/migrations").filter(file => file.endsWith(".sql") && !(baseline && file.startsWith("202610060006"))).sort().map(file => {
@@ -79,6 +79,42 @@ try {
       assert.deepEqual(await tx.unsafe(`select id,version,source,manifest from ${schema}.artifact_versions where artifact_id=$1 and version<6 order by version desc`, [artifact]), older, "Stable keyset excludes newly inserted revisions");
       assert.deepEqual(await tx.unsafe(`select state,version from ${schema}.artifact_state where artifact_id=$1`, [artifact]), beforeState, "Restore preserves saved state");
       console.log("PASS actual SQL history beyond 21 versions, stable keyset, restore creates version 26 and preserves source history/state");
+      const [trusted] = await tx.unsafe(`select * from ${schema}.restore_trusted_artifact_version($1,$2,$3)`, [artifact, initial, restored.id]);
+      assert.equal(trusted.version, 27);
+      assert.notEqual(trusted.id, initial);
+      assert.equal(trusted.manifest.runtime, "trusted");
+      const [original] = await tx.unsafe(`select source,manifest from ${schema}.artifact_versions where id=$1`, [initial]);
+      assert.equal(trusted.source, original.source); assert.deepEqual(trusted.manifest, original.manifest);
+      assert.deepEqual(await tx.unsafe(`select state,version from ${schema}.artifact_state where artifact_id=$1`, [artifact]), beforeState);
+      const staleRestore = await tx.savepoint(point => point.unsafe(`select ${schema}.restore_trusted_artifact_version($1,$2,$3)`, [artifact, initial, restored.id])).then(() => "success", error => error.code);
+      assert.equal(staleRestore, "40001");
+      const generatedAsTrusted = await tx.savepoint(point => point.unsafe(`select ${schema}.restore_trusted_artifact_version($1,$2,$3)`, [artifact, first.id, trusted.id])).then(() => "success", error => error.code);
+      assert.equal(generatedAsTrusted, "P0002");
+      const [sibling] = await tx.unsafe(`select * from ${schema}.create_trusted_artifact('custom_comparison','Synthetic other tool')`);
+      const wrongArtifact = await tx.savepoint(point => point.unsafe(`select ${schema}.restore_trusted_artifact_version($1,$2,$3)`, [artifact, sibling.active_version_id, trusted.id])).then(() => "success", error => error.code);
+      assert.equal(wrongArtifact, "P0002");
+      const mutable = await tx.savepoint(point => point.unsafe(`update ${schema}.artifact_versions set source='unreviewed' where id=$1`, [initial])).then(() => "success", error => error.code);
+      assert.equal(mutable, "42501");
+      const forgedTrusted = await tx.savepoint(point => point.unsafe(`insert into ${schema}.artifact_versions(workspace_id,artifact_id,version,source,manifest,status) select workspace_id,id,1000,'arbitrary','{"kind":"custom_comparison","runtime":"trusted"}','validated' from ${schema}.artifacts where id=$1`, [artifact])).then(() => "success", error => error.code);
+      assert.equal(forgedTrusted, "42501");
+      const trustedAsCandidate = await tx.savepoint(point => point.unsafe(`select ${schema}.save_generated_artifact_version($1,'arbitrary',$2::jsonb,'validated','',$3)`, [artifact, point.json(original.manifest), trusted.id])).then(() => "success", error => error.code);
+      assert.equal(trustedAsCandidate, "22023");
+      await tx.unsafe("reset role");
+      // Probe a persisted permission declaration with admin-arranged synthetic history.
+      await tx.unsafe(`update ${schema}.artifact_versions set manifest=jsonb_set(manifest,'{sdk}','["spending"]') where id=$1`, [initial]);
+      await tx.unsafe(`update ${schema}.artifacts set permissions='[]' where id=$1`, [artifact]);
+      await authenticate(tx);
+      const revoked = await tx.savepoint(point => point.unsafe(`select ${schema}.restore_trusted_artifact_version($1,$2,$3)`, [artifact, initial, trusted.id])).then(() => "success", error => error.code);
+      assert.equal(revoked, "42501");
+      await tx.unsafe("reset role");
+      // Legacy builtin manifests had only kind/runtime. Keep them reachable too.
+      await tx.unsafe(`update ${schema}.artifact_versions set manifest=manifest-'sdk'-'params'-'renderer' where id=$1`, [initial]);
+      await authenticate(tx);
+      const [legacy] = await tx.unsafe(`select * from ${schema}.restore_trusted_artifact_version($1,$2,$3)`, [artifact, initial, trusted.id]);
+      assert.deepEqual(legacy.manifest, {kind:"custom_comparison",runtime:"trusted"});
+      assert.deepEqual((await tx.unsafe(`select permissions from ${schema}.artifacts where id=$1`, [artifact]))[0].permissions, []);
+      console.log("PASS authenticated trusted v1 restore creates version27, preserves immutable source/manifest/state, rejects stale and generated targets; direct mutation denied");
+      console.log("PASS wrong-artifact target denied, revoked declared scope denied, legacy builtin restored without expanding permissions");
     }
     throw rollback;
   }); } catch (error) { if (error !== rollback) throw error; }
@@ -86,6 +122,8 @@ try {
   if (!baseline) {
     const denied = await db.begin(async tx => { await authenticate(tx, foreign); await save(tx, initial); }).then(() => "success", error => error.code);
     assert.equal(denied, "P0002");
+    const foreignRestore = await db.begin(async tx => { await authenticate(tx, foreign); await tx.unsafe(`select ${schema}.restore_trusted_artifact_version($1,$2,$3)`, [artifact, initial, initial]); }).then(() => "success", error => error.code);
+    assert.equal(foreignRestore, "P0002");
     // First transaction activates but holds its row lock; a stale second connection must wait and recheck.
     let ready, pid;
     const locked = new Promise(resolve => { ready = resolve; });
@@ -93,7 +131,7 @@ try {
     const holder = db.begin(async tx => { await authenticate(tx); await save(tx, initial, "Winner"); ready(); await unlock; });
     holder.catch(error => ready(error));
     const error = await locked; if (error) throw error;
-    const waiter = db.begin(async tx => { await authenticate(tx); [{pid}] = await tx`select pg_backend_pid() pid`; await save(tx, initial, "Loser"); }).then(() => "success", error => error.code);
+    const waiter = db.begin(async tx => { await authenticate(tx); [{pid}] = await tx`select pg_backend_pid() pid`; await tx.unsafe(`select ${schema}.restore_trusted_artifact_version($1,$2,$3)`, [artifact, initial, initial]); }).then(() => "success", error => error.code);
     try {
       let blocked = false;
       for (let i = 0; i < 100 && !blocked; i++) {
@@ -104,7 +142,7 @@ try {
     } finally { release(); }
     await holder; assert.equal(await waiter, "40001");
     assert.equal((await db.unsafe(`select count(*)::int n from ${schema}.artifact_versions where artifact_id=$1`, [artifact]))[0].n, 2);
-    console.log("PASS actual concurrent authenticated RPCs: waiter blocks, then rejects unseen winner; no losing version inserted");
+    console.log("PASS actual concurrent authenticated activation/trusted-restore RPCs: restore waits, then rejects unseen winner; no losing version inserted");
   }
   assert.deepEqual(await db`select version from supabase_migrations.schema_migrations order by version`, ledger);
   assert.deepEqual(await db`select nspacl::text from pg_namespace where nspname='public'`, publicAcl);

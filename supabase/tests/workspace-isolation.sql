@@ -128,6 +128,7 @@ begin
     format('select public.finish_import_run(%L,%L,1)',foreign_import,workspace_b),
     format('select public.rename_trusted_artifact(%L,%L)',foreign_artifact,'Attempted foreign change'),
     format('select public.rename_trusted_artifact(%L,%L,null)',foreign_artifact,'Attempted foreign change'),
+    format('select public.restore_trusted_artifact_version(%L,%L,null)',foreign_artifact,gen_random_uuid()),
     format('select public.save_generated_artifact_version(%L,%L,%L::jsonb,%L,null)',foreign_artifact,'return {};','{"kind":"spending_explorer","runtime":"quickjs-calculator-v1","sdk":[]}','validated'),
     format('select public.save_generated_artifact_version(%L,%L,%L::jsonb,%L,null,null)',foreign_artifact,'return {};','{"kind":"spending_explorer","runtime":"quickjs-calculator-v1","sdk":[]}','validated'),
     format('select public.confirm_recurring_series(%L,%L,%L,%L,100,100,3,90,array[%L,%L,%L]::uuid[])',foreign_account,'Synthetic foreign','monthly','EUR',foreign_transaction,gen_random_uuid(),gen_random_uuid()),

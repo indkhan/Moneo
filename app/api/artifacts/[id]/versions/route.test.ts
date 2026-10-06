@@ -48,3 +48,12 @@ it("pages history by immutable version number with one lookahead row", async () 
 it("rejects malformed history cursors", async () => {
   expect((await GET(new Request("http://localhost?before=garbage"), params)).status).toBe(400);
 });
+it("restores trusted history by identity without accepting client source or validation status", async () => {
+  const response = await save({ restoreTrustedVersionId: id, expectedActiveVersionId: base });
+  expect(response.status).toBe(200);
+  expect(fixture.rpc).toHaveBeenCalledWith("restore_trusted_artifact_version", {
+    p_artifact_id: id, p_version_id: id, p_expected_active_version_id: base,
+  });
+  expect(fixture.validation).not.toHaveBeenCalled();
+  expect((await save({ restoreTrustedVersionId: id, expectedActiveVersionId: base, source: "arbitrary", status: "validated" })).status).toBe(400);
+});
