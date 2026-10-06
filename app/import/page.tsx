@@ -304,7 +304,7 @@ export default function ImportPage() {
       {visibleHistory.map((item) => <article key={item.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.filename}</strong><span role="status" className="rounded-lg bg-muted px-2.5 py-1 text-xs font-medium capitalize text-brand">{item.status}</span></div>
         <p className="text-sm">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows} for review · {item.rejected_rows} rejected · {item.total_rows} total</p>
-        {item.error && <p className="text-sm text-red-700">{item.error}</p>}
+        {item.error && <p className="text-sm text-red-700 dark:text-red-300">{item.error}</p>}
         <Link className="text-sm underline" href={`/import/${item.id}/review`}>Review rows and source coverage{item.classification_review_rows ? ` · ${item.classification_review_rows} financial classifications` : ""}</Link>
         {["queued", "running"].includes(item.status) && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void control(item, "cancel")}>Stop import</button>}
         {["failed", "canceled"].includes(item.status) && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void control(item, "resume")}>{item.status === "canceled" ? "Resume import" : "Retry"}</button>}
@@ -322,7 +322,7 @@ export default function ImportPage() {
       </article>)}
     </section>
     {busy && <p role="status">Working…{interpreting && <button type="button" className="ml-3 underline" onClick={cancelInspection}>Cancel interpretation</button>}</p>}
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-red-700 dark:text-red-300">{error}</p>}
     {file && inspection && <section className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 className="text-xl font-semibold tracking-tight text-foreground">{file.name} ({index + 1} of {files.length})</h2>
       {inspection.aiError && <p>Automatic interpretation unavailable. Choose the columns below.</p>}

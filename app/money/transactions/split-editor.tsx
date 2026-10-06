@@ -28,7 +28,7 @@ export function SplitEditor({ id, version, amountMinor, currency, categories, qu
       </fieldset>)}
       {rows.length < 20 && <button type="button" onClick={() => { setRows([...rows, { amount: "", categoryId: "", note: "" }]); setPreview(false); }} className="mr-3 text-sm underline">Add allocation</button>}
       <button type="button" onClick={() => { try { splitInput(input, currency, BigInt(amountMinor)); setPreview(true); setError(null); } catch (error) { setError(error instanceof Error ? error.message : "Invalid allocations"); } }} className="rounded border px-3 py-2 text-sm">Preview splits</button>
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
       {preview && <div className="rounded bg-muted p-3 text-sm"><p>Replace spending classification with {rows.length} allocations totaling exactly {formatMoney(amountMinor, currency)}. The source remains unchanged.</p><ul className="my-2">{splitInput(input, currency, BigInt(amountMinor)).map((row, index) => <li key={index}>{formatMoney(row.amount_minor, currency)} · {categories.find(category => category.id === row.category_id)?.name ?? "Uncategorized"} · {row.note}</li>)}</ul><button name="confirmed" value="true" className="rounded bg-primary px-3 py-2 text-primary-foreground">Confirm splits</button></div>}
     </form>
   </details>;

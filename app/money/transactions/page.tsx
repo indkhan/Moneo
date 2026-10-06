@@ -49,7 +49,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       savedFilters = parseStoredFilters(data.filters as unknown);
     }
   }
-  const pageHeader = (<header className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">Money / Ledger</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">Transactions</h1><p className="mt-1 text-sm text-slate-500">Search, review, and correct your ledger.</p></div><div className="flex flex-wrap gap-2"><Link href="/money/accounts" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50">Accounts</Link><Link href="/money/wealth" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50">Investments, assets and debts</Link><Link href="/money/recurring" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50">Review recurring</Link><Link href="/import" className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-blue-800">Import statement</Link></div></header>);
+  const pageHeader = (<header className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Money / Ledger</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">Transactions</h1><p className="mt-1 text-sm text-muted-foreground">Search, review, and correct your ledger.</p></div><div className="flex flex-wrap gap-2"><Link href="/money/accounts" className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium hover:bg-muted">Accounts</Link><Link href="/money/wealth" className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium hover:bg-muted">Investments, assets and debts</Link><Link href="/money/recurring" className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium hover:bg-muted">Review recurring</Link><Link href="/import" className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90">Import statement</Link></div></header>);
   const viewRows = (savedViews ?? []).map(view => ({ id: view.id, name: view.name, created_at: view.created_at, version: view.version }));
 
   // An invalid persisted scope never reaches the ledger query: no rows or
@@ -57,11 +57,11 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   // keeps rename/delete so the broken view can be removed; saving is
   // disabled so the broadened scope cannot be re-saved.
   if (savedViewScopeError && activeView) {
-    return <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 text-slate-900 sm:px-8">
+    return <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 text-foreground sm:px-8">
       {pageHeader}
-      <section aria-label="Invalid saved view" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p role="alert" className="text-sm text-red-700">{savedViewScopeError}</p>
-        <p className="mt-2 text-sm text-slate-600">Set the tag and spending group with normal filters, save a corrected view, then delete this broken view below.</p>
+      <section aria-label="Invalid saved view" className="rounded-xl border border-border bg-card p-5 shadow-sm">
+        <p role="alert" className="text-sm text-red-700 dark:text-red-300">{savedViewScopeError}</p>
+        <p className="mt-2 text-sm text-muted-foreground">Set the tag and spending group with normal filters, save a corrected view, then delete this broken view below.</p>
         <Link className="mt-3 inline-block underline" href="/money/transactions">Back to normal filters</Link>
       </section>
       <SavedViewsPanel views={viewRows} activeViewId={activeView.id} activeViewName={activeView.name} saveDefaults={{}} disableSave />
@@ -266,7 +266,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     baseQuery = sortParams.toString();
   }
 
-  return <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 text-slate-900 sm:px-8">
+  return <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 text-foreground sm:px-8">
     {pageHeader}
     {viewNotFound ? <p role="alert" className="mt-6">Saved view not found. Showing normal filters.</p> : null}
     <details className="rounded-xl border border-border bg-card p-4">
@@ -283,7 +283,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         <button className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white">Add transaction</button>
       </form>}
     </details>
-    <form className="flex flex-wrap items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm [&_input]:rounded-lg [&_input]:border-slate-200 [&_input]:bg-white [&_input]:px-3 [&_input]:py-2 [&_input]:text-xs [&_select]:rounded-lg [&_select]:border-slate-200 [&_select]:bg-white [&_select]:px-3 [&_select]:py-2 [&_select]:text-xs" method="get">
+    <form className="flex flex-wrap items-center gap-2.5 rounded-xl border border-border bg-card p-4 shadow-sm [&_input]:rounded-lg [&_input]:border-border [&_input]:bg-card [&_input]:px-3 [&_input]:py-2 [&_input]:text-xs [&_select]:rounded-lg [&_select]:border-border [&_select]:bg-card [&_select]:px-3 [&_select]:py-2 [&_select]:text-xs" method="get">
       <input name="q" defaultValue={filters.q} placeholder="Search descriptions" aria-label="Search descriptions" className="rounded border p-2" />
       <input name="tag" defaultValue={tag} placeholder="Tag" aria-label="Filter by tag" maxLength={40} className="rounded border p-2" />
       <input name="event" defaultValue={eventName} placeholder="Trip / event group" aria-label="Filter by spending group" maxLength={120} className="rounded border p-2" />
@@ -298,20 +298,20 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       <select name="kind" defaultValue={filters.kind ?? ""} aria-label="Type" className="rounded border p-2"><option value="">All types</option><option value="ordinary">Ordinary</option><option value="transfer">Transfer</option><option value="refund">Refund</option></select>
       <select name="direction" defaultValue={filters.direction ?? ""} aria-label="Direction" className="rounded border p-2"><option value="">Income and outflow</option><option value="income">Income</option><option value="outflow">Outflow</option></select>
       <select name="sort" defaultValue={filters.sort} aria-label="Sort order" className="rounded border p-2"><option value="date-desc">Newest first</option><option value="date-asc">Oldest first</option><option value="amount-desc">Largest amount first</option><option value="amount-asc">Smallest amount first</option></select>
-      <button className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-medium text-white hover:bg-blue-800">Apply filters</button>
+      <button className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:opacity-90">Apply filters</button>
     </form>
     <SavedViewsPanel views={viewRows} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} />
     {!!rows.length && <BulkEditor locale={workspace.locale} rows={rows} categories={categories ?? []} query={current.toString()} requestId={crypto.randomUUID()} />}
     {error ? <p role="alert" className="mt-6">Could not load transactions: {error.message}</p> : <TransactionTable locale={workspace.locale} rows={rows} accountNames={names} merchantNames={merchantNames} query={current.toString()} sort={filters.sort} baseQuery={baseQuery} />}
     {next && <Link className="mt-5 inline-block underline" href={`/money/transactions?${nextParams}`}>Next page</Link>}
     <EditingHistory query={current.toString()} />
-    {selected && <aside aria-label="Transaction details" className="fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto border-l border-slate-200 bg-white p-6 shadow-2xl [&_input:not([type=hidden])]:border-slate-200 [&_select]:border-slate-200 [&_textarea]:border-slate-200">
+    {selected && <aside aria-label="Transaction details" className="fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto border-l border-border bg-card p-6 shadow-2xl [&_input:not([type=hidden])]:border-border [&_select]:border-border [&_textarea]:border-border">
       <Link href={`/money/transactions?${current}`} className="text-sm underline">Close</Link>
       <h2 className="mt-6 text-xl font-semibold">{selected.description}</h2>
       <p className="mt-2">{selected.posted_on} · {selected.amount_minor} minor units {selected.currency_code}</p>
       <p className="mt-2 text-sm">Tags: {(selected.tags ?? []).join(", ") || "None"} · Group: {selected.event_name || "None"}</p>
       {splitSet.data ? <section aria-label="Split allocations" className="mt-4 rounded border p-3"><h3 className="font-medium">Split allocations</h3><p className="mt-1 text-xs text-muted-foreground">The original amount, source and category are retained. Balances count the original once; spending uses these allocations. Undo splits before changing category or linking transfers/refunds.</p><ul className="mt-2 text-sm">{splitRows.data?.map(row => <li key={row.id}>{formatMoney(row.amount_minor, selected.currency_code)} · {categories?.find(category => category.id === row.category_id)?.name ?? "Uncategorized"} · {row.note}</li>)}</ul><form action={undoTransactionSplits} className="mt-3"><input type="hidden" name="setId" value={splitSet.data.id} /><input type="hidden" name="id" value={selected.id} /><input type="hidden" name="version" value={selected.version} /><input type="hidden" name="query" value={current.toString()} /><button className="text-sm underline">Undo splits</button></form></section> : selected.kind === "ordinary" && selected.status === "posted" && !selected.review_reasons?.length && !selected.transfer_id && !selected.refund_of_id && !inboundRefunds?.length && !inboundTransfer?.length && <SplitEditor locale={workspace.locale} id={selected.id} version={selected.version} amountMinor={selected.amount_minor} currency={selected.currency_code} categories={categories ?? []} query={current.toString()} requestId={crypto.randomUUID()} />}
-      {!!selected.review_reasons?.length && <div role="alert" className="mt-3 text-sm text-amber-700"><p>Classification review needed: {selected.review_reasons.join(", ")}. Review the original import before relying on this entry’s spending classification.</p>
+      {!!selected.review_reasons?.length && <div role="alert" className="mt-3 text-sm text-amber-700 dark:text-amber-300"><p>Classification review needed: {selected.review_reasons.join(", ")}. Review the original import before relying on this entry’s spending classification.</p>
         {(sources ?? []).flatMap((source) => {
           const originals = Array.isArray(source.source_transactions) ? source.source_transactions : [source.source_transactions];
           return originals.filter(Boolean).map((original) => <Link key={`${original.import_id}-${original.row_number}`} href={`/import/${original.import_id}/review`} className="mr-3 underline">Review import row {original.row_number}</Link>);
