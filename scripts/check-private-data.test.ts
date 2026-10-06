@@ -11,10 +11,9 @@ describe("private financial input gate", () => {
     const directory = mkdtempSync(join(tmpdir(), "moneo-privacy-"));
     try {
       execFileSync("git", ["init", "--quiet"], { cwd: directory });
-      execFileSync("git", ["config", "core.autocrlf", "false"], { cwd: directory });
       mkdirSync(dirname(join(directory, inputPath)), { recursive: true });
       writeFileSync(join(directory, inputPath), "Date,Payee,Account,Amount\n2026-01-01,SYNTHETIC_PERSON,DE89370400440532013000,-1.00\n");
-      execFileSync("git", ["add", "."], { cwd: directory });
+      execFileSync("git", ["-c", "core.autocrlf=false", "add", "."], { cwd: directory });
       let output = "";
       let failed = false;
       try { execFileSync(process.execPath, [script], { cwd: directory, encoding: "utf8", stdio: "pipe" }); }
@@ -26,8 +25,9 @@ describe("private financial input gate", () => {
       expect(output).toBe("Private financial input gate: remove tracked financial exports; use ignored private inputs or inline synthetic fixtures.\n");
       execFileSync("git", ["rm", "--cached", "--quiet", inputPath], { cwd: directory });
       writeFileSync(join(directory, "source.ts"), "export const amount = 100;\n");
-      execFileSync("git", ["add", "source.ts"], { cwd: directory });
+      execFileSync("git", ["-c", "core.autocrlf=false", "add", "source.ts"], { cwd: directory });
       expect(execFileSync(process.execPath, [script], { cwd: directory, encoding: "utf8" })).toBe("");
     } finally { rmSync(directory, { recursive: true, force: true }); }
-  });
+  // Each case starts Git and Node subprocesses; Windows startup under parallel suite load can exceed five seconds.
+  }, 30_000);
 });
