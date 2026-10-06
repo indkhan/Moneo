@@ -15,6 +15,132 @@ const mapping = {
 };
 
 describe("financial import parsing", () => {
+  it("rejects unpaired surrogates in source and reviewed mapping while preserving valid Unicode pairs", () => {
+    const row = { Date: "01/09/2026", Description: "Valid", Amount: "1" };
+    for (const invalid of ["\ud800", "\udfff", "\ud800x", "x\udfff"]) {
+      expect(() => validateImportConfirmation([{ ...row, Evidence: invalid }], mapping)).toThrow("unpaired Unicode surrogate");
+      expect(() => validateImportConfirmation([{ ...row, [invalid]: "Evidence" }], mapping)).toThrow("unpaired Unicode surrogate");
+      for (const decision of [{ rowNumber: 2, action: "correct", values: { Description: "Corrected" } }, { rowNumber: 2, action: "exclude", reason: "Unsupported evidence" }]) {
+        expect(() => validateImportConfirmation([{ ...row, Description: invalid }], { ...mapping, rowDecisions: [decision] })).toThrow("unpaired Unicode surrogate");
+      }
+      expect(() => validateImportConfirmation([row], { ...mapping, rowDecisions: [{ rowNumber: 2, action: "correct", values: { Description: invalid } }] })).toThrow("unpaired Unicode surrogate");
+      expect(() => validateImportConfirmation([row], { ...mapping, rowDecisions: [{ rowNumber: 2, action: "correct", values: { [invalid]: "Corrected" } }] })).toThrow("unpaired Unicode surrogate");
+      expect(() => validateImportConfirmation([row], { ...mapping, rowDecisions: [{ rowNumber: 2, action: "exclude", reason: invalid }] })).toThrow("unpaired Unicode surrogate");
+      expect(() => validateImportConfirmation([row], { ...mapping, accountName: invalid })).toThrow("unpaired Unicode surrogate");
+    }
+    const valid = { ...row, Description: "Reviewed \ud83d\ude00", "Evidence \ud83d\ude00": "Original \ud83d\ude00" };
+    const reviewed = validateImportConfirmation([valid], { ...mapping, rowDecisions: [{ rowNumber: 2, action: "correct", values: { Description: "Corrected \ud83d\ude00" } }] });
+    expect(mapRows([valid], reviewed)[0]).toMatchObject({ description: "Corrected \ud83d\ude00", sourceRow: valid });
+  });
+  it("rejects an entire NUL-containing source before correction or exclusion can hide incompatible evidence", () => {
+    const rows = [{ Date: "01/09/2026", Description: "Valid neighbor", Amount: "1" }, { Date: "02/09/2026", Description: "A\0B", Amount: "2" }];
+    for (const rowDecisions of [undefined, [{ rowNumber: 3, action: "correct", values: { Description: "Corrected" } }], [{ rowNumber: 3, action: "exclude", reason: "Unsupported evidence" }]]) {
+      expect(() => validateImportConfirmation(rows, { ...mapping, rowDecisions })).toThrow("NUL");
+    }
+    expect(() => parseCsv("Date,Description,Amount\n2026-09-01,Valid,1\n2026-09-02,A\0B,2")).toThrow("NUL");
+    expect(() => validateImportConfirmation([{ Date: "01/09/2026", Description: "Valid", Amount: "1", "Source\0Key": "Original" }], mapping)).toThrow("NUL");
+  });
+  it("quarantines row-local CSV field-count errors while preserving valid neighbors and extra cells", () => {
+    const input = { ...mapping, dateFormat: "iso" };
+    for (const malformed of ["2026-09-02,Missing amount", "2026-09-02,Extra cell,2,unmapped evidence"]) {
+      const rows = parseCsv(`Date,Description,Amount\n2026-09-01,Valid neighbor,1\n${malformed}`);
+      const preview = previewImport(rows, input);
+      expect(rows[1].__moneo_csv_field_count).toBe(malformed.includes("unmapped evidence") ? "4" : "2");
+      expect(preview).toMatchObject({ totalRows: 2, acceptedRows: 1 });
+      expect(preview.unresolvedRows.map(row => row.rowNumber)).toEqual([3]);
+      expect(() => validateImportConfirmation(rows, input)).toThrow("field mismatch");
+      const excluded = validateImportConfirmation(rows, { ...input, rowDecisions: [{ rowNumber: 3, action: "exclude", reason: "Malformed footer" }] });
+      expect(mapRows(rows, excluded).map(row => row.description)).toEqual(["Valid neighbor"]);
+      expect(() => validateImportConfirmation(rows, { ...input, rowDecisions: [{ rowNumber: 3, action: "correct", values: { Amount: "2" } }] })).toThrow("mapped cells");
+      const corrected = validateImportConfirmation(rows, { ...input, rowDecisions: [{ rowNumber: 3, action: "correct", values: { Date: "2026-09-02", Description: "Reviewed posting", Amount: "2" } }] });
+      expect(mapRows(rows, corrected)[1]).toMatchObject({ rowNumber: 3, description: "Reviewed posting", amountMinor: 200n, sourceRow: rows[1] });
+      if (malformed.includes("unmapped evidence")) expect(JSON.stringify(rows[1])).toContain("unmapped evidence");
+    }
+    expect(() => parseCsv('Date,Description,Amount\n2026-09-01,Valid,1\n2026-09-02,"unclosed,2')).toThrow("CSV parse error");
+  });
+  it("keeps routed valid observations previewable when a footer has no currency", () => {
+    const rows = [
+      { Date: "01/09/2026", Description: "Posting", Amount: "1", Currency: "EUR", Product: "Current" },
+      { Date: "", Description: "Footer", Amount: "1", Currency: "", Product: "" },
+    ];
+    const proposed = proposeAccountRoutes(rows, { ...mapping, currencyColumn: "Currency", productColumn: "Product" });
+    const preview = previewImport(rows, proposed);
+    expect(preview.acceptedRows).toBe(1);
+    expect(preview.unresolvedRows.map(row => row.rowNumber)).toEqual([3]);
+    expect(preview.unresolvedRows[0].sourceRow).toEqual(rows[1]);
+  });
+  it("quarantines escaped source evidence that would exceed the ingest record boundary", () => {
+    const rows = [{ Date: "01/09/2026", Description: "Valid display", Amount: "1", Evidence: "\\".repeat(5_600_000) }];
+    const preview = previewImport(rows, mapping);
+    expect(preview.unresolvedRows).toHaveLength(1);
+    expect(preview.unresolvedRows[0].message).toContain("record limit");
+    expect(() => validateImportConfirmation(rows, mapping)).toThrow("record limit");
+    expect(validateImportConfirmation(rows, { ...mapping, rowDecisions: [{ rowNumber: 2, action: "exclude", reason: "Oversized observation" }] })).toMatchObject({ rowContractVersion: "normalized-row-v1" });
+  });
+  it("does not infer fee treatment across an excluded observation", () => {
+    const rows = [
+      { Date: "2026-09-01T10:00:00Z", Description: "First", Amount: "-1", Balance: "100", Fee: "0" },
+      { Date: "2026-09-01T11:00:00Z", Description: "Unresolved", Amount: "bad", Balance: "99", Fee: "0" },
+      { Date: "2026-09-01T12:00:00Z", Description: "Last", Amount: "-10", Balance: "90", Fee: "1" },
+    ];
+    const preview = previewImport(rows, { ...mapping, dateFormat: "iso", balanceColumn: "Balance", feeColumn: "Fee",
+      rowDecisions: [{ rowNumber: 3, action: "exclude", reason: "Unsupported source observation" }] });
+    expect(preview.examples[1].feeEvidence).toEqual({ treatment: "unknown" });
+  });
+  it("freezes explicit corrections and exclusions without altering original evidence or row identity", () => {
+    const rows = [
+      { Date: "01/09/2026", Description: "First", Amount: "1" },
+      { Date: "bad", Description: "Correction", Amount: "2" },
+      { Date: "", Description: "Total", Amount: "3" },
+      { Date: "02/09/2026", Description: "Last", Amount: "4" },
+    ];
+    const original = structuredClone(rows);
+    const input = { ...mapping, rowDecisions: [
+      { rowNumber: 3, action: "correct", values: { Date: "02/09/2026" } },
+      { rowNumber: 4, action: "exclude", reason: "Statement summary, not a posting" },
+    ] };
+    const confirmed = validateImportConfirmation(rows, input);
+    const preview = previewImport(rows, confirmed);
+    expect(preview).toMatchObject({ totalRows: 4, acceptedRows: 3, correctedRows: 1, excludedRows: [{ rowNumber: 4, sourceRow: original[2] }], unresolvedRows: [] });
+    expect(mapRows(rows, confirmed).map(row => row.rowNumber)).toEqual([2, 3, 5]);
+    expect(mapRows(rows, confirmed)[1]).toMatchObject({ postedOn: "2026-09-02", sourceRow: original[1] });
+    expect(rows).toEqual(original);
+    expect(mapRows(rows, confirmed)).toEqual(mapRows(rows, confirmed));
+  });
+  it("rejects duplicate, unknown and out-of-range source review decisions", () => {
+    const rows = [{ Date: "01/09/2026", Description: "First", Amount: "1" }];
+    for (const rowDecisions of [
+      [{ rowNumber: 9, action: "exclude", reason: "Footer" }],
+      [{ rowNumber: 2, action: "exclude", reason: "Footer" }, { rowNumber: 2, action: "exclude", reason: "Footer" }],
+      [{ rowNumber: 2, action: "correct", values: { Other: "1" } }],
+    ]) expect(() => validateImportConfirmation(rows, { ...mapping, rowDecisions })).toThrow();
+  });
+  it("previews valid neighbors without hiding malformed, unsupported or footer observations", () => {
+    const rows = [
+      { Date: "01/09/2026", Description: "First", Amount: "1", State: "posted" },
+      { Date: "02/09/2026", Description: "Unsupported", Amount: "2", State: "declined" },
+      { Date: "03/09/2026", Description: "Last valid", Amount: "3", State: "posted" },
+      { Date: "", Description: "Total", Amount: "6", State: "" },
+    ];
+    const input = { ...mapping, statusColumn: "State" };
+    const preview = previewImport(rows, input);
+    expect(preview.totalRows).toBe(4);
+    expect(preview.acceptedRows).toBe(2);
+    expect(preview.unresolvedRows.map(row => row.rowNumber)).toEqual([3, 5]);
+    expect(preview.unresolvedRows.map(row => row.sourceRow)).toEqual([rows[1], rows[3]]);
+    expect(preview.examples.map(row => row.rowNumber)).toEqual([2, 4]);
+    expect(() => validateImportConfirmation(rows, input)).toThrow("Row 3");
+  });
+  it("rejects worker-incompatible description and account bounds before confirmation", () => {
+    const row = { Date: "01/09/2026", Description: "x".repeat(501), Amount: "1" };
+    expect(() => validateImportConfirmation([row], mapping)).toThrow("500");
+    expect(() => mapRows([{ ...row, Description: "Valid" }], { ...mapping, accountName: "x".repeat(101) })).toThrow();
+    const unicode = { ...row, Description: "😀".repeat(500) };
+    expect(mapRows([unicode], mapping)[0].sourceRow).toEqual(unicode);
+  });
+  it("checks database bounds again after applying the reviewed outflow sign", () => {
+    expect(() => validateImportConfirmation([{ Date: "01/09/2026", Description: "Valid", Amount: "-92233720368547758.08" }], { ...mapping, amountSign: "outflow-positive" })).toThrow("database range");
+  });
   it("uses the declared decimal convention for small three-decimal currency amounts", () => {
     for (const currency of ["KWD", "BHD", "OMR"]) {
       for (const [separator, convention] of [[".", "decimal-dot"], [",", "decimal-comma"]] as const) {

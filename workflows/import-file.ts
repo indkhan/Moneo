@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { start } from "workflow/api";
 import { decideImportMatch } from "@/lib/import-match";
-import { mapRows, normalizeCategoryName, parseCsv, parseExcel, resolveMerchantName, type MappedRow } from "@/lib/csv";
+import { inspectRows, normalizeCategoryName, parseCsv, parseExcel, resolveMerchantName, type MappedRow } from "@/lib/csv";
 import { modelForSettings } from "@/lib/ai/provider";
 import { loadWorkspaceSettings, requireAiScope } from "@/lib/settings";
 import { calendarDayBoundary } from "@/lib/finance/calendar";
@@ -56,7 +56,8 @@ async function processImport(importId: string, workspaceId: string, from: number
     if (createHash("sha256").update(new Uint8Array(bytes)).digest("hex") !== imported.file_hash) throw new Error("Stored import file differs from the reviewed original");
     const extension = imported.storage_path.split(".").pop();
     const rows = extension === "csv" ? parseCsv(new TextDecoder().decode(bytes)) : await parseExcel(bytes);
-    const mapped = mapRows(rows, imported.mapping);
+    const { mapped, unresolvedRows, excludedRows } = inspectRows(rows, imported.mapping);
+    if (unresolvedRows.length) throw new Error(unresolvedRows[0].message);
     const accountIds = new Map<string, string>();
     const frozenAccounts = new Map(Object.entries(imported.route_accounts ?? {}).map(([route, accountId]) => [JSON.stringify(JSON.parse(route)), accountId]));
     const legacyPrepared = frozenAccounts.size === 0 && !!imported.source_id;
@@ -95,10 +96,14 @@ async function processImport(importId: string, workspaceId: string, from: number
       accountIds.set(routeKey, accountId);
       const sourceId = stableId(`${workspaceId}:source:${accountId}`);
       checked(await db.rpc("prepare_import_route", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion,
-        p_account_id: accountId, p_source_id: sourceId, p_account_name: row.accountName, p_currency_code: row.currencyCode, p_total_rows: mapped.length }));
+        p_account_id: accountId, p_source_id: sourceId, p_account_name: row.accountName, p_currency_code: row.currencyCode, p_total_rows: rows.length }));
     }
 
-    const chunk = mapped.slice(from, to);
+    for (const row of excludedRows.filter(row => row.rowNumber >= from + 2 && row.rowNumber < to + 2)) {
+      checked(await db.rpc("record_import_exclusion", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion,
+        p_row: { sourceId: stableId(`${importId}:row:${row.rowNumber}`), rowNumber: row.rowNumber, originalRow: row.sourceRow, reason: row.reason } }));
+    }
+    const chunk = mapped.filter(row => row.rowNumber >= from + 2 && row.rowNumber < to + 2);
     for (const [index, row] of chunk.entries()) {
       await importRow(db, workspaceId, importId, accountIds.get(JSON.stringify([row.accountName, row.currencyCode]))!, row, runVersion,
         (index + 1) % 25 === 0 || index + 1 === chunk.length);

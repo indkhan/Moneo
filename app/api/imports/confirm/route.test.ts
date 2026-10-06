@@ -72,6 +72,50 @@ it("refuses an unreviewed numeric convention before storage or workflow effects"
   expect(start).not.toHaveBeenCalled();
 });
 
+it("rejects worker-incompatible descriptions without launching or creating an import", async () => {
+  const form = await request().formData();
+  form.set("file", new File([`Date,Description,Amount\n2026-10-01,${"x".repeat(501)},1`], "synthetic.csv"));
+  const response = await POST(new Request("http://localhost/api/imports/confirm", { method: "POST", body: form }));
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({ error: expect.stringContaining("500") });
+  expect(fixture.inserts).toHaveLength(0);
+  expect(start).not.toHaveBeenCalled();
+});
+
+it("rejects NUL source evidence before effects even when corrected or excluded", async () => {
+  for (const decision of [{ rowNumber: 3, action: "correct", values: { Description: "Corrected" } }, { rowNumber: 3, action: "exclude", reason: "Incompatible evidence" }]) {
+    const form = await request().formData();
+    form.set("file", new File(["Date,Description,Amount\n2026-10-01,Valid neighbor,1\n2026-10-02,A\0B,2"], "synthetic.csv"));
+    form.set("mapping", JSON.stringify({ ...JSON.parse(String(form.get("mapping"))), rowDecisions: [decision] }));
+    const response = await POST(new Request("http://localhost/api/imports/confirm", { method: "POST", body: form }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining("NUL") });
+    expect(fixture.inserts).toHaveLength(0);
+    expect(start).not.toHaveBeenCalled();
+  }
+});
+
+it("rejects unpaired Unicode in reviewed corrections before storage or queue effects", async () => {
+  const form = await request().formData();
+  form.set("mapping", JSON.stringify({ ...JSON.parse(String(form.get("mapping"))), rowDecisions: [{ rowNumber: 2, action: "correct", values: { Description: "\ud800" } }] }));
+  const response = await POST(new Request("http://localhost/api/imports/confirm", { method: "POST", body: form }));
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({ error: expect.stringContaining("unpaired Unicode surrogate") });
+  expect(fixture.inserts).toHaveLength(0);
+  expect(start).not.toHaveBeenCalled();
+});
+
+it("persists reviewed correction/exclusion decisions while retaining the full source row count", async () => {
+  const form = await request().formData();
+  form.set("file", new File(["Date,Description,Amount\n2026-10-01,First,1\nbad,Second,2\n,Footer,3"], "synthetic.csv"));
+  const rowDecisions = [{ rowNumber: 3, action: "correct", values: { Date: "2026-10-02" } }, { rowNumber: 4, action: "exclude", reason: "Statement footer" }];
+  form.set("mapping", JSON.stringify({ ...JSON.parse(String(form.get("mapping"))), rowDecisions }));
+  const response = await POST(new Request("http://localhost/api/imports/confirm", { method: "POST", body: form }));
+  expect(response.status).toBe(200);
+  expect(fixture.inserts[0]).toMatchObject({ total_rows: 3, mapping: { rowContractVersion: "normalized-row-v1", rowDecisions } });
+  expect(start).toHaveBeenCalledWith(expect.anything(), ["new-import", "workspace", 3, 1]);
+});
+
 it("deduplicates active bytes even when an older undone import exists", async () => {
   fixture.imports.push({ id: "active-import", status: "completed" });
   expect(await (await POST(request())).json()).toEqual({ importId: "active-import", status: "completed" });

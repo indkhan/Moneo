@@ -10,11 +10,15 @@ type Preview = {
   currencyCode: string;
   accounts?: { accountName: string; currencyCode: string; rows: number }[];
   totalRows: number;
+  acceptedRows?: number;
+  correctedRows?: number;
+  excludedRows?: { rowNumber: number; reason: string; sourceRow: SourceRow }[];
+  unresolvedRows?: { rowNumber: number; message: string; sourceRow: SourceRow }[];
   pendingRows?: number;
   postedRows?: number;
   classificationReviewRows?: number;
   timestampReviewRequired?: boolean;
-  dateRange: { from: string; to: string };
+  dateRange: { from?: string; to?: string };
   examples: { postedOn: string; description: string; amountMinor: string; currencyCode: string; status?: string; merchant?: string; category?: string }[];
 };
 type Inspection = { headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string; previewError?: string; warnings?: string[] };
@@ -29,6 +33,31 @@ function formatMinor(value: string, currency: string) {
 
 const subscribeToHydration = () => () => {};
 
+function SourceRowReview({ row, mapping, onDecision }: { row: { rowNumber: number; sourceRow: SourceRow }; mapping: ImportMapping;
+  onDecision: (decision: NonNullable<ImportMapping["rowDecisions"]>[number]) => void }) {
+  const previous = mapping.rowDecisions?.find(item => item.rowNumber === row.rowNumber);
+  const [values, setValues] = useState<SourceRow>({ ...row.sourceRow, ...(previous?.action === "correct" ? previous.values : {}) });
+  const [reason, setReason] = useState("");
+  const changes = Object.fromEntries(Object.entries(values).filter(([column, value]) => value !== row.sourceRow[column]));
+  const parserReview = Boolean(row.sourceRow.__moneo_csv_issue);
+  const mappedColumns = Object.entries(mapping).filter(([key, value]) => key.endsWith("Column") && typeof value === "string").map(([, value]) => value as string);
+  for (const name of ["type", "fee"]) {
+    const column = Object.keys(row.sourceRow).find(key => key.trim().toLowerCase() === name);
+    if (column) mappedColumns.push(column);
+  }
+  const correction = parserReview ? { ...changes, ...Object.fromEntries(mappedColumns.map(column => [column, values[column] ?? ""])) } : changes;
+  return <article className="space-y-3 rounded-lg border border-border p-3 text-sm">
+    <h3 className="font-medium">Review source row {row.rowNumber}</h3>
+    <details><summary>Original source evidence</summary><pre className="whitespace-pre-wrap">{JSON.stringify(row.sourceRow, null, 2)}</pre></details>
+    {parserReview && <p role="alert">The source has a different number of cells than its headers. Review every mapped cell against the original evidence before using a correction.</p>}
+    <div className="grid gap-2 sm:grid-cols-2">{Object.keys(row.sourceRow).filter(column => !column.startsWith("__moneo_csv_")).map(column => <label key={column} className="grid gap-1">{column}<input aria-label={`Source row ${row.rowNumber} ${column}`} className="rounded border border-border bg-card p-2" value={values[column]} onChange={event => setValues({ ...values, [column]: event.target.value })} /></label>)}</div>
+    <button type="button" className="rounded border border-border px-3 py-2" disabled={!Object.keys(correction).length} onClick={() => onDecision({ rowNumber: row.rowNumber, action: "correct", values: correction })}>Use correction for row {row.rowNumber}</button>
+    <label className="grid gap-1">Exclusion reason for row {row.rowNumber}<input className="rounded border border-border bg-card p-2" maxLength={500} value={reason} onChange={event => setReason(event.target.value)} /></label>
+    <button type="button" className="rounded border border-border px-3 py-2" disabled={!reason.trim()} onClick={() => onDecision({ rowNumber: row.rowNumber, action: "exclude", reason })}>Exclude row {row.rowNumber}</button>
+    <p className="text-muted-foreground">Preview the updated interpretation before continuing. Corrections and exclusions retain the original source evidence.</p>
+  </article>;
+}
+
 export default function ImportPage() {
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const [files, setFiles] = useState<File[]>([]);
@@ -39,6 +68,7 @@ export default function ImportPage() {
   const [busy, setBusy] = useState(false);
   const [interpreting, setInterpreting] = useState(false);
   const [error, setError] = useState("");
+  const [rowsReviewed, setRowsReviewed] = useState(false);
   const [history, setHistory] = useState<ImportStatus[]>([]);
   const [undoId, setUndoId] = useState<string | null>(null);
   const [preview, setPreview] = useState<UndoPreview | null>(null);
@@ -107,6 +137,7 @@ export default function ImportPage() {
   }, [history]);
 
   async function inspect(target: File, corrected?: ImportMapping) {
+    setRowsReviewed(false);
     inspectionRequest.current?.abort();
     const controller = new AbortController();
     inspectionRequest.current = controller;
@@ -173,6 +204,11 @@ export default function ImportPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function resetRowDecision(rowNumber: number) {
+    setMapping(current => current && ({ ...current, rowDecisions: (current.rowDecisions ?? []).filter(row => row.rowNumber !== rowNumber) }));
+    setEditing(true); setRowsReviewed(false);
   }
 
   async function control(item: ImportStatus, action: "cancel" | "resume") {
@@ -269,7 +305,7 @@ export default function ImportPage() {
         <div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.filename}</strong><span role="status" className="rounded-lg bg-muted px-2.5 py-1 text-xs font-medium capitalize text-brand">{item.status}</span></div>
         <p className="text-sm">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows} for review · {item.rejected_rows} rejected · {item.total_rows} total</p>
         {item.error && <p className="text-sm text-red-700">{item.error}</p>}
-        {(item.review_rows > 0 || (item.classification_review_rows ?? 0) > 0) && <Link className="text-sm underline" href={`/import/${item.id}/review`}>Review rows{item.classification_review_rows ? ` · ${item.classification_review_rows} financial classifications` : ""}</Link>}
+        <Link className="text-sm underline" href={`/import/${item.id}/review`}>Review rows and source coverage{item.classification_review_rows ? ` · ${item.classification_review_rows} financial classifications` : ""}</Link>
         {["queued", "running"].includes(item.status) && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void control(item, "cancel")}>Stop import</button>}
         {["failed", "canceled"].includes(item.status) && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void control(item, "resume")}>{item.status === "canceled" ? "Resume import" : "Retry"}</button>}
         {item.status === "canceled" && <p className="mt-2 text-xs text-muted-foreground">Stopped. Already imported rows and their sources remain saved; resume continues the same file without duplicating them.</p>}
@@ -303,6 +339,23 @@ export default function ImportPage() {
         {inspection.sample.slice(0, 3).map((row, i) => <tr className="border-t border-border" key={i}>{inspection.headers.map((header) => <td key={header}>{row[header]}</td>)}</tr>)}
       </tbody></table></div>}
       {inspection.preview && <>
+        {inspection.preview.acceptedRows != null && <p>{inspection.preview.acceptedRows} accepted · {inspection.preview.correctedRows ?? 0} corrected · {inspection.preview.excludedRows?.length ?? 0} excluded · {inspection.preview.unresolvedRows?.length ?? 0} unresolved</p>}
+        {!!inspection.preview.unresolvedRows?.length && <div role="alert" className="space-y-2 rounded-lg border border-amber-300 p-3 text-sm">
+          <p>{inspection.preview.acceptedRows} of {inspection.preview.totalRows} source rows are valid. Resolve the remaining observations before importing; the original source stays unchanged.</p>
+          <ul>{inspection.preview.unresolvedRows.map(row => <li key={row.rowNumber}>{row.message}</li>)}</ul>
+        </div>}
+        {inspection.preview.unresolvedRows?.map(row => <SourceRowReview key={row.rowNumber} row={row} mapping={mapping!} onDecision={decision => {
+          setMapping(current => current && ({ ...current, rowDecisions: [...(current.rowDecisions ?? []).filter(item => item.rowNumber !== decision.rowNumber), decision] }));
+          setEditing(true); setRowsReviewed(false);
+        }} />)}
+        {mapping?.rowDecisions?.filter(row => row.action === "correct").map(row => <details key={row.rowNumber} className="rounded-lg border border-border p-3 text-sm"><summary>Corrected source row {row.rowNumber}</summary>
+          <dl>{Object.entries(row.values).map(([column, value]) => <div key={column}><dt className="font-medium">{column}</dt><dd>{value}</dd></div>)}</dl>
+          <button type="button" className="underline" onClick={() => resetRowDecision(row.rowNumber)}>Reset review for row {row.rowNumber}</button>
+        </details>)}
+        {inspection.preview.excludedRows?.map(row => <details key={row.rowNumber} className="rounded-lg border border-border p-3 text-sm"><summary>Excluded source row {row.rowNumber}: {row.reason}</summary><pre className="whitespace-pre-wrap">{JSON.stringify(row.sourceRow, null, 2)}</pre>
+          <button type="button" className="underline" onClick={() => resetRowDecision(row.rowNumber)}>Reset review for row {row.rowNumber}</button>
+        </details>)}
+        {!!mapping?.rowDecisions?.length && <label className="flex gap-2 text-sm"><input type="checkbox" checked={rowsReviewed} onChange={event => setRowsReviewed(event.target.checked)} />I reviewed the corrections and exclusions against the original source.</label>}
         {inspection.preview.timestampReviewRequired && mapping && <div className="space-y-2 rounded-lg border border-amber-300 p-3 text-sm">
           <p>Source timestamps have no offset. The proposed timezone needs your confirmation; incorrect clock interpretation changes dates and balance order.</p>
           <label className="grid gap-1">Source timestamp timezone<input className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.timestampTimezone ?? ""} onChange={event => { setMapping({ ...mapping, timestampTimezone: event.target.value, timestampTimezoneConfirmed: false }); setEditing(true); }} /></label>
@@ -313,7 +366,7 @@ export default function ImportPage() {
         {inspection.warnings?.map(warning => <p key={warning} className="text-sm text-amber-700 dark:text-amber-300">{warning}</p>)}
         <p><strong>Account:</strong> {inspection.preview.accountName} · <strong>Currency:</strong> {inspection.preview.currencyCode}</p>
         <p className="text-sm text-muted-foreground">Check the currency and incoming/outgoing amounts below. {mapping?.amountSign === "outflow-positive" ? "Positive source amounts are treated as outgoing; review this sign convention before continuing." : "Positive source amounts are treated as incoming."}</p>
-        <p><strong>{inspection.preview.totalRows} rows</strong> · {inspection.preview.dateRange.from} to {inspection.preview.dateRange.to}{inspection.preview.pendingRows != null && inspection.preview.pendingRows > 0 ? ` · ${inspection.preview.pendingRows} pending (excluded from posted spending)` : ""}</p>
+        <p><strong>{inspection.preview.totalRows} rows</strong> · {inspection.preview.dateRange.from ? `${inspection.preview.dateRange.from} to ${inspection.preview.dateRange.to}` : "No accepted posting dates"}{inspection.preview.pendingRows != null && inspection.preview.pendingRows > 0 ? ` · ${inspection.preview.pendingRows} pending (excluded from posted spending)` : ""}</p>
         <p className="text-sm text-muted-foreground">Descriptions stay exactly as in the file. Merchants/categories below come only from explicit columns when present. Pending rows stay pending and never count as posted spending.</p>
         <div className="overflow-x-auto rounded-lg border border-border"><table className="w-full text-left text-sm [&_th]:bg-muted [&_th]:px-3 [&_th]:py-2.5 [&_th]:text-xs [&_th]:font-semibold [&_td]:px-3 [&_td]:py-3"><thead><tr><th>Date</th><th>Description</th><th>Incoming / outgoing</th><th>Status</th><th>Merchant</th><th>Category</th></tr></thead><tbody>
           {inspection.preview.examples.map((row, i) => <tr key={i} className="border-t"><td>{row.postedOn}</td><td>{row.description}</td><td>{formatMinor(row.amountMinor, row.currencyCode)}</td><td>{row.status ?? "posted"}</td><td>{row.merchant ?? "—"}</td><td>{row.category ?? "Uncategorized"}</td></tr>)}
@@ -335,7 +388,7 @@ export default function ImportPage() {
         <div className="sm:col-span-2"><button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy} onClick={() => void inspect(file, mapping)}>Preview correction</button></div>
       </div>}
       <div className="flex gap-3">
-        {inspection.preview && !editing && <button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy || !mapping?.numericConvention || (!!inspection.preview.timestampReviewRequired && !mapping?.timestampTimezoneConfirmed)} onClick={() => void confirm()}>Continue</button>}
+        {inspection.preview && !editing && <button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy || !!inspection.preview.unresolvedRows?.length || (!!mapping?.rowDecisions?.length && !rowsReviewed) || !mapping?.numericConvention || (!!inspection.preview.timestampReviewRequired && !mapping?.timestampTimezoneConfirmed)} onClick={() => void confirm()}>Continue</button>}
         {inspection.preview && !editing && <button type="button" className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" onClick={() => setEditing(true)}>Correct</button>}
         <button type="button" className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" onClick={() => { setFiles([]); setInspection(null); setMapping(null); }}>Cancel</button>
       </div>

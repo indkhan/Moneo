@@ -25,8 +25,9 @@ export async function POST(request: Request) {
       ? parseCsv(await file.text())
       : await parseExcel(await file.arrayBuffer());
     if (!rows.length) throw new Error("File has no data rows");
-    const headers = Object.keys(rows[0]);
+    const headers = Object.keys(rows[0]).filter(header => !header.startsWith("__moneo_csv_"));
     const supplied = form.get("mapping");
+    if (typeof supplied === "string" && supplied.length > 10_000_000) throw new Error("Reviewed mapping exceeds the 10 MB limit");
     const knownMapping = proposeKnownStatementMapping(rows, file.name.replace(/\.(csv|xlsx)$/i, ""), workspaceCurrency);
     let mapping;
     let preview;

@@ -9,9 +9,23 @@ const timezoneSchema = z.string().max(100).refine(value => {
 }, "Invalid timestamp timezone");
 
 export type SourceRow = Record<string, string>;
+const csvIssueColumn = "__moneo_csv_issue";
+const csvExtraColumn = "__moneo_csv_extra_cells";
+
+function assertStorageCompatible(value: unknown): void {
+  if (typeof value === "string" && value.includes("\0")) throw new Error("Source or reviewed mapping contains NUL characters that PostgreSQL cannot preserve");
+  if (typeof value === "string") for (const character of value) {
+    const codePoint = character.codePointAt(0)!;
+    if (codePoint >= 0xd800 && codePoint <= 0xdfff) throw new Error("Source or reviewed mapping contains an unpaired Unicode surrogate; use valid Unicode text before continuing");
+  }
+  if (value && typeof value === "object") for (const [key, item] of Object.entries(value)) {
+    assertStorageCompatible(key);
+    assertStorageCompatible(item);
+  }
+}
 
 export const mappingSchema = z.object({
-  accountName: z.string().trim().min(1),
+  accountName: z.string().trim().min(1).refine(value => Array.from(value).length <= 100, "Account name exceeds 100 characters"),
   currencyCode: z.string().regex(/^[A-Z]{3}$/),
   dateColumn: z.string().min(1),
   descriptionColumn: z.string().min(1),
@@ -41,6 +55,12 @@ export const mappingSchema = z.object({
   amountSign: z.enum(["signed", "outflow-positive"]),
   numericConvention: z.enum(["decimal-dot", "decimal-comma"]).optional(),
   parserVersion: z.literal("numeric-convention-v2").optional(),
+  rowContractVersion: z.literal("normalized-row-v1").optional(),
+  rowDecisions: z.array(z.discriminatedUnion("action", [
+    z.object({ rowNumber: z.number().int().min(2), action: z.literal("correct"),
+      values: z.record(z.string(), z.string().max(100_000)).refine(value => Object.keys(value).length > 0, "Correction needs source values") }).strict(),
+    z.object({ rowNumber: z.number().int().min(2), action: z.literal("exclude"), reason: z.string().trim().min(1).max(500) }).strict(),
+  ])).max(100_000).optional(),
 }).strict().refine(
   (m) => m.amountColumn ? !m.debitColumn && !m.creditColumn : Boolean(m.debitColumn && m.creditColumn),
   "Choose either one amount column or both debit and credit columns",
@@ -65,11 +85,11 @@ export function proposeKnownStatementMapping(rows: SourceRow[], accountName: str
 export function validateImportConfirmation(rows: SourceRow[], input: unknown): ImportMapping {
   const mapping = validateMapping(input, rows);
   if (!mapping.numericConvention) throw new Error("Review and select the source numeric convention before importing");
-  const naive = rows.some(row => /[ T]\d{2}:\d{2}:\d{2}$/.test(row[mapping.dateColumn]?.trim() ?? ""));
+  const naive = reviewedSourceRows(rows, mapping).some(row => row && /[ T]\d{2}:\d{2}:\d{2}$/.test(row[mapping.dateColumn]?.trim() ?? ""));
   if (naive && (!mapping.timestampTimezone || !mapping.timestampTimezoneConfirmed))
     throw new Error("Review and confirm the source timestamp timezone before importing");
   mapRows(rows, mapping);
-  return { ...mapping, parserVersion: "numeric-convention-v2" };
+  return { ...mapping, parserVersion: "numeric-convention-v2", rowContractVersion: "normalized-row-v1" };
 }
 
 export function proposeStatementTimezones(rows: SourceRow[], mapping: ImportMapping, workspaceTimezone = "Europe/Berlin"): ImportMapping {
@@ -80,14 +100,26 @@ export function proposeStatementTimezones(rows: SourceRow[], mapping: ImportMapp
 }
 
 export function parseCsv(text: string): SourceRow[] {
+  assertStorageCompatible(text);
   const result = Papa.parse<SourceRow>(text.replace(/^\uFEFF/, ""), {
     header: true,
     skipEmptyLines: "greedy",
   });
-  if (result.errors.length) throw new Error(`CSV parse error: ${result.errors[0].message}`);
   if (Object.keys(result.meta.renamedHeaders ?? {}).length || new Set(result.meta.fields).size !== result.meta.fields?.length)
     throw new Error("Duplicate CSV headers");
-  return result.data;
+  const headers = result.meta.fields ?? [];
+  if (headers.some(header => header.startsWith("__moneo_csv_") || header === "__parsed_extra")) throw new Error("Reserved CSV evidence header");
+  const fatal = result.errors.find(error => error.type !== "FieldMismatch" || !["TooFewFields", "TooManyFields"].includes(error.code)
+    || !Number.isInteger(error.row) || error.row! < 0 || error.row! >= result.data.length);
+  if (fatal) throw new Error(`CSV parse error: ${fatal.message}`);
+  const issues = new Map(result.errors.map(error => [error.row!, error.code]));
+  return result.data.map((row, index) => {
+    const extra = (row as unknown as { __parsed_extra?: string[] }).__parsed_extra;
+    return { ...Object.fromEntries(headers.map(header => [header, row[header] ?? ""])),
+      ...(issues.has(index) ? { [csvIssueColumn]: issues.get(index)!,
+        __moneo_csv_field_count: String(headers.filter(header => Object.hasOwn(row, header)).length + (extra?.length ?? 0)) } : {}),
+      ...(extra?.length ? { [csvExtraColumn]: JSON.stringify(extra) } : {}) };
+  });
 }
 
 function cellText(cell: ExcelJS.Cell): string {
@@ -111,13 +143,24 @@ export async function parseExcel(file: ArrayBuffer): Promise<SourceRow[]> {
     if (rowNumber === 1 || !row.hasValues) return;
     rows.push(Object.fromEntries(headers.map((header, i) => [header, cellText(row.getCell(i + 1))])));
   });
+  assertStorageCompatible(rows);
   return rows;
 }
 
 export function validateMapping(input: unknown, rows: SourceRow[]): ImportMapping {
   const mapping = mappingSchema.parse(input);
+  // Exclusions and corrections never rewrite incompatible original evidence.
+  assertStorageCompatible(rows);
+  assertStorageCompatible(mapping);
   if (!rows.length) throw new Error("File has no data rows");
-  const headers = Object.keys(rows[0]);
+  const headers = Object.keys(rows[0]).filter(header => !header.startsWith("__moneo_csv_"));
+  const decisions = new Set<number>();
+  for (const decision of mapping.rowDecisions ?? []) {
+    if (decision.rowNumber > rows.length + 1 || decisions.has(decision.rowNumber)) throw new Error("Invalid or duplicate source row decision");
+    decisions.add(decision.rowNumber);
+    if (decision.action === "correct" && Object.keys(decision.values).some(key => !Object.hasOwn(rows[decision.rowNumber - 2], key)))
+      throw new Error("Correction contains an unknown source column");
+  }
   for (const column of [mapping.dateColumn, mapping.descriptionColumn, mapping.amountColumn,
     mapping.debitColumn, mapping.creditColumn, mapping.currencyColumn, mapping.balanceColumn,
     mapping.merchantColumn, mapping.categoryColumn, mapping.externalIdColumn, mapping.statusColumn,
@@ -135,7 +178,7 @@ export function validateMapping(input: unknown, rows: SourceRow[]): ImportMappin
 
 export function validateAiMapping(input: unknown, rows: SourceRow[], workspaceCurrency: string): ImportMapping {
   // Only the user chooses the source convention; provenance is stamped by confirmation.
-  const mapping = { ...mappingSchema.parse(input), numericConvention: undefined, parserVersion: undefined };
+  const mapping = { ...mappingSchema.parse(input), numericConvention: undefined, parserVersion: undefined, rowContractVersion: undefined, rowDecisions: undefined };
   return validateMapping(proposeAccountRoutes(rows, mapping.currencyColumn ? mapping : { ...mapping, currencyCode: workspaceCurrency }), rows);
 }
 
@@ -152,6 +195,9 @@ export function proposeAccountRoutes(rows: SourceRow[], input: unknown): ImportM
     const accountValue = accountColumn ? row[accountColumn]?.trim() : undefined;
     const productValue = productColumn ? row[productColumn]?.trim() : undefined;
     const currencyCode = (mapping.currencyColumn ? row[mapping.currencyColumn] : mapping.currencyCode)?.trim().toUpperCase();
+    // Invalid source currencies remain quarantined observations, rather than
+    // poisoning the route proposal for valid neighboring rows.
+    if (!/^[A-Z]{3}$/.test(currencyCode ?? "")) continue;
     const key = JSON.stringify([accountValue, productValue, currencyCode]);
     routes.set(key, { accountValue, productValue, currencyCode,
       accountName: [mapping.accountName, accountValue, productValue].filter(Boolean).join(" · ") });
@@ -302,11 +348,60 @@ export function normalizeCategoryName(input: string | undefined): string | null 
 }
 
 export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
+  const result = inspectRows(rows, input);
+  if (result.unresolvedRows.length) throw new Error(result.unresolvedRows[0].message);
+  return result.mapped;
+}
+
+export function mapImportReviewRow(sourceRow: SourceRow, rowNumber: number, input: unknown): MappedRow {
+  if (!Number.isInteger(rowNumber) || rowNumber < 2) throw new Error("Invalid original source row index");
+  const mapping = mappingSchema.parse(input);
+  const decision = mapping.rowDecisions?.find(item => item.rowNumber === rowNumber);
+  if (decision?.action === "exclude") throw new Error("Excluded source observation cannot be accepted");
+  const row = mapRows([sourceRow], { ...mapping, rowDecisions: decision ? [{ ...decision, rowNumber: 2 }] : undefined })[0];
+  return { ...row, rowNumber };
+}
+
+function reviewedSourceRows(rows: SourceRow[], mapping: ImportMapping): (SourceRow | null)[] {
+  const decisions = new Map((mapping.rowDecisions ?? []).map(decision => [decision.rowNumber, decision]));
+  return rows.map((row, index) => {
+    const decision = decisions.get(index + 2);
+    return decision?.action === "exclude" ? null : decision?.action === "correct" ? { ...row, ...decision.values } : row;
+  });
+}
+
+export function inspectRows(rows: SourceRow[], input: unknown) {
   const mapping = validateMapping(input, rows);
-  const mapped: MappedRow[] = rows.map((sourceRow, index) => {
+  const decisions = new Map((mapping.rowDecisions ?? []).map(decision => [decision.rowNumber, decision]));
+  const excludedRows: { rowNumber: number; sourceRow: SourceRow; reason: string }[] = [];
+  const unresolvedRows: { rowNumber: number; sourceRow: SourceRow; reason: "invalid_row"; message: string }[] = [];
+  const mapped: MappedRow[] = reviewedSourceRows(rows, mapping).flatMap((sourceRow, index): MappedRow[] => {
+    if (!sourceRow) {
+      const decision = decisions.get(index + 2)!;
+      if (decision.action === "exclude") excludedRows.push({ rowNumber: index + 2, sourceRow: rows[index], reason: decision.reason });
+      return [];
+    }
     try {
+      if (rows[index][csvIssueColumn]) {
+        const decision = decisions.get(index + 2);
+        if (decision?.action !== "correct") throw new Error(`CSV field mismatch (${rows[index][csvIssueColumn]}): explicitly review mapped cells or exclude this observation`);
+        const columns = Object.entries(mapping).filter(([key, value]) => key.endsWith("Column") && typeof value === "string").map(([, value]) => value as string);
+        for (const name of ["type", "fee"]) {
+          const column = Object.keys(rows[index]).find(key => key.trim().toLowerCase() === name);
+          if (column) columns.push(column);
+        }
+        if (columns.some(column => !Object.hasOwn(decision.values, column))) throw new Error("CSV field mismatch: review all mapped cells before accepting the corrected interpretation");
+      }
       const description = sourceRow[mapping.descriptionColumn]?.trim();
       if (!description) throw new Error("Missing description");
+      // PostgreSQL length counts Unicode code points, rather than UTF-16 units.
+      if (Array.from(description).length > 500) throw new Error("Description exceeds 500 characters");
+      // The RPC has an 11 MB JSON record boundary. Account for escaped original
+      // evidence, JSONB separator spaces and duplicated external IDs, reserving
+      // 1 MB for bounded fields.
+      if (new TextEncoder().encode(JSON.stringify({ originalRow: rows[index],
+        externalId: mapping.externalIdColumn ? sourceRow[mapping.externalIdColumn] : null })).byteLength + 2 * Object.keys(rows[index]).length > 10_000_000)
+        throw new Error("Source evidence exceeds the import record limit; review an explicit exclusion");
       const currencyCode = (mapping.currencyColumn ? sourceRow[mapping.currencyColumn] : mapping.currencyCode).trim().toUpperCase();
       if (!/^[A-Z]{3}$/.test(currencyCode)) throw new Error("Invalid currency");
       const accountValue = mapping.accountColumn ? sourceRow[mapping.accountColumn]?.trim() : undefined;
@@ -329,6 +424,7 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
           throw new Error("Debit and credit values must be positive");
         if (amountMinor === 0n) throw new Error("Zero debit or credit");
       }
+      databaseMinor(amountMinor);
       const header = (name: string) => Object.keys(sourceRow).find(key => key.trim().toLowerCase() === name);
       const typeColumn = mapping.typeColumn ?? header("type");
       const feeColumn = mapping.feeColumn ?? header("fee");
@@ -354,7 +450,7 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
       const sourceDate = sourceRow[mapping.dateColumn] ?? "";
       const postedDate = parseDate(sourceDate, mapping.dateFormat);
       const postedAt = mapping.dateFormat === "iso" ? parseTimestamp(sourceDate, mapping.timestampTimezone) : undefined;
-      return {
+      return [{
         rowNumber: index + 2,
         accountName,
         postedOn: postedAt ? calendarDate(postedAt, mapping.calendarTimezone) : postedDate,
@@ -367,14 +463,16 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
         kind, reviewReasons,
         ...(sourceType ? { sourceType } : {}),
         ...(feeMinor !== undefined ? { feeMinor } : {}),
-        sourceRow,
+        sourceRow: rows[index],
         ...(mapping.merchantColumn && sourceRow[mapping.merchantColumn]?.trim() ? { merchant: sourceRow[mapping.merchantColumn].trim() } : {}),
         ...(mapping.categoryColumn && sourceRow[mapping.categoryColumn]?.trim() ? { category: sourceRow[mapping.categoryColumn].trim() } : {}),
         ...(mapping.externalIdColumn && sourceRow[mapping.externalIdColumn]?.trim() ? { externalId: sourceRow[mapping.externalIdColumn].trim() } : {}),
         ...(mapping.balanceColumn && sourceRow[mapping.balanceColumn]?.trim() ? { balanceMinor: parseAmountMinor(sourceRow[mapping.balanceColumn], currencyCode, mapping.numericConvention) } : {}),
-      };
+      }];
     } catch (error) {
-      throw new Error(`Row ${index + 2}: ${error instanceof Error ? error.message : String(error)}`);
+      unresolvedRows.push({ rowNumber: index + 2, sourceRow: rows[index], reason: "invalid_row",
+        message: `Row ${index + 2}: ${error instanceof Error ? error.message : String(error)}` });
+      return [];
     }
   });
   const groups = new Map<string, MappedRow[]>();
@@ -386,6 +484,8 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
     if (row.feeMinor !== undefined && row.feeMinor !== 0n) row.feeEvidence = { treatment: "unknown" };
   }
   for (const group of groups.values()) {
+    // Missing/excluded observations cannot establish adjacent statement balances.
+    if (unresolvedRows.length || excludedRows.length) continue;
     if (group.some(row => !row.postedAt)) continue;
     group.sort((a, b) => a.postedAt!.localeCompare(b.postedAt!));
     for (let index = 1; index < group.length; index++) {
@@ -397,12 +497,12 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
       row.feeEvidence = { treatment: deltaMinor === row.amountMinor ? "included" : deltaMinor === row.amountMinor - fee ? "additional" : "unknown", deltaMinor, previousRowNumber: previous.rowNumber };
     }
   }
-  return mapped;
+  return { mapped, unresolvedRows, excludedRows, correctedRows: mapped.filter(row => decisions.get(row.rowNumber)?.action === "correct").length };
 }
 
 export function previewImport(rows: SourceRow[], input: unknown) {
   const mapping = validateMapping(input, rows);
-  const mapped = mapRows(rows, mapping);
+  const { mapped, unresolvedRows, excludedRows, correctedRows } = inspectRows(rows, mapping);
   const dates = mapped.map((row) => row.postedOn).sort();
   return {
     accountName: mapping.accountName,
@@ -414,11 +514,15 @@ export function previewImport(rows: SourceRow[], input: unknown) {
       groups.set(key, group);
       return groups;
     }, new Map<string, { accountName: string; currencyCode: string; rows: number }>()).values()),
-    totalRows: mapped.length,
+    totalRows: rows.length,
+    acceptedRows: mapped.length,
+    unresolvedRows,
+    excludedRows,
+    correctedRows,
     pendingRows: mapped.filter((row) => row.status === "pending").length,
     postedRows: mapped.filter((row) => row.status === "posted").length,
     classificationReviewRows: mapped.filter(row => row.reviewReasons.length > 0).length,
-    timestampReviewRequired: rows.some(row => /[ T]\d{2}:\d{2}:\d{2}$/.test(row[mapping.dateColumn]?.trim() ?? "")),
+    timestampReviewRequired: reviewedSourceRows(rows, mapping).some(row => row && /[ T]\d{2}:\d{2}:\d{2}$/.test(row[mapping.dateColumn]?.trim() ?? "")),
     dateRange: { from: dates[0], to: dates[dates.length - 1] },
     examples: mapped.slice(0, 5),
   };

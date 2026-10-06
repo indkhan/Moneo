@@ -1,5 +1,5 @@
 import { requireWorkspace } from "@/lib/auth";
-import { mapRows, type SourceRow } from "@/lib/csv";
+import { mapImportReviewRow, type SourceRow } from "@/lib/csv";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -12,14 +12,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return Response.json({ error: "Invalid review action" }, { status: 400 });
     const { supabase, workspace } = context;
     const { data: source, error: sourceError } = await supabase.from("source_transactions")
-      .select("id, original_row, status").eq("id", sourceId).eq("import_id", id)
+      .select("id, row_number, original_row, status").eq("id", sourceId).eq("import_id", id)
       .eq("workspace_id", workspace.id).maybeSingle();
     if (sourceError) throw sourceError;
     if (!source) return Response.json({ error: "Review row not found" }, { status: 404 });
     const { data: imported, error: importError } = await supabase.from("imports")
       .select("mapping").eq("id", id).eq("workspace_id", workspace.id).single();
     if (importError) throw importError;
-    const mapped = action === "accept" ? mapRows([source.original_row as SourceRow], imported.mapping)[0] : null;
+    const mapped = action === "accept" ? mapImportReviewRow(source.original_row as SourceRow, source.row_number, imported.mapping) : null;
     const result = await supabase.rpc("resolve_import_review", {
       p_source_id: sourceId,
       p_action: action,
