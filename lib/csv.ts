@@ -11,7 +11,7 @@ const timezoneSchema = z.string().max(100).refine(value => {
 export type SourceRow = Record<string, string>;
 
 export const mappingSchema = z.object({
-  accountName: z.string().trim().min(1),
+  accountName: z.string().trim().min(1).refine(value => Array.from(value).length <= 100, "Account name exceeds 100 characters"),
   currencyCode: z.string().regex(/^[A-Z]{3}$/),
   dateColumn: z.string().min(1),
   descriptionColumn: z.string().min(1),
@@ -302,11 +302,20 @@ export function normalizeCategoryName(input: string | undefined): string | null 
 }
 
 export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
+  const result = inspectRows(rows, input);
+  if (result.unresolvedRows.length) throw new Error(result.unresolvedRows[0].message);
+  return result.mapped;
+}
+
+export function inspectRows(rows: SourceRow[], input: unknown) {
   const mapping = validateMapping(input, rows);
-  const mapped: MappedRow[] = rows.map((sourceRow, index) => {
+  const unresolvedRows: { rowNumber: number; sourceRow: SourceRow; reason: "invalid_row"; message: string }[] = [];
+  const mapped: MappedRow[] = rows.flatMap((sourceRow, index): MappedRow[] => {
     try {
       const description = sourceRow[mapping.descriptionColumn]?.trim();
       if (!description) throw new Error("Missing description");
+      // PostgreSQL length counts Unicode code points, rather than UTF-16 units.
+      if (Array.from(description).length > 500) throw new Error("Description exceeds 500 characters");
       const currencyCode = (mapping.currencyColumn ? sourceRow[mapping.currencyColumn] : mapping.currencyCode).trim().toUpperCase();
       if (!/^[A-Z]{3}$/.test(currencyCode)) throw new Error("Invalid currency");
       const accountValue = mapping.accountColumn ? sourceRow[mapping.accountColumn]?.trim() : undefined;
@@ -329,6 +338,7 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
           throw new Error("Debit and credit values must be positive");
         if (amountMinor === 0n) throw new Error("Zero debit or credit");
       }
+      databaseMinor(amountMinor);
       const header = (name: string) => Object.keys(sourceRow).find(key => key.trim().toLowerCase() === name);
       const typeColumn = mapping.typeColumn ?? header("type");
       const feeColumn = mapping.feeColumn ?? header("fee");
@@ -354,7 +364,7 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
       const sourceDate = sourceRow[mapping.dateColumn] ?? "";
       const postedDate = parseDate(sourceDate, mapping.dateFormat);
       const postedAt = mapping.dateFormat === "iso" ? parseTimestamp(sourceDate, mapping.timestampTimezone) : undefined;
-      return {
+      return [{
         rowNumber: index + 2,
         accountName,
         postedOn: postedAt ? calendarDate(postedAt, mapping.calendarTimezone) : postedDate,
@@ -372,9 +382,11 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
         ...(mapping.categoryColumn && sourceRow[mapping.categoryColumn]?.trim() ? { category: sourceRow[mapping.categoryColumn].trim() } : {}),
         ...(mapping.externalIdColumn && sourceRow[mapping.externalIdColumn]?.trim() ? { externalId: sourceRow[mapping.externalIdColumn].trim() } : {}),
         ...(mapping.balanceColumn && sourceRow[mapping.balanceColumn]?.trim() ? { balanceMinor: parseAmountMinor(sourceRow[mapping.balanceColumn], currencyCode, mapping.numericConvention) } : {}),
-      };
+      }];
     } catch (error) {
-      throw new Error(`Row ${index + 2}: ${error instanceof Error ? error.message : String(error)}`);
+      unresolvedRows.push({ rowNumber: index + 2, sourceRow, reason: "invalid_row",
+        message: `Row ${index + 2}: ${error instanceof Error ? error.message : String(error)}` });
+      return [];
     }
   });
   const groups = new Map<string, MappedRow[]>();
@@ -397,12 +409,12 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
       row.feeEvidence = { treatment: deltaMinor === row.amountMinor ? "included" : deltaMinor === row.amountMinor - fee ? "additional" : "unknown", deltaMinor, previousRowNumber: previous.rowNumber };
     }
   }
-  return mapped;
+  return { mapped, unresolvedRows };
 }
 
 export function previewImport(rows: SourceRow[], input: unknown) {
   const mapping = validateMapping(input, rows);
-  const mapped = mapRows(rows, mapping);
+  const { mapped, unresolvedRows } = inspectRows(rows, mapping);
   const dates = mapped.map((row) => row.postedOn).sort();
   return {
     accountName: mapping.accountName,
@@ -414,7 +426,9 @@ export function previewImport(rows: SourceRow[], input: unknown) {
       groups.set(key, group);
       return groups;
     }, new Map<string, { accountName: string; currencyCode: string; rows: number }>()).values()),
-    totalRows: mapped.length,
+    totalRows: rows.length,
+    acceptedRows: mapped.length,
+    unresolvedRows,
     pendingRows: mapped.filter((row) => row.status === "pending").length,
     postedRows: mapped.filter((row) => row.status === "posted").length,
     classificationReviewRows: mapped.filter(row => row.reviewReasons.length > 0).length,

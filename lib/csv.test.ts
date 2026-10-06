@@ -15,6 +15,32 @@ const mapping = {
 };
 
 describe("financial import parsing", () => {
+  it("previews valid neighbors without hiding malformed, unsupported or footer observations", () => {
+    const rows = [
+      { Date: "01/09/2026", Description: "First", Amount: "1", State: "posted" },
+      { Date: "02/09/2026", Description: "Unsupported", Amount: "2", State: "declined" },
+      { Date: "03/09/2026", Description: "Last valid", Amount: "3", State: "posted" },
+      { Date: "", Description: "Total", Amount: "6", State: "" },
+    ];
+    const input = { ...mapping, statusColumn: "State" };
+    const preview = previewImport(rows, input);
+    expect(preview.totalRows).toBe(4);
+    expect(preview.acceptedRows).toBe(2);
+    expect(preview.unresolvedRows.map(row => row.rowNumber)).toEqual([3, 5]);
+    expect(preview.unresolvedRows.map(row => row.sourceRow)).toEqual([rows[1], rows[3]]);
+    expect(preview.examples.map(row => row.rowNumber)).toEqual([2, 4]);
+    expect(() => validateImportConfirmation(rows, input)).toThrow("Row 3");
+  });
+  it("rejects worker-incompatible description and account bounds before confirmation", () => {
+    const row = { Date: "01/09/2026", Description: "x".repeat(501), Amount: "1" };
+    expect(() => validateImportConfirmation([row], mapping)).toThrow("500");
+    expect(() => mapRows([{ ...row, Description: "Valid" }], { ...mapping, accountName: "x".repeat(101) })).toThrow();
+    const unicode = { ...row, Description: "😀".repeat(500) };
+    expect(mapRows([unicode], mapping)[0].sourceRow).toEqual(unicode);
+  });
+  it("checks database bounds again after applying the reviewed outflow sign", () => {
+    expect(() => validateImportConfirmation([{ Date: "01/09/2026", Description: "Valid", Amount: "-92233720368547758.08" }], { ...mapping, amountSign: "outflow-positive" })).toThrow("database range");
+  });
   it("uses the declared decimal convention for small three-decimal currency amounts", () => {
     for (const currency of ["KWD", "BHD", "OMR"]) {
       for (const [separator, convention] of [[".", "decimal-dot"], [",", "decimal-comma"]] as const) {

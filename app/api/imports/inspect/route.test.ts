@@ -13,7 +13,8 @@ it("returns an editable mapping when source money needs numeric clarification", 
   form.set("mapping", JSON.stringify({ accountName: "Cash", currencyCode: "KWD", dateColumn: "Date", descriptionColumn: "Description", amountColumn: "Amount", dateFormat: "iso", amountSign: "signed" }));
   const response = await POST(new Request("http://localhost/api/imports/inspect", { method: "POST", body: form }));
   expect(response.status).toBe(200);
-  expect(await response.json()).toMatchObject({ mapping: { currencyCode: "KWD" }, preview: null, previewError: expect.stringContaining("numeric convention") });
+  expect(await response.json()).toMatchObject({ mapping: { currencyCode: "KWD" }, preview: { acceptedRows: 0,
+    unresolvedRows: [{ rowNumber: 2, message: expect.stringContaining("numeric convention") }] } });
 });
 
 it("cancels provider mapping when the upload request is canceled", async () => {

@@ -10,6 +10,8 @@ type Preview = {
   currencyCode: string;
   accounts?: { accountName: string; currencyCode: string; rows: number }[];
   totalRows: number;
+  acceptedRows?: number;
+  unresolvedRows?: { rowNumber: number; message: string }[];
   pendingRows?: number;
   postedRows?: number;
   classificationReviewRows?: number;
@@ -303,6 +305,10 @@ export default function ImportPage() {
         {inspection.sample.slice(0, 3).map((row, i) => <tr className="border-t border-border" key={i}>{inspection.headers.map((header) => <td key={header}>{row[header]}</td>)}</tr>)}
       </tbody></table></div>}
       {inspection.preview && <>
+        {!!inspection.preview.unresolvedRows?.length && <div role="alert" className="space-y-2 rounded-lg border border-amber-300 p-3 text-sm">
+          <p>{inspection.preview.acceptedRows} of {inspection.preview.totalRows} source rows are valid. Resolve the remaining observations before importing; the original source stays unchanged.</p>
+          <ul>{inspection.preview.unresolvedRows.map(row => <li key={row.rowNumber}>{row.message}</li>)}</ul>
+        </div>}
         {inspection.preview.timestampReviewRequired && mapping && <div className="space-y-2 rounded-lg border border-amber-300 p-3 text-sm">
           <p>Source timestamps have no offset. The proposed timezone needs your confirmation; incorrect clock interpretation changes dates and balance order.</p>
           <label className="grid gap-1">Source timestamp timezone<input className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.timestampTimezone ?? ""} onChange={event => { setMapping({ ...mapping, timestampTimezone: event.target.value, timestampTimezoneConfirmed: false }); setEditing(true); }} /></label>
@@ -335,7 +341,7 @@ export default function ImportPage() {
         <div className="sm:col-span-2"><button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy} onClick={() => void inspect(file, mapping)}>Preview correction</button></div>
       </div>}
       <div className="flex gap-3">
-        {inspection.preview && !editing && <button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy || !mapping?.numericConvention || (!!inspection.preview.timestampReviewRequired && !mapping?.timestampTimezoneConfirmed)} onClick={() => void confirm()}>Continue</button>}
+        {inspection.preview && !editing && <button type="button" className="rounded-lg bg-brand px-4 py-2 text-white hover:opacity-90" disabled={busy || !!inspection.preview.unresolvedRows?.length || !mapping?.numericConvention || (!!inspection.preview.timestampReviewRequired && !mapping?.timestampTimezoneConfirmed)} onClick={() => void confirm()}>Continue</button>}
         {inspection.preview && !editing && <button type="button" className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" onClick={() => setEditing(true)}>Correct</button>}
         <button type="button" className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" onClick={() => { setFiles([]); setInspection(null); setMapping(null); }}>Cancel</button>
       </div>
