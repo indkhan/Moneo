@@ -12,6 +12,7 @@ import { SpendingChart } from "../spending-chart";
 import { CalculatorPanel } from "../calculator-panel";
 import { GenerateCalculatorForm } from "../generate-calculator-form";
 import { VersionEditor } from "../version-editor";
+import { RenameArtifactForm } from "../rename-form";
 
 function money(minor: bigint | string | number, currency: string) {
   return formatMoney(minor, currency);
@@ -74,11 +75,7 @@ export default async function ArtifactPage({ params, searchParams }: {
       </form>
     </div>
     <p className="mt-2 text-sm text-muted-foreground">Live financial data · trusted {artifact.kind.replaceAll("_", " ")} v{version?.version ?? "?"}</p>
-    <form action={renameArtifact} className="mt-4 flex flex-wrap gap-2 text-sm">
-      <input type="hidden" name="artifactId" value={id} />
-      <input name="name" defaultValue={artifact.name} required maxLength={120} aria-label="Artifact name" className="rounded-lg border border-border bg-card px-3 py-2" />
-      <button className="rounded-lg border border-border bg-card px-3 text-sm font-medium hover:bg-muted">Save new version</button>
-    </form>
+    <RenameArtifactForm artifactId={id} activeVersionId={artifact.active_version_id} name={artifact.name} action={renameArtifact} />
     {artifact.kind === "spending_explorer" && <SpendingExplorer id={id} query={q.slice(0, 100)} />}
     {artifact.kind === "trip_planner" && <TripPlanner id={id} costMinor={costMinor} />}
     {artifact.kind === "goal_tracker" && <GoalTracker id={id} scenarioGoalId={goalId} extra={extra} />}
@@ -103,7 +100,7 @@ export default async function ArtifactPage({ params, searchParams }: {
         generator below to draft the first validated calculator version.
       </p>
     )}
-    <GenerateCalculatorForm artifactId={id} kind={kind} />
+    <GenerateCalculatorForm artifactId={id} kind={kind} activeVersionId={artifact.active_version_id} />
     {version && (
       <VersionEditor
         artifactId={id}

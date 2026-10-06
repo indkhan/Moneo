@@ -1,0 +1,100 @@
+import { test, expect } from "@playwright/test";
+import { e2eStorageStatePath, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
+
+const state = e2eStorageStatePath();
+if (state) test.use({ storageState: state });
+test.skip(!hasSupabaseEnv() || !state, gatedSkipReason());
+
+test("active version CAS preserves clean/dirty editors, two-tab drafts and history past twenty", async ({ page, context }) => {
+  test.setTimeout(180_000);
+  await page.goto("/ai/library");
+  const create = page.locator("form").filter({ has: page.getByLabel("Custom Comparison", { exact: true }) });
+  await create.getByLabel("Custom Comparison", { exact: true }).fill(`Synthetic version QA ${crypto.randomUUID().slice(0, 8)}`);
+  await create.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page).toHaveURL(/\/ai\/library\/[0-9a-f-]{36}$/);
+  const url = page.url(), id = new URL(url).pathname.split("/").at(-1)!;
+  const endpoint = `/api/artifacts/${id}/versions`;
+  const manifest = { kind: "custom_comparison", runtime: "quickjs-calculator-v1", sdk: [], params: {}, renderer: "trusted" };
+  const source = (label: string) => `(input) => ({ summary: "${label}" })`;
+  const read = async () => { const response = await page.request.get(endpoint); expect(response.ok()).toBe(true); return response.json(); };
+  const save = async (label: string) => {
+    const before = await read();
+    const response = await page.request.post(endpoint, { data: { source: source(label), manifest, expectedActiveVersionId: before.activeVersionId } });
+    expect(response.ok(), `Requires deployed 202610060006 RPC: ${await response.text()}`).toBe(true);
+    return (await response.json()).version;
+  };
+  const initial = (await read()).versions[0];
+  const first = await save("A");
+  await page.reload();
+  const editor = page.getByRole("region", { name: "Edit calculator version" });
+  const code = editor.getByRole("textbox", { name: "Calculator source", exact: true });
+  const generator = page.getByRole("region", { name: "AI-generated calculator" });
+  const fallback = async () => {
+    const before = (await read()).activeVersionId;
+    await generator.getByRole("button", { name: "Use safe fallback", exact: true }).click();
+    await generator.getByRole("button", { name: "Save as new version", exact: true }).click();
+    await expect(generator.getByRole("status")).toContainText("Saved as new active version");
+    await expect.poll(async () => (await read()).activeVersionId).not.toBe(before);
+  };
+  await fallback();
+  await expect(code).not.toContainText('summary: "A"');
+  await code.fill(source("Local"));
+  await fallback();
+  await expect(code).toContainText('"Local"');
+  await expect(editor.getByRole("alert")).toContainText("changed");
+  await editor.getByRole("button", { name: "Replace current version with my edits", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Generated calculator output" })).toContainText("Local");
+
+  const tab = await context.newPage();
+  try {
+    await tab.goto(url);
+    const tabEditor = tab.getByRole("region", { name: "Edit calculator version" });
+    await code.fill(source("Tab local"));
+    await page.getByLabel("Artifact name", {exact:true}).fill("Unsaved local rename");
+    await tabEditor.getByRole("textbox", { name: "Calculator source", exact: true }).fill(source("Tab winner"));
+    await tabEditor.getByRole("button", { name: "Save new version", exact: true }).click();
+    await expect(tab.getByRole("region", { name: "Generated calculator output" })).toContainText("Tab winner");
+    await tab.getByLabel("Artifact name", {exact:true}).fill("Synthetic winning rename");
+    await tab.locator("form").filter({has:tab.getByLabel("Artifact name", {exact:true})}).getByRole("button", {name:"Save new version",exact:true}).click();
+    await expect(tab.getByRole("heading", {name:"Synthetic winning rename",exact:true})).toBeVisible();
+    await editor.getByRole("button", { name: "Save new version", exact: true }).click();
+    await expect(editor.getByRole("status")).toContainText("preserved");
+    await expect(code).toContainText('"Tab local"');
+    await expect(page.getByLabel("Artifact name", {exact:true})).toHaveValue("Synthetic winning rename");
+    await expect(page.getByText("When the active version changes, this field resets to the saved name. Re-enter unsaved names before saving.", {exact:true})).toBeVisible();
+    const winner = (await read()).activeVersionId;
+    await editor.getByRole("button", { name: "Reload current version", exact: true }).click();
+    await expect(code).toContainText('"Tab winner"');
+    await generator.getByRole("button", { name: "Use safe fallback", exact: true }).click();
+    await tab.reload();
+    await tabEditor.getByRole("textbox", { name: "Calculator source", exact: true }).fill(source("Draft winner"));
+    await tabEditor.getByRole("button", { name: "Save new version", exact: true }).click();
+    await expect(tab.getByRole("region", { name: "Generated calculator output" })).toContainText("Draft winner");
+    await generator.getByRole("button", { name: "Save as new version", exact: true }).click();
+    await expect(generator.getByRole("status")).toContainText("preserved");
+    await expect(generator.getByText("Proposed source (inspect before saving)")).toBeVisible();
+    const after = await read(); expect(after.activeVersionId).not.toBe(winner);
+    expect(after.versions[0].source).toBe(source("Draft winner"));
+    await generator.getByRole("button", { name: "Replace current version with this draft", exact: true }).click();
+    await expect(generator.getByRole("status")).toContainText("Saved as new active version");
+  } finally { await tab.close(); }
+
+  for (let i = 0; i < 21; i++) await save(`History ${i}`);
+  await page.reload();
+  await expect(editor.getByRole("button", { name: `Restore v${first.version} as a new version`, exact: true })).toHaveCount(0);
+  await editor.getByRole("button", { name: "Load older versions", exact: true }).click();
+  await editor.getByRole("button", { name: `Restore v${first.version} as a new version`, exact: true }).click();
+  await expect(page.getByRole("region", { name: "Generated calculator output" })).toContainText("A");
+  const restored = await read();
+  expect(restored.versions[0].version).toBeGreaterThan(21);
+  expect(restored.versions[0].id).not.toBe(first.id);
+  expect(restored.versions[0].source).toBe(source("A"));
+  expect((await (await page.request.get(`${endpoint}?before=3`)).json()).versions).toContainEqual(expect.objectContaining({ id: first.id }));
+  await editor.getByRole("button", {name:"Load older versions",exact:true}).click();
+  await editor.getByRole("button", {name:"Restore v1 as a new version",exact:true}).click();
+  await expect(editor.getByRole("status")).toContainText("activated");
+  const builtin = await read();
+  expect(builtin.versions[0]).toMatchObject({status:"validated",source:initial.source,manifest:initial.manifest});
+  expect(builtin.versions[0].id).not.toBe(initial.id);
+  expect(builtin.versions[0].version).toBeGreaterThan(restored.versions[0].version);
+});

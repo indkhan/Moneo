@@ -113,6 +113,7 @@ export async function POST(request: Request) {
       permissions: Array.isArray(latest.data.permissions) ? latest.data.permissions : [],
     });
     return { usage: reportedUsage(model.modelId, generated.totalUsage), result: {
+      baseVersionId: artifact.active_version_id,
       source: object.source,
       manifest: object.manifest,
       rationale: object.rationale,

@@ -3,6 +3,7 @@ import ArtifactPage from "./page";
 import { requireWorkspace } from "@/lib/auth";
 import { buildCalculatorSnapshot } from "@/lib/artifacts/snapshot";
 import { CalculatorPanel } from "../calculator-panel";
+import { renameArtifact } from "../actions";
 import type { ReactElement } from "react";
 
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
@@ -23,17 +24,27 @@ async function restored(kind: "custom_report" | "trip_planner", state: Record<st
   };
   vi.mocked(requireWorkspace).mockResolvedValue({ supabase: { from }, workspace: { id: "workspace", display_currency: "EUR" } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
   const page = await ArtifactPage({ params: Promise.resolve({ id: "synthetic" }), searchParams: Promise.resolve({}) });
+  return page;
+}
+async function panel(kind: "custom_report" | "trip_planner", state: Record<string, unknown>) {
+  const page = await restored(kind, state);
   return (page.props.children as ReactElement[]).find(child => child?.type === CalculatorPanel)!.props as { initialParams: Record<string, unknown>; inputWarnings: string[] };
 }
 it("page applies the fallback it announces for incompatible saved bounds", async () => {
-  const panel = await restored("custom_report", { amount: 500 });
-  expect(panel.initialParams).toEqual({ amount: 50 });
-  expect(panel.inputWarnings.join(";")).toContain("default applies");
+  const result = await panel("custom_report", { amount: 500 });
+  expect(result.initialParams).toEqual({ amount: 50 });
+  expect(result.inputWarnings.join(";")).toContain("default applies");
 });
 it("page keeps generated trip defaults when no legacy cost exists", async () => {
-  expect((await restored("trip_planner", {})).initialParams).toEqual({ costMinor: 50 });
+  expect((await panel("trip_planner", {})).initialParams).toEqual({ costMinor: 50 });
 });
 it("snapshot failure retains compatible saved inputs", async () => {
   vi.mocked(buildCalculatorSnapshot).mockRejectedValue(new Error("Synthetic denied evidence"));
-  expect((await restored("trip_planner", { costMinor: 75 })).initialParams).toEqual({ costMinor: 75 });
+  expect((await panel("trip_planner", { costMinor: 75 })).initialParams).toEqual({ costMinor: 75 });
+});
+it("never reuses an uncontrolled rename value with a refreshed expected revision", async () => {
+  const page = await restored("custom_report", {});
+  const element = (page.props.children as ReactElement<{ action?: unknown; activeVersionId?: string }>[]).find(child => child?.props?.action === renameArtifact)!;
+  const form = typeof element.type === "function" ? (element.type as (props: unknown) => ReactElement)(element.props) : element;
+  expect(form.key).toBe("version");
 });

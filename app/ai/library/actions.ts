@@ -20,7 +20,8 @@ export async function renameArtifact(form: FormData) {
   const { supabase } = await requireWorkspace();
   const artifactId = z.uuid().parse(form.get("artifactId"));
   const name = z.string().trim().min(1).max(120).parse(form.get("name"));
-  const { error } = await supabase.rpc("rename_trusted_artifact", { p_artifact_id: artifactId, p_name: name });
+  const expectedActiveVersionId = z.uuid().parse(form.get("expectedActiveVersionId"));
+  const { error } = await supabase.rpc("rename_trusted_artifact", { p_artifact_id: artifactId, p_name: name, p_expected_active_version_id: expectedActiveVersionId });
   if (error) throw error;
   redirect(`/ai/library/${artifactId}`);
 }

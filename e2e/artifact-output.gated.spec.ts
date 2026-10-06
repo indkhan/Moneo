@@ -25,7 +25,9 @@ test("saved calculator months load matching evidence and unsaved changes cannot 
   await create.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page).toHaveURL(/\/ai\/library\/[0-9a-f-]{36}$/);
   const id = new URL(page.url()).pathname.split("/").at(-1)!;
+  const { activeVersionId } = await (await page.request.get(`/api/artifacts/${id}/versions`)).json();
   const response = await page.request.post(`/api/artifacts/${id}/versions`, { data: {
+    expectedActiveVersionId: activeVersionId,
     source: `(input) => { const c = input.snapshot.cashflow; if (!c || c.unavailable) return { unavailable: "No cashflow" }; const accounts = c.byAccount || []; return { summary: (c.from || "Period") + " to " + (c.to || "end"), numbers: { spendingMinor: c.spendingMinor }, rows: accounts.length ? accounts.slice(0, 50).map(a => ({ account: a.id, spendingMinor: a.spendingMinor })) : [{ account: "No posted rows", spendingMinor: "0" }] }; }`,
     manifest: { kind: "custom_tracker", runtime: "quickjs-calculator-v1", sdk: ["cashflow"], params: { month: { type: "string", default: "2026-09", maxLength: 7 } }, renderer: "trusted" },
   } });
@@ -54,6 +56,7 @@ test("undeclared SDK reads are failed revisions and preserve the active calculat
   expect(beforeResponse.ok()).toBe(true);
   const before = await beforeResponse.json();
   const response = await page.request.post(endpoint, { data: {
+    expectedActiveVersionId: before.activeVersionId,
     source: `(input) => input.snapshot.unavailable ? {unavailable: input.snapshot.unavailable} : {summary: String(input.snapshot.balances.length)}`,
     manifest: { kind: "custom_report", runtime: "quickjs-calculator-v1", sdk: ["spending"], params: {}, renderer: "trusted" },
   } });
