@@ -35,6 +35,7 @@ export const MOCK_MAPPING = {
   amountColumn: "amount",
   dateFormat: "iso",
   amountSign: "signed",
+  numericConvention: "decimal-dot",
 } as const;
 
 // Canned inspect response shaped exactly like app/api/imports/inspect.

@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireWorkspace } from "@/lib/auth";
-import { parseAmountMinor } from "@/lib/csv";
 import { parseManualAmount } from "@/app/money/transactions/input";
 import { calendarDate } from "@/lib/finance/calendar";
 
@@ -61,7 +60,7 @@ export async function createGoal(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
   const name = z.string().trim().min(1).max(120).parse(form.get("name"));
   const currency = z.string().regex(/^[A-Z]{3}$/).parse(form.get("currency"));
-  const target = parseAmountMinor(String(form.get("target") ?? ""), currency);
+  const target = parseManualAmount(String(form.get("target") ?? ""), currency);
   if (target <= 0n) throw new Error("Goal target must be positive");
   const targetDate = form.get("targetDate") ? date.parse(form.get("targetDate")) : null;
   const { error } = await supabase.from("goals").insert({ workspace_id: workspace.id, name,
@@ -110,7 +109,7 @@ export async function addAssumption(form: FormData) {
   const { data: account, error: accountError } = await supabase.from("accounts").select("currency_code")
     .eq("workspace_id", workspace.id).eq("id", accountId).is("archived_at", null).single();
   if (accountError || !account) throw new Error("Account not found");
-  const amount = parseAmountMinor(String(form.get("amount") ?? ""), account.currency_code);
+  const amount = parseManualAmount(String(form.get("amount") ?? ""), account.currency_code);
   const { error } = await supabase.from("financial_assumptions").insert({
     workspace_id: workspace.id, account_id: accountId, name, kind: amount >= 0n ? "income" : "expense",
     amount_minor: amount.toString(), currency_code: account.currency_code, cadence,
@@ -132,7 +131,7 @@ export async function updateAssumption(form: FormData) {
   const { data: existing, error: lookupError } = await supabase.from("financial_assumptions")
     .select("id, currency_code").eq("workspace_id", workspace.id).eq("id", id).single();
   if (lookupError || !existing) throw new Error("Assumption not found");
-  const amount = parseAmountMinor(String(form.get("amount") ?? ""), existing.currency_code);
+  const amount = parseManualAmount(String(form.get("amount") ?? ""), existing.currency_code);
   await editAssumption(form, {
     name, amount_minor: amount.toString(), kind: amount >= 0n ? "income" : "expense",
     cadence, starts_on: startsOn, ends_on: endsOn,
@@ -180,7 +179,7 @@ export async function addScenarioEvent(form: FormData) {
   const { data: scenario } = await supabase.from("scenarios").select("id")
     .eq("workspace_id", workspace.id).eq("id", scenarioId).is("removed_at", null).maybeSingle();
   if (!account || !scenario) throw new Error("Account or scenario not found");
-  const amount = parseAmountMinor(String(form.get("amount") ?? ""), account.currency_code);
+  const amount = parseManualAmount(String(form.get("amount") ?? ""), account.currency_code);
   const { error } = await supabase.from("scenario_overrides").insert({ workspace_id: workspace.id,
     scenario_id: scenarioId, account_id: accountId, name, amount_delta_minor: amount.toString(),
     currency_code: account.currency_code, cadence, starts_on: start });

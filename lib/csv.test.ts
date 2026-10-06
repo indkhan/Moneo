@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
+import { compareReviewEvidence } from "./finance/review-freshness";
 import { mapRows, parseAmountMinor, parseCsv, parseExcel, parseTransactionStatus, previewImport, validateMapping, validateAiMapping, proposeAccountRoutes, validateImportConfirmation } from "./csv";
 
 const mapping = {
@@ -10,9 +11,62 @@ const mapping = {
   amountColumn: "Amount",
   dateFormat: "dmy" as const,
   amountSign: "signed" as const,
+  numericConvention: "decimal-dot" as const,
 };
 
 describe("financial import parsing", () => {
+  it("uses the declared decimal convention for small three-decimal currency amounts", () => {
+    for (const currency of ["KWD", "BHD", "OMR"]) {
+      for (const [separator, convention] of [[".", "decimal-dot"], [",", "decimal-comma"]] as const) {
+        expect(parseAmountMinor(`1${separator}234`, currency, convention)).toBe(1234n);
+        expect(parseAmountMinor(`-0${separator}123`, currency, convention)).toBe(-123n);
+        expect(parseAmountMinor(`(0${separator}001)`, currency, convention)).toBe(-1n);
+      }
+    }
+  });
+  it("requires a convention for unresolved grouping and rejects conflicting source formats", () => {
+    for (const currency of ["EUR", "JPY", "KWD"]) {
+      expect(() => parseAmountMinor("1.234", currency)).toThrow("numeric convention");
+      expect(parseAmountMinor("1.234", currency, "decimal-comma")).toBe(1234n * 10n ** BigInt(currency === "EUR" ? 2 : currency === "JPY" ? 0 : 3));
+    }
+    expect(() => parseAmountMinor("1,23", "EUR", "decimal-dot")).toThrow();
+    expect(() => parseAmountMinor("1.234", "EUR", "decimal-dot")).toThrow();
+  });
+  it("does not let AI proposals claim a reviewed numeric convention or parser provenance", () => {
+    const rows = [{ Date: "2026-09-01", Description: "Synthetic", Amount: "1" }];
+    const proposed = validateAiMapping({ ...mapping, dateFormat: "iso", parserVersion: "numeric-convention-v2" }, rows, "EUR");
+    expect(proposed.numericConvention).toBeUndefined();
+    expect(proposed.parserVersion).toBeUndefined();
+  });
+  it("keeps preview, confirmation, source amount, fee and balance on the same convention", () => {
+    const rows = [{ Date: "2026-09-01", Description: "Synthetic", Amount: "-0.123", Fee: "0.001", Balance: "1.234" }];
+    const input = { ...mapping, currencyCode: "KWD", dateFormat: "iso", balanceColumn: "Balance", numericConvention: "decimal-dot" };
+    const confirmed = validateImportConfirmation(rows, input);
+    expect(confirmed).toMatchObject({ numericConvention: "decimal-dot", parserVersion: "numeric-convention-v2" });
+    expect(previewImport(rows, confirmed).examples[0]).toMatchObject({ amountMinor: -123n, feeMinor: 1n, balanceMinor: 1234n, sourceRow: rows[0] });
+    expect(mapRows(rows, confirmed)).toEqual(previewImport(rows, confirmed).examples);
+    expect(() => validateImportConfirmation(rows, { ...input, numericConvention: undefined })).toThrow("numeric convention");
+  });
+  it("applies decimal-comma to debit/credit, fees and balances and blocks ambiguous optional money", () => {
+    const rows = [{ Date: "2026-09-01", Description: "Synthetic", Debit: "0,123", Credit: "", Fee: "0,001", Balance: "1,234" }];
+    const input = { ...mapping, amountColumn: undefined, debitColumn: "Debit", creditColumn: "Credit", currencyCode: "OMR", dateFormat: "iso", balanceColumn: "Balance", numericConvention: "decimal-comma" };
+    expect(mapRows(rows, input)[0]).toMatchObject({ amountMinor: -123n, feeMinor: 1n, balanceMinor: 1234n, sourceRow: rows[0] });
+    for (const column of ["Fee", "Balance"]) {
+      const source = [{ Date: "2026-09-01", Description: "Synthetic", Amount: "1", [column]: "0.123" }];
+      expect(() => mapRows(source, { ...mapping, numericConvention: undefined, dateFormat: "iso", ...(column === "Balance" ? { balanceColumn: "Balance" } : {}) })).toThrow("numeric convention");
+    }
+  });
+  it("retains source evidence while a repaired interpretation makes a saved review stale", () => {
+    const rows = [{ Date: "2026-09-01", Description: "Synthetic", Amount: "-0.123", Balance: "1.234" }];
+    const original = structuredClone(rows);
+    const repaired = mapRows(rows, validateImportConfirmation(rows, { ...mapping, currencyCode: "KWD", dateFormat: "iso", balanceColumn: "Balance" }))[0];
+    const saved = { accounts: [{ currencyCode: "KWD", balanceMinor: "1234000" }], transactions: [{ amountMinor: "-123000" }] };
+    const current = { accounts: [{ currencyCode: "KWD", balanceMinor: repaired.balanceMinor!.toString() }], transactions: [{ amountMinor: repaired.amountMinor.toString() }] };
+    expect(compareReviewEvidence(saved, current).status).toBe("stale");
+    expect(rows).toEqual(original);
+    expect(repaired.sourceRow).toEqual(original[0]);
+    expect(saved.accounts[0].balanceMinor).toBe("1234000");
+  });
   it("rejects duplicate financial headers even when the CSV parser renames them", () => {
     expect(() => parseCsv("Date,Description,Amount,Amount\n2026-09-01,Shop,-12.50,-1250")).toThrow("Duplicate CSV headers");
   });
@@ -105,7 +159,7 @@ describe("financial import parsing", () => {
     expect(parseAmountMinor("€1.234,56")).toBe(123456n);
     expect(parseAmountMinor("(1,234.56)")).toBe(-123456n);
     expect(parseAmountMinor("0.01")).toBe(1n);
-    expect(parseAmountMinor("1,234")).toBe(123400n);
+    expect(parseAmountMinor("1,234", "EUR", "decimal-dot")).toBe(123400n);
     expect(() => parseAmountMinor("1.2345")).toThrow();
     expect(parseAmountMinor("90071992547409.92", "EUR")).toBe(9007199254740992n);
     expect(parseAmountMinor("-92233720368547758.08", "EUR")).toBe(-9223372036854775808n);
@@ -117,16 +171,16 @@ describe("financial import parsing", () => {
     expect(parseAmountMinor("1,234.56", "EUR")).toBe(123456n);
     expect(parseAmountMinor("1000", "EUR")).toBe(100000n);
     expect(parseAmountMinor("1000", "JPY")).toBe(1000n);
-    expect(parseAmountMinor("1,000", "JPY")).toBe(1000n);
-    expect(parseAmountMinor("(1,000)", "JPY")).toBe(-1000n);
+    expect(parseAmountMinor("1,000", "JPY", "decimal-dot")).toBe(1000n);
+    expect(parseAmountMinor("(1,000)", "JPY", "decimal-dot")).toBe(-1000n);
     expect(() => parseAmountMinor("1000.00", "JPY")).toThrow();
     expect(() => parseAmountMinor("1000,00", "JPY")).toThrow();
     expect(() => parseAmountMinor("0.01", "JPY")).toThrow();
   });
 
   it("parses KRW (0 digits) and KWD (3 digits) correctly", () => {
-    expect(parseAmountMinor("1,000", "KRW")).toBe(1000n);
-    expect(parseAmountMinor("(1,000)", "KRW")).toBe(-1000n);
+    expect(parseAmountMinor("1,000", "KRW", "decimal-dot")).toBe(1000n);
+    expect(parseAmountMinor("(1,000)", "KRW", "decimal-dot")).toBe(-1000n);
     expect(() => parseAmountMinor("1000.00", "KRW")).toThrow();
     expect(() => parseAmountMinor("0.01", "KRW")).toThrow();
 

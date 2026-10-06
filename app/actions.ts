@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { parseAmountMinor } from "@/lib/csv";
+import { parseManualAmount } from "@/app/money/transactions/input";
 import { minorDigits } from "@/lib/finance/fx";
 import { calendarDate, calendarDayBoundary } from "@/lib/finance/calendar";
 
@@ -28,7 +28,7 @@ export async function setManualBalance(form: FormData) {
   const { data: account } = await supabase.from("accounts").select("currency_code")
     .eq("workspace_id", workspace.id).eq("id", accountId).maybeSingle();
   if (!account) throw new Error("Account not found");
-  const amount = parseAmountMinor(String(form.get("amount") ?? ""), account.currency_code);
+  const amount = parseManualAmount(String(form.get("amount") ?? ""), account.currency_code);
   const { error } = await supabase.from("balance_snapshots").insert({ workspace_id: workspace.id,
     account_id: accountId, amount_minor: amount.toString(), currency_code: account.currency_code,
     as_of: asOf === today ? now.toISOString() : calendarDayBoundary(asOf, workspace.timezone), provenance: "manual" });

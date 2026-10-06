@@ -5,7 +5,7 @@ import { goalsForArtifact, spendingForArtifact, tripForArtifact } from "@/lib/ar
 import { buildCalculatorSnapshot } from "@/lib/artifacts/snapshot";
 import { defaultParams } from "@/lib/artifacts/validate";
 import { artifactKindSchema, calculatorManifestSchema, type ArtifactKind } from "@/lib/artifacts/spec";
-import { parseAmountMinor } from "@/lib/csv";
+import { parseManualAmount } from "@/app/money/transactions/input";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { pinArtifact, renameArtifact, saveTripState, unpinArtifact } from "../actions";
@@ -179,7 +179,7 @@ async function GoalTracker({ id, scenarioGoalId, extra }: { id: string; scenario
   const targetGoal = data.goals.find(g => g.id === scenarioGoalId);
   const extraCurrency = targetGoal?.currency_code ?? "EUR";
   let extraMinor = 0n;
-  try { if (extra) extraMinor = parseAmountMinor(extra, extraCurrency); } catch { /* Ignore invalid what-if input. */ }
+  try { if (extra) extraMinor = parseManualAmount(extra, extraCurrency); } catch { /* Ignore invalid what-if input. */ }
   return <section className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
     <h2 className="text-xl font-semibold tracking-tight text-foreground">Goals and reservations</h2>
     {!data.goals.length && <p className="mt-3">No goals yet. <Link href="/plan" className="underline">Create a goal</Link>.</p>}
