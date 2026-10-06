@@ -132,8 +132,8 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     await db`update public.artifacts set active_version_id=${goalVersion} where id=${goalArtifact} and workspace_id=${workspace!}`;
     await page.goto(`/ai/library/${goalArtifact}`);
     await expect(page.getByRole("region", { name: "Generated calculator output" })).toHaveCount(0);
-    await expect(page.locator("main")).toContainText("Illustrative saving pace is not an affordability result");
-    await expect(page.locator("main")).toContainText("Recorded savings unknown");
+    await expect(page.getByText(/Illustrative saving pace is not an affordability result/)).toBeVisible();
+    await expect(page.getByText("Recorded savings unknown of EUR 900.00", { exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "dated account headroom and protections", exact: true })).toHaveAttribute("href", "/plan");
     // Preserve the prior native version and then verify deterministic fallback separately.
     await db`update public.forecast_preferences set spending_account_id=${checking}, safety_buffer_minor=0 where workspace_id=${workspace!}`;
