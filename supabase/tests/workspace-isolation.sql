@@ -31,7 +31,7 @@ begin
   foreach target_table in array array['accounts','balance_snapshots','data_sources','imports','source_transactions','categories','merchants',
     'transactions','transaction_sources','correction_events','goals','goal_allocations','financial_assumptions','scenarios','scenario_overrides',
     'forecast_runs','background_jobs','saved_analyses','artifacts','artifact_versions','artifact_state','dashboard_items','conversations','messages',
-    'recurring_series','recurring_series_transactions','fx_rates','spending_plans','transaction_views','planning_events','chat_requests','manual_transaction_entries','transaction_batches','workspace_settings','dashboard_layouts','transaction_split_sets','transaction_splits','summary_runs','goal_events','wealth_items','wealth_events','goal_reservation_events','forecast_preferences','forecast_preference_events','money_metadata_events','spending_plan_limits','artifact_generation_requests','scenario_events','transaction_links','transaction_link_fees','insight_preferences','insight_dismissals','import_control_events'] loop
+    'recurring_series','recurring_series_transactions','recurring_occurrence_settlements','fx_rates','spending_plans','transaction_views','planning_events','chat_requests','manual_transaction_entries','transaction_batches','workspace_settings','dashboard_layouts','transaction_split_sets','transaction_splits','summary_runs','goal_events','wealth_items','wealth_events','goal_reservation_events','forecast_preferences','forecast_preference_events','money_metadata_events','spending_plan_limits','artifact_generation_requests','scenario_events','transaction_links','transaction_link_fees','insight_preferences','insight_dismissals','import_control_events'] loop
     data := jsonb_build_object('id',md5(target_table||workspace_b)::uuid,'workspace_id',workspace_b,'name','Synthetic foreign',
       'account_id',md5('accounts'||workspace_b)::uuid,'currency_code','EUR','amount_minor','100',
       'as_of','2026-10-01T00:00:00Z','provenance','synthetic','source_id',md5('data_sources'||workspace_b)::uuid,
@@ -64,6 +64,7 @@ begin
     if target_table='artifact_generation_requests' then data := data || jsonb_build_object('purpose','calculator','description','Synthetic request','status','running','result',null); end if;
     if target_table='insight_dismissals' then data := data || jsonb_build_object('evidence_key',repeat('a',64),'insight_type','data_quality'); end if;
     if target_table='import_control_events' then data := data || jsonb_build_object('action','cancel'); end if;
+    if target_table='recurring_occurrence_settlements' then data := data || jsonb_build_object('scheduled_on','2026-10-01','completes_occurrence',true,'receipt','{}'::jsonb); end if;
     if target_table='transaction_links' then data := data || jsonb_build_object('operation','refund','primary_transaction_id',md5('transactions'||workspace_b)::uuid,'counterpart_transaction_id',md5('transactions'||workspace_b)::uuid,'input','{}'::jsonb,'before_rows','[]'::jsonb,'after_rows','[]'::jsonb); end if;
     if target_table='transaction_link_fees' then data := data || jsonb_build_object('link_id',md5('transaction_links'||workspace_b)::uuid,'fee_minor','10','treatment','included','note','Synthetic fee'); end if;
     if target_table='scenario_events' then data := data || jsonb_build_object('entity_type','scenario','entity_id',md5('scenarios'||workspace_b)::uuid); end if;
@@ -128,6 +129,8 @@ begin
     format('select public.save_generated_artifact_version(%L,%L,%L::jsonb,%L,null)',foreign_artifact,'return {};','{"kind":"spending_explorer","runtime":"quickjs-calculator-v1","sdk":[]}','validated'),
     format('select public.confirm_recurring_series(%L,%L,%L,%L,100,100,3,90,array[%L,%L,%L]::uuid[])',foreign_account,'Synthetic foreign','monthly','EUR',foreign_transaction,gen_random_uuid(),gen_random_uuid()),
     format('select public.decline_recurring_series(%L,%L,%L,%L,100,100,3,90,array[%L,%L,%L]::uuid[])',foreign_account,'Synthetic foreign','monthly','EUR',foreign_transaction,gen_random_uuid(),gen_random_uuid()),
+    format('select public.record_recurring_occurrence(%L,1,%L,%L,0,true)',foreign_assumption,'2026-10-01',foreign_transaction),
+    format('select public.undo_recurring_occurrence(%L,1)',md5('recurring_occurrence_settlements'||workspace_b)::uuid),
     format('select public.edit_assumption(%L,1,%L::jsonb,%L)',foreign_assumption,'{"enabled":false}',gen_random_uuid()),
     format('select public.edit_spending_plan(%L,1,%L::jsonb,%L)',foreign_plan,'{"enabled":false}',gen_random_uuid()),
     format('select public.undo_planning_event(%L,1)',foreign_event),

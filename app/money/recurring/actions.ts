@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
+import { reviewedLocalTimestamp } from "@/lib/finance/calendar";
 
 const uuid = z.uuid();
 const currency = z.string().regex(/^[A-Z]{3}$/);
@@ -69,4 +70,31 @@ export async function declineSeries(form: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/money/recurring");
   redirect("/money/recurring");
+}
+
+const versionedId = z.string().transform(value => {
+  const [id, version] = value.split(":");
+  return { id: uuid.parse(id), version: z.coerce.number().int().min(0).parse(version) };
+});
+export async function associateOccurrence(form: FormData) {
+  const assumption = versionedId.parse(form.get("assumption"));
+  const transaction = versionedId.parse(form.get("transaction"));
+  const scheduledOn = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).parse(form.get("scheduledOn"));
+  reviewedLocalTimestamp(`${scheduledOn}T00:00:00`, "UTC");
+  const fulfillment = z.enum(["full", "partial"]).parse(form.get("fulfillment"));
+  const { supabase } = await requireWorkspace();
+  const { error } = await supabase.rpc("record_recurring_occurrence", {
+    p_assumption_id: assumption.id, p_assumption_version: assumption.version, p_scheduled_on: scheduledOn,
+    p_transaction_id: transaction.id, p_transaction_version: transaction.version, p_completes_occurrence: fulfillment === "full",
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/money/recurring"); revalidatePath("/plan"); revalidatePath("/");
+}
+export async function undoOccurrence(form: FormData) {
+  const id = uuid.parse(form.get("settlementId"));
+  const version = z.coerce.number().int().min(1).parse(form.get("version"));
+  const { supabase } = await requireWorkspace();
+  const { error } = await supabase.rpc("undo_recurring_occurrence", { p_settlement_id: id, p_version: version });
+  if (error) throw new Error(error.message);
+  revalidatePath("/money/recurring"); revalidatePath("/plan"); revalidatePath("/");
 }

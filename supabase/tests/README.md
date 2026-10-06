@@ -1,5 +1,9 @@
 # Database regression checks
 
+Run `node supabase/tests/run-recurring-occurrences.mjs` for migration `202610060003` and its explicit occurrence fixture on the configured database. It checks current-owner/version/date guards, partial/full and pending-to-posted receipts, undo/reassociation/deletion history and authenticated isolation. Candidate schema and migration history are verified unchanged after rollback.
+
+Run `node supabase/tests/recurring-occurrence-concurrency.mjs` to check association versus transaction correction on separate authenticated connections. It creates only a disposable application schema with synthetic users, verifies correction/association lock order and stale-version rejection, then drops that exact schema and verifies cleanup. Public migration history and schema privileges remain unchanged; an ignored `.qa` recovery journal records the disposable schema if interrupted.
+
 Run `node supabase/tests/migrations.mjs` with the existing `.env` configuration. The script verifies that `SUPABASE_DB_URL` targets `NEXT_PUBLIC_SUPABASE_URL`, then tests pending migrations against the deployed application schema and replays every migration into a temporary isolated schema. It compares columns, constraints, indexes, RLS, policies, views, triggers and application functions, and runs the synthetic `.sql` regressions on both paths.
 
 All writes run inside rollback-only transactions. Migration history stays unchanged, and the script verifies that its temporary schema was removed. It does not apply migrations permanently. Fresh verification uses an empty `auth.users` surrogate and skips Supabase-owned storage bucket/policy setup; full Supabase platform bootstrap still requires a disposable local Supabase instance.
