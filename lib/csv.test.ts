@@ -15,6 +15,23 @@ const mapping = {
 };
 
 describe("financial import parsing", () => {
+  it("rejects unpaired surrogates in source and reviewed mapping while preserving valid Unicode pairs", () => {
+    const row = { Date: "01/09/2026", Description: "Valid", Amount: "1" };
+    for (const invalid of ["\ud800", "\udfff", "\ud800x", "x\udfff"]) {
+      expect(() => validateImportConfirmation([{ ...row, Evidence: invalid }], mapping)).toThrow("unpaired Unicode surrogate");
+      expect(() => validateImportConfirmation([{ ...row, [invalid]: "Evidence" }], mapping)).toThrow("unpaired Unicode surrogate");
+      for (const decision of [{ rowNumber: 2, action: "correct", values: { Description: "Corrected" } }, { rowNumber: 2, action: "exclude", reason: "Unsupported evidence" }]) {
+        expect(() => validateImportConfirmation([{ ...row, Description: invalid }], { ...mapping, rowDecisions: [decision] })).toThrow("unpaired Unicode surrogate");
+      }
+      expect(() => validateImportConfirmation([row], { ...mapping, rowDecisions: [{ rowNumber: 2, action: "correct", values: { Description: invalid } }] })).toThrow("unpaired Unicode surrogate");
+      expect(() => validateImportConfirmation([row], { ...mapping, rowDecisions: [{ rowNumber: 2, action: "correct", values: { [invalid]: "Corrected" } }] })).toThrow("unpaired Unicode surrogate");
+      expect(() => validateImportConfirmation([row], { ...mapping, rowDecisions: [{ rowNumber: 2, action: "exclude", reason: invalid }] })).toThrow("unpaired Unicode surrogate");
+      expect(() => validateImportConfirmation([row], { ...mapping, accountName: invalid })).toThrow("unpaired Unicode surrogate");
+    }
+    const valid = { ...row, Description: "Reviewed \ud83d\ude00", "Evidence \ud83d\ude00": "Original \ud83d\ude00" };
+    const reviewed = validateImportConfirmation([valid], { ...mapping, rowDecisions: [{ rowNumber: 2, action: "correct", values: { Description: "Corrected \ud83d\ude00" } }] });
+    expect(mapRows([valid], reviewed)[0]).toMatchObject({ description: "Corrected \ud83d\ude00", sourceRow: valid });
+  });
   it("rejects an entire NUL-containing source before correction or exclusion can hide incompatible evidence", () => {
     const rows = [{ Date: "01/09/2026", Description: "Valid neighbor", Amount: "1" }, { Date: "02/09/2026", Description: "A\0B", Amount: "2" }];
     for (const rowDecisions of [undefined, [{ rowNumber: 3, action: "correct", values: { Description: "Corrected" } }], [{ rowNumber: 3, action: "exclude", reason: "Unsupported evidence" }]]) {

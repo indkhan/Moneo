@@ -95,6 +95,16 @@ it("rejects NUL source evidence before effects even when corrected or excluded",
   }
 });
 
+it("rejects unpaired Unicode in reviewed corrections before storage or queue effects", async () => {
+  const form = await request().formData();
+  form.set("mapping", JSON.stringify({ ...JSON.parse(String(form.get("mapping"))), rowDecisions: [{ rowNumber: 2, action: "correct", values: { Description: "\ud800" } }] }));
+  const response = await POST(new Request("http://localhost/api/imports/confirm", { method: "POST", body: form }));
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({ error: expect.stringContaining("unpaired Unicode surrogate") });
+  expect(fixture.inserts).toHaveLength(0);
+  expect(start).not.toHaveBeenCalled();
+});
+
 it("persists reviewed correction/exclusion decisions while retaining the full source row count", async () => {
   const form = await request().formData();
   form.set("file", new File(["Date,Description,Amount\n2026-10-01,First,1\nbad,Second,2\n,Footer,3"], "synthetic.csv"));

@@ -14,6 +14,10 @@ const csvExtraColumn = "__moneo_csv_extra_cells";
 
 function assertStorageCompatible(value: unknown): void {
   if (typeof value === "string" && value.includes("\0")) throw new Error("Source or reviewed mapping contains NUL characters that PostgreSQL cannot preserve");
+  if (typeof value === "string") for (const character of value) {
+    const codePoint = character.codePointAt(0)!;
+    if (codePoint >= 0xd800 && codePoint <= 0xdfff) throw new Error("Source or reviewed mapping contains an unpaired Unicode surrogate; use valid Unicode text before continuing");
+  }
   if (value && typeof value === "object") for (const [key, item] of Object.entries(value)) {
     assertStorageCompatible(key);
     assertStorageCompatible(item);
