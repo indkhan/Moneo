@@ -10,7 +10,7 @@ import { BulkEditor } from "./bulk-editor";
 import { EditingHistory } from "./editing-history";
 import { calendarDate } from "@/lib/finance/calendar";
 import { DEFAULT_SORT, SORT_ORDER, cursorClause, nextCursorForRow, parseTransactionParams, toQueryParams, type ParsedTransactionParams } from "./filters";
-import { parseStoredFilters, parseViewId, type SaveInput } from "../views/validate";
+import { normalizeEventName, normalizeTag, parseStoredFilters, parseViewId, type SaveInput } from "../views/validate";
 import { SavedViewsPanel } from "../views/panel";
 
 type Filters = { linkSearch?: string; q?: string; from?: string; to?: string; account?: string; status?: string; kind?: string; direction?: string; category?: string; merchant?: string; minAmount?: string; maxAmount?: string; sort?: string; cursor?: string; transaction?: string; view?: string; tag?: string; event?: string };
@@ -86,8 +86,12 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     .select("id, posted_on, description, amount_minor::text, currency_code, status, kind, account_id, category_id, merchant_id, note, version, tags, event_name, review_reasons")
     .eq("workspace_id", workspace.id).order(column, { ascending }).order("id", { ascending }).limit(51);
   if (filters.q) query = query.ilike("description", `%${filters.q.replace(/[%_]/g, "\\$&")}%`);
-  const tag = typeof params.tag === "string" && params.tag.trim().length <= 40 ? params.tag.trim().toLowerCase() : "";
-  const eventName = typeof params.event === "string" && params.event.trim().length <= 120 ? params.event.trim() : "";
+  const urlTag = normalizeTag(typeof params.tag === "string" ? params.tag : undefined) ?? "";
+  const urlEventName = normalizeEventName(typeof params.event === "string" ? params.event : undefined) ?? "";
+  // In view mode the opaque link carries no filter params, so the scope
+  // comes from saved JSON; otherwise the live URL params apply unchanged.
+  const tag = activeView && savedFilters ? (savedFilters.tag ?? "") : urlTag;
+  const eventName = activeView && savedFilters ? (savedFilters.eventName ?? "") : urlEventName;
   if (tag) query = query.contains("tags", [tag]);
   if (eventName) query = query.eq("event_name", eventName);
   if (filters.from) query = query.gte("posted_on", filters.from);
@@ -194,6 +198,8 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       ...(filters.direction ? { direction: filters.direction } : {}),
       ...(filters.uncategorized ? { category: "none" } : filters.categoryId ? { category: filters.categoryId } : {}),
       ...(merchantUnknown ? { merchant: "none" } : merchantId ? { merchant: merchantId } : {}),
+      ...(tag ? { tag } : {}),
+      ...(eventName ? { event: eventName } : {}),
       ...(filters.minAmountMinor !== undefined ? { minAmount: filters.minAmountMinor } : {}),
       ...(filters.maxAmountMinor !== undefined ? { maxAmount: filters.maxAmountMinor } : {}),
       ...(filters.sort !== DEFAULT_SORT ? { sort: filters.sort } : {}),
@@ -220,6 +226,8 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       ...(filters.direction ? { direction: filters.direction } : {}),
       ...(filters.uncategorized ? { category: "none" } : filters.categoryId ? { category: filters.categoryId } : {}),
       ...(merchantUnknown ? { merchant: "none" } : merchantId ? { merchant: merchantId } : {}),
+      ...(tag ? { tag } : {}),
+      ...(eventName ? { event: eventName } : {}),
       ...(filters.minAmountMinor !== undefined ? { minAmount: filters.minAmountMinor } : {}),
       ...(filters.maxAmountMinor !== undefined ? { maxAmount: filters.maxAmountMinor } : {}),
       ...(filters.sort !== DEFAULT_SORT ? { sort: filters.sort } : {}),

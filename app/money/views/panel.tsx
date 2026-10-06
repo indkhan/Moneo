@@ -92,6 +92,12 @@ export function SavedViewsPanel({
         {saveDefaults.merchant !== undefined ? (
           <input type="hidden" name="merchant" value={saveDefaults.merchant} />
         ) : null}
+        {saveDefaults.tag !== undefined ? (
+          <input type="hidden" name="tag" value={saveDefaults.tag} />
+        ) : null}
+        {saveDefaults.event !== undefined ? (
+          <input type="hidden" name="event" value={saveDefaults.event} />
+        ) : null}
         {saveDefaults.minAmount !== undefined ? (
           <input type="hidden" name="minAmount" value={saveDefaults.minAmount} />
         ) : null}

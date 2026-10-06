@@ -70,6 +70,52 @@ describe("buildSavedFilters strict save path", () => {
   });
 });
 
+describe("saved tag/event scope (MNE-041)", () => {
+  it("keeps tag and event through the save path alongside other filters", () => {
+    expect(
+      buildSavedFilters({ tag: " Holiday ", event: " Berlin trip ", status: "posted" }),
+    ).toEqual({ tag: "holiday", eventName: "Berlin trip", status: "posted" });
+  });
+
+  it("round-trips a full view through stored JSON to the same semantic query", () => {
+    const saved = buildSavedFilters({
+      q: "coffee",
+      from: "2026-08-01",
+      to: "2026-09-01",
+      account: UUID,
+      status: "posted",
+      category: UUID2,
+      tag: "Holiday",
+      event: "Berlin trip",
+      sort: "amount-desc",
+    });
+    const reloaded = parseStoredFilters(JSON.parse(JSON.stringify(saved)));
+    expect(reloaded).toEqual(saved);
+    expect(reloaded.tag).toBe("holiday");
+    expect(reloaded.eventName).toBe("Berlin trip");
+  });
+
+  it("throws on oversized tag/event instead of silently broadening the view", () => {
+    expect(() => buildSavedFilters({ tag: "x".repeat(41) })).toThrow();
+    expect(() => buildSavedFilters({ event: "x".repeat(121) })).toThrow();
+    expect(buildSavedFilters({ tag: "   ", event: "" })).toEqual({});
+  });
+
+  it("loads legacy views and never restores cursor or open-transaction ids", () => {
+    expect(parseStoredFilters({ status: "posted" })).toEqual({ status: "posted" });
+    expect(
+      parseStoredFilters({
+        tag: "  HOLIDAY  ",
+        eventName: "  Berlin trip  ",
+        cursor: "2026-09-01|evil",
+        transaction: UUID,
+        transactionId: UUID,
+      }),
+    ).toEqual({ tag: "holiday", eventName: "Berlin trip" });
+    expect(parseStoredFilters({ tag: "x".repeat(41), eventName: "x".repeat(121) })).toEqual({});
+  });
+});
+
 describe("parseStoredFilters tolerant load path", () => {
   it("drops unknown keys and invalid values without throwing", () => {
     expect(parseStoredFilters(null)).toEqual({});
