@@ -37,3 +37,32 @@ end;
 $$;
 revoke all on function public.record_import_exclusion(uuid,uuid,integer,jsonb) from public,anon,authenticated;
 grant execute on function public.record_import_exclusion(uuid,uuid,integer,jsonb) to service_role;
+
+-- Review acceptance reads the same saved correction by its original source index.
+-- Keep original_row immutable; this private helper is used only inside the
+-- established owner-scoped review RPC and its metadata/classification wrapper.
+create function public.reviewed_import_source_row(p_source_id uuid) returns jsonb
+language sql stable security definer set search_path='' as $$
+  select s.original_row || coalesce((select decision->'values'
+    from jsonb_array_elements(coalesce(i.mapping->'rowDecisions','[]'::jsonb)) decision
+    where decision->>'action'='correct' and (decision->>'rowNumber')::integer=s.row_number limit 1),'{}'::jsonb)
+  from public.source_transactions s join public.imports i on i.id=s.import_id
+  where s.id=p_source_id and public.owns_workspace(s.workspace_id);
+$$;
+revoke all on function public.reviewed_import_source_row(uuid) from public,anon,authenticated,service_role;
+
+-- Change only original-evidence reads in the existing resolver bodies, retaining
+-- their ownership, atomicity, routing, metadata and retry behavior verbatim.
+do $$
+declare signature text; definition text;
+begin
+  foreach signature in array array['public.resolve_import_review_before_classification(uuid,text,date,text,bigint,text)',
+    'public.resolve_import_review(uuid,text,date,text,bigint,text)'] loop
+    definition:=pg_get_functiondef(signature::regprocedure);
+    if position('source_row.original_row' in definition)=0 then
+      raise exception 'Expected import review evidence reads are absent: %',signature;
+    end if;
+    execute replace(definition,'source_row.original_row','public.reviewed_import_source_row(source_row.id)');
+  end loop;
+end;
+$$;

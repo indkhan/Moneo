@@ -349,6 +349,15 @@ export function mapRows(rows: SourceRow[], input: unknown): MappedRow[] {
   return result.mapped;
 }
 
+export function mapImportReviewRow(sourceRow: SourceRow, rowNumber: number, input: unknown): MappedRow {
+  if (!Number.isInteger(rowNumber) || rowNumber < 2) throw new Error("Invalid original source row index");
+  const mapping = mappingSchema.parse(input);
+  const decision = mapping.rowDecisions?.find(item => item.rowNumber === rowNumber);
+  if (decision?.action === "exclude") throw new Error("Excluded source observation cannot be accepted");
+  const row = mapRows([sourceRow], { ...mapping, rowDecisions: decision ? [{ ...decision, rowNumber: 2 }] : undefined })[0];
+  return { ...row, rowNumber };
+}
+
 function reviewedSourceRows(rows: SourceRow[], mapping: ImportMapping): (SourceRow | null)[] {
   const decisions = new Map((mapping.rowDecisions ?? []).map(decision => [decision.rowNumber, decision]));
   return rows.map((row, index) => {
