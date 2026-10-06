@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { accountLiquidity, availableToSpend, forecastDaily, internalFundingEvents, serializeAccountLiquidity, summarizeCashflow } from "./calculations";
+import { accountLiquidity, availableToSpend, forecastDaily, withInternalFunding, serializeAccountLiquidity, summarizeCashflow } from "./calculations";
 import { requireWorkspace } from "@/lib/auth";
 import { evaluatePlan, evaluatePlanForWorkspace } from "./model";
 import { loadBalanceEvidence, resolveBalances } from "./balances";
@@ -13,7 +13,7 @@ export const forecastInput = z.object({
   accountId: z.string().min(1).max(100).optional(),
   funding: z.array(z.object({ date: z.iso.date(), currencyCode: z.string().regex(/^[A-Z]{3}$/),
     fromAccountId: z.string().min(1).max(100), toAccountId: z.string().min(1).max(100),
-    amountMinor: z.string().regex(/^[1-9]\d{0,18}$/).refine(value => BigInt(value) <= 9223372036854775807n),
+    amountMinor: z.string().regex(/^[1-9]\d{0,18}$/).refine(value => /^[1-9]\d{0,18}$/.test(value) && BigInt(value) <= 9223372036854775807n),
   })).max(100).optional(),
 });
 
@@ -84,12 +84,7 @@ export async function listGoals(context?: FinanceContext) {
 export async function evaluateForecast(input: unknown, context?: FinanceContext) {
   const args = forecastInput.parse(input);
   const plan = context ? await evaluatePlanForWorkspace(context.supabase, context.workspace, args.horizonDays, args.scenarioId) : await evaluatePlan(args.horizonDays, args.scenarioId);
-  const fundingEvents = (args.funding ?? []).flatMap(funding => {
-    if (funding.currencyCode !== plan.input.currencyCode) throw new Error("Funding currency must match forecast currency; convert explicitly first");
-    if (funding.date < plan.input.startDate || funding.date >= new Date(Date.parse(`${plan.input.startDate}T00:00:00Z`) + plan.input.horizonDays * 86400000).toISOString().slice(0, 10)) throw new Error("Funding date outside forecast horizon");
-    return internalFundingEvents({ ...funding, amountMinor: BigInt(funding.amountMinor) });
-  });
-  const assumptions = { ...plan.input, scenarioEvents: [...(plan.input.scenarioEvents ?? []), ...fundingEvents] };
+  const assumptions = withInternalFunding(plan.input, (args.funding ?? []).map(funding => ({ ...funding, amountMinor: BigInt(funding.amountMinor) })));
   const forecast = forecastDaily(assumptions), available = availableToSpend(assumptions);
   if (forecast.status === "unavailable" || available.status === "unavailable")
     return { status: "unavailable", missingInputs: [...new Set([

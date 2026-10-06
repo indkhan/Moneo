@@ -13,6 +13,7 @@ import { GoalPlanEditor, GoalPlanHistory } from "./goal-plan";
 import { ForecastPreferenceEditor } from "./preferences";
 import { ScenarioEditor, ScenarioHistory } from "./scenarios";
 import { ModelSources } from "./model-sources";
+import { AccountHeadroom, planLiquidity, type LiquidityParams } from "./account-headroom";
 
 const field = "min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-brand focus:ring-2 focus:ring-brand/15";
 const button = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90";
@@ -36,7 +37,7 @@ function ForecastChart({ days }: { days: { date: string; expectedMinor: bigint; 
   </div>;
 }
 
-export default async function PlanPage({ searchParams }: { searchParams: Promise<{ horizon?: string; scenario?: string }> }) {
+export default async function PlanPage({ searchParams }: { searchParams: Promise<LiquidityParams> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { redirect("/login"); }
   const { supabase, workspace } = context;
@@ -54,7 +55,15 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   ]);
   const accountNames = new Map((accounts ?? []).map(account => [account.id, account.name]));
   const scenarioId = scenarios?.some(item => item.id === params.scenario) ? params.scenario : undefined;
-  const projection = await evaluatePlan(horizon, scenarioId);
+  const realProjection = await evaluatePlan(horizon, scenarioId);
+  const liquidityParams = { ...params, horizon: String(horizon), scenario: scenarioId };
+  const result = planLiquidity(realProjection.input, liquidityParams);
+  const projection = { ...realProjection, forecast: result.forecast, available: result.liquidity.status === "available" ? result.liquidity.aggregate : result.liquidity };
+  const scenarioHref = (id?: string) => {
+    const query = new URLSearchParams(Object.entries(liquidityParams).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+    if (id) query.set("scenario", id); else query.delete("scenario");
+    return `/plan?${query}`;
+  };
   const baseline = scenarioId ? await evaluatePlan(horizon) : projection;
   const selectedScenario = scenarios?.find(item => item.id === scenarioId);
   const today = calendarDate(new Date(), workspace.timezone);
@@ -69,10 +78,10 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
     </header>
     <section className={card}>
       <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Projection</p><h2 className="mt-1 text-lg font-semibold">Liquid balance horizon</h2></div>
-        <form method="get" className="flex flex-wrap items-end gap-2"><label className="grid gap-1 text-xs font-medium text-muted-foreground">Horizon in days <input name="horizon" type="number" min="1" max="365" defaultValue={horizon} className={field + " w-24 font-mono"} /></label>{scenarioId && <input type="hidden" name="scenario" value={scenarioId} />}<button className={button}><CalendarDays className="size-4" />Update</button></form></div>
-      {projection.available.status === "available" ? <div className="mt-6"><p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Available to spend</p><p className="mt-1 font-mono text-3xl font-semibold tracking-tight">{formatMoney(projection.available.amountMinor, currency, workspace.locale)}</p><p className="mt-1 text-xs text-muted-foreground">Conservative daily minimum on {projection.available.limitingDate}; includes confirmed assumptions and goal reservations.</p></div> : <div className="mt-6 rounded-lg bg-muted p-4 text-sm text-muted-foreground">Forecast unavailable: {projection.available.missingInputs.join(", ")}. Add dated balances and complete missing assumptions.</div>}
+        <form method="get" className="flex flex-wrap items-end gap-2"><label className="grid gap-1 text-xs font-medium text-muted-foreground">Horizon in days <input name="horizon" type="number" min="1" max="365" defaultValue={horizon} className={field + " w-24 font-mono"} /></label>{Object.entries(liquidityParams).filter(([key, value]) => key !== "horizon" && value !== undefined).map(([key, value]) => <input key={key} type="hidden" name={key} value={value} />)}<button className={button}><CalendarDays className="size-4" />Update</button></form></div>
+      <AccountHeadroom input={realProjection.input} params={liquidityParams} names={accountNames} locale={workspace.locale} result={result} />
       {projection.forecast.status === "available" && <><ForecastChart days={projection.forecast.days} /><div className="mt-4 grid gap-3 sm:grid-cols-3">{([ ["Expected", projection.forecast.days.at(-1)!.expectedMinor], ["Conservative", projection.forecast.days.at(-1)!.conservativeMinor], ["Optimistic", projection.forecast.days.at(-1)!.optimisticMinor] ] as const).map(([label, amount]) => <div key={label} className="rounded-lg bg-muted/60 px-4 py-3"><p className="text-xs text-muted-foreground">{label} at horizon</p><p className="mt-1 font-mono text-base font-semibold">{formatMoney(amount, currency, workspace.locale)}</p></div>)}</div></>}
-      {scenarioId && <p className="mt-4 text-sm">{projection.available.status === "available" && baseline.available.status === "available" ? `Compared with the real plan: ${formatMoney(projection.available.amountMinor - baseline.available.amountMinor, workspace.display_currency, workspace.locale)} change in conservative available funds over ${horizon} days. Real plan limiting date ${baseline.available.limitingDate}; scenario limiting date ${projection.available.limitingDate}.` : "Comparison unavailable until both forecasts have complete inputs."} Actual ledger and reservations are unchanged.</p>}
+      {scenarioId && <p className="mt-4 text-sm">{projection.available.status === "available" && baseline.available.status === "available" ? `Compared with the real plan: ${formatMoney(projection.available.amountMinor - baseline.available.amountMinor, workspace.display_currency, workspace.locale)} change in aggregate conservative headroom over ${horizon} days. Real plan limiting date ${baseline.available.limitingDate}; scenario limiting date ${projection.available.limitingDate}.` : "Comparison unavailable until both forecasts have complete inputs."} Actual ledger and reservations are unchanged.</p>}
     </section>
     <ForecastPreferenceEditor preferences={projection.preferences} version={projection.preferencesVersion} accounts={(accounts ?? []).filter(account => !account.archived_at)} today={today} />
     <section className={card}><div className="flex items-center justify-between"><div><p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Reservations</p><h2 className="mt-1 text-lg font-semibold">Goals</h2></div></div><p className="text-sm text-muted-foreground">A goal does not reserve money until you allocate cash to it.</p>
@@ -90,12 +99,12 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
           <GoalPlanEditor goal={goal} today={today} />
         </article>;
       })}</div>
-      <p className="mt-4 text-sm text-muted-foreground">Contribution plans in {currency} total {formatMoney(monthlyContributions, currency, workspace.locale)} per month. {projection.available.status === "available" ? (projection.available.amountMinor >= monthlyContributions ? `One planned month fits the current ${horizon}-day conservative minimum, leaving ${formatMoney(projection.available.amountMinor - monthlyContributions, currency, workspace.locale)}. Repeated affordability depends on future obligations and income.` : `One planned month exceeds the current ${horizon}-day conservative minimum by ${formatMoney(monthlyContributions - projection.available.amountMinor, currency, workspace.locale)}; reduce contributions or review obligations.`) : "Affordability is unavailable until the forecast has complete inputs."} Other currencies need dated conversion evidence.</p>
+      <p className="mt-4 text-sm text-muted-foreground">Contribution plans in {currency} total {formatMoney(monthlyContributions, currency, workspace.locale)} per month. Compare the chosen account headroom and dated funding shortfalls above before allocating more cash. Contribution plans do not move money. Other currencies need dated conversion evidence.</p>
       <form action={createGoal} className="mt-5 flex flex-wrap items-end gap-2 rounded-lg bg-muted/50 p-4"><input type="hidden" name="requestId" value={crypto.randomUUID()} /><input name="name" required maxLength={120} placeholder="Goal name" className={field} /><input name="target" required placeholder="Target amount" className={field} /><input name="currency" defaultValue={currency} required maxLength={3} aria-label="Currency code" className={field + " w-20"} /><input name="targetDate" type="date" aria-label="Target date" className={field} /><button className={button}>Add goal</button></form>
     </section>
     <GoalPlanHistory />
     <ReservationHistory />
-    <section className={card}><p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">What if</p><h2 className="mt-1 text-lg font-semibold">What-if scenarios</h2><div className="mt-4 flex flex-wrap gap-2 border-b border-border pb-4"><Link href="/plan" className={!scenarioId ? "rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground" : "rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium"}>Real plan</Link>{scenarios?.map(item => <Link key={item.id} href={`/plan?scenario=${item.id}`} className={item.id === scenarioId ? "rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground" : "rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium"}>{item.name}</Link>)}</div>
+    <section className={card}><p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">What if</p><h2 className="mt-1 text-lg font-semibold">What-if scenarios</h2><div className="mt-4 flex flex-wrap gap-2 border-b border-border pb-4"><Link href={scenarioHref()} className={!scenarioId ? "rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground" : "rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium"}>Real plan</Link>{scenarios?.map(item => <Link key={item.id} href={scenarioHref(item.id)} className={item.id === scenarioId ? "rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground" : "rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium"}>{item.name}</Link>)}</div>
       <form action={createScenario} className="mt-4 flex flex-wrap gap-2 rounded-lg bg-muted/50 p-4"><input name="name" required aria-label="New scenario name" placeholder="What if…" className={field} /><button className={button}>Create scenario</button></form>
       {selectedScenario && <ScenarioEditor scenario={selectedScenario} />}
       {scenarioId && <form action={addScenarioEvent} className="mt-4 flex flex-wrap gap-2 rounded-lg bg-muted/50 p-4"><input type="hidden" name="scenarioId" value={scenarioId} /><input name="name" required aria-label="Hypothetical event name" placeholder="Laptop, raise…" className={field} /><input name="amount" required aria-label="Hypothetical change amount" placeholder="-1200.00" className={field} /><select name="accountId" aria-label="Account" className={field}>{accounts?.filter(account => !account.archived_at).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select><select name="cadence" aria-label="Cadence" className={field}><option value="once">Once</option><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="yearly">Yearly</option></select><input type="date" name="startsOn" defaultValue={today} required aria-label="Start date" className={field} /><button className={button}>Add hypothetical change</button></form>}

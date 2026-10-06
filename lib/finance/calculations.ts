@@ -183,6 +183,17 @@ export function internalFundingEvents(input: { date: string; fromAccountId: stri
   ];
 }
 
+export function withInternalFunding(input: ForecastInput, funding: { date: string; currencyCode: string; fromAccountId: string; toAccountId: string; amountMinor: bigint }[]): ForecastInput {
+  const end = parseDate(input.startDate) + input.horizonDays * 86400000;
+  const events = funding.flatMap(item => {
+    if (item.currencyCode !== input.currencyCode) throw new Error("Funding currency must match forecast currency; convert explicitly first");
+    if (parseDate(item.date) < parseDate(input.startDate) || parseDate(item.date) >= end) throw new Error("Funding date outside forecast horizon");
+    if (!input.accounts.some(account => account.id === item.fromAccountId) || !input.accounts.some(account => account.id === item.toAccountId)) throw new Error("Unknown funding account");
+    return internalFundingEvents(item);
+  });
+  return { ...input, scenarioEvents: [...(input.scenarioEvents ?? []), ...events] };
+}
+
 export function serializeAccountLiquidity(result: ReturnType<typeof accountLiquidity>) {
   if (result.status === "unavailable") return result;
   return { ...result, aggregate: { ...result.aggregate, amountMinor: result.aggregate.amountMinor.toString() },
