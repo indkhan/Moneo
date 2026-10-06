@@ -9,7 +9,10 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "check:privacy": "node scripts/check-private-data.mjs",
+    "pretest": "npm run check:privacy",
+    "prelint": "npm run check:privacy"
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.119",

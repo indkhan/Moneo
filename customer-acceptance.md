@@ -1,13 +1,10 @@
 # Customer acceptance — 2 October 2026
 
-The application was exercised with both supplied CSVs, real disposable Supabase authentication, the configured free AI provider and the local application. Private statements, credentials, transaction details and detailed financial evidence are excluded from this report and commits.
+Private statement inputs were used for local acceptance. Identifying input details are retained only in ignored local evidence.
 
 ## Verified customer journey
 
-- Both real statements completed: 426 and 169 source rows, 595 canonical transactions, no rejected rows. Every original row was preserved and every amount matched its exact decimal source conversion.
-- The two files correctly produced three separate ledgers: one statement contains both Current and Savings products. Timestamp interpretation required explicit confirmation rather than guessing the source clock.
-- Re-importing both identical files retained 595 transactions, three accounts and the original import entries.
-- Live chat read financial evidence; an explicitly requested spending chart created a persisted, clickable tool. Pinning a trusted tool to Home worked.
+- Private statement imports were exercised with source retention and review semantics preserved.
 - A live deep review completed and retained its full narrative and dated evidence after the output-budget fix.
 - AI calculator generation, saving, runtime execution and month changes were exercised. A generated comparison chart ran on exact host-built account totals; switching months loaded matching dated evidence. Results now render as readable tables with exact currency amounts.
 - Charts were inspected in the collaborative browser. A stale browser tab after restarting the development server required opening a fresh tab; the fresh tab rendered the chart and editor correctly.
