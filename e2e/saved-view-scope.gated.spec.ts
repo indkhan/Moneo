@@ -7,7 +7,7 @@ import postgres from "postgres";
 
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires real disposable Supabase authentication");
 
-test("saved transaction view preserves tag and event scope across save, reopen, edit, undo, rename and remove", async ({ browser }) => {
+test("saved transaction view preserves tag and event scope across save, reopen, edit, undo, rename and remove", async ({ browser, baseURL }) => {
   test.setTimeout(180_000);
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, connection = new URL(process.env.SUPABASE_DB_URL!);
   const project = new URL(url).hostname.split(".")[0];
@@ -21,7 +21,7 @@ test("saved transaction view preserves tag and event scope across save, reopen, 
   const [workspace] = await db`select id from public.workspaces where owner_id=${user}`;
   const recovery = `.qa/saved-view-scope-${user}.json`;
   mkdirSync(".qa", { recursive: true }); writeFileSync(recovery, JSON.stringify({ project, user, workspace: workspace.id }));
-  const context = await browser.newContext({ baseURL: "http://localhost:3000" });
+  const context = await browser.newContext({ baseURL });
   // Synthetic ledger: one tag+event match plus one decoy per nonmatching combination.
   const account = randomUUID(), match = randomUUID(), tagOnly = randomUUID(), eventOnly = randomUUID(), other = randomUUID();
   const matchDesc = "QA Berlin hotel", tagOnlyDesc = "QA Berlin groceries", eventOnlyDesc = "QA Berlin office", otherDesc = "QA Berlin misc";
@@ -73,7 +73,7 @@ test("saved transaction view preserves tag and event scope across save, reopen, 
     await expect(page.getByRole("button", { name: "Use current filters" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Save view", exact: true })).toHaveCount(0);
     await page.getByRole("link", { name: "Back to normal filters" }).click();
-    await page.waitForURL("http://localhost:3000/money/transactions");
+    await page.waitForURL(new URL("/money/transactions", baseURL!).toString());
     await expect(page.getByText("4 shown", { exact: true })).toBeVisible();
     await page.goto(`/money/transactions?view=${legacyView}`);
     await expect(page.getByText("Saved view has an invalid tag filter", { exact: false })).toHaveCount(0);
@@ -100,7 +100,7 @@ test("saved transaction view preserves tag and event scope across save, reopen, 
     // Rename then remove the saved view.
     await page.getByLabel("Rename saved view QA Holiday Berlin").fill("QA Holiday Berlin Renamed");
     await page.locator("form", { has: page.getByLabel("Rename saved view QA Holiday Berlin") }).getByRole("button", { name: "Rename", exact: true }).click();
-    await page.waitForURL("http://localhost:3000/money/transactions");
+    await page.waitForURL(new URL("/money/transactions", baseURL!).toString());
     await expect(page.getByRole("link", { name: "QA Holiday Berlin Renamed" })).toBeVisible();
     await page.getByRole("link", { name: "QA Holiday Berlin Renamed" }).click();
     await page.waitForURL(/\/money\/transactions\?view=[0-9a-f-]{36}$/);
@@ -108,7 +108,7 @@ test("saved transaction view preserves tag and event scope across save, reopen, 
     await expect(page.locator("strong").filter({ hasText: /^QA Holiday Berlin Renamed$/ })).toBeVisible();
     await expectScopedView();
     await page.getByRole("button", { name: "Delete saved view QA Holiday Berlin Renamed" }).click();
-    await page.waitForURL("http://localhost:3000/money/transactions");
+    await page.waitForURL(new URL("/money/transactions", baseURL!).toString());
     await expect(page.getByRole("link", { name: "QA Holiday Berlin Renamed" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "QA legacy scope" })).toBeVisible();
   } finally {
