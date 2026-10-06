@@ -4,17 +4,11 @@ import { createHash } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { start } from "workflow/api";
 import { decideImportMatch } from "@/lib/import-match";
-import { inspectRows, normalizeCategoryName, parseCsv, parseExcel, resolveMerchantName, type MappedRow } from "@/lib/csv";
+import { inspectRows, parseCsv, parseExcel, type MappedRow } from "@/lib/csv";
 import { modelForSettings } from "@/lib/ai/provider";
 import { loadWorkspaceSettings, requireAiScope } from "@/lib/settings";
-import { calendarDayBoundary } from "@/lib/finance/calendar";
+import { importRowPayload, stableId } from "@/lib/import-row";
 import { financialReview } from "./financial-review";
-
-// Stable IDs make every canonical effect safe to retry after a partial workflow failure.
-function stableId(value: string): string {
-  const hex = createHash("sha256").update(value).digest("hex");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
-}
 
 function checked<T>(result: { data: T | null; error: { message: string } | null }): T | null {
   if (result.error) throw new Error(result.error.message);
@@ -91,6 +85,7 @@ async function processImport(importId: string, workspaceId: string, from: number
       accountQuery = frozenAccountId ? accountQuery.eq("id", frozenAccountId) : accountQuery.eq("name", row.accountName);
       const existingAccount = checked(await accountQuery.limit(2))!;
       if (existingAccount.length > 1) throw new Error("Reviewed import account is ambiguous");
+      if (frozenAccountId && !existingAccount.length) throw new Error("Frozen import account unavailable; review the destination before resume");
       if (existingAccount[0]?.archived_at) throw new Error("Archived accounts cannot receive new imports");
       const accountId = frozenAccountId ?? existingAccount[0]?.id ?? stableId(`${workspaceId}:account:${row.accountName}:${row.currencyCode}`);
       accountIds.set(routeKey, accountId);
@@ -149,21 +144,13 @@ type Db = SupabaseClient;
 
 async function importRow(db: Db, workspaceId: string, importId: string, accountId: string, row: MappedRow, runVersion: number, reportProgress: boolean): Promise<void> {
   const sourceId = stableId(`${importId}:row:${row.rowNumber}`);
-  const feeEvidence = row.feeEvidence ? { ...row.feeEvidence, ...(row.feeMinor !== undefined ? { feeMinor: row.feeMinor.toString() } : {}), ...(row.feeEvidence.deltaMinor !== undefined ? { deltaMinor: row.feeEvidence.deltaMinor.toString() } : {}) } : null;
   const source = checked(await db.from("source_transactions").select("status").eq("workspace_id", workspaceId).eq("import_id", importId).eq("id", sourceId).maybeSingle()) as { status: string } | null;
   const linkResult = await db.from("transaction_sources").select("transaction_id").eq("source_transaction_id", sourceId).maybeSingle();
   if (linkResult.error) throw linkResult.error;
   const linked = linkResult.data as { transaction_id: string } | null;
   const write = async (action: string, transactionId: string | null, expectedTransactionVersion?: number) => {
-    const merchantName = resolveMerchantName(row.merchant, row.description)?.trim().replace(/\s+/g, " ").slice(0, 100) ?? null;
-    const categoryName = normalizeCategoryName(row.category);
     checked(await db.rpc("ingest_import_row", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_account_id: accountId,
-      p_row: { sourceId, transactionId, balanceId: stableId(`${importId}:balance:${row.rowNumber}`), rowNumber: row.rowNumber, originalRow: row.sourceRow,
-        externalId: row.externalId ?? null, reviewReasons: row.reviewReasons, feeEvidence, action, expectedTransactionVersion,
-        postedOn: row.postedOn, postedAt: row.postedAt ?? null, description: row.description, amountMinor: row.amountMinor.toString(), currencyCode: row.currencyCode,
-        status: row.status, kind: row.kind, merchantName, merchantNormalizedName: merchantName?.toLowerCase() ?? null, merchantId: merchantName ? stableId(`${workspaceId}:merchant:${merchantName.toLowerCase()}`) : null,
-        categoryName, categoryId: categoryName ? stableId(`${workspaceId}:category:${categoryName}`) : null,
-        balanceMinor: row.balanceMinor?.toString() ?? null, balanceAsOf: row.balanceMinor !== undefined ? row.postedAt ?? calendarDayBoundary(row.postedOn, row.calendarTimezone) : null, reportProgress } }));
+      p_row: { ...importRowPayload(workspaceId, importId, row), transactionId, action, expectedTransactionVersion, reportProgress } }));
   };
   if (linked) { await write(source?.status === "matched" ? "matched" : "new", linked.transaction_id); return; }
   if (source?.status === "review" || source?.status === "rejected") { await write("review", null); return; }

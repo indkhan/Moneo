@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import postgres from "postgres";
-import { replayMigrations } from "./migration-replay.mjs";
+import { canonicalFunctionDefinition, replayMigrations } from "./migration-replay.mjs";
 
 process.loadEnvFile(".env");
 if (!process.env.SUPABASE_DB_URL) throw new Error("SUPABASE_DB_URL is required");
@@ -35,10 +35,10 @@ async function metadata(tx, name) {
   };
 }
 
-function normalize(rows) {
+function normalize(rows, functions = false) {
   return rows.filter(row => row.table_name !== "auth_users" && row.tablename !== "auth_users")
     .map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key,
-      typeof value === "string" ? value.replaceAll(`${schema}.auth_users`, "auth.users")
+      typeof value === "string" ? (functions && key === "definition" ? canonicalFunctionDefinition(value) : value).replaceAll(`${schema}.auth_users`, "auth.users")
         .replaceAll(`${schema}.`, "").replaceAll("public.", "") : value])));
 }
 
@@ -72,7 +72,7 @@ try {
     for (const file of regressionFiles) await tx.unsafe(readFileSync(`supabase/tests/${file}`, "utf8"));
     upgraded = await metadata(tx, "public");
   });
-  for (const key of Object.keys(fresh)) assert.deepEqual(normalize(fresh[key]), normalize(upgraded[key]), `${key}: fresh and upgraded schema differ`);
+  for (const key of Object.keys(fresh)) assert.deepEqual(normalize(fresh[key], key === "functions"), normalize(upgraded[key], key === "functions"), `${key}: fresh and upgraded schema differ`);
   assert.deepEqual(await db`select version from supabase_migrations.schema_migrations order by version`, applied,
     "Rollback-only verification must not change migration history");
   console.log(`PASS: ${migrations.length} migrations, ${pending.length} pending upgrades, ${regressionFiles.length} SQL regressions; columns/constraints/indexes/RLS/policies/views/triggers/functions match; rollback verified`);

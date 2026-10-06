@@ -3,8 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function ReviewActions({ importId, sourceId }: { importId: string; sourceId: string }) {
+export function ReviewActions({ importId, sourceId, frozenId = null, frozenName, unavailable = false, destinations = [] }: {
+  importId: string; sourceId: string; frozenId?: string | null; frozenName?: string; unavailable?: boolean;
+  destinations?: { id: string; name: string; version: number }[];
+}) {
   const router = useRouter();
+  const [destinationId, setDestinationId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -15,7 +19,10 @@ export function ReviewActions({ importId, sourceId }: { importId: string; source
       const response = await fetch(`/api/imports/${importId}/review`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceId, action }),
+        body: JSON.stringify({ sourceId, action, ...(destinationId && action === "accept" ? {
+          accountId: destinationId, expectedRouteId: frozenId,
+          expectedAccountVersion: destinations.find(account => account.id === destinationId)?.version,
+        } : {}) }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Review failed");
@@ -28,7 +35,15 @@ export function ReviewActions({ importId, sourceId }: { importId: string; source
   }
 
   return <div className="mt-3 flex flex-wrap gap-3">
-    <button className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:opacity-90" type="button" disabled={busy} onClick={() => void decide("accept")}>Accept as new</button>
+    {frozenName && <p className="w-full text-sm">Frozen destination: {frozenName}</p>}
+    {unavailable && <p className="w-full text-sm">The frozen destination is unavailable. Review an active account in the source currency to accept this row.</p>}
+    {!!destinations.length && <label className="w-full text-sm">Reviewed destination
+      <select className="ml-2 rounded border border-border bg-card p-2" value={destinationId} onChange={event => setDestinationId(event.target.value)} disabled={busy}>
+        <option value="">{unavailable ? "Choose an account" : "Keep frozen destination"}</option>
+        {destinations.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+      </select>
+    </label>}
+    <button className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:opacity-90" type="button" disabled={busy || (unavailable && !destinationId)} onClick={() => void decide("accept")}>Accept as new</button>
     <button className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted" type="button" disabled={busy} onClick={() => void decide("reject")}>Reject</button>
     {error && <p role="alert" className="w-full text-sm text-red-700 dark:text-red-300">{error}</p>}
   </div>;
