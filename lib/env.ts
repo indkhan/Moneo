@@ -47,6 +47,14 @@ export function getSupabaseConfig(): SupabaseConfig {
       detail: `Supabase configuration is incomplete. Missing ${missing}; set both NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env.`,
     };
   }
+  // WHATWG URL parsing normalizes a missing scheme delimiter that the
+  // Supabase SDK rejects, so require its absolute scheme prefix first.
+  if (!/^https?:\/\//i.test(url)) {
+    return {
+      status: "invalid",
+      detail: "NEXT_PUBLIC_SUPABASE_URL must be a valid http(s) URL, for example https://xyzcompany.supabase.co.",
+    };
+  }
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("unsupported protocol");

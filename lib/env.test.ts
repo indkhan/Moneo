@@ -55,6 +55,23 @@ describe("supabase public configuration", () => {
     expect(hasSupabase()).toBe(false);
   });
 
+  it.each(["https:example.supabase.co", "https:/example.supabase.co"])(
+    "reports invalid when the scheme delimiter is missing in %s",
+    (url) => {
+      setEnv(url, "test-publishable-key");
+      const config = getSupabaseConfig();
+      expect(config.status).toBe("invalid");
+      expect(config.detail).toMatch("NEXT_PUBLIC_SUPABASE_URL");
+      expect(hasSupabase()).toBe(false);
+    },
+  );
+
+  it("accepts an uppercase http(s) scheme like the Supabase SDK", () => {
+    setEnv("HTTPS://example.supabase.co", "test-publishable-key");
+    expect(getSupabaseConfig().status).toBe("configured");
+    expect(hasSupabase()).toBe(true);
+  });
+
   it("reports configured for a valid URL and key", () => {
     setEnv("https://example.supabase.co", "test-publishable-key");
     expect(getSupabaseConfig().status).toBe("configured");
