@@ -4,6 +4,7 @@ import { generateText } from "ai";
 import { modelForSettings } from "@/lib/ai/provider";
 
 const fixture = vi.hoisted(() => ({ scheduled: true, disabledAt: 1, loads: 0, finishStatus: "completed", writes: [] as { table: string; value: Record<string, unknown> }[] }));
+vi.mock("workflow", async original => ({ ...await original<typeof import("workflow")>(), getWorkflowMetadata: () => ({ workflowRunId: "run" }), getStepMetadata: () => ({ attempt: 1 }) }));
 vi.mock("@/lib/finance/review-loader", () => ({ loadFinancialReviewEvidence: async () => ({ period: { from: "2026-07-05", to: "2026-10-02" }, planning: { unavailable: "Disabled" } }) }));
 vi.mock("@/lib/settings", async importOriginal => {
   const original = await importOriginal<typeof import("@/lib/settings")>();
@@ -11,11 +12,11 @@ vi.mock("@/lib/settings", async importOriginal => {
 });
 vi.mock("@/lib/finance/balances", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/finance/balances")>(), loadBalanceEvidence: async () => ({ accounts: [], snapshots: [], ledger: [], asOf: "2026-10-01T12:00:00Z" }) }));
 vi.mock("@/lib/ai/provider", () => ({ modelForSettings: vi.fn(async () => ({})) }));
-vi.mock("ai", () => ({ generateText: vi.fn(async () => ({ text: "Evidence review" })) }));
-vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ rpc: async (name: string, value: Record<string, unknown>) => { fixture.writes.push({ table: name, value }); return { data: fixture.finishStatus, error: null }; }, from: (table: string) => {
+vi.mock("ai", async original => ({ ...await original<typeof import("ai")>(), generateText: vi.fn(async () => ({ text: "Evidence review" })) }));
+vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ rpc: async (name: string, value: Record<string, unknown>) => { fixture.writes.push({ table: name, value }); return { data: name === "register_financial_review_run" ? true : fixture.finishStatus, error: null }; }, from: (table: string) => {
   const query = { select: () => query, eq: () => query, in: () => query, gte: () => query, lte: () => query, order: () => query,
-    single: async () => ({ data: { status: "running", cancel_requested: false }, error: null }),
-    maybeSingle: async () => ({ data: fixture.scheduled ? { cadence: "weekly" } : null, error: null }),
+    single: async () => ({ data: { status: "running", cancel_requested: false, workflow_run_id: "run" }, error: null }),
+    maybeSingle: async () => ({ data: table === "background_jobs" ? {id: "job"} : fixture.scheduled ? { cadence: "weekly" } : null, error: null }),
     range: async () => ({ data: [], error: null }),
     update: (value: Record<string, unknown>) => { fixture.writes.push({ table, value }); return query; },
     upsert: (value: Record<string, unknown>) => { fixture.writes.push({ table, value }); return query; },

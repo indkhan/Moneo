@@ -416,6 +416,8 @@ export const backgroundJobs = pgTable("background_jobs", {
   kind: text("kind").notNull(),
   requestId: uuid("request_id"),
   chatRequestId: uuid("chat_request_id").references((): AnyPgColumn => chatRequests.id, { onDelete: "set null" }),
+  workflowRunId: text("workflow_run_id"),
+  dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
   status: text("status").notNull().default("queued"),
   stage: text("stage").notNull().default("queued"),
   error: text("error"),
@@ -426,6 +428,7 @@ export const backgroundJobs = pgTable("background_jobs", {
   check("background_jobs_kind_check", sql`${table.kind} = 'financial_review'`),
   check("background_jobs_status_check", sql`${table.status} in ('queued', 'running', 'completed', 'failed', 'canceled')`),
   unique("background_jobs_workspace_request_key").on(table.workspaceId, table.requestId),
+  unique("background_jobs_workflow_run_key").on(table.workflowRunId),
 ]);
 
 export const savedAnalyses = pgTable("saved_analyses", {
