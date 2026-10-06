@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveBalances } from "@/lib/finance/balances";
+import { fixturesForKind } from "./validate";
 import { buildCalculatorSnapshot } from "./snapshot";
 import { balancesForArtifact, goalsForArtifact, spendingForArtifact, tripForArtifact } from "./finance-sdk";
 
@@ -22,7 +24,7 @@ describe("calculator financial snapshots", () => {
       allocations: [{ goal_id: "g", account_id: "a", amount_minor: "2500" }],
       balances: [{ id: "a", currency_code: "USD" }],
     } as Awaited<ReturnType<typeof goalsForArtifact>>);
-    expect((await buildCalculatorSnapshot("a", "goal_tracker")).snapshot).toEqual({ currency: "USD", goals: [
+    expect((await buildCalculatorSnapshot("a", "goal_tracker")).snapshot).toEqual({ currency: "USD", coverage: { goals: { total: 1, included: 1, truncated: false } }, goals: [
       { id: "g", name: "Trip", currency: "USD", targetMinor: "10000", savedMinor: null, savedAsOf: null, reservedMinor: "2500", remainingMinor: null, reservedRemainingMinor: "7500", plannedMonthlyMinor: "0", contributionStartsOn: null },
     ] });
   });
@@ -73,4 +75,30 @@ describe("calculator financial snapshots", () => {
       expect(snapshot.daily?.reduce((sum, day) => sum + BigInt(day.spendingMinor), 0n)).toBe(800n);
     }
   });
+});
+
+
+it("discloses capped balances and goals without losing exact totals", async () => {
+  vi.mocked(balancesForArtifact).mockResolvedValue({ currency: "EUR", balances: resolveBalances(Array.from({length: 51}, (_, i) => ({ id: String(i), name: "Synthetic", currency_code: "EUR" })), [], [], "2026-10-01T00:00:00Z") } as Awaited<ReturnType<typeof balancesForArtifact>>);
+  const balances = (await buildCalculatorSnapshot("a", "custom_report", {sdk: ["balances"]})).snapshot;
+  expect(balances).toMatchObject({ coverage: { balances: { total: 51, included: 50, truncated: true } } });
+  expect("balances" in balances && balances.balances).toHaveLength(50);
+  vi.mocked(goalsForArtifact).mockResolvedValue({currency: "EUR", goals: Array.from({length: 21}, (_, i) => ({id: String(i), name: "Synthetic", target_minor: "10000", currency_code: "EUR", recorded_saved_minor: "0", saved_as_of: null, target_date: null, status: "active", planned_monthly_minor: "0", contribution_starts_on: null})), allocations: [], balances: [], timezone: "Europe/Berlin"} as Awaited<ReturnType<typeof goalsForArtifact>>);
+  const goals = (await buildCalculatorSnapshot("a", "custom_report", {sdk: ["goals"]})).snapshot;
+  expect(goals).toMatchObject({coverage: {goals: {total: 21, included: 20, truncated: true}}});
+  expect("goals" in goals && goals.goals).toHaveLength(20);
+});
+
+
+it("keeps normal fixtures identical to host snapshots for all 32 SDK subsets", async () => {
+  const operations = ["spending", "cashflow", "balances", "goals", "forecast"];
+  const fixture = fixturesForKind("custom_report", operations)[0].snapshot as { currency: string; balances: Awaited<ReturnType<typeof balancesForArtifact>>["balances"]; spending: {from: string; to: string; incomeMinor: string; spendingMinor: string; netMinor: string; partial: boolean; excludedReviewRows: number; byAccount: Awaited<ReturnType<typeof spendingForArtifact>>["byAccount"]} };
+  vi.mocked(balancesForArtifact).mockResolvedValue({currency: fixture.currency, balances: fixture.balances});
+  vi.mocked(spendingForArtifact).mockResolvedValue({ currency: fixture.currency, from: fixture.spending.from, to: fixture.spending.to, summary: {incomeMinor: fixture.spending.incomeMinor, spendingMinor: fixture.spending.spendingMinor, netMinor: fixture.spending.netMinor, partial: false, excludedReviewRows: 0}, byAccount: fixture.spending.byAccount, transactions: [{posted_on: "2026-09-01", amount_minor: "-80000", kind: "ordinary"}] } as Awaited<ReturnType<typeof spendingForArtifact>>);
+  vi.mocked(goalsForArtifact).mockResolvedValue({currency: "EUR", timezone: "Europe/Berlin", goals: [{id: "g", name: "Synthetic goal", currency_code: "EUR", target_minor: "10000", recorded_saved_minor: "2500", saved_as_of: "2026-09-01", planned_monthly_minor: "500", contribution_starts_on: null}], allocations: [{goal_id: "g", account_id: "a", amount_minor: "1000"}], balances: fixture.balances} as Awaited<ReturnType<typeof goalsForArtifact>>);
+  vi.mocked(tripForArtifact).mockResolvedValue({currency: "EUR", baseline: {status: "available", amountMinor: 150000n}, unavailable: null, tripDate: "2026-10-03"} as Awaited<ReturnType<typeof tripForArtifact>>);
+  for (let mask = 0; mask < 32; mask++) {
+    const sdk = operations.filter((_, index) => mask & (1 << index));
+    expect((await buildCalculatorSnapshot("synthetic", "custom_report", {sdk})).snapshot, sdk.join(",")).toEqual(fixturesForKind("custom_report", sdk)[0].snapshot);
+  }
 });

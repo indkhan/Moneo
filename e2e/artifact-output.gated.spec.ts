@@ -40,3 +40,27 @@ test("saved calculator months load matching evidence and unsaved changes cannot 
   await output.getByRole("button", { name: "Save inputs", exact: true }).click();
   await expect(output).toContainText("2026-08-01 to 2026-08-31");
 });
+
+
+test("undeclared SDK reads are failed revisions and preserve the active calculator", async ({ page }) => {
+  await page.goto("/ai/library");
+  const create = page.locator("form").filter({ has: page.getByLabel("Custom Report", { exact: true }) });
+  await create.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page).toHaveURL(/\/ai\/library\/[0-9a-f-]{36}$/);
+  const id = new URL(page.url()).pathname.split("/").at(-1)!;
+  const endpoint = `/api/artifacts/${id}/versions`;
+  const beforeResponse = await page.request.get(endpoint);
+  expect(beforeResponse.ok()).toBe(true);
+  const before = await beforeResponse.json();
+  const response = await page.request.post(endpoint, { data: {
+    source: `(input) => input.snapshot.unavailable ? {unavailable: input.snapshot.unavailable} : {summary: String(input.snapshot.balances.length)}`,
+    manifest: { kind: "custom_report", runtime: "quickjs-calculator-v1", sdk: ["spending"], params: {}, renderer: "trusted" },
+  } });
+  expect(response.ok()).toBe(true);
+  expect(await response.json()).toMatchObject({status: "failed", activeVersionPreserved: before.activeVersionId, validation: {ok: false}});
+  const afterResponse = await page.request.get(endpoint);
+  expect(afterResponse.ok()).toBe(true);
+  const after = await afterResponse.json();
+  expect(after.activeVersionId).toBe(before.activeVersionId);
+  expect(after.versions[0].status).toBe("failed");
+});

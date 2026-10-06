@@ -1,8 +1,8 @@
+import { snapshotFixtures } from "./fixtures";
 import { checkOutputShape } from "./output";
 import { evaluateIsolated } from "./isolate";
 import {
   ALLOWED_SDK_BY_KIND,
-  CALCULATOR_RUNTIME,
   MAX_SOURCE_CHARS,
   checkManifest,
   checkSourceAllowlist,
@@ -20,32 +20,8 @@ export type ValidationResult =
   | { ok: true; manifest: CalculatorManifest; warnings: string[] }
   | { ok: false; errors: string[]; manifest?: CalculatorManifest };
 
-export function fixturesForKind(kind: ArtifactKind): CalculatorInput[] {
-  const base = { runtime: CALCULATOR_RUNTIME };
-  if (kind.startsWith("custom_")) return [
-    { snapshot: { ...base, currency: "EUR", spending: { from: "2026-09-01", to: "2026-09-30", spendingMinor: "80000", incomeMinor: "120000", netMinor: "40000", byAccount: [{ id: "a", incomeMinor: "120000", spendingMinor: "80000", netMinor: "40000", partial: false, excludedReviewRows: 0 }] }, balances: [{ id: "a", name: "Cash", currency_code: "EUR", balance: { amount_minor: "150000", status: "current" } }], goals: [{ id: "g", currency: "EUR", targetMinor: "10000", savedMinor: "2500", remainingMinor: "7500" }], forecast: { currency: "EUR", baselineAvailableMinor: "150000" } }, params: {} },
-    { snapshot: { ...base, currency: "EUR", spending: { from: "2026-09-01", to: "2026-09-30", spendingMinor: "0", incomeMinor: "0", netMinor: "0", byAccount: [] }, balances: [], goals: [], forecast: { unavailable: "No dated balance" } }, params: {} },
-    { snapshot: { ...base, unavailable: "Requested financial evidence is unavailable" }, params: {} },
-  ];
-  if (kind === "spending_explorer") {
-    return [
-      { snapshot: { ...base, currency: "EUR", incomeMinor: "120000", spendingMinor: "80000", netMinor: "40000", daily: [{ date: "2026-09-01", spendingMinor: "1200" }] }, params: {} },
-      { snapshot: { ...base, currency: "EUR", incomeMinor: "0", spendingMinor: "0", netMinor: "0", daily: [] }, params: {} },
-      { snapshot: { ...base, currency: "EUR", unavailable: "Some transactions require currency conversion" }, params: {} },
-    ];
-  }
-  if (kind === "trip_planner") {
-    return [
-      { snapshot: { ...base, currency: "EUR", baselineAvailableMinor: "150000", tripDate: "2026-10-03" }, params: { costMinor: 90000 } },
-      { snapshot: { ...base, currency: "EUR", baselineAvailableMinor: "0", tripDate: "2026-10-03" }, params: { costMinor: 0 } },
-      { snapshot: { ...base, currency: "EUR", baselineAvailableMinor: null, unavailable: "A dated balance in the display currency is required", tripDate: "2026-10-03" }, params: { costMinor: 90000 } },
-    ];
-  }
-  return [
-    { snapshot: { ...base, currency: "EUR", goals: [{ id: "g1", name: "Japan", targetMinor: "350000", savedMinor: "50000", remainingMinor: "300000" }] }, params: { extraMonthlyMinor: 10000 } },
-    { snapshot: { ...base, currency: "EUR", goals: [] }, params: { extraMonthlyMinor: 0 } },
-    { snapshot: { ...base, currency: "EUR", goals: [], unavailable: "No goals yet" }, params: { extraMonthlyMinor: 10000 } },
-  ];
+export function fixturesForKind(kind: ArtifactKind, sdk: string[] = []): CalculatorInput[] {
+  return snapshotFixtures(kind, sdk);
 }
 
 export async function validateGeneratedCandidate(args: {
@@ -64,15 +40,11 @@ export async function validateGeneratedCandidate(args: {
   const manifest = manifestCheck.manifest!;
   const warnings = checkStateCompatibility(args.state ?? {}, manifest);
 
-  // Smoke-run inside QuickJS with normal, empty, and missing-data fixtures.
-  // Missing-data fixtures must not throw: return { unavailable } instead.
-  for (let i = 0; i < 3; i++) {
-    const fixture = fixturesForKind(args.kind)[i];
-    // Cashflow has the same host shape as spending; exercise that declared branch too.
-    if (args.kind.startsWith("custom_") && manifest.sdk.includes("cashflow")) {
-      const snapshot = fixture.snapshot as Record<string, unknown>;
-      if (snapshot.spending) snapshot.cashflow = snapshot.spending;
-    }
+  // Exercise exactly the manifest's host contract, including absent operations,
+  // nullable evidence, partial inputs, currencies and bounded cardinalities.
+  const fixtures = fixturesForKind(args.kind, manifest.sdk);
+  for (let i = 0; i < fixtures.length; i++) {
+    const fixture = fixtures[i];
     const params: Record<string, number | string> = {};
     for (const [name, def] of Object.entries(manifest.params)) {
       params[name] = def.default;
@@ -89,7 +61,7 @@ export async function validateGeneratedCandidate(args: {
         ok: false,
         manifest,
         errors: [
-          i === 2
+          fixture.snapshot !== null && typeof fixture.snapshot === "object" && "unavailable" in fixture.snapshot
             ? `Missing-data handling failed: ${error instanceof Error ? error.message : String(error)} (return { unavailable } instead of throwing)`
             : `Smoke test ${i + 1} failed: ${error instanceof Error ? error.message : String(error)}`,
         ],
@@ -110,7 +82,7 @@ export async function validateGeneratedCandidate(args: {
   if (args.source.length > MAX_SOURCE_CHARS) {
     return { ok: false, manifest, errors: [`Source exceeds ${MAX_SOURCE_CHARS} chars`] };
   }
-  return { ok: true, manifest, warnings };
+  return { ok: true, manifest, warnings: [...warnings, "Validation checks execution and output shape, not the accuracy of generated financial claims."] };
 }
 
 export function defaultParams(manifest: CalculatorManifest): Record<string, number | string> {

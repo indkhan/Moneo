@@ -24,10 +24,10 @@ export const FALLBACK_CALCULATORS: Record<ArtifactKind, { source: string; manife
     summary: "Average " + String(avg) + " minor units/day over " + String(days) + " days.",
     numbers: { spendingMinor: s.spendingMinor || "0", averageMinorPerDay: String(avg) },
     warning: exactChart ? "" : "Chart unavailable beyond the exact numeric range; text amounts remain exact.",
-    chart: exactChart ? {
+    ...(exactChart ? { chart: {
       labels: (s.daily || []).slice(0, 14).map((d) => d.date),
       values: chartValues
-    } : null
+    } } : {})
   };
 }`,
     manifest: {

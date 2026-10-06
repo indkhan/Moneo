@@ -5,11 +5,12 @@
 // snapshots as input.snapshot plus artifact-local params.
 
 import { balancesForArtifact, goalsForArtifact, spendingForArtifact, tripForArtifact } from "./finance-sdk";
+import { SNAPSHOT_LIMITS, evidenceCoverage, type SnapshotCoverage } from "./coverage";
 import { dailySpending } from "@/lib/finance/calculations";
 import { calendarDate } from "@/lib/finance/calendar";
 import { ALLOWED_SDK_BY_KIND, type ArtifactKind } from "./spec";
 
-export type CalculatorSnapshot =
+export type CalculatorSnapshot = { coverage?: SnapshotCoverage } & (
   | { currency: string; balances?: Awaited<ReturnType<typeof balancesForArtifact>>["balances"];
       spending?: CalculatorSnapshot; cashflow?: CalculatorSnapshot; goals?: unknown; forecast?: CalculatorSnapshot;
       partial?: boolean; excludedReviewRows?: number; unavailable?: string }
@@ -36,7 +37,7 @@ export type CalculatorSnapshot =
       currency: string;
       goals?: { id: string; name: string; currency: string; targetMinor: string; savedMinor: string | null; savedAsOf: string | null; reservedMinor: string; remainingMinor: string | null; reservedRemainingMinor: string; plannedMonthlyMinor: string; contributionStartsOn: string | null }[];
       unavailable?: string;
-    };
+    });
 
 export async function buildCalculatorSnapshot(
   artifactId: string,
@@ -47,17 +48,21 @@ export async function buildCalculatorSnapshot(
     const operations = [...new Set(opts?.sdk ?? [])];
     if (operations.some(operation => !ALLOWED_SDK_BY_KIND[kind].includes(operation))) throw new Error("Unauthorized custom snapshot operation");
     const snapshot: { currency: string; balances?: Awaited<ReturnType<typeof balancesForArtifact>>["balances"]; spending?: CalculatorSnapshot; cashflow?: CalculatorSnapshot;
-      goals?: unknown; forecast?: CalculatorSnapshot; partial?: boolean; excludedReviewRows?: number; unavailable?: string } = { currency: "" };
+      goals?: unknown; forecast?: CalculatorSnapshot; coverage?: SnapshotCoverage; partial?: boolean; excludedReviewRows?: number; unavailable?: string } = { currency: "" };
     const unavailable: string[] = [];
     for (const operation of operations) {
       try {
         if (operation === "balances") {
-          const data = await balancesForArtifact(artifactId); snapshot.currency = data.currency; snapshot.balances = data.balances.slice(0, 50);
+          const data = await balancesForArtifact(artifactId); snapshot.currency = data.currency; snapshot.balances = data.balances.slice(0, SNAPSHOT_LIMITS.balances);
+          snapshot.coverage = { ...snapshot.coverage, balances: evidenceCoverage(data.balances.length, "balances") };
         } else {
           const legacyKind = operation === "goals" ? "goal_tracker" : operation === "forecast" ? "trip_planner" : "spending_explorer";
           const data = (await buildCalculatorSnapshot(artifactId, legacyKind, { ...opts, ...(operation === "cashflow" ? { spendingOperation: "cashflow" } : {}) })).snapshot;
           snapshot.currency ||= data.currency;
-          if (operation === "goals") snapshot.goals = "goals" in data ? data.goals : [];
+          if (operation === "goals") {
+            snapshot.goals = "goals" in data ? data.goals : [];
+            if (data.coverage) snapshot.coverage = { ...snapshot.coverage, ...data.coverage };
+          }
           else if (operation === "forecast") snapshot.forecast = data;
           else {
             snapshot[operation as "spending" | "cashflow"] = data;
@@ -116,7 +121,7 @@ export async function buildCalculatorSnapshot(
   if (data.goals.some(goal => data.allocations.some(allocation => allocation.goal_id === goal.id && balances.get(allocation.account_id) !== goal.currency_code))) {
     return { snapshot: { currency: data.currency, goals: [], unavailable: "Goal allocations require currency conversion" }, stateParams: {} };
   }
-  const goals = (data.goals ?? []).slice(0, 20).map((g) => {
+  const goals = (data.goals ?? []).slice(0, SNAPSHOT_LIMITS.goals).map((g) => {
     const allocs = (data.allocations ?? []).filter((a) => a.goal_id === g.id);
     const reserved = allocs.reduce((s, a) => s + BigInt(a.amount_minor), 0n);
     const saved = g.recorded_saved_minor !== null && g.recorded_saved_minor !== undefined && g.saved_as_of && g.saved_as_of <= calendarDate(new Date(), data.timezone)
@@ -139,5 +144,5 @@ export async function buildCalculatorSnapshot(
   if (!goals.length) {
     return { snapshot: { currency: data.currency, goals: [], unavailable: "No goals yet" }, stateParams: {} };
   }
-  return { snapshot: { currency: goals[0].currency, goals }, stateParams: {} };
+  return { snapshot: { currency: goals[0].currency, goals, coverage: { goals: evidenceCoverage(data.goals.length, "goals") } }, stateParams: {} };
 }

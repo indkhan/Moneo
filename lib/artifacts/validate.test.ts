@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { checkManifest, checkSourceAllowlist, checkStateCompatibility } from "./spec";
 import { FALLBACK_CALCULATORS } from "./templates";
-import { validateGeneratedCandidate } from "./validate";
+import { fixturesForKind, validateGeneratedCandidate } from "./validate";
 import { evaluateIsolated } from "./isolate";
+import { checkOutputShape } from "./output";
 
 describe("generated calculator allowlist", () => {
   it("accepts a tiny pure calculator", () => {
@@ -148,4 +149,55 @@ describe("generated calculator smoke validation", () => {
     });
     expect(result.ok).toBe(false);
   }, 20000);
+});
+
+
+describe("scoped SDK contract", () => {
+  it("reproduces approval of an undeclared balance read against a spending-only runtime", async () => {
+    const source = `(input) => input.snapshot.unavailable ? { unavailable: input.snapshot.unavailable } : { summary: String(input.snapshot.balances.length) }`;
+    await expect(evaluateIsolated(source, { snapshot: { currency: "EUR", spending: { spendingMinor: "0" } }, params: {} })).rejects.toThrow();
+    expect(await validateGeneratedCandidate({ kind: "custom_report", source, manifest: { kind: "custom_report", runtime: "quickjs-calculator-v1", sdk: ["spending"], params: {} } })).toMatchObject({ ok: false });
+  });
+
+  it("filters every operation subset and exercises individual missing-operation branches", () => {
+    const operations = ["spending", "cashflow", "balances", "goals", "forecast"];
+    for (let mask = 0; mask < 32; mask++) {
+      const sdk = operations.filter((_, index) => mask & (1 << index));
+      const fixtures = fixturesForKind("custom_report", sdk);
+      for (const fixture of fixtures) {
+        const snapshot = fixture.snapshot as Record<string, unknown>;
+        for (const op of operations.filter(op => !sdk.includes(op))) expect(snapshot).not.toHaveProperty(op);
+      }
+      for (const op of sdk) expect(fixtures.some(f => !(op in (f.snapshot as object)) && "unavailable" in (f.snapshot as object))).toBe(true);
+    }
+  });
+
+  it("rejects a candidate that cannot handle nullable saved evidence", async () => {
+    expect(await validateGeneratedCandidate({ kind: "custom_report", source: `(input) => input.snapshot.unavailable ? {unavailable: input.snapshot.unavailable} : {summary: input.snapshot.goals.map(g => g.savedMinor.toString()).join(",")}`, manifest: { kind: "custom_report", runtime: "quickjs-calculator-v1", sdk: ["goals"], params: {} } })).toMatchObject({ ok: false });
+  });
+
+  it("omits unsafe charts while keeping exact textual amounts renderer-compatible", async () => {
+    const output = await evaluateIsolated(FALLBACK_CALCULATORS.spending_explorer.source, { snapshot: { spendingMinor: "9007199254740993", daily: [{ date: "2026-10-01", spendingMinor: "9007199254740993" }] }, params: {} });
+    expect(output).not.toHaveProperty("chart");
+    expect(checkOutputShape(output)).toEqual([]);
+    expect(output).toMatchObject({ numbers: { spendingMinor: "9007199254740993" }, warning: expect.stringContaining("text amounts remain exact") });
+  });
+});
+
+
+it("rejects uncapped account output before activation", async () => {
+  const result = await validateGeneratedCandidate({ kind: "custom_report", source: `(input) => input.snapshot.unavailable ? {unavailable: input.snapshot.unavailable} : { rows: input.snapshot.spending.byAccount.map(a => ({account: a.id})) }`, manifest: {kind: "custom_report", runtime: "quickjs-calculator-v1", sdk: ["spending"], params: {}} });
+  expect(result).toMatchObject({ok: false});
+});
+
+it("exercises changing periods instead of only a single hard-coded month", async () => {
+  const result = await validateGeneratedCandidate({kind: "custom_report", source: `(input) => input.snapshot.unavailable ? {unavailable: input.snapshot.unavailable} : input.snapshot.spending.from === "2026-09-01" ? {summary: "September"} : {summary: {invalid: true}}`, manifest: {kind: "custom_report", runtime: "quickjs-calculator-v1", sdk: ["spending"], params: {}} });
+  expect(result).toMatchObject({ok: false});
+});
+
+
+it("exercises resolver-shaped current, stale, ambiguous and missing balances", () => {
+  const rows = fixturesForKind("custom_report", ["balances"]).flatMap(f => ((f.snapshot as {balances?: {balance: {status: string; estimated_amount_minor?: string | null; warnings?: string[]}}[]}).balances ?? []));
+  expect(new Set(rows.map(row => row.balance.status))).toEqual(new Set(["current", "missing", "stale", "ambiguous"]));
+  expect(rows.every(row => "estimated_amount_minor" in row.balance && Array.isArray(row.balance.warnings))).toBe(true);
 });
