@@ -3,6 +3,7 @@ import { accountLiquidity, availableToSpend, forecastDaily, serializeAccountLiqu
 import { evaluateForecast } from "./tools";
 import { tripForArtifact } from "../artifacts/finance-sdk";
 import { buildCalculatorSnapshot } from "../artifacts/snapshot";
+import { toolResultReceipt } from "./tool-evidence";
 const fixture = vi.hoisted(() => ({ spendingAccountId: "checking" as string | null, input: {
   workspaceBufferMinor: 0n, startDate: "2026-10-07", horizonDays: 30, currencyCode: "EUR",
   accounts: [{ id: "checking", currencyCode: "EUR", balanceMinor: 10000n }, { id: "savings", currencyCode: "EUR", balanceMinor: 100000n }],
@@ -17,6 +18,22 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => {
   const query = { select: () => query, eq: () => query, single: async () => ({ data: { permissions: ["forecast"], active_version_id: "v" } }) };
   return { workspace: { display_currency: "EUR", timezone: "Europe/Berlin" }, supabase: { from: () => query } };
 } }));
+it.each([false, true])("receipts use each real forecast metric's own limiting date (local cap=%s)", async localCap => {
+  const original = fixture.input;
+  try {
+    fixture.input = { ...original, workspaceBufferMinor: 200n, horizonDays: 3,
+      accounts: [{ id: "checking", currencyCode: "EUR", balanceMinor: localCap ? 100n : 1000n }, { id: "savings", currencyCode: "EUR", balanceMinor: 1000n }],
+      events: [{ date: "2026-10-08", accountId: "savings", expectedMinor: localCap ? -200n : -1500n, name: "Bill" }] };
+    const result = await evaluateForecast({ horizonDays: 3, accountId: "checking" });
+    const receipt = toolResultReceipt("forecast_evaluate", {}, result, { workspaceId: "00000000-0000-4000-8000-000000000001", fetchedAt: "2026-10-07T12:00:00Z", timezone: "UTC" }, ["accounts", "transactions", "planning"]);
+    const metric = (id: string) => receipt.metrics.find(metric => metric.id === id)!;
+    expect(metric("liquidity.accounts.0.spendableMinor")).toMatchObject({ valueMinor: localCap ? "100" : "300", period: { from: "2026-10-07", to: "2026-10-09" } });
+    expect(metric("liquidity.accounts.0.spendableMinor").calculation).toContain(`Limiting date: ${localCap ? "2026-10-07" : "2026-10-08"}`);
+    expect(metric("liquidity.accounts.0.amountMinor").calculation).toContain("Limiting date: 2026-10-07");
+    expect(metric("availableToSpendMinor").calculation).toContain(`Limiting date: ${localCap ? "2026-10-07" : "2026-10-08"}`);
+    expect(metric("aggregateAvailableMinor").calculation).toContain("Limiting date: 2026-10-08");
+  } finally { fixture.input = original; }
+});
 it("AI and artifact expose the shared account, protection and limiting date without pooling", async () => {
   const expected = serializeAccountLiquidity(accountLiquidity(fixture.input));
   const ai = await evaluateForecast({ horizonDays: 30, accountId: "checking" });
