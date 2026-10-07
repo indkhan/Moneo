@@ -25,7 +25,7 @@ try {
       await replayMigrations(tx, migrations, "MNE020 disposable replay");
     });
     await db.begin(async tx => {
-      for (const file of ["review-start.sql", "atomic-review.sql", "review-runtime.sql"]) await tx.unsafe(isolated(readFileSync(`supabase/tests/${file}`, "utf8")));
+      for (const file of ["review-start.sql", "atomic-review.sql", "review-runtime.sql", "review-recovery.sql"]) await tx.unsafe(isolated(readFileSync(`supabase/tests/${file}`, "utf8")));
       throw rollback;
     });
   } catch (error) { if (error !== rollback) throw error; }

@@ -3,10 +3,12 @@ import { createServer } from "node:http";
 import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 
 const root = resolve(".qa/mne020-runtime");
+const runtimeData = resolve(root, `runtime-data-${randomUUID()}`);
 function write(path, value) { mkdirSync(resolve(root, path, ".."), { recursive: true }); writeFileSync(resolve(root, path), value); }
-for (const path of ["workflows/financial-review.ts", "lib/finance/start-review.ts", "lib/settings.ts"]) {
+for (const path of ["workflows/financial-review.ts", "workflows/import-file.ts", "lib/finance/start-review.ts", "lib/settings.ts", "app/api/cron/reviews/route.ts", "app/api/cron/summaries/route.ts", "lib/summary-schedule.ts", "lib/import-match.ts", "lib/import-row.ts", "lib/csv.ts", "lib/finance/calendar.ts", "lib/finance/fx.ts", "instrumentation.ts"]) {
   const baseline = process.env.MNE020_RUNTIME_BASELINE;
   write(path, baseline && path !== "lib/settings.ts" ? execFileSync("git", ["show", `${baseline}:${path}`], {encoding: "utf8"}) : readFileSync(path, "utf8"));
 }
@@ -30,12 +32,15 @@ export async function modelForSettings(settings: {openrouter_model: string | nul
  }});
 }`);
 write("app/api/reviews/route.ts", `import { createClient } from '@supabase/supabase-js';
-import { startFinancialReview } from '@/lib/finance/start-review';
+import { startFinancialReview, dispatchFinancialReview } from '@/lib/finance/start-review';
 import { financialReview } from '@/workflows/financial-review';
+import { importFile } from '@/workflows/import-file';
 import { start, getRun } from 'workflow/api';
 export async function POST(request: Request) {
  const input = await request.json();
  try {
+  if (input.import) { const run = await start(importFile, [input.import, input.workspace, 0]); return Response.json({runId: run.runId}); }
+  if (input.claimed) return Response.json(await dispatchFinancialReview(createClient('http://127.0.0.1:3041', 'synthetic'), input.job, input.workspace, input.scheduled));
   if (input.direct) { const run = await start(financialReview, [input.job, input.workspace]); return Response.json({runId: run.runId}); }
   const db = createClient('http://127.0.0.1:3041', 'synthetic');
   if (input.interruptBeforeStart) { await db.rpc('start_financial_review', {p_request_id: input.request, p_chat_request_id: null}); return Response.json({interrupted: true}, {status: 503}); }
@@ -56,15 +61,22 @@ const server = createServer(async (request, response) => {
   const body = raw ? JSON.parse(raw) : null;
   const url = new URL(request.url, "http://127.0.0.1:3041");
   const send = (value, code = 200) => { response.writeHead(code, { "Content-Type": "application/json" }); response.end(JSON.stringify(value)); };
+  if (url.pathname === "/runtime/kill" && request.method === "POST") {
+    const interrupted = child; child = null;
+    if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(interrupted.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+    else interrupted.kill("SIGKILL");
+    return send({ interrupted: true });
+  }
+  if (url.pathname === "/runtime/restart" && request.method === "POST") { child = launch(); return send({ restarted: true }); }
   if (url.pathname === "/fixture" && request.method === "POST") {
-    const fixture = { ...body, kind: "financial_review", workspace_id: body.workspace, status: "queued", stage: "queued", workflow_run_id: null, dispatched_at: null, cancel_requested: false,
+    const fixture = { ...body, kind: "financial_review", workspace_id: body.workspace, status: "queued", stage: "queued", workflow_run_id: null, dispatched_at: null, created_at: body.created_at ?? new Date().toISOString(), updated_at: new Date().toISOString(), cancel_requested: false,
       attempts: { evidence: 0, provider: 0, save: 0, write: 0, failure: 0, gathering_evidence: 0 }, saves: 0, runs: [] };
     fixtures.set(body.id, fixture); return send(fixture);
   }
   if (url.pathname.startsWith("/fixture/")) {
     const item = fixtures.get(url.pathname.split("/").at(-1));
     if (request.method === "DELETE") { fixtures.delete(item?.id); return send({ removed: !fixtures.has(item?.id) }); }
-    if (request.method === "PATCH") item.mode = body.mode;
+    if (request.method === "PATCH") Object.assign(item, body);
     return send(item ?? null);
   }
   if (url.pathname.startsWith("/evidence/") || url.pathname.startsWith("/provider/")) {
@@ -73,11 +85,22 @@ const server = createServer(async (request, response) => {
     if (stage === "provider" && item.mode === "provider-permanent") return send({error: "Synthetic permanent provider failure"}, 401);
     if (item.mode === stage + "-once" && item.attempts[stage] === 1 || item.mode === stage + "-exhausted" || stage === "evidence" && item.mode.startsWith("failure-write")) return send({error: "Synthetic failure"}, 503);
     if (stage === "provider" && item.mode === "slow-provider") await new Promise(resolve => setTimeout(resolve, 500));
+    if (stage === "provider" && item.mode === "interrupt-provider" && item.attempts.provider === 1) await new Promise(resolve => setTimeout(resolve, 10_000));
+    if (stage === "provider") item.provider_returned = (item.provider_returned ?? 0) + 1;
     if (stage === "provider" && item.mode === "cancel-provider") { item.status = "canceled"; item.cancel_requested = true; }
     return send({ period: {from: "2026-10-01", to: "2026-10-06"}, planning: {unavailable: "Synthetic"} });
   }
   if (url.pathname.startsWith("/rest/v1/rpc/")) {
     const name = url.pathname.split("/").at(-1);
+    if (name === "finish_import_run") {
+      const item = byWorkspace(body.p_workspace_id); item.import_finishes = (item.import_finishes ?? 0) + 1;
+      return send("completed");
+    }
+    if (name === "claim_scheduled_summary") {
+      const item = byWorkspace(body.p_workspace_id);
+      if (!item || item.claimed) return send(null);
+      item.claimed = true; item.scheduled = true; return send(item.id);
+    }
     if (name === "start_financial_review") {
       const item = [...fixtures.values()].find(item => item.request === body.p_request_id);
       const started = !item.claimed; item.claimed = true;
@@ -86,7 +109,10 @@ const server = createServer(async (request, response) => {
     const item = fixtures.get(body.p_job_id);
     if (!item || item.workspace_id !== body.p_workspace_id) return send({code: "P0002", message: "Synthetic missing job"}, 404);
     if (name === "register_financial_review_run") {
+      item.register_attempts = (item.register_attempts ?? 0) + 1;
+      if (item.mode === "import-dispatch-once" && item.register_attempts === 1) return send({code: "XX000", message: "Synthetic dispatch receipt unavailable"}, 503);
       if (!item.runs.includes(body.p_run_id)) item.runs.push(body.p_run_id);
+      if (!["queued", "running"].includes(item.status) || item.cancel_requested) return send(false);
       if (!item.workflow_run_id) { item.workflow_run_id = body.p_run_id; item.dispatched_at = new Date().toISOString(); }
       return send(item.workflow_run_id === body.p_run_id && ["queued", "running"].includes(item.status) && !item.cancel_requested);
     }
@@ -109,11 +135,25 @@ const server = createServer(async (request, response) => {
     return send({error: "Unknown synthetic RPC"}, 400);
   }
   if (url.pathname === "/rest/v1/workspace_settings") {
+    if (!url.searchParams.has("workspace_id")) {
+      const items = [...fixtures.values()].filter(item => item.scheduled);
+      response.setHeader("Content-Range", `0-${Math.max(0, items.length - 1)}/${items.length}`);
+      return send(items.map(item => ({workspace_id: item.workspace_id, ai_data_scopes: ["accounts", "transactions"], timezone: "UTC", summary_cadence: "weekly", summary_time: "00:00"})));
+    }
     const item = byWorkspace(url.searchParams.get("workspace_id")?.slice(3));
-    return send({ai_data_scopes: item.mode === "permanent" ? [] : ["accounts", "transactions"], timezone: "UTC", openrouter_model: item.workspace_id});
+    item.settings_attempts = (item.settings_attempts ?? 0) + 1;
+    if (item.mode === "import-settings-once" && item.settings_attempts === 1) return send({code: "XX000", message: "Synthetic settings transport failure"}, 503);
+    return send({ai_data_scopes: item.mode === "permanent" ? [] : ["accounts", "transactions"], timezone: "UTC", openrouter_model: item.workspace_id, summary_cadence: item.scheduled ? "weekly" : "none"});
   }
   if (url.pathname === "/rest/v1/workspaces") return send({id: url.searchParams.get("id")?.slice(3), display_currency: "EUR"});
+  if (url.pathname === "/rest/v1/imports") return send({ id: byWorkspace(url.searchParams.get("workspace_id")?.slice(3)).import });
   if (url.pathname === "/rest/v1/background_jobs") {
+    if (request.method === "POST") return send(null, 201); // Retained first-review claim; ignoreDuplicates.
+    if (!url.searchParams.has("id")) {
+      const active = [...fixtures.values()].filter(item => ["queued", "running"].includes(item.status));
+      response.setHeader("Content-Range", `0-${Math.max(0, active.length - 1)}/${active.length}`);
+      return send(active.slice(0, 25));
+    }
     const item = fixtures.get(url.searchParams.get("id")?.slice(3));
     if (!item) return send(null);
     if (request.method === "PATCH") {
@@ -124,6 +164,7 @@ const server = createServer(async (request, response) => {
         if (key === "select") return true;
         if (filter.startsWith("eq.")) return String(item[key]) === filter.slice(3);
         if (filter.startsWith("in.(")) return filter.slice(4, -1).split(",").includes(item[key]);
+        if (filter === "is.null") return item[key] === null;
         return true;
       });
       if (!matches) return send(null);
@@ -131,13 +172,20 @@ const server = createServer(async (request, response) => {
     }
     return send(item);
   }
-  if (url.pathname === "/rest/v1/summary_runs") return send(null);
+  if (url.pathname === "/rest/v1/summary_runs") {
+    const item = fixtures.get(url.searchParams.get("job_id")?.slice(3));
+    return send(item?.scheduled ? { cadence: "weekly" } : null);
+  }
   return send({error: "Unknown synthetic endpoint"}, 404);
 });
 await new Promise(resolve => server.listen(3041, "127.0.0.1", resolve));
-const child = spawn(process.execPath, [resolve("node_modules/next/dist/bin/next"), "dev", root, "--webpack", "--port", "3040"], {
-  cwd: root, windowsHide: true, stdio: "inherit", env: { ...process.env, NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:3041", SUPABASE_SERVICE_ROLE_KEY: "synthetic", OPENROUTER_API_KEY: "", WORKFLOW_TARGET_WORLD: "local", WORKFLOW_LOCAL_DATA_DIR: resolve(root, "runtime-data"), WORKFLOW_LOCAL_BASE_URL: "http://localhost:3040", PORT: "3040" },
+function launch() {
+const current = spawn(process.execPath, [resolve("node_modules/next/dist/bin/next"), "dev", root, "--webpack", "--port", "3040"], {
+  cwd: root, windowsHide: true, stdio: "inherit", env: { ...process.env, NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:3041", SUPABASE_SERVICE_ROLE_KEY: "synthetic", OPENROUTER_API_KEY: "synthetic-not-used-by-mock-model", CRON_SECRET: "synthetic-cron", WORKFLOW_TARGET_WORLD: "local", WORKFLOW_LOCAL_DATA_DIR: runtimeData, WORKFLOW_LOCAL_BASE_URL: "http://localhost:3040", PORT: "3040" },
 });
-const stop = () => { child.kill(); server.close(); };
+current.on("exit", code => { if (child === current) { server.close(); process.exitCode = code ?? 1; } });
+return current;
+}
+let child = launch();
+const stop = () => { child?.kill(); server.close(); };
 process.on("SIGTERM", stop); process.on("SIGINT", stop);
-child.on("exit", code => { server.close(); process.exitCode = code ?? 1; });

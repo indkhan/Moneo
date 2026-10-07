@@ -1,10 +1,10 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { GET } from "./route";
 import { createClient } from "@supabase/supabase-js";
-import { start } from "workflow/api";
+import { dispatchFinancialReview } from "@/lib/finance/start-review";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
 vi.mock("@supabase/supabase-js", () => ({ createClient: vi.fn() }));
-vi.mock("workflow/api", () => ({ start: vi.fn() }));
+vi.mock("@/lib/finance/start-review", () => ({ dispatchFinancialReview: vi.fn() }));
 vi.mock("@/workflows/financial-review", () => ({ financialReview: vi.fn() }));
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); vi.clearAllMocks(); });
 
@@ -28,7 +28,7 @@ it("dispatches only a new durable claim and marks scheduled execution explicitly
   const request = () => new Request("http://localhost/api/cron/summaries", { headers: { authorization: "Bearer synthetic-secret" } });
   expect(await (await GET(request())).json()).toMatchObject({ started: 1 });
   expect(await (await GET(request())).json()).toMatchObject({ started: 0 });
-  expect(start).toHaveBeenCalledTimes(1);
-  expect(start).toHaveBeenCalledWith(expect.any(Function), ["job", "own", true]);
+  expect(dispatchFinancialReview).toHaveBeenCalledTimes(1);
+  expect(dispatchFinancialReview).toHaveBeenCalledWith(expect.any(Object), "job", "own", true);
   expect(rpc).toHaveBeenCalledWith("claim_scheduled_summary", { p_workspace_id: "own", p_cadence: "weekly", p_period_start: "2026-09-28" });
 });
