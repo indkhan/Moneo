@@ -56,3 +56,8 @@ export async function undoManualBalance(form: FormData) {
   if (error) throw error;
   redirect("/");
 }
+
+export async function confirmRecordedBalance(form: FormData) {
+  if (form.get("reviewedActivity") !== "on") throw new Error("Check your bank's booked balance and confirm the listed activity before saving");
+  return setManualBalance(form);
+}

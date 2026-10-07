@@ -53,19 +53,19 @@ export function debtPayments(input: { principalMinor: bigint; annualRate: string
 }
 
 export type WealthValue = { id: string; name: string; amount_minor: string; currency_code: string; as_of: string; linked_account_id: string | null };
-export function wealthEvidence(rows: WealthValue[], today: string) {
+export function wealthEvidence(rows: WealthValue[], today: string, basis: "current" | "observed" = "current") {
   dateValue(today);
   const included: { id: string; name: string; amountMinor: bigint; currencyCode: string; asOf: string; provenance: string }[] = [];
   const excludedLinked: string[] = []; const missingInputs: string[] = [];
   for (const row of rows) {
     if (row.linked_account_id) { excludedLinked.push(row.id); continue; }
     dateValue(row.as_of);
-    if (row.as_of !== today) { missingInputs.push(`valuation:${row.id}:${row.as_of > today ? "future" : "historical"}`); continue; }
+    if (row.as_of > today || (basis === "current" && row.as_of !== today)) { missingInputs.push(`valuation:${row.id}:${row.as_of > today ? "future" : "historical"}`); continue; }
     if (typeof row.amount_minor !== "string" || !/^-?\d+$/.test(row.amount_minor)) throw new Error("Invalid wealth money");
     minorDigits(row.currency_code);
     included.push({ id: row.id, name: row.name, amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code, asOf: row.as_of, provenance: "manual valuation" });
   }
-  return { included, excludedLinked, missingInputs,
+  return { included, excludedLinked, missingInputs, valuationBasis: basis,
     sourceCoverage: buildSourceCoverage({ from: today, to: today, recordBasis: "manual_wealth" }, []),
     manualRecords: { accepted: rows.length, included: included.length, excludedLinked: excludedLinked.length, excludedDated: rows.length - included.length - excludedLinked.length } };
 }

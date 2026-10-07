@@ -43,7 +43,7 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
       estimated_amount_minor: null as string | null, currency_code: account.currency_code,
       snapshot_currency_code: snapshot?.currency_code ?? null, as_of: snapshot?.as_of ?? null,
       evaluated_at: asOf, provenance: snapshot?.provenance ?? null, status: "missing" as "current" | "stale" | "ambiguous" | "missing",
-      warnings: [] as string[], reconciled_rows: 0 };
+      warnings: [] as string[], reconciled_rows: 0, snapshot_valid: false };
     if (!snapshot) { balance.warnings.push("No dated balance at or before the evaluation time"); return { ...account, balance }; }
     try {
       const amount = exactMinor(snapshot.amount_minor);
@@ -52,6 +52,7 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
       const ties = candidates.filter(item => Date.parse(item.as_of) === Date.parse(snapshot.as_of));
       if (ties.some(item => item.currency_code !== snapshot.currency_code || exactMinor(item.amount_minor) !== amount || boundaryEvidence(item) !== boundaryEvidence(snapshot)))
         throw new Error("Conflicting snapshots have no evidenced financial order");
+      balance.snapshot_valid = true;
       const boundaryDate = calendarDate(snapshot.as_of, timeZone);
       const covered = new Set<string>();
       if (snapshot.boundary_kind === "reviewed_activity") {

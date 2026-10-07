@@ -5,7 +5,7 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
   from: () => { const query = { insert: async () => ({ error: null }), select: () => query, eq: () => query, maybeSingle: async () => ({ data: fixture.account, error: null }) }; return query; },
 } }) }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
-import { setManualBalance } from "./actions";
+import { setManualBalance, confirmRecordedBalance } from "./actions";
 const id = "00000000-0000-4000-8000-000000000001";
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-06T12:00:00Z")); fixture.rpc.mockReset().mockResolvedValue({ error: null }); });
 afterEach(() => vi.useRealTimers());
@@ -24,4 +24,22 @@ it("accepts canonical posted records before their first correction (version zero
   f.set("coveredTransactions", JSON.stringify([{ id, version: 0, amount_minor: "-100", currency_code: "EUR", posted_on: "2026-10-06", posted_at: null }]));
   await setManualBalance(f);
   expect(fixture.rpc).toHaveBeenCalledTimes(1);
+});
+
+it("requires explicit bank confirmation before recording a suggested balance", async () => {
+  await expect(confirmRecordedBalance(form(false))).rejects.toThrow("Check your bank");
+  expect(fixture.rpc).not.toHaveBeenCalled();
+});
+
+it("records the exact confirmed amount with existing current-activity and snapshot guards", async () => {
+  const f = form(true); f.set("amount", "90071992547409.93"); f.set("expectedSnapshotId", id); f.set("expectedVersion", "2");
+  await confirmRecordedBalance(f);
+  expect(fixture.rpc).toHaveBeenCalledWith("record_manual_balance", expect.objectContaining({p_amount_minor: "9007199254740993", p_reviewed: true,
+    p_expected_snapshot_id: id, p_expected_version: 2, p_covered_transactions: []}));
+});
+
+it("does not turn yesterday's confirmation into current coverage after midnight", async () => {
+  const f = form(true); f.set("asOf", "2026-10-05");
+  await expect(confirmRecordedBalance(f)).rejects.toThrow("only to today's booked balance");
+  expect(fixture.rpc).not.toHaveBeenCalled();
 });

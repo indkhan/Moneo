@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { HomeLiquidity } from "./account-liquidity-summary";
+import { DatedOverview } from "./dated-overview";
 import { ManualBalanceForm } from "./manual-balance-form";
 import { ImportantInsights } from "./insights/panel";
 import type { ReactNode } from "react";
@@ -116,6 +117,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
           <SourceCoverageDetails coverage={netWorthCoverage} />
           <SourceCoverageDetails coverage={valuations.sourceCoverage} />
+          <DatedOverview accounts={accounts} wealth={wealthItems} today={today} timeZone={workspace.timezone} locale={workspace.locale} />
           <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Net worth</p><p className="mt-1 text-xs text-muted-foreground">Verified current balances and dated valuations in {displayCurrency}</p></div><Link href="/plan/currency" className="text-xs font-medium text-brand hover:underline">Manage currency</Link></div>
           {!accounts?.length && !wealthItems.length ? <p className="mt-7 text-sm text-muted-foreground">Add an account to see your net worth.</p> : convertedCount > 0 ? <><p className="mt-5 font-mono text-4xl font-semibold tracking-tight">{money(netWorthMinor, displayCurrency)}{missingInputs.length > 0 && <span className="ml-2 align-middle text-xs font-normal text-amber-700">Partial</span>}</p><p className="mt-2 text-xs text-muted-foreground">{missingInputs.length > 0 ? "Excludes missing, stale, ambiguous balances, historical valuations, and missing exchange rates." : "Negative debts included; assets and investments never increase spendable cash."}</p>{missingInputs.length > 0 && <details className="mt-4 text-xs text-muted-foreground"><summary className="cursor-pointer text-brand">See missing inputs</summary><p className="mt-2">{missingInputs.join(", ")}</p><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>}</> : <><p className="mt-6 text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p><p className="mt-2 text-xs text-muted-foreground">{missingInputs.join(", ")}</p></>}
         </div>
