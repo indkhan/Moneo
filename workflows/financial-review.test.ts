@@ -3,8 +3,9 @@ import { financialReview } from "./financial-review";
 import { generateText } from "ai";
 import { modelForSettings } from "@/lib/ai/provider";
 import {resolveReviewRequest, type ReviewRequest} from "@/lib/finance/review-request";
+import type {ReviewProgress} from "@/lib/finance/review-controller";
 
-const fixture = vi.hoisted(() => ({ request: null as ReviewRequest | null, scheduled: true, disabledAt: 1, importsLoaded: false, disabledImportsAt: Infinity, loads: 0, finishStatus: "completed", writes: [] as { table: string; value: Record<string, unknown> }[] }));
+const fixture = vi.hoisted(() => ({ progress: null as ReviewProgress | null, request: null as ReviewRequest | null, scheduled: true, disabledAt: 1, importsLoaded: false, disabledImportsAt: Infinity, loads: 0, finishStatus: "completed", writes: [] as { table: string; value: Record<string, unknown> }[] }));
 vi.mock("@/lib/finance/review-gather", () => ({gatherReviewInvestigation: vi.fn(async request => ({version: 1, request, startedAt: Date.now(), supportRecords: 0, queries: [], limitations: ["No supported records"]}))}));
 vi.mock("workflow", async original => ({ ...await original<typeof import("workflow")>(), getWorkflowMetadata: () => ({ workflowRunId: "run" }), getStepMetadata: () => ({ attempt: 1 }) }));
 vi.mock("@/lib/finance/review-loader", () => ({ loadFinancialReviewEvidence: async () => ({ period: { from: "2026-07-05", to: "2026-10-02" }, sourceVersion: "retained-original-revision", calculationEvidence: { snapshots: [{ version: 1 }] }, sourceCoverage: { importStatuses: fixture.importsLoaded ? { completed: 1 } : null }, planning: { unavailable: "Disabled" } }) }));
@@ -17,9 +18,9 @@ vi.mock("@/lib/finance/balances", async importOriginal => ({ ...await importOrig
 vi.mock("@/lib/ai/provider", () => ({ modelForSettings: vi.fn(async () => ({})) }));
 vi.mock("@/lib/finance/capture-evidence", () => ({ captureToolEvidence: vi.fn(async () => []) }));
 vi.mock("ai", async original => ({ ...await original<typeof import("ai")>(), generateText: vi.fn(async () => ({ text: "Evidence review" })) }));
-vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ rpc: async (name: string, value: Record<string, unknown>) => { fixture.writes.push({ table: name, value }); return { data: ["register_financial_review_run", "checkpoint_financial_investigation"].includes(name) ? true : fixture.finishStatus, error: null }; }, from: (table: string) => {
+vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ rpc: async (name: string, value: Record<string, unknown>) => { fixture.writes.push({ table: name, value }); if (name === "checkpoint_financial_investigation") fixture.progress = structuredClone(value.p_progress as ReviewProgress); return { data: ["register_financial_review_run", "checkpoint_financial_investigation"].includes(name) ? true : fixture.finishStatus, error: null }; }, from: (table: string) => {
   const query = { select: () => query, eq: () => query, in: () => query, abortSignal: () => query, gte: () => query, lte: () => query, order: () => query,
-    single: async () => ({ data: { status: "running", cancel_requested: false, workflow_run_id: "run", review_request: fixture.request, cadence: "weekly", period_start: "2026-10-05" }, error: null }),
+    single: async () => ({ data: { status: "running", cancel_requested: false, workflow_run_id: "run", review_request: fixture.request, review_progress: fixture.progress, cadence: "weekly", period_start: "2026-10-05" }, error: null }),
     maybeSingle: async () => ({ data: table === "background_jobs" ? {id: "job"} : fixture.scheduled ? { cadence: "weekly", period_start: "2026-10-05" } : null, error: null }),
     range: async () => ({ data: [], error: null }),
     update: (value: Record<string, unknown>) => { fixture.writes.push({ table, value }); return query; },
@@ -29,7 +30,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ rpc: async (nam
 } }) }));
 beforeEach(() => { fixture.scheduled = true; fixture.disabledAt = 1; fixture.importsLoaded = false; fixture.disabledImportsAt = Infinity; fixture.loads = 0; fixture.finishStatus = "completed"; fixture.writes = []; vi.clearAllMocks(); vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test"); });
 afterEach(() => vi.unstubAllEnvs());
-beforeEach(() => {fixture.request = null;});
+beforeEach(() => {fixture.request = null; fixture.progress = null;});
 
 it("carries the frozen question and query to bounded synthesis and saves inspectable progress", async () => {
   fixture.scheduled = false;
@@ -39,7 +40,7 @@ it("carries the frozen question and query to bounded synthesis and saves inspect
   expect(input.maxOutputTokens).toBe(256);
   expect(JSON.parse(input.prompt as string)).toMatchObject({question: fixture.request.question, focus: "Subscriptions", query: fixture.request.query});
   const saved = fixture.writes.find(write => write.table === "finish_financial_review")!;
-  expect(saved.value.p_evidence).toMatchObject({period: fixture.request.query.period, reviewInvestigation: {request: fixture.request}});
+  expect(saved.value.p_evidence).toMatchObject({period: fixture.request.query.period, reviewInvestigation: {request: fixture.request, progress: {synthesisAttempted: true}}});
   expect(fixture.writes.some(write => write.table === "checkpoint_financial_investigation" && (write.value.p_progress as {synthesisAttempted?: boolean}).synthesisAttempted)).toBe(true);
 });
 
