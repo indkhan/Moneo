@@ -13,6 +13,7 @@ vi.mock("ai", () => ({ generateText: vi.fn(async () => ({ text: "Evidence review
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ SYSTEM_PROMPT: "", modelForSettings: vi.fn(async () => ({ modelId: "free" })) }));
 vi.mock("@/lib/finance/start-review", () => ({ startFinancialReview: vi.fn(async () => ({ jobId: "job", status: "queued" })) }));
+vi.mock("@/lib/finance/capture-evidence", () => ({ captureToolEvidence: vi.fn(async () => []) }));
 vi.mock("@/lib/finance/review-loader", () => ({ loadFinancialReviewEvidence: vi.fn(async () => ({ source: "exact evidence" })) }));
 vi.mock("@/lib/finance/edit-preview", async original => ({ ...await original<typeof import("@/lib/finance/edit-preview")>(), loadCategoryPreview: vi.fn(async () => ({ href: "/ai/actions/preview?ids=selected&category=owned", warning: "Preview only" })) }));
 vi.mock("@/lib/finance/tools", async importOriginal => ({
@@ -27,6 +28,17 @@ beforeEach(() => {
 });
 const requestId = "00000000-0000-4000-8000-000000000001";
 const request = (message: string) => new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000002", requestId, message }) });
+it("removes unsupported provider amounts and links before either response or immutable history publication", async () => {
+  vi.mocked(generateText).mockResolvedValueOnce({ text: "You spent EUR 999999.00 [proof](/money/transactions?transaction=missing)", totalUsage: {} } as never);
+  const response = await POST(request("Explain my spending"));
+  const body = await response.json();
+  expect(response.status).toBe(200);
+  expect(body.answer).toContain("Unsupported sections were removed");
+  expect(body.answer).not.toContain("999999");
+  expect(body.answer).not.toContain("transaction=missing");
+  const { supabase } = await requireWorkspace();
+  expect(vi.mocked(supabase.rpc).mock.calls.find(call => call[0] === "finish_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
+});
 it("offers scoped investigation and exact-intent review start within four model steps", async () => {
   expect((await POST(request("Start a deep financial review"))).status).toBe(200);
   const options = vi.mocked(generateText).mock.calls[0][0];
@@ -188,7 +200,7 @@ it("investigates remaining evidence when planning is already revoked before a ne
   vi.mocked(requireWorkspace).mockResolvedValue(reduced as unknown as typeof current);
   const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, { execute: () => Promise<unknown> }>;
   await expect(tools.reviews_investigate.execute()).resolves.toEqual({ source: "exact evidence" });
-  expect(loadFinancialReviewEvidence).toHaveBeenCalledWith(current.supabase, current.workspace, reduced.settings);
+  expect(loadFinancialReviewEvidence).toHaveBeenCalledWith(current.supabase, current.workspace, reduced.settings, undefined);
 });
 
 it("preserves the separately authorized exact category command after data-scope revocation", async () => {

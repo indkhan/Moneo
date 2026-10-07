@@ -14,6 +14,7 @@ vi.mock("@/lib/finance/review-loader", () => ({ loadFinancialReviewEvidence: vi.
 vi.mock("@/lib/settings", async original => ({ ...await original<typeof import("@/lib/settings")>(),
   loadWorkspaceSettings: async () => ({ ai_data_scopes: ["accounts", "transactions"], timezone: "UTC" }) }));
 vi.mock("@/lib/ai/provider", () => ({ modelForSettings: async () => ({}) }));
+vi.mock("@/lib/finance/capture-evidence", () => ({ captureToolEvidence: vi.fn(async () => []) }));
 vi.mock("ai", async original => ({ ...await original<typeof import("ai")>(), generateText: vi.fn(async () => ({ text: "Synthetic review" })) }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
   rpc: async (name: string, args: Record<string, unknown>) => {
