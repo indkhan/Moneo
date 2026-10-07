@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { loadInvestigationEntities, runInvestigation, evaluateInvestigationScenario } from "./investigation-reader";
+import { loadInvestigationEntities, runInvestigation, evaluateInvestigationScenario, investigationDetailSchema } from "./investigation-reader";
 
 const id = "11111111-1111-4111-8111-111111111111";
 function context() {
@@ -39,4 +39,10 @@ it("evaluates bounded hypothetical overrides without mutating canonical records"
   await expect(evaluateInvestigationScenario({ query, overrides: [{ id: "22222222-2222-4222-8222-222222222222", amountMinor: "-3" }] }, ctx)).rejects.toThrow("owned");
   await expect(evaluateInvestigationScenario({ query, overrides: Array.from({ length: 101 }, () => ({ id, amountMinor: "0" })) }, ctx)).rejects.toThrow();
   vi.restoreAllMocks();
+});
+it("validates owned detail identifiers and complete pagination input", () => {
+  expect(investigationDetailSchema.safeParse({ kind: "transaction", id }).success).toBe(true);
+  expect(investigationDetailSchema.safeParse({ kind: "recurring", id, offset: 100, size: 100 }).success).toBe(true);
+  expect(investigationDetailSchema.safeParse({ kind: "transaction", id: "invented" }).success).toBe(false);
+  expect(investigationDetailSchema.safeParse({ kind: "recurring", id, size: 101 }).success).toBe(false);
 });

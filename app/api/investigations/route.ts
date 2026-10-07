@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { evaluateInvestigationScenario, loadInvestigationEntities, runInvestigation } from "@/lib/finance/investigation-reader";
+import { evaluateInvestigationScenario, investigationDetail, loadInvestigationEntities, runInvestigation } from "@/lib/finance/investigation-reader";
 
 export async function POST(request: Request) {
   try {
@@ -11,9 +11,10 @@ export async function POST(request: Request) {
       z.object({ operation: z.literal("query"), query: z.unknown() }).strict(),
       z.object({ operation: z.literal("scenario"), scenario: z.unknown() }).strict(),
       z.object({ operation: z.literal("entities") }).strict(),
+      z.object({ operation: z.literal("detail"), detail: z.unknown() }).strict(),
     ]).parse(JSON.parse(body));
     const result = args.operation === "query" ? await runInvestigation(args.query, context) :
-      args.operation === "scenario" ? await evaluateInvestigationScenario(args.scenario, context) : await loadInvestigationEntities(context);
+      args.operation === "scenario" ? await evaluateInvestigationScenario(args.scenario, context) : args.operation === "detail" ? await investigationDetail(args.detail, context) : await loadInvestigationEntities(context);
     return Response.json(result, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Investigation unavailable";
