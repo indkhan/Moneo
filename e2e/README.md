@@ -1,5 +1,13 @@
 # Browser acceptance
 
+## Financial-review recovery acceptance
+
+`npx playwright test --config e2e/review-runtime.config.ts` compiles the actual financial-review workflow, dispatcher, recovery route and instrumentation with the installed Next/Workflow runtime. Its synthetic HTTP database/provider boundaries use no bank records or provider account. The interruption case kills the actual Next process tree during provider work, restarts against the same persisted local Workflow world, and requires the same run identity and one publication. `node supabase/tests/run-review-runtime.mjs` separately exercises actual Postgres functions/roles and lock races in an exactly removed disposable schema; it does not apply public migrations.
+
+The review recovery cron is configured daily at 01:00 UTC, independently of summary preferences, using `CRON_SECRET`. Each invocation examines the oldest 25 active reviews; observed active jobs move behind other candidates even after a runtime error when the database remains usable through a checked timestamp update. The 24-hour dispatch deadline is a business policy, checked at the next successful reconciliation, rather than a Workflow execution timeout. Normal retries remain active before that deadline. After the deadline, recovery awaits runtime cancellation and confirmed terminal status before failing an active application job. Missing runtime records receive the same 24-hour receipt grace. Unacknowledged claims expire 24 hours after creation through a conditional update that cannot overwrite a concurrent elected run or publication; late workers must still register before useful work. Transport/cleanup/cancel errors remain recoverable and produce a 503 cron response. There is no automatic replacement of an acknowledged run.
+
+Daily scheduling is compatible with Vercel Hobby. For up to 25 eligible jobs and healthy services, deadline convergence occurs at the next daily invocation (about 24 hours plus the cadence and platform scheduling delay); a backlog takes further invocations. Persistent service failures are reported and cannot guarantee a wall-clock bound. Actual deployed cron registration, credentials, invocations and Vercel durable-queue behavior require separate deployment acceptance; local runtime/SQL tests do not establish them.
+
 ## Repository release gates
 
 Run `npm run acceptance:fast` (unit tests, lint, build), then `npm run acceptance:required` (rollback-only fresh/upgrade SQL regressions, unit tests with live DB balance parity, and the deterministic browser suite with one worker). Both commands must pass for local release acceptance. Fast validation alone permits the default live DB test skip and is not release evidence.

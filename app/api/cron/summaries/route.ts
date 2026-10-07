@@ -1,6 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { start } from "workflow/api";
-import { financialReview } from "@/workflows/financial-review";
+import { dispatchFinancialReview } from "@/lib/finance/start-review";
 import { settingsSchema } from "@/lib/settings";
 import { dueSummaryPeriod } from "@/lib/summary-schedule";
 
@@ -25,11 +24,8 @@ export async function GET(request: Request) {
     const claimed = await db.rpc("claim_scheduled_summary", { p_workspace_id: row.workspace_id, p_cadence: due.cadence, p_period_start: due.periodStart });
     if (claimed.error) { failed++; continue; }
     if (!claimed.data) continue;
-    try { await start(financialReview, [claimed.data, row.workspace_id, true]); started++; }
-    catch {
-      failed++;
-      await db.from("background_jobs").update({ status: "failed", stage: "dispatch", error: "Scheduled workflow could not start", updated_at: new Date().toISOString() }).eq("id", claimed.data).eq("workspace_id", row.workspace_id);
-    }
+    try { await dispatchFinancialReview(db, claimed.data, row.workspace_id, true); started++; }
+    catch { failed++; } // Ambiguous enqueue remains recoverable by the recovery cron.
   }
   return Response.json({ started, failed, invalid, capacityExceeded: (count ?? 0) > 500 });
 }

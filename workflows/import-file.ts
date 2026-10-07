@@ -2,13 +2,12 @@
 
 import { createHash } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { start } from "workflow/api";
 import { decideImportMatch } from "@/lib/import-match";
 import { inspectRows, parseCsv, parseExcel, type MappedRow } from "@/lib/csv";
 import { modelForSettings } from "@/lib/ai/provider";
 import { loadWorkspaceSettings, requireAiScope } from "@/lib/settings";
 import { importRowPayload, stableId } from "@/lib/import-row";
-import { financialReview } from "./financial-review";
+import { dispatchFinancialReview } from "@/lib/finance/start-review";
 
 function checked<T>(result: { data: T | null; error: { message: string } | null }): T | null {
   if (result.error) throw new Error(result.error.message);
@@ -122,22 +121,19 @@ async function failImport(importId: string, workspaceId: string, error: string, 
 async function maybeStartFirstReview(importId: string, workspaceId: string) {
   "use step";
   if (!process.env.OPENROUTER_API_KEY || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
+  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  const settings = await loadWorkspaceSettings(db, workspaceId);
   try {
-    const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-    const settings = await loadWorkspaceSettings(db, workspaceId);
     requireAiScope(settings, "accounts", "transactions");
-    await modelForSettings(settings);
-    const first = await db.from("imports").select("id").eq("workspace_id", workspaceId).eq("status", "completed").gt("new_rows", 0).order("created_at").order("id").limit(1).maybeSingle();
-    if (first.error || first.data?.id !== importId) return;
-    const jobId = stableId(`${workspaceId}:first-financial-review`);
-    const inserted = await db.from("background_jobs").upsert({ id: jobId, workspace_id: workspaceId, kind: "financial_review" }, { onConflict: "id", ignoreDuplicates: true }).select("id").maybeSingle();
-    if (inserted.error || !inserted.data) return; // Another import already owns the first review.
-    try {
-    await start(financialReview, [jobId, workspaceId]);
-    } catch (error) {
-      await db.from("background_jobs").update({ status: "failed", stage: "starting", error: String(error) }).eq("id", jobId).eq("workspace_id", workspaceId).in("status", ["queued", "running"]);
-    }
-  } catch { /* Analysis is optional; the completed import remains valid. */ }
+  } catch { return; } // Analysis eligibility is optional; the completed import remains valid.
+  await modelForSettings(settings);
+  const first = await db.from("imports").select("id").eq("workspace_id", workspaceId).eq("status", "completed").gt("new_rows", 0).order("created_at").order("id").limit(1).maybeSingle();
+  if (first.error) throw first.error;
+  if (first.data?.id !== importId) return;
+  const jobId = stableId(`${workspaceId}:first-financial-review`);
+  const inserted = await db.from("background_jobs").upsert({ id: jobId, workspace_id: workspaceId, kind: "financial_review" }, { onConflict: "id", ignoreDuplicates: true }).select("id").maybeSingle();
+  if (inserted.error) throw inserted.error;
+  await dispatchFinancialReview(db, jobId, workspaceId, false);
 }
 
 type Db = SupabaseClient;

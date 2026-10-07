@@ -5,15 +5,17 @@ import { setTimeout as delay } from "node:timers/promises";
 // Only called with this issue's freshly replayed disposable schema, never public.
 export async function reviewRuntimeRaces(db, schema) {
   assert.match(schema, /^mne020_[a-f0-9]{32}$/);
-  const actor = randomUUID(), election = randomUUID(), cancelFirst = randomUUID(), finishFirst = randomUUID();
+  const actor = randomUUID(), election = randomUUID(), cancelFirst = randomUUID(), finishFirst = randomUUID(), deadlineFirst = randomUUID(), registerFirst = randomUUID(), publishBeforeDeadline = randomUUID();
   let workspace;
   await db.begin(async tx => {
     await tx`insert into ${tx(`${schema}.auth_users`)}(id,email) values(${actor},${`qa-${actor}@example.invalid`})`;
     [{id: workspace}] = await tx`select id from ${tx(`${schema}.workspaces`)} where owner_id=${actor}`;
-    for (const id of [election, cancelFirst, finishFirst]) await tx`insert into ${tx(`${schema}.background_jobs`)}(id,workspace_id,kind) values(${id},${workspace},'financial_review')`;
+    for (const id of [election, cancelFirst, finishFirst, deadlineFirst, registerFirst, publishBeforeDeadline]) await tx`insert into ${tx(`${schema}.background_jobs`)}(id,workspace_id,kind) values(${id},${workspace},'financial_review')`;
   });
   const register = (tx, job, run) => tx.unsafe(`select ${schema}.register_financial_review_run($1,$2,$3) value`, [job, workspace, run]).then(rows => rows[0].value);
   const finish = (tx, job) => tx.unsafe(`select ${schema}.finish_financial_review($1,$2,'Synthetic','Synthetic body','{}',false) value`, [job, workspace]).then(rows => rows[0].value);
+  const expireOrphan = (tx, job) => tx.unsafe(`update ${schema}.background_jobs set status='failed',stage='dispatch_deadline',error='Synthetic expired dispatch',updated_at=now()
+    where id=$1 and workspace_id=$2 and kind='financial_review' and workflow_run_id is null and cancel_requested=false and status in('queued','running') returning id`, [job, workspace]).then(rows => rows.length);
   const cancel = async (tx, job) => {
     await tx`select set_config('request.jwt.claim.sub',${actor},true)`;
     await tx.unsafe("set local role authenticated");
@@ -42,7 +44,12 @@ export async function reviewRuntimeRaces(db, schema) {
   await race(async tx => { assert.equal(await register(tx, election, "wrun_synthetic_winner"), true); }, tx => register(tx, election, "wrun_synthetic_loser"), false);
   await race(async tx => { assert.equal(await cancel(tx, cancelFirst), "canceled"); }, tx => finish(tx, cancelFirst), "canceled");
   await race(async tx => { assert.equal(await finish(tx, finishFirst), "completed"); }, tx => cancel(tx, finishFirst), "completed");
+  await race(async tx => { assert.equal(await expireOrphan(tx, deadlineFirst), 1); }, tx => register(tx, deadlineFirst, "wrun_synthetic_expired"), false);
+  assert.equal(await finish(db, deadlineFirst), "failed", "Expired unacknowledged delivery cannot publish late");
+  await race(async tx => { assert.equal(await register(tx, registerFirst, "wrun_synthetic_registered"), true); }, tx => expireOrphan(tx, registerFirst), 0);
+  await race(async tx => { assert.equal(await finish(tx, publishBeforeDeadline), "completed"); }, tx => expireOrphan(tx, publishBeforeDeadline), 0);
   const rows = await db`select job_id,body from ${db(`${schema}.saved_analyses`)} where workspace_id=${workspace}`;
-  assert.equal(rows.length, 1); assert.equal(rows[0].job_id, finishFirst); assert.equal(rows[0].body, "Synthetic body");
-  console.log("PASS: three real SQL connections; run election and both cancel/publication lock orderings");
+  assert.equal(rows.length, 2); assert.deepEqual(new Set(rows.map(row => row.job_id)), new Set([finishFirst, publishBeforeDeadline]));
+  assert(rows.every(row => row.body === "Synthetic body"));
+  console.log("PASS: three real SQL connections; run election, both cancel/publication lock orderings, orphan deadline versus registration/publication");
 }

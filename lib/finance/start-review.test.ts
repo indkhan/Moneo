@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { start } from "workflow/api";
 import { startFinancialReview } from "./start-review";
 const state = vi.hoisted(() => ({ status: "queued", workflow_run_id: null as string | null, runtimeStatus: "running", registerError: false, started: true }));
-vi.mock("workflow/api", () => ({ start: vi.fn(async () => ({runId: "run"})), getRun: () => ({ get status() { return Promise.resolve(state.runtimeStatus); } }) }));
+vi.mock("workflow/api", () => ({ start: vi.fn(async () => ({runId: "run"})), getRun: () => ({ get exists() { return Promise.resolve(true); }, get status() { return Promise.resolve(state.runtimeStatus); } }) }));
 vi.mock("@/workflows/financial-review", () => ({ financialReview: vi.fn() }));
 const service = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }));
 vi.mock("@supabase/supabase-js", () => ({createClient: () => service}));
