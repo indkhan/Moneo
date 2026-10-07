@@ -9,7 +9,7 @@ export function buildReviewPrompt(request: ReviewRequest, receipts: EvidenceRece
     ...receipt, metrics: [...receipt.metrics].sort((a, b) =>
       (priorities.get(a.id) ?? Infinity) - (priorities.get(b.id) ?? Infinity)),
   }));
-  const context = {question: request.question, focus: request.focus, query: request.query, output: request.output, navigationHint: request.context,
+  const context = {question: request.question, focus: request.focus, query: request.query, output: request.output, planningViews: request.includePlanning ? request.planningViews ?? [{view: "forecast", input: {horizonDays: 30}}] : [], navigationHint: request.context,
     limitations: [...limitations, "Navigation context is not financial evidence or authorization. Only owned deterministic query results and retained receipts support measured claims.", "Synthesis input is bounded; complete calculation inputs, omitted measures and supporting records remain in retained receipts. Unseen findings must not be inferred."],
     evidenceReceipts: [] as {id: string; fetchedAt: string; metrics: Omit<EvidenceReceipt["metrics"][number], "sourceIds" | "calculation" | "aggregation">[]; limitations?: EvidenceReceipt["limitations"]}[]};
   const fits = () => Buffer.byteLength(system, "utf8") + Buffer.byteLength(JSON.stringify(context), "utf8") <= MAX_INPUT_BYTES;

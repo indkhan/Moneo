@@ -1,5 +1,5 @@
 import {investigationIdentity, type investigate, type InvestigationSpec} from "./investigation";
-import type {ReviewRequest} from "./review-request";
+import type {ReviewRequest, ReviewPlanningView} from "./review-request";
 
 type Result = ReturnType<typeof investigate>;
 type GroupSummary = Omit<Result["groups"][number], "dimensions"> & {label: string};
@@ -11,12 +11,13 @@ type Summary = Pick<Result, "queryId" | "evidenceId" | "evidence"> & {
 };
 export type ReviewProgress = {
   version: 1; request: ReviewRequest; startedAt: number; supportRecords: number;
-  queries: {query: Pick<InvestigationSpec, "page"> & {groupBy?: InvestigationSpec["groupBy"]}; status: "reading" | "completed" | "unavailable"; receiptId?: string; result?: Summary}[];
+  queries: {query: Pick<InvestigationSpec, "page"> & {groupBy?: InvestigationSpec["groupBy"]; planning?: ReviewPlanningView}; status: "reading" | "completed" | "unavailable"; receiptId?: string; result?: Summary}[];
   limitations: string[];
   synthesisAttempted?: boolean;
 };
 type Dependencies = {
   read: (query: InvestigationSpec, signal: AbortSignal) => Promise<{result: Result; receiptId: string}>;
+  readPlanning?: (view: ReviewPlanningView, supportLimit: number, signal: AbortSignal) => Promise<{receiptId: string; supportRecords: number}>;
   checkpoint?: (progress: ReviewProgress) => Promise<void>;
   now?: () => number; signal?: AbortSignal;
 };
@@ -53,12 +54,39 @@ export async function runReviewInvestigation(request: ReviewRequest, dependencie
   while (progress.queries.length < request.budget.maxQueries && progress.supportRecords < request.budget.maxSupportRecords) {
     if (dependencies.signal?.aborted) throw dependencies.signal.reason;
     if (signal.aborted || now() - progress.startedAt >= request.budget.maxDurationMs) {note("Investigation time budget reached; retained supported sections remain available."); break;}
-    const baselineQuery = progress.queries.find(query => query.status === "completed" && !query.query.page.groupKey);
+    const planningViews: ReviewPlanningView[] = request.includePlanning ? request.planningViews ?? [{view: "forecast", input: {horizonDays: 30}}] : [];
+    const planning = progress.queries.length ? planningViews.find(view => !progress.queries.some(query =>
+      query.query.planning && investigationIdentity(query.query.planning) === investigationIdentity(view))) : undefined;
+    if (planning) {
+      const supportLimit = Math.min(10, request.budget.maxSupportRecords - progress.supportRecords);
+      const attempt: ReviewProgress["queries"][number] = {query: {page: {size: supportLimit, period: "both"}, planning}, status: "reading"};
+      progress.queries.push(attempt);
+      await dependencies.checkpoint?.(progress);
+      try {
+        signal.throwIfAborted();
+        if (!dependencies.readPlanning) throw new Error("Planning reader unavailable");
+        const result = await dependencies.readPlanning(planning, supportLimit, signal);
+        signal.throwIfAborted();
+        if (!Number.isInteger(result.supportRecords) || result.supportRecords < 0 || result.supportRecords > supportLimit) throw new Error("Planning reader exceeded supporting-record budget");
+        attempt.receiptId = result.receiptId; attempt.status = "completed";
+        progress.supportRecords += result.supportRecords;
+        note("Planning views retain their own evaluation dates and assumptions; they are not historical forecasts for the spending period. Full calculation inputs remain in retained evidence.");
+      } catch (error) {
+        if (dependencies.signal?.aborted) throw dependencies.signal.reason;
+        attempt.status = "unavailable";
+        note(signal.aborted ? "Investigation time budget reached; retained supported sections remain available." : "Requested planning evidence was unavailable; no planning conclusion is inferred.");
+        void error;
+      }
+      await dependencies.checkpoint?.(progress);
+      continue;
+    }
+    const financialQueries = progress.queries.filter(query => !query.query.planning);
+    const baselineQuery = financialQueries.find(query => query.status === "completed" && !query.query.page.groupKey);
     const baseline = baselineQuery?.result;
     // One same-scope aggregate fallback can retain useful facts without repeating an unavailable detailed read.
-    if (baselineQuery?.query.groupBy?.length === 0 || !baseline && progress.queries.length &&
-      (!request.query.groupBy.length || progress.queries.some(query => query.query.groupBy?.length === 0))) break;
-    const aggregateFallback = !baseline && progress.queries.length > 0;
+    if (baselineQuery?.query.groupBy?.length === 0 || !baseline && financialQueries.length &&
+      (!request.query.groupBy.length || financialQueries.some(query => query.query.groupBy?.length === 0))) break;
+    const aggregateFallback = !baseline && financialQueries.length > 0;
     const attempted = new Set(progress.queries.map(query => query.query.page.groupKey).filter(Boolean));
     const group = baseline ? materialGroups(baseline.groups).find(candidate => !attempted.has(candidate.key) && candidate.key.length <= 2000) : undefined;
     if (baseline && !group) break;
@@ -97,6 +125,8 @@ export async function runReviewInvestigation(request: ReviewRequest, dependencie
   }
   if (progress.queries.length >= request.budget.maxQueries) note("Investigation query budget reached; further findings may remain unexplored.");
   if (progress.supportRecords >= request.budget.maxSupportRecords) note("Investigation supporting-record budget reached; further findings may remain unexplored.");
+  if (request.includePlanning && !(request.planningViews ?? [{view: "forecast", input: {horizonDays: 30}}]).every(view => progress.queries.some(query =>
+    query.query.planning && investigationIdentity(query.query.planning) === investigationIdentity(view)))) note("Requested planning views remain unexplored within the retained budgets.");
   await dependencies.checkpoint?.(progress);
   return progress;
 }

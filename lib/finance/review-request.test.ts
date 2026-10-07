@@ -2,6 +2,16 @@ import {describe,expect,it} from "vitest";
 import {resolveReviewRequest,scheduledReviewRequest,reviewRequestSchema} from "./review-request";
 
 describe("question-driven review requests",()=>{
+  it("retains explicit planning decisions with strict read-only bounded inputs", () => {
+    const input = {version: 1, question: "Compare this goal and scenario", planningViews: [{view: "goals", goalIds: ["11111111-1111-4111-8111-111111111111"]}, {view: "forecast", input: {horizonDays: 7, scenarioId: "22222222-2222-4222-8222-222222222222"}}]};
+    const request = resolveReviewRequest(input, "2026-10-07");
+    expect(request.includePlanning).toBe(true);
+    expect(request.planningViews).toEqual(input.planningViews);
+    expect(resolveReviewRequest(request, "2026-11-01")).toEqual(request);
+    expect(reviewRequestSchema.safeParse({...input, planningViews: [{view: "forecast", input: {horizonDays: 366}}]}).success).toBe(false);
+    expect(reviewRequestSchema.safeParse({...input, planningViews: [{view: "forecast", input: {mutate: true}}]}).success).toBe(false);
+    expect(reviewRequestSchema.safeParse({...input, planningViews: Array(4).fill(input.planningViews[0])}).success).toBe(false);
+  });
   it("retains bounded visible context across dispatch without treating it as financial evidence",()=>{
     const input = {version: 1, question: "Explain the selected spending change", context: {page: "/money/investigations", selection: {accountId: "11111111-1111-4111-8111-111111111111", period: "September"}}};
     const frozen = resolveReviewRequest(input, "2026-10-07");

@@ -42,7 +42,9 @@ export function AnalysisPanel({ locale, timezone }: { locale: string; timezone: 
     setBusy(true); setError("");
     try {
       const text = (name: string) => String(fields.get(name) ?? "").trim();
-      const selected = resolveReviewRequest({version: 1, question: text("question"), focus: text("focus"), output: text("output")}, calendarDate(new Date(), timezone));
+      const planning = text("planning");
+      const selected = resolveReviewRequest({version: 1, question: text("question"), focus: text("focus"), output: text("output"),
+        ...(planning === "goals" ? {planningViews: [{view: "goals"}]} : planning === "7" || planning === "30" ? {planningViews: [{view: "forecast", input: {horizonDays: Number(planning)}}]} : {})}, calendarDate(new Date(), timezone));
       const investigation = {...selected, query: {...selected.query,
         ...(text("from") || text("to") ? {period: {from: text("from"), to: text("to")}, comparison: undefined} : {}),
         ...(text("comparisonFrom") || text("comparisonTo") ? {comparison: {from: text("comparisonFrom"), to: text("comparisonTo")}} : {})}};
@@ -79,6 +81,8 @@ export function AnalysisPanel({ locale, timezone }: { locale: string; timezone: 
       </fieldset>
       <p className="text-sm text-muted-foreground">Blank dates use month to date compared with the same part of last month. A chosen review period has no comparison unless you choose comparison dates.</p>
       <label className="text-sm">Result<select name="output" className="ml-2 rounded border border-border bg-background p-2"><option value="answer">Focused answer</option><option value="report">Saved report</option></select></label>
+      <label className="text-sm">Planning evidence (optional)<select name="planning" className="ml-2 rounded border border-border bg-background p-2"><option value="">Spending only</option><option value="goals">Goals</option><option value="7">7-day forecast</option><option value="30">30-day forecast</option></select></label>
+      <p className="text-sm text-muted-foreground">Planning uses its own current evaluation dates and recorded assumptions. Forecasts do not reconstruct a chosen historical spending period.</p>
       <button type="submit" disabled={busy} className="justify-self-start rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">{busy ? "Starting…" : "Run review"}</button>
     </form>
     {jobs.length > 1 && <label className="ml-3 text-sm">Saved reviews<select aria-label="Saved reviews" value={jobId ?? ""} onChange={event => { setReview(null); setJobId(event.target.value); }} className="ml-2 rounded border p-2">{jobs.map(job => <option key={job.id} value={job.id}>{job.id.slice(0, 8)} · {job.status}</option>)}</select></label>}

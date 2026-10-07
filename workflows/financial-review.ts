@@ -149,7 +149,9 @@ async function gatherEvidence(jobId: string, workspaceId: string, scheduled: boo
           checkpoint: value => checkpointReview(db, jobId, workspaceId, runId, value)}, job.data.review_progress ?? undefined);
         if (monitorError) throw monitorError;
         if (!await enterStage(db, jobId, workspaceId, runId, "gathering_evidence")) return null;
-        return {period: request.query.period, sourceCoverage: {importStatuses: null}, planning: {unavailable: "Planning evidence was not included in this query."},
+        const retainedViews = progress.queries.flatMap(query => query.status === "completed" && query.query.planning ? [query.query.planning] : []);
+        return {period: request.query.period, sourceCoverage: {importStatuses: null}, planning: retainedViews.length ? {retainedViews}
+          : {unavailable: request.includePlanning ? "Requested planning views were unavailable or not reached within the retained budgets." : "Planning evidence was not requested."},
           reviewInvestigation: {request, progress}, verification: {version: 1, method: "structured-evidence-v1", receiptIds: [...new Set(progress.queries.flatMap(query => query.receiptId ? [query.receiptId] : []))]}};
       } catch (error) {
         // The reader settles its actual HTTP transport before cancellation is acknowledged.

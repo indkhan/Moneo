@@ -1,6 +1,13 @@
 import {z} from "zod";
 import {investigationSchema} from "./investigation-schema";
 import {AI_DATA_SCOPES} from "@/lib/settings";
+import {forecastInput} from "./forecast-schema";
+
+const planningViewSchema = z.discriminatedUnion("view", [
+  z.object({view: z.literal("forecast"), input: forecastInput.strict()}).strict(),
+  z.object({view: z.literal("goals"), goalIds: z.array(z.uuid()).min(1).max(20).optional()}).strict(),
+]);
+export type ReviewPlanningView = z.infer<typeof planningViewSchema>;
 
 const budgetSchema=z.object({
   maxQueries:z.number().int().min(1).max(12).default(6),
@@ -15,6 +22,7 @@ export const reviewRequestSchema=z.object({
   focus:z.string().trim().max(500).optional(),
   query:investigationSchema.refine(query=>!query.page.cursor,"A new review needs a query scope, not a live pagination cursor").optional(),
   includePlanning:z.boolean().default(false),
+  planningViews:z.array(planningViewSchema).min(1).max(3).optional(),
   output:z.enum(["answer","report"]).default("answer"),
   budget:budgetSchema.default({maxQueries:6,maxSupportRecords:60,maxOutputTokens:4000,maxDurationMs:90000}),
 }).strict();
@@ -29,6 +37,7 @@ function previousMonth(first:string){
 /** Resolve dates once at creation; dispatch and retry replay this exact specification. */
 export function resolveReviewRequest(input:unknown,today:string){
   const request=reviewRequestSchema.parse(input);z.iso.date().parse(today);
+  if (request.planningViews) request.includePlanning = true;
   const from=`${today.slice(0,7)}-01`,prior=previousMonth(from);
   const comparisonTo=`${prior.from.slice(0,7)}-${String(Math.min(Number(today.slice(8)),Number(prior.to.slice(8)))).padStart(2,"0")}`;
   return {...request,query:request.query??investigationSchema.parse({version:1,period:{from,to:today},comparison:{from:prior.from,to:comparisonTo},groupBy:["category","merchant"]})};

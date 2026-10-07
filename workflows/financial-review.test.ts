@@ -8,7 +8,7 @@ import type {EvidenceReceipt} from "@/lib/finance/evidence-receipts";
 
 const fixture = vi.hoisted(() => ({ receipt: null as EvidenceReceipt | null, progress: null as ReviewProgress | null, request: null as ReviewRequest | null, scheduled: true, disabledAt: 1, importsLoaded: false, disabledImportsAt: Infinity, loads: 0, finishStatus: "completed", writes: [] as { table: string; value: Record<string, unknown> }[] }));
 vi.mock("@/lib/finance/evidence-receipts", async original => ({...await original<typeof import("@/lib/finance/evidence-receipts")>(), loadEvidenceReceipt: async () => fixture.receipt}));
-vi.mock("@/lib/finance/review-gather", () => ({gatherReviewInvestigation: vi.fn(async request => ({version: 1, request, startedAt: Date.now(), supportRecords: 0, queries: fixture.receipt ? [{query: request.query, status: "completed", receiptId: fixture.receipt.id}] : [], limitations: ["No supported records"]}))}));
+vi.mock("@/lib/finance/review-gather", () => ({gatherReviewInvestigation: vi.fn(async request => ({version: 1, request, startedAt: Date.now(), supportRecords: 0, queries: fixture.receipt ? [{query: {...request.query, ...(request.includePlanning ? {planning: {view: "forecast", input: {horizonDays: 7}}} : {})}, status: "completed", receiptId: fixture.receipt.id}] : [], limitations: ["No supported records"]}))}));
 vi.mock("workflow", async original => ({ ...await original<typeof import("workflow")>(), getWorkflowMetadata: () => ({ workflowRunId: "run" }), getStepMetadata: () => ({ attempt: 1 }) }));
 vi.mock("@/lib/finance/review-loader", () => ({ loadFinancialReviewEvidence: async () => ({ period: { from: "2026-07-05", to: "2026-10-02" }, sourceVersion: "retained-original-revision", calculationEvidence: { snapshots: [{ version: 1 }] }, sourceCoverage: { importStatuses: fixture.importsLoaded ? { completed: 1 } : null }, planning: { unavailable: "Disabled" } }) }));
 vi.mock("@/lib/settings", async importOriginal => {
@@ -33,6 +33,15 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ rpc: async (nam
 beforeEach(() => { fixture.scheduled = true; fixture.disabledAt = 1; fixture.importsLoaded = false; fixture.disabledImportsAt = Infinity; fixture.loads = 0; fixture.finishStatus = "completed"; fixture.writes = []; vi.clearAllMocks(); vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test"); });
 afterEach(() => vi.unstubAllEnvs());
 beforeEach(() => {fixture.request = null; fixture.progress = null; fixture.receipt = null;});
+
+it("publishes retained planning views rather than claiming planning was not included", async () => {
+  fixture.scheduled = false;
+  fixture.request = resolveReviewRequest({version: 1, question: "Review the next week", planningViews: [{view: "forecast", input: {horizonDays: 7}}]}, "2026-10-07");
+  fixture.receipt = {id: "00000000-0000-4000-8000-000000000001", workspaceId: "workspace", scopes: ["accounts", "transactions", "planning"], sources: [], metrics: [], query: {}, fetchedAt: new Date().toISOString(), sourceVersion: "test", calculationVersion: "test"};
+  await financialReview("job", "workspace");
+  const evidence = fixture.writes.find(write => write.table === "finish_financial_investigation")?.value.p_evidence;
+  expect(evidence).toMatchObject({planning: {retainedViews: [{view: "forecast", input: {horizonDays: 7}}]}});
+});
 
 it("withholds typed receipt data when its import scope is revoked before publication despite absent source metadata", async () => {
   fixture.scheduled = false; fixture.disabledImportsAt = 3;

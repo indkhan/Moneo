@@ -9,6 +9,7 @@ import { cashflow, getBalances, searchTransactions, listAccounts, listGoals, eva
 import { loadFinancialReviewEvidence } from "./review-loader";
 import { categoryPreviewSchema, loadCategoryPreview } from "./edit-preview";
 import { retainToolSourceSupport } from "./tool-source-support";
+import {loadReviewGoals} from "./review-planning";
 export async function readEvidenceView(context: Awaited<ReturnType<typeof requireWorkspace>>, id: string, metricId?: string) {
   z.uuid().parse(id);
   const receipt = await loadEvidenceReceipt(context.supabase, context.workspace.id, id);
@@ -34,7 +35,8 @@ export async function readEvidenceView(context: Awaited<ReturnType<typeof requir
         case "accounts_list": result = await listAccounts(context); break;
         case "transactions_search": result = await searchTransactions(input, context); break;
         case "goals_list": result = await listGoals(context); break;
-        case "forecast_evaluate": result = await evaluateForecast(input, context); break;
+        case "goals_review": result = await loadReviewGoals(input, context.supabase, context.workspace.id); break;
+        case "forecast_evaluate": result = await evaluateForecast(input, {...context, settings: {...context.settings, ai_data_scopes: receipt.scopes}}); break;
         case "reviews_investigate": result = await loadFinancialReviewEvidence(context.supabase, context.workspace, context.settings, "query" in query ? query.query : undefined); break;
         case "finance_entities": result = await loadInvestigationEntities(context); break;
         case "finance_detail": result = await investigationDetail(input, context, { canReadImports: imports }); break;
