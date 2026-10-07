@@ -7,7 +7,7 @@ import postgres from "postgres";
 
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires disposable Supabase authentication and migration013");
 
-test("owned Stop and reload distinguish request, worker acknowledgment and unconfirmed termination", async ({ browser }) => {
+test("owned Stop and reload distinguish request, worker acknowledgment and unconfirmed termination", async ({ browser, baseURL }) => {
   test.setTimeout(120_000);
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, connection = new URL(process.env.SUPABASE_DB_URL!);
   const project = new URL(url).hostname.split(".")[0];
@@ -16,7 +16,7 @@ test("owned Stop and reload distinguish request, worker acknowledgment and uncon
   const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
   const email = `qa-${randomUUID()}@example.invalid`, password = randomBytes(24).toString("hex");
   let user: string | undefined, workspace: string | undefined, journal: string | undefined;
-  const context = await browser.newContext({ baseURL: "http://localhost:3000" });
+  const context = await browser.newContext({ baseURL });
   try {
     const [migration] = await db`select pg_get_functiondef('public.cancel_financial_review(uuid)'::regprocedure) definition`;
     expect(migration.definition).toContain("return 'cancel_requested'");
@@ -30,7 +30,7 @@ test("owned Stop and reload distinguish request, worker acknowledgment and uncon
     const cookies = new Map<string, string>();
     const auth = createServerClient(url, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { cookies: { getAll: () => [...cookies].map(([name, value]) => ({ name, value })), setAll: values => values.forEach(({ name, value }) => cookies.set(name, value)) } });
     expect((await auth.auth.signInWithPassword({ email, password })).error).toBeNull();
-    await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: "localhost", path: "/", sameSite: "Lax" as const })));
+    await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: new URL(baseURL!).hostname, path: "/", sameSite: "Lax" as const })));
     const account = randomUUID(), transaction = randomUUID(), correction = randomUUID(), completed = randomUUID(), job = randomUUID(), uncertain = randomUUID();
     await db`insert into public.accounts(id,workspace_id,name,currency_code,type) values(${account},${workspace!},'Synthetic cash','EUR','checking')`;
     await db`insert into public.transactions(id,workspace_id,account_id,posted_on,description,amount_minor,currency_code,note) values(${transaction},${workspace!},${account},'2026-10-01','Synthetic posting',-1000,'EUR','Completed intentional correction')`;
@@ -71,11 +71,14 @@ test("owned Stop and reload distinguish request, worker acknowledgment and uncon
     await context.close().catch(() => {});
     if (workspace && user) {
       await db.begin(async tx => {
+        expect((await tx`select owner_id from public.workspaces where id=${workspace!}`)[0]?.owner_id).toBe(user);
         for (const table of ["saved_analyses", "background_jobs", "correction_events", "transactions", "accounts", "workspace_settings"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
         await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
       });
       expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();
-      if (journal) unlinkSync(journal);
+      expect((await db`select id from public.workspaces where id=${workspace!}`).length).toBe(0);
+      expect((await db`select id from auth.users where id=${user}`).length).toBe(0);
+      if (journal) { writeFileSync(journal.replace(".json", "-cleanup.json"), JSON.stringify({status: "cleaned", workspaceCount: 0, authCount: 0})); unlinkSync(journal); }
     }
     await db.end();
   }
