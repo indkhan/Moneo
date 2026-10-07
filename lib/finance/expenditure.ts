@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { convertFx, minorDigits } from "./fx";
 
-export type ExpenditurePosting = { id: string; amountMinor: bigint; currencyCode: string; postedOn: string; status: string; kind: string; reviewReasons?: string[]; version?: number; accountId?: string };
+export type ExpenditurePosting = { id: string; parentTransactionId?: string; amountMinor: bigint; currencyCode: string; postedOn: string; status: string; kind: string; reviewReasons?: string[]; version?: number; accountId?: string };
 export type ExpenditureRate = { id: string; fromCurrency: string; toCurrency: string; rateText: string; rateDate: string; source: string };
 export const expenditureInput = z.object({ view: z.enum(["original", "base"]), currencyCode: z.string().regex(/^[A-Z]{3}$/).refine(code => { try { minorDigits(code); return true; } catch { return false; } }), from: z.iso.date(), to: z.iso.date(), accountIds: z.array(z.uuid()).max(100).optional() }).refine(value => value.from <= value.to, "From date is after to date");
 export type ExpenditureOptions = z.infer<typeof expenditureInput>;
@@ -21,7 +21,7 @@ export function reportExpenditure(rows: ExpenditurePosting[], rates: Expenditure
   const perCurrency: Record<string, Totals> = {};
   const available = empty();
   const exclusions: { id: string; reason: string; currencyCode: string; postedOn: string; originalAmountMinor: string }[] = [];
-  const postings: { id: string; version?: number; postedOn: string; originalAmountMinor: string; originalCurrencyCode: string; reportingAmountMinor: string | null; rate: { id: string | null; source: string; date: string; numerator: string; denominator: string } | null; rounding: { scaledNumerator: string; scaledDenominator: string; roundedMinor: string } | null }[] = [];
+  const postings: { id: string; parentTransactionId?: string; accountId?: string; kind: string; version?: number; postedOn: string; originalAmountMinor: string; originalCurrencyCode: string; reportingAmountMinor: string | null; rate: { id: string | null; source: string; date: string; numerator: string; denominator: string } | null; rounding: { scaledNumerator: string; scaledDenominator: string; roundedMinor: string } | null }[] = [];
   let incomplete = false;
   let scopedTransactionCount = 0;
   for (const row of rows) {
@@ -37,7 +37,7 @@ export function reportExpenditure(rows: ExpenditurePosting[], rates: Expenditure
     if (row.reviewReasons?.length || !["ordinary", "refund", "transfer"].includes(row.kind)) { exclude("classification-review"); incomplete = true; continue; }
     if (row.kind === "transfer") { exclude("transfer"); continue; }
     add(perCurrency[row.currencyCode] ??= empty(), row.amountMinor, row.kind);
-    const evidence = { id: row.id, version: row.version, postedOn: row.postedOn, originalAmountMinor: row.amountMinor.toString(), originalCurrencyCode: row.currencyCode };
+    const evidence = { id: row.id, parentTransactionId: row.parentTransactionId, accountId: row.accountId, kind: row.kind, version: row.version, postedOn: row.postedOn, originalAmountMinor: row.amountMinor.toString(), originalCurrencyCode: row.currencyCode };
     if (options.view === "original") {
       if (row.currencyCode === options.currencyCode) add(available, row.amountMinor, row.kind);
       postings.push({ ...evidence, reportingAmountMinor: row.currencyCode === options.currencyCode ? row.amountMinor.toString() : null, rate: null, rounding: null });

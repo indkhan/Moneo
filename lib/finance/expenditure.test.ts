@@ -59,4 +59,8 @@ describe("authoritative expenditure reporting", () => {
   it("treats unresolved transfer classification as unknown expenditure rather than harmless exclusion", () => {
     expect(reportExpenditure([posting("unknown-transfer", -1n, "USD", { kind: "transfer", reviewReasons: ["kind"] })], [], options)).toMatchObject({ status: "incomplete", totals: null, exclusions: [{ reason: "classification-review" }] });
   });
+  it("retains posting kind, account and canonical parent identity for split and refund audit trails", () => {
+    const row = { ...posting("split", 1n, "USD", { kind: "refund", accountId: "synthetic-account" }), parentTransactionId: "canonical-parent" };
+    expect(reportExpenditure([row], [rate], options).postings[0]).toMatchObject({ kind: "refund", accountId: "synthetic-account", parentTransactionId: "canonical-parent" });
+  });
 });
