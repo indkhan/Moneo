@@ -39,5 +39,6 @@ it.each(["manual", "import:00000000-0000-4000-8000-000000000002:row:7", "unknown
       expect(answer.body).toContain("Dated snapshot");
     }
   }
+  if (!("calculationEvidence" in direct[0])) throw new Error("Trusted balance loader omitted original snapshot evidence");
   expect(direct[0].calculationEvidence.snapshots[0].provenance).toBe(provenance);
 });
