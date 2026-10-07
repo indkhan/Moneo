@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { artifactKindSchema } from "@/lib/artifacts/spec";
@@ -103,6 +104,9 @@ export async function POST(
     if (error || !saved) return failedSave(error);
     return Response.json({ version: Array.isArray(saved) ? saved[0] : saved, status: "validated" });
   }
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) return Response.json({ error: "Artifact validation service is not configured" }, { status: 503 });
   const permissions = Array.isArray(artifact.permissions) ? (artifact.permissions as string[]) : [];
 
   const { data: stateRow } = await supabase
@@ -128,10 +132,13 @@ export async function POST(
   const errorText = validation.ok ? "" : validation.errors.join("; ").slice(0, 2000);
   const manifestToStore = validation.manifest ?? parsed.data.manifest;
 
-  const { data: saved, error: saveError } = await supabase.rpc(
-    "save_generated_artifact_version",
+  // This client stays in the server save boundary; generated code never receives it.
+  const service = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data: saved, error: saveError } = await service.rpc(
+    "save_validated_generated_artifact_version",
     {
       p_artifact_id: id,
+      p_actor_id: context.user.id,
       p_source: parsed.data.source,
       p_manifest: manifestToStore,
       p_status: status,
