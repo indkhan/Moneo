@@ -21,15 +21,37 @@ export function reportExpenditure(rows: ExpenditurePosting[], rates: Expenditure
   const perCurrency: Record<string, Totals> = {};
   const available = empty();
   const exclusions: { id: string; reason: string; currencyCode: string; postedOn: string; originalAmountMinor: string }[] = [];
-  const postings: { id: string; parentTransactionId?: string; accountId?: string; kind: string; version?: number; postedOn: string; originalAmountMinor: string; originalCurrencyCode: string; reportingAmountMinor: string | null; rate: { id: string | null; source: string; date: string; numerator: string; denominator: string } | null; rounding: { scaledNumerator: string; scaledDenominator: string; roundedMinor: string } | null }[] = [];
+  const postings: { id: string; parentTransactionId?: string; parentAmountMinor: string | null; parentAmountBasis: "canonical-record" | "effective-components" | "unavailable"; sourcePostings: { id: string; originalAmountMinor: string }[]; accountId?: string; kind: string; version?: number; postedOn: string; originalAmountMinor: string; originalCurrencyCode: string; reportingAmountMinor: string | null; rate: { id: string | null; source: string; date: string; numerator: string; denominator: string } | null; rounding: { scaledNumerator: string; scaledDenominator: string; roundedMinor: string } | null }[] = [];
   let incomplete = false;
   let scopedTransactionCount = 0;
+  const groups = new Map<string, ExpenditurePosting & { sourcePostings: { id: string; originalAmountMinor: string }[] }>();
+  const parents = new Map<string, { metadata: string; amount: bigint | null; kind: string | null; effectiveAmount: bigint; kinds: Set<string> }>();
+  const ids = new Set<string>();
   for (const row of rows) {
     z.iso.date().parse(row.postedOn);
     if (typeof row.amountMinor !== "bigint") throw new Error("Bigint minor units required");
     minorDigits(row.currencyCode);
+    if (ids.has(row.id)) throw new Error("Duplicate effective posting evidence");
+    ids.add(row.id);
+    const parentId = row.parentTransactionId ?? row.id;
+    const metadata = JSON.stringify([row.accountId, row.currencyCode, row.postedOn, row.status, row.version, row.reviewReasons ?? []]);
+    const parent = parents.get(parentId) ?? { metadata, amount: null, kind: null, effectiveAmount: 0n, kinds: new Set<string>() };
+    if (parent.metadata !== metadata) throw new Error("Inconsistent canonical parent evidence");
+    if (row.id === parentId) { parent.amount = row.amountMinor; parent.kind = row.kind; }
+    parent.effectiveAmount += row.amountMinor;
+    parent.kinds.add(row.kind);
+    parents.set(parentId, parent);
+    const key = `${parentId}:${row.kind}`;
+    const group = groups.get(key);
+    const source = { id: row.id, originalAmountMinor: row.amountMinor.toString() };
+    if (group) { group.amountMinor += row.amountMinor; group.id = parentId; group.sourcePostings.push(source); }
+    else groups.set(key, { ...row, sourcePostings: [source] });
+  }
+  for (const parent of parents.values()) if (parent.kinds.size > 1 &&
+    (parent.kinds.size !== 2 || !parent.kinds.has("ordinary") || !parent.kinds.has("transfer") || parent.kind !== "transfer")) throw new Error("Inconsistent canonical parent classification");
+  for (const row of groups.values()) {
     if (row.postedOn < options.from || row.postedOn > options.to || (options.accountIds && !options.accountIds.includes(row.accountId ?? ""))) continue;
-    scopedTransactionCount++;
+    scopedTransactionCount += row.sourcePostings.length;
     const exclude = (reason: string) => exclusions.push({ id: row.id, reason, currencyCode: row.currencyCode, postedOn: row.postedOn, originalAmountMinor: row.amountMinor.toString() });
     if (row.status !== "posted") { exclude("pending"); continue; }
     // Classification uncertainty precedes transfer exclusion: an unresolved
@@ -37,7 +59,9 @@ export function reportExpenditure(rows: ExpenditurePosting[], rates: Expenditure
     if (row.reviewReasons?.length || !["ordinary", "refund", "transfer"].includes(row.kind)) { exclude("classification-review"); incomplete = true; continue; }
     if (row.kind === "transfer") { exclude("transfer"); continue; }
     add(perCurrency[row.currencyCode] ??= empty(), row.amountMinor, row.kind);
-    const evidence = { id: row.id, parentTransactionId: row.parentTransactionId, accountId: row.accountId, kind: row.kind, version: row.version, postedOn: row.postedOn, originalAmountMinor: row.amountMinor.toString(), originalCurrencyCode: row.currencyCode };
+    const parent = parents.get(row.parentTransactionId ?? row.id)!;
+    const parentAmountBasis = parent.amount !== null ? "canonical-record" as const : parent.kinds.size === 1 ? "effective-components" as const : "unavailable" as const;
+    const evidence = { id: row.id, parentTransactionId: row.parentTransactionId, parentAmountMinor: (parent.amount ?? (parent.kinds.size === 1 ? parent.effectiveAmount : null))?.toString() ?? null, parentAmountBasis, sourcePostings: row.sourcePostings.sort((a, b) => a.id.localeCompare(b.id)), accountId: row.accountId, kind: row.kind, version: row.version, postedOn: row.postedOn, originalAmountMinor: row.amountMinor.toString(), originalCurrencyCode: row.currencyCode };
     if (options.view === "original") {
       if (row.currencyCode === options.currencyCode) add(available, row.amountMinor, row.kind);
       postings.push({ ...evidence, reportingAmountMinor: row.currencyCode === options.currencyCode ? row.amountMinor.toString() : null, rate: null, rounding: null });
@@ -65,7 +89,8 @@ export function reportExpenditure(rows: ExpenditurePosting[], rates: Expenditure
   return { ...options, status: incomplete ? "incomplete" as const : "complete" as const, totals: incomplete ? null : serialize(available), availableTotals: serialize(available), perCurrency: Object.fromEntries(Object.entries(perCurrency).map(([currency, total]) => [currency, serialize(total)])), postings, exclusions,
     resultBasis: "accepted reviewed postings; statement completeness is not established" as const,
     conversionCoverage: { status: incomplete ? "incomplete" as const : "complete" as const, missingRateCount: exclusions.filter(row => row.reason === "missing-rate").length, invalidRateCount: exclusions.filter(row => row.reason === "invalid-rate").length, ambiguousRateCount: exclusions.filter(row => row.reason === "ambiguous-rate").length, excludedClassificationCount: exclusions.filter(row => row.reason === "classification-review").length },
-    scopedTransactionCount, includedTransactionCount: postings.filter(row => options.view === "original" || row.reportingAmountMinor !== null).length,
-    policy: { rateDate: "exact-posting-date" as const, pair: "direct" as const, rounding: "per-posting-half-away-from-zero" as const },
+    scopedTransactionCount, includedTransactionCount: postings.filter(row => options.view === "original" || row.reportingAmountMinor !== null).reduce((count, row) => count + row.sourcePostings.length, 0),
+    includedCanonicalPostingCount: postings.filter(row => options.view === "original" || row.reportingAmountMinor !== null).length,
+    policy: { rateDate: "exact-posting-date" as const, pair: "direct" as const, rounding: "per-posting-half-away-from-zero" as const, aggregation: "canonical-parent-financial-kind" as const },
     limitation: incomplete ? "Missing conversion evidence or excluded classifications are unknown; partial totals are not upper or lower bounds." : null };
 }

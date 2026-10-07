@@ -67,4 +67,24 @@ describe("authoritative expenditure reporting", () => {
     expect(reportExpenditure([posting("a", -100n)], [rate], options)).toMatchObject({ conversionCoverage: { status: "complete", missingRateCount: 0, excludedClassificationCount: 0 }, resultBasis: "accepted reviewed postings; statement completeness is not established" });
     expect(reportExpenditure([posting("a", -100n), posting("unknown", -1n, "EUR", { reviewReasons: ["kind"] })], [], options)).toMatchObject({ conversionCoverage: { status: "incomplete", missingRateCount: 1, excludedClassificationCount: 1 } });
   });
+  it("converts canonical monetary postings once so categorization splits cannot change spending", () => {
+    const rates = [{ ...rate, rateText: "0.5" }];
+    const unsplit = reportExpenditure([posting("parent", -2n)], rates, options);
+    const split = reportExpenditure([posting("child-a", -1n, "USD", { parentTransactionId: "parent" }), posting("child-b", -1n, "USD", { parentTransactionId: "parent" })], rates, options);
+    expect(split.totals).toEqual(unsplit.totals);
+    expect(split.postings).toHaveLength(1);
+    expect(split.postings[0]).toMatchObject({ id: "parent", parentAmountMinor: "-2", parentAmountBasis: "effective-components", originalAmountMinor: "-2", reportingAmountMinor: "-1", sourcePostings: [{ id: "child-a", originalAmountMinor: "-1" }, { id: "child-b", originalAmountMinor: "-1" }] });
+  });
+  it("keeps verified fee components eligible separately from their excluded transfer parent", () => {
+    const result = reportExpenditure([posting("parent", -1000n, "USD", { kind: "transfer", parentTransactionId: "parent" }), posting("fee", -1n, "USD", { parentTransactionId: "parent" })], [{ ...rate, rateText: "0.5" }], options);
+    expect(result.totals?.spendingMinor).toBe("1");
+    expect(result.postings[0]).toMatchObject({ id: "fee", parentTransactionId: "parent", parentAmountMinor: "-1000", originalAmountMinor: "-1", reportingAmountMinor: "-1" });
+    expect(result.policy).toMatchObject({ aggregation: "canonical-parent-financial-kind" });
+  });
+  it("rejects inconsistent parent date or currency instead of guessing split provenance", () => {
+    expect(() => reportExpenditure([posting("a", -1n, "USD", { parentTransactionId: "parent" }), posting("b", -1n, "EUR", { parentTransactionId: "parent" })], [rate], options)).toThrow("Inconsistent canonical parent evidence");
+  });
+  it("rejects unsupported conflicting parent financial classifications", () => {
+    expect(() => reportExpenditure([posting("parent", -1n, "USD", { parentTransactionId: "parent" }), posting("refund", 1n, "USD", { kind: "refund", parentTransactionId: "parent" })], [rate], options)).toThrow("Inconsistent canonical parent classification");
+  });
 });

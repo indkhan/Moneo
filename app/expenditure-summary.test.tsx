@@ -15,3 +15,12 @@ it("calls unavailable-rate totals incomplete and shows separately labelled conve
   expect(html).toContain("Available converted subtotal");
   expect(html).toContain("missing-rate");
 });
+it("discloses the original effective allocations behind canonical posting conversion", () => {
+  const rows = ["child-a", "child-b"].map(id => ({ id, parentTransactionId: "canonical-parent", amountMinor: -1n, currencyCode: "USD", postedOn: "2026-10-07", status: "posted", kind: "ordinary" }));
+  const report = reportExpenditure(rows, [{ id: "rate", fromCurrency: "USD", toCurrency: "EUR", rateText: "0.5", rateDate: "2026-10-07", source: "synthetic" }], { view: "base", currencyCode: "EUR", from: "2026-10-01", to: "2026-10-07" });
+  const html = renderToStaticMarkup(<ExpenditureSummary report={report} locale="en-GB" />);
+  expect(html).toContain("canonical-parent");
+  expect(html).toContain("child-a");
+  expect(html).toContain("child-b");
+  expect(html).toContain("sum of effective allocations");
+});
