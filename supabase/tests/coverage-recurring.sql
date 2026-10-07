@@ -117,3 +117,23 @@ begin
   if (select count(*) from public.transactions where workspace_id=w and amount_minor=-2000 and merchant_id=merchant)<>6 then raise exception 'Correction/restoration changed original money or source count'; end if;
 end;
 $$;
+
+-- Owned planning Undo restores an anchor, rather than leaving the changed schedule.
+do $$
+declare actor uuid:=gen_random_uuid(); w uuid; a uuid:=gen_random_uuid(); f uuid:=gen_random_uuid(); e uuid; v integer;
+begin
+ insert into auth.users(id,email) values(actor,'mne014-anchor-'||actor||'@example.invalid');
+ select id into strict w from public.workspaces where owner_id=actor;
+ perform set_config('request.jwt.claim.sub',actor::text,true);
+ insert into public.accounts(id,workspace_id,name,currency_code) values(a,w,'Anchor history','EUR');
+ insert into public.financial_assumptions(id,workspace_id,account_id,kind,name,amount_minor,currency_code,cadence,starts_on,schedule_anchor_on,source,confirmed)
+ values(f,w,a,'expense','Anchored schedule',-1000,'EUR','monthly','2026-03-31','2026-01-31','recurring_confirmed',true);
+ update public.financial_assumptions set schedule_anchor_on='2026-02-28' where id=f;
+ select id into strict e from public.planning_events where entity_id=f and before is not null;
+ select version into v from public.financial_assumptions where id=f;
+ execute 'set local role authenticated';
+ perform public.undo_planning_event(e,v);
+ execute 'reset role';
+ if not exists(select 1 from public.financial_assumptions where id=f and schedule_anchor_on='2026-01-31') then raise exception 'Undo did not restore calendar anchor'; end if;
+end;
+$$;

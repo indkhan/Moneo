@@ -242,3 +242,58 @@ begin
   return result;
 end;
 $$;
+
+-- Restore new anchors while retaining existing version, latest-event and rollover guards.
+create or replace function public.undo_planning_event(p_event_id uuid, p_expected_version integer)
+returns void language plpgsql security definer set search_path = '' as $$
+declare
+  event_row public.planning_events%rowtype;
+  current_value jsonb;
+  assumption public.financial_assumptions%rowtype;
+  spending public.spending_plans%rowtype;
+begin
+  if auth.uid() is null then raise exception 'Authentication required' using errcode = '28000'; end if;
+  select * into event_row from public.planning_events where id = p_event_id and public.owns_workspace(workspace_id);
+  if not found then raise exception 'Planning event not found' using errcode = 'P0002'; end if;
+  if event_row.entity_type = 'assumption' then
+    select * into assumption from public.financial_assumptions where id = event_row.entity_id and workspace_id = event_row.workspace_id for update;
+    current_value := to_jsonb(assumption) || jsonb_build_object('amount_minor', assumption.amount_minor::text);
+  else
+    select * into spending from public.spending_plans where id = event_row.entity_id and workspace_id = event_row.workspace_id for update;
+    current_value := to_jsonb(spending) || jsonb_build_object('limit_minor', spending.limit_minor::text);
+    if not event_row.after ? 'rollover' then current_value:=current_value-array['rollover','rollover_from']; end if;
+  end if;
+  select * into event_row from public.planning_events where id = p_event_id for update;
+  if event_row.undone then return; end if;
+  -- Pre-017 receipts lack the nullable anchor. Compare their recorded fields only
+  -- when the current anchor is still NULL; a later anchor remains a stale change.
+  if event_row.entity_type='assumption' and not(event_row.after ? 'schedule_anchor_on') and assumption.schedule_anchor_on is null then
+    current_value:=current_value-'schedule_anchor_on';
+  end if;
+  if p_expected_version is null or (current_value->>'version')::integer is distinct from p_expected_version
+    or current_value - array['version','updated_at'] is distinct from event_row.after - array['version','updated_at']
+    then raise exception 'Planning record changed; undo latest change first' using errcode = '40001'; end if;
+  if exists(select 1 from public.planning_events where workspace_id=event_row.workspace_id and entity_type=event_row.entity_type and entity_id=event_row.entity_id and not undone and (after->>'version')::integer>(event_row.after->>'version')::integer) then raise exception 'Undo newer planning changes first' using errcode='40001'; end if;
+  perform set_config('moneo.planning_undo', 'true', true);
+  if event_row.entity_type = 'assumption' then
+    if event_row.before is null then
+      update public.financial_assumptions set enabled = false, removed_at = now(), source = 'user', confirmed = true where id = event_row.entity_id;
+    else
+      assumption := jsonb_populate_record(null::public.financial_assumptions, event_row.before);
+      update public.financial_assumptions set name = assumption.name, amount_minor = assumption.amount_minor, kind = assumption.kind,
+        cadence = assumption.cadence, starts_on = assumption.starts_on, schedule_anchor_on = assumption.schedule_anchor_on, ends_on = assumption.ends_on,
+        source = assumption.source, confidence = assumption.confidence, confirmed = assumption.confirmed,
+        enabled = assumption.enabled, removed_at = assumption.removed_at where id = event_row.entity_id;
+    end if;
+  else
+    if event_row.before is null then
+      delete from public.spending_plans where id = event_row.entity_id;
+    else
+      spending := jsonb_populate_record(null::public.spending_plans, event_row.before);
+      update public.spending_plans set limit_minor = spending.limit_minor, enabled = spending.enabled, rollover = coalesce(spending.rollover,false), rollover_from = coalesce(spending.rollover_from,(select rollover_from from public.spending_plans where id=event_row.entity_id)), updated_at = now() where id = event_row.entity_id;
+    end if;
+  end if;
+  update public.planning_events set undone = true, undone_at = now(), undone_by = auth.uid() where id = p_event_id;
+  perform set_config('moneo.planning_undo', 'false', true);
+end;
+$$;

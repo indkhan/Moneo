@@ -59,8 +59,10 @@ try {
     if (upgrade) {
       // Seed and exercise old-schema histories first; then apply only reserved 017 privately.
       await tx.unsafe(isolated(readFileSync("supabase/tests/planning-history.sql", "utf8")));
+      await tx.unsafe(isolated(readFileSync("supabase/tests/coverage-recurring-upgrade-seed.sql", "utf8")));
       await replayMigrations(tx, [{file: candidate, sql: isolated(readFileSync(`supabase/migrations/${candidate}`, "utf8"))}], "MNE014 private upgrade");
     }
+    if (upgrade) await tx.unsafe(isolated(readFileSync("supabase/tests/coverage-recurring-upgrade-undo.sql", "utf8")));
     record({phase: "replayed"});
     await tx.unsafe(isolated(readFileSync("supabase/tests/coverage-recurring.sql", "utf8")));
     for (const fixture of ["planning-history.sql", "verified-links.sql", "recurring-occurrences.sql"]) {
