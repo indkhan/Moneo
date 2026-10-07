@@ -11,3 +11,11 @@ it("does not invent carry when an uncategorized historical row still needs finan
   const tx = [{ amountMinor: -1000n, currencyCode: "EUR", status: "posted", kind: "ordinary", categoryId: null, postedOn: "2026-09-15", reviewReasons: ["unknown_type"] }];
   expect(rolloverBudget(tx, "food", "EUR", "2026-09", "2026-10", 10000n, history)).toMatchObject({ status: "unavailable", missingInput: "Financial classification needs review in 2026-09" });
 });
+
+it("withholds current rollover remainder for the EUR 100/10/200 unresolved example", () => {
+  const tx = [
+    { amountMinor: -1000n, currencyCode: "EUR", status: "posted", kind: "ordinary", categoryId: "food", postedOn: "2026-10-01" },
+    { amountMinor: -20000n, currencyCode: "EUR", status: "posted", kind: "ordinary", categoryId: "food", postedOn: "2026-10-02", reviewReasons: ["unknown_type"] },
+  ];
+  expect(rolloverBudget(tx, "food", "EUR", "2026-10", "2026-10", 10000n, [])).toMatchObject({ status: "unavailable" });
+});
