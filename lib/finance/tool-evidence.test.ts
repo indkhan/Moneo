@@ -33,6 +33,11 @@ it("uses actual balance clocks, workspace calendar dates and manual wealth dates
   expect(snake.metrics.find(metric => metric.label === "Booked balance")?.period).toEqual({ from: "2026-10-02", to: "2026-10-02" });
   expect(snake.metrics.find(metric => metric.label === "Dated recorded balance")?.period).toEqual({ from: "2026-09-01", to: "2026-09-01" });
 });
+it("retains forward review forecast horizons and limiting dates", () => {
+  const receipt = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-07-10", to: "2026-10-07" }, planning: { forecast: { evaluatedOn: "2026-10-07", horizonDays: 90, currencyCode: "EUR", availableToSpendMinor: "100", limitingDate: "2026-11-01" } } }, context, ["accounts", "transactions", "planning"]);
+  expect(receipt.metrics[0]).toMatchObject({ period: { from: "2026-10-07", to: "2027-01-04" }, qualifiers: expect.arrayContaining(["assumption"]) });
+  expect(receipt.metrics[0].calculation).toContain("2026-11-01");
+});
 it("keeps direct review cashflow and typed budget classification exclusions on zero-valued measures", () => {
   const receipt = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-09-01", to: "2026-09-30" }, cashflow: { EUR: { spendingMinor: "0", incomeMinor: "0", netMinor: "0", excludedReviewRows: 1, partial: true } }, planning: { budgets: [{ currency: "EUR", month: "2026-09", spentMinor: "0", partial: true, classificationPartial: true, limitation: "Current-month financial classification needs review" }] } }, context, ["accounts", "transactions", "planning"]);
   expect(receipt.metrics).toHaveLength(4);

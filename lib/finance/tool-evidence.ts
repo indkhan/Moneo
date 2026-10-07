@@ -34,10 +34,13 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
     const currency = [row.currencyCode, row.currency_code, row.currency, inherited.currency].find(item => typeof item === "string") as string | undefined;
     const dated = datedValue(row.posted_on) ?? datedValue(row.date) ?? datedValue(row.evaluatedAt ?? row.evaluated_at) ?? datedValue(row.asOf ?? row.as_of);
     const named = object(row.period);
+    const forecastStart = datedValue(row.evaluatedOn ?? row.startDate);
+    const forecastEnd = forecastStart && typeof row.horizonDays === "number" && Number.isSafeInteger(row.horizonDays) && row.horizonDays >= 1 && row.horizonDays <= 3660
+      ? new Date(Date.parse(`${forecastStart}T00:00:00Z`) + (row.horizonDays - 1) * 86400000).toISOString().slice(0, 10) : null;
     const month = typeof row.month === "string" && /^\d{4}-\d{2}$/.test(row.month) ? row.month : null;
     const monthEnd = month ? new Date(Date.parse(`${month}-01T00:00:00Z`) + 32 * 86400000).toISOString().slice(0, 7) : null;
     const lastMonthDate = monthEnd ? new Date(Date.parse(`${monthEnd}-01T00:00:00Z`) - 86400000).toISOString().slice(0, 10) : null;
-    const period = typeof row.from === "string" && typeof row.to === "string" ? { from: row.from, to: row.to }
+    const period = forecastStart && forecastEnd ? { from: forecastStart, to: forecastEnd } : typeof row.from === "string" && typeof row.to === "string" ? { from: row.from, to: row.to }
       : typeof named.from === "string" && typeof named.to === "string" ? { from: named.from, to: named.to }
         : month && lastMonthDate ? { from: `${month}-01`, to: today >= `${month}-01` && today < lastMonthDate ? today : lastMonthDate }
         : dated ? { from: dated, to: dated } : inherited.period;
@@ -68,7 +71,7 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
         if (["target_minor", "targetMinor", "limitMinor", "allowanceMinor"].includes(key) || key.startsWith("planned")) qualification.push("assumption");
         const manualDate = ["recorded_saved_minor", "recordedSavedMinor"].includes(key) ? datedValue(row.savedAsOf ?? row.saved_as_of) : snapshot ? datedValue(row.asOf ?? row.as_of) : null;
         metrics.push({ id: [...path, key].join(".") || key, label: path.includes("wealth") && ["amountMinor", "amount_minor"].includes(key) ? "Dated manual wealth value" : key === "amount_minor" && path.includes("balance") ? "Booked balance" : labels[key], valueMinor: child as string | null, currency: metricCurrency, period: manualDate ? { from: manualDate, to: manualDate } : period,
-          qualifiers: [...new Set(qualification)], sourceIds: [sourceId], calculation: `${name}: exact deterministic field ${[...path, key].join(".")}. Full query inputs, calculation output and supporting record evidence are retained below.` });
+          qualifiers: [...new Set(qualification)], sourceIds: [sourceId], calculation: `${name}: exact deterministic field ${[...path, key].join(".")}.${datedValue(row.limitingDate) ? ` Limiting date: ${datedValue(row.limitingDate)}.` : ""} Full query inputs, calculation output and supporting record evidence are retained below.` });
       } else if (key !== "calculationEvidence" && key !== "queryInvestigation" && key !== "investigation") walk(child, [...path, key], { currency: /^[A-Z]{3}$/.test(key) ? key : currency, period, qualifiers });
     }
   }
