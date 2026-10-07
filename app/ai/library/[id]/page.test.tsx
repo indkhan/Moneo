@@ -64,6 +64,16 @@ it("never reuses an uncontrolled rename value with a refreshed expected revision
   const form = typeof element.type === "function" ? (element.type as (props: unknown) => ReactElement)(element.props) : element;
   expect(form.key).toBe("version");
 });
+it("does not replace an authoritative over-bound native cost with a cheaper generated default", async () => {
+  const scenario = defaultTripScenario("2026-10-02", "EUR", "b", 20000000n);
+  const page = await restored("trip_planner", { tripScenario: scenario }, {
+    costMinor: { type: "number", default: 90000, min: 0, max: 10000000 },
+  });
+  const props = (page.props.children as ReactElement<{ initialParams: Record<string, unknown>; snapshot: unknown; inputWarnings: string[] }>[]).find(child => child?.type === CalculatorPanel)!.props;
+  expect(props.initialParams).toEqual({ costMinor: 20000000 });
+  expect(props.snapshot).toMatchObject({ unavailable: expect.stringContaining("cannot represent the saved dated scenario") });
+  expect(props.inputWarnings.join(";")).not.toContain("default applies");
+});
 
 import React, { cloneElement, isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";

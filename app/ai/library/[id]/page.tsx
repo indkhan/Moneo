@@ -10,7 +10,7 @@ import { formatMoney } from "@/lib/finance/format";
 import { pinArtifact, renameArtifact, unpinArtifact } from "../actions";
 import { DatedTripForm } from "../dated-trip-form";
 import { tripScenarioSchema } from "@/lib/finance/trip-scenario";
-import { tripStateForScenario } from "@/lib/artifacts/trip-params";
+import { restoreTripCalculatorParams, tripStateForScenario } from "@/lib/artifacts/trip-params";
 import { SpendingChart } from "../spending-chart";
 import { CalculatorPanel } from "../calculator-panel";
 import { GenerateCalculatorForm } from "../generate-calculator-form";
@@ -59,12 +59,21 @@ export default async function ArtifactPage({ params, searchParams }: {
   let sourceCoverage: SourceCoverage | undefined;
   let sourceCoverageByOperation: Record<string, SourceCoverage> | undefined;
   let initialParams: Record<string, number | string> = {};
+  let inputWarnings: string[] = [];
   if (isCalculator && version) {
     if (manifestParsed.data.sdk.includes("forecast") && stateValue.tripScenario !== undefined) {
       stateValue = tripStateForScenario(stateValue, tripScenarioSchema.parse(stateValue.tripScenario), workspace.display_currency);
     }
-    initialParams = normalizeCalculatorParams(manifestParsed.data, stateValue, "restore");
+    initialParams = restoreTripCalculatorParams(manifestParsed.data, stateValue);
+    inputWarnings = checkStateCompatibility(stateValue, manifestParsed.data);
+    if (manifestParsed.data.sdk.includes("forecast") && stateValue.tripScenario !== undefined) {
+      inputWarnings = inputWarnings.map(warning => warning.replace("default applies", "saved dated scenario retained; edit the native budget or use a compatible calculator"));
+    }
     try {
+      if (manifestParsed.data.sdk.includes("forecast") && stateValue.tripScenario !== undefined) {
+        try { normalizeCalculatorParams(manifestParsed.data, initialParams); }
+        catch { throw new Error("This calculator cannot represent the saved dated scenario. Edit the native budget or use a compatible calculator; the saved scenario is unchanged."); }
+      }
       const built = await buildCalculatorSnapshot(id, kind, {
         query: q.slice(0, 100),
         month: typeof initialParams.month === "string" ? initialParams.month : undefined,
@@ -78,8 +87,8 @@ export default async function ArtifactPage({ params, searchParams }: {
       snapshot = built.snapshot;
       sourceCoverage = built.snapshot.sourceCoverage;
       sourceCoverageByOperation = built.snapshot.sourceCoverageByOperation;
-    } catch {
-      snapshot = { unavailable: "Snapshot unavailable" };
+    } catch (failure) {
+      snapshot = { unavailable: failure instanceof Error && failure.message.includes("cannot represent the saved dated scenario") ? failure.message : "Snapshot unavailable" };
     }
   }
 
@@ -108,7 +117,7 @@ export default async function ArtifactPage({ params, searchParams }: {
         snapshot={snapshot}
         initialParams={initialParams}
         manifest={manifestParsed.data}
-        inputWarnings={checkStateCompatibility(stateValue, manifestParsed.data)}
+        inputWarnings={inputWarnings}
         currency={workspace.display_currency}
         versionLabel={`v${version.version}`}
         artifactId={id}

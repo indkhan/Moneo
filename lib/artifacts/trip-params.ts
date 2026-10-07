@@ -1,5 +1,17 @@
 import { addTripDays, tripCostMinor, tripScenarioSchema, type TripScenario } from "@/lib/finance/trip-scenario";
 import { z } from "zod";
+import { normalizeCalculatorParams, type CalculatorManifest } from "./spec";
+
+export function restoreTripCalculatorParams(manifest: CalculatorManifest, state: Record<string, unknown>) {
+  const params = normalizeCalculatorParams(manifest, state, "restore");
+  // Saved dated budgets are authoritative even when a generated input cannot represent them.
+  if (manifest.sdk.includes("forecast") && state.tripScenario !== undefined) {
+    for (const key of ["costMinor", "tripDate", "accountId"]) {
+      if (key in manifest.params && (typeof state[key] === "number" || typeof state[key] === "string")) params[key] = state[key];
+    }
+  }
+  return params;
+}
 
 export function tripStateForScenario(state: Record<string, unknown>, scenario: TripScenario, currencyCode: string): Record<string, unknown> {
   const next: Record<string, unknown> = { ...state, tripScenario: scenario };
