@@ -7,7 +7,8 @@ import { validateGeneratedCandidate } from "@/lib/artifacts/validate";
 const saveSchema = z
   .object({
     source: z.string().min(1).max(8000),
-    manifest: z.unknown(),
+    // Leave room for jsonb's separator whitespace within the database's 64 KiB cap.
+    manifest: z.json().refine(value => Buffer.byteLength(JSON.stringify(value), "utf8") <= 32768, "Manifest exceeds 32 KiB"),
     expectedActiveVersionId: z.uuid().nullable(),
   })
   .strict();

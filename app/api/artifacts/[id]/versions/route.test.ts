@@ -107,6 +107,24 @@ it("builtin identity restore remains available without service configuration", a
   expect(fixture.serviceClient).not.toHaveBeenCalled();
 });
 
+it.each([null, [], "invalid", { sdk: ["balances"] }])("retains rejected raw manifest %j with real validator diagnostics", async manifest => {
+  const { validateGeneratedCandidate } = await vi.importActual<typeof import("@/lib/artifacts/validate")>("@/lib/artifacts/validate");
+  fixture.validation.mockImplementation(validateGeneratedCandidate);
+  const response = await save({ source: 'input => ({summary:"Synthetic"})', manifest, expectedActiveVersionId: base });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ status: "failed", activeVersionPreserved: base, validation: { ok: false } });
+  expect(fixture.serviceRpc).toHaveBeenCalledWith("save_validated_generated_artifact_version", expect.objectContaining({ p_manifest: manifest, p_status: "failed" }));
+});
+it.each(["x".repeat(32767), "€".repeat(11000)])("rejects oversized raw manifests before validation or persistence", async manifest => {
+  expect((await save({ source: "input => ({})", manifest, expectedActiveVersionId: base })).status).toBe(400);
+  expect(fixture.validation).not.toHaveBeenCalled();
+  expect(fixture.serviceRpc).not.toHaveBeenCalled();
+});
+it("requires a manifest field even for failed attempts", async () => {
+  expect((await save({ source: "input => ({})", expectedActiveVersionId: base })).status).toBe(400);
+  expect(fixture.validation).not.toHaveBeenCalled();
+});
+
 it("revalidates a generated historical source through the same trusted save boundary", async () => {
   const { validateGeneratedCandidate } = await vi.importActual<typeof import("@/lib/artifacts/validate")>("@/lib/artifacts/validate");
   fixture.validation.mockImplementation(validateGeneratedCandidate);
