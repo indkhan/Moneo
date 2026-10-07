@@ -58,7 +58,8 @@ const qualifications: Record<string, string> = {
 };
 export function financialQualificationText(code: string) { return qualifications[code] ?? "Evidence qualification unavailable; treat this result as uncertain."; }
 function sameSet(a: string[], b: string[]) {
-  return a.length === new Set(a).size && b.length === new Set(b).size && a.length === b.length && a.every(value => b.includes(value));
+  const first = new Set(a), second = new Set(b);
+  return a.length === first.size && b.length === second.size && a.length === b.length && a.every(value => second.has(value));
 }
 function escapeMarkdown(value: string) { return value.replace(/[\\`*_{}\[\]()<>#!|]/g, "\\$&").replace(/[\r\n]/g, " "); }
 export function financialMetricHref(receiptId: string, metricId: string) {
@@ -112,9 +113,10 @@ export function publishFinancialClaims(input: unknown, receipts: FinancialEviden
       if (claim.operation === "sum") {
         const aggregates = evidence.map(({ metric }) => metric.aggregation);
         if (aggregates.some(value => !value || value.kind !== aggregates[0]?.kind)) throw new Error("Aggregation compatibility unavailable");
+        const membership = aggregates.map(value => ({ ids: new Set(value!.ids), parents: new Set(value!.parents) }));
         for (let index = 0; index < aggregates.length; index++) for (let other = index + 1; other < aggregates.length; other++) {
           const first = aggregates[index]!, second = aggregates[other]!;
-          if (first.ids.some(id => second.ids.includes(id)) || first.canonicalParents.some(id => second.parents.includes(id)) || second.canonicalParents.some(id => first.parents.includes(id))) throw new Error("Overlapping financial contributions");
+          if (first.ids.some(id => membership[other].ids.has(id)) || first.canonicalParents.some(id => membership[other].parents.has(id)) || second.canonicalParents.some(id => membership[index].parents.has(id))) throw new Error("Overlapping financial contributions");
         }
       }
       const required = [...new Set(evidence.flatMap(({ metric }) => metric.qualifiers))];

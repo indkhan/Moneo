@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { publishFinancialClaims, type FinancialEvidenceReceipt } from "./verified-claims";
 
 const workspaceId = "00000000-0000-4000-8000-000000000001";
@@ -14,6 +14,59 @@ const fact = { operation: "metric", operands: [metric], valueMinor: "90071992547
 const publish = (claims: unknown[], receipts = [receipt]) => publishFinancialClaims({ claims, interpretation: [] }, receipts, workspaceId);
 
 describe("financial publication trust boundary", () => {
+  it("validates five disjoint 20k-contribution operands within a linear record-read budget", () => {
+    const size = 20000, count = 5;
+    let reads = 0;
+    const budget = size * count * 6;
+    const bounded = (values: string[]) => new Proxy(values, { get(target, key, receiver) {
+      if (typeof key === "string" && /^\d+$/.test(key) && ++reads > budget) throw new Error("Contribution membership exceeded its linear read budget");
+      return Reflect.get(target, key, receiver);
+    } });
+    const metrics = Array.from({ length: count }, (_, index) => ({ ...receipt.metrics[0], id: `part-${index}`, valueMinor: "1", qualifiers: [],
+      aggregation: { kind: "signed-original", ids: bounded(Array.from({ length: size }, (_, row) => `${index}-row-${row}`)),
+        parents: bounded(Array.from({ length: size }, (_, row) => `${index}-parent-${row}`)), canonicalParents: [`${index}-parent-0`] } }));
+    const result = publish([{ operation: "sum", operands: metrics.map(item => ({ receiptId: receipt.id, metricId: item.id })), valueMinor: "5", currency: "EUR", periods: metrics.map(item => item.period), qualifiers: [] }], [{ ...receipt, metrics }]);
+    expect(result.accepted).toHaveLength(1);
+    expect(reads).toBeLessThanOrEqual(budget);
+  });
+  it.each(["metric", "difference", "sum"])("checks 20k exact support IDs without repeated membership scans for %s", operation => {
+    const size = 20000, ids = Array.from({ length: size }, (_, index) => `source-${index}`);
+    const source = (id: string) => ({ id, type: "transaction", version: "1", href: "/money/transactions" });
+    const first = { ...receipt.metrics[0], id: "first", valueMinor: "2", sourceIds: ids, aggregation: { kind: "signed-original", ids: ["first"], parents: ["first"], canonicalParents: [] } };
+    const second = { ...first, id: "second", valueMinor: "1", aggregation: { ...first.aggregation, ids: ["second"], parents: ["second"] } };
+    const evidence = { ...receipt, sources: ids.map(source), metrics: [first, second] };
+    const selected = operation === "metric" ? [first] : [first, second];
+    let scanned = 0;
+    const includes = Array.prototype.includes;
+    const spy = vi.spyOn(Array.prototype, "includes").mockImplementation(function (this: unknown[], value: unknown, from?: number) {
+      if (this.length >= size && (scanned += this.length) > size * 5) throw new Error("Set equality exceeded its linear membership budget");
+      return includes.call(this, value, from);
+    });
+    let result: ReturnType<typeof publish>;
+    try {
+      result = publish([{ ...fact, operation, operands: selected.map(item => ({ receiptId: receipt.id, metricId: item.id })), valueMinor: operation === "metric" ? "2" : operation === "difference" ? "1" : "3", periods: selected.map(item => item.period), sourceIds: [...ids].reverse() }], [evidence]);
+    } finally { spy.mockRestore(); }
+    expect(result.accepted).toHaveLength(1);
+    expect(scanned).toBeLessThanOrEqual(size * 5);
+  });
+  it("keeps exact-set duplicate and unequal-member rejection", () => {
+    for (const patch of [{ qualifiers: ["partial_classification", "partial_classification"] }, { sourceIds: [...fact.sourceIds, ...fact.sourceIds] }, { sourceIds: ["other"] }, { qualifiers: ["partial_coverage"] }])
+      expect(publish([{ ...fact, ...patch }]).accepted).toHaveLength(0);
+  });
+  it.each([false, true])("preserves contribution overlap and effective-sibling semantics with reversed operands=%s", reverse => {
+    const first = { ...receipt.metrics[0], id: "first", valueMinor: "2" };
+    const second = { ...receipt.metrics[0], id: "second", valueMinor: "3" };
+    for (const [firstAggregation, secondAggregation, allowed] of [
+      [{ kind: "signed-original", ids: ["a"], parents: ["parent"], canonicalParents: [] }, { kind: "signed-original", ids: ["b"], parents: ["parent"], canonicalParents: [] }, true],
+      [{ kind: "signed-original", ids: ["a"], parents: ["parent"], canonicalParents: ["parent"] }, { kind: "signed-original", ids: ["b"], parents: ["parent"], canonicalParents: [] }, false],
+      [{ kind: "signed-original", ids: ["shared"], parents: ["a"], canonicalParents: [] }, { kind: "signed-original", ids: ["shared"], parents: ["b"], canonicalParents: [] }, false],
+    ] as const) {
+      const metrics = [{ ...first, aggregation: { ...firstAggregation, ids: [...firstAggregation.ids], parents: [...firstAggregation.parents], canonicalParents: [...firstAggregation.canonicalParents] } }, { ...second, aggregation: { ...secondAggregation, ids: [...secondAggregation.ids], parents: [...secondAggregation.parents], canonicalParents: [...secondAggregation.canonicalParents] } }];
+      if (reverse) metrics.reverse();
+      const result = publish([{ ...fact, operation: "sum", operands: metrics.map(item => ({ receiptId: receipt.id, metricId: item.id })), valueMinor: "5", periods: metrics.map(item => item.period) }], [{ ...receipt, metrics }]);
+      expect(result.accepted).toHaveLength(allowed ? 1 : 0);
+    }
+  });
   it("explains only owned uniquely retained limitations without a numeric metric", () => {
     const unavailable = { ...receipt, metrics: [], limitations: [{ id: "balance", kind: "missing_input" as const, message: "Current booked balance for Checking is unavailable", nextStep: "assumptions" as const }] };
     const reference = { action: "limitation", receiptId: receipt.id, limitationId: "balance" };
