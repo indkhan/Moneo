@@ -69,19 +69,31 @@ begin
   for item in select value from public.import_staging s,jsonb_array_elements(s.rows) with ordinality r(value,n) where s.import_id=p_import_id and n>p_offset and n<=p_offset+250 loop
     if (item->>'excluded')::boolean then continue; end if;
     select coalesce(jsonb_agg(candidate),'[]'::jsonb) into candidates from (
-      select distinct jsonb_strip_nulls(jsonb_build_object('id',t.id,'status',t.status,'version',t.version,
-        'externalId',case when t.posted_on=(item->'row'->>'postedOn')::date and t.amount_minor=(item->'row'->>'amountMinor')::bigint and t.description=item->'row'->>'description' then src.external_id else null end)) candidate
-      from public.transactions t
-      left join public.transaction_sources link on link.transaction_id=t.id
-      left join public.source_transactions src on src.id=link.source_transaction_id
-      where t.workspace_id=p_workspace_id and t.account_id=(item->>'accountId')::uuid and t.currency_code=item->'row'->>'currencyCode'
-        and (src.id is null or src.import_id<>p_import_id)
-        and ((t.posted_on=(item->'row'->>'postedOn')::date and t.amount_minor=(item->'row'->>'amountMinor')::bigint and t.description=item->'row'->>'description')
-          or (item->'row'->>'externalId' is not null and src.external_id=item->'row'->>'externalId'))
+      -- Separate equality paths let PostgreSQL use each candidate index. An
+      -- OR with a correlated source lookup otherwise scans all account history
+      -- for every row once PL/pgSQL chooses a generic cached plan.
+      select distinct candidate from (
+        select jsonb_build_object('id',t.id,'status',t.status,'version',t.version,
+          'stableExternalMatch',coalesce(src.external_id=item->'row'->>'externalId',false)) candidate
+        from public.transactions t
+        left join public.transaction_sources link on link.transaction_id=t.id
+        left join public.source_transactions src on src.id=link.source_transaction_id
+        where t.workspace_id=p_workspace_id and t.account_id=(item->>'accountId')::uuid and t.currency_code=item->'row'->>'currencyCode'
+          and t.posted_on=(item->'row'->>'postedOn')::date and t.amount_minor=(item->'row'->>'amountMinor')::bigint and t.description=item->'row'->>'description'
+          and (src.id is null or (src.workspace_id=p_workspace_id and src.import_id<>p_import_id))
+        union all
+        select jsonb_build_object('id',t.id,'status',t.status,'version',t.version,
+          'stableExternalMatch',t.posted_on=(item->'row'->>'postedOn')::date and t.amount_minor=(item->'row'->>'amountMinor')::bigint and t.description=item->'row'->>'description') candidate
+        from public.source_transactions src
+        join public.transaction_sources link on link.source_transaction_id=src.id
+        join public.transactions t on t.id=link.transaction_id
+        where src.workspace_id=p_workspace_id and src.import_id<>p_import_id and src.external_id=item->'row'->>'externalId'
+          and t.workspace_id=p_workspace_id and t.account_id=(item->>'accountId')::uuid and t.currency_code=item->'row'->>'currencyCode'
+      ) indexed_candidates
       limit 1001
     ) bounded;
     if jsonb_array_length(candidates)>1000 then raise exception 'Import candidate limit exceeded; review the overlapping history' using errcode='22023'; end if;
-    result:=result||jsonb_build_array(jsonb_build_object('rowNumber',item->'row'->'rowNumber','externalId',item->'row'->'externalId','status',item->'row'->'status','candidates',candidates));
+    result:=result||jsonb_build_array(jsonb_build_object('rowNumber',item->'row'->'rowNumber','hasExternalId',item->'row'->>'externalId' is not null,'status',item->'row'->'status','candidates',candidates));
   end loop;
   return result;
 end;
@@ -123,3 +135,10 @@ $$;
 
 revoke all on function public.read_import_stage(uuid,uuid,integer),public.stage_import_rows(uuid,uuid,integer,text,jsonb),public.import_batch_candidates(uuid,uuid,integer,integer),public.ingest_import_batch(uuid,uuid,integer,integer,jsonb) from public,anon,authenticated;
 grant execute on function public.read_import_stage(uuid,uuid,integer),public.stage_import_rows(uuid,uuid,integer,text,jsonb),public.import_batch_candidates(uuid,uuid,integer,integer),public.ingest_import_batch(uuid,uuid,integer,integer,jsonb) to service_role;
+
+-- Deployment indexes: equality joins also serve the unchanged atomic row core.
+-- Hash indexes accept long legacy text without truncating original evidence or
+-- risking PostgreSQL's btree tuple-size limit. SQL still checks full equality.
+create index transactions_import_description_idx on public.transactions using hash(description);
+create index source_transactions_import_external_idx on public.source_transactions using hash(external_id);
+create index transaction_sources_transaction_idx on public.transaction_sources(transaction_id);

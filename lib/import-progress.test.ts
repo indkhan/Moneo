@@ -23,7 +23,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
     if (name === "prepare_import_route") { state.importStatus = "running"; return { data: null, error: null }; }
     if (name === "read_import_stage") return { data: state.staged.get(String(args.p_import_id))?.length ?? null, error: null };
     if (name === "stage_import_rows") { state.staged.set(String(args.p_import_id), args.p_rows as { accountId: string; row: Record<string, unknown> }[]); return { data: null, error: null }; }
-    if (name === "import_batch_candidates") return { data: state.staged.get(String(args.p_import_id))!.slice(Number(args.p_offset), Number(args.p_offset) + 250).map(item => ({ rowNumber: item.row.rowNumber, status: item.row.status, candidates: [] })), error: null };
+    if (name === "import_batch_candidates") return { data: state.staged.get(String(args.p_import_id))!.slice(Number(args.p_offset), Number(args.p_offset) + 250).map(item => ({ rowNumber: item.row.rowNumber, hasExternalId: false, status: item.row.status, candidates: [] })), error: null };
     for (const item of state.staged.get(String(args.p_import_id))!.slice(Number(args.p_offset), Number(args.p_offset) + 250)) {
       const row = item.row;
       const sourceId = String(row.sourceId), transactionId = stableId(`${args.p_import_id}:transaction:${row.rowNumber}`);

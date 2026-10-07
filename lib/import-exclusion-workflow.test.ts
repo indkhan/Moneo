@@ -10,7 +10,7 @@ vi.mock("@/workflows/financial-review", () => ({ financialReview: vi.fn() }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
   rpc: async (name: string, args: Record<string, unknown>) => {
     fixture.calls.push({ name, args });
-    if (name === "import_batch_candidates") return { data: fixture.correction ? [{ rowNumber: 2, status: "pending", candidates: [] }] : [], error: null };
+    if (name === "import_batch_candidates") return { data: fixture.correction ? [{ rowNumber: 2, hasExternalId: false, status: "pending", candidates: [] }] : [], error: null };
     return { data: name === "finish_import_run" ? "completed" : null, error: null };
   },
   storage: { from: () => ({ download: async () => ({ data: new Blob([fixture.correction ? correctionCsv : csv()]), error: null }) }) },

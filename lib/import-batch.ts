@@ -6,7 +6,7 @@ import { z } from "zod";
 type Excluded = { rowNumber: number; sourceRow: Record<string, unknown>; reason: string };
 export const IMPORT_BATCH_ROWS = 250;
 export const IMPORT_STAGE_BYTES = 64_000_000;
-export const candidateRowsSchema = z.array(z.object({ rowNumber: z.number().int().min(2), externalId: z.string().nullable().optional(), status: z.enum(["posted", "pending"]), candidates: z.array(z.object({ id: z.string(), externalId: z.string().optional(), status: z.string(), version: z.number().int().positive() })).max(1000) })).max(IMPORT_BATCH_ROWS);
+export const candidateRowsSchema = z.array(z.object({ rowNumber: z.number().int().min(2), hasExternalId: z.boolean(), status: z.enum(["posted", "pending"]), candidates: z.array(z.object({ id: z.string().max(36), stableExternalMatch: z.boolean(), status: z.enum(["posted", "pending"]), version: z.number().int().nonnegative() })).max(1000) })).max(IMPORT_BATCH_ROWS);
 type CandidateRow = z.input<typeof candidateRowsSchema>[number];
 export function stageImportRows(workspaceId: string, importId: string, mapped: MappedRow[], excluded: Excluded[], accounts: Map<string, string>, total: number) {
   if (!Number.isInteger(total) || total < 0 || total > 10_000 || mapped.length + excluded.length !== total) throw new Error("Normalized import coverage differs from reviewed rows");
@@ -21,7 +21,10 @@ export function stageImportRows(workspaceId: string, importId: string, mapped: M
 }
 export function batchDecisions(rows: CandidateRow[]) {
   return candidateRowsSchema.parse(rows).map(row => {
-    const decision = decideImportMatch(row.externalId ?? undefined, row.candidates, row.status);
+    // Only equality evidence is needed by the existing decision helper. Keep
+    // arbitrary original external IDs in staging/source history, not repeated
+    // up to 1,000 times in every candidate response.
+    const decision = decideImportMatch(row.hasExternalId ? "stable" : undefined, row.candidates.map(candidate => ({ ...candidate, externalId: candidate.stableExternalMatch ? "stable" : undefined })), row.status);
     return { rowNumber: row.rowNumber, ...decision, ...(decision.action === "matched" ? { expectedTransactionVersion: row.candidates.find(candidate => candidate.id === decision.transactionId)!.version } : {}) };
   });
 }

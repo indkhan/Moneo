@@ -172,6 +172,7 @@ export const sourceTransactions = pgTable("source_transactions", {
   reviewReasons: text("review_reasons").array().notNull().default(sql`'{}'::text[]`),
   status: text("status").notNull().default("new"),
 }, (table) => [
+  index("source_transactions_import_external_idx").using("hash", table.externalId),
   check("source_transactions_normalized_row_check", sql`${table.normalizedRow} is null or jsonb_typeof(${table.normalizedRow}) = 'object'`),
   unique("source_transactions_import_row_unique").on(table.importId, table.rowNumber),
   check("source_transactions_fee_evidence_check", sql`${table.feeEvidence} is null or (jsonb_typeof(${table.feeEvidence}) = 'object' and ${table.feeEvidence} ? 'treatment' and ${table.feeEvidence}->>'treatment' is not null and ${table.feeEvidence}->>'treatment' in ('included','additional','unknown'))`),
@@ -219,6 +220,7 @@ export const transactions = pgTable("transactions", {
   version: integer("version").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  index("transactions_import_description_idx").using("hash", table.description),
   index("transactions_merchant_id_idx").on(table.merchantId).where(sql`${table.merchantId} is not null`),
   index("transactions_account_posted_at_idx").on(table.workspaceId, table.accountId, table.postedAt).where(sql`${table.postedAt} is not null`),
   index("transactions_transfer_id_idx").on(table.transferId).where(sql`${table.transferId} is not null`),
@@ -234,7 +236,7 @@ export const transactions = pgTable("transactions", {
 export const transactionSources = pgTable("transaction_sources", {
   transactionId: uuid("transaction_id").notNull().references(() => transactions.id),
   sourceTransactionId: uuid("source_transaction_id").notNull().unique().references(() => sourceTransactions.id),
-});
+}, table => [index("transaction_sources_transaction_idx").on(table.transactionId)]);
 
 export const correctionEvents = pgTable("correction_events", {
   id: uuid("id").defaultRandom().primaryKey(),

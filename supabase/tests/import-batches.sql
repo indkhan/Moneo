@@ -49,7 +49,7 @@ begin
   payload:=payload||jsonb_build_object('sourceId',public.stable_import_uuid(second_import::text||':row:2'),'balanceId',public.stable_import_uuid(second_import::text||':balance:2'));
   perform public.stage_import_rows(second_import,workspace,1,second_import::text,jsonb_build_array(jsonb_build_object('accountId',account,'excluded',false,'row',payload)));
   candidate:=public.import_batch_candidates(second_import,workspace,1,0);
-  if candidate->0->'candidates'->0->>'externalId'<>'batch-stable-external' then raise exception 'Batch stable matching evidence differs'; end if;
+  if candidate->0->'candidates'->0->>'stableExternalMatch'<>'true' then raise exception 'Batch stable matching evidence differs'; end if;
   version:=(candidate->0->'candidates'->0->>'version')::integer;
   begin perform public.ingest_import_batch(second_import,workspace,1,0,jsonb_build_array(jsonb_build_object('rowNumber',2,'action','matched','transactionId',candidate->0->'candidates'->0->>'id','expectedTransactionVersion',version+1))); raise exception 'Stale match posted' using errcode='ZX001'; exception when serialization_failure then null; end;
   perform public.ingest_import_batch(second_import,workspace,1,0,jsonb_build_array(jsonb_build_object('rowNumber',2,'action','matched','transactionId',candidate->0->'candidates'->0->>'id','expectedTransactionVersion',version)));
