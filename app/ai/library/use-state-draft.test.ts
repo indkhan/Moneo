@@ -12,6 +12,24 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: hooks.refresh }
 beforeEach(() => { hooks.slots = []; hooks.index = 0; hooks.refresh.mockClear(); });
 const save = vi.fn<(form: FormData) => Promise<{ conflict: true }>>().mockResolvedValue({ conflict: true });
 function RenderDraft(value = { costMinor: 100 }, version = 1) { hooks.index = 0; return useStateDraft(value, version, save); }
+it("uses the acknowledged save revision for edits made before refreshed props arrive", async () => {
+  const acknowledged = vi.fn(async () => ({ saved: true, version: 2, value: { costMinor: 300 } } as const));
+  function SavedDraft(value = { costMinor: 100 }, version = 1) { hooks.index = 0; return useStateDraft(value, version, acknowledged); }
+  SavedDraft().edit({ costMinor: 300 });
+  await SavedDraft().action(new FormData());
+  expect(SavedDraft()).toMatchObject({ value: { costMinor: 300 }, expectedVersion: 2, busy: false, conflict: false });
+  SavedDraft().edit({ costMinor: 400 });
+  expect(SavedDraft({ costMinor: 300 }, 2)).toMatchObject({ value: { costMinor: 400 }, expectedVersion: 2, conflict: false });
+  expect(SavedDraft({ costMinor: 500 }, 3).conflict).toBe(true);
+});
+it("retains normalized acknowledged values until fresh props arrive, then follows newer clean state", async () => {
+  const acknowledged = vi.fn(async () => ({ saved: true, version: 2, value: { costMinor: 330 } } as const));
+  function SavedDraft(value = { costMinor: 100 }, version = 1) { hooks.index = 0; return useStateDraft(value, version, acknowledged); }
+  SavedDraft().edit({ costMinor: 300 });
+  await SavedDraft().action(new FormData());
+  expect(SavedDraft()).toMatchObject({ value: { costMinor: 330 }, expectedVersion: 2, conflict: false });
+  expect(SavedDraft({ costMinor: 400 }, 3)).toMatchObject({ value: { costMinor: 400 }, expectedVersion: 3, conflict: false });
+});
 it("pins dirty inputs to their original revision across a server refresh", async () => {
   RenderDraft().edit({ costMinor: 300 });
   const refreshed = RenderDraft({ costMinor: 200 }, 2);
@@ -37,4 +55,3 @@ it("checks saved inputs without discarding a dirty draft", () => {
   expect(hooks.refresh).toHaveBeenCalledOnce();
   expect(RenderDraft()).toMatchObject({ value: { costMinor: 300 }, expectedVersion: 1 });
 });
-

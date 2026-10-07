@@ -75,7 +75,7 @@ export async function saveCalculatorParams(form: FormData) {
     .select("version").maybeSingle();
   if (error) throw error;
   if (!saved) return { conflict: true } as const;
-  return { saved: true } as const;
+  return { saved: true, version: saved.version as number, value: next } as const;
 }
 
 export async function saveTripState(form: FormData) {
@@ -96,5 +96,5 @@ export async function saveTripState(form: FormData) {
     .select("version").maybeSingle();
   if (error) throw error;
   if (!saved) return { conflict: true } as const;
-  return { saved: true } as const;
+  return { saved: true, version: saved.version as number, value: String(cost) } as const;
 }

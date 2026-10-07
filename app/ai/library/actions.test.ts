@@ -16,7 +16,7 @@ it.each([saveCalculatorParams, saveTripState])("rejects a draft based on revisio
   expect(fixture.update).not.toHaveBeenCalled();
 });
 it.each([saveCalculatorParams, saveTripState])("saves against the submitted owned state revision", async save => {
-  expect(await save(form("2"))).toEqual({ saved: true });
+  expect(await save(form("2"))).toEqual({ saved: true, version: 3, value: save === saveTripState ? "300" : { costMinor: 300 } });
   expect(fixture.update).toHaveBeenCalledWith(expect.objectContaining({ version: 3 }));
   expect(fixture.filters).toContainEqual(["workspace_id", "owned"]);
   expect(fixture.filters).toContainEqual(["version", 2]);
@@ -27,6 +27,6 @@ it.each([saveCalculatorParams, saveTripState])("requires the draft revision", as
 });
 it.each([saveCalculatorParams, saveTripState])("accepts the initial zero revision", async save => {
   fixture.version = 0;
-  expect(await save(form("0"))).toEqual({ saved: true });
+  expect(await save(form("0"))).toEqual({ saved: true, version: 1, value: save === saveTripState ? "300" : { costMinor: 300 } });
   expect(fixture.filters).toContainEqual(["version", 0]);
 });

@@ -69,8 +69,31 @@ test("two tabs preserve edited calculator and trip state revisions across refres
       expect((await read()).state[kind === "custom_comparison" ? "size" : "costMinor"]).toBe(200);
       await expect(region(page)).toContainText("200");
       await region(page).getByRole("button", { name: "Keep my draft against latest inputs", exact: true }).click();
-      await save(page).click();
-      await expect(region(page)).toContainText("Inputs saved.", { timeout: 20_000 });
+      // Delay only the refresh response so a second edit happens after acknowledgement
+      // while the route still supplies the previous saved value/revision.
+      let releaseRefresh!: () => void, refreshStarted!: () => void;
+      const refreshGate = new Promise<void>(resolve => { releaseRefresh = resolve; });
+      const refreshReady = new Promise<void>(resolve => { refreshStarted = resolve; });
+      const matchRefresh = (request: { url(): string; method(): string; headers(): Record<string, string> }) =>
+        new URL(request.url()).pathname === path && request.method() === "GET" && (request.headers().rsc === "1" || new URL(request.url()).searchParams.has("_rsc"));
+      const refreshed = page.waitForResponse(response => matchRefresh(response.request()), { timeout: 20_000 });
+      await page.route(`**${path}*`, async route => {
+        if (matchRefresh(route.request())) { refreshStarted(); await refreshGate; }
+        await route.continue();
+      });
+      const submission = save(page).dispatchEvent("click");
+      try {
+        await expect(region(page)).toContainText("Inputs saved.", { timeout: 20_000 });
+        await Promise.race([refreshReady, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Expected saved-input refresh request was not observed")), 15_000))]);
+        await expect(input(page)).toHaveValue("300");
+        await expect(region(page).locator('input[name="expectedVersion"]')).toHaveValue(String(initial.version + 2));
+        await input(page).fill("350");
+        await expect(region(page).getByRole("alert").filter({ hasText: "Saved inputs changed" })).toHaveCount(0);
+        releaseRefresh(); await Promise.all([refreshed, submission]);
+        await expect(input(page)).toHaveValue("350");
+        await expect(region(page).locator('input[name="expectedVersion"]')).toHaveValue(String(initial.version + 2));
+        await expect(region(page).getByRole("alert").filter({ hasText: "Saved inputs changed" })).toHaveCount(0);
+      } finally { releaseRefresh(); await page.unroute(`**${path}*`); }
       await expect.poll(async () => (await read()).version).toBe(initial.version + 2);
       expect((await read()).state[kind === "custom_comparison" ? "size" : "costMinor"]).toBe(300);
       await tab.reload();
@@ -89,7 +112,7 @@ test("two tabs preserve edited calculator and trip state revisions across refres
       expect(await db`select id,source,manifest from public.artifact_versions where artifact_id=${id} order by version`).toEqual(history);
     }
   } finally {
-    await context?.close();
+    await context?.close().catch(() => {});
     if (workspace) await db.begin(async tx => {
       await tx`delete from public.dashboard_items where workspace_id=${workspace!}`;
       await tx`update public.artifacts set active_version_id=null where workspace_id=${workspace!}`;
