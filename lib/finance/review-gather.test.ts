@@ -31,3 +31,9 @@ it("withholds newly revoked source scopes and retains an explicit unavailable se
   expect(progress.queries[0].status).toBe("unavailable");
   expect(progress.limitations.join(" ")).toContain("unavailable");
 });
+it("does not expand the frozen read scopes when optional import access is later enabled", async () => {
+  const frozen = {...request, allowedScopes: ["accounts", "transactions"] as ["accounts", "transactions"]};
+  await gatherReviewInvestigation(frozen, options());
+  expect(fixture.load.mock.calls[0][2]).toEqual({canReadImports: false});
+  expect(fixture.persist.mock.calls[0][1].scopes).toEqual(["accounts", "transactions"]);
+});

@@ -1,5 +1,6 @@
 import {z} from "zod";
 import {investigationSchema} from "./investigation-schema";
+import {AI_DATA_SCOPES} from "@/lib/settings";
 
 const budgetSchema=z.object({
   maxQueries:z.number().int().min(1).max(12).default(6),
@@ -9,6 +10,8 @@ const budgetSchema=z.object({
 }).strict();
 export const reviewRequestSchema=z.object({
   version:z.literal(1),question:z.string().trim().min(1).max(2000),
+  context:z.record(z.string(),z.json()).refine(value=>JSON.stringify(value).length<=2000,"Visible context exceeds the navigation limit").optional(),
+  allowedScopes:z.array(z.enum(AI_DATA_SCOPES)).max(4).refine(value=>new Set(value).size===value.length,"Duplicate read scope").optional(),
   focus:z.string().trim().max(500).optional(),
   query:investigationSchema.refine(query=>!query.page.cursor,"A new review needs a query scope, not a live pagination cursor").optional(),
   includePlanning:z.boolean().default(false),

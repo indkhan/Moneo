@@ -26,7 +26,7 @@ it("retains a scoped ordinary question and refuses excessive budgets and disable
   const investigation = resolveReviewRequest({version: 1, question: "Run a deep financial review for September", focus: "Subscriptions", query: {version: 1, period: {from: "2026-09-01", to: "2026-09-30"}, groupBy: ["merchant"]}}, "2026-10-07");
   const post = (investigation: unknown) => POST(new Request("http://localhost/api/analysis", {method: "POST", body: JSON.stringify({requestId, investigation})}));
   expect((await post(investigation)).status).toBe(202);
-  expect(startFinancialReview).toHaveBeenLastCalledWith(context.supabase, "w", requestId, undefined, investigation);
+  expect(startFinancialReview).toHaveBeenLastCalledWith(context.supabase, "w", requestId, undefined, {...investigation, allowedScopes: DEFAULT_SETTINGS.ai_data_scopes});
   expect((await post({...investigation, budget: {...investigation.budget, maxQueries: 999}})).status).toBe(400);
   vi.mocked(requireWorkspace).mockResolvedValue({...context, settings: {...DEFAULT_SETTINGS, ai_data_scopes: ["accounts", "transactions"]}} as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
   expect((await post({...investigation, includePlanning: true})).status).toBe(403);

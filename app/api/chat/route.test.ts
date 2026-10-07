@@ -78,6 +78,13 @@ it.each(["Run a deep financial review for September", "Review my finances and fo
   await tools.reviews_start.execute({query, focus: "Subscriptions", output: "answer"});
   expect(startFinancialReview).toHaveBeenLastCalledWith(expect.anything(), "workspace", requestId, requestId, expect.objectContaining({question: message, query: expect.objectContaining(query), focus: "Subscriptions", output: "answer"}));
 });
+it("binds review navigation hints and read policy to actual submission rather than model replacements", async () => {
+  const visible = {page: "/money/investigations", accountId: "selected-owned"};
+  await POST(new Request("http://localhost/api/chat", {method: "POST", body: JSON.stringify({conversationId: "00000000-0000-4000-8000-000000000002", requestId, message: "Explain the selected spending change", context: visible})}));
+  const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, {execute: (input: unknown) => Promise<unknown>}>;
+  await tools.reviews_start.execute({context: {page: "forged"}, allowedScopes: ["imports"]});
+  expect(startFinancialReview).toHaveBeenLastCalledWith(expect.anything(), "workspace", requestId, requestId, expect.objectContaining({context: visible, allowedScopes: DEFAULT_SETTINGS.ai_data_scopes}));
+});
 it("creates a trusted chart only for an explicit artifact request and reuses it within the request", async () => {
   await POST(request("Can you create a monthly spending chart?"));
   const context = await requireWorkspace();

@@ -13,6 +13,12 @@ it("retains referenced deterministic blockers even when a receipt has no numeric
   expect(JSON.parse(result!.prompt).evidenceReceipts).toEqual([{id: receipt.id, fetchedAt: receipt.fetchedAt, metrics: [], limitations: [limitation]}]);
   expect(Buffer.byteLength(result!.prompt) + Buffer.byteLength(result!.system)).toBeLessThanOrEqual(32000);
 });
+it("labels frozen visible context as an unverified navigation hint", () => {
+  const selected = {...request, context: {page: "/money/investigations", account: "selected"}};
+  const result = buildReviewPrompt(selected, [receipt], [], "strict");
+  expect(JSON.parse(result!.prompt).navigationHint).toEqual(selected.context);
+  expect(JSON.parse(result!.prompt).limitations.join(" ")).toContain("Navigation context is not financial evidence");
+});
 it("bounds actual model input bytes while preserving exact referenced measures, question and limits", () => {
   const result = buildReviewPrompt(request, [receipt], ["Some supporting evidence was unavailable"], "strict claim instructions");
   expect(result).not.toBeNull();

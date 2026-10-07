@@ -25,7 +25,7 @@ it.skipIf(process.env.RUN_INVESTIGATION_REQUEST_DB_TESTS !== "1")("freezes owned
       await tx.unsafe(privateSql(readFileSync("supabase/migrations/202610070016_bounded_financial_investigation.sql", "utf8")));
       await tx`insert into auth.users(id,email) values(${owner},${`qa-${owner}@example.invalid`}),(${other},${`qa-${other}@example.invalid`})`;
       const [{id: workspace}] = await tx`select id from public.workspaces where owner_id=${owner}`;
-      const specification = resolveReviewRequest({version: 1, question: "Review September subscriptions", budget: {maxQueries: 2}}, "2026-10-07");
+      const specification = resolveReviewRequest({version: 1, question: "Review September subscriptions", context: {view: "transactions", category: "subscriptions"}, allowedScopes: ["accounts", "transactions", "imports"], budget: {maxQueries: 2}}, "2026-10-07");
       const requestId = randomUUID();
       await tx`select set_config('request.jwt.claim.sub',${owner},true)`;
       await tx.unsafe("set local role authenticated");
@@ -35,6 +35,15 @@ it.skipIf(process.env.RUN_INVESTIGATION_REQUEST_DB_TESTS !== "1")("freezes owned
       expect((await claim()).jobId).toBe(first.jobId);
       await expect(tx.savepoint(async sp => sp.unsafe(`select ${schema}.start_financial_investigation($1,$2::jsonb,null)`, [requestId, sp.json({...specification, focus: "Changed"})]))).rejects.toMatchObject({code: "22023"});
       await expect(tx.savepoint(async sp => sp.unsafe(`select ${schema}.start_financial_investigation($1,$2::jsonb,null)`, [randomUUID(), sp.json({...specification, budget: {...specification.budget, maxQueries: 500}})]))).rejects.toMatchObject({code: "22023"});
+      await expect(tx.savepoint(async sp => sp.unsafe(`select ${schema}.start_financial_investigation($1,$2::jsonb,null)`, [randomUUID(), sp.json({...specification, allowedScopes: ["imports"]})]))).rejects.toMatchObject({code: "22023"});
+      await tx.unsafe("reset role");
+      await tx`insert into public.workspace_settings(workspace_id,ai_data_scopes) values(${workspace},array['accounts','transactions','planning'])
+        on conflict(workspace_id) do update set ai_data_scopes=excluded.ai_data_scopes`;
+      await tx.unsafe("set local role authenticated");
+      await expect(tx.savepoint(async sp => sp.unsafe(`select ${schema}.start_financial_investigation($1,$2::jsonb,null)`, [randomUUID(), sp.json(specification)]))).rejects.toMatchObject({code: "42501"});
+      await tx.unsafe("reset role");
+      await tx`update public.workspace_settings set ai_data_scopes=array['accounts','transactions','planning','imports'] where workspace_id=${workspace}`;
+      await tx.unsafe("set local role authenticated");
       await expect(tx.savepoint(async sp => sp.unsafe(`select ${schema}.checkpoint_financial_investigation($1,$2,'run',$3::jsonb)`, [first.jobId, workspace, sp.json({})]))).rejects.toMatchObject({code: "42501"});
       await expect(tx.savepoint(async sp => sp.unsafe(`select ${schema}.reserve_financial_investigation_synthesis($1,$2,'run',$3::jsonb)`, [first.jobId, workspace, sp.json({})]))).rejects.toMatchObject({code: "42501"});
       await tx`select set_config('request.jwt.claim.sub',${other},true)`;

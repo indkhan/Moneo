@@ -127,7 +127,7 @@ async function gatherEvidence(jobId: string, workspaceId: string, scheduled: boo
       const cadence = await db.from("summary_runs").select("cadence,period_start").eq("job_id", jobId).eq("workspace_id", workspaceId).single();
       if (cadence.error) throw cadence.error;
       if (!["weekly", "monthly"].includes(cadence.data.cadence) || !cadence.data.period_start) throw new FatalError("Scheduled review period is unavailable");
-      request = scheduledReviewRequest(cadence.data.cadence, cadence.data.period_start);
+      request = {...scheduledReviewRequest(cadence.data.cadence, cadence.data.period_start), allowedScopes: settings.ai_data_scopes};
     }
     if (request) {
       const stopped = new AbortController(), finished = new AbortController();

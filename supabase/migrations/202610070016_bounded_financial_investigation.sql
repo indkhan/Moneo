@@ -22,7 +22,7 @@ create trigger background_jobs_frozen_review_request before update on public.bac
 -- The application also parses the complete strict query schema before dispatch and every replay.
 create function public.start_financial_investigation(p_request_id uuid,p_specification jsonb,p_chat_request_id uuid default null)
 returns jsonb language plpgsql security definer set search_path='' as $$
-declare workspace uuid; parent public.chat_requests%rowtype; preferences public.workspace_settings%rowtype; job public.background_jobs%rowtype; inserted boolean;
+declare workspace uuid; parent public.chat_requests%rowtype; preferences public.workspace_settings%rowtype; job public.background_jobs%rowtype; inserted boolean; requested_scopes text[];
 begin
   if auth.uid() is null then raise exception 'Authentication required' using errcode='28000'; end if;
   if p_request_id is null or not coalesce(jsonb_typeof(p_specification)='object'
@@ -36,6 +36,17 @@ begin
     and (p_specification->'budget'->>'maxDurationMs')::integer between 5000 and 180000,false) then
     raise exception 'Invalid bounded investigation request' using errcode='22023';
   end if;
+  if p_specification ? 'allowedScopes' then
+    if jsonb_typeof(p_specification->'allowedScopes') is distinct from 'array' then raise exception 'Invalid investigation read policy' using errcode='22023'; end if;
+    if jsonb_array_length(p_specification->'allowedScopes')>4 or exists(select 1 from jsonb_array_elements(p_specification->'allowedScopes') value where jsonb_typeof(value)<>'string') then
+      raise exception 'Invalid investigation read policy' using errcode='22023';
+    end if;
+    select coalesce(array_agg(distinct value),'{}'::text[]) into requested_scopes from jsonb_array_elements_text(p_specification->'allowedScopes');
+    if cardinality(requested_scopes)<>jsonb_array_length(p_specification->'allowedScopes') or not requested_scopes <@ array['accounts','transactions','planning','imports']::text[]
+      or not requested_scopes @> array['accounts','transactions']::text[] or (p_specification->>'includePlanning')::boolean and not requested_scopes @> array['planning']::text[] then
+      raise exception 'Invalid investigation read policy' using errcode='22023';
+    end if;
+  end if;
   select id into workspace from public.workspaces where owner_id=auth.uid();
   if workspace is null then raise exception 'Workspace not found' using errcode='P0002'; end if;
   if p_chat_request_id is not null then
@@ -47,9 +58,10 @@ begin
     end if;
   end if;
   perform id from public.workspaces where id=workspace for share;
-  select * into preferences from public.workspace_settings where workspace_id=workspace;
+  select * into preferences from public.workspace_settings where workspace_id=workspace for share;
   if found and (not preferences.ai_data_scopes @> array['accounts','transactions']::text[]
-    or (p_specification->>'includePlanning')::boolean and not preferences.ai_data_scopes @> array['planning']::text[]) then
+    or (p_specification->>'includePlanning')::boolean and not preferences.ai_data_scopes @> array['planning']::text[]
+    or requested_scopes is not null and not requested_scopes <@ preferences.ai_data_scopes) then
     raise exception 'Investigation evidence access is disabled' using errcode='42501';
   end if;
   insert into public.background_jobs(workspace_id,kind,request_id,chat_request_id,review_request)

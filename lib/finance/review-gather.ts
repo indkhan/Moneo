@@ -15,7 +15,9 @@ export async function gatherReviewInvestigation(request: ReviewRequest, dependen
     read: async (query, signal) => {
       const db = dependencies.client(signal);
       const settings = await loadWorkspaceSettings(db, dependencies.workspaceId);
-      const scopes: AiDataScope[] = ["accounts", "transactions", ...(settings.ai_data_scopes.includes("imports") ? ["imports" as const] : [])];
+      const allowedScopes = request.allowedScopes ?? settings.ai_data_scopes;
+      requireAiScope({...settings, ai_data_scopes: allowedScopes}, "accounts", "transactions");
+      const scopes: AiDataScope[] = ["accounts", "transactions", ...(allowedScopes.includes("imports") ? ["imports" as const] : [])];
       requireAiScope(settings, ...scopes);
       const dataset = await loadInvestigationDataset(query, {supabase: db, workspace: {id: dependencies.workspaceId}}, {canReadImports: scopes.includes("imports")});
       signal.throwIfAborted();

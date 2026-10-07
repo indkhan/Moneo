@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Financial review service is not configured" }, { status: 503 });
   const parsed = z.object({ requestId: z.uuid(), investigation: reviewRequestSchema.optional() }).strict().safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Provide a valid review request ID and bounded investigation scope" }, { status: 400 });
-  const specification = resolveReviewRequest(parsed.data.investigation ?? {version: 1, question: "Review my finances"}, calendarDate(new Date(), context.settings.timezone));
+  const specification = resolveReviewRequest({...parsed.data.investigation ?? {version: 1, question: "Review my finances"}, allowedScopes: context.settings.ai_data_scopes}, calendarDate(new Date(), context.settings.timezone));
   try { requireAiScope(context.settings, "accounts", "transactions", ...(specification.includePlanning ? ["planning" as const] : [])); }
   catch (error) { return Response.json({ error: String(error) }, { status: 403 }); }
   try { await modelForSettings(context.settings); }
