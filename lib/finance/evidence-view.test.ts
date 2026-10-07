@@ -39,15 +39,21 @@ it("replays forecast freshness under its recorded optional import policy", async
 });
 it("replays bounded selected goal evidence and detects changes to dated manual savings", async () => {
   const {toolResultReceipt} = await import("./tool-evidence");
-  const goal = {id: workspaceId, name: "Synthetic", currency_code: "EUR", target_minor: "9007199254740993", recorded_saved_minor: "25", saved_as_of: "2026-09-01"};
+  const goal = {id: workspaceId, name: "Synthetic", currency_code: "EUR", target_minor: "9007199254740993", recorded_saved_minor: "25", saved_as_of: "2026-09-01", version: 1};
   const input = {goalIds: [workspaceId], limit: 1};
-  const saved = toolResultReceipt("goals_review", input, {goals: [goal]}, {workspaceId, timezone: "UTC", fetchedAt: "2026-10-01T00:00:00Z"}, ["planning"]);
-  fixture.load.mockResolvedValue(saved);
   let current = goal;
-  const query = {select: () => query, eq: () => query, order: () => query, limit: () => query, in: () => query,
-    then: (resolve: (value: unknown) => unknown) => Promise.resolve({data: [current], error: null}).then(resolve)};
+  let columns = "";
+  const query = {select: (value: string) => {columns = value; return query;}, eq: () => query, order: () => query, limit: () => query, in: () => query,
+    then: (resolve: (value: unknown) => unknown) => Promise.resolve({data: [Object.fromEntries(Object.entries(current).filter(([key]) => key !== "version" || columns.split(/,\s*/).includes("version")))], error: null}).then(resolve)};
   const scoped = {...context, supabase: {from: () => query}} as unknown as typeof context;
+  const {loadReviewGoals} = await import("./review-planning");
+  const captured = await loadReviewGoals(input, scoped.supabase, workspaceId);
+  const saved = toolResultReceipt("goals_review", input, captured, {workspaceId, timezone: "UTC", fetchedAt: "2026-10-01T00:00:00Z"}, ["planning"]);
+  fixture.load.mockResolvedValue(saved);
   expect((await readEvidenceView(scoped, saved.id))?.freshness.status).toBe("current");
+  current = {...goal, version: 2};
+  expect((await readEvidenceView(scoped, saved.id))?.freshness.status).toBe("stale");
+  expect(saved.sources[0].record).toEqual({goals: [goal]});
   current = {...goal, recorded_saved_minor: "26"};
   expect((await readEvidenceView(scoped, saved.id))?.freshness.status).toBe("stale");
   expect(saved.metrics.find(metric => metric.id.endsWith("recorded_saved_minor"))).toMatchObject({valueMinor: "25", period: {from: "2026-09-01", to: "2026-09-01"}, qualifiers: expect.arrayContaining(["manual_evidence", "dated_snapshot"])});
