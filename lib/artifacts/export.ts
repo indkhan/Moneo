@@ -18,9 +18,9 @@ function readableEvidence(value: unknown, currency?: string, path = "Evidence", 
   });
 }
 
-export function calculatorExportText(title: string, version: string, output: unknown, params: Record<string, string | number>, snapshot: unknown, locale?: string): string {
+export function calculatorExportText(title: string, version: string, output: unknown, params: Record<string, string | number>, snapshot: unknown, locale?: string, provenance?: { artifactId: string; completedAt: string; evidenceRevision: string }): string {
   const partial = snapshot !== null && typeof snapshot === "object" && "partial" in snapshot && snapshot.partial === true;
-  return [title, version, `Exported ${new Date().toISOString()}`, "Calculator results are illustrative; dated evidence and its limitations are included below.",
+  return [title, version, `Exported ${new Date().toISOString()}`, ...(provenance ? [`Artifact: ${provenance.artifactId}`, `Completed ${provenance.completedAt}`, `Evidence revision: ${provenance.evidenceRevision}`] : []), "Calculator results are illustrative; dated evidence and its limitations are included below.",
     ...(partial ? ["Partial data: unreviewed classifications are excluded."] : []), "", "Result", JSON.stringify(output, null, 2), "", "Inputs", JSON.stringify(params, null, 2),
     "", "Dated financial evidence", ...readableEvidence(snapshot, undefined, "Evidence", locale), "", "Exact evidence appendix", JSON.stringify(snapshot, null, 2)].join("\n");
 }
