@@ -30,3 +30,10 @@ it("does not silently change Unicode question bytes or unsupported money into ap
   expect(JSON.parse(result!.prompt).question).toBe(selected.question);
   expect(JSON.parse(result!.prompt).evidenceReceipts[0].metrics[0].valueMinor).toBe("9007199254740993");
 });
+it("prioritizes the controller's material findings and emits each retained query once", () => {
+  const result = buildReviewPrompt(request, [receipt, receipt], [], "strict", ["199"]);
+  const context = JSON.parse(result!.prompt);
+  expect(context.evidenceReceipts).toHaveLength(1);
+  expect(context.evidenceReceipts[0].metrics[0].id).toBe("199");
+  expect(new Set(context.evidenceReceipts[0].metrics.map((metric: {id: string}) => metric.id)).size).toBe(context.evidenceReceipts[0].metrics.length);
+});
