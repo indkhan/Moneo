@@ -79,7 +79,7 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
       evidence?.wealth ?? loadWealthItems(supabase, workspace.id),
       supabase.from("forecast_preferences").select("currency_code, safety_buffer_minor::text, daily_spending_minor::text, uncertainty_bps, spending_account_id, spending_starts_on, version").eq("workspace_id", workspace.id).maybeSingle(),
       allRows(supabase.from("goal_allocations").select("account_id, amount_minor::text").eq("workspace_id", workspace.id).order("id")),
-      allRows(supabase.from("financial_assumptions").select("id, name, source, account_id, amount_minor::text, currency_code, cadence, starts_on, schedule_anchor_on, ends_on, enabled")
+      allRows(supabase.from("financial_assumptions").select("id, name, source, account_id, amount_minor::text, currency_code, cadence, starts_on, schedule_anchor_on, recurring_evidence_eligible, ends_on, enabled")
         .eq("workspace_id", workspace.id).eq("enabled", true).eq("confirmed", true).is("removed_at", null).order("id")),
       allRows(supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
         .eq("workspace_id", workspace.id).eq("to_currency", workspace.display_currency).order("id")),
@@ -121,7 +121,7 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
     return planned.flatMap(event => {
       const explicit = settlements.filter(link => link.assumption_id === item.id && link.scheduled_on === event.date);
       // Retiring an explicit association does not retire the independently confirmed anchor evidence.
-      if (!explicit.some(link => !link.undone_at) && item.source === "recurring_confirmed" && recurringSeries.some(series =>
+      if (!explicit.some(link => !link.undone_at) && (item.source === "recurring_confirmed" || item.recurring_evidence_eligible === true) && recurringSeries.some(series =>
         series.assumption_id === item.id && series.recurring_series_transactions.some((link: { transaction_id: string }) =>
           balanceEvidence.ledger.some(row => row.id === link.transaction_id && row.account_id === item.account_id &&
             row.currency_code === item.currency_code && row.status === "posted" && row.kind === "ordinary" && !row.review_reasons?.length && row.posted_on <= startDate &&

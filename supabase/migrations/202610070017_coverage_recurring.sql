@@ -1,6 +1,8 @@
 -- MNE014: owned recurring runs, calendar cadence and reversible source propagation.
 -- Additive migration only; existing history/version/invalidation triggers remain active.
 alter table public.financial_assumptions add column schedule_anchor_on date;
+-- Source provenance alone cannot identify unchanged fulfillment after Plan toggles.
+alter table public.financial_assumptions add column recurring_evidence_eligible boolean not null default false;
 alter table public.financial_assumptions drop constraint financial_assumptions_cadence_check;
 alter table public.financial_assumptions add constraint financial_assumptions_cadence_check check(cadence in ('once','daily','weekly','biweekly','monthly','quarterly','yearly'));
 alter table public.scenario_overrides drop constraint scenario_overrides_cadence_check;
@@ -123,12 +125,12 @@ begin
   end if;
   if p_decision='confirmed' then
     if obligation.id is null then
-      insert into public.financial_assumptions(workspace_id,account_id,kind,name,amount_minor,currency_code,cadence,starts_on,schedule_anchor_on,source,confidence,confirmed,enabled)
-      values(a.workspace_id,a.id,case when latest_amount>0 then 'income' else 'expense' end,clean,latest_amount,p_currency_code,p_cadence,public.recurring_scheduled_date(anchor,p_cadence,latest_index),anchor,'recurring_confirmed',null,true,true) returning * into obligation;
+      insert into public.financial_assumptions(workspace_id,account_id,kind,name,amount_minor,currency_code,cadence,starts_on,schedule_anchor_on,recurring_evidence_eligible,source,confidence,confirmed,enabled)
+      values(a.workspace_id,a.id,case when latest_amount>0 then 'income' else 'expense' end,clean,latest_amount,p_currency_code,p_cadence,public.recurring_scheduled_date(anchor,p_cadence,latest_index),anchor,true,'recurring_confirmed',null,true,true) returning * into obligation;
       update public.recurring_series set assumption_id=obligation.id where id=s.id returning * into s;
     else
       update public.financial_assumptions set amount_minor=latest_amount,cadence=p_cadence,starts_on=public.recurring_scheduled_date(anchor,p_cadence,latest_index),schedule_anchor_on=anchor,
-        confirmed=true,enabled=true,confidence=null where id=obligation.id;
+        confirmed=true,enabled=true,confidence=null,recurring_evidence_eligible=true where id=obligation.id;
     end if;
   elsif obligation.id is not null then update public.financial_assumptions set enabled=false where id=obligation.id; end if;
   delete from public.recurring_series_transactions where series_id=s.id and workspace_id=a.workspace_id;
@@ -270,6 +272,9 @@ begin
   if event_row.entity_type='assumption' and not(event_row.after ? 'schedule_anchor_on') and assumption.schedule_anchor_on is null then
     current_value:=current_value-'schedule_anchor_on';
   end if;
+  if event_row.entity_type='assumption' and not(event_row.after ? 'recurring_evidence_eligible') and not assumption.recurring_evidence_eligible then
+    current_value:=current_value-'recurring_evidence_eligible';
+  end if;
   if p_expected_version is null or (current_value->>'version')::integer is distinct from p_expected_version
     or current_value - array['version','updated_at'] is distinct from event_row.after - array['version','updated_at']
     then raise exception 'Planning record changed; undo latest change first' using errcode = '40001'; end if;
@@ -283,6 +288,7 @@ begin
       update public.financial_assumptions set name = assumption.name, amount_minor = assumption.amount_minor, kind = assumption.kind,
         cadence = assumption.cadence, starts_on = assumption.starts_on, schedule_anchor_on = assumption.schedule_anchor_on, ends_on = assumption.ends_on,
         source = assumption.source, confidence = assumption.confidence, confirmed = assumption.confirmed,
+        recurring_evidence_eligible = coalesce(assumption.recurring_evidence_eligible,false),
         enabled = assumption.enabled, removed_at = assumption.removed_at where id = event_row.entity_id;
     end if;
   else
@@ -377,11 +383,17 @@ begin
   if edited.starts_on is distinct from row_value.starts_on or edited.cadence is distinct from row_value.cadence then
     edited.schedule_anchor_on:=edited.starts_on;
   end if;
+  -- Retain confirmed fulfillment across provenance-only/toggle edits. Once the
+  -- user changes financial scheduling inputs, only explicit settlements apply.
+  edited.recurring_evidence_eligible:=(row_value.recurring_evidence_eligible or row_value.source='recurring_confirmed')
+    and edited.amount_minor is not distinct from row_value.amount_minor
+    and edited.starts_on is not distinct from row_value.starts_on
+    and edited.cadence is not distinct from row_value.cadence;
   perform set_config('moneo.planning_request_id', p_request_id::text, true);
   update public.financial_assumptions set name = btrim(edited.name), amount_minor = edited.amount_minor,
     kind = case when edited.amount_minor >= 0 then 'income' else 'expense' end,
     cadence = edited.cadence, starts_on = edited.starts_on, schedule_anchor_on = edited.schedule_anchor_on, ends_on = edited.ends_on,
-    source = 'user', confirmed = true,
+    source = 'user', confirmed = true, recurring_evidence_eligible = edited.recurring_evidence_eligible,
     enabled = case when p_patch ? 'removed' then false else edited.enabled end,
     removed_at = case when p_patch ? 'removed' then now() else null end
   where id = p_id;

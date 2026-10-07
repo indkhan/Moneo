@@ -6,10 +6,10 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 const assumption = { id: "assumption", name: "Monthly", source: "recurring_confirmed", account_id: "cash", amount_minor: "100000", currency_code: "EUR", cadence: "monthly", starts_on: "2026-10-06", ends_on: null, enabled: true };
 const posting = { id: "observed", account_id: "cash", amount_minor: "100000", currency_code: "EUR", posted_on: "2026-10-06", posted_at: "2026-10-06T08:00:00Z", status: "posted", source_transaction_ids: ["source"], kind: "ordinary", review_reasons: [] };
 const snapshot = { account_id: "cash", amount_minor: "200000", currency_code: "EUR", as_of: "2026-10-06T08:00:00Z", provenance: "statement", boundary_kind: "after_transaction", source_transaction_id: "source" };
-async function evaluateFixture(item = assumption, ledger: BalanceTransaction[] = [posting], opening: BalanceSnapshot = snapshot, settlements: OccurrenceSettlement[] = [], days = 32) {
+async function evaluateFixture(item = assumption, ledger: BalanceTransaction[] = [posting], opening: BalanceSnapshot = snapshot, settlements: OccurrenceSettlement[] = [], days = 32, asOf = "2026-10-06T12:00:00Z", validSeries = true) {
   const tables: Record<string, unknown[]> = {
     financial_assumptions: [item], recurring_occurrence_settlements: settlements,
-    recurring_series: [{ id: "series", assumption_id: "assumption", status: "confirmed", evidence_invalidated: false, recurring_series_transactions: [{ transaction_id: "observed" }] }],
+    recurring_series: validSeries ? [{ id: "series", assumption_id: "assumption", status: "confirmed", evidence_invalidated: false, recurring_series_transactions: [{ transaction_id: "observed" }] }] : [],
   };
   const db = { from: (table: string) => {
     const query = { select: () => query, eq: () => query, is: () => query, order: () => query,
@@ -17,7 +17,7 @@ async function evaluateFixture(item = assumption, ledger: BalanceTransaction[] =
     return query;
   } };
   return evaluatePlanForWorkspace(db as never, { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" }, days, undefined, {
-    wealth: Promise.resolve([]), balanceEvidence: Promise.resolve({ accounts: [{ id: "cash", name: "Cash", type: "checking", currency_code: "EUR" }], snapshots: [opening], ledger, asOf: "2026-10-06T12:00:00Z" }),
+    wealth: Promise.resolve([]), balanceEvidence: Promise.resolve({ accounts: [{ id: "cash", name: "Cash", type: "checking", currency_code: "EUR" }], snapshots: [opening], ledger, asOf }),
   });
 }
 it.each([100000n, -100000n])("does not repeat a confirmed observed anchor (%s)", async amount => {
@@ -81,4 +81,41 @@ it("uses the replacement anchor persisted for an intentional user date edit", as
   const item = {...assumption, source: "user", schedule_anchor_on: "2026-10-06"};
   const result = await evaluateFixture(item, [posting], snapshot, [], 32);
   expect(result.input.events.map(event => event.date)).toEqual(["2026-10-06", "2026-11-06"]);
+});
+
+it("retains Mar30 fulfillment of the Mar31 slot after persisted user-source disable/re-enable", async () => {
+  const item={...assumption,amount_minor:"-9007199254740993",starts_on:"2026-03-31",schedule_anchor_on:"2026-01-31"};
+  const ledger=[{...posting,id:"jan",posted_on:"2026-01-31",posted_at:"2026-01-31T08:00:00Z",amount_minor:item.amount_minor},
+    {...posting,id:"feb",posted_on:"2026-02-28",posted_at:"2026-02-28T08:00:00Z",amount_minor:item.amount_minor},
+    {...posting,posted_on:"2026-03-30",posted_at:"2026-03-30T08:00:00Z",amount_minor:item.amount_minor}];
+  const opening={...snapshot,as_of:"2026-03-30T08:00:00Z",source_transaction_id:"source"};
+  const before=await evaluateFixture(item,ledger,opening,[],3,"2026-03-30T12:00:00Z");
+  expect(before.input.events).toEqual([]);
+  const disabled=await evaluateFixture({...item,source:"user",enabled:false,recurring_evidence_eligible:true},ledger,opening,[],3,"2026-03-30T12:00:00Z");
+  expect(disabled.input.events).toEqual([]);
+  const after=await evaluateFixture({...item,source:"user",recurring_evidence_eligible:true},ledger,opening,[],3,"2026-03-30T12:00:00Z");
+  expect(after.input.events).toEqual([]);
+  expect(after.input.accounts).toEqual(before.input.accounts);
+  expect(after.forecast).toEqual(before.forecast);
+});
+it.each(["amount","date","cadence","invalidated evidence"])("keeps %s override intent or source invalidation independent of toggle fulfillment", async fault => {
+  const item={...assumption,source:"user",amount_minor:"-10000",starts_on:"2026-03-31",schedule_anchor_on:"2026-01-31",recurring_evidence_eligible:false};
+  if(fault==="amount") item.amount_minor="-12345";
+  if(fault==="date") {item.starts_on="2026-03-30";item.schedule_anchor_on="2026-03-30";}
+  if(fault==="cadence") {item.cadence="quarterly";item.starts_on="2026-03-31";item.schedule_anchor_on="2026-03-31";}
+  if(fault==="invalidated evidence") item.recurring_evidence_eligible=true;
+  const observed={...posting,posted_on:"2026-03-30",posted_at:"2026-03-30T08:00:00Z",amount_minor:"-10000"};
+  const result=await evaluateFixture(item,[observed],{...snapshot,as_of:observed.posted_at},[],3,"2026-03-30T12:00:00Z",fault!=="invalidated evidence");
+  expect(result.input.events).toHaveLength(1);
+  expect(result.input.events[0].expectedMinor).toBe(BigInt(item.amount_minor));
+});
+it.each(["pending", "transfer", "review", "after as-of"])("does not fulfill a toggled schedule with %s source evidence", async fault => {
+  const item = {...assumption, source: "user", amount_minor: "-10000", starts_on: "2026-03-31", schedule_anchor_on: "2026-01-31", recurring_evidence_eligible: true};
+  const observed = {...posting, amount_minor: "-10000", posted_on: "2026-03-30", posted_at: "2026-03-30T08:00:00Z", review_reasons: [] as string[]};
+  if (fault === "pending") observed.status = "pending";
+  if (fault === "transfer") observed.kind = "transfer";
+  if (fault === "review") observed.review_reasons = ["needs review"];
+  if (fault === "after as-of") observed.posted_at = "2026-03-30T13:00:00Z";
+  const result = await evaluateFixture(item, [observed], {...snapshot, as_of: "2026-03-30T08:00:00Z"}, [], 3, "2026-03-30T12:00:00Z");
+  expect(result.input.events.filter(event => event.date === "2026-03-31")).toMatchObject([{expectedMinor: -10000n}]);
 });

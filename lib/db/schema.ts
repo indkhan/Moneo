@@ -348,6 +348,7 @@ export const financialAssumptions = pgTable("financial_assumptions", {
   cadence: text("cadence").notNull(),
   startsOn: date("starts_on").notNull(),
   scheduleAnchorOn: date("schedule_anchor_on"),
+  recurringEvidenceEligible: boolean("recurring_evidence_eligible").notNull().default(false),
   endsOn: date("ends_on"),
   source: text("source").notNull(),
   confidence: integer("confidence"),
