@@ -1,17 +1,20 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { saveCalculatorParams, saveTripState, saveDatedTripState } from "./actions";
+import { buildCalculatorSnapshot } from "@/lib/artifacts/snapshot";
 import { addTripDays, defaultTripScenario } from "@/lib/finance/trip-scenario";
 
-const fixture = vi.hoisted(() => ({ version: 2, update: vi.fn(), filters: [] as [string, unknown][], state: { costMinor: 200 } as Record<string, unknown>, sdk: [] as string[] }));
+const fixture = vi.hoisted(() => ({ version: 2, update: vi.fn(), filters: [] as [string, unknown][], state: { costMinor: 200 } as Record<string, unknown>, sdk: [] as string[], params: { costMinor: { type: "number", default: 100, min: 0, max: 100000 } } as Record<string, unknown> }));
+vi.mock("@/lib/finance/model", () => ({ evaluatePlan: async (days: number) => ({ input: { startDate: "2026-10-07", horizonDays: days, currencyCode: "EUR", accounts: [{ id: "a", currencyCode: "EUR", balanceMinor: 100000n }], events: [] } }) }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "owned", display_currency: "EUR", timezone: "Europe/Berlin" }, supabase: { from: (table: string) => {
   const query = { select: () => query, eq: (key: string, value: unknown) => { fixture.filters.push([key, value]); return query; },
-    single: async () => ({ data: table === "artifacts" ? { kind: "trip_planner", active_version_id: "active" } : table === "artifact_versions" ? { manifest: { kind: "trip_planner", runtime: "quickjs-calculator-v1", sdk: fixture.sdk, params: { costMinor: { type: "number", default: 100, min: 0, max: 100000 } } } } : { state: fixture.state, version: fixture.version }, error: null }),
+    single: async () => ({ data: table === "artifacts" ? { kind: "trip_planner", active_version_id: "active", permissions: ["forecast"] } : table === "artifact_versions" ? { manifest: { kind: "trip_planner", runtime: "quickjs-calculator-v1", sdk: fixture.sdk, params: fixture.params } } : { state: fixture.state, version: fixture.version }, error: null }),
     in: async () => ({ data: [{ id: "a" }, { id: "b" }], error: null }),
     update: (value: unknown) => { fixture.update(value); return query; }, maybeSingle: async () => ({ data: { version: fixture.version + 1 }, error: null }) };
   return query;
 } } }) }));
-beforeEach(() => { fixture.version = 2; fixture.update.mockClear(); fixture.filters = []; fixture.sdk = []; fixture.state = { costMinor: 200 }; });
+beforeEach(() => { fixture.version = 2; fixture.update.mockClear(); fixture.filters = []; fixture.sdk = []; fixture.state = { costMinor: 200 }; fixture.params = { costMinor: { type: "number", default: 100, min: 0, max: 100000 } }; });
+afterEach(() => vi.useRealTimers());
 function form(version: string) { const form = new FormData(); Object.entries({ artifactId: "00000000-0000-4000-8000-000000000001", params: '{"costMinor":300}', costMinor: "300", expectedVersion: version }).forEach(([key,value]) => form.set(key,value)); return form; }
 it.each([saveCalculatorParams, saveTripState])("rejects a draft based on revision A after revision B was saved", async save => {
   expect(await save(form("1"))).toEqual({ conflict: true });
@@ -57,4 +60,31 @@ it.each([saveCalculatorParams, saveTripState])("accepts the initial zero revisio
   fixture.version = 0;
   expect(await save(form("0"))).toEqual({ saved: true, version: 1, value: save === saveTripState ? "300" : { costMinor: 300 } });
   expect(fixture.filters).toContainEqual(["version", 0]);
+});
+
+// Actual SDK/snapshot evaluation; only auth/database and forecast source boundaries are synthetic.
+it.each(["unrelated", "tripDate", "accountId"])("Save/reload preserves initial default headroom when forecast inputs omit cost: %s", async key => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-07T12:00:00Z"));
+  fixture.sdk = ["forecast"]; fixture.state = {};
+  const params = { [key]: key === "tripDate" ? "2026-10-15" : key === "accountId" ? "a" : "note" };
+  fixture.params = { [key]: { type: "string", default: params[key] } };
+  const before = await buildCalculatorSnapshot("synthetic", "trip_planner", { tripParams: params });
+  const input = form("2"); input.set("params", JSON.stringify(params));
+  await saveCalculatorParams(input);
+  const saved = fixture.update.mock.lastCall![0].state;
+  const after = await buildCalculatorSnapshot("synthetic", "trip_planner", { tripScenario: saved.tripScenario, tripParams: params });
+  expect(after.snapshot).toEqual(before.snapshot);
+  expect(after.snapshot.evaluatedCostMinor).toBe("90000");
+});
+it.each(["tripDate", "accountId"])("Save preserves current native scalar cost when manifest omits cost: %s", async key => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-07T12:00:00Z"));
+  fixture.sdk = ["forecast"];
+  const params = { [key]: key === "tripDate" ? "2026-10-15" : "a" };
+  fixture.params = { [key]: { type: "string", default: params[key] } };
+  const before = await buildCalculatorSnapshot("synthetic", "trip_planner", { costMinor: 200n, tripParams: params });
+  const input = form("2"); input.set("params", JSON.stringify(params));
+  await saveCalculatorParams(input);
+  const saved = fixture.update.mock.lastCall![0].state;
+  const after = await buildCalculatorSnapshot("synthetic", "trip_planner", { costMinor: 200n, tripScenario: saved.tripScenario, tripParams: params });
+  expect(after.snapshot).toEqual(before.snapshot);
 });

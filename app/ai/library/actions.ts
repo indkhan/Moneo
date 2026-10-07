@@ -73,9 +73,9 @@ export async function saveCalculatorParams(form: FormData) {
   if (readError || !current) throw readError ?? new Error("Artifact state unavailable");
   if (current.version !== expectedVersion) return { conflict: true } as const;
   const merged = { ...((current.state as Record<string, unknown>) ?? {}), ...next };
-  if (manifest.sdk.includes("forecast")) {
+  if (manifest.sdk.includes("forecast") && ["costMinor", "tripDate", "accountId"].some(key => key in next)) {
     const existing = merged.tripScenario === undefined
-      ? (await tripForArtifact(artifactId, BigInt(String(next.costMinor ?? 0)), typeof next.accountId === "string" && next.accountId ? next.accountId : undefined)).scenario
+      ? (await tripForArtifact(artifactId, BigInt(String(next.costMinor ?? (typeof merged.costMinor === "number" && Number.isSafeInteger(merged.costMinor) && merged.costMinor >= 0 ? merged.costMinor : 90000))), typeof next.accountId === "string" && next.accountId ? next.accountId : undefined)).scenario
       : tripScenarioSchema.parse(merged.tripScenario);
     merged.tripScenario = tripScenarioForParams(existing, next, workspace.display_currency);
     tripHorizon(calendarDate(new Date(), workspace.timezone), merged.tripScenario);
