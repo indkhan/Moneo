@@ -69,7 +69,8 @@ test("dated observations remain visible and explicit booked confirmation reloads
     await confirmation.check();
     console.log('MNE012 step: confirming booked balance');
     await card.getByRole("button", {name: "Confirm balance without retyping", exact: true}).click();
-    await expect(async () => {await page.reload(); expect(await cash()).toMatchObject({status: "current", amount_minor: "9650"});}).toPass({timeout: 30_000});
+    await expect(async () => {expect(await cash()).toMatchObject({status: "current", amount_minor: "9650"});}).toPass({timeout: 30_000});
+    await page.reload({waitUntil: 'domcontentloaded'});
     const [saved] = await db`select amount_minor::text,boundary_kind,covered_transactions,actor_id from public.balance_snapshots where account_id=${account} order by created_at desc,id desc`;
     expect(saved).toMatchObject({amount_minor: "9650", boundary_kind: "reviewed_activity", actor_id: user}); expect(saved.covered_transactions).toHaveLength(1);
     const plan = await evaluatePlanForWorkspace(admin, {id: workspace!, display_currency: "EUR", timezone: "UTC"}, 30);
@@ -77,7 +78,8 @@ test("dated observations remain visible and explicit booked confirmation reloads
     await card.getByText("Manual balance history and undo", {exact: true}).click();
     await card.getByRole("button", {name: "Undo balance", exact: true}).click();
     console.log('MNE012 step: Undo submitted');
-    await expect(async () => {await page.reload(); expect(await cash()).toMatchObject({status: "stale", amount_minor: null, estimated_amount_minor: "9650"});}).toPass({timeout: 30_000});
+    await expect(async () => {expect(await cash()).toMatchObject({status: "stale", amount_minor: null, estimated_amount_minor: "9650"});}).toPass({timeout: 30_000});
+    await page.reload({waitUntil: 'domcontentloaded'});
     expect((await db`select count(*)::int count from public.balance_snapshots where account_id=${account} and undone_at is not null`)[0].count).toBe(1);
     expect(await ledger()).toEqual(originalLedger);
     expect(await db`select id,amount_minor::text,currency_code,as_of::text,version from public.wealth_items where workspace_id=${workspace!} order by id`).toEqual(wealth);
