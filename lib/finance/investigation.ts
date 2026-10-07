@@ -121,7 +121,7 @@ export function investigate(input: unknown, rows: InvestigationRow[], context: I
   const evidenceId = investigationIdentity({ queryId, rows: [...rows].sort((a, b) => a.id.localeCompare(b.id)), sourceCoverage: context.sourceCoverage ?? null, reporting: reporting?.report ?? null });
   const excluded = { outsidePeriod: 0, filtersExcluded: 0, pendingExcluded: 0, transferExcluded: 0, classificationExcluded: 0, currencyExcluded: 0 };
   const selected: { row: InvestigationRow; current: boolean; comparison: boolean; key: string }[] = [];
-  const groups = new Map<string, { key: string; dimensions: ReturnType<typeof investigationGroup>; currency: string; current: bigint; comparison: bigint; currentCount: number; comparisonCount: number; missingCurrent: number; missingComparison: number }>();
+  const groups = new Map<string, { key: string; dimensions: ReturnType<typeof investigationGroup>; currency: string; current: bigint; comparison: bigint; currentCount: number; comparisonCount: number; supportCount: number; missingCurrent: number; missingComparison: number }>();
   let unresolvedIncluded = 0;
   let missingConversionRows = 0;
   for (const row of rows) {
@@ -137,13 +137,14 @@ export function investigate(input: unknown, rows: InvestigationRow[], context: I
     const dimensions = investigationGroup(row, spec.groupBy);
     const currency = spec.currencyPolicy.mode === "base" ? spec.currencyPolicy.currency : row.currency;
     const key = JSON.stringify([currency, dimensions]);
-    const group = groups.get(key) ?? { key, dimensions, currency, current: 0n, comparison: 0n, currentCount: 0, comparisonCount: 0, missingCurrent: 0, missingComparison: 0 };
+    const group = groups.get(key) ?? { key, dimensions, currency, current: 0n, comparison: 0n, currentCount: 0, comparisonCount: 0, supportCount: 0, missingCurrent: 0, missingComparison: 0 };
     const converted = reporting?.allocated.get(row.id);
     const missing = reporting !== null && converted == null && spec.metric !== "count";
     if (missing) { missingConversionRows++; if (current) group.missingCurrent++; if (comparison) group.missingComparison++; }
     const value = missing ? 0n : metricValue(reporting && converted != null ? { ...row, amountMinor: converted } : row, spec.metric);
     if (current) { group.current += value; group.currentCount++; }
     if (comparison) { group.comparison += value; group.comparisonCount++; }
+    group.supportCount++;
     groups.set(key, group);
     selected.push({ row, current, comparison, key });
   }
@@ -172,7 +173,7 @@ export function investigate(input: unknown, rows: InvestigationRow[], context: I
       policy: reporting.report.policy, allocationPolicy: reporting.report.allocationPolicy,
       postings: reporting.report.postings.filter(p => p.sourcePostings.some(s => selected.some(r => r.row.id === s.id))),
       basis: "Canonical conversion before entity filters; groups contain only the selected allocated components." } : null,
-    groups: sorted.map(g => ({ key: g.key, dimensions: g.dimensions, currency: g.currency, currentMinor: g.missingCurrent ? null : g.current.toString(), comparisonMinor: spec.comparison && !g.missingComparison ? g.comparison.toString() : null, deltaMinor: spec.comparison && !g.missingCurrent && !g.missingComparison ? (g.current - g.comparison).toString() : null, availableCurrentMinor: g.current.toString(), availableComparisonMinor: g.comparison.toString(), currentCount: g.currentCount, comparisonCount: g.comparisonCount })),
+    groups: sorted.map(g => ({ key: g.key, dimensions: g.dimensions, currency: g.currency, currentMinor: g.missingCurrent ? null : g.current.toString(), comparisonMinor: spec.comparison && !g.missingComparison ? g.comparison.toString() : null, deltaMinor: spec.comparison && !g.missingCurrent && !g.missingComparison ? (g.current - g.comparison).toString() : null, availableCurrentMinor: g.current.toString(), availableComparisonMinor: g.comparison.toString(), currentCount: g.currentCount, comparisonCount: g.comparisonCount, supportCount: g.supportCount })),
     coverage: { ...excluded, effectiveRowsObserved: rows.length, includedRows: selected.length, unresolvedIncluded, missingConversionRows, partial: excluded.classificationExcluded > 0 || unresolvedIncluded > 0 || missingConversionRows > 0, sourceCoverage: context.sourceCoverage ?? { status: "unknown", statementCompleteness: "unknown" }, limitation: "Accepted/effective ledger scope only. Classification exclusions, unresolved amounts and missing conversions are not upper or lower bounds. Statement completeness is determined separately by source coverage." },
     records: { total: supporting.length, items: supporting.slice(offset, nextOffset).map(record), nextCursor: nextOffset < supporting.length ? Buffer.from(JSON.stringify({ evidenceId, offset: nextOffset, scope: investigationIdentity({ groupKey: page.groupKey ?? null, period: page.period }) })).toString("base64url") : null },
   };

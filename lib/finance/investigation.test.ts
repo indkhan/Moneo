@@ -82,4 +82,9 @@ describe("deterministic investigations", () => {
     expect(investigate({ ...args, metric: "signed" }, rows, context).groups[0].currentMinor).toBe("-505");
     expect(investigate({ ...args, metric: "absolute" }, rows, context).groups[0].currentMinor).toBe("505");
   });
+  it("counts overlapping-period supporting records once while calculating both chosen periods", () => {
+    const result = investigate({ ...query, comparison: query.period }, [row("both")], context);
+    expect(result.groups[0]).toMatchObject({ currentMinor: "100", comparisonMinor: "100", deltaMinor: "0", currentCount: 1, comparisonCount: 1, supportCount: 1 });
+    expect(result.records.total).toBe(1);
+  });
 });
