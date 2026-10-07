@@ -74,7 +74,7 @@ it.each(["unrelated", "tripDate", "accountId"])("Save/reload preserves initial d
   const saved = fixture.update.mock.lastCall![0].state;
   const after = await buildCalculatorSnapshot("synthetic", "trip_planner", { tripScenario: saved.tripScenario, tripParams: params });
   expect(after.snapshot).toEqual(before.snapshot);
-  expect(after.snapshot.evaluatedCostMinor).toBe("90000");
+  expect(after.snapshot).toMatchObject({ evaluatedCostMinor: "90000" });
 });
 it.each(["tripDate", "accountId"])("Save preserves current native scalar cost when manifest omits cost: %s", async key => {
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-07T12:00:00Z"));

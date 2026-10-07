@@ -10,7 +10,7 @@ import { addTripDays, defaultTripScenario } from "../lib/finance/trip-scenario";
 test.skip(!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.SUPABASE_DB_URL || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires disposable synthetic Supabase authentication/database fixtures");
 
 test("dated native budgets and unsaved calculator inputs agree without financial mutations or model calls", async ({ browser, baseURL }, testInfo) => {
-  test.setTimeout(240_000);
+  test.setTimeout(480_000);
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, project = new URL(url).hostname.split(".")[0];
   const connection = new URL(process.env.SUPABASE_DB_URL!);
   expect(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`)).toBeTruthy();
@@ -195,6 +195,56 @@ test("dated native budgets and unsaved calculator inputs agree without financial
       await page.screenshot({ path: testInfo.outputPath(`manifest-default-${explicitAccount ? "date-account" : "date-only"}.png`), fullPage: true });
       expect((await readState()).state).toEqual({});
     }
+    // Forecast manifests can expose unrelated/date/account inputs without exposing cost.
+    // This generated presentation binds directly to host results; it does no financial arithmetic.
+    const hostOnlySource = `(input) => { const s = input.snapshot; return s.unavailable ? { unavailable: s.unavailable } : { summary: "Host cost " + s.evaluatedCostMinor + "; minimum " + s.withTripAvailableMinor, numbers: { costMinor: s.evaluatedCostMinor, minimumHeadroomMinor: s.withTripAvailableMinor } }; }`;
+    for (const key of ["unrelated", "tripDate", "accountId", "currentCostDate"] as const) {
+      await assertOwner();
+      const state = key === "currentCostDate" ? { costMinor: 20000 } : {};
+      await db`update public.artifact_state set state=${db.json(state)},version=version+1 where artifact_id=${artifact} and workspace_id=${workspace!}`;
+      const paramKey = key === "currentCostDate" ? "tripDate" : key;
+      const value = paramKey === "tripDate" ? hotelDate : paramKey === "accountId" ? savings : "note";
+      activeVersionId = (await (await page.request.get(`/api/artifacts/${artifact}/versions`)).json()).activeVersionId;
+      const installed = await page.request.post(`/api/artifacts/${artifact}/versions`, { data: { source: hostOnlySource, expectedActiveVersionId: activeVersionId,
+        manifest: { ...fallback.manifest, params: { [paramKey]: { type: "string", default: value, maxLength: 100, label: "Only input" } } } } });
+      expect(installed.ok(), await installed.text()).toBe(true);
+      await page.reload();
+      const expectedCost = key === "currentCostDate" ? "20000" : "90000";
+      const summary = `Host cost ${expectedCost}; minimum ${key === "accountId" ? "-80000" : "10000"}`;
+      await expect(panel).toContainText(summary);
+      await expect(print).toBeEnabled();
+      await panel.getByRole("button", { name: "Save inputs", exact: true }).click();
+      await expect(panel).toContainText("Inputs saved.");
+      const saved = (await readState()).state;
+      if (key === "unrelated") expect(saved).toEqual({ unrelated: "note" });
+      else expect(saved.tripScenario.payments[0].amountMinor).toBe(expectedCost);
+      await page.reload();
+      await expect(panel).toContainText(summary);
+      await expect(print).toBeEnabled();
+      await page.screenshot({ path: testInfo.outputPath(`save-without-cost-${key}.png`), fullPage: true });
+    }
+
+    // Two owned accounts, no preferred account: completing a local selection clears the saved alert.
+    await assertOwner();
+    await db`update public.forecast_preferences set spending_account_id=null where workspace_id=${workspace!} and currency_code='EUR'`;
+    await db`update public.artifact_state set state='{}'::jsonb,version=version+1 where artifact_id=${artifact} and workspace_id=${workspace!}`;
+    activeVersionId = (await (await page.request.get(`/api/artifacts/${artifact}/versions`)).json()).activeVersionId;
+    const chooseAccount = await page.request.post(`/api/artifacts/${artifact}/versions`, { data: { source: fallback.source, expectedActiveVersionId: activeVersionId,
+      manifest: { ...fallback.manifest, params: { costMinor: { type: "number", default: 90000, min: 0, max: 10000000, label: "Trip cost" }, accountId: { type: "string", default: "", maxLength: 100, label: "Paying account ID" } } } } });
+    expect(chooseAccount.ok(), await chooseAccount.text()).toBe(true);
+    await page.reload();
+    const reason = "Choose a paying account; aggregate cash requires explicit funding";
+    await expect(panel.getByRole("alert")).toHaveText(reason);
+    await panel.getByLabel("Paying account ID", { exact: true }).fill(checking);
+    await expect(print).toBeDisabled();
+    await expect(panel).toContainText("Conservative minimum headroom over the dated trip horizon: 10000 minor units");
+    await expect(panel.getByRole("alert")).toHaveCount(0);
+    await expect(panel).toContainText(`Chosen-account headroom - ${checking}`);
+    await expect(print).toBeEnabled();
+    expect((await readState()).state).toEqual({});
+    await page.screenshot({ path: testInfo.outputPath("account-selection-clears-alert.png"), fullPage: true });
+    await assertOwner();
+    await db`update public.forecast_preferences set spending_account_id=${checking} where workspace_id=${workspace!} and currency_code='EUR'`;
     expect(await fingerprint()).toBe(financialBefore);
     expect(modelRequests).toEqual([]);
   } finally {
