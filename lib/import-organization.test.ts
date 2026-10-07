@@ -1,5 +1,5 @@
 import {expect, it} from 'vitest';
-import {organizationDescriptionKey, organizationProposals} from './import-organization';
+import {mergeOrganizationSuggestions, organizationDescriptionKey, organizationProposals} from './import-organization';
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const row = (n: number, description = 'CARD PAYMENT NORTHSTAR MARKET REF:93821') => ({id: id(n), version: 1, description, merchantId: null, categoryId: null, kind: 'ordinary' as const, reviewReasons: [], userCorrected: false});
 const history = [1, 2, 3].map(n => ({...row(n, `CARD PAYMENT NORTHSTAR MARKET REF:${n}`), merchantId: id(20), categoryId: id(21)}));
@@ -37,4 +37,23 @@ it('preserves meaningful merchant words instead of treating them as transaction 
   expect(organizationDescriptionKey('Orderly Market')).toBe('orderly market');
   expect(organizationDescriptionKey('Payment Labs')).toBe('payment labs');
   expect(organizationDescriptionKey('REFRESH COFFEE')).toBe('refresh coffee');
+});
+it('offers a reviewable description-derived merchant label for unfamiliar rows without inventing categories', () => {
+  expect(organizationProposals([row(4)], [], [])[0]).toMatchObject({merchantName: 'northstar market', categoryId: null, basis: 'review-required'});
+});
+it('accepts only selected rows, owned categories and literal source evidence from provider suggestions', () => {
+  const proposals = organizationProposals([row(4)], [], []);
+  const candidate = {transactionId: id(4), merchantName: 'Northstar Market', categoryId: id(21), evidenceQuote: 'NORTHSTAR MARKET'};
+  const result = mergeOrganizationSuggestions([row(4)], proposals, [candidate], [id(21)]);
+  expect(result[0]).toMatchObject({merchantName: 'Northstar Market', categoryId: id(21), basis: 'provider-suggestion', evidenceQuote: 'NORTHSTAR MARKET'});
+  for (const invalid of [{...candidate, transactionId: id(50)}, {...candidate, categoryId: id(50)}, {...candidate, evidenceQuote: 'not in the statement'}, {...candidate, amountMinor: '9999'}, {...candidate, kind: 'transfer'}]) {
+    expect(() => mergeOrganizationSuggestions([row(4)], proposals, [invalid], [id(21)])).toThrow();
+  }
+});
+it('retains approved rules over provider suggestions and rejects proposed changes to user-corrected rows', () => {
+  const rule = {id: id(30), version: 1, descriptionKey: 'northstar market', merchantId: id(22), categoryId: id(23), approvedBy: id(40), enabled: true};
+  const proposals = organizationProposals([row(4)], [], [rule]);
+  const candidate = {transactionId: id(4), merchantName: 'Other', categoryId: id(21), evidenceQuote: 'NORTHSTAR MARKET'};
+  expect(mergeOrganizationSuggestions([row(4)], proposals, [candidate], [id(21)])[0]).toEqual(proposals[0]);
+  expect(() => mergeOrganizationSuggestions([{...row(4), userCorrected: true}], [], [candidate], [id(21)])).toThrow();
 });
