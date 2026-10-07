@@ -14,7 +14,9 @@ type Scheduled = { account_id: string | null; amount_minor: string; currency_cod
 
 export function expandSchedule(item: Scheduled, start: string, days: number, uncertaintyBps = 1000): ForecastEvent[] {
   if (item.enabled === false || !item.account_id) return [];
-  const anchor = item.source === "recurring_confirmed" ? item.schedule_anchor_on ?? item.starts_on : item.starts_on;
+  // edit_assumption retains this anchor for non-schedule edits and replaces it
+  // with the intentional start date when date/cadence actually changes.
+  const anchor = item.schedule_anchor_on ?? item.starts_on;
   const first = new Date(`${anchor}T00:00:00Z`);
   const horizon = new Date(`${start}T00:00:00Z`);
   const end = new Date(horizon.getTime() + days * 86400000);

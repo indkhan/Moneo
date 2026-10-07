@@ -69,7 +69,7 @@ try {
     if (upgrade) await tx.unsafe(isolated(readFileSync("supabase/tests/coverage-recurring-upgrade-undo.sql", "utf8")));
     record({phase: "replayed"});
     await tx.unsafe(isolated(readFileSync("supabase/tests/coverage-recurring.sql", "utf8")));
-    for (const fixture of ["planning-history.sql", "verified-links.sql", "recurring-occurrences.sql"]) {
+    for (const fixture of ["planning-history.sql", "verified-links.sql", "recurring-occurrences.sql", "coverage-recurring-compact.sql", "coverage-recurring-r1.sql"]) {
       await tx`select set_config('request.jwt.claim.sub', '', true)`;
       await tx.unsafe(isolated(readFileSync(`supabase/tests/${fixture}`, "utf8")));
       record({phase: "regression", fixture});

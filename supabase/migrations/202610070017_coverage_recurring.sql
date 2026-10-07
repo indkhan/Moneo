@@ -230,7 +230,7 @@ begin
     raise exception 'Choose an active confirmed recurring assumption' using errcode='22023';
   end if;
   if p_scheduled_on is null or p_scheduled_on<a.starts_on or (a.ends_on is not null and p_scheduled_on>a.ends_on) then raise exception 'Invalid occurrence date' using errcode='22023'; end if;
-  anchor:=case when a.source='recurring_confirmed' then coalesce(a.schedule_anchor_on,a.starts_on) else a.starts_on end;
+  anchor:=coalesce(a.schedule_anchor_on,a.starts_on);
   period:=public.recurring_period_index(anchor,a.cadence,p_scheduled_on);
   if period is null or public.recurring_scheduled_date(anchor,a.cadence,period)<>p_scheduled_on then raise exception 'Date is not a scheduled occurrence' using errcode='22023'; end if;
   if p_transaction_version is null or t.version<>p_transaction_version then raise exception 'Transaction changed; reload before associating' using errcode='40001'; end if;
@@ -331,3 +331,62 @@ end;
 $$;
 revoke all on function public.review_recurring_series_versions(text,uuid,text,text,text,jsonb,uuid,boolean) from public,anon;
 grant execute on function public.review_recurring_series_versions(text,uuid,text,text,text,jsonb,uuid,boolean) to authenticated;
+
+-- Keep existing owned edit, retry, version and history guards; persist calendar semantics.
+create or replace function public.edit_assumption(p_id uuid, p_expected_version integer, p_patch jsonb, p_request_id uuid)
+returns uuid language plpgsql security definer set search_path = '' as $$
+declare
+  row_value public.financial_assumptions%rowtype;
+  edited public.financial_assumptions%rowtype;
+  existing public.planning_events%rowtype;
+  event_id uuid;
+begin
+  if auth.uid() is null then raise exception 'Authentication required' using errcode = '28000'; end if;
+  if p_expected_version is null or p_expected_version < 1 or p_request_id is null or p_patch is null or jsonb_typeof(p_patch) <> 'object'
+    or p_patch = '{}'::jsonb or p_patch - array['name','amount_minor','kind','cadence','starts_on','ends_on','enabled','removed'] <> '{}'::jsonb
+    then raise exception 'Invalid assumption edit' using errcode = '22023'; end if;
+  if p_patch ? 'name' then
+    if jsonb_typeof(p_patch->'name') <> 'string' then raise exception 'Name must be text' using errcode = '22023'; end if;
+    p_patch := jsonb_set(p_patch, '{name}', to_jsonb(btrim(p_patch->>'name')));
+  end if;
+  select * into row_value from public.financial_assumptions where id = p_id and public.owns_workspace(workspace_id) for update;
+  if not found then raise exception 'Assumption not found' using errcode = 'P0002'; end if;
+  select * into existing from public.planning_events where workspace_id = row_value.workspace_id and request_id = p_request_id;
+  if found then
+    if existing.entity_type <> 'assumption' or existing.entity_id <> p_id or (existing.before->>'version')::integer <> p_expected_version
+      or not existing.after @> (p_patch - 'removed') or (p_patch ? 'removed' and existing.after->>'removed_at' is null)
+      then raise exception 'Request ID reused for a different edit' using errcode = '22023'; end if;
+    return existing.id;
+  end if;
+  if row_value.version <> p_expected_version then raise exception 'Assumption changed; reload before editing' using errcode = '40001'; end if;
+  if row_value.removed_at is not null then raise exception 'Assumption is removed; undo its removal first' using errcode = '22023'; end if;
+  if p_patch ? 'removed' and p_patch <> '{"removed":true}'::jsonb then raise exception 'Invalid removal' using errcode = '22023'; end if;
+  if p_patch ? 'amount_minor' and (jsonb_typeof(p_patch->'amount_minor') <> 'string' or p_patch->>'amount_minor' !~ '^-?[0-9]+$')
+    then raise exception 'Amount must be an exact integer string' using errcode = '22023'; end if;
+  if p_patch ? 'enabled' and jsonb_typeof(p_patch->'enabled') <> 'boolean' then raise exception 'Enabled must be boolean' using errcode = '22023'; end if;
+  edited := jsonb_populate_record(row_value, p_patch - 'removed');
+  if p_patch ? 'kind' and p_patch->>'kind' is distinct from (case when edited.amount_minor >= 0 then 'income' else 'expense' end)
+    then raise exception 'Kind must match the signed amount' using errcode = '22023'; end if;
+  if p_patch ? 'starts_on' and (jsonb_typeof(p_patch->'starts_on') <> 'string' or p_patch->>'starts_on' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+    then raise exception 'Start date must be an ISO calendar date' using errcode = '22023'; end if;
+  if p_patch ? 'ends_on' and p_patch->'ends_on' <> 'null'::jsonb and (jsonb_typeof(p_patch->'ends_on') <> 'string' or p_patch->>'ends_on' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+    then raise exception 'End date must be an ISO calendar date' using errcode = '22023'; end if;
+  if edited.name is null or length(btrim(edited.name)) not between 1 and 120 then raise exception 'Invalid assumption name' using errcode = '22023'; end if;
+  -- Equivalent form values, toggles, amount/name edits and end boundaries keep
+  -- the established calendar. Actual start/cadence changes intentionally reset it.
+  if edited.starts_on is distinct from row_value.starts_on or edited.cadence is distinct from row_value.cadence then
+    edited.schedule_anchor_on:=edited.starts_on;
+  end if;
+  perform set_config('moneo.planning_request_id', p_request_id::text, true);
+  update public.financial_assumptions set name = btrim(edited.name), amount_minor = edited.amount_minor,
+    kind = case when edited.amount_minor >= 0 then 'income' else 'expense' end,
+    cadence = edited.cadence, starts_on = edited.starts_on, schedule_anchor_on = edited.schedule_anchor_on, ends_on = edited.ends_on,
+    source = 'user', confirmed = true,
+    enabled = case when p_patch ? 'removed' then false else edited.enabled end,
+    removed_at = case when p_patch ? 'removed' then now() else null end
+  where id = p_id;
+  perform set_config('moneo.planning_request_id', '', true);
+  select id into strict event_id from public.planning_events where workspace_id = row_value.workspace_id and request_id = p_request_id;
+  return event_id;
+end;
+$$;

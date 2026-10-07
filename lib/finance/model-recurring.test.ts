@@ -77,8 +77,8 @@ it("keeps an inferred original calendar anchor when its latest observed payment 
   expect(result.input.events.map(event => event.date)).toEqual(["2026-11-06"]);
 });
 
-it("lets intentional user dates override a retained inferred calendar anchor", async () => {
-  const item = {...assumption, source: "user", schedule_anchor_on: "2026-08-31"};
+it("uses the replacement anchor persisted for an intentional user date edit", async () => {
+  const item = {...assumption, source: "user", schedule_anchor_on: "2026-10-06"};
   const result = await evaluateFixture(item, [posting], snapshot, [], 32);
   expect(result.input.events.map(event => event.date)).toEqual(["2026-10-06", "2026-11-06"]);
 });
