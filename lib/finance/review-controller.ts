@@ -11,7 +11,7 @@ type Summary = Pick<Result, "queryId" | "evidenceId" | "evidence"> & {
 };
 export type ReviewProgress = {
   version: 1; request: ReviewRequest; startedAt: number; supportRecords: number;
-  queries: {query: Pick<InvestigationSpec, "page">; status: "reading" | "completed" | "unavailable"; receiptId?: string; result?: Summary}[];
+  queries: {query: Pick<InvestigationSpec, "page"> & {groupBy?: InvestigationSpec["groupBy"]}; status: "reading" | "completed" | "unavailable"; receiptId?: string; result?: Summary}[];
   limitations: string[];
   synthesisAttempted?: boolean;
 };
@@ -53,12 +53,18 @@ export async function runReviewInvestigation(request: ReviewRequest, dependencie
   while (progress.queries.length < request.budget.maxQueries && progress.supportRecords < request.budget.maxSupportRecords) {
     if (dependencies.signal?.aborted) throw dependencies.signal.reason;
     if (signal.aborted || now() - progress.startedAt >= request.budget.maxDurationMs) {note("Investigation time budget reached; retained supported sections remain available."); break;}
-    const baseline = progress.queries.find(query => query.status === "completed" && !query.query.page.groupKey)?.result;
+    const baselineQuery = progress.queries.find(query => query.status === "completed" && !query.query.page.groupKey);
+    const baseline = baselineQuery?.result;
+    // One same-scope aggregate fallback can retain useful facts without repeating an unavailable detailed read.
+    if (baselineQuery?.query.groupBy?.length === 0 || !baseline && progress.queries.length &&
+      (!request.query.groupBy.length || progress.queries.some(query => query.query.groupBy?.length === 0))) break;
+    const aggregateFallback = !baseline && progress.queries.length > 0;
     const attempted = new Set(progress.queries.map(query => query.query.page.groupKey).filter(Boolean));
     const group = baseline ? materialGroups(baseline.groups).find(candidate => !attempted.has(candidate.key) && candidate.key.length <= 2000) : undefined;
     if (baseline && !group) break;
-    const query: InvestigationSpec = {...request.query, page: {size: Math.min(10, request.budget.maxSupportRecords - progress.supportRecords), period: "both", ...(group ? {groupKey: group.key} : {})}};
-    const attempt: ReviewProgress["queries"][number] = {query: {page: query.page}, status: "reading"};
+    const query: InvestigationSpec = {...request.query, ...(aggregateFallback ? {groupBy: []} : {}), page: {size: Math.min(10, request.budget.maxSupportRecords - progress.supportRecords), period: "both", ...(group ? {groupKey: group.key} : {})}};
+    const attempt: ReviewProgress["queries"][number] = {query: {page: query.page, ...(aggregateFallback ? {groupBy: []} : {})}, status: "reading"};
+    if (aggregateFallback) note("Detailed grouping was unavailable; the fallback preserves the exact dated filters and currency policy but cannot explain individual group changes.");
     progress.queries.push(attempt);
     await dependencies.checkpoint?.(progress); // Persist spent budget before starting network work.
     try {

@@ -15,6 +15,20 @@ const read = vi.fn(async (query: InvestigationSpec, signal: AbortSignal) => {
 });
 
 describe("bounded read-only investigation controller", () => {
+  it("retains same-scope totals when detailed grouping is unavailable without repeatedly spending the failed query", async () => {
+    const queries: InvestigationSpec[] = [];
+    const specification = request({maxQueries: 6});
+    const progress = await runReviewInvestigation(specification, {read: async query => {
+      queries.push(query);
+      if (query.groupBy.length) throw new Error("Detailed receipt exceeds retained metric bound");
+      return {result: investigate(query, rows, context), receiptId: "aggregate"};
+    }});
+    expect(queries).toHaveLength(2);
+    expect(queries[1]).toEqual({...queries[0], groupBy: []});
+    expect(progress.queries[1].receiptId).toBe("aggregate");
+    expect(progress.queries[1].result?.groups.find(group => group.currency === "EUR")?.currentMinor).toBe("9007199254740994");
+    expect(progress.limitations.join(" ")).toContain("Detailed grouping was unavailable");
+  });
   it("retains bounded progress for many long group labels without repeating the full query or every group on each drilldown", async () => {
     const longRows = Array.from({length: 20}, (_, index) => {
       const tags = Array.from({length: 18}, (_, tag) => `${index}-${tag}`.padEnd(95, "x"));
