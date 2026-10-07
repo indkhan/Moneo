@@ -3,6 +3,7 @@ import { accountLiquidity, availableToSpend, forecastDaily, withInternalFunding,
 import { requireWorkspace } from "@/lib/auth";
 import { evaluatePlan, evaluatePlanForWorkspace } from "./model";
 import { loadBalanceEvidence, resolveBalances } from "./balances";
+import { loadSourceCoverage } from "./source-coverage";
 
 type FinanceContext = Awaited<ReturnType<typeof requireWorkspace>>;
 
@@ -31,14 +32,14 @@ export async function getBalances(context?: FinanceContext) {
   return resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone);
 }
 
-export async function cashflow(input: unknown, context?: FinanceContext) {
+export async function cashflow(input: unknown, context?: FinanceContext, canReadImports = true) {
   const { from, to, currencyCode } = periodInput.parse(input);
   if (from > to) throw new Error("From date is after to date");
   const { supabase, workspace } = context ?? await requireWorkspace();
   const rows = [];
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await supabase.from("effective_transactions")
-      .select("amount_minor::text, currency_code, status, kind, review_reasons")
+      .select("account_id, amount_minor::text, currency_code, status, kind, review_reasons")
       .eq("workspace_id", workspace.id).gte("posted_on", from).lte("posted_on", to)
       .order("id")
       .range(offset, offset + 999);
@@ -46,19 +47,20 @@ export async function cashflow(input: unknown, context?: FinanceContext) {
     rows.push(...(data ?? []));
     if (!data || data.length < 1000) break;
   }
+  const sourceCoverage = await loadSourceCoverage(supabase, workspace.id, { from, to, currencyCode }, rows, canReadImports);
   const total = summarizeCashflow(rows.map(row => ({
     amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code,
     status: row.status as "posted" | "pending", kind: row.kind as "ordinary" | "transfer" | "refund",
     reviewReasons: row.review_reasons,
   })), currencyCode);
   return total ? {
-    from, to, currencyCode, incomeMinor: total.incomeMinor.toString(),
+    from, to, currencyCode, sourceCoverage, incomeMinor: total.incomeMinor.toString(),
     spendingMinor: total.spendingMinor.toString(), netMinor: total.netMinor.toString(),
     evidence: { transactionCount: rows.length, excludedPendingAndTransfers: true,
       includedTransactionCount: rows.filter(row => row.status === "posted" && row.kind !== "transfer" && !row.review_reasons?.length).length,
       excludedReviewRows: total.excludedReviewRows ?? 0, partial: total.partial ?? false,
       ...(total.partial ? { limitation: "Excluded classifications are unknown; these partial totals are not upper or lower bounds." } : {}) },
-  } : { unavailable: "Some transactions require currency conversion", from, to, currencyCode };
+  } : { unavailable: "Some transactions require currency conversion", from, to, currencyCode, sourceCoverage };
 }
 
 export async function searchTransactions(input: unknown, context?: FinanceContext) {
