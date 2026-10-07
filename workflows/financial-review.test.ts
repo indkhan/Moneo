@@ -5,7 +5,7 @@ import { modelForSettings } from "@/lib/ai/provider";
 
 const fixture = vi.hoisted(() => ({ scheduled: true, disabledAt: 1, importsLoaded: false, disabledImportsAt: Infinity, loads: 0, finishStatus: "completed", writes: [] as { table: string; value: Record<string, unknown> }[] }));
 vi.mock("workflow", async original => ({ ...await original<typeof import("workflow")>(), getWorkflowMetadata: () => ({ workflowRunId: "run" }), getStepMetadata: () => ({ attempt: 1 }) }));
-vi.mock("@/lib/finance/review-loader", () => ({ loadFinancialReviewEvidence: async () => ({ period: { from: "2026-07-05", to: "2026-10-02" }, sourceCoverage: { importStatuses: fixture.importsLoaded ? { completed: 1 } : null }, planning: { unavailable: "Disabled" } }) }));
+vi.mock("@/lib/finance/review-loader", () => ({ loadFinancialReviewEvidence: async () => ({ period: { from: "2026-07-05", to: "2026-10-02" }, sourceVersion: "retained-original-revision", calculationEvidence: { snapshots: [{ version: 1 }] }, sourceCoverage: { importStatuses: fixture.importsLoaded ? { completed: 1 } : null }, planning: { unavailable: "Disabled" } }) }));
 vi.mock("@/lib/settings", async importOriginal => {
   const original = await importOriginal<typeof import("@/lib/settings")>();
   return { ...original, loadWorkspaceSettings: async () => original.settingsSchema.parse({ summary_cadence: ++fixture.loads >= fixture.disabledAt ? "none" : "weekly",
@@ -46,6 +46,13 @@ it("keeps a manually requested review available when scheduled summaries are dis
   await financialReview("job", "workspace");
   expect(fixture.writes.some(write => write.table === "finish_financial_review")).toBe(true);
   expect(fixture.writes.some(write => write.table === "saved_analyses")).toBe(false);
+});
+it("keeps the source fingerprint through summary stripping and atomic saved-review publication", async () => {
+  fixture.scheduled = false;
+  await financialReview("job", "workspace");
+  const saved = fixture.writes.find(write => write.table === "finish_financial_review")!;
+  expect(saved.value.p_evidence).toMatchObject({ sourceVersion: "retained-original-revision", period: { from: "2026-07-05", to: "2026-10-02" } });
+  expect(saved.value.p_evidence).not.toHaveProperty("calculationEvidence");
 });
 it("never publishes invented provider amounts or source links as a dated review", async () => {
   fixture.scheduled = false;
