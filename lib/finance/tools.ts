@@ -120,19 +120,20 @@ export async function evaluateForecast(input: unknown, context?: FinanceContext)
   const plan = context ? await evaluatePlanForWorkspace(context.supabase, context.workspace, args.horizonDays, args.scenarioId, { canReadImports: context.settings.ai_data_scopes.includes("imports") }) : await evaluatePlan(args.horizonDays, args.scenarioId);
   const assumptions = withInternalFunding(plan.input, (args.funding ?? []).map(funding => ({ ...funding, amountMinor: BigInt(funding.amountMinor) })));
   const forecast = forecastDaily(assumptions), available = availableToSpend(assumptions);
+  const calculationEvidence = JSON.parse(JSON.stringify({ source: plan.calculationEvidence, input: assumptions, forecast, available }, (_key, value) => typeof value === "bigint" ? value.toString() : value));
   if (forecast.status === "unavailable" || available.status === "unavailable")
-    return { status: "unavailable", sourceCoverage: plan.sourceCoverage, missingInputs: [...new Set([
+    return { status: "unavailable", sourceCoverage: plan.sourceCoverage, sourceVersion: plan.sourceVersion, calculationEvidence, missingInputs: [...new Set([
       ...(forecast.status === "unavailable" ? forecast.missingInputs : []),
       ...(available.status === "unavailable" ? available.missingInputs : []),
     ])] };
   const last = forecast.days.at(-1)!;
   const liquidity = accountLiquidity(assumptions);
-  if (liquidity.status === "unavailable") return { ...liquidity, sourceCoverage: plan.sourceCoverage };
+  if (liquidity.status === "unavailable") return { ...liquidity, sourceCoverage: plan.sourceCoverage, sourceVersion: plan.sourceVersion, calculationEvidence };
   const account = args.accountId ? liquidity.accounts.find(account => account.accountId === args.accountId) : undefined;
   if (args.accountId && !account) throw new Error("Unknown account");
   return { status: "available", sourceCoverage: plan.sourceCoverage, resultBasis: plan.resultBasis, currencyCode: assumptions.currencyCode, horizonDays: args.horizonDays,
     period: { from: assumptions.startDate, to: last.date },
-    calculationEvidence: JSON.parse(JSON.stringify({ input: assumptions, forecast, available, liquidity }, (_key, value) => typeof value === "bigint" ? value.toString() : value)),
+    sourceVersion: plan.sourceVersion, calculationEvidence: { ...calculationEvidence, liquidity: serializeAccountLiquidity(liquidity) },
     expectedMinor: last.expectedMinor.toString(), conservativeMinor: last.conservativeMinor.toString(),
     optimisticMinor: last.optimisticMinor.toString(), availableToSpendMinor: account?.spendableMinor.toString() ?? null,
     accountId: account?.accountId ?? null, limitingDate: account?.spendingLimitingDate ?? null,

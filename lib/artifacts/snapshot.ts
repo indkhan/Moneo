@@ -39,6 +39,8 @@ export type CalculatorSnapshot = { coverage?: SnapshotCoverage; sourceCoverage?:
       accountId?: string | null;
       liquidity?: Awaited<ReturnType<typeof tripForArtifact>>["liquidity"];
       tripLiquidity?: Awaited<ReturnType<typeof tripForArtifact>>["tripLiquidity"];
+      sourceVersion?: string;
+      calculationEvidence?: Awaited<ReturnType<typeof tripForArtifact>>["calculationEvidence"];
     }
   | {
       currency: string;
@@ -125,6 +127,7 @@ export async function buildCalculatorSnapshot(
         sourceCoverage: data.sourceCoverage,
         baselineAvailableMinor:
           data.baseline.status === "available" ? data.baseline.amountMinor.toString() : null,
+        ...(data.sourceVersion ? { sourceVersion: data.sourceVersion, calculationEvidence: data.calculationEvidence } : {}),
         unavailable: data.unavailable ?? (data.baseline.status === "available" ? null : "Forecast unavailable"),
         withTripAvailableMinor: data.withTrip?.status === "available" ? data.withTrip.amountMinor.toString() : null,
         evaluatedCostMinor: (opts?.costMinor ?? 90000n).toString(),

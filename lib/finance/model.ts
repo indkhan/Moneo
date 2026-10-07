@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { defaultForecastPreferences, forecastCases, forecastPreferencesSchema } from "./preferences";
 import { reconcileOccurrence, settlementPosting, type OccurrenceSettlement } from "./recurring-occurrences";
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
+import { evidenceFingerprint } from "./evidence-receipts";
 
 type Scheduled = { account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; enabled?: boolean };
 
@@ -74,10 +75,10 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
       evidence?.balanceEvidence ?? loadBalanceEvidence(supabase, workspace.id),
       evidence?.wealth ?? loadWealthItems(supabase, workspace.id),
       supabase.from("forecast_preferences").select("currency_code, safety_buffer_minor::text, daily_spending_minor::text, uncertainty_bps, spending_account_id, spending_starts_on, version").eq("workspace_id", workspace.id).maybeSingle(),
-      allRows(supabase.from("goal_allocations").select("account_id, amount_minor::text").eq("workspace_id", workspace.id).order("id")),
-      allRows(supabase.from("financial_assumptions").select("id, name, source, account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, enabled")
+      allRows(supabase.from("goal_allocations").select("id, goal_id, account_id, amount_minor::text, version").eq("workspace_id", workspace.id).order("id")),
+      allRows(supabase.from("financial_assumptions").select("id, name, source, account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, enabled, confirmed, version")
         .eq("workspace_id", workspace.id).eq("enabled", true).eq("confirmed", true).is("removed_at", null).order("id")),
-      allRows(supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
+      allRows(supabase.from("fx_rates").select("id, from_currency, to_currency, rate_text, rate_date, source, created_at")
         .eq("workspace_id", workspace.id).eq("to_currency", workspace.display_currency).order("id")),
       allRows(supabase.from("recurring_series").select("id, assumption_id, recurring_series_transactions(transaction_id)")
         .eq("workspace_id", workspace.id).eq("status", "confirmed").eq("evidence_invalidated", false).order("id")),
@@ -89,11 +90,14 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
   if (preferencesResult.error) throw preferencesResult.error;
   const preferences = preferencesResult.data ? forecastPreferencesSchema.parse(preferencesResult.data) : defaultForecastPreferences(workspace.display_currency);
   const preferencesVersion = preferencesResult.data?.version ?? 0;
+  const conversions: { input: Parameters<typeof convertFx>[0]; requestedDate: string; selectedRate: unknown; result: ReturnType<typeof convertFx> }[] = [];
   const convert = (amount: bigint, from: string, date: string) => {
     const rate = (rates ?? []).filter(row => row.from_currency === from && row.rate_date <= date)
       .sort((a, b) => b.rate_date.localeCompare(a.rate_date))[0];
-    const result = convertFx({ amountMinor: amount, from, to: workspace.display_currency,
-      rate: rate?.rate_text, source: rate?.source ?? "forecast", date: rate?.rate_date ?? date });
+    const input = { amountMinor: amount, from, to: workspace.display_currency,
+      rate: rate?.rate_text, source: rate?.source ?? "forecast", date: rate?.rate_date ?? date };
+    const result = convertFx(input);
+    conversions.push({ input, requestedDate: date, selectedRate: rate ?? null, result });
     return result.status === "available" ? result.converted.amountMinor : null;
   };
   const reserved = new Map<string, bigint>();
@@ -161,12 +165,14 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
   const safetyBufferMinor = BigInt(preferences.safety_buffer_minor) === 0n ? 0n : convert(BigInt(preferences.safety_buffer_minor), preferences.currency_code, startDate);
   if (safetyBufferMinor === null) missingInputs.push("fx:safety buffer");
   let scenarioEvents: ForecastEvent[] = [];
+  let scenarioEvidence: unknown = null;
   if (scenarioId) {
-    const { data: scenario } = await supabase.from("scenarios").select("id").eq("workspace_id", workspace.id).eq("id", scenarioId).is("removed_at", null).maybeSingle();
+    const { data: scenario } = await supabase.from("scenarios").select("id, version").eq("workspace_id", workspace.id).eq("id", scenarioId).is("removed_at", null).maybeSingle();
     if (!scenario) throw new Error("Scenario not found");
     const overrides = await allRows(supabase.from("scenario_overrides")
-      .select("id, name, account_id, amount_delta_minor::text, currency_code, cadence, starts_on, ends_on")
+      .select("id, name, account_id, amount_delta_minor::text, currency_code, cadence, starts_on, ends_on, version")
       .eq("workspace_id", workspace.id).eq("scenario_id", scenarioId).is("removed_at", null).order("id"));
+    scenarioEvidence = { scenario, overrides };
     missingInputs.push(...(overrides ?? []).flatMap(item => !item.account_id || !accountIds.has(item.account_id) ? ["scenario account"] : []));
     scenarioEvents = (overrides ?? []).flatMap(item => item.account_id && accountIds.has(item.account_id)
       ? expandSchedule({ ...item, amount_minor: item.amount_delta_minor }, startDate, horizonDays, preferences.uncertainty_bps).flatMap(event => {
@@ -207,6 +213,11 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
   const coverageEnd = new Date(Date.parse(`${startDate}T00:00:00Z`) + horizonDays * 86400000).toISOString().slice(0, 10);
   const sourceCoverage = buildSourceCoverage({ from: boundary ?? "0001-01-01", to: coverageEnd, accountIds: [...accountIds], ledgerBasis: "balance_activity" },
     balanceEvidence.ledger.filter(row => accountIds.has(row.account_id)).map(row => ({ ...row, kind: row.kind ?? "ordinary" })), sourceMetadata?.imports, sourceMetadata?.sources);
+  // Preserve pre-conversion facts and revisions even when a changed rate rounds to the same minor unit.
+  const calculationEvidence = { workspace: { displayCurrency: workspace.display_currency, timezone: workspace.timezone }, startDate,
+    balances: { accounts: balanceEvidence.accounts, snapshots: balanceEvidence.snapshots, ledger: balanceEvidence.ledger },
+    wealth, debts, preferences, preferencesVersion, allocations, assumptions, rates, recurringSeries, settlements, sourceMetadata, scenario: scenarioEvidence, conversions };
   return { forecast, available, liquidity: accountLiquidity(input), input, preferences, preferencesVersion, sourceCoverage,
+    calculationEvidence, sourceVersion: evidenceFingerprint(calculationEvidence),
     resultBasis: "accepted balance evidence and confirmed assumptions; source completeness unknown" };
 }

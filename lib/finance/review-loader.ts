@@ -63,9 +63,9 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
   const planning = { ...buildPlanningReview({ today: to, goals, allocations, budgets, budgetHistory, budgetCoverage, transactions, categories }),
     obligations: assumptions.filter(row => row.confirmed && row.enabled && !row.removed_at).map(row => ({ ...row, link: "/plan" })),
     wealth: { included: datedWealth.included, excludedLinked: datedWealth.excludedLinked, missingInputs: datedWealth.missingInputs, sourceCoverage: datedWealth.sourceCoverage, manualRecords: datedWealth.manualRecords, link: "/money/wealth" },
-    forecast: { evaluatedOn: to, horizonDays: 90, currency: workspace.display_currency, sourceCoverage: plan.sourceCoverage, resultBasis: plan.resultBasis, available: plan.available, daily: plan.forecast, obligations: plan.input.events, link: "/plan" } };
+    forecast: { evaluatedOn: to, horizonDays: 90, currency: workspace.display_currency, sourceVersion: plan.sourceVersion, sourceCoverage: plan.sourceCoverage, resultBasis: plan.resultBasis, available: plan.available, daily: plan.forecast, obligations: plan.input.events, link: "/plan" } };
   // Workflow transport, persistence and prompts receive exact decimal strings, never JSON numbers for money.
   return { ...base, accountBalanceTotals: base.netWorth, netWorth: reviewNetWorth(base.netWorth, wealth, to), investigation, queryInvestigation,
-    calculationEvidence: JSON.parse(JSON.stringify({ ...calculationEvidence, goals, allocations, budgetHistory, assumptions, wealth, planInput: plan.input }, (_key, value) => typeof value === "bigint" ? value.toString() : value)),
+    calculationEvidence: JSON.parse(JSON.stringify({ ...calculationEvidence, goals, allocations, budgetHistory, assumptions, wealth, planInput: plan.input, forecastSource: plan.calculationEvidence }, (_key, value) => typeof value === "bigint" ? value.toString() : value)),
     planning: JSON.parse(JSON.stringify(planning, (_key, value) => typeof value === "bigint" ? value.toString() : value)) as Record<string, unknown> };
 }

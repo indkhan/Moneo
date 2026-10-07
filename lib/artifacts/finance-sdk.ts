@@ -137,6 +137,8 @@ export async function tripForArtifact(artifactId: string, costMinor: bigint, acc
   return { baseline: selected ? { status: "available" as const, ...selected, amountMinor: selected.spendableMinor, limitingDate: selected.spendingLimitingDate } : { status: "unavailable" as const },
     withTrip: withTrip ? { status: "available" as const, ...withTrip, amountMinor: withTrip.spendableMinor, limitingDate: withTrip.spendingLimitingDate } : null,
     tripDate, sourceCoverage: baseline.sourceCoverage, resultBasis: baseline.resultBasis, currency: workspace.display_currency, accountId: account?.id ?? null,
+    sourceVersion: baseline.sourceVersion,
+    calculationEvidence: JSON.parse(JSON.stringify({ source: baseline.calculationEvidence, input, costMinor, tripDate }, (_key, value) => typeof value === "bigint" ? value.toString() : value)),
     liquidity: serializeAccountLiquidity(liquidity),
     tripLiquidity: tripLiquidity ? serializeAccountLiquidity(tripLiquidity) : null,
     unavailable: !account ? "Choose a paying account; aggregate cash requires explicit funding" : !selected ? "Forecast unavailable" : null };
