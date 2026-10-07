@@ -12,6 +12,7 @@ vi.mock("@/lib/artifacts/finance-sdk", () => ({ spendingForArtifact: vi.fn(), tr
 vi.mock("../calculator-panel", () => ({ CalculatorPanel: () => null }));
 vi.mock("../version-editor", () => ({ VersionEditor: () => null }));
 vi.mock("../generate-calculator-form", () => ({ GenerateCalculatorForm: () => null }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }), notFound: vi.fn() }));
 
 beforeEach(() => { vi.mocked(buildCalculatorSnapshot).mockResolvedValue({ snapshot: { currency: "EUR" }, stateParams: {} }); });
 async function restored(kind: "custom_report" | "trip_planner", state: Record<string, unknown>) {
@@ -51,6 +52,7 @@ it("never reuses an uncontrolled rename value with a refreshed expected revision
 
 import React, { cloneElement, isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { TripStateForm } from "../trip-state-form";
 import { tripForArtifact, goalsForArtifact } from "@/lib/artifacts/finance-sdk";
 import { accountLiquidity, serializeAccountLiquidity } from "@/lib/finance/calculations";
 vi.mock("next/link", () => ({ default: "a" }));
@@ -58,6 +60,7 @@ async function resolveNative(node: ReactNode): Promise<ReactNode> {
   if (Array.isArray(node)) return Promise.all(React.Children.toArray(node).map(resolveNative));
   if (!isValidElement(node)) return node;
   const element = node as ReactElement<{ children?: ReactNode }>;
+  if (element.type === TripStateForm) return element;
   if (typeof element.type === "function") return resolveNative(await (element.type as (props: unknown) => ReactNode)(element.props));
   const children = await resolveNative(element.props.children);
   return cloneElement(element, {}, ...(Array.isArray(children) ? React.Children.toArray(children) : [children]));

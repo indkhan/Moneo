@@ -11,6 +11,7 @@ import { calculatorManifestSchema, normalizeCalculatorParams, isMinorParam, type
 import { formatMoney } from "@/lib/finance/format";
 import { ForecastEvidence, type ForecastEvidenceInput } from "./forecast-evidence";
 import { CalculatorRows } from "./calculator-rows";
+import { useStateDraft, StateDraftRecovery } from "./use-state-draft";
 
 const Chart = dynamic(() => import("echarts-for-react"), { ssr: false });
 
@@ -27,6 +28,7 @@ export function CalculatorPanel({
   source,
   snapshot,
   initialParams,
+  stateVersion = 0,
   versionLabel,
   artifactId,
   title = "Financial calculator",
@@ -38,6 +40,7 @@ export function CalculatorPanel({
   source: string;
   snapshot: unknown;
   initialParams: Record<string, number | string>;
+  stateVersion?: number;
   versionLabel: string;
   artifactId: string;
   title?: string;
@@ -46,7 +49,8 @@ export function CalculatorPanel({
   inputWarnings?: string[];
   currency?: string;
 }) {
-  const [params, setParams] = useState(initialParams);
+  const draft = useStateDraft(initialParams, stateVersion, saveCalculatorParams);
+  const params = draft.value, setParams = draft.edit;
   const [output, setOutput] = useState<CalculatorOutput | null>(null);
   const [status, setStatus] = useState<"idle" | "running" | "done" | "error" | "stopped">("idle");
   const [error, setError] = useState("");
@@ -138,15 +142,17 @@ export function CalculatorPanel({
           >
             Re-run
           </button>
-          <form action={saveCalculatorParams} className="inline">
+          <form action={draft.action} className="inline">
             <input type="hidden" name="artifactId" value={artifactId} />
             <input type="hidden" name="params" value={JSON.stringify(params)} />
-            <button type="submit" disabled={Boolean(inputError)} className="rounded border px-3 py-1 disabled:opacity-50">
+            <input type="hidden" name="expectedVersion" value={draft.expectedVersion} />
+            <button type="submit" disabled={Boolean(inputError) || draft.busy || draft.conflict} className="rounded border px-3 py-1 disabled:opacity-50">
               Save inputs
             </button>
           </form>
         </div>
       </div>
+      <StateDraftRecovery {...draft} />
       <p className="mt-1 text-xs text-muted-foreground">
         Illustrative results from dated financial evidence. Validation checks execution and output shape; it does not verify financial claims. Exports include inputs and evidence so unknown or partial data stays visible.
       </p>
@@ -158,6 +164,7 @@ export function CalculatorPanel({
               {def.label ?? name}{isMinorParam(name, def) ? ` (minor units, ${def.currency ?? currency ?? "currency unavailable"})` : def.unit ? ` (${def.unit})` : ""}
               <input
                 value={String(params[name] ?? "")}
+                disabled={draft.busy}
                 onChange={(e) => {
                   const raw = e.target.value;
                   setParams((p) => ({ ...p, [name]: def.type === "number" && raw.trim() !== "" ? Number(raw) : raw }));

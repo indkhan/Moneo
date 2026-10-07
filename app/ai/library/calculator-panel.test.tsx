@@ -4,6 +4,7 @@ import { calculatorManifestSchema } from "@/lib/artifacts/spec";
 import { CalculatorPanel } from "./calculator-panel";
 
 vi.mock("next/dynamic", () => ({ default: () => () => null }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("./actions", () => ({ saveCalculatorParams: vi.fn() }));
 vi.mock("@/lib/artifacts/run", () => ({ runIsolatedArtifact: vi.fn() }));
 

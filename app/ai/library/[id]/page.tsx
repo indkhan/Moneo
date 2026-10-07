@@ -7,7 +7,8 @@ import { artifactKindSchema, calculatorManifestSchema, normalizeCalculatorParams
 import { parseManualAmount } from "@/app/money/transactions/input";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
-import { pinArtifact, renameArtifact, saveTripState, unpinArtifact } from "../actions";
+import { pinArtifact, renameArtifact, unpinArtifact } from "../actions";
+import { TripStateForm } from "../trip-state-form";
 import { SpendingChart } from "../spending-chart";
 import { ForecastEvidence } from "../forecast-evidence";
 import { CalculatorPanel } from "../calculator-panel";
@@ -31,7 +32,7 @@ export default async function ArtifactPage({ params, searchParams }: {
   const [{ data: artifact }, { data: state }, { data: pin }] = await Promise.all([
     supabase.from("artifacts").select("id, kind, name, active_version_id")
       .eq("workspace_id", workspace.id).eq("id", id).maybeSingle(),
-    supabase.from("artifact_state").select("state").eq("workspace_id", workspace.id).eq("artifact_id", id).maybeSingle(),
+    supabase.from("artifact_state").select("state, version").eq("workspace_id", workspace.id).eq("artifact_id", id).maybeSingle(),
     supabase.from("dashboard_items").select("id").eq("workspace_id", workspace.id).eq("artifact_id", id).maybeSingle(),
   ]);
   if (!artifact?.active_version_id || !kinds.includes(artifact.kind as ArtifactKind)) notFound();
@@ -78,10 +79,11 @@ export default async function ArtifactPage({ params, searchParams }: {
     <p className="mt-2 text-sm text-muted-foreground">Live financial data · trusted {artifact.kind.replaceAll("_", " ")} v{version?.version ?? "?"}</p>
     <RenameArtifactForm artifactId={id} activeVersionId={artifact.active_version_id} name={artifact.name} action={renameArtifact} />
     {artifact.kind === "spending_explorer" && <SpendingExplorer id={id} query={q.slice(0, 100)} />}
-    {artifact.kind === "trip_planner" && <TripPlanner id={id} costMinor={costMinor} />}
+    {artifact.kind === "trip_planner" && <TripPlanner id={id} costMinor={costMinor} stateVersion={state?.version ?? 0} />}
     {artifact.kind === "goal_tracker" && <GoalTracker id={id} scenarioGoalId={goalId} extra={extra} />}
     {version && isCalculator && (
       <CalculatorPanel
+        stateVersion={state?.version ?? 0}
         key={artifact.active_version_id}
         source={version.source}
         snapshot={snapshot}
@@ -141,17 +143,13 @@ async function SpendingExplorer({ id, query }: { id: string; query: string }) {
   </section>;
 }
 
-async function TripPlanner({ id, costMinor }: { id: string; costMinor: bigint }) {
+async function TripPlanner({ id, costMinor, stateVersion }: { id: string; costMinor: bigint; stateVersion: number }) {
   let data: Awaited<ReturnType<typeof tripForArtifact>>;
   try { data = await tripForArtifact(id, costMinor); }
   catch { return <p role="status" className="mt-8 rounded border p-5">Forecast evidence is unavailable. Check this tool&apos;s permissions and AI data access in Settings.</p>; }
   return <section className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
     <h2 className="text-xl font-semibold tracking-tight text-foreground">Trip cost</h2>
-    <form action={saveTripState} className="mt-4 flex flex-wrap items-end gap-3">
-      <input type="hidden" name="artifactId" value={id} />
-      <label className="text-sm">Cost in minor units ({data.currency})<input name="costMinor" type="number" min="0" max="10000000" defaultValue={costMinor.toString()} className="mt-1 block rounded-lg border border-border bg-card px-3 py-2" /></label>
-      <button className="rounded-lg bg-brand px-3 py-2 font-medium text-white hover:opacity-90 text-sm">Save and recalculate</button>
-    </form>
+    <TripStateForm artifactId={id} costMinor={costMinor.toString()} stateVersion={stateVersion} currency={data.currency} />
     <p className="mt-3 text-sm text-muted-foreground">Hypothetical one-time cost on {data.tripDate}; no goal or account is changed.</p>
     {data.unavailable && <p className="mt-4">{data.unavailable}</p>}
     <div className="mt-5 grid gap-3 sm:grid-cols-2">
