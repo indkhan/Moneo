@@ -4,6 +4,7 @@ import { FALLBACK_CALCULATORS } from "./templates";
 import { evaluateIsolated } from "./isolate";
 import { accountLiquidity, type ForecastInput } from "@/lib/finance/calculations";
 import { defaultTripScenario, evaluateTripScenario } from "@/lib/finance/trip-scenario";
+import { calculatorManifestSchema, normalizeCalculatorParams } from "./spec";
 import { POST } from "@/app/api/artifacts/trip/route";
 const fixture = vi.hoisted(() => ({ input: {} as ForecastInput, scenario: {} as unknown, manifest: {} as unknown }));
 vi.mock("@/lib/finance/model", () => ({ evaluatePlan: async (days: number) => ({ input: { ...fixture.input, horizonDays: days } }) }));
@@ -67,4 +68,40 @@ it.each(["minimum before trip", "minimum after trip", "salary after trip", "nega
   const edited = evaluateTripScenario(input, { ...scenario, payments: [{ ...scenario.payments[0], amountMinor: "30000" }] });
   expect(refreshed.withTripAvailableMinor).toBe(edited.withTripAvailableMinor);
   expect(input.scenarioEvents).toBeUndefined();
+});
+
+it.each(["trip_planner", "custom_planner"] as const)("actual manifest/snapshot rejects a USD scalar instead of forecasting EUR: %s", async kind => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
+  fixture.input = { startDate: "2026-10-01", horizonDays: 30, currencyCode: "EUR", accounts: [{ id: "a", currencyCode: "EUR", balanceMinor: 100000n }], events: [] };
+  const manifest = calculatorManifestSchema.parse({ kind, runtime: "quickjs-calculator-v1", sdk: ["forecast"], params: { costMinor: { type: "number", default: 20000, currency: "USD" } } });
+  const params = normalizeCalculatorParams(manifest);
+  const native = evaluateTripScenario(fixture.input, defaultTripScenario("2026-10-01", "USD", "a", 20000n));
+  expect(native.unavailable).toContain("rate:USD->EUR"); expect(native.withTripAvailableMinor).toBeNull();
+  const built = buildCalculatorSnapshot("synthetic", kind, { costMinor: 20000n, tripParams: params, sdk: manifest.sdk, manifest });
+  if (kind === "trip_planner") await expect(built).rejects.toThrow("Trip cost currency USD differs from forecast currency EUR");
+  else expect((await built).snapshot).toMatchObject({ unavailable: expect.stringContaining("Trip cost currency USD differs from forecast currency EUR") });
+});
+
+it.each([false, true])("native original-currency preview retains explicit FX assumptions despite a USD scalar manifest: %s", async withFx => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
+  fixture.input = { startDate: "2026-10-01", horizonDays: 30, currencyCode: "EUR", accounts: [{ id: "a", currencyCode: "EUR", balanceMinor: 100000n }], events: [] };
+  const scenario = defaultTripScenario("2026-10-01", "USD", "a", 20000n);
+  if (withFx) scenario.payments[0].fx = { rate: "0.9", date: "2026-10-01", source: "Explicit user trip assumption" };
+  fixture.scenario = scenario;
+  fixture.manifest = { ...FALLBACK_CALCULATORS.trip_planner.manifest, params: { costMinor: { type: "number", default: 20000, currency: "USD" } } };
+  const request = (body: unknown) => new Request("http://localhost/api/artifacts/trip", { method: "POST", body: JSON.stringify(body) });
+  const response = await POST(request({ artifactId: "00000000-0000-4000-8000-000000000001", scenario }));
+  expect(response.status).toBe(200); const snapshot = await response.json();
+  expect(snapshot.tripResult.scenario).toEqual(scenario);
+  if (withFx) expect(snapshot).toMatchObject({ withTripAvailableMinor: "82000", evaluatedCostMinor: "18000", unavailable: null });
+  else expect(snapshot).toMatchObject({ withTripAvailableMinor: null, unavailable: expect.stringContaining("rate:USD->EUR") });
+  const generated = await POST(request({ artifactId: "00000000-0000-4000-8000-000000000001", params: { costMinor: 20000 }, baseScenario: scenario }));
+  expect(generated.status).toBe(400);
+  expect(await generated.json()).toMatchObject({ error: expect.stringContaining("Trip cost currency USD differs from forecast currency EUR") });
+});
+it("explicit workspace-currency manifest retains normal scalar snapshot evidence", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
+  fixture.input = { startDate: "2026-10-01", horizonDays: 30, currencyCode: "EUR", accounts: [{ id: "a", currencyCode: "EUR", balanceMinor: 100000n }], events: [] };
+  const manifest = calculatorManifestSchema.parse({ kind: "trip_planner", runtime: "quickjs-calculator-v1", sdk: ["forecast"], params: { costMinor: { type: "number", default: 20000, currency: "EUR" } } });
+  expect((await buildCalculatorSnapshot("synthetic", "trip_planner", { manifest, costMinor: 20000n, tripParams: normalizeCalculatorParams(manifest) })).snapshot).toMatchObject({ withTripAvailableMinor: "80000", evaluatedCostMinor: "20000", unavailable: null });
 });

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { buildCalculatorSnapshot } from "@/lib/artifacts/snapshot";
 import { artifactKindSchema, calculatorManifestSchema, normalizeCalculatorParams } from "@/lib/artifacts/spec";
+import { assertTripCostCurrency } from "@/lib/artifacts/trip-params";
 import { tripCostMinor, tripScenarioSchema } from "@/lib/finance/trip-scenario";
 
 export async function POST(request: Request) {
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
       const manifest = calculatorManifestSchema.parse(version?.manifest);
       if (manifest.kind !== kind || !manifest.sdk.includes("forecast")) throw new Error("Forecast permission is not declared");
       if (Object.keys(args.params).some(key => !(key in manifest.params))) throw new Error("Undeclared trip parameter");
+      assertTripCostCurrency(manifest.params.costMinor?.currency, workspace.display_currency);
       const params = normalizeCalculatorParams(manifest, args.params);
       tripParams = params;
       sdk = manifest.sdk; investigation = manifest.investigation;
@@ -48,7 +50,7 @@ export async function POST(request: Request) {
     return Response.json(result.snapshot, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Trip preview unavailable";
-    const status = message === "Unauthorized" ? 401 : error instanceof z.ZodError || error instanceof SyntaxError || /permission|parameter|inputs|past|horizon|multiple|Unknown/.test(message) ? 400 : 503;
+    const status = message === "Unauthorized" ? 401 : error instanceof z.ZodError || error instanceof SyntaxError || /permission|parameter|inputs|past|horizon|multiple|Unknown|Trip cost currency/.test(message) ? 400 : 503;
     return Response.json({ error: status === 503 ? "Trip preview unavailable; try again" : message }, { status });
   }
 }

@@ -1,4 +1,5 @@
 "use client";
+import { assertTripCostCurrency } from "@/lib/artifacts/trip-params";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
@@ -68,9 +69,14 @@ export function CalculatorPanel({
   const paramEntries = useMemo(() => Object.entries(manifest.params), [manifest.params]);
 
   const inputError = useMemo(() => {
-    try { normalizeCalculatorParams(calculatorManifestSchema.parse(manifest), params); return ""; }
+    try {
+      const parsed = calculatorManifestSchema.parse(manifest);
+      const forecastCurrency = currency ?? (snapshot !== null && typeof snapshot === "object" && "currency" in snapshot && typeof snapshot.currency === "string" ? snapshot.currency : undefined);
+      if (parsed.sdk.includes("forecast") && forecastCurrency) assertTripCostCurrency(parsed.params.costMinor?.currency, forecastCurrency);
+      normalizeCalculatorParams(parsed, params); return "";
+    }
     catch (failure) { return failure instanceof Error ? failure.message : "Invalid inputs"; }
-  }, [manifest, params]);
+  }, [manifest, params, currency, snapshot]);
 
   useEffect(() => {
     stopped.current = false;

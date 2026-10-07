@@ -10,7 +10,7 @@ import { formatMoney } from "@/lib/finance/format";
 import { pinArtifact, renameArtifact, unpinArtifact } from "../actions";
 import { DatedTripForm } from "../dated-trip-form";
 import { tripScenarioSchema } from "@/lib/finance/trip-scenario";
-import { restoreTripCalculatorParams, tripStateForScenario } from "@/lib/artifacts/trip-params";
+import { assertTripCostCurrency, restoreTripCalculatorParams, tripStateForScenario } from "@/lib/artifacts/trip-params";
 import { SpendingChart } from "../spending-chart";
 import { CalculatorPanel } from "../calculator-panel";
 import { GenerateCalculatorForm } from "../generate-calculator-form";
@@ -71,11 +71,13 @@ export default async function ArtifactPage({ params, searchParams }: {
         ? warning.replace("default applies", "saved dated scenario retained; edit the native budget or use a compatible calculator") : warning);
     }
     try {
+      if (manifestParsed.data.sdk.includes("forecast")) assertTripCostCurrency(manifestParsed.data.params.costMinor?.currency, workspace.display_currency);
       if (manifestParsed.data.sdk.includes("forecast") && stateValue.tripScenario !== undefined) {
         try { normalizeCalculatorParams(manifestParsed.data, initialParams); }
         catch { throw new Error("This calculator cannot represent the saved dated scenario. Edit the native budget or use a compatible calculator; the saved scenario is unchanged."); }
       }
       const built = await buildCalculatorSnapshot(id, kind, {
+        manifest: manifestParsed.data,
         query: q.slice(0, 100),
         month: typeof initialParams.month === "string" ? initialParams.month : undefined,
         reportingView: kind === "spending_explorer" ? nativeReportingView : z.enum(["original", "base"]).optional().parse(initialParams.reportingView),
@@ -89,7 +91,7 @@ export default async function ArtifactPage({ params, searchParams }: {
       sourceCoverage = built.snapshot.sourceCoverage;
       sourceCoverageByOperation = built.snapshot.sourceCoverageByOperation;
     } catch (failure) {
-      snapshot = { unavailable: failure instanceof Error && failure.message.includes("cannot represent the saved dated scenario") ? failure.message : "Snapshot unavailable" };
+      snapshot = { unavailable: failure instanceof Error && (failure.message.includes("cannot represent the saved dated scenario") || failure.message.startsWith("Trip cost currency ")) ? failure.message : "Snapshot unavailable" };
     }
   }
 

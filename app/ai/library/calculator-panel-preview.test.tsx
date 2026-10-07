@@ -78,3 +78,20 @@ it("clears the original unavailable alert only after the current owned account p
   expect(html).not.toContain("Available owned account preview");
   expect(html).toMatch(/disabled=""[^>]*>Print \/ PDF/);
 });
+
+it("foreign scalar currency blocks worker/preview execution and export with an honest explanation", async () => {
+  vi.useFakeTimers();
+  const manifest = calculatorManifestSchema.parse({ kind: "trip_planner", runtime: "quickjs-calculator-v1", sdk: ["forecast"], params: { costMinor: { type: "number", default: 20000, currency: "USD" } } });
+  const initialParams = { costMinor: 20000, accountId: "a" }; host.params = initialParams;
+  function render() {
+    host.index = 0;
+    const html = renderToStaticMarkup(<CalculatorPanel source="input => ({summary:'Affordable'})" snapshot={{ currency: "EUR" }} currency="EUR" initialParams={initialParams} manifest={manifest} artifactId="synthetic" versionLabel="v1" />);
+    host.effects.splice(0).forEach(effect => effect()); return html;
+  }
+  expect(render()).toMatch(/disabled=""[^>]*>Save inputs/);
+  await vi.advanceTimersByTimeAsync(300);
+  const html = render(); expect(html).toContain("Trip cost currency USD differs from forecast currency EUR");
+  expect(html).toContain("explicit manual FX rate");
+  expect(html).toMatch(/disabled=""[^>]*>Print \/ PDF/);
+  expect(bridge.run).not.toHaveBeenCalled(); expect(bridge.refresh).not.toHaveBeenCalled();
+});

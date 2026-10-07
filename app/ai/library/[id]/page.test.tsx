@@ -142,3 +142,13 @@ it("expired saved trip does not reveal the editor when current permission is den
   expect(html).not.toContain('aria-label="Dated trip scenario"');
   expect(html).toContain("Forecast evidence is unavailable");
 });
+
+it.each([false, true])("initial/Restore rejects foreign scalar currency without substituting workspace money: %s", async saved => {
+  vi.mocked(buildCalculatorSnapshot).mockClear();
+  const scenario = defaultTripScenario("2026-10-01", "EUR", "a", 20000n);
+  const page = await restored("trip_planner", saved ? { costMinor: 20000, tripScenario: scenario } : {}, { costMinor: { type: "number", default: 20000, currency: "USD" } });
+  const props = (page.props.children as ReactElement<{ initialParams: Record<string, unknown>; snapshot: unknown }>[]).find(child => child?.type === CalculatorPanel)!.props;
+  expect(props.snapshot).toMatchObject({ unavailable: expect.stringContaining("Trip cost currency USD differs from forecast currency EUR") });
+  expect(props.initialParams.costMinor).toBe(20000);
+  expect(buildCalculatorSnapshot).not.toHaveBeenCalled();
+});

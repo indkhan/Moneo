@@ -163,3 +163,12 @@ it("owned Save repairs expired complex dates while retaining payments and unrela
   expect(await saveDatedTripState(input)).toMatchObject({ saved: true, version: 3, value: repaired });
   expect(fixture.update.mock.lastCall![0].state).toMatchObject({ tripScenario: repaired, note: "retain" });
 });
+
+it.each([false, true])("generated Save rejects foreign declared scalar currency with saved scenario: %s", async saved => {
+  fixture.sdk = ["forecast"]; fixture.params = { costMinor: { type: "number", default: 20000, currency: "USD" } };
+  fixture.state = saved ? { tripScenario: defaultTripScenario(new Date().toISOString().slice(0, 10), "EUR", "a", 20000n) } : {};
+  const before = structuredClone(fixture.state);
+  const input = form("2"); input.set("params", '{"costMinor":20000}');
+  await expect(saveCalculatorParams(input)).rejects.toThrow("Trip cost currency USD differs from forecast currency EUR");
+  expect(fixture.update).not.toHaveBeenCalled(); expect(fixture.state).toEqual(before);
+});

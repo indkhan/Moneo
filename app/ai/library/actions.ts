@@ -6,7 +6,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { artifactKindSchema, calculatorManifestSchema, normalizeCalculatorParams } from "@/lib/artifacts/spec";
 import { tripHorizon, tripScenarioSchema, type TripScenario } from "@/lib/finance/trip-scenario";
 import { calendarDate } from "@/lib/finance/calendar";
-import { tripScenarioForParams, tripStateForScenario } from "@/lib/artifacts/trip-params";
+import { assertTripCostCurrency, tripScenarioForParams, tripStateForScenario } from "@/lib/artifacts/trip-params";
 import { tripForArtifact } from "@/lib/artifacts/finance-sdk";
 
 const kind = artifactKindSchema;
@@ -67,6 +67,7 @@ export async function saveCalculatorParams(form: FormData) {
   const { data: version } = await supabase.from("artifact_versions").select("manifest")
     .eq("workspace_id", workspace.id).eq("id", artifact.active_version_id).single();
   const manifest = calculatorManifestSchema.parse(version?.manifest);
+  if (manifest.sdk.includes("forecast")) assertTripCostCurrency(manifest.params.costMinor?.currency, workspace.display_currency);
   const next = normalizeCalculatorParams(manifest, parsed);
   const { data: current, error: readError } = await supabase.from("artifact_state").select("state, version")
     .eq("workspace_id", workspace.id).eq("artifact_id", artifactId).single();

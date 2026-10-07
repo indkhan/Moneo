@@ -46,3 +46,8 @@ export function tripScenarioForParams(scenario: TripScenario, params: Record<str
   return tripScenarioSchema.parse({ ...scenario, startsOn: date, endsOn: addTripDays(scenario.endsOn, shift),
     payments: scenario.payments.map(item => ({ ...item, date: addTripDays(item.date, shift), accountId: accountId ?? item.accountId, amountMinor: cost ?? item.amountMinor })) });
 }
+
+export function assertTripCostCurrency(declaredCurrency: string | undefined, forecastCurrency: string) {
+  if (declaredCurrency && declaredCurrency !== forecastCurrency)
+    throw new Error(`Trip cost currency ${declaredCurrency} differs from forecast currency ${forecastCurrency}; edit the native dated budget with original currency and an explicit manual FX rate.`);
+}
