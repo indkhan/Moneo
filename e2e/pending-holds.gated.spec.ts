@@ -71,7 +71,7 @@ test("reviewed pending settlement releases the obsolete hold and undo preserves 
     await expect(hold).toContainText("Outstanding EUR 20.00");
     await page.goto("/plan"); await expect(forecast).toContainText("EUR 60.00");
     await page.goto(`/money/transactions?transaction=${pendingId}`);
-    await hold.getByLabel("Settlement evidence", { exact: true }).selectOption(postedId);
+    await hold.getByRole("combobox", { name: "Settlement evidence", exact: true }).selectOption(postedId);
     await hold.getByLabel("Hold amount to release", { exact: true }).fill("5.00");
     await hold.getByLabel("Reviewed evidence / reason", { exact: true }).fill("Partial capture confirmed");
     await hold.getByRole("button", { name: "Confirm settlement and release hold", exact: true }).click();
@@ -84,7 +84,9 @@ test("reviewed pending settlement releases the obsolete hold and undo preserves 
     expect(sources.find(row => row.id === postedSource)?.original_row).toEqual(postedOriginal);
     expect((await db`select count(*)::int as count from public.pending_hold_resolutions where workspace_id=${workspace!}`)[0].count).toBe(2);
   } finally {
-    await context.close();
+    // Playwright may already have closed the context after a test timeout.
+    // Cleanup must still remove the exact synthetic database/auth fixtures.
+    await context.close().catch(() => {});
     if (workspace) await db.begin(async tx => {
       await tx`delete from public.pending_hold_resolutions where workspace_id=${workspace!}`;
       await tx`delete from public.balance_snapshots where workspace_id=${workspace!}`;
