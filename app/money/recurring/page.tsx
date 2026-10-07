@@ -33,7 +33,7 @@ export default async function RecurringPage() {
   const [{ data: accounts, error: accountsError }, { data: stored, error: storedError }] = await Promise.all([
     supabase.from("accounts").select("id, name, currency_code").eq("workspace_id", workspace.id).order("name"),
     supabase.from("recurring_series")
-      .select("id, account_id, normalized_label, cadence, currency_code, status, assumption_id, label, evidence_invalidated, evidence_baseline")
+      .select("id, account_id, normalized_label, cadence, currency_code, status, assumption_id, label, evidence_invalidated, evidence_baseline, recurring_series_transactions(transaction_id)")
       .eq("workspace_id", workspace.id),
   ]);
 
@@ -85,12 +85,6 @@ export default async function RecurringPage() {
 
   const byId = new Map(rows.map((row) => [row.id, row]));
   const names = Object.fromEntries((accounts ?? []).map((account) => [account.id, account.name]));
-  const storedByKey = new Map(
-    (stored ?? []).map((item) => [
-      [item.account_id, item.currency_code, item.cadence, item.normalized_label].join("\0"),
-      item,
-    ]),
-  );
 
   return (
     <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 text-foreground sm:px-8">
@@ -132,7 +126,10 @@ export default async function RecurringPage() {
             label: series.label,
             runAnchorId: series.runAnchorId,
           });
-          const state = storedByKey.get(key);
+          const related = (stored ?? []).filter(item => item.account_id === series.accountId &&
+            item.currency_code === series.currencyCode && item.cadence === series.cadence &&
+            item.recurring_series_transactions?.some((link: {transaction_id: string}) => series.transactionIds.includes(link.transaction_id)));
+          const state = related.length === 1 ? related[0] : undefined;
           const status = state?.status ?? "pending";
           const percent = confidenceToPercent(series.confidence);
           const evidence = series.transactionIds.map((id) => byId.get(id)).filter((row): row is TxRow => Boolean(row));
@@ -148,7 +145,7 @@ export default async function RecurringPage() {
                 {formatMoney(series.amountMinMinor.toString(), series.currencyCode)}
                 {series.amountMinMinor !== series.amountMaxMinor && <> to {formatMoney(series.amountMaxMinor.toString(), series.currencyCode)}</>}
                 {" · "}{names[series.accountId] ?? "Unknown account"}
-                {" · "}{series.occurrences} payments · confidence {percent}%
+                {" · "}{series.occurrences} observed payments
               </p>
               <p className="mt-2 text-xs text-muted-foreground">{series.amountMinMinor === series.amountMaxMinor ? "Amounts agree exactly." : "Amounts vary within the 15% grouping limit."} {series.missingPeriods} unobserved expected periods in the detected run; these are not known missed payments. Up to two unobserved periods per gap are allowed. Regular discretionary purchases can also match; this heuristic is not a probability. Review the evidence before confirming.</p>
               {(series.evidenceLimited || series.sameDateAlternatives > 0) && <p className="mt-2 text-xs text-muted-foreground">{series.evidenceLimited && `Review evidence retains the original calendar anchor and the latest 999 of ${series.observedOccurrences} matching observations. `}{series.sameDateAlternatives > 0 && `${series.sameDateAlternatives} other similar same-date postings were not selected. They may represent separate purchases or obligations; review them before confirming.`}</p>}
