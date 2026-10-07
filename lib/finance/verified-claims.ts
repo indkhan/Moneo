@@ -38,6 +38,7 @@ const qualifications: Record<string, string> = {
   virtual_reservation: "Virtual reservation: an earmark, not money moved or spent.",
   source_posting: "Recorded source posting: this is the canonical parent amount; effective allocations and verified fees determine financial totals. Do not add the parent to its components.",
 };
+export function financialQualificationText(code: string) { return qualifications[code] ?? "Evidence qualification unavailable; treat this result as uncertain."; }
 function sameSet(a: string[], b: string[]) {
   return a.length === new Set(a).size && b.length === new Set(b).size && a.length === b.length && a.every(value => b.includes(value));
 }

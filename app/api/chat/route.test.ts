@@ -8,6 +8,8 @@ import { loadCategoryPreview } from "@/lib/finance/edit-preview";
 import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
 import { listAccounts, getBalances, cashflow, searchTransactions, listGoals, evaluateForecast } from "@/lib/finance/tools";
 import { startFinancialReview } from "@/lib/finance/start-review";
+import { captureToolEvidence } from "@/lib/finance/capture-evidence";
+import { toolResultReceipt } from "@/lib/finance/tool-evidence";
 vi.mock("@/lib/finance/investigation-reader", async original => ({ ...await original<typeof import("@/lib/finance/investigation-reader")>(), investigationDetail: vi.fn(async () => ({ synthetic: "detail" })) }));
 vi.mock("ai", () => ({ generateText: vi.fn(async () => ({ text: "Evidence reviewed", totalUsage: {} })), tool: (value: unknown) => value, stepCountIs: (value: number) => value }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
@@ -38,6 +40,25 @@ it("removes unsupported provider amounts and links before either response or imm
   expect(body.answer).not.toContain("transaction=missing");
   const { supabase } = await requireWorkspace();
   expect(vi.mocked(supabase.rpc).mock.calls.find(call => call[0] === "finish_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
+});
+it("publishes supported tool claims with application amounts and calculation links", async () => {
+  const context = await requireWorkspace();
+  context.workspace.id = "00000000-0000-4000-8000-000000000010";
+  const receipt = toolResultReceipt("analytics_cashflow", {}, { currencyCode: "EUR", from: "2026-09-01", to: "2026-09-30", spendingMinor: "25" }, { workspaceId: context.workspace.id, fetchedAt: "2026-10-01T00:00:00Z", timezone: "UTC" }, ["transactions"]);
+  vi.mocked(captureToolEvidence).mockResolvedValueOnce([receipt]);
+  vi.mocked(generateText).mockImplementationOnce(async options => {
+    const tools = options.tools as unknown as Record<string, { execute: (input: unknown, options: unknown) => Promise<unknown> }>;
+    const output = await tools.analytics_cashflow.execute({ from: "2026-09-01", to: "2026-09-30", currencyCode: "EUR" }, {});
+    expect(output).toMatchObject({ evidenceReceipts: [{ id: receipt.id, metrics: receipt.metrics }] });
+    const metric = receipt.metrics[0];
+    return { text: JSON.stringify({ claims: [{ operation: "metric", operands: [{ receiptId: receipt.id, metricId: metric.id }], valueMinor: "25", currency: "EUR", periods: [metric.period], qualifiers: metric.qualifiers }], interpretation: [] }), totalUsage: {} } as never;
+  });
+  const response = await POST(request("Show September spending")), body = await response.json();
+  expect(response.status).toBe(200);
+  expect(body.answer).toContain("EUR 0.25");
+  expect(body.answer).toContain(`/ai/evidence/${receipt.id}?metric=spendingMinor`);
+  expect(body.answer).not.toContain("Unsupported sections");
+  expect(vi.mocked(context.supabase.rpc).mock.calls.find(call => call[0] === "finish_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
 });
 it("offers scoped investigation and exact-intent review start within four model steps", async () => {
   expect((await POST(request("Start a deep financial review"))).status).toBe(200);

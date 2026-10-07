@@ -77,6 +77,7 @@ export async function POST(request: Request) {
     const result = await read(latest);
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
+    if (request.signal.aborted) throw new Error("Request canceled");
     requireAiScope(current.settings, ...usedScopes);
     return result;
   }
@@ -176,6 +177,7 @@ export async function POST(request: Request) {
     const publication = providerFinancialAnswer(result.text, evidenceReceipts, workspace.id);
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
+    if (request.signal.aborted) throw new Error("Request canceled");
     requireAiScope(current.settings, ...evidenceReceipts.flatMap(receipt => receipt.scopes));
     const answer = publication.body;
     const finished = await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "completed", p_content: answer, p_usage: reportedUsage(model.modelId, result.totalUsage) });

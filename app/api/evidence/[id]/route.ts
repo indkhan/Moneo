@@ -13,7 +13,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!view) return Response.json({ error: "Evidence unavailable" }, { status: 404 });
     if (parsed.data.source) {
       const source = view.supportingRecords.find(record => record.id === parsed.data.source);
-      return source ? Response.json({ source, freshness: view.freshness }) : Response.json({ error: "Source unavailable" }, { status: 404 });
+      return source ? Response.json({ source, freshness: view.freshness }, { headers: { "Cache-Control": "private, no-store" } }) : Response.json({ error: "Source unavailable" }, { status: 404 });
     }
     return Response.json(view, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

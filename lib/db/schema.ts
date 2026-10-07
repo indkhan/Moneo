@@ -792,8 +792,8 @@ export const financialEvidenceReceipts = pgTable("financial_evidence_receipts", 
 }, table => [
   index("financial_evidence_receipts_workspace_created").on(table.workspaceId, table.createdAt),
   check("financial_evidence_receipts_scopes_check", sql`cardinality(${table.scopes}) between 0 and 4 and ${table.scopes} <@ array['accounts','transactions','planning','imports']::text[]`),
-  check("financial_evidence_receipts_payload_check", sql`jsonb_typeof(${table.receipt}) = 'object' and octet_length(${table.receipt}::text) <= 16777216
+  check("financial_evidence_receipts_payload_check", sql`(jsonb_typeof(${table.receipt}) = 'object' and octet_length(${table.receipt}::text) <= 16777216
     and ${table.receipt}->>'id' = ${table.id}::text and ${table.receipt}->>'workspaceId' = ${table.workspaceId}::text
     and jsonb_typeof(${table.receipt}->'query') = 'object' and jsonb_typeof(${table.receipt}->'metrics') = 'array'
-    and jsonb_typeof(${table.receipt}->'sources') = 'array' and ${table.receipt}->'scopes' = to_jsonb(${table.scopes})`),
+    and jsonb_typeof(${table.receipt}->'sources') = 'array' and ${table.receipt}->'scopes' = to_jsonb(${table.scopes})) is true`),
 ]);

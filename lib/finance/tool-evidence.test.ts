@@ -32,4 +32,16 @@ it("retains forecast horizons, budget month scopes and dated manual savings inst
   const review = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-07-01", to: "2026-09-30" }, planning: { budgets: [{ currency: "EUR", month: "2026-09", spentMinor: "25" }], goals: [{ currency: "EUR", recordedSavedMinor: "30", savedAsOf: "2026-08-05" }] } }, context, ["accounts", "transactions", "planning"]);
   expect(review.metrics.find(metric => metric.label === "Booked budget spending")?.period).toEqual({ from: "2026-09-01", to: "2026-09-30" });
   expect(review.metrics.find(metric => metric.label === "Dated recorded savings")).toMatchObject({ valueMinor: "30", period: { from: "2026-08-05", to: "2026-08-05" }, qualifiers: expect.arrayContaining(["manual_evidence", "dated_snapshot"]) });
+  const future = toolResultReceipt("reviews_investigate", {}, { budgets: [{ currency: "EUR", month: "2026-11", limitMinor: "30" }] }, context, ["planning"]);
+  expect(future.metrics[0]).toMatchObject({ period: { from: "2026-11-01", to: "2026-11-30" }, qualifiers: expect.arrayContaining(["assumption"]) });
+});
+
+it("renders actual action and import statuses without accepting provider prose or hrefs", () => {
+  const created = toolResultReceipt("artifacts_create", {}, { id: "00000000-0000-4000-8000-000000000002", href: "/invented" }, context, []);
+  expect(providerFinancialAnswer('{"claims":[],"interpretation":[]}', [created], context.workspaceId).body).toContain("/ai/library/00000000-0000-4000-8000-000000000002");
+  const imports = toolResultReceipt("imports_status", {}, { imports: [{ id: "00000000-0000-4000-8000-000000000003", status: "completed", total_rows: 20, classification_review_rows: 2 }] }, context, ["imports"]);
+  const body = providerFinancialAnswer("Your finances are complete EUR 999999", [imports], context.workspaceId).body;
+  expect(body).toContain("Recorded processing status: completed");
+  expect(body).toContain("2 rows need classification review");
+  expect(body).not.toContain("999999");
 });

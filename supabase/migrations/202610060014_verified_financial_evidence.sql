@@ -7,10 +7,10 @@ create table public.financial_evidence_receipts (
   receipt jsonb not null,
   created_at timestamptz not null default now(),
   constraint financial_evidence_receipts_scopes_check check (cardinality(scopes) between 0 and 4 and scopes <@ array['accounts','transactions','planning','imports']::text[]),
-  constraint financial_evidence_receipts_payload_check check (jsonb_typeof(receipt) = 'object' and octet_length(receipt::text) <= 16777216
+  constraint financial_evidence_receipts_payload_check check ((jsonb_typeof(receipt) = 'object' and octet_length(receipt::text) <= 16777216
     and receipt->>'id' = id::text and receipt->>'workspaceId' = workspace_id::text
     and jsonb_typeof(receipt->'query') = 'object' and jsonb_typeof(receipt->'metrics') = 'array'
-    and jsonb_typeof(receipt->'sources') = 'array' and receipt->'scopes' = to_jsonb(scopes))
+    and jsonb_typeof(receipt->'sources') = 'array' and receipt->'scopes' = to_jsonb(scopes)) is true)
 );
 create index financial_evidence_receipts_workspace_created on public.financial_evidence_receipts(workspace_id,created_at);
 alter table public.financial_evidence_receipts enable row level security;

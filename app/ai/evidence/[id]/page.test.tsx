@@ -12,5 +12,5 @@ it("shows the exact selected calculation, actual supporting records, retained da
   expect(html).toContain("2026-10-01");
   expect(html).toContain("Sum reviewed spending less refunds");
   expect(html).toContain("transaction=00000000-0000-4000-8000-000000000002");
-  expect(html).toContain("partial_coverage");
+  expect(html).toContain("Partial coverage");
 });

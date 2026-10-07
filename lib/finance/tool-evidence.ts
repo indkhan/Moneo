@@ -2,6 +2,7 @@ import { createEvidenceReceipt, evidenceFingerprint, type EvidenceReceipt, type 
 import type { AiDataScope } from "@/lib/settings";
 import { publishFinancialClaims } from "./verified-claims";
 import { calendarDate } from "./calendar";
+import { z } from "zod";
 export const TOOL_CALCULATION_VERSION = "finance-tools-v1-exact-evidence";
 const labels: Record<string, string> = {
   incomeMinor: "Income", spendingMinor: "Spending", netMinor: "Net cashflow", balanceMinor: "Booked balance", amount_minor: "Recorded source posting",
@@ -37,7 +38,7 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
     const lastMonthDate = monthEnd ? new Date(Date.parse(`${monthEnd}-01T00:00:00Z`) - 86400000).toISOString().slice(0, 10) : null;
     const period = typeof row.from === "string" && typeof row.to === "string" ? { from: row.from, to: row.to }
       : typeof named.from === "string" && typeof named.to === "string" ? { from: named.from, to: named.to }
-        : month && lastMonthDate ? { from: `${month}-01`, to: lastMonthDate < today ? lastMonthDate : today }
+        : month && lastMonthDate ? { from: `${month}-01`, to: today >= `${month}-01` && today < lastMonthDate ? today : lastMonthDate }
         : dated ? { from: dated, to: dated } : inherited.period;
     const qualifiers = [...inherited.qualifiers];
     const coverage = object(row.evidence);
@@ -56,7 +57,7 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
         if (key === "amount_minor" && ["transactions_search", "finance_detail"].includes(name)) qualification.push("source_posting");
         if (["snapshot_amount_minor", "recorded_saved_minor", "recordedSavedMinor"].includes(key)) qualification.push("manual_evidence", "dated_snapshot");
         if (key === "reservedMinor") qualification.push("virtual_reservation");
-        if (["target_minor", "targetMinor"].includes(key) || key.startsWith("planned")) qualification.push("assumption");
+        if (["target_minor", "targetMinor", "limitMinor", "allowanceMinor"].includes(key) || key.startsWith("planned")) qualification.push("assumption");
         const manualDate = key === "recordedSavedMinor" && typeof row.savedAsOf === "string" ? row.savedAsOf : key === "snapshot_amount_minor" && typeof row.as_of === "string" ? row.as_of.slice(0, 10) : null;
         metrics.push({ id: [...path, key].join(".") || key, label: key === "amount_minor" && path.includes("balance") ? "Booked balance" : labels[key], valueMinor: child as string | null, currency, period: manualDate ? { from: manualDate, to: manualDate } : period,
           qualifiers: [...new Set(qualification)], sourceIds: [sourceId], calculation: `${name}: exact deterministic field ${[...path, key].join(".")}. Full query inputs, calculation output and supporting record evidence are retained below.` });
@@ -67,7 +68,7 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
   return createEvidenceReceipt({ workspaceId: context.workspaceId, fetchedAt: context.fetchedAt, calculationVersion: TOOL_CALCULATION_VERSION, sourceVersion, scopes,
     query: json({ kind: "tool", toolName: name, input, result }), sources: [{ id: sourceId, type: "calculation", version: sourceVersion, record: json(result) }], metrics });
 }
-export const FINANCIAL_ANSWER_INSTRUCTIONS = `Return only a JSON object with claims and interpretation arrays. Each measured claim is {operation:"metric"|"difference"|"sum",operands:[{receiptId,metricId}],valueMinor:exact integer string,currency:exact currency,periods:ordered operand periods,qualifiers:the complete union of required qualification codes}. Difference is first minus second; sum requires identical periods. Source IDs and internal hrefs are never invented: the application renders the actual calculation and supporting records from receipt references. Copy metric and receipt IDs from evidenceReceipts. Do not restate numerical facts or qualitative financial assertions as unrestricted prose. Interpretation is a separate array of {action:"review"|"consider"|"ask",reference:{receiptId,metricId},topic:"classification"|"supporting_records"|"budget"|"timing"|"recurring"|"goals"|"assumptions"}; select conditional next steps related to measured facts. The application labels interpretation distinctly. Unsupported sections are visibly removed; bounded repair budget is zero. Missing evidence stays unknown.`;
+export const FINANCIAL_ANSWER_INSTRUCTIONS = `Return only a JSON object with claims and interpretation arrays. Each measured claim is {operation:"metric"|"difference"|"sum",operands:[{receiptId,metricId}],valueMinor:exact integer string,currency:exact currency,unit:"money"|"count",periods:ordered operand periods,qualifiers:the complete union of required qualification codes}. Copy the unit from evidence metrics (default money); record counts are not currency amounts. Difference is first minus second; sum requires identical periods. Source IDs and internal hrefs are never invented: the application renders the actual calculation and supporting records from receipt references. Copy metric and receipt IDs from evidenceReceipts. Do not restate numerical facts or qualitative financial assertions as unrestricted prose. Interpretation is a separate array of {action:"review"|"consider"|"ask",reference:{receiptId,metricId},topic:"classification"|"supporting_records"|"budget"|"timing"|"recurring"|"goals"|"assumptions"}; select conditional next steps related to measured facts. The application labels interpretation distinctly. Unsupported sections are visibly removed; bounded repair budget is zero. Missing evidence stays unknown.`;
 export function providerFinancialAnswer(text: string, receipts: EvidenceReceipt[], workspaceId: string) {
   let parsed: unknown;
   try { parsed = JSON.parse(text); } catch { parsed = null; }
@@ -77,6 +78,19 @@ export function providerFinancialAnswer(text: string, receipts: EvidenceReceipt[
     result = publishFinancialClaims({ claims: all.slice(0, 20), interpretation: [] }, receipts, workspaceId);
     result.body += "\n\nUnsupported sections were removed before publication. These supported measures are shown instead." + (all.length > 20 ? " Only the first twenty measures are displayed; the retained calculations contain the remaining evidence." : "");
   }
-  if (receipts.length) result.body += `\n\nEvidence trail\n\n${receipts.map(receipt => `- [Retained query and supporting records](/ai/evidence/${receipt.id})`).join("\n")}`;
+  const status = receipts.filter(receipt => receipt.workspaceId === workspaceId).flatMap(receipt => {
+    const value = object(receipt.query.result);
+    if (receipt.query.toolName === "artifacts_create" && z.uuid().safeParse(value.id).success) return [`Created the requested tool: [Open tool](/ai/library/${value.id}).`];
+    if (receipt.query.toolName === "reviews_start") return ["The requested review was started. [Track its status](/ai)."]; 
+    if (receipt.query.toolName === "imports_status" && Array.isArray(value.imports)) return value.imports.flatMap(raw => {
+      const row = object(raw);
+      if (!z.uuid().safeParse(row.id).success || !["queued", "processing", "completed", "failed", "canceled", "needs_review"].includes(String(row.status))) return [];
+      const count = typeof row.classification_review_rows === "number" && Number.isSafeInteger(row.classification_review_rows) && row.classification_review_rows >= 0 ? ` ${row.classification_review_rows} rows need classification review.` : "";
+      return [`[Import records](/import/${row.id}/review): Recorded processing status: ${row.status}.${count} Processing completion does not establish complete financial activity or confirmed classifications.`];
+    });
+    return [];
+  });
+  if (status.length) result.body = status.join("\n\n") + (result.accepted.length || result.removed ? `\n\n${result.body}` : "");
+  if (receipts.length) result.body += `\n\nEvidence trail\n\n${receipts.filter(receipt => receipt.workspaceId === workspaceId).map(receipt => `- [Retained query and supporting records](/ai/evidence/${receipt.id})`).join("\n")}`;
   return result;
 }
