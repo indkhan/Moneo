@@ -87,4 +87,9 @@ describe("deterministic investigations", () => {
     expect(result.groups[0]).toMatchObject({ currentMinor: "100", comparisonMinor: "100", deltaMinor: "0", currentCount: 1, comparisonCount: 1, supportCount: 1 });
     expect(result.records.total).toBe(1);
   });
+  it("names exclusion reasons correctly for non-default status and kind queries", () => {
+    const rows = [row("posted"), { ...row("transfer"), kind: "transfer" as const }, { ...row("pending"), status: "pending" as const }];
+    const result = investigate({ ...query, statuses: ["pending"], kinds: ["transfer"] }, rows, context);
+    expect(result.coverage).toMatchObject({ statusExcluded: 2, postedExcluded: 2, pendingExcluded: 0, kindExcluded: 1, transferExcluded: 0 });
+  });
 });

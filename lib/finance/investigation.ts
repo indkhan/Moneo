@@ -119,7 +119,7 @@ export function investigate(input: unknown, rows: InvestigationRow[], context: I
   const reporting = allocatedReporting(rows, spec, context.rates ?? []);
   const queryId = investigationIdentity({ workspaceId: context.workspaceId, ...meaning });
   const evidenceId = investigationIdentity({ queryId, rows: [...rows].sort((a, b) => a.id.localeCompare(b.id)), sourceCoverage: context.sourceCoverage ?? null, reporting: reporting?.report ?? null });
-  const excluded = { outsidePeriod: 0, filtersExcluded: 0, pendingExcluded: 0, transferExcluded: 0, classificationExcluded: 0, currencyExcluded: 0 };
+  const excluded = { outsidePeriod: 0, filtersExcluded: 0, statusExcluded: 0, pendingExcluded: 0, postedExcluded: 0, kindExcluded: 0, transferExcluded: 0, classificationExcluded: 0, currencyExcluded: 0 };
   const selected: { row: InvestigationRow; current: boolean; comparison: boolean; key: string }[] = [];
   const groups = new Map<string, { key: string; dimensions: ReturnType<typeof investigationGroup>; currency: string; current: bigint; comparison: bigint; currentCount: number; comparisonCount: number; supportCount: number; missingCurrent: number; missingComparison: number }>();
   let unresolvedIncluded = 0;
@@ -129,8 +129,8 @@ export function investigate(input: unknown, rows: InvestigationRow[], context: I
     const comparison = Boolean(spec.comparison && row.date >= spec.comparison.from && row.date <= spec.comparison.to);
     if (!current && !comparison) { excluded.outsidePeriod++; continue; }
     if (!entityMatches(spec.accounts, row.accountId) || !entityMatches(spec.categories, row.categoryId) || !entityMatches(spec.merchants, row.merchantId) || !labelsMatch(spec.tags, row.tags) || !labelsMatch(spec.events, row.event ? [row.event] : [])) { excluded.filtersExcluded++; continue; }
-    if (!spec.statuses.includes(row.status)) { excluded.pendingExcluded++; continue; }
-    if (!spec.kinds.includes(row.kind)) { excluded.transferExcluded++; continue; }
+    if (!spec.statuses.includes(row.status)) { excluded.statusExcluded++; if (row.status === "pending") excluded.pendingExcluded++; else excluded.postedExcluded++; continue; }
+    if (!spec.kinds.includes(row.kind)) { excluded.kindExcluded++; if (row.kind === "transfer") excluded.transferExcluded++; continue; }
     if ((spec.classifications === "resolved" && row.reviewReasons.length) || (spec.classifications === "unresolved" && !row.reviewReasons.length)) { excluded.classificationExcluded++; continue; }
     if (spec.currencyPolicy.mode === "original" && spec.currencyPolicy.currencies && !spec.currencyPolicy.currencies.includes(row.currency)) { excluded.currencyExcluded++; continue; }
     if (row.reviewReasons.length) unresolvedIncluded++;
