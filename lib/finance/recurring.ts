@@ -27,6 +27,11 @@ export type RecurringSeries = {
   confidence: number;
   /** Observed gaps do not establish whether an unobserved payment occurred. */
   missingPeriods: number;
+  anchorDate: string;
+  runAnchorId: string;
+  observedOccurrences: number;
+  evidenceLimited: boolean;
+  sameDateAlternatives: number;
 };
 
 const MAX_TRANSACTIONS = 10_000;
@@ -106,7 +111,13 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
     }
     const candidates: {rows: RecurringTransaction[]; cadence: RecurringSeries["cadence"]; missing: number; difference: number}[] = [];
     for (const band of bands) {
-      const sorted = band.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+      const byDate = new Map<string, RecurringTransaction>();
+      // A date alone cannot distinguish simultaneous obligations. Offer one deterministic
+      // observation per date and disclose the alternatives, rather than thousands of runs.
+      for (const row of band.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))) {
+        if (!byDate.has(row.date)) byDate.set(row.date, row);
+      }
+      const sorted = [...byDate.values()];
       for (const cadence of cadences) {
         const used = new Set<string>();
         for (let start = 0; start < sorted.length - 2; start++) {
@@ -133,8 +144,13 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
     const assigned = new Set<string>();
     for (const candidate of candidates) {
       if (candidate.rows.some(row => assigned.has(row.id))) continue;
-      const ordered = candidate.rows;
-      ordered.forEach(row => assigned.add(row.id));
+      const observed = candidate.rows;
+      const ordered = observed.slice(-1000); // Matches the existing owned RPC evidence ceiling.
+      const selectedDates = new Set(ordered.map(row => row.date));
+      const sameDateAlternatives = group.filter(row => selectedDates.has(row.date) &&
+        amountFits(row.amountMinor < ordered[0].amountMinor ? row.amountMinor : ordered[0].amountMinor,
+          row.amountMinor > ordered[0].amountMinor ? row.amountMinor : ordered[0].amountMinor)).length - ordered.length;
+      observed.forEach(row => assigned.add(row.id));
       let min = ordered[0].amountMinor;
       let max = ordered[0].amountMinor;
       for (const item of ordered) {
@@ -164,7 +180,14 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
         transactionIds: ordered.map((item) => item.id),
         occurrences: ordered.length,
         confidence,
-        missingPeriods: candidate.missing,
+        missingPeriods: ordered.slice(1).reduce((missing, row, index) => missing +
+          occurrenceIndex(observed[0].date, row.date, cadences.find(item => item.cadence === candidate.cadence)!).index -
+          occurrenceIndex(observed[0].date, ordered[index].date, cadences.find(item => item.cadence === candidate.cadence)!).index - 1, 0),
+        anchorDate: observed[0].date,
+        runAnchorId: observed[0].id,
+        observedOccurrences: observed.length,
+        evidenceLimited: observed.length > ordered.length,
+        sameDateAlternatives,
     });
     }
   }

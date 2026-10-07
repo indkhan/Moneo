@@ -9,8 +9,9 @@ export function seriesKey(args: {
   currencyCode: string;
   cadence: string;
   label: string;
+  runAnchorId?: string;
 }): string {
-  return [args.accountId, args.currencyCode, args.cadence, normalizeLabel(args.label)].join("\0");
+  return [args.accountId, args.currencyCode, args.cadence, args.runAnchorId ? `run:${args.runAnchorId}` : normalizeLabel(args.label)].join("\0");
 }
 
 export function formatMoney(minor: string | bigint, currency: string, locale?:string): string {

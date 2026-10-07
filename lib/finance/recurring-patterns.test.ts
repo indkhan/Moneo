@@ -56,3 +56,20 @@ it("uses recorded merchant identity across varying text without merging unrelate
   ]);
   expect(result.flatMap(series => series.transactionIds)).toEqual(["jan", "feb", "mar"]);
 });
+
+it("limits review evidence to 1000 actual sources while retaining the original calendar anchor", () => {
+  const rows = Array.from({length: 1001}, (_, index) => posting(`long-${index}`, new Date(Date.UTC(2000, 0, 3 + index * 7)).toISOString().slice(0, 10)));
+  const weekly = detectRecurring(rows).find(series => series.cadence === "weekly")!;
+  expect(weekly.transactionIds).toHaveLength(1000);
+  expect(weekly.transactionIds[0]).toBe("long-1");
+  expect(weekly).toMatchObject({anchorDate: "2000-01-03", observedOccurrences: 1001, evidenceLimited: true});
+});
+
+it("does not turn thousands of same-day observations into separate recurring review runs", () => {
+  const rows = Array.from({length: 3000}, (_, index) => posting(`same-${index}`, ["2026-01-03", "2026-02-03", "2026-03-03"][index % 3]));
+  const started = performance.now();
+  const result = detectRecurring(rows);
+  expect(result).toHaveLength(1);
+  expect(result[0]).toMatchObject({cadence: "monthly", occurrences: 3, sameDateAlternatives: 2997});
+  console.info(`MNE014 focused dense group: ${Math.round(performance.now()-started)}ms`);
+});

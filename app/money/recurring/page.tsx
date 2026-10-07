@@ -130,6 +130,7 @@ export default async function RecurringPage() {
             currencyCode: series.currencyCode,
             cadence: series.cadence,
             label: series.label,
+            runAnchorId: series.runAnchorId,
           });
           const state = storedByKey.get(key);
           const status = state?.status ?? "pending";
@@ -150,6 +151,7 @@ export default async function RecurringPage() {
                 {" · "}{series.occurrences} payments · confidence {percent}%
               </p>
               <p className="mt-2 text-xs text-muted-foreground">{series.amountMinMinor === series.amountMaxMinor ? "Amounts agree exactly." : "Amounts vary within the 15% grouping limit."} {series.missingPeriods} unobserved expected periods between evidence dates; these are not known missed payments. Up to two unobserved periods per gap are allowed. Regular discretionary purchases can also match; this heuristic is not a probability. Review the evidence before confirming.</p>
+              {(series.evidenceLimited || series.sameDateAlternatives > 0) && <p className="mt-2 text-xs text-muted-foreground">{series.evidenceLimited && `Only the latest 1,000 of ${series.observedOccurrences} matching observations are review evidence. `}{series.sameDateAlternatives > 0 && `${series.sameDateAlternatives} other similar same-date postings were not selected. They may represent separate purchases or obligations; review them before confirming.`}</p>}
               <details className="mt-4 border-t border-border pt-3 text-xs">
                 <summary className="cursor-pointer underline">Evidence ({evidence.length} posted transactions)</summary>
                 <ul className="mt-2 space-y-1">
