@@ -13,7 +13,7 @@ import { loadEvidenceReceipt, evidenceFingerprint, type EvidenceReceipt } from "
 import {gatherReviewInvestigation} from "@/lib/finance/review-gather";
 import {resolveReviewRequest, scheduledReviewRequest} from "@/lib/finance/review-request";
 import type {ReviewProgress} from "@/lib/finance/review-controller";
-import {buildReviewPrompt} from "@/lib/finance/review-prompt";
+import {buildReviewPrompt, prioritizeReviewReceipts} from "@/lib/finance/review-prompt";
 import {synthesizeReview} from "@/lib/finance/review-synthesis";
 import { FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/finance/tool-evidence";
 import type { requireWorkspace } from "@/lib/auth";
@@ -227,7 +227,7 @@ async function writeReview(jobId: string, workspaceId: string, evidence: NonNull
         }, generate: options => generateText({model, ...options})});
       if (monitoringError) throw monitoringError;
       if (!await enterStage(db, jobId, workspaceId, runId, "writing_review")) return null;
-      return providerFinancialAnswer(result.text ?? "{}", receipts, workspaceId).body +
+      return providerFinancialAnswer(result.text ?? "{}", prioritizeReviewReceipts(receipts, priorityIds), workspaceId).body +
         (result.limitation ? `\n\n${result.limitation}` : "") + (progress.limitations.length ? `\n\n${progress.limitations.join("\n\n")}` : "");
     }
     const result = await generateText({ model, maxOutputTokens: 4000, maxRetries: 0, abortSignal: AbortSignal.any([stopped.signal, AbortSignal.timeout(90_000)]),
