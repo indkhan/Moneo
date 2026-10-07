@@ -15,7 +15,8 @@ const metricSchema = z.object({ id: z.string().min(1).max(200), label: z.string(
   qualifiers: z.array(z.enum(["partial_classification", "partial_coverage", "unresolved_included", "dated_snapshot", "assumption", "manual_evidence", "virtual_reservation", "source_posting", "ambiguous_evidence", "partial_budget"])).max(30),
   sourceIds: z.array(z.string().min(1).max(200)).max(100000), calculation: z.string().min(1).max(2000) }).strict();
 const receiptInputSchema = z.object({ workspaceId: z.uuid(), fetchedAt: z.iso.datetime({ offset: true }), calculationVersion: z.string().min(1).max(200), sourceVersion: z.string().min(1).max(200),
-  query: z.record(z.string(), z.json()), scopes: z.array(z.enum(AI_DATA_SCOPES)).max(4), sources: z.array(sourceSchema).max(100000), metrics: z.array(metricSchema).max(2000) }).strict();
+  query: z.record(z.string(), z.json()), scopes: z.array(z.enum(AI_DATA_SCOPES)).max(4), sources: z.array(sourceSchema).max(100000), metrics: z.array(metricSchema).max(2000),
+  limitations: z.array(z.object({ id: z.string().min(1).max(200), kind: z.enum(["missing_input", "unavailable", "partial"]), message: z.string().min(1).max(4000), nextStep: z.enum(["assumptions", "supporting_records"]) }).strict()).max(100).optional() }).strict();
 export type EvidenceReceiptInput = z.infer<typeof receiptInputSchema>;
 export type EvidenceReceipt = Omit<FinancialEvidenceReceipt, "sources" | "query"> & {
   query: EvidenceReceiptInput["query"];

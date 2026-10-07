@@ -42,6 +42,15 @@ it("rejects canonical parents summed with effective components but permits disjo
   expect(sum([0, 2], "-150").accepted).toHaveLength(1);
   expect(receipt.metrics[1].label).toContain("component");
 });
+it("explains retained unavailable inputs without accepting provider assertions", () => {
+  const receipt = toolResultReceipt("forecast_evaluate", {}, { status: "unavailable", missingInputs: ["Current booked balance for Checking is unavailable"] }, context, ["accounts", "planning"]);
+  const answer = providerFinancialAnswer("Checking has EUR999999", [receipt], context.workspaceId);
+  expect(answer.body).toContain("Current booked balance for Checking is unavailable");
+  expect(answer.body).toContain("assumptions");
+  expect(answer.body).not.toContain("999999");
+  const cashflow = toolResultReceipt("analytics_cashflow", {}, { unavailable: "Some transactions require currency conversion" }, context, ["transactions"]);
+  expect(providerFinancialAnswer("Everything is complete", [cashflow], context.workspaceId).body).toContain("Some transactions require currency conversion");
+});
 it("retains forward review forecast horizons and limiting dates", () => {
   const receipt = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-07-10", to: "2026-10-07" }, planning: { forecast: { evaluatedOn: "2026-10-07", horizonDays: 90, currencyCode: "EUR", availableToSpendMinor: "100", limitingDate: "2026-11-01" } } }, context, ["accounts", "transactions", "planning"]);
   expect(receipt.metrics[0]).toMatchObject({ period: { from: "2026-10-07", to: "2027-01-04" }, qualifiers: expect.arrayContaining(["assumption"]) });

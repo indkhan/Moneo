@@ -4,6 +4,7 @@ import { formatMoney } from "./format";
 export type FinancialEvidenceReceipt = {
   id: string; workspaceId: string; fetchedAt: string; calculationVersion: string; sourceVersion: string;
   query: unknown;
+  limitations?: { id: string; kind: "missing_input" | "unavailable" | "partial"; message: string; nextStep: "assumptions" | "supporting_records" }[];
   sources: { id: string; type: string; version: string; href: string }[];
   metrics: { id: string; label: string; valueMinor: string | null; currency: string; unit?: "money" | "count"; period: { from: string; to: string }; qualifiers: string[]; sourceIds: string[]; calculation: string; aggregation?: { kind: string; ids: string[]; parents: string[]; canonicalParents: string[] } }[];
 };
@@ -35,7 +36,8 @@ const explanationSchema = z.object({
   uncertainty: z.literal("unproven"),
   nextSteps: z.array(topicSchema).max(4).default([]),
 }).strict();
-const interpretationSchema = z.union([nextStepSchema, explanationSchema]);
+const limitationSchema = z.object({ action: z.literal("limitation"), receiptId: z.uuid(), limitationId: z.string().min(1).max(200) }).strict();
+const interpretationSchema = z.union([nextStepSchema, explanationSchema, limitationSchema]);
 const clarificationSchema = z.object({ topic: z.enum(["welcome", "help", "question", "period", "comparison_period", "account", "category", "merchant", "currency", "classification", "goal", "assumptions"]) }).strict();
 export const financialAnswerSchema = z.object({
   claims: z.array(financialClaimSchema).max(100), interpretation: z.array(interpretationSchema).max(20),
@@ -149,7 +151,14 @@ export function publishFinancialClaims(input: unknown, receipts: FinancialEviden
   for (const raw of envelope.success ? envelope.data.interpretation : []) {
     try {
       const item = interpretationSchema.parse(raw);
-      if (item.action === "explain") {
+      if (item.action === "limitation") {
+        const owned = receipts.filter(receipt => receipt.id === item.receiptId && receipt.workspaceId === workspaceId);
+        const limits = owned.length === 1 ? owned[0].limitations?.filter(limit => limit.id === item.limitationId) : [];
+        if (limits?.length !== 1) throw new Error("Retained limitation unavailable");
+        const limit = limits[0];
+        if (!["missing_input", "unavailable", "partial"].includes(limit.kind) || !Object.hasOwn(topics, limit.nextStep)) throw new Error("Invalid limitation");
+        interpretation.push(`- Retained ${limit.kind === "missing_input" ? "missing input" : limit.kind} ([query and supporting evidence](/ai/evidence/${owned[0].id})): ${escapeMarkdown(limit.message)}. Consider reviewing ${topics[limit.nextStep]}. This limitation does not establish a financial amount or outcome.`);
+      } else if (item.action === "explain") {
         let observation: string, references: string;
         if (item.observation.kind === "comparison") {
           const first = supported(item.observation.first), second = supported(item.observation.second);
@@ -176,6 +185,6 @@ export function publishFinancialClaims(input: unknown, receipts: FinancialEviden
   }
   return {
     accepted, removed, clarified: clarification !== null,
-    body: [measured.length ? `Measured facts\n\n${measured.join("\n")}` : clarification ?? clarifications.question, interpretation.length ? `Interpretation — conditional next steps\n\n${interpretation.join("\n")}` : "", measured.length && clarification ? clarification : "", removed ? "Unsupported sections were removed before publication; only validated evidence is shown." : ""].filter(Boolean).join("\n\n"),
+    body: [measured.length ? `Measured facts\n\n${measured.join("\n")}` : clarification ?? (interpretation.length ? "" : clarifications.question), interpretation.length ? `Interpretation — conditional next steps\n\n${interpretation.join("\n")}` : "", measured.length && clarification ? clarification : "", removed ? "Unsupported sections were removed before publication; only validated evidence is shown." : ""].filter(Boolean).join("\n\n"),
   };
 }
