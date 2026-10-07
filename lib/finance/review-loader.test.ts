@@ -11,15 +11,16 @@ it("omits all planning reads when its scope is disabled and gathers exact compar
   const from = (table: string) => {
     reads.push(table);
     const query = { select: () => query, eq: () => query, gte: () => query, lte: () => query, order: () => query, in: () => query,
-      range: async () => ({ data: table === "effective_transactions" ? [{ id: "t", amount_minor: "-9007199254740993", currency_code: "EUR", posted_on: "2026-10-01", status: "posted", kind: "ordinary", category_id: null, merchant_id: null, review_reasons: [] }] : [], error: null }) };
+      range: async () => ({ data: table === "effective_transactions" ? [{ id: "t", parent_transaction_id: "t", account_id: "a", amount_minor: "-9007199254740993", currency_code: "EUR", posted_on: "2026-10-01", status: "posted", kind: "ordinary", category_id: null, merchant_id: null, review_reasons: [] }] : [], error: null }) };
     return query;
   };
   const evidence = await loadFinancialReviewEvidence({ from } as unknown as SupabaseClient, { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" }, settingsSchema.parse({ ai_data_scopes: ["accounts", "transactions"] }));
-  expect(reads).toEqual(["effective_transactions", "categories", "merchants"]);
+  expect(reads).not.toContain("imports"); expect(reads).not.toContain("source_transactions"); expect(reads).not.toContain("spending_plans");
   expect(evidence.cashflow.EUR.spendingMinor).toBe("9007199254740993");
   expect(evidence).toMatchObject({ sourceCoverage: { unresolvedSourceRows: null, scope: { from: "2026-07-05", to: "2026-10-02" } } });
   expect(evidence.planning).toEqual({ unavailable: "AI access to planning is disabled in Settings" });
-  expect(evidence.investigation.categories[0].sourceLinks).toEqual(["/money/transactions?transaction=t"]);
+  expect(evidence.investigation.records.items[0].link).toBe("/money/transactions?transaction=t");
+  expect(evidence.investigation.groups[0].currentMinor).toBe("9007199254740993");
 });
 it("loads older rollover evidence without extending the current cashflow summary", async () => {
   const lowerBounds: string[] = [];
@@ -33,7 +34,7 @@ it("loads older rollover evidence without extending the current cashflow summary
       range: async () => ({ data: tables[table] ?? [], error: null }) }; return query;
   };
   const evidence = await loadFinancialReviewEvidence({ from } as unknown as SupabaseClient, { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" }, settingsSchema.parse({}));
-  expect(lowerBounds).toEqual(["2026-01-01"]);
+  expect(lowerBounds).toEqual(["2026-01-01", "2026-04-06"]);
   expect(evidence.cashflow).toEqual({});
   expect((evidence.planning as { budgets: unknown[] }).budgets[0]).toMatchObject({ carriedMinor: "8800", remainingMinor: "9800", spentMinor: "0" });
 });

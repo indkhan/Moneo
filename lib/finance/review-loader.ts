@@ -2,11 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { loadBalanceEvidence } from "./balances";
 import { calendarDate } from "./calendar";
-import { buildReviewEvidence, buildReviewInvestigation, buildPlanningReview, reviewNetWorth, type ReviewTransaction } from "./review";
+import { buildReviewEvidence, buildPlanningReview, reviewNetWorth, type ReviewTransaction } from "./review";
 import { evaluatePlanForWorkspace } from "./model";
 import { loadWealthItems, wealthEvidence } from "./wealth";
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
-import { investigate, investigationSchema, type InvestigationRow } from "./investigation";
+import { investigationSchema } from "./investigation";
 import { runInvestigation } from "./investigation-reader";
 
 export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace: { id: string; display_currency: string; timezone: string }, settings: WorkspaceSettings, query?: unknown) {
@@ -45,13 +45,9 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
   const coverage = (scope: Parameters<typeof buildSourceCoverage>[0]) => buildSourceCoverage(scope, transactions, sourceMetadata?.imports, sourceMetadata?.sources);
   const sourceCoverage = coverage({ from, to });
   const base = { ...buildReviewEvidence(balances.accounts, balances.snapshots, current, from, to, { ...balances, timeZone: settings.timezone, sourceMetadata }), sourceCoverage };
-  const investigation = { ...buildReviewInvestigation(transactions, base.period, categories, merchants), sourceCoverage,
-    comparisonSourceCoverage: coverage({ from: comparisonFrom, to: new Date(Date.parse(`${from}T00:00:00Z`) - 86400000).toISOString().slice(0, 10) }) };
   const defaultQuery = investigationSchema.parse({ version: 1, period: { from, to }, comparison: { from: comparisonFrom, to: new Date(Date.parse(`${from}T00:00:00Z`) - 86400000).toISOString().slice(0, 10) }, groupBy: ["category", "merchant"] });
-  const queryRows: InvestigationRow[] = transactions.map(r => ({ id: r.id, parentId: r.parent_transaction_id ?? r.id, accountId: r.account_id ?? "", categoryId: r.category_id ?? r.refund_category_id ?? null, merchantId: r.merchant_id,
-    date: r.posted_on, amountMinor: r.amount_minor, currency: r.currency_code, status: r.status as InvestigationRow["status"], kind: r.kind as InvestigationRow["kind"], tags: r.tags ?? [], event: r.event_name ?? null, version: r.version ?? 0, reviewReasons: r.review_reasons ?? [], description: r.description ?? "Transaction" }));
-  const queryInvestigation = query === undefined ? investigate(defaultQuery, queryRows, { workspaceId: workspace.id, capturedAt: balances.asOf, sourceCoverage: { current: sourceCoverage, comparison: investigation.comparisonSourceCoverage } }) :
-    await runInvestigation(query, { supabase: db, workspace }, { canReadImports: settings.ai_data_scopes.includes("imports") });
+  const queryInvestigation = await runInvestigation(query ?? defaultQuery, { supabase: db, workspace }, { canReadImports: settings.ai_data_scopes.includes("imports") });
+  const investigation = { ...queryInvestigation, entities: { accounts: balances.accounts.map(a => ({ id: a.id, name: a.name })), categories, merchants } };
   if (!settings.ai_data_scopes.includes("planning")) return { ...base, investigation, queryInvestigation, planning: { unavailable: "AI access to planning is disabled in Settings" } };
   const [goals, allocations, budgetHistory, assumptions, wealth, plan] = await Promise.all([
     rows<Parameters<typeof buildPlanningReview>[0]["goals"][number]>("goals", "id, name, currency_code, target_minor::text, recorded_saved_minor::text, saved_as_of, planned_monthly_minor::text, contribution_starts_on, target_date, status"),
