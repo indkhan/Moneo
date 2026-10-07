@@ -17,6 +17,7 @@ it.skipIf(process.env.RUN_INVESTIGATION_REQUEST_DB_TESTS !== "1")("freezes owned
       await tx.unsafe("set local lock_timeout='5s'; set local statement_timeout='15s'");
       await tx.unsafe(`create schema ${schema}; grant usage on schema ${schema} to authenticated,service_role`);
       await tx.unsafe(`create table ${schema}.background_jobs (like public.background_jobs including all)`);
+      await tx.unsafe(`alter table ${schema}.background_jobs drop column if exists review_request cascade, drop column if exists review_progress cascade`);
       await tx.unsafe(`create table ${schema}.saved_analyses (like public.saved_analyses including all); create table ${schema}.summary_runs (like public.summary_runs including all);
         create table ${schema}.financial_evidence_receipts(id uuid primary key,workspace_id uuid not null,scopes text[] not null)`);
       const privateSql = (sql: string) => ["background_jobs", "saved_analyses", "summary_runs", "financial_evidence_receipts", "start_financial_investigation", "checkpoint_financial_investigation", "freeze_financial_investigation_request", "reserve_financial_investigation_synthesis", "finish_financial_investigation", "finish_financial_review"]
