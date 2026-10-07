@@ -11,7 +11,7 @@ export type InvestigationRow = {
   tags: string[]; event: string | null; reviewReasons: string[]; version: number; description: string;
   sourceVersions?: unknown; refundOfId?: string | null;
 };
-export type InvestigationEntities = Record<"accounts" | "categories" | "merchants", { id: string; name: string }[]>;
+export type InvestigationEntities = Record<"accounts" | "categories" | "merchants", { id: string; name: string }[]> & { labels?: { tags: string[]; events: string[] } };
 const entityKeys = ["accounts", "categories", "merchants"] as const;
 const normalized = (value: string) => value.normalize("NFKC").trim().toLocaleLowerCase("en");
 
@@ -29,6 +29,16 @@ export function resolveInvestigation(input: unknown, entities: InvestigationEnti
         return { id: matches[0].id };
       });
     }
+  }
+  for (const key of ["tags", "events"] as const) {
+    const filter = spec[key], labels = entities.labels?.[key];
+    if (!filter || !labels) continue;
+    for (const operation of ["include", "exclude"] as const) filter[operation] = filter[operation]?.map(value => {
+      const owned = labels.filter(label => normalized(label) === normalized(value)).sort()[0];
+      if (!owned) throw new Error(`Unknown owned ${key}: ${value}`);
+      // These entities are stored as text labels, not UUIDs. Use the existing stable label.
+      return owned;
+    });
   }
   return spec;
 }

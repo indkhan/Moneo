@@ -21,8 +21,9 @@ export default async function InvestigationPage({ searchParams }: { searchParams
   try {
     spec = parseInvestigationParams(await searchParams, { from: `${today.slice(0, 7)}-01`, to: today });
     result = await runInvestigation(spec, context);
+    spec = { ...result.interpretedFilters, page: spec.page };
   } catch (e) { error = e instanceof Error ? e.message : "Investigation unavailable"; }
-  const names = new Map(Object.values(entities).flat().map(e => [e.id, e.name]));
+  const names = new Map([entities.accounts, entities.categories, entities.merchants].flat().map(e => [e.id, e.name]));
   const display = (value: unknown) => Array.isArray(value) ? value.join(", ") || "No tags" : value === null ? "Unassigned" : names.get(String(value)) ?? String(value);
   const money = (amount: string | null, currency: string) => amount === null ? "—" : spec?.metric === "count" ? amount : formatMoney(amount, currency, context.workspace.locale);
   return <main className="mx-auto max-w-6xl space-y-6 p-6">

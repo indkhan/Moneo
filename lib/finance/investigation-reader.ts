@@ -22,7 +22,8 @@ async function allRows<T>(query: { range(from: number, to: number): PromiseLike<
 export async function loadInvestigationEntities(context?: Context): Promise<InvestigationEntities> {
   const { supabase, workspace } = context ?? await requireWorkspace();
   const [accounts, categories, merchants] = await Promise.all(["accounts", "categories", "merchants"].map(table => allRows<{ id: string; name: string }>(supabase.from(table).select("id, name").eq("workspace_id", workspace.id).order("id"))));
-  return { accounts, categories, merchants };
+  const labels = await allRows<{ tags: string[]; event_name: string | null }>(supabase.from("transactions").select("tags, event_name").eq("workspace_id", workspace.id).order("id"));
+  return { accounts, categories, merchants, labels: { tags: [...new Set(labels.flatMap(r => r.tags ?? []))].sort(), events: [...new Set(labels.flatMap(r => r.event_name ? [r.event_name] : []))].sort() } };
 }
 type LedgerRow = {
   id: string; parent_transaction_id: string; account_id: string; category_id: string | null; merchant_id: string | null;
@@ -47,7 +48,7 @@ async function loadRows(context: Context, spec: InvestigationSpec, includeAll = 
   const byParent = new Map<string, unknown[]>();
   for (const source of sources) for (const link of source.transaction_sources ?? []) {
     const values = byParent.get(link.transaction_id) ?? [];
-    values.push({ id: source.id, importId: source.import_id, link: `/activity?import=${encodeURIComponent(source.import_id)}`, status: source.status, import: source.imports,
+    values.push({ id: source.id, importId: source.import_id, link: `/import/${encodeURIComponent(source.import_id)}/review`, status: source.status, import: source.imports,
       identity: investigationIdentity({ normalized: source.normalized_row, fees: source.fee_evidence, reviewReasons: source.review_reasons }) });
     byParent.set(link.transaction_id, values);
   }

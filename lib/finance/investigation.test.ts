@@ -50,6 +50,8 @@ describe("deterministic investigations", () => {
     expect(() => resolveInvestigation({ ...query, accounts: { include: [{ name: "Checking" }] } }, {
       ...entities, accounts: [...entities.accounts, { id: category, name: "Checking" }],
     })).toThrow("Ambiguous");
+    expect(resolveInvestigation(query, { ...entities, labels: { tags: ["food"], events: ["Berlin Trip"] } }).events?.exclude).toEqual(["Berlin Trip"]);
+    expect(() => resolveInvestigation(query, { ...entities, labels: { tags: [], events: [] } })).toThrow("Unknown owned events");
   });
   it("identifies changed date/source/classification evidence and rejects stale pagination", () => {
     const rows = Array.from({ length: 26 }, (_, i) => row(`r${i}`));
