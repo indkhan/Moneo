@@ -16,6 +16,8 @@ type TxRow = {
   amount_minor: string;
   currency_code: string;
   account_id: string;
+  merchant_id: string | null;
+  version: number;
 };
 
 export default async function RecurringPage() {
@@ -37,22 +39,31 @@ export default async function RecurringPage() {
 
   const rows: TxRow[] = [];
   let queryError: string | null = null;
-  for (let offset = 0; offset < MAX_TRANSACTIONS; offset += PAGE_SIZE) {
-    const { data, error } = await supabase.from("transactions")
-      .select("id, posted_on, description, amount_minor::text, currency_code, account_id")
+  // Keyset pages preserve chronological selection even when other rows are inserted.
+  // They are not a transaction snapshot: decisions validate owned evidence versions again.
+  let cursor: TxRow | undefined;
+  while (rows.length <= MAX_TRANSACTIONS) {
+    let query = supabase.from("transactions")
+      .select("id, posted_on, description, amount_minor::text, currency_code, account_id, merchant_id, version")
       .eq("workspace_id", workspace.id)
       .eq("status", "posted")
       .eq("kind", "ordinary").eq("review_reasons", "{}")
-      .order("id")
-      .range(offset, offset + PAGE_SIZE - 1);
-    if (error) {
-      queryError = error.message;
-      break;
-    }
-    rows.push(...((data ?? []) as TxRow[]));
-    if (!data || data.length < PAGE_SIZE) break;
+      .order("posted_on", { ascending: false }).order("id", { ascending: false });
+    if (cursor) query = query.or(`posted_on.lt.${cursor.posted_on},and(posted_on.eq.${cursor.posted_on},id.lt.${cursor.id})`);
+    const size = Math.min(PAGE_SIZE, MAX_TRANSACTIONS + 1 - rows.length);
+    const { data, error } = await query.range(0, size - 1);
+    if (error) { queryError = error.message; break; }
+    const page = (data ?? []) as TxRow[];
+    rows.push(...page);
+    if (page.length < size) break;
+    cursor = page.at(-1);
   }
-  const truncated = rows.length >= MAX_TRANSACTIONS;
+  const truncated = rows.length > MAX_TRANSACTIONS;
+  const cutoff = truncated ? rows[MAX_TRANSACTIONS].posted_on : null;
+  // Exclude the entire boundary date rather than presenting an arbitrary slice of that day's postings.
+  if (cutoff) rows.splice(0, rows.length, ...rows.filter(row => row.posted_on > cutoff));
+  const observedFrom = rows.at(-1)?.posted_on;
+  const observedTo = rows[0]?.posted_on;
 
   let detected: ReturnType<typeof detectRecurring> = [];
   let detectError: string | null = null;
@@ -65,6 +76,7 @@ export default async function RecurringPage() {
         amountMinor: BigInt(row.amount_minor),
         currencyCode: row.currency_code,
         accountId: row.account_id,
+        merchantId: row.merchant_id,
       })));
     } catch (error) {
       detectError = error instanceof Error ? error.message : String(error);
@@ -93,7 +105,7 @@ export default async function RecurringPage() {
       </header>
 
       <p className="max-w-3xl text-sm text-muted-foreground">
-        Estimated patterns inferred from up to {MAX_TRANSACTIONS.toLocaleString(workspace.locale)} posted transactions.
+        Estimated patterns inferred from the most recent complete posting dates, up to {MAX_TRANSACTIONS.toLocaleString(workspace.locale)} eligible posted transactions.
         Nothing here affects your forecast until you confirm it. Confirming creates one confirmed
         financial assumption used by the deterministic forecast; declining disables it.
       </p>
@@ -103,7 +115,8 @@ export default async function RecurringPage() {
       {storedError && <p role="alert" className="mt-6">Could not load review state: {storedError.message}</p>}
       {queryError && <p role="alert" className="mt-6">Could not load transactions: {queryError}</p>}
       {detectError && <p role="alert" className="mt-6">Could not detect patterns: {detectError}</p>}
-      {truncated && <p className="mt-6 text-sm text-muted-foreground">Showing the first 10,000 posted transactions.</p>}
+      <p className="text-sm text-muted-foreground">{observedFrom ? `Observed eligible posting range: ${observedFrom} to ${observedTo}. ` : "No eligible posting dates loaded. "}Statement intervals, missing statements and account completeness are unknown. Pending, transfers and unresolved classifications are excluded. Three observations are required, so annual patterns need at least two years of retained history. Reads are paged; confirmation rechecks current source versions.</p>
+      {truncated && <p className="mt-6 text-sm text-muted-foreground">History limit reached. All postings on or before {cutoff} were excluded to retain complete posting dates. Older patterns may be absent.</p>}
 
       {!queryError && !detectError && detected.length === 0 && (
         <p className="rounded-xl border border-border bg-card p-8 text-sm text-muted-foreground">No estimated recurring patterns found. Import more history to improve detection.</p>
@@ -136,6 +149,7 @@ export default async function RecurringPage() {
                 {" · "}{names[series.accountId] ?? "Unknown account"}
                 {" · "}{series.occurrences} payments · confidence {percent}%
               </p>
+              <p className="mt-2 text-xs text-muted-foreground">{series.amountMinMinor === series.amountMaxMinor ? "Amounts agree exactly." : "Amounts vary within the 15% grouping limit."} {series.missingPeriods} unobserved expected periods between evidence dates; these are not known missed payments. Up to two unobserved periods per gap are allowed. Regular discretionary purchases can also match; this heuristic is not a probability. Review the evidence before confirming.</p>
               <details className="mt-4 border-t border-border pt-3 text-xs">
                 <summary className="cursor-pointer underline">Evidence ({evidence.length} posted transactions)</summary>
                 <ul className="mt-2 space-y-1">
