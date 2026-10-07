@@ -6,6 +6,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { artifactKindSchema, calculatorManifestSchema, normalizeCalculatorParams } from "@/lib/artifacts/spec";
 
 const kind = artifactKindSchema;
+const stateRevision = z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(0).max(2147483646));
 
 export async function createArtifact(form: FormData) {
   const { supabase } = await requireWorkspace();
@@ -48,6 +49,7 @@ export async function unpinArtifact(form: FormData) {
 export async function saveCalculatorParams(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
   const artifactId = z.uuid().parse(form.get("artifactId"));
+  const expectedVersion = stateRevision.parse(form.get("expectedVersion"));
   const raw = z.string().max(2000).parse(form.get("params"));
   let parsed: Record<string, unknown>;
   try {
@@ -65,19 +67,21 @@ export async function saveCalculatorParams(form: FormData) {
   const { data: current, error: readError } = await supabase.from("artifact_state").select("state, version")
     .eq("workspace_id", workspace.id).eq("artifact_id", artifactId).single();
   if (readError || !current) throw readError ?? new Error("Artifact state unavailable");
+  if (current.version !== expectedVersion) return { conflict: true } as const;
   const merged = { ...((current.state as Record<string, unknown>) ?? {}), ...next };
   const { data: saved, error } = await supabase.from("artifact_state").update({
-    state: merged, version: current.version + 1, updated_at: new Date().toISOString(),
-  }).eq("workspace_id", workspace.id).eq("artifact_id", artifactId).eq("version", current.version)
+    state: merged, version: expectedVersion + 1, updated_at: new Date().toISOString(),
+  }).eq("workspace_id", workspace.id).eq("artifact_id", artifactId).eq("version", expectedVersion)
     .select("version").maybeSingle();
   if (error) throw error;
-  if (!saved) throw new Error("Artifact changed; refresh and retry");
-  redirect(`/ai/library/${artifactId}`);
+  if (!saved) return { conflict: true } as const;
+  return { saved: true } as const;
 }
 
 export async function saveTripState(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
   const artifactId = z.uuid().parse(form.get("artifactId"));
+  const expectedVersion = stateRevision.parse(form.get("expectedVersion"));
   const cost = z.coerce.number().int().min(0).max(10_000_000).parse(form.get("costMinor"));
   const { data: artifact } = await supabase.from("artifacts").select("kind")
     .eq("workspace_id", workspace.id).eq("id", artifactId).single();
@@ -85,11 +89,12 @@ export async function saveTripState(form: FormData) {
   const { data: current, error: readError } = await supabase.from("artifact_state").select("version")
     .eq("workspace_id", workspace.id).eq("artifact_id", artifactId).single();
   if (readError || !current) throw readError ?? new Error("Artifact state unavailable");
+  if (current.version !== expectedVersion) return { conflict: true } as const;
   const { data: saved, error } = await supabase.from("artifact_state").update({
-    state: { costMinor: cost }, version: current.version + 1, updated_at: new Date().toISOString(),
-  }).eq("workspace_id", workspace.id).eq("artifact_id", artifactId).eq("version", current.version)
+    state: { costMinor: cost }, version: expectedVersion + 1, updated_at: new Date().toISOString(),
+  }).eq("workspace_id", workspace.id).eq("artifact_id", artifactId).eq("version", expectedVersion)
     .select("version").maybeSingle();
   if (error) throw error;
-  if (!saved) throw new Error("Artifact changed; refresh and retry");
-  redirect(`/ai/library/${artifactId}`);
+  if (!saved) return { conflict: true } as const;
+  return { saved: true } as const;
 }
