@@ -1,3 +1,5 @@
+import { recurringCadences } from "./cadences";
+
 // Pure recurring-pattern detector over posted transactions. No DB access, no writes.
 export type RecurringTransaction = {
   id: string;
@@ -13,7 +15,7 @@ export type RecurringTransaction = {
 };
 
 export type RecurringSeries = {
-  cadence: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly";
+  cadence: typeof recurringCadences[number];
   /** Estimated label taken from the most common raw description in the series. */
   label: string;
   accountId: string;
@@ -23,7 +25,7 @@ export type RecurringSeries = {
   /** Evidence transaction IDs, oldest first. */
   transactionIds: string[];
   occurrences: number;
-  /** Heuristic 0..1; higher means tighter gaps and amounts plus more occurrences. */
+  /** Uncalibrated heuristic score; more evidence, exact amounts and fewer unobserved slots increase it. */
   confidence: number;
   /** Observed gaps do not establish whether an unobserved payment occurred. */
   missingPeriods: number;
@@ -68,23 +70,26 @@ export function recurringDateTolerance(cadence: string): number {
   return cadences.find(item => item.cadence === cadence)?.tolerance ?? 0;
 }
 
-function occurrenceIndex(anchor: string, date: string, cadence: typeof cadences[number]) {
-  const start = new Date(parseDate(anchor)), observed = parseDate(date);
+type ParsedDate = {timestamp: number; year: number; month: number; day: number};
+function occurrenceIndex(anchor: ParsedDate, observed: ParsedDate, cadence: typeof cadences[number], expectedDates: Map<number, number>) {
   if (cadence.days) {
-    const index = Math.round((observed - start.getTime()) / (cadence.days * 86400000));
-    return {index, difference: Math.abs(observed - start.getTime() - index * cadence.days * 86400000) / 86400000};
+    const index = Math.round((observed.timestamp - anchor.timestamp) / (cadence.days * 86400000));
+    return {index, difference: Math.abs(observed.timestamp - anchor.timestamp - index * cadence.days * 86400000) / 86400000};
   }
-  const day = new Date(observed);
-  const distance = (day.getUTCFullYear() - start.getUTCFullYear()) * 12 + day.getUTCMonth() - start.getUTCMonth();
+  const distance = (observed.year - anchor.year) * 12 + observed.month - anchor.month;
   let closest = {index: -1, difference: Infinity};
   const approximate = Math.floor(distance / cadence.months!);
   for (const index of [approximate - 1, approximate, approximate + 1]) {
     if (index < 0) continue;
-    const expected = new Date(start);
-    expected.setUTCDate(1); expected.setUTCMonth(start.getUTCMonth() + index * cadence.months!);
-    const last = new Date(Date.UTC(expected.getUTCFullYear(), expected.getUTCMonth() + 1, 0)).getUTCDate();
-    expected.setUTCDate(Math.min(start.getUTCDate(), last));
-    const difference = Math.abs(observed - expected.getTime()) / 86400000;
+    let expected = expectedDates.get(index);
+    if (expected === undefined) {
+      const month = anchor.year * 12 + anchor.month + index * cadence.months!;
+      const day = new Date(0);
+      day.setUTCFullYear(Math.floor(month / 12), month % 12 + 1, 0);
+      day.setUTCDate(Math.min(anchor.day, day.getUTCDate()));
+      expected = day.getTime(); expectedDates.set(index, expected);
+    }
+    const difference = Math.abs(observed.timestamp - expected) / 86400000;
     if (difference < closest.difference) closest = {index, difference};
   }
   return closest;
@@ -93,8 +98,13 @@ function occurrenceIndex(anchor: string, date: string, cadence: typeof cadences[
 export function detectRecurring(transactions: RecurringTransaction[]): RecurringSeries[] {
   if (transactions.length > MAX_TRANSACTIONS) throw new Error(`Too many transactions: ${transactions.length}`);
   const groups = new Map<string, RecurringTransaction[]>();
+  const dates = new Map<string, ParsedDate>();
   for (const transaction of transactions) {
-    parseDate(transaction.date);
+    if (!dates.has(transaction.date)) {
+      const timestamp = parseDate(transaction.date), date = new Date(timestamp);
+      dates.set(transaction.date, {timestamp, year: date.getUTCFullYear(), month: date.getUTCMonth(), day: date.getUTCDate()});
+    }
+    if (transaction.amountMinor === 0n) continue;
     const sign = transaction.amountMinor < 0n ? "-" : transaction.amountMinor > 0n ? "+" : "0";
     const identity = transaction.merchantId ? `merchant:${transaction.merchantId}` : `description:${normalizeDescription(transaction.description)}`;
     const key = [transaction.accountId, transaction.currencyCode, sign, identity].join("\u0000");
@@ -105,42 +115,39 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
   const series: RecurringSeries[] = [];
   for (const group of groups.values()) {
     if (group.length < 3) continue;
-    // Separate materially different amounts before searching dated runs; extra purchases do not erase a subscription.
-    const bands: RecurringTransaction[][] = [];
-    for (const row of [...group].sort((a, b) => abs(a.amountMinor) < abs(b.amountMinor) ? -1 : abs(a.amountMinor) > abs(b.amountMinor) ? 1 : a.id.localeCompare(b.id))) {
-      const band = bands.at(-1);
-      if (band && amountFits(band[0].amountMinor < row.amountMinor ? band[0].amountMinor : row.amountMinor,
-        band[0].amountMinor > row.amountMinor ? band[0].amountMinor : row.amountMinor)) band.push(row);
-      else bands.push([row]);
-    }
     const candidates: {rows: RecurringTransaction[]; cadence: RecurringSeries["cadence"]; missing: number; difference: number}[] = [];
-    for (const band of bands) {
-      const byDate = new Map<string, RecurringTransaction>();
-      // A date alone cannot distinguish simultaneous obligations. Offer one deterministic
-      // observation per date and disclose the alternatives, rather than thousands of runs.
-      for (const row of band.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))) {
-        if (!byDate.has(row.date)) byDate.set(row.date, row);
-      }
-      const sorted = [...byDate.values()];
-      for (const cadence of cadences) {
-        const used = new Set<string>();
-        for (let start = 0; start < sorted.length - 2; start++) {
-          if (used.has(sorted[start].id)) continue;
-          const rows = [sorted[start]];
-          let previous = 0, missing = 0, difference = 0;
-          for (let next = start + 1; next < sorted.length; next++) {
-            if (used.has(sorted[next].id)) continue;
-            const occurrence = occurrenceIndex(sorted[start].date, sorted[next].date, cadence);
-            // ponytail: at most two unobserved periods per gap; longer gaps start another candidate run.
-            if (occurrence.index - previous > 3) break;
-            if (occurrence.index <= previous || occurrence.difference > cadence.tolerance) continue;
-            missing += occurrence.index - previous - 1; previous = occurrence.index;
-            difference += occurrence.difference; rows.push(sorted[next]);
-          }
-          if (rows.length >= 3) {
-            rows.forEach(row => used.add(row.id));
-            candidates.push({rows, cadence: cadence.cadence, missing, difference});
-          }
+    const byDateAmount = new Map<string, RecurringTransaction>();
+    // Equal-date/equal-amount observations cannot establish distinct schedules.
+    // Preserve materially different same-date amounts and disclose selected alternatives.
+    for (const row of [...group].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))) {
+      const key = `${row.date}\0${row.amountMinor}`;
+      if (!byDateAmount.has(key)) byDateAmount.set(key, row);
+    }
+    const sorted = [...byDateAmount.values()];
+    for (const cadence of cadences) {
+      const used = new Set<string>();
+      for (let start = 0; start < sorted.length - 2; start++) {
+        if (used.has(sorted[start].id)) continue;
+        const rows = [sorted[start]];
+        const expectedDates = new Map<number, number>();
+        let previous = 0, missing = 0, difference = 0;
+        let min = sorted[start].amountMinor, max = min;
+        for (let next = start + 1; next < sorted.length; next++) {
+          if (used.has(sorted[next].id)) continue;
+          const occurrence = occurrenceIndex(dates.get(sorted[start].date)!, dates.get(sorted[next].date)!, cadence, expectedDates);
+          // ponytail: at most two unobserved periods per gap; longer gaps start another candidate run.
+          if (occurrence.index - previous > 3) break;
+          if (occurrence.index <= previous || occurrence.difference > cadence.tolerance) continue;
+          const nextMin = sorted[next].amountMinor < min ? sorted[next].amountMinor : min;
+          const nextMax = sorted[next].amountMinor > max ? sorted[next].amountMinor : max;
+          if (!amountFits(nextMin, nextMax)) continue;
+          min = nextMin; max = nextMax;
+          missing += occurrence.index - previous - 1; previous = occurrence.index;
+          difference += occurrence.difference; rows.push(sorted[next]);
+        }
+        if (rows.length >= 3) {
+          rows.forEach(row => used.add(row.id));
+          candidates.push({rows, cadence: cadence.cadence, missing, difference});
         }
       }
     }

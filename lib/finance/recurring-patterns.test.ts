@@ -81,3 +81,16 @@ it("keeps the original owned anchor among bounded evidence for correction and un
   expect(weekly.transactionIds).toContain(weekly.runAnchorId);
   expect(weekly.missingPeriods).toBe(0);
 });
+
+it("does not let a lower irregular purchase split a plausible varying amount run at a band boundary", () => {
+  const result = detectRecurring([
+    posting("low", "2026-01-17", "ACME subscription", -850n),
+    posting("regular-1", "2026-01-31", "ACME subscription", -1000n),
+    posting("regular-2", "2026-02-28", "ACME subscription", -1050n),
+    posting("regular-3", "2026-03-31", "ACME subscription", -1100n),
+  ]);
+  expect(result).toEqual(expect.arrayContaining([expect.objectContaining({cadence: "monthly", transactionIds: ["regular-1", "regular-2", "regular-3"], amountMinMinor: -1100n, amountMaxMinor: -1000n})]));
+});
+it("does not recommend zero-value postings as financial obligations", () => {
+  expect(detectRecurring([posting("zero-1","2026-01-01","Zero",0n),posting("zero-2","2026-02-01","Zero",0n),posting("zero-3","2026-03-01","Zero",0n)])).toEqual([]);
+});
