@@ -97,3 +97,30 @@ it("quarantines and preserves nonempty XLSX cells beyond the reviewed headers", 
   expect(inspected.unresolvedRows).toHaveLength(1);
   expect(inspected.unresolvedRows[0].sourceRow.__moneo_csv_extra_cells).toContain("Unmapped source");
 });
+
+it("parses native numeric and cached formula money independently of the reviewed text convention",async()=>{
+  const book=new ExcelJS.Workbook();const sheet=book.addWorksheet("Typed money");
+  sheet.addRows([["Date","Description","Amount","Balance","Fee"],["2026-09-01","Numeric",123.456,200.123,1.234],["2026-09-02","Text","123,456","200,123","1,234"],["2026-09-03","Formula",{formula:"100+23.456",result:123.456},null,null]]);
+  const rows=await parseExcel(await book.xlsx.writeBuffer() as ArrayBuffer,{version:"xlsx-scope-v1",tables:[{sheetId:sheet.id,headerRow:1,endRow:4}]});
+  const mapping={accountName:"Synthetic",currencyCode:"KWD",dateColumn:"Date",descriptionColumn:"Description",amountColumn:"Amount",balanceColumn:"Balance",dateFormat:"iso" as const,amountSign:"signed" as const,numericConvention:"decimal-comma" as const};
+  const result=inspectRows(rows,mapping);expect(result.unresolvedRows).toHaveLength(0);
+  expect(result.mapped.map(row=>row.amountMinor)).toEqual([123456n,123456n,123456n]);
+  expect(result.mapped[0]).toMatchObject({balanceMinor:200123n,feeMinor:1234n});
+  const corrected=inspectRows(rows,{...mapping,rowDecisions:[{rowNumber:2,action:"correct",values:{Amount:"1,234"}}]});
+  expect(corrected.mapped[0].amountMinor).toBe(1234n);
+});
+
+it("quarantines an inferred numeric Fee using the same safety guard as explicitly mapped money",async()=>{
+  const book=new ExcelJS.Workbook();const sheet=book.addWorksheet("Fees");
+  sheet.addRows([["Date","Description","Amount","Fee"],["2026-09-01","Unsafe fee","1.00",12345678901234.56]]);
+  const rows=await parseExcel(await book.xlsx.writeBuffer() as ArrayBuffer,{version:"xlsx-scope-v1",tables:[{sheetId:sheet.id,headerRow:1,endRow:2}]});
+  const result=inspectRows(rows,{accountName:"Synthetic",currencyCode:"EUR",dateColumn:"Date",descriptionColumn:"Description",amountColumn:"Amount",dateFormat:"iso",amountSign:"signed",numericConvention:"decimal-dot"});
+  expect(result.mapped).toHaveLength(0);expect(result.unresolvedRows[0].message).toMatch(/Unsafe XLSX numeric precision in Fee/);
+});
+
+it("keeps legacy auxiliary reserved headers while rejecting them for new scoped imports",async()=>{
+  const book=new ExcelJS.Workbook();const sheet=book.addWorksheet("Legacy");sheet.addRows([["Date","Description","Amount","__moneo_csv_notes"],["2026-09-01","Original","1.00","Original note"]]);
+  const bytes=await book.xlsx.writeBuffer() as ArrayBuffer;
+  expect((await parseLegacyExcel(bytes))[0].__moneo_csv_notes).toBe("Original note");
+  await expect(parseExcel(bytes,{version:"xlsx-scope-v1",tables:[{sheetId:sheet.id,headerRow:1,endRow:2}]})).rejects.toThrow(/reserved/);
+});

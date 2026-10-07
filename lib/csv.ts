@@ -163,8 +163,8 @@ function workbookRows(workbook: ExcelJS.Workbook, input?: WorkbookScope, legacy 
     if (previous?.sheet.id === table.sheet.id && table.headerRow <= previous.endRow) throw new Error("Selected workbook tables overlap");
     previous = table;
     const header = table.sheet.getRow(table.headerRow);
-    const headers = Array.from({length: header.cellCount}, (_, index) => cellText(header.getCell(index + 1)).trim());
-    if (!headers.length || headers.some(value => !value || value.startsWith("__moneo_csv_")) || new Set(headers).size !== headers.length) throw new Error("Missing, duplicate or reserved XLSX headers");
+    const headers = Array.from({length: legacy ? table.sheet.columnCount : header.cellCount}, (_, index) => cellText(header.getCell(index + 1)).trim());
+    if (!headers.length || headers.some(value => !value || (!legacy && value.startsWith("__moneo_csv_"))) || new Set(headers).size !== headers.length) throw new Error("Missing, duplicate or reserved XLSX headers");
     if (sharedHeaders && JSON.stringify(headers) !== JSON.stringify(sharedHeaders)) throw new Error("Select tables with matching headers; inspect differently structured tables separately");
     sharedHeaders = headers;
     for (let rowNumber = table.headerRow + 1; rowNumber <= table.endRow; rowNumber++) {
@@ -449,6 +449,17 @@ export function inspectRows(rows: SourceRow[], input: unknown) {
       return [];
     }
     try {
+      const header = (name: string) => Object.keys(sourceRow).find(key => key.trim().toLowerCase() === name);
+      const typeColumn = mapping.typeColumn ?? header("type");
+      const feeColumn = mapping.feeColumn ?? header("fee");
+      const decision = decisions.get(index + 2);
+      const evidence = rows[index].__moneo_csv_xlsx_source ? JSON.parse(rows[index].__moneo_csv_xlsx_source) as {cells: Record<string,{value: unknown}>} : undefined;
+      const numericCell = (column: string) => {
+        if (decision?.action === "correct" && Object.hasOwn(decision.values, column)) return undefined;
+        const original = evidence?.cells[column]?.value;
+        const value = original && typeof original === "object" && "result" in original ? original.result : original;
+        return typeof value === "number" ? value : undefined;
+      };
       if (rows[index][csvIssueColumn]) {
         const decision = decisions.get(index + 2);
         if (decision?.action !== "correct") throw new Error(`Source field mismatch (${rows[index][csvIssueColumn]}): explicitly review mapped cells or exclude this observation`);
@@ -459,16 +470,12 @@ export function inspectRows(rows: SourceRow[], input: unknown) {
         }
         if (columns.some(column => !Object.hasOwn(decision.values, column))) throw new Error("Source field mismatch: review all mapped cells before accepting the corrected interpretation");
       }
-      if (rows[index].__moneo_csv_xlsx_source) {
-        const evidence = JSON.parse(rows[index].__moneo_csv_xlsx_source) as {cells: Record<string,{value: unknown}>};
-        for (const column of [mapping.amountColumn, mapping.debitColumn, mapping.creditColumn, mapping.balanceColumn, mapping.feeColumn].filter((name): name is string => Boolean(name))) {
-          const original = evidence.cells[column]?.value;
-          const value = original && typeof original === "object" && "result" in original ? original.result : original;
-          if (typeof value !== "number") continue;
+      if (evidence) {
+        for (const column of [mapping.amountColumn, mapping.debitColumn, mapping.creditColumn, mapping.balanceColumn, feeColumn].filter((name): name is string => Boolean(name))) {
+          const value = numericCell(column);
+          if (value === undefined) continue;
           const significantDigits = String(value).split(/e/i)[0].replace(/[-.]/g, "").replace(/^0+/, "").length;
-          const decision = decisions.get(index + 2);
-          if ((!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER || significantDigits > 15) &&
-            !Object.hasOwn(decision?.action === "correct" ? decision.values : {}, column))
+          if (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER || significantDigits > 15)
             throw new Error(`Unsafe XLSX numeric precision in ${column}: review an exact source string or explicitly correct/exclude the observation`);
         }
       }
@@ -491,23 +498,21 @@ export function inspectRows(rows: SourceRow[], input: unknown) {
       if ((mapping.accountColumn || mapping.productColumn || mapping.accountRoutes) && routes?.length !== 1)
         throw new Error("Review account routing: each account/product/currency requires exactly one route");
       const accountName = routes?.[0]?.accountName ?? mapping.accountName;
+      const money = (column: string) => parseAmountMinor(sourceRow[column] ?? "", currencyCode, numericCell(column) === undefined ? mapping.numericConvention : "decimal-dot");
       let amountMinor: bigint;
       if (mapping.amountColumn) {
-        amountMinor = parseAmountMinor(sourceRow[mapping.amountColumn] ?? "", currencyCode, mapping.numericConvention);
+        amountMinor = money(mapping.amountColumn);
         if (mapping.amountSign === "outflow-positive") amountMinor = -amountMinor;
       } else {
         const debit = sourceRow[mapping.debitColumn!] ?? "";
         const credit = sourceRow[mapping.creditColumn!] ?? "";
         if (Boolean(debit.trim()) === Boolean(credit.trim())) throw new Error("Expected exactly one debit or credit value");
-        amountMinor = credit.trim() ? parseAmountMinor(credit, currencyCode, mapping.numericConvention) : -parseAmountMinor(debit, currencyCode, mapping.numericConvention);
+        amountMinor = credit.trim() ? money(mapping.creditColumn!) : -money(mapping.debitColumn!);
         if ((credit.trim() && amountMinor < 0n) || (debit.trim() && amountMinor > 0n))
           throw new Error("Debit and credit values must be positive");
         if (amountMinor === 0n) throw new Error("Zero debit or credit");
       }
       databaseMinor(amountMinor);
-      const header = (name: string) => Object.keys(sourceRow).find(key => key.trim().toLowerCase() === name);
-      const typeColumn = mapping.typeColumn ?? header("type");
-      const feeColumn = mapping.feeColumn ?? header("fee");
       const sourceType = typeColumn ? sourceRow[typeColumn]?.trim() : undefined;
       const type = sourceType?.toLowerCase();
       const reviewReasons: string[] = [];
@@ -520,7 +525,7 @@ export function inspectRows(rows: SourceRow[], input: unknown) {
       } else if (type && type !== "card payment" && !(type === "debit" && amountMinor < 0n)) reviewReasons.push("source_type");
       let feeMinor: bigint | undefined;
       if (feeColumn && sourceRow[feeColumn]?.trim()) {
-        try { feeMinor = parseAmountMinor(sourceRow[feeColumn], currencyCode, mapping.numericConvention); }
+        try { feeMinor = money(feeColumn); }
         catch (error) {
           if (error instanceof Error && error.message.includes("numeric convention")) throw error;
           reviewReasons.push("fee_semantics");
@@ -547,7 +552,7 @@ export function inspectRows(rows: SourceRow[], input: unknown) {
         ...(mapping.merchantColumn && sourceRow[mapping.merchantColumn]?.trim() ? { merchant: sourceRow[mapping.merchantColumn].trim() } : {}),
         ...(mapping.categoryColumn && sourceRow[mapping.categoryColumn]?.trim() ? { category: sourceRow[mapping.categoryColumn].trim() } : {}),
         ...(mapping.externalIdColumn && sourceRow[mapping.externalIdColumn]?.trim() ? { externalId: sourceRow[mapping.externalIdColumn].trim() } : {}),
-        ...(mapping.balanceColumn && sourceRow[mapping.balanceColumn]?.trim() ? { balanceMinor: parseAmountMinor(sourceRow[mapping.balanceColumn], currencyCode, mapping.numericConvention) } : {}),
+        ...(mapping.balanceColumn && sourceRow[mapping.balanceColumn]?.trim() ? { balanceMinor: money(mapping.balanceColumn) } : {}),
       }];
     } catch (error) {
       unresolvedRows.push({ rowNumber: index + 2, sourceRow: rows[index], reason: "invalid_row",
