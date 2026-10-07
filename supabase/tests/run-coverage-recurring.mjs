@@ -22,12 +22,12 @@ const connection = new URL(process.env.SUPABASE_DB_URL);
 const project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
 assert(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`), "Project/database mismatch");
 const schema = `mne014_${randomUUID().replaceAll("-", "")}`;
-const run = {task: "MNE014", schema, worktree: root, head, mode: baseline ? "baseline" : upgrade ? "upgrade" : "fresh"};
+const run = {task: "MNE014", schema, worktree: root, head, marker: randomUUID(), mode: baseline ? "baseline" : upgrade ? "upgrade" : "fresh"};
 mkdirSync(".qa", {recursive: true});
 const journal = `.qa/${schema}-owner.jsonl`;
 const record = value => appendFileSync(journal, JSON.stringify({...run, at: new Date().toISOString(), ...value}) + "\n");
 record({phase: "prepared", rollbackOnly: true, ownerRecordsRead: false, publicDdl: false});
-const db = postgres(connection.toString(), {ssl: "require", max: 1, connect_timeout: 10, onnotice: () => {}});
+const db = postgres(connection.toString(), {ssl: "require", max: 1, connect_timeout: 10, connection: {application_name: `MNE014-${run.marker}`, statement_timeout: "20000", lock_timeout: "3000", idle_in_transaction_session_timeout: "30000"}, onnotice: () => {}});
 const rollback = new Error("MNE014 verified rollback");
 function isolated(sql) {
   const rewritten = sql.replace(/\bpublic\./g, `${schema}.`).replace(/\bschema public\b/g, `schema ${schema}`)
@@ -43,7 +43,13 @@ try {
   if (!baseline) assert(files.includes(candidate), "Author reserved migration after baseline RED before green acceptance");
   try { await db.begin(async tx => {
     await tx.unsafe(`create schema ${schema}; create table ${schema}.qa_owner(metadata jsonb not null); create table ${schema}.auth_users(id uuid primary key,email text); grant usage on schema ${schema} to authenticated,service_role`);
-    await tx.unsafe(`insert into ${schema}.qa_owner(metadata) values($1::jsonb)`, [JSON.stringify(run)]);
+    await tx.unsafe(`insert into ${schema}.qa_owner(metadata) values($1::jsonb)`, [tx.json(run)]);
+    const [ownership] = await tx.unsafe(`select metadata, current_user as actor, (select nspowner::regrole::text from pg_namespace where nspname=$1) as schema_owner from ${schema}.qa_owner`, [schema]);
+    assert.deepEqual(ownership.metadata, run, "Private schema metadata/marker mismatch");
+    assert.equal(ownership.actor, ownership.schema_owner, "Private schema owner mismatch");
+    const prepared = JSON.parse(readFileSync(journal, "utf8").trim().split("\n")[0]);
+    for (const key of ["task", "schema", "worktree", "head", "marker", "mode"]) assert.equal(prepared[key], run[key], `Journal ownership mismatch: ${key}`);
+    record({phase: "ownership_verified", schemaOwner: ownership.schema_owner, markerVerified: true});
     const replay = files.filter(file => !(file === candidate && (baseline || upgrade))).map(file => {
       let sql = readFileSync(`supabase/migrations/${file}`, "utf8");
       if (file.endsWith("_initial.sql")) sql = sql.slice(0, sql.indexOf("insert into storage.buckets"));
@@ -72,4 +78,4 @@ try {
 } catch (error) {
   record({phase: "failed", sqlstate: error.code ?? error.cause?.code ?? null, message: error.message});
   throw error;
-} finally { await db.end(); }
+} finally { await db.end({timeout: 5}); record({phase: "sql_closed"}); }
