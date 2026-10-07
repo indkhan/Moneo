@@ -64,6 +64,10 @@ const cadences: {cadence: RecurringSeries["cadence"]; days?: number; months?: nu
   {cadence: "yearly", months: 12, tolerance: 7},
 ];
 
+export function recurringDateTolerance(cadence: string): number {
+  return cadences.find(item => item.cadence === cadence)?.tolerance ?? 0;
+}
+
 function occurrenceIndex(anchor: string, date: string, cadence: typeof cadences[number]) {
   const start = new Date(parseDate(anchor)), observed = parseDate(date);
   if (cadence.days) {

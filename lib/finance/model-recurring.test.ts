@@ -70,3 +70,15 @@ it.each([100000n, -100000n])("retains observed generated anchor evidence after a
   expect(result.input.events).toEqual([]);
   expect(result.available).toMatchObject({ status: "available", amountMinor: 200000n });
 });
+
+it("keeps an inferred original calendar anchor when its latest observed payment shifts early", async () => {
+  const item = {...assumption, starts_on: "2026-10-05", schedule_anchor_on: "2026-08-06"};
+  const result = await evaluateFixture(item, [{...posting, posted_on: "2026-10-05", posted_at: "2026-10-05T08:00:00Z"}]);
+  expect(result.input.events.map(event => event.date)).toEqual(["2026-11-06"]);
+});
+
+it("lets intentional user dates override a retained inferred calendar anchor", async () => {
+  const item = {...assumption, source: "user", schedule_anchor_on: "2026-08-31"};
+  const result = await evaluateFixture(item, [posting], snapshot, [], 32);
+  expect(result.input.events.map(event => event.date)).toEqual(["2026-10-06", "2026-11-06"]);
+});

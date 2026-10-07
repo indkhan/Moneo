@@ -6,14 +6,16 @@ import { calendarDate } from "./calendar";
 import { buildDebtForecast, loadWealthItems } from "./wealth";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { defaultForecastPreferences, forecastCases, forecastPreferencesSchema } from "./preferences";
+import { recurringDateTolerance } from "./recurring";
 import { reconcileOccurrence, settlementPosting, type OccurrenceSettlement } from "./recurring-occurrences";
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
 
-type Scheduled = { account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; enabled?: boolean };
+type Scheduled = { account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; enabled?: boolean; source?: string; schedule_anchor_on?: string | null };
 
 export function expandSchedule(item: Scheduled, start: string, days: number, uncertaintyBps = 1000): ForecastEvent[] {
   if (item.enabled === false || !item.account_id) return [];
-  const first = new Date(`${item.starts_on}T00:00:00Z`);
+  const anchor = item.source === "recurring_confirmed" ? item.schedule_anchor_on ?? item.starts_on : item.starts_on;
+  const first = new Date(`${anchor}T00:00:00Z`);
   const horizon = new Date(`${start}T00:00:00Z`);
   const end = new Date(horizon.getTime() + days * 86400000);
   const events: ForecastEvent[] = [];
@@ -43,7 +45,7 @@ export function expandSchedule(item: Scheduled, start: string, days: number, unc
       date.setUTCDate(Math.min(startDate, lastDay));
     } else if (item.cadence !== "once") throw new Error(`Unknown cadence: ${item.cadence}`);
     if (date >= end || (item.ends_on && date.toISOString().slice(0, 10) > item.ends_on)) break;
-    if (date < horizon) continue;
+    if (date < horizon || date.toISOString().slice(0, 10) < item.starts_on) continue;
     const amount = BigInt(item.amount_minor);
     events.push({ date: date.toISOString().slice(0, 10), accountId: item.account_id,
       ...forecastCases(amount, uncertaintyBps) });
@@ -117,10 +119,11 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
     return planned.flatMap(event => {
       const explicit = settlements.filter(link => link.assumption_id === item.id && link.scheduled_on === event.date);
       // Retiring an explicit association does not retire the independently confirmed anchor evidence.
-      if (!explicit.some(link => !link.undone_at) && item.source === "recurring_confirmed" && event.date === item.starts_on && recurringSeries.some(series =>
+      if (!explicit.some(link => !link.undone_at) && item.source === "recurring_confirmed" && recurringSeries.some(series =>
         series.assumption_id === item.id && series.recurring_series_transactions.some((link: { transaction_id: string }) =>
           balanceEvidence.ledger.some(row => row.id === link.transaction_id && row.account_id === item.account_id &&
-            row.currency_code === item.currency_code && row.status === "posted" && row.posted_on === event.date &&
+            row.currency_code === item.currency_code && row.status === "posted" && row.kind === "ordinary" && !row.review_reasons?.length && row.posted_on <= startDate &&
+            Math.abs(Date.parse(`${row.posted_on}T00:00:00Z`) - Date.parse(`${event.date}T00:00:00Z`)) <= recurringDateTolerance(item.cadence) * 86400000 &&
             (!row.posted_at || Date.parse(row.posted_at) <= Date.parse(balanceEvidence.asOf)))))) return [];
       for (const link of explicit) if (!link.undone_at && !settlementPosting(item, link, balanceEvidence.ledger))
         missingInputs.push(`occurrence:${item.name}:${event.date}:${link.id}:evidence changed; undo or review the association`);
