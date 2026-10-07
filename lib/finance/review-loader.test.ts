@@ -21,6 +21,7 @@ it("omits all planning reads when its scope is disabled and gathers exact compar
   expect(evidence.planning).toEqual({ unavailable: "AI access to planning is disabled in Settings" });
   expect(evidence.investigation.records.items[0].link).toBe("/money/transactions?transaction=t");
   expect(evidence.investigation.groups[0].currentMinor).toBe("9007199254740993");
+  expect(evidence).toMatchObject({ calculationEvidence: { transactions: [expect.objectContaining({ id: "t", amount_minor: "-9007199254740993" })], balances: { snapshots: [], ledger: [] } } });
 });
 it("loads older rollover evidence without extending the current cashflow summary", async () => {
   const lowerBounds: string[] = [];

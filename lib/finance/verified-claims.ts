@@ -5,7 +5,7 @@ export type FinancialEvidenceReceipt = {
   id: string; workspaceId: string; fetchedAt: string; calculationVersion: string; sourceVersion: string;
   query: unknown;
   sources: { id: string; type: string; version: string; href: string }[];
-  metrics: { id: string; label: string; valueMinor: string | null; currency: string; period: { from: string; to: string }; qualifiers: string[]; sourceIds: string[]; calculation: string }[];
+  metrics: { id: string; label: string; valueMinor: string | null; currency: string; unit?: "money" | "count"; period: { from: string; to: string }; qualifiers: string[]; sourceIds: string[]; calculation: string }[];
 };
 const periodSchema = z.object({ from: z.iso.date(), to: z.iso.date() }).strict().refine(value => value.from <= value.to);
 const referenceSchema = z.object({ receiptId: z.uuid(), metricId: z.string().min(1).max(200) }).strict();
@@ -14,9 +14,10 @@ export const financialClaimSchema = z.object({
   operands: z.array(referenceSchema).min(1).max(20),
   valueMinor: z.string().regex(/^-?(?:0|[1-9]\d{0,79})$/),
   currency: z.string().regex(/^[A-Z]{3}$/),
+  unit: z.enum(["money", "count"]).default("money"),
   periods: z.array(periodSchema).min(1).max(20),
   qualifiers: z.array(z.string().min(1).max(100)).max(30),
-  sourceIds: z.array(z.string().min(1).max(200)).max(20000),
+  sourceIds: z.array(z.string().min(1).max(200)).max(20000).optional(),
   direction: z.enum(["increase", "decrease", "unchanged"]).optional(),
 }).strict();
 const interpretationSchema = z.object({
@@ -35,6 +36,7 @@ const qualifications: Record<string, string> = {
   assumption: "Assumption: this projection is conditional and is not a probability or established outcome.",
   manual_evidence: "Manual evidence: a dated recorded value, not a verified current balance.",
   virtual_reservation: "Virtual reservation: an earmark, not money moved or spent.",
+  source_posting: "Recorded source posting: this is the canonical parent amount; effective allocations and verified fees determine financial totals. Do not add the parent to its components.",
 };
 function sameSet(a: string[], b: string[]) {
   return a.length === new Set(a).size && b.length === new Set(b).size && a.length === b.length && a.every(value => b.includes(value));
@@ -66,18 +68,19 @@ export function publishFinancialClaims(input: unknown, receipts: FinancialEviden
       const claim = financialClaimSchema.parse(raw);
       if ((claim.operation === "metric" && claim.operands.length !== 1) || (claim.operation === "difference" && claim.operands.length !== 2)) throw new Error("Invalid operands");
       const evidence = claim.operands.map(reference => resolve(reference, receipts, workspaceId));
+      if (new Set(claim.operands.map(reference => JSON.stringify(reference))).size !== claim.operands.length || evidence.some(({ metric }) => (metric.unit ?? "money") !== claim.unit)) throw new Error("Duplicate operands or incompatible units");
       if (evidence.some(({ metric }) => metric.currency !== claim.currency)) throw new Error("Currency mismatch");
       if (claim.periods.length !== evidence.length || evidence.some(({ metric }, index) => JSON.stringify(metric.period) !== JSON.stringify(claim.periods[index]))) throw new Error("Period mismatch");
       if (claim.operation === "sum" && evidence.some(({ metric }) => metric.period.from !== evidence[0].metric.period.from || metric.period.to !== evidence[0].metric.period.to)) throw new Error("Sum period mismatch");
       const required = [...new Set(evidence.flatMap(({ metric }) => metric.qualifiers))];
       const sources = [...new Set(evidence.flatMap(({ metric }) => metric.sourceIds))];
-      if (!sameSet(claim.qualifiers, required) || !sameSet(claim.sourceIds, sources)) throw new Error("Missing qualifiers or invalid links");
+      if (!sameSet(claim.qualifiers, required) || claim.sourceIds && !sameSet(claim.sourceIds, sources)) throw new Error("Missing qualifiers or invalid links");
       const value = claim.operation === "difference" ? evidence[0].value - evidence[1].value : evidence.reduce((sum, item) => sum + item.value, 0n);
       if (value !== BigInt(claim.valueMinor)) throw new Error("Incorrect arithmetic");
       const direction = value > 0n ? "increase" : value < 0n ? "decrease" : "unchanged";
       if (claim.direction && (claim.operation !== "difference" || claim.direction !== direction)) throw new Error("Incorrect comparison");
       const links = evidence.map(({ receipt, metric }) => `[${escapeMarkdown(metric.label)} (${metric.period.from} to ${metric.period.to})](${financialMetricHref(receipt.id, metric.id)})`);
-      measured.push(`- ${claim.operation === "difference" ? `Change (${direction}) in ` : claim.operation === "sum" ? "Sum of " : ""}${links.join(claim.operation === "difference" ? " compared with " : " + ")}: **${formatMoney(value, claim.currency)}**.${required.length ? " " + required.map(item => qualifications[item]).join(" ") : ""}`);
+      measured.push(`- ${claim.operation === "difference" ? `Change (${direction}) in ` : claim.operation === "sum" ? "Sum of " : ""}${links.join(claim.operation === "difference" ? " compared with " : " + ")}: **${claim.unit === "count" ? `${value} records (${claim.currency} scope)` : formatMoney(value, claim.currency)}**.${required.length ? " " + required.map(item => qualifications[item]).join(" ") : ""}`);
       accepted.push(claim);
     } catch { removed++; }
   }

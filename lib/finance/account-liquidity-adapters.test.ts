@@ -21,6 +21,7 @@ it("AI and artifact expose the shared account, protection and limiting date with
   const expected = serializeAccountLiquidity(accountLiquidity(fixture.input));
   const ai = await evaluateForecast({ horizonDays: 30, accountId: "checking" });
   expect(ai).toMatchObject({ liquidity: expected, aggregateAvailableMinor: "60000", availableToSpendMinor: "-40000", accountId: "checking", limitingDate: "2026-10-08" });
+  expect(ai).toMatchObject({ period: { from: "2026-10-07", to: "2026-11-05" }, calculationEvidence: { input: { accounts: [expect.objectContaining({ id: "checking", balanceMinor: "10000" }), expect.objectContaining({ id: "savings", balanceMinor: "100000" })] } } });
   expect(await evaluateForecast({ horizonDays: 30 })).toMatchObject({ availableToSpendMinor: null, aggregateAvailableMinor: "60000" });
   await expect(evaluateForecast({ accountId: "unknown" })).rejects.toThrow("Unknown account");
   const artifact = await tripForArtifact("synthetic", 100n, "checking");

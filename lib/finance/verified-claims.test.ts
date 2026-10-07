@@ -60,4 +60,10 @@ describe("financial publication trust boundary", () => {
     expect(result.body).toContain("Consider reviewing");
     expect(result.body).toContain("classification");
   });
+  it("formats record counts as counts and never treats them as minor-unit currency", () => {
+    const evidence = { ...receipt, metrics: [{ ...receipt.metrics[0], id: "count", unit: "count" as const, valueMinor: "3" }] };
+    const claim = { ...fact, unit: "count", operands: [{ receiptId: receipt.id, metricId: "count" }], valueMinor: "3" };
+    expect(publish([claim], [evidence]).body).toContain("3 records");
+    expect(publish([claim], [evidence]).body).not.toContain("EUR 0.03");
+  });
 });

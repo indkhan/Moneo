@@ -28,10 +28,11 @@ export async function listAccounts(context?: FinanceContext) {
   return data;
 }
 
-export async function getBalances(context?: FinanceContext, canReadImports = true) {
+export async function getBalances(context?: FinanceContext, canReadImports = true, retainSupport = false) {
   const { supabase, workspace } = context ?? await requireWorkspace();
   const [evidence, sourceMetadata] = await Promise.all([loadBalanceEvidence(supabase, workspace.id), loadSourceCoverageMetadata(supabase, workspace.id, canReadImports)]);
-  return resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone, sourceMetadata);
+  return resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone, sourceMetadata).map(account => retainSupport ? { ...account,
+    calculationEvidence: { snapshots: evidence.snapshots.filter(snapshot => snapshot.account_id === account.id), ledger: evidence.ledger.filter(row => row.account_id === account.id) } } : account);
 }
 
 export async function cashflow(input: unknown, context?: FinanceContext, canReadImports = true) {
@@ -54,7 +55,7 @@ export async function cashflow(input: unknown, context?: FinanceContext, canRead
   if (view) {
     const rates = view === "base" ? await loadExpenditureRates(supabase, workspace.id, { from, to, currencyCode }) : [];
     const reporting = reportExpenditure(rows.map(expenditurePosting), rates, { from, to, currencyCode, view, accountIds });
-    return { from, to, currencyCode, sourceCoverage, reporting, conversionCoverage: reporting.conversionCoverage, resultBasis: reporting.resultBasis,
+    return { from, to, currencyCode, sourceCoverage, reporting, calculationEvidence: { rows, rates }, conversionCoverage: reporting.conversionCoverage, resultBasis: reporting.resultBasis,
       ...(reporting.totals ?? { unavailable: reporting.limitation ?? "Reporting evidence unavailable" }),
       evidence: { transactionCount: rows.length, includedTransactionCount: reporting.includedTransactionCount, excludedPendingAndTransfers: true,
         excludedReviewRows: reporting.conversionCoverage.excludedClassificationCount, partial: reporting.status === "incomplete", limitation: reporting.limitation } };
@@ -65,13 +66,13 @@ export async function cashflow(input: unknown, context?: FinanceContext, canRead
     reviewReasons: row.review_reasons,
   })), currencyCode);
   return total ? {
-    from, to, currencyCode, sourceCoverage, incomeMinor: total.incomeMinor.toString(),
+    from, to, currencyCode, sourceCoverage, calculationEvidence: { rows }, incomeMinor: total.incomeMinor.toString(),
     spendingMinor: total.spendingMinor.toString(), netMinor: total.netMinor.toString(),
     evidence: { transactionCount: rows.length, excludedPendingAndTransfers: true,
       includedTransactionCount: rows.filter(row => row.status === "posted" && row.kind !== "transfer" && !row.review_reasons?.length).length,
       excludedReviewRows: total.excludedReviewRows ?? 0, partial: total.partial ?? false,
       ...(total.partial ? { limitation: "Excluded classifications are unknown; these partial totals are not upper or lower bounds." } : {}) },
-  } : { unavailable: "Some transactions require currency conversion", from, to, currencyCode, sourceCoverage };
+  } : { unavailable: "Some transactions require currency conversion", from, to, currencyCode, sourceCoverage, calculationEvidence: { rows } };
 }
 
 export async function searchTransactions(input: unknown, context?: FinanceContext) {
@@ -130,6 +131,8 @@ export async function evaluateForecast(input: unknown, context?: FinanceContext)
   const account = args.accountId ? liquidity.accounts.find(account => account.accountId === args.accountId) : undefined;
   if (args.accountId && !account) throw new Error("Unknown account");
   return { status: "available", sourceCoverage: plan.sourceCoverage, resultBasis: plan.resultBasis, currencyCode: assumptions.currencyCode, horizonDays: args.horizonDays,
+    period: { from: assumptions.startDate, to: last.date },
+    calculationEvidence: JSON.parse(JSON.stringify({ input: assumptions, forecast, available, liquidity }, (_key, value) => typeof value === "bigint" ? value.toString() : value)),
     expectedMinor: last.expectedMinor.toString(), conservativeMinor: last.conservativeMinor.toString(),
     optimisticMinor: last.optimisticMinor.toString(), availableToSpendMinor: account?.spendableMinor.toString() ?? null,
     accountId: account?.accountId ?? null, limitingDate: account?.spendingLimitingDate ?? null,

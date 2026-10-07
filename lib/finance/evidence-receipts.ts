@@ -5,15 +5,16 @@ import { AI_DATA_SCOPES } from "@/lib/settings";
 import { minorDigits } from "./fx";
 import type { FinancialEvidenceReceipt } from "./verified-claims";
 
-const sourceSchema = z.object({ id: z.string().min(1).max(200), type: z.enum(["transaction", "account", "goal", "budget", "wealth", "assumption", "snapshot"]),
+const sourceSchema = z.object({ id: z.string().min(1).max(200), type: z.enum(["transaction", "account", "goal", "budget", "wealth", "assumption", "snapshot", "calculation"]),
   entityId: z.uuid().optional(), version: z.string().min(1).max(200), record: z.json() }).strict();
 const period = z.object({ from: z.iso.date(), to: z.iso.date() }).strict().refine(value => value.from <= value.to);
 const metricSchema = z.object({ id: z.string().min(1).max(200), label: z.string().min(1).max(200), valueMinor: z.string().regex(/^-?(?:0|[1-9]\d{0,79})$/).nullable(),
+  unit: z.enum(["money", "count"]).optional(),
   currency: z.string().regex(/^[A-Z]{3}$/).refine(value => { try { minorDigits(value); return true; } catch { return false; } }), period,
-  qualifiers: z.array(z.enum(["partial_classification", "partial_coverage", "unresolved_included", "dated_snapshot", "assumption", "manual_evidence", "virtual_reservation"])).max(30),
-  sourceIds: z.array(z.string().min(1).max(200)).max(20000), calculation: z.string().min(1).max(2000) }).strict();
+  qualifiers: z.array(z.enum(["partial_classification", "partial_coverage", "unresolved_included", "dated_snapshot", "assumption", "manual_evidence", "virtual_reservation", "source_posting"])).max(30),
+  sourceIds: z.array(z.string().min(1).max(200)).max(100000), calculation: z.string().min(1).max(2000) }).strict();
 const receiptInputSchema = z.object({ workspaceId: z.uuid(), fetchedAt: z.iso.datetime({ offset: true }), calculationVersion: z.string().min(1).max(200), sourceVersion: z.string().min(1).max(200),
-  query: z.record(z.string(), z.json()), scopes: z.array(z.enum(AI_DATA_SCOPES)).min(1).max(4), sources: z.array(sourceSchema).max(20000), metrics: z.array(metricSchema).max(2000) }).strict();
+  query: z.record(z.string(), z.json()), scopes: z.array(z.enum(AI_DATA_SCOPES)).max(4), sources: z.array(sourceSchema).max(100000), metrics: z.array(metricSchema).max(2000) }).strict();
 export type EvidenceReceiptInput = z.infer<typeof receiptInputSchema>;
 export type EvidenceReceipt = Omit<FinancialEvidenceReceipt, "sources" | "query"> & {
   query: EvidenceReceiptInput["query"];
@@ -30,6 +31,7 @@ export function evidenceFingerprint(input: unknown): string {
   return createHash("sha256").update(JSON.stringify(canonical(input))).digest("hex");
 }
 function sourceHref(source: EvidenceReceiptInput["sources"][number]) {
+  if (source.type === "calculation") return `#source-${encodeURIComponent(source.id)}`;
   const id = source.entityId ?? z.uuid().parse(source.id);
   if (source.type === "transaction") return `/money/transactions?transaction=${id}`;
   if (source.type === "account" || source.type === "snapshot") return `/money/accounts?account=${id}`;
@@ -39,8 +41,10 @@ function sourceHref(source: EvidenceReceiptInput["sources"][number]) {
 }
 export function createEvidenceReceipt(raw: unknown): EvidenceReceipt {
   const input = receiptInputSchema.parse(raw);
+  if (Buffer.byteLength(JSON.stringify(input), "utf8") > 16 * 1024 * 1024 - 4096) throw new Error("Evidence exceeds the retained-record limit; narrow the query and retry.");
   if (new Set(input.sources.map(source => source.id)).size !== input.sources.length || new Set(input.metrics.map(metric => metric.id)).size !== input.metrics.length) throw new Error("Duplicate evidence identity");
-  for (const metric of input.metrics) if (new Set(metric.sourceIds).size !== metric.sourceIds.length || metric.sourceIds.some(id => !input.sources.some(source => source.id === id))) throw new Error("Metric supporting record unavailable");
+  const sourceIds = new Set(input.sources.map(source => source.id));
+  for (const metric of input.metrics) if (new Set(metric.sourceIds).size !== metric.sourceIds.length || metric.sourceIds.some(id => !sourceIds.has(id))) throw new Error("Metric supporting record unavailable");
   // The clock does not change immutable evidence identity; the first stored receipt retains its capture time.
   const hash = evidenceFingerprint({ ...input, fetchedAt: undefined });
   const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;

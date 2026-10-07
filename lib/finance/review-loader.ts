@@ -48,7 +48,8 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
   const defaultQuery = investigationSchema.parse({ version: 1, period: { from, to }, comparison: { from: comparisonFrom, to: new Date(Date.parse(`${from}T00:00:00Z`) - 86400000).toISOString().slice(0, 10) }, groupBy: ["category", "merchant"] });
   const queryInvestigation = await runInvestigation(query ?? defaultQuery, { supabase: db, workspace }, { canReadImports: settings.ai_data_scopes.includes("imports") });
   const investigation = { ...queryInvestigation, entities: { accounts: balances.accounts.map(a => ({ id: a.id, name: a.name })), categories, merchants } };
-  if (!settings.ai_data_scopes.includes("planning")) return { ...base, investigation, queryInvestigation, planning: { unavailable: "AI access to planning is disabled in Settings" } };
+  const calculationEvidence = { balances: { accounts: balances.accounts, snapshots: balances.snapshots, ledger: balances.ledger }, transactions, categories, merchants, budgets, sourceMetadata };
+  if (!settings.ai_data_scopes.includes("planning")) return { ...base, investigation, queryInvestigation, calculationEvidence, planning: { unavailable: "AI access to planning is disabled in Settings" } };
   const [goals, allocations, budgetHistory, assumptions, wealth, plan] = await Promise.all([
     rows<Parameters<typeof buildPlanningReview>[0]["goals"][number]>("goals", "id, name, currency_code, target_minor::text, recorded_saved_minor::text, saved_as_of, planned_monthly_minor::text, contribution_starts_on, target_date, status"),
     rows<{ goal_id: string; amount_minor: string }>("goal_allocations", "id, goal_id, amount_minor::text"),
@@ -64,5 +65,7 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
     wealth: { included: datedWealth.included, excludedLinked: datedWealth.excludedLinked, missingInputs: datedWealth.missingInputs, sourceCoverage: datedWealth.sourceCoverage, manualRecords: datedWealth.manualRecords, link: "/money/wealth" },
     forecast: { evaluatedOn: to, horizonDays: 90, currency: workspace.display_currency, sourceCoverage: plan.sourceCoverage, resultBasis: plan.resultBasis, available: plan.available, daily: plan.forecast, obligations: plan.input.events, link: "/plan" } };
   // Workflow transport, persistence and prompts receive exact decimal strings, never JSON numbers for money.
-  return { ...base, accountBalanceTotals: base.netWorth, netWorth: reviewNetWorth(base.netWorth, wealth, to), investigation, queryInvestigation, planning: JSON.parse(JSON.stringify(planning, (_key, value) => typeof value === "bigint" ? value.toString() : value)) as Record<string, unknown> };
+  return { ...base, accountBalanceTotals: base.netWorth, netWorth: reviewNetWorth(base.netWorth, wealth, to), investigation, queryInvestigation,
+    calculationEvidence: JSON.parse(JSON.stringify({ ...calculationEvidence, goals, allocations, budgetHistory, assumptions, wealth, planInput: plan.input }, (_key, value) => typeof value === "bigint" ? value.toString() : value)),
+    planning: JSON.parse(JSON.stringify(planning, (_key, value) => typeof value === "bigint" ? value.toString() : value)) as Record<string, unknown> };
 }

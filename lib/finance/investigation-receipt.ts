@@ -13,7 +13,7 @@ export function investigationReceipt(dataset: { spec: InvestigationSpec; rows: I
   const metrics: EvidenceReceiptInput["metrics"] = result.groups.flatMap(group => {
     const key = evidenceFingerprint(group.key).slice(0, 32);
     const support = records.filter(row => row.groupKey === group.key);
-    const common = { currency: group.currency, qualifiers, calculation: `${spec.metric}: ${JSON.stringify(spec)}. Effective allocations are counted once. ${result.reporting ? `${result.reporting.policy}; ${result.reporting.allocationPolicy}.` : "Original-currency exact minor units."}` };
+    const common = { currency: group.currency, unit: spec.metric === "count" ? "count" as const : "money" as const, qualifiers, calculation: `${spec.metric}: ${JSON.stringify(spec)}. Effective allocations are counted once. ${result.reporting ? `${result.reporting.policy}; ${result.reporting.allocationPolicy}.` : "Original-currency exact minor units."}` };
     return [{ ...common, id: `${key}:current`, label: `${spec.metric} ${JSON.stringify(group.dimensions)}`, valueMinor: group.currentMinor, period: spec.period, sourceIds: support.filter(row => row.current).map(row => row.id) },
       ...(spec.comparison ? [{ ...common, id: `${key}:comparison`, label: `${spec.metric} ${JSON.stringify(group.dimensions)}`, valueMinor: group.comparisonMinor, period: spec.comparison, sourceIds: support.filter(row => row.comparison).map(row => row.id) },
         { ...common, id: `${key}:delta`, label: `${spec.metric} change: ${spec.period.from} to ${spec.period.to} compared with ${spec.comparison.from} to ${spec.comparison.to} ${JSON.stringify(group.dimensions)}`, valueMinor: group.deltaMinor, period: spec.period, sourceIds: support.map(row => row.id) }] : [])];

@@ -6,7 +6,7 @@ create table public.financial_evidence_receipts (
   scopes text[] not null,
   receipt jsonb not null,
   created_at timestamptz not null default now(),
-  constraint financial_evidence_receipts_scopes_check check (cardinality(scopes) between 1 and 4 and scopes <@ array['accounts','transactions','planning','imports']::text[]),
+  constraint financial_evidence_receipts_scopes_check check (cardinality(scopes) between 0 and 4 and scopes <@ array['accounts','transactions','planning','imports']::text[]),
   constraint financial_evidence_receipts_payload_check check (jsonb_typeof(receipt) = 'object' and octet_length(receipt::text) <= 16777216
     and receipt->>'id' = id::text and receipt->>'workspaceId' = workspace_id::text
     and jsonb_typeof(receipt->'query') = 'object' and jsonb_typeof(receipt->'metrics') = 'array'
