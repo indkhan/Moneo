@@ -74,6 +74,16 @@ test("dated native budgets and unsaved calculator inputs agree without financial
     await expect(results.getByRole("heading", { name: "With-trip minimum headroom" }).locator("..")).toContainText("EUR 100.00");
     await expect(results.getByRole("heading", { name: "End-of-trip headroom" }).locator("..")).toContainText("EUR 900.00");
     await expect(native.getByLabel("Paying / receiving account").first()).toHaveValue(checking);
+    // A rejected past-date preview must disappear with its discarded local inputs.
+    const savedBeforeUndo = await readState();
+    await native.getByLabel("Trip start").fill(addTripDays(today, -1));
+    await expect(native.getByRole("alert")).toContainText("Trip or payment date is in the past");
+    await native.getByRole("button", { name: "Undo local changes" }).click();
+    await expect(native.getByLabel("Trip start")).toHaveValue(tripDate);
+    await expect(native.getByRole("alert")).toHaveCount(0);
+    await expect(results.getByRole("heading", { name: "With-trip minimum headroom" }).locator("..")).toContainText("EUR 100.00");
+    expect(await readState()).toEqual(savedBeforeUndo);
+    await page.screenshot({ path: testInfo.outputPath("undo-clears-rejected-preview.png"), fullPage: true });
     await amount.fill("30000");
     await expect(results.getByRole("heading", { name: "End-of-trip headroom" }).locator("..")).toContainText("EUR 800.00");
     expect((await readState()).state.costMinor).toBe(20000);
@@ -168,6 +178,29 @@ test("dated native budgets and unsaved calculator inputs agree without financial
     await expect(panel).not.toContainText("Recalculate the dated trip inputs");
     await expect(print).toBeEnabled();
     await page.screenshot({ path: testInfo.outputPath("native-save-after-generated-save.png"), fullPage: true });
+
+    // Native budgets can exceed generated scalar bounds. Restore must never apply a cheaper default.
+    await amount.fill("20000000");
+    await expect(results.getByRole("heading", { name: "With-trip minimum headroom" }).locator("..")).toContainText("-EUR 199900.00");
+    await native.getByRole("button", { name: "Save scenario", exact: true }).click();
+    await expect(native).toContainText("Inputs saved.");
+    const expensiveSaved = await readState();
+    await page.reload();
+    await expect(amount).toHaveValue("20000000");
+    await expect(panel.getByLabel("Trip cost", { exact: false })).toHaveValue("20000000");
+    await expect(panel).toContainText("cannot represent the saved dated scenario");
+    await expect(panel).not.toContainText("default applies");
+    await expect(panel.getByRole("button", { name: "Save inputs", exact: true })).toBeDisabled();
+    await expect(print).toBeDisabled();
+    await expect(results.getByRole("heading", { name: "With-trip minimum headroom" }).locator("..")).toContainText("-EUR 199900.00");
+    expect(await readState()).toEqual(expensiveSaved);
+    await page.screenshot({ path: testInfo.outputPath("incompatible-saved-cost-retained.png"), fullPage: true });
+    // Return through the native Save path for the existing compatible-version assertions.
+    await amount.fill("2000");
+    await native.getByRole("button", { name: "Save scenario", exact: true }).click();
+    await expect(native).toContainText("Inputs saved.");
+    await page.reload();
+    await expect(panel).toContainText("Conservative minimum headroom over the dated trip horizon: 8000 minor units");
 
     // A cost-only generated version must also use the saved native date and paying account.
     let activeVersionId = (await (await page.request.get(`/api/artifacts/${artifact}/versions`)).json()).activeVersionId;

@@ -67,7 +67,8 @@ export default async function ArtifactPage({ params, searchParams }: {
     initialParams = restoreTripCalculatorParams(manifestParsed.data, stateValue);
     inputWarnings = checkStateCompatibility(stateValue, manifestParsed.data);
     if (manifestParsed.data.sdk.includes("forecast") && stateValue.tripScenario !== undefined) {
-      inputWarnings = inputWarnings.map(warning => warning.replace("default applies", "saved dated scenario retained; edit the native budget or use a compatible calculator"));
+      inputWarnings = inputWarnings.map(warning => /^Stored param (costMinor|tripDate|accountId) /.test(warning)
+        ? warning.replace("default applies", "saved dated scenario retained; edit the native budget or use a compatible calculator") : warning);
     }
     try {
       if (manifestParsed.data.sdk.includes("forecast") && stateValue.tripScenario !== undefined) {

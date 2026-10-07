@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { saveCalculatorParams, saveTripState, saveDatedTripState } from "./actions";
 import { buildCalculatorSnapshot } from "@/lib/artifacts/snapshot";
-import { addTripDays, defaultTripScenario } from "@/lib/finance/trip-scenario";
+import { addTripDays, defaultTripScenario, tripScenarioSchema } from "@/lib/finance/trip-scenario";
 import { calculatorManifestSchema } from "@/lib/artifacts/spec";
 import { restoreTripCalculatorParams, tripStateForScenario } from "@/lib/artifacts/trip-params";
 
-const fixture = vi.hoisted(() => ({ version: 2, update: vi.fn(), filters: [] as [string, unknown][], state: { costMinor: 200 } as Record<string, unknown>, sdk: [] as string[], params: { costMinor: { type: "number", default: 100, min: 0, max: 100000 } } as Record<string, unknown> }));
-vi.mock("@/lib/finance/model", () => ({ evaluatePlan: async (days: number) => ({ input: { startDate: "2026-10-07", horizonDays: days, currencyCode: "EUR", accounts: [{ id: "a", currencyCode: "EUR", balanceMinor: 100000n }], events: [] } }) }));
+const fixture = vi.hoisted(() => ({ version: 2, balanceMinor: 100000n, update: vi.fn(), filters: [] as [string, unknown][], state: { costMinor: 200 } as Record<string, unknown>, sdk: [] as string[], params: { costMinor: { type: "number", default: 100, min: 0, max: 100000 } } as Record<string, unknown> }));
+vi.mock("@/lib/finance/model", () => ({ evaluatePlan: async (days: number) => ({ input: { startDate: "2026-10-07", horizonDays: days, currencyCode: "EUR", accounts: [{ id: "a", currencyCode: "EUR", balanceMinor: fixture.balanceMinor }], events: [] } }) }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "owned", display_currency: "EUR", timezone: "Europe/Berlin" }, supabase: { from: (table: string) => {
   const query = { select: () => query, eq: (key: string, value: unknown) => { fixture.filters.push([key, value]); return query; },
@@ -15,18 +15,22 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
     update: (value: unknown) => { fixture.update(value); return query; }, maybeSingle: async () => ({ data: { version: fixture.version + 1 }, error: null }) };
   return query;
 } } }) }));
-beforeEach(() => { fixture.version = 2; fixture.update.mockClear(); fixture.filters = []; fixture.sdk = []; fixture.state = { costMinor: 200 }; fixture.params = { costMinor: { type: "number", default: 100, min: 0, max: 100000 } }; });
+beforeEach(() => { fixture.version = 2; fixture.balanceMinor = 100000n; fixture.update.mockClear(); fixture.filters = []; fixture.sdk = []; fixture.state = { costMinor: 200 }; fixture.params = { costMinor: { type: "number", default: 100, min: 0, max: 100000 } }; });
 afterEach(() => vi.useRealTimers());
 function form(version: string) { const form = new FormData(); Object.entries({ artifactId: "00000000-0000-4000-8000-000000000001", params: '{"costMinor":300}', costMinor: "300", expectedVersion: version }).forEach(([key,value]) => form.set(key,value)); return form; }
 it.each(["costMinor", "tripDate", "accountId"])("Restore then Save rejects incompatible authoritative scenario scalar: %s", async key => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-07T12:00:00Z"));
   fixture.sdk = ["forecast"];
-  const scenario = defaultTripScenario(new Date().toISOString().slice(0, 10), "EUR", "account-too-long", 20000000n);
+  fixture.balanceMinor = 10000000n;
+  const scenario = defaultTripScenario("2026-10-07", "EUR", "a", 20000000n);
   fixture.state = tripStateForScenario({}, scenario, "EUR");
   fixture.params = {
     costMinor: { type: "number", default: 90000, min: 0, max: key === "costMinor" ? 10000000 : 30000000 },
     tripDate: { type: "string", default: "", maxLength: key === "tripDate" ? 5 : 10 },
-    accountId: { type: "string", default: "a", maxLength: key === "accountId" ? 1 : 100 },
+    accountId: key === "accountId" ? { type: "number", default: 1 } : { type: "string", default: "a", maxLength: 100 },
   };
+  const before = await buildCalculatorSnapshot("synthetic", "trip_planner", { tripScenario: scenario });
+  expect(before.snapshot).toMatchObject({ withTripAvailableMinor: "-10000000" });
   const manifest = calculatorManifestSchema.parse({ kind: "trip_planner", runtime: "quickjs-calculator-v1", sdk: fixture.sdk, params: fixture.params });
   const params = restoreTripCalculatorParams(manifest, fixture.state);
   expect(params[key]).toBe(fixture.state[key]);
@@ -34,6 +38,8 @@ it.each(["costMinor", "tripDate", "accountId"])("Restore then Save rejects incom
   await expect(saveCalculatorParams(input)).rejects.toThrow(`Param ${key}`);
   expect(fixture.update).not.toHaveBeenCalled();
   expect(fixture.state.tripScenario).toEqual(scenario);
+  const after = await buildCalculatorSnapshot("synthetic", "trip_planner", { tripScenario: tripScenarioSchema.parse(fixture.state.tripScenario) });
+  expect(after.snapshot).toEqual(before.snapshot);
 });
 it.each([saveCalculatorParams, saveTripState])("rejects a draft based on revision A after revision B was saved", async save => {
   expect(await save(form("1"))).toEqual({ conflict: true });
