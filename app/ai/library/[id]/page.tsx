@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
-import { goalsForArtifact, spendingForArtifact, tripForArtifact } from "@/lib/artifacts/finance-sdk";
+import { goalsForArtifact, spendingForArtifact, tripForArtifact, tripEditorForArtifact } from "@/lib/artifacts/finance-sdk";
 import { buildCalculatorSnapshot } from "@/lib/artifacts/snapshot";
 import { artifactKindSchema, calculatorManifestSchema, normalizeCalculatorParams, checkStateCompatibility, type ArtifactKind } from "@/lib/artifacts/spec";
 import { parseManualAmount } from "@/app/money/transactions/input";
@@ -175,12 +175,20 @@ async function SpendingExplorer({ id, query, view, locale }: { id: string; query
 }
 
 async function TripPlanner({ id, costMinor, stateVersion, scenario }: { id: string; costMinor: bigint; stateVersion: number; scenario?: unknown }) {
-  let data: Awaited<ReturnType<typeof tripForArtifact>>;
+  let data: Awaited<ReturnType<typeof tripForArtifact>> | undefined;
+  let editor: Awaited<ReturnType<typeof tripEditorForArtifact>> | undefined;
   try { data = await tripForArtifact(id, costMinor, undefined, [], scenario); }
-  catch { return <p role="status" className="mt-8 rounded border p-5">Forecast evidence is unavailable. Check this tool&apos;s permissions and AI data access in Settings.</p>; }
+  catch {
+    if (scenario !== undefined) {
+      try { editor = await tripEditorForArtifact(id, scenario); }
+      catch { /* Withhold editor and account data when evidence access is denied. */ }
+    }
+  }
+  const available = data ?? editor;
+  if (!available) return <p role="status" className="mt-8 rounded border p-5">Forecast evidence is unavailable. Check this tool&apos;s permissions and AI data access in Settings.</p>;
   return <section className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
     <h2 className="text-xl font-semibold tracking-tight text-foreground">Dated trip planner</h2>
-    <DatedTripForm artifactId={id} stateVersion={stateVersion} initial={data.scenario} initialResult={data.tripResult} accounts={data.accounts} sourceCoverage={data.sourceCoverage} />
+    <DatedTripForm artifactId={id} stateVersion={stateVersion} initial={available.scenario} initialResult={data?.tripResult ?? null} currency={available.currency} initialError={editor?.error} accounts={available.accounts} sourceCoverage={data?.sourceCoverage} />
   </section>;
 }
 

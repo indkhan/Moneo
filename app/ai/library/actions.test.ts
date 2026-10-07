@@ -150,3 +150,16 @@ it("generated cost-only Save rejects an absent selected account", async () => {
   await expect(saveCalculatorParams(form("2"))).rejects.toThrow("Unknown paying or receiving account");
   expect(fixture.update).not.toHaveBeenCalled();
 });
+
+it("owned Save repairs expired complex dates while retaining payments and unrelated state", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-07T12:00:00Z"));
+  const expired = defaultTripScenario("2026-09-01", "EUR", "a", 200n);
+  expired.payments.push({ ...expired.payments[0], kind: "contribution", amountMinor: "100" });
+  fixture.state = { tripScenario: expired, note: "retain" };
+  const input = form("2"); input.set("scenario", JSON.stringify(expired));
+  await expect(saveDatedTripState(input)).rejects.toThrow("date is in the past"); expect(fixture.update).not.toHaveBeenCalled();
+  const repaired = { ...expired, startsOn: "2026-10-08", endsOn: "2026-10-08", payments: expired.payments.map(item => ({ ...item, date: "2026-10-08" })) };
+  input.set("scenario", JSON.stringify(repaired));
+  expect(await saveDatedTripState(input)).toMatchObject({ saved: true, version: 3, value: repaired });
+  expect(fixture.update.mock.lastCall![0].state).toMatchObject({ tripScenario: repaired, note: "retain" });
+});

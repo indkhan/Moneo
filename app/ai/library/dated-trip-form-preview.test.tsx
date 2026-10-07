@@ -81,3 +81,30 @@ it.each(["failed", "pending"])("Undo discards %s preview state and restores save
   expect(render()).toContain("Local changes awaiting dated preview.");
   expect(render()).not.toContain("Recalculating dated scenario");
 });
+
+it("expired complex draft can preview repaired future dates and Undo restores the honest limitation", async () => {
+  vi.useFakeTimers();
+  const initial = defaultTripScenario("2026-09-01", "EUR", "checking", 20000n);
+  initial.payments.push({ ...initial.payments[0], kind: "contribution", amountMinor: "1000" });
+  const repaired = { ...initial, startsOn: "2026-10-08", endsOn: "2026-10-08", payments: initial.payments.map(item => ({ ...item, date: "2026-10-08" })) };
+  const result = evaluateTripScenario({ startDate: "2026-10-07", horizonDays: 23, currencyCode: "EUR", accounts: [{ id: "checking", currencyCode: "EUR", balanceMinor: 100000n }], events: [] }, repaired);
+  const reason = "Trip or payment date is in the past; choose future hypothetical dates";
+  const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ tripResult: result }) }); vi.stubGlobal("fetch", fetch);
+  let tree: ReactElement;
+  function render() {
+    host.index = 0;
+    tree = DatedTripForm({ artifactId: "synthetic", stateVersion: 2, initial, initialResult: null, currency: "EUR", initialError: reason, accounts: [{ id: "checking", currencyCode: "EUR" }] });
+    const html = renderToStaticMarkup(tree); host.effects.splice(0).forEach(effect => effect()); return html;
+  }
+  expect(render()).toContain(reason); expect(render()).not.toContain('aria-label="Dated trip results"');
+  for (let i = 0; i < 4; i++) {
+    const dates = elements(tree!).filter(element => element.type === "input" && element.props.type === "date");
+    (dates[i].props.onChange as (event: unknown) => void)({ target: { value: "2026-10-08" } }); render();
+  }
+  await vi.advanceTimersByTimeAsync(300);
+  const html = render(); expect(html).toContain("EUR 810.00"); expect(html).not.toContain(reason);
+  expect(JSON.parse(fetch.mock.calls[0][1].body).scenario).toEqual(repaired);
+  const undo = elements(tree!).find(element => element.type === "button" && element.props.children === "Undo local changes")!;
+  (undo.props.onClick as () => void)(); render();
+  expect(render()).toContain(reason); expect(render()).not.toContain('aria-label="Dated trip results"');
+});

@@ -8,8 +8,8 @@ import { ForecastEvidence } from "./forecast-evidence";
 import { SourceCoverageDetails } from "@/app/source-coverage";
 import type { SourceCoverage } from "@/lib/finance/source-coverage";
 
-export function DatedTripForm({ artifactId, stateVersion, initial, initialResult, accounts, sourceCoverage }: {
-  artifactId: string; stateVersion: number; initial: TripScenario; initialResult: TripScenarioResult;
+export function DatedTripForm({ artifactId, stateVersion, initial, initialResult, accounts, sourceCoverage, currency = initialResult?.currency, initialError = "" }: {
+  artifactId: string; stateVersion: number; initial: TripScenario; initialResult: TripScenarioResult | null; currency?: string; initialError?: string;
   accounts: { id: string; currencyCode: string; name?: string }[]; sourceCoverage?: SourceCoverage;
 }) {
   const draft = useStateDraft(initial, stateVersion, saveDatedTripState);
@@ -17,10 +17,10 @@ export function DatedTripForm({ artifactId, stateVersion, initial, initialResult
   const [preview, setPreview] = useState<{ inputs: TripScenario; result: TripScenarioResult; coverage?: SourceCoverage } | null>(null);
   const [failure, setFailure] = useState<{ inputs: TripScenario; message: string } | null>(null);
   const [pendingInputs, setPendingInputs] = useState<TripScenario | null>(null);
-  const error = failure?.inputs === scenario ? failure.message : "";
+  const error = failure?.inputs === scenario ? failure.message : scenario === initial ? initialError : "";
   const pending = pendingInputs === scenario;
   const parsed = tripScenarioSchema.safeParse(scenario);
-  const active = preview?.inputs === scenario ? preview : scenario === initial ? { result: initialResult, coverage: sourceCoverage } : null;
+  const active = preview?.inputs === scenario ? preview : scenario === initial && initialResult ? { result: initialResult, coverage: sourceCoverage } : null;
   useEffect(() => {
     if (scenario === initial) return;
     const controller = new AbortController();
@@ -42,8 +42,9 @@ export function DatedTripForm({ artifactId, stateVersion, initial, initialResult
   function editPayment(index: number, patch: Partial<TripScenario["payments"][number]>) {
     draft.edit({ ...scenario, payments: scenario.payments.map((item, i) => i === index ? { ...item, ...patch } : item) });
   }
+  if (!currency) throw new Error("Trip display currency required");
   const cls = "mt-1 block w-full rounded border border-border bg-card px-3 py-2";
-  const money = (value: string | null) => value === null ? "Unavailable" : formatMoney(value, initialResult.currency);
+  const money = (value: string | null) => value === null ? "Unavailable" : formatMoney(value, currency);
   return <>
     <form action={draft.action} className="mt-4 space-y-4" aria-label="Dated trip scenario">
       <input type="hidden" name="artifactId" value={artifactId} /><input type="hidden" name="expectedVersion" value={draft.expectedVersion} />
@@ -65,8 +66,8 @@ export function DatedTripForm({ artifactId, stateVersion, initial, initialResult
             <label className="text-sm">Currency<input value={item.currencyCode} maxLength={3} onChange={event => editPayment(index, { currencyCode: event.target.value.toUpperCase() })} className={cls} /></label>
             <label className="text-sm">Paying / receiving account<select value={item.accountId} onChange={event => editPayment(index, { accountId: event.target.value })} className={cls}><option value="unselected">Choose an account</option>{accounts.map(account => <option key={account.id} value={account.id}>{account.name ?? account.id}</option>)}</select></label>
           </div>
-          {item.currencyCode !== initialResult.currency && <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <p className="col-span-full text-sm">Explicit hypothetical conversion: 1 {item.currencyCode} buys this many {initialResult.currency}. A future rate is an assumption.</p>
+          {item.currencyCode !== currency && <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <p className="col-span-full text-sm">Explicit hypothetical conversion: 1 {item.currencyCode} buys this many {currency}. A future rate is an assumption.</p>
             <label className="text-sm">Rate<input value={item.fx?.rate ?? ""} onChange={event => editPayment(index, { fx: { rate: event.target.value, date: item.fx?.date ?? item.date, source: item.fx?.source ?? "User trip assumption" } })} className={cls} /></label>
             <label className="text-sm">Rate date<input type="date" value={item.fx?.date ?? item.date} onChange={event => editPayment(index, { fx: { rate: item.fx?.rate ?? "", date: event.target.value, source: item.fx?.source ?? "User trip assumption" } })} className={cls} /></label>
             <label className="text-sm">Rate source<input value={item.fx?.source ?? "User trip assumption"} maxLength={120} onChange={event => editPayment(index, { fx: { rate: item.fx?.rate ?? "", date: item.fx?.date ?? item.date, source: event.target.value } })} className={cls} /></label>
@@ -74,7 +75,7 @@ export function DatedTripForm({ artifactId, stateVersion, initial, initialResult
           <button type="button" disabled={scenario.payments.length === 1} onClick={() => draft.edit({ ...scenario, payments: scenario.payments.filter((_, i) => i !== index) })} className="mt-3 rounded border px-3 py-1 text-sm disabled:opacity-50">Remove payment</button>
         </fieldset>)}
         <div className="flex flex-wrap gap-2">
-          <button type="button" disabled={scenario.payments.length >= 50} onClick={() => draft.edit({ ...scenario, payments: [...scenario.payments, { name: "Trip cost", kind: "cost", date: scenario.startsOn, accountId: accounts[0]?.id ?? "unselected", amountMinor: "0", currencyCode: initialResult.currency }] })} className="rounded border px-3 py-2">Add payment</button>
+          <button type="button" disabled={scenario.payments.length >= 50} onClick={() => draft.edit({ ...scenario, payments: [...scenario.payments, { name: "Trip cost", kind: "cost", date: scenario.startsOn, accountId: accounts[0]?.id ?? "unselected", amountMinor: "0", currencyCode: currency }] })} className="rounded border px-3 py-2">Add payment</button>
           <button type="button" onClick={draft.reload} className="rounded border px-3 py-2">Undo local changes</button>
           <button disabled={!parsed.success || draft.conflict} className="rounded border px-3 py-2 disabled:opacity-50">Save scenario</button>
         </div>
@@ -83,7 +84,7 @@ export function DatedTripForm({ artifactId, stateVersion, initial, initialResult
     <StateDraftRecovery {...draft} />
     {!parsed.success && <p role="alert" className="mt-3 text-sm">Check dates, integer minor amounts, accounts and currency/rate fields before calculating.</p>}
     {error && <p role="alert" className="mt-3 text-sm">{error}</p>}
-    {!active && <p role="status" className="mt-4 text-sm">{pending ? "Recalculating dated scenario…" : "Local changes awaiting dated preview."}</p>}
+    {!active && !error && <p role="status" className="mt-4 text-sm">{pending ? "Recalculating dated scenario…" : "Local changes awaiting dated preview."}</p>}
     {active && <div aria-label="Dated trip results" className="mt-5 space-y-3">
       <p className="text-sm">Forecast horizon: {active.result.horizon.from} to {active.result.horizon.to} ({active.result.horizon.days} days). Trip: {active.result.scenario.startsOn} to {active.result.scenario.endsOn}.</p>
       <p className="text-sm">Budget costs {money(active.result.costMinor)} · external contributions {money(active.result.contributionMinor)} · net cost {money(active.result.netCostMinor)}.</p>

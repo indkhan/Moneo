@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { requireWorkspace } from "@/lib/auth";
-import { spendingForArtifact, tripForArtifact } from "./finance-sdk";
+import { spendingForArtifact, tripForArtifact, tripEditorForArtifact } from "./finance-sdk";
 import { evaluatePlan } from "@/lib/finance/model";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
 import { accountLiquidity } from "@/lib/finance/calculations";
@@ -109,4 +109,23 @@ it("rechecks artifact permission and finance scopes before returning an asynchro
     .mockResolvedValueOnce({ ...context, settings: { ...context.settings, ai_data_scopes: [] } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
   vi.mocked(evaluatePlan).mockResolvedValue({ input: { startDate: new Date().toISOString().slice(0, 10), horizonDays: 29, currencyCode: "EUR", accounts: [{ id: "a", currencyCode: "EUR", balanceMinor: 10000n }], events: [] } } as unknown as Awaited<ReturnType<typeof evaluatePlan>>);
   await expect(tripForArtifact("synthetic", 20000n)).rejects.toThrow("disabled");
+});
+
+it.each(["allowed", "revoked", "valid dates"])("expired-trip editor rechecks owned forecast access: %s", async mode => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-07T12:00:00Z"));
+  const query = { select: () => query, eq: () => query, single: async () => ({ data: { permissions: ["forecast"], active_version_id: "v" }, error: null }) };
+  const context = { workspace: { id: "w", display_currency: "EUR", timezone: "UTC" }, settings: DEFAULT_SETTINGS, supabase: { from: () => query } };
+  vi.mocked(requireWorkspace).mockReset().mockResolvedValue(context as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  if (mode === "revoked") vi.mocked(requireWorkspace).mockResolvedValueOnce(context as unknown as Awaited<ReturnType<typeof requireWorkspace>>)
+    .mockResolvedValueOnce({ ...context, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: [] } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  vi.mocked(evaluatePlan).mockClear().mockResolvedValue({ input: { startDate: "2026-10-07", horizonDays: 1, currencyCode: "EUR", accounts: [{ id: "checking", currencyCode: "EUR", balanceMinor: 10000n }], events: [] } } as unknown as Awaited<ReturnType<typeof evaluatePlan>>);
+  const date = mode === "valid dates" ? "2026-10-08" : "2026-10-06";
+  const scenario = { version: 1, destination: "", startsOn: date, endsOn: date, postTripDays: 21, payments: [{ name: "Trip", kind: "cost", date, accountId: "checking", currencyCode: "EUR", amountMinor: "20000" }] };
+  try {
+    if (mode === "allowed") {
+      expect(await tripEditorForArtifact("synthetic", scenario)).toMatchObject({ scenario, currency: "EUR", error: "Trip or payment date is in the past; choose future hypothetical dates", accounts: [{ id: "checking", currencyCode: "EUR" }] });
+      expect(evaluatePlan).toHaveBeenCalledWith(1, undefined, true);
+    } else await expect(tripEditorForArtifact("synthetic", scenario)).rejects.toThrow(mode === "revoked" ? "disabled" : "Trip dates are valid");
+    if (mode === "valid dates") expect(evaluatePlan).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
 });

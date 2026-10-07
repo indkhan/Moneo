@@ -9,7 +9,7 @@ import type { ReactElement } from "react";
 
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/artifacts/snapshot", () => ({ buildCalculatorSnapshot: vi.fn() }));
-vi.mock("@/lib/artifacts/finance-sdk", () => ({ spendingForArtifact: vi.fn(), tripForArtifact: vi.fn(), goalsForArtifact: vi.fn() }));
+vi.mock("@/lib/artifacts/finance-sdk", () => ({ spendingForArtifact: vi.fn(), tripForArtifact: vi.fn(), tripEditorForArtifact: vi.fn(), goalsForArtifact: vi.fn() }));
 vi.mock("../calculator-panel", () => ({ CalculatorPanel: () => null }));
 vi.mock("../version-editor", () => ({ VersionEditor: () => null }));
 vi.mock("../generate-calculator-form", () => ({ GenerateCalculatorForm: () => null }));
@@ -80,7 +80,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { TripStateForm } from "../trip-state-form";
 import { DatedTripForm } from "../dated-trip-form";
 import { defaultTripScenario, evaluateTripScenario } from "@/lib/finance/trip-scenario";
-import { tripForArtifact, goalsForArtifact } from "@/lib/artifacts/finance-sdk";
+import { tripForArtifact, tripEditorForArtifact, goalsForArtifact } from "@/lib/artifacts/finance-sdk";
 import { accountLiquidity } from "@/lib/finance/calculations";
 vi.mock("next/link", () => ({ default: "a" }));
 async function resolveNative(node: ReactNode): Promise<ReactNode> {
@@ -92,9 +92,9 @@ async function resolveNative(node: ReactNode): Promise<ReactNode> {
   const children = await resolveNative(element.props.children);
   return cloneElement(element, {}, ...(Array.isArray(children) ? React.Children.toArray(children) : [children]));
 }
-async function native(kind: "trip_planner" | "goal_tracker") {
+async function native(kind: "trip_planner" | "goal_tracker", scenario?: unknown) {
   const from = (table: string) => {
-    const data = table === "artifacts" ? { kind, name: "Synthetic builtin", active_version_id: "version" } : table === "artifact_state" ? { state: { costMinor: 10000 } } : table === "artifact_versions" ? { version: 1, source: "input => ({ready:true})", manifest: { kind, runtime: "trusted" } } : null;
+    const data = table === "artifacts" ? { kind, name: "Synthetic builtin", active_version_id: "version" } : table === "artifact_state" ? { state: { costMinor: 10000, ...(scenario ? { tripScenario: scenario } : {}) } } : table === "artifact_versions" ? { version: 1, source: "input => ({ready:true})", manifest: { kind, runtime: "trusted" } } : null;
     const query = { select: () => query, eq: () => query, order: () => query, single: async () => ({ data }), maybeSingle: async () => ({ data }), limit: async () => ({ data: [] }) }; return query;
   };
   vi.mocked(requireWorkspace).mockResolvedValue({ supabase: { from }, workspace: { id: "workspace", display_currency: "EUR" } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
@@ -116,4 +116,29 @@ it("trusted goal illustration does not establish paying-account affordability", 
   vi.mocked(goalsForArtifact).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-02" }, []), resultBasis: "synthetic accepted evidence", currency: "EUR", timezone: "UTC", balances: [], allocations: [], goals: [] });
   const html = await native("goal_tracker");
   expect(html).toContain("Illustrative saving pace is not an affordability result"); expect(html).toContain("dated account headroom and protections");
+});
+
+it("expired complex saved trips retain date/payment editor and the actual limitation", async () => {
+  const scenario = defaultTripScenario("2026-09-01", "EUR", "checking", 10000n);
+  scenario.payments.push({ ...scenario.payments[0], kind: "contribution", amountMinor: "2000" });
+  const error = "Trip or payment date is in the past; choose future hypothetical dates";
+  vi.mocked(tripForArtifact).mockRejectedValue(new Error(error));
+  vi.mocked(tripEditorForArtifact).mockResolvedValue({ scenario, currency: "EUR", accounts: [{ id: "checking", currencyCode: "EUR", name: "Checking" }], error });
+  const html = await native("trip_planner", scenario);
+  expect(html).toContain('aria-label="Dated trip scenario"');
+  expect(html).toContain('value="2026-09-08"');
+  expect(html).toContain("Payment 2");
+  expect(html).toContain("External contribution");
+  expect(html).toContain(error);
+  expect(html).toContain("Save scenario");
+  expect(html).not.toContain("Check this tool&#x27;s permissions");
+  expect(html).not.toContain('aria-label="Dated trip results"');
+});
+it("expired saved trip does not reveal the editor when current permission is denied", async () => {
+  const scenario = defaultTripScenario("2026-09-01", "EUR", "checking", 10000n);
+  vi.mocked(tripForArtifact).mockRejectedValue(new Error("Artifact permission denied"));
+  vi.mocked(tripEditorForArtifact).mockRejectedValue(new Error("Artifact permission denied"));
+  const html = await native("trip_planner", scenario);
+  expect(html).not.toContain('aria-label="Dated trip scenario"');
+  expect(html).toContain("Forecast evidence is unavailable");
 });

@@ -138,6 +138,23 @@ export async function tripForArtifact(artifactId: string, costMinor: bigint, acc
     unavailable: !selectedId && rawScenario === undefined ? "Choose a paying account; aggregate cash requires explicit funding" : result.unavailable };
 }
 
+// Date-invalid saved budgets remain editable, but evidence permissions are still required.
+export async function tripEditorForArtifact(artifactId: string, rawScenario: unknown) {
+  const { workspace, settings } = await requirePermission(artifactId, "forecast");
+  const scenario = tripScenarioSchema.parse(rawScenario);
+  let error = "";
+  try { tripHorizon(calendarDate(new Date(), workspace.timezone), scenario); }
+  catch (failure) { error = failure instanceof Error ? failure.message : "Trip dates unavailable"; }
+  if (!error) throw new Error("Trip dates are valid; forecast evidence is unavailable");
+  const baseline = await evaluatePlan(1, undefined, settings?.ai_data_scopes.includes("imports") ?? false);
+  const current = await requirePermission(artifactId, "forecast");
+  if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
+  if (settings?.ai_data_scopes.includes("imports")) requireAiScope(current.settings, "imports");
+  return { scenario, currency: workspace.display_currency, error,
+    accounts: baseline.input.accounts.map(item => ({ id: item.id, currencyCode: item.currencyCode,
+      name: baseline.accountLabels?.find(account => account.id === item.id)?.name ?? item.id })) };
+}
+
 export async function goalsForArtifact(artifactId: string) {
   const context = await requirePermission(artifactId, "goals");
   const { supabase, workspace } = context;
