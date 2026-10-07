@@ -21,7 +21,7 @@ async function allRows<T>(query: { range(from: number, to: number): PromiseLike<
 }
 export async function loadInvestigationEntities(context?: Context): Promise<InvestigationEntities> {
   const { supabase, workspace } = context ?? await requireWorkspace();
-  const [accounts, categories, merchants] = await Promise.all(["accounts", "categories", "merchants"].map(table => allRows<{ id: string; name: string }>(supabase.from(table).select("id, name").eq("workspace_id", workspace.id).order("id"))));
+  const [accounts, categories, merchants] = await Promise.all(["accounts", "categories", "merchants"].map(table => allRows<{ id: string; name: string }>(supabase.from(table).select(table === "accounts" ? "id, name, version" : "id, name").eq("workspace_id", workspace.id).order("id"))));
   const labels = await allRows<{ tags: string[]; event_name: string | null }>(supabase.from("transactions").select("tags, event_name").eq("workspace_id", workspace.id).order("id"));
   return { accounts, categories, merchants, labels: { tags: [...new Set(labels.flatMap(r => r.tags ?? []))].sort(), events: [...new Set(labels.flatMap(r => r.event_name ? [r.event_name] : []))].sort() } };
 }

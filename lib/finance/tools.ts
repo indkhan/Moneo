@@ -22,7 +22,7 @@ export const forecastInput = z.object({
 
 export async function listAccounts(context?: FinanceContext) {
   const { supabase, workspace } = context ?? await requireWorkspace();
-  const { data, error } = await supabase.from("accounts").select("id, name, type, currency_code")
+  const { data, error } = await supabase.from("accounts").select("id, name, type, currency_code, version")
     .eq("workspace_id", workspace.id).order("name");
   if (error) throw error;
   return data;
@@ -109,7 +109,7 @@ export async function searchTransactions(input: unknown, context?: FinanceContex
 export async function listGoals(context?: FinanceContext) {
   const { supabase, workspace } = context ?? await requireWorkspace();
   const { data, error } = await supabase.from("goals")
-    .select("id, name, target_minor::text, currency_code, target_date, status")
+    .select("id, name, target_minor::text, currency_code, target_date, status, version")
     .eq("workspace_id", workspace.id).order("created_at", { ascending: false });
   if (error) throw error;
   return data;
