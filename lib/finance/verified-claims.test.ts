@@ -14,12 +14,44 @@ const fact = { operation: "metric", operands: [metric], valueMinor: "90071992547
 const publish = (claims: unknown[], receipts = [receipt]) => publishFinancialClaims({ claims, interpretation: [] }, receipts, workspaceId);
 
 describe("financial publication trust boundary", () => {
+  it("explains exact evidence-specific comparisons with composed unproven hypotheses and checks", () => {
+    const previous = { ...receipt.metrics[0], id: "previous", valueMinor: "9007199254740990", period: { from: "2026-08-01", to: "2026-08-31" } };
+    const evidence = { ...receipt, metrics: [...receipt.metrics, previous] };
+    const explanation = { action: "explain", observation: { kind: "comparison", first: metric, second: { receiptId: receipt.id, metricId: "previous" }, relationship: "higher" }, hypotheses: ["refund_timing", "one_off_activity"], uncertainty: "unproven", nextSteps: ["timing", "supporting_records"] };
+    const claims = [fact, { ...fact, operands: [explanation.observation.second], valueMinor: previous.valueMinor, periods: [previous.period] }];
+    const result = publishFinancialClaims({ claims, interpretation: [explanation] }, [evidence], workspaceId);
+    expect(result.removed).toBe(0);
+    expect(result.body).toContain("is EUR 0.03 higher");
+    expect(result.body).toContain("2026-08-01 to 2026-08-31");
+    expect(result.body).toContain("Possible explanation (unproven)");
+    expect(result.body).toContain("related refunds fell in different periods");
+    expect(result.body).toContain("retained measures do not establish these causes");
+    for (const patch of [{ uncertainty: "confirmed" }, { observation: { ...explanation.observation, relationship: "lower" } }, { text: "Your groceries doubled EUR999999 [proof](/invented)" }, { hypotheses: ["your_spending_doubled"] }]) {
+      const rejected = publishFinancialClaims({ claims, interpretation: [{ ...explanation, ...patch }] }, [evidence], workspaceId);
+      expect(rejected.removed).toBe(1);
+      expect(rejected.body).not.toContain("999999");
+      expect(rejected.body).not.toContain("/invented");
+    }
+    expect(publishFinancialClaims({ claims: [fact], interpretation: [explanation] }, [evidence], workspaceId).removed).toBe(1);
+    const limits = publishFinancialClaims({ claims: [fact], interpretation: [{ action: "explain", observation: { kind: "limits", reference: metric }, uncertainty: "unproven", hypotheses: ["classification"], nextSteps: ["supporting_records"] }] }, [receipt], workspaceId);
+    expect(limits.removed).toBe(0);
+    expect(limits.body).toContain("Limits on [Spending");
+    expect(limits.body).toContain("neither upper nor lower bounds");
+  });
   it("renders exact application amounts, calculation links and unavoidable qualifications", () => {
     const result = publish([fact]);
     expect(result.accepted).toHaveLength(1);
     expect(result.body).toContain("EUR 90071992547409.93");
     expect(result.body).toContain(`/ai/evidence/${receipt.id}?metric=spending`);
     expect(result.body).toContain("Partial classification");
+  });
+  it.each([{ currency: "USD", unit: "money" }, { currency: "EUR", unit: "count" }])("rejects explanatory comparisons across currencies or units %j", variant => {
+    const other = { ...receipt.metrics[0], id: "other", currency: variant.currency, unit: variant.unit as "money" | "count", valueMinor: "1" };
+    const reference = { receiptId: receipt.id, metricId: "other" };
+    const result = publishFinancialClaims({ claims: [fact, { ...fact, operands: [reference], valueMinor: "1", currency: variant.currency, unit: variant.unit }], interpretation: [{ action: "explain", observation: { kind: "comparison", first: metric, second: reference, relationship: "higher" }, uncertainty: "unproven", hypotheses: ["timing"] }] }, [{ ...receipt, metrics: [...receipt.metrics, other] }], workspaceId);
+    expect(result.accepted).toHaveLength(2);
+    expect(result.removed).toBe(1);
+    expect(result.body).not.toContain("Possible explanation");
   });
   it.each([
     { valueMinor: "99999900" }, { currency: "USD" }, { periods: [{ from: "2026-08-01", to: "2026-08-31" }] },

@@ -12,3 +12,11 @@ it("retains full exact selected support beyond display pages and both named peri
   expect(receipt.metrics.find(metric => metric.id.endsWith("delta"))).toMatchObject({ valueMinor: "10", sourceIds: rows.map(row => row.id), period: spec.period });
   expect(receipt.query.spec).toEqual({ ...spec, page: { size: 25, period: "both" } });
 });
+it("retains full long filters and grouped labels without overflowing descriptive metadata", () => {
+  const tags = Array.from({ length: 100 }, (_, index) => `${index}:${"a".repeat(100)}`);
+  const selected = investigationSchema.parse({ version: 1, period: spec.period, tags: { include: tags }, groupBy: ["tag"] });
+  const receipt = investigationReceipt({ spec: selected, rows: [{ ...rows[1], tags: tags.slice(0, 5) }], context: { workspaceId, capturedAt: "2026-10-01T00:00:00Z" }, sourceRevision: "v1" }, ["transactions"]);
+  expect(receipt.metrics[0].label.length).toBeLessThanOrEqual(200);
+  expect(receipt.query.spec).toEqual(selected);
+  expect(receipt.query.groups).toEqual([expect.objectContaining({ dimensions: { tag: tags.slice(0, 5) } })]);
+});
