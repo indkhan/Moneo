@@ -319,6 +319,9 @@ test("dated native budgets and unsaved calculator inputs agree without financial
     await expect(native.getByLabel("Trip start")).toHaveValue(tripDate);
     await expect(native.getByRole("alert")).toHaveCount(0);
     await expect(results.getByRole("heading", { name: "End-of-trip headroom" }).locator("..")).toContainText("EUR 910.00");
+    await expect(panel).toContainText("Conservative minimum headroom over the dated trip horizon: 10000 minor units");
+    await expect(print).toBeEnabled();
+    expect(await readState()).toEqual(repairedSaved);
     await page.screenshot({ path: testInfo.outputPath("expired-complex-repaired-save-reload.png"), fullPage: true });
     expect(await fingerprint()).toBe(financialBefore);
     expect(modelRequests).toEqual([]);
