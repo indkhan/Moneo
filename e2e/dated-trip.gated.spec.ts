@@ -149,6 +149,17 @@ test("dated native budgets and unsaved calculator inputs agree without financial
     await expect(panel).toContainText("Conservative minimum headroom over the dated trip horizon: -10000 minor units");
     await panel.getByLabel("Paying account ID", { exact: true }).fill(checking);
     await expect(panel).toContainText("Conservative minimum headroom over the dated trip horizon: 10000 minor units");
+    // Server Save must reject an unknown/empty account even when saved scenario already exists.
+    const beforeBadAccount = await readState();
+    for (const badAccount of [randomUUID(), ""]) {
+      await panel.getByLabel("Paying account ID", { exact: true }).fill(badAccount);
+      await panel.getByRole("button", { name: "Save inputs", exact: true }).click();
+      await expect(panel).toContainText(badAccount ? "Unknown paying or receiving account" : "Too small");
+      await expect(panel.getByRole("button", { name: "Save inputs", exact: true })).toBeEnabled();
+      expect(await readState()).toEqual(beforeBadAccount);
+    }
+    await panel.getByLabel("Paying account ID", { exact: true }).fill(checking);
+    await expect(panel).toContainText("Conservative minimum headroom over the dated trip horizon: 10000 minor units");
     await panel.getByLabel("Trip date", { exact: true }).fill(tomorrow);
     await expect(panel).toContainText("Conservative minimum headroom over the dated trip horizon: -10000 minor units");
     await expect(panel).toContainText(`limited on ${tomorrow}`);
@@ -278,6 +289,37 @@ test("dated native budgets and unsaved calculator inputs agree without financial
     await page.screenshot({ path: testInfo.outputPath("account-selection-clears-alert.png"), fullPage: true });
     await assertOwner();
     await db`update public.forecast_preferences set spending_account_id=${checking} where workspace_id=${workspace!} and currency_code='EUR'`;
+    // Expired persisted complex budgets retain the native editor and can be repaired without finance writes.
+    const yesterday = addTripDays(today, -1);
+    const expired = { ...scenario, startsOn: yesterday, endsOn: yesterday, payments: [
+      { ...scenario.payments[0], date: yesterday },
+      { ...scenario.payments[0], name: "External contribution", kind: "contribution" as const, date: yesterday, amountMinor: "1000" },
+    ] };
+    await assertOwner();
+    await db`update public.artifact_state set state=${db.json({ costMinor: 20000, tripScenario: expired })},version=version+1 where artifact_id=${artifact} and workspace_id=${workspace!}`;
+    const expiredSaved = await readState();
+    await page.reload();
+    await expect(native.getByLabel("Trip start")).toHaveValue(yesterday);
+    await expect(native.getByRole("alert")).toContainText("Trip or payment date is in the past");
+    await expect(native).not.toContainText("Check this tool's permissions");
+    await expect(native.getByRole("group", { name: "Payment 2", exact: true })).toBeVisible();
+    await expect(results).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("expired-complex-editor-retained.png"), fullPage: true });
+    await native.getByLabel("Trip start").fill(tripDate);
+    await native.getByLabel("Trip end").fill(tripDate);
+    for (const payment of await native.getByLabel("Payment date").all()) await payment.fill(tripDate);
+    await expect(results.getByRole("heading", { name: "End-of-trip headroom" }).locator("..")).toContainText("EUR 910.00");
+    expect(await readState()).toEqual(expiredSaved);
+    await native.getByRole("button", { name: "Save scenario", exact: true }).click();
+    await expect(native).toContainText("Inputs saved.");
+    const repairedSaved = await readState();
+    expect(repairedSaved.version).toBe(expiredSaved.version + 1);
+    expect(repairedSaved.state.tripScenario.payments).toHaveLength(2);
+    await page.reload();
+    await expect(native.getByLabel("Trip start")).toHaveValue(tripDate);
+    await expect(native.getByRole("alert")).toHaveCount(0);
+    await expect(results.getByRole("heading", { name: "End-of-trip headroom" }).locator("..")).toContainText("EUR 910.00");
+    await page.screenshot({ path: testInfo.outputPath("expired-complex-repaired-save-reload.png"), fullPage: true });
     expect(await fingerprint()).toBe(financialBefore);
     expect(modelRequests).toEqual([]);
   } finally {
