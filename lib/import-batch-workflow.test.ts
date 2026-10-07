@@ -3,14 +3,14 @@ import { createHash } from "node:crypto";
 import { importFile } from "@/workflows/import-file";
 import * as csvModule from "@/lib/csv";
 
-const fixture = vi.hoisted(() => ({ total: 100, requests: [] as string[], downloads: 0, stage: null as null | { row: { rowNumber: number; status: string } }[], status: "running", version: 1, cancelAfter: 0, attempts: 0, conflict: false, badHash: false }));
+const fixture = vi.hoisted(() => ({ total: 100, requests: [] as string[], stageArgs: null as Record<string, unknown> | null, downloads: 0, stage: null as null | { row: { rowNumber: number; status: string } }[], status: "running", version: 1, cancelAfter: 0, attempts: 0, conflict: false, badHash: false }));
 const csv = () => ["Date,Description,Amount,ID", ...Array.from({ length: fixture.total }, (_, i) => `2026-10-01,Synthetic batch ${i},-1.01,row-${i}`)].join("\n");
 vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
   rpc: async (name: string, args: Record<string, unknown>) => {
     fixture.requests.push(name);
     if (name !== "finish_import_run" && (fixture.status === "canceled" || args.p_run_version !== fixture.version)) return { data: null, error: { code: "57014", message: "Import worker canceled or superseded" } };
     if (name === "read_import_stage") return { data: fixture.stage?.length ?? null, error: null };
-    if (name === "stage_import_rows") fixture.stage = args.p_rows as typeof fixture.stage;
+    if (name === "stage_import_rows") { fixture.stageArgs = args; fixture.stage = args.p_rows as typeof fixture.stage; }
     if (name === "import_batch_candidates") return { data: fixture.stage!.slice(Number(args.p_offset), Number(args.p_offset) + 250).map(item => ({ rowNumber: item.row.rowNumber, hasExternalId: false, status: item.row.status, candidates: [] })), error: null };
     if (name === "ingest_import_batch") {
       fixture.attempts++;
@@ -28,8 +28,16 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
     }; return query;
   },
 }) }));
-afterEach(() => { Object.assign(fixture, { total: 100, requests: [], downloads: 0, stage: null, status: "running", version: 1, cancelAfter: 0, attempts: 0, conflict: false, badHash: false }); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+afterEach(() => { Object.assign(fixture, { total: 100, requests: [], stageArgs: null, downloads: 0, stage: null, status: "running", version: 1, cancelAfter: 0, attempts: 0, conflict: false, badHash: false }); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 function env() { vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic"); vi.stubEnv("OPENROUTER_API_KEY", ""); }
+
+it("stages the raw mapping and routing snapshots actually used by normalization", async () => {
+  env();
+  await importFile("import", "workspace", 100);
+  expect(fixture.stageArgs?.p_mapping).toEqual({ accountName: "Synthetic", currencyCode: "EUR", dateColumn: "Date", descriptionColumn: "Description", amountColumn: "Amount", externalIdColumn: "ID", dateFormat: "iso", amountSign: "signed", numericConvention: "decimal-dot" });
+  expect(fixture.stageArgs?.p_routes).toEqual({});
+  expect(fixture.stageArgs?.p_source_id).toEqual(expect.any(String));
+});
 
 it.each([100, 1000, 10000])("downloads and normalizes %i rows once with two RPCs per bounded batch", async total => {
   env(); fixture.total = total;

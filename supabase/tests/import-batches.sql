@@ -15,14 +15,14 @@ begin
     jsonb_build_object('sourceId',public.stable_import_uuid(imported::text||':row:3'),'rowNumber',3,'originalRow',jsonb_build_object('Amount','bad'),'reason','Footer')));
   perform set_config('request.jwt.claim.sub',actor::text,true);
   execute 'set local role authenticated';
-  begin perform public.stage_import_rows(imported,workspace,1,imported::text,staged); raise exception 'Authenticated staged rows' using errcode='ZX001'; exception when insufficient_privilege then null; end;
+  begin perform public.stage_import_rows(imported,workspace,1,imported::text,(select mapping from public.imports where id=imported),(select route_accounts from public.imports where id=imported),(select source_id from public.imports where id=imported),staged); raise exception 'Authenticated staged rows' using errcode='ZX001'; exception when insufficient_privilege then null; end;
   begin perform public.import_batch_candidates(imported,workspace,1,0); raise exception 'Authenticated prefetched candidates' using errcode='ZX001'; exception when insufficient_privilege then null; end;
   begin perform public.ingest_import_batch(imported,workspace,1,0,'[]'); raise exception 'Authenticated ingested batch' using errcode='ZX001'; exception when insufficient_privilege then null; end;
   execute 'reset role';
-  begin perform public.stage_import_rows(imported,workspace,1,'changed',staged); raise exception 'Wrong hash staged' using errcode='ZX001'; exception when invalid_parameter_value then null; end;
-  perform public.stage_import_rows(imported,workspace,1,imported::text,staged);
-  perform public.stage_import_rows(imported,workspace,1,imported::text,staged);
-  begin perform public.stage_import_rows(imported,workspace,1,imported::text,jsonb_set(staged,'{0,row,description}','"changed"')); raise exception 'Staging was replaced' using errcode='ZX001'; exception when serialization_failure then null; end;
+  begin perform public.stage_import_rows(imported,workspace,1,'changed',(select mapping from public.imports where id=imported),(select route_accounts from public.imports where id=imported),(select source_id from public.imports where id=imported),staged); raise exception 'Wrong hash staged' using errcode='ZX001'; exception when invalid_parameter_value then null; end;
+  perform public.stage_import_rows(imported,workspace,1,imported::text,(select mapping from public.imports where id=imported),(select route_accounts from public.imports where id=imported),(select source_id from public.imports where id=imported),staged);
+  perform public.stage_import_rows(imported,workspace,1,imported::text,(select mapping from public.imports where id=imported),(select route_accounts from public.imports where id=imported),(select source_id from public.imports where id=imported),staged);
+  begin perform public.stage_import_rows(imported,workspace,1,imported::text,(select mapping from public.imports where id=imported),(select route_accounts from public.imports where id=imported),(select source_id from public.imports where id=imported),jsonb_set(staged,'{0,row,description}','"changed"')); raise exception 'Staging was replaced' using errcode='ZX001'; exception when serialization_failure then null; end;
   begin update public.import_staging set rows=staged where import_id=imported; raise exception 'Staging was updated' using errcode='ZX001'; exception when invalid_parameter_value then null; end;
   candidate:=public.import_batch_candidates(imported,workspace,1,0);
   if candidate->0->'candidates'<>'[]'::jsonb then raise exception 'Fresh synthetic batch overlaps'; end if;
@@ -47,7 +47,7 @@ begin
     values(second_import,workspace,'overlap.csv',workspace||'/overlap.csv',second_import::text,'queued',1,'{"rowContractVersion":"normalized-row-v1"}');
   perform public.prepare_import_route(second_import,workspace,1,account,route_source,'Batch Checking','EUR',1);
   payload:=payload||jsonb_build_object('sourceId',public.stable_import_uuid(second_import::text||':row:2'),'balanceId',public.stable_import_uuid(second_import::text||':balance:2'));
-  perform public.stage_import_rows(second_import,workspace,1,second_import::text,jsonb_build_array(jsonb_build_object('accountId',account,'excluded',false,'row',payload)));
+  perform public.stage_import_rows(second_import,workspace,1,second_import::text,(select mapping from public.imports where id=second_import),(select route_accounts from public.imports where id=second_import),(select source_id from public.imports where id=second_import),jsonb_build_array(jsonb_build_object('accountId',account,'excluded',false,'row',payload)));
   candidate:=public.import_batch_candidates(second_import,workspace,1,0);
   if candidate->0->'candidates'->0->>'stableExternalMatch'<>'true' then raise exception 'Batch stable matching evidence differs'; end if;
   version:=(candidate->0->'candidates'->0->>'version')::integer;

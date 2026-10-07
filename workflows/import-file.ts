@@ -55,6 +55,7 @@ async function prepareImport(importId: string, workspaceId: string, rowCount: nu
     const { mapped, unresolvedRows, excludedRows } = inspectRows(rows, imported.mapping);
     if (unresolvedRows.length) throw new Error(unresolvedRows[0].message);
     const accountIds = new Map<string, string>();
+    let preparedSourceId = imported.source_id ?? null;
     const frozenAccounts = new Map(Object.entries(imported.route_accounts ?? {}).map(([route, accountId]) => [JSON.stringify(JSON.parse(route)), accountId]));
     const legacyPrepared = frozenAccounts.size === 0 && !!imported.source_id;
     if (legacyPrepared) {
@@ -92,12 +93,14 @@ async function prepareImport(importId: string, workspaceId: string, rowCount: nu
       const accountId = frozenAccountId ?? existingAccount[0]?.id ?? stableId(`${workspaceId}:account:${row.accountName}:${row.currencyCode}`);
       accountIds.set(routeKey, accountId);
       const sourceId = stableId(`${workspaceId}:source:${accountId}`);
+      preparedSourceId ??= sourceId;
       checked(await db.rpc("prepare_import_route", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion,
         p_account_id: accountId, p_source_id: sourceId, p_account_name: row.accountName, p_currency_code: row.currencyCode, p_total_rows: rows.length }));
     }
 
     const stagedRows = stageImportRows(workspaceId, importId, mapped, excludedRows, accountIds, rowCount);
-    checked(await db.rpc("stage_import_rows", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_file_hash: imported.file_hash, p_rows: stagedRows }));
+    checked(await db.rpc("stage_import_rows", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_file_hash: imported.file_hash,
+      p_mapping: imported.mapping, p_routes: imported.route_accounts ?? {}, p_source_id: preparedSourceId, p_rows: stagedRows }));
     return rowCount;
 }
 

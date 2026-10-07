@@ -36,7 +36,7 @@ try {
       await app`select public.prepare_import_route(${imported},${workspace},1,${account},${source},${accountName},'EUR',${total})`;
       const [{ rows }] = await app`select jsonb_agg(jsonb_build_object('accountId',${account}::uuid,'excluded',false,'row',jsonb_build_object('accountName',${accountName}::text,'sourceId',public.stable_import_uuid(${imported}::text||':row:'||n),'balanceId',public.stable_import_uuid(${imported}::text||':balance:'||n),'rowNumber',n,'originalRow',jsonb_build_object('Amount','-1.01','Description','Synthetic '||(n-2)),'postedOn','2026-10-01','description','Synthetic '||(n-2),'amountMinor','-101','currencyCode','EUR','status','posted','kind','ordinary','reviewReasons','[]'::jsonb))) as rows from generate_series(2,${total + 1}) n`;
       const started = performance.now(), rssBefore = process.memoryUsage().rss;
-      await tx.unsafe(`select ${schema}.stage_import_rows($1::uuid,$2::uuid,1,$3::text,$4::jsonb)`, [imported, workspace, hash, rows]);
+      await tx.unsafe(`select ${schema}.stage_import_rows($1::uuid,$2::uuid,1,$3::text,(select mapping from ${schema}.imports where id=$1::uuid),(select route_accounts from ${schema}.imports where id=$1::uuid),(select source_id from ${schema}.imports where id=$1::uuid),$4::jsonb)`, [imported, workspace, hash, rows]);
       let calls = 1, maxCandidatesBytes = 0;
       for (let offset = 0; offset < total; offset += 250) {
         const [{ result: candidates }] = await tx.unsafe(`select ${schema}.import_batch_candidates($1::uuid,$2::uuid,1,$3::integer) as result`, [imported, workspace, offset]); calls++;

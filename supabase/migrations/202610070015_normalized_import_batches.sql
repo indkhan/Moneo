@@ -32,13 +32,21 @@ begin
 end;
 $$;
 
-create function public.stage_import_rows(p_import_id uuid,p_workspace_id uuid,p_run_version integer,p_file_hash text,p_rows jsonb) returns integer
+create function public.stage_import_rows(p_import_id uuid,p_workspace_id uuid,p_run_version integer,p_file_hash text,p_mapping jsonb,p_routes jsonb,p_source_id uuid,p_rows jsonb) returns integer
 language plpgsql security definer set search_path='' as $$
 declare imported public.imports%rowtype; item jsonb; row_index integer:=2; previous_count integer;
 begin
   imported:=public.lock_import_run(p_import_id,p_workspace_id,p_run_version);
   if imported.file_hash is distinct from p_file_hash or jsonb_typeof(p_rows) is distinct from 'array' or jsonb_array_length(p_rows)<>imported.total_rows
     or imported.total_rows>10000 or octet_length(p_rows::text)>64000000 then raise exception 'Invalid normalized import staging' using errcode='22023'; end if;
+  -- Preparation can add routes, but it cannot change any normalization input or
+  -- the account/source identities used to choose them. Compare under the run lock.
+  if jsonb_typeof(p_routes) is distinct from 'object' or imported.mapping is distinct from p_mapping
+    or imported.source_id is distinct from p_source_id or imported.route_accounts is distinct from
+      (p_routes||coalesce((select jsonb_object_agg(jsonb_build_array(value->'row'->>'accountName',value->'row'->>'currencyCode')::text,value->'accountId')
+        from jsonb_array_elements(p_rows) where not (value->>'excluded')::boolean),'{}'::jsonb)) then
+    raise exception 'Normalization snapshot changed before staging' using errcode='40001';
+  end if;
   previous_count:=public.read_import_stage(p_import_id,p_workspace_id,p_run_version);
   if previous_count is not null then
     if not exists(select 1 from public.import_staging where import_id=p_import_id and rows=p_rows) then raise exception 'Normalized import staging changed' using errcode='40001'; end if;
@@ -133,8 +141,8 @@ begin
 end;
 $$;
 
-revoke all on function public.read_import_stage(uuid,uuid,integer),public.stage_import_rows(uuid,uuid,integer,text,jsonb),public.import_batch_candidates(uuid,uuid,integer,integer),public.ingest_import_batch(uuid,uuid,integer,integer,jsonb) from public,anon,authenticated;
-grant execute on function public.read_import_stage(uuid,uuid,integer),public.stage_import_rows(uuid,uuid,integer,text,jsonb),public.import_batch_candidates(uuid,uuid,integer,integer),public.ingest_import_batch(uuid,uuid,integer,integer,jsonb) to service_role;
+revoke all on function public.read_import_stage(uuid,uuid,integer),public.stage_import_rows(uuid,uuid,integer,text,jsonb,jsonb,uuid,jsonb),public.import_batch_candidates(uuid,uuid,integer,integer),public.ingest_import_batch(uuid,uuid,integer,integer,jsonb) from public,anon,authenticated;
+grant execute on function public.read_import_stage(uuid,uuid,integer),public.stage_import_rows(uuid,uuid,integer,text,jsonb,jsonb,uuid,jsonb),public.import_batch_candidates(uuid,uuid,integer,integer),public.ingest_import_batch(uuid,uuid,integer,integer,jsonb) to service_role;
 
 -- Deployment indexes: equality joins also serve the unchanged atomic row core.
 -- Hash indexes accept long legacy text without truncating original evidence or

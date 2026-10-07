@@ -22,7 +22,7 @@ assert(/^mne015_batch_qa_[a-f0-9]{16}$/.test(schema));
 if (recovery) assert.equal(recovery.project, project);
 const definitions = {
   read_import_stage: ["p_import_id", "p_workspace_id", "p_run_version"],
-  stage_import_rows: ["p_import_id", "p_workspace_id", "p_run_version", "p_file_hash", "p_rows"],
+  stage_import_rows: ["p_import_id", "p_workspace_id", "p_run_version", "p_file_hash", "p_mapping", "p_routes", "p_source_id", "p_rows"],
   import_batch_candidates: ["p_import_id", "p_workspace_id", "p_run_version", "p_offset"],
   ingest_import_batch: ["p_import_id", "p_workspace_id", "p_run_version", "p_offset", "p_decisions"],
 };
@@ -75,7 +75,7 @@ try {
         }
         counts.rpc[name] = (counts.rpc[name] ?? 0) + 1;
         const ordered = definitions[name]; assert.deepEqual(Object.keys(args).sort(), [...ordered].sort());
-        const types = ordered.map(key => key.endsWith("_id") ? "uuid" : ["p_run_version", "p_offset"].includes(key) ? "integer" : ["p_rows", "p_decisions"].includes(key) ? "jsonb" : "text");
+        const types = ordered.map(key => key.endsWith("_id") ? "uuid" : ["p_run_version", "p_offset"].includes(key) ? "integer" : ["p_rows", "p_decisions", "p_mapping", "p_routes"].includes(key) ? "jsonb" : "text");
         // postgres.js encodes native values for inferred JSONB parameters.
         // Passing a serialized string would turn the array into a JSON string.
         const values = ordered.map(key => args[key]);
