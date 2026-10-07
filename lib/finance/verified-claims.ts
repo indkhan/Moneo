@@ -43,6 +43,7 @@ type Claim = z.infer<typeof financialClaimSchema>;
 const qualifications: Record<string, string> = {
   partial_classification: "Partial classification: unresolved rows are excluded; totals may rise or fall and are neither upper nor lower bounds.",
   partial_coverage: "Partial coverage: the records do not establish complete financial activity for this period.",
+  partial_budget: "Partial budget: accepted-record spending does not establish a complete or reconciled budget remainder. Retained target, rollover, source or classification limitations require review; totals may change in either direction.",
   unresolved_included: "Unresolved classifications are included as source evidence, not confirmed spending.",
   dated_snapshot: "Dated snapshot: this measures retained evidence, not a live balance.",
   assumption: "Assumption: this projection is conditional and is not a probability or established outcome.",

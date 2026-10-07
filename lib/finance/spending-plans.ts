@@ -72,7 +72,7 @@ function classificationNeedsReview(transactions: SpendingPlanTransaction[], cate
 
 export function budgetProgress(transactions: SpendingPlanTransaction[], categoryId: string, currency: string, month: string, limit: bigint | null, rollover?: { startsMonth: string | null; history: MonthlyLimit[] }, sourceCoverage?: SourceCoverage) {
   const spentMinor = spendingForCategory(transactions, categoryId, currency, month);
-  const rolloverResult = rollover && limit !== null ? rollover.startsMonth ? rolloverBudget(transactions, categoryId, currency, rollover.startsMonth, month, limit, rollover.history) : { status: "unavailable" as const, missingInput: "Rollover start month is missing" } : null;
+  const rolloverResult = rollover && limit !== null ? rollover.startsMonth ? rolloverBudget(transactions, categoryId, currency, rollover.startsMonth, month, limit, rollover.history) : { status: "unavailable" as const, reason: "history" as const, missingInput: "Rollover start month is missing" } : null;
   const classificationPartial = classificationNeedsReview(transactions, categoryId, currency, month);
   const sourcePartial = sourceCoverage && sourceCoverageNeedsReview(sourceCoverage);
   const limitation = limit === null ? "Historical target unavailable" : rolloverResult?.status === "unavailable" ? rolloverResult.missingInput : classificationPartial ? "Current-month financial classification needs review" : sourcePartial ? "Source observations or import coverage need review" : null;
@@ -80,30 +80,31 @@ export function budgetProgress(transactions: SpendingPlanTransaction[], category
   const allowanceMinor = rollover ? rolloverResult?.status === "available" ? rolloverResult.allowanceMinor : null : limit;
   const remainingMinor = limitation === null && allowanceMinor !== null ? allowanceMinor - spentMinor : null;
   return { spentMinor, carriedMinor, allowanceMinor, remainingMinor, overLimit: remainingMinor === null ? null : remainingMinor < 0n, partial: limitation !== null, limitation, rolloverResult,
+    classificationPartial: classificationPartial || rolloverResult?.status === "unavailable" && rolloverResult.reason === "classification", sourcePartial: Boolean(sourcePartial),
     ...(sourceCoverage ? { sourceCoverage, remainderBasis: "accepted_records" as const } : {}) };
 }
 
 export type MonthlyLimit = { effective_month: string; limit_minor: string; enabled: boolean; version: number };
 export function rolloverBudget(transactions: SpendingPlanTransaction[], categoryId: string, currency: string, startsMonth: string, month: string, currentLimit: bigint, history: MonthlyLimit[]):
-  | { status: "unavailable"; missingInput: string }
+  | { status: "unavailable"; missingInput: string; reason: "classification" | "history" }
   | { status: "available"; carriedMinor: bigint; allowanceMinor: bigint; spentMinor: bigint; remainingMinor: bigint } {
   if (![startsMonth, month].every(value => /^\d{4}-(0[1-9]|1[0-2])$/.test(value))) throw new Error("Invalid budget month");
   const monthIndex = (value: string) => Number(value.slice(0, 4)) * 12 + Number(value.slice(5, 7)) - 1;
   const elapsed = monthIndex(month) - monthIndex(startsMonth);
   // ponytail: ten years of rollover history; longer histories need paged aggregation.
-  if (elapsed > 120) return { status: "unavailable", missingInput: "Rollover exceeds the supported ten-year history; choose a later start month" };
+  if (elapsed > 120) return { status: "unavailable", reason: "history", missingInput: "Rollover exceeds the supported ten-year history; choose a later start month" };
   let carriedMinor = 0n;
   const ordered = [...history].sort((a, b) => a.effective_month.localeCompare(b.effective_month) || a.version - b.version);
   for (let offset = 0; offset < elapsed; offset++) {
     const index = monthIndex(startsMonth) + offset;
     const previous = `${Math.floor(index / 12).toString().padStart(4, "0")}-${(index % 12 + 1).toString().padStart(2, "0")}`;
     const known = ordered.filter(item => item.effective_month.slice(0, 7) <= previous).at(-1);
-    if (!known) return { status: "unavailable", missingInput: `No recorded budget target for ${previous}; choose a supported rollover start month` };
-    if (classificationNeedsReview(transactions, categoryId, currency, previous)) return { status: "unavailable", missingInput: `Financial classification needs review in ${previous}` };
+    if (!known) return { status: "unavailable", reason: "history", missingInput: `No recorded budget target for ${previous}; choose a supported rollover start month` };
+    if (classificationNeedsReview(transactions, categoryId, currency, previous)) return { status: "unavailable", reason: "classification", missingInput: `Financial classification needs review in ${previous}` };
     if (!known.enabled) { carriedMinor = 0n; continue; }
     carriedMinor += BigInt(known.limit_minor) - spendingForCategory(transactions, categoryId, currency, previous);
   }
-  if (classificationNeedsReview(transactions, categoryId, currency, month)) return { status: "unavailable", missingInput: "Current-month financial classification needs review" };
+  if (classificationNeedsReview(transactions, categoryId, currency, month)) return { status: "unavailable", reason: "classification", missingInput: "Current-month financial classification needs review" };
   const spentMinor = spendingForCategory(transactions, categoryId, currency, month);
   const allowanceMinor = currentLimit + carriedMinor;
   return { status: "available", carriedMinor, allowanceMinor, spentMinor, remainingMinor: allowanceMinor - spentMinor };

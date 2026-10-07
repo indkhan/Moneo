@@ -33,6 +33,16 @@ it("uses actual balance clocks, workspace calendar dates and manual wealth dates
   expect(snake.metrics.find(metric => metric.label === "Booked balance")?.period).toEqual({ from: "2026-10-02", to: "2026-10-02" });
   expect(snake.metrics.find(metric => metric.label === "Dated recorded balance")?.period).toEqual({ from: "2026-09-01", to: "2026-09-01" });
 });
+it("keeps direct review cashflow and typed budget classification exclusions on zero-valued measures", () => {
+  const receipt = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-09-01", to: "2026-09-30" }, cashflow: { EUR: { spendingMinor: "0", incomeMinor: "0", netMinor: "0", excludedReviewRows: 1, partial: true } }, planning: { budgets: [{ currency: "EUR", month: "2026-09", spentMinor: "0", partial: true, classificationPartial: true, limitation: "Current-month financial classification needs review" }] } }, context, ["accounts", "transactions", "planning"]);
+  expect(receipt.metrics).toHaveLength(4);
+  for (const metric of receipt.metrics) expect(metric.qualifiers).toContain("partial_classification");
+  expect(receipt.metrics.find(metric => metric.label === "Booked budget spending")?.qualifiers).toContain("partial_budget");
+  const body = providerFinancialAnswer("Spending is certainly zero", [receipt], context.workspaceId).body;
+  expect(body).toContain("neither upper nor lower bounds");
+  expect(body).toContain("Partial budget");
+  expect(body).not.toContain("certainly zero");
+});
 it("malformed provider prose visibly falls back to supported financial measures and never publishes invented links", () => {
   const receipt = toolResultReceipt("analytics_cashflow", {}, { from: "2026-09-01", to: "2026-09-30", currencyCode: "EUR", spendingMinor: "25" }, context, ["transactions"]);
   const result = providerFinancialAnswer("EUR 999999.00 [proof](/made-up)", [receipt], context.workspaceId);

@@ -11,7 +11,7 @@ const period = z.object({ from: z.iso.date(), to: z.iso.date() }).strict().refin
 const metricSchema = z.object({ id: z.string().min(1).max(200), label: z.string().min(1).max(200), valueMinor: z.string().regex(/^-?(?:0|[1-9]\d{0,79})$/).nullable(),
   unit: z.enum(["money", "count"]).optional(),
   currency: z.string().regex(/^[A-Z]{3}$/).refine(value => { try { minorDigits(value); return true; } catch { return false; } }), period,
-  qualifiers: z.array(z.enum(["partial_classification", "partial_coverage", "unresolved_included", "dated_snapshot", "assumption", "manual_evidence", "virtual_reservation", "source_posting", "ambiguous_evidence"])).max(30),
+  qualifiers: z.array(z.enum(["partial_classification", "partial_coverage", "unresolved_included", "dated_snapshot", "assumption", "manual_evidence", "virtual_reservation", "source_posting", "ambiguous_evidence", "partial_budget"])).max(30),
   sourceIds: z.array(z.string().min(1).max(200)).max(100000), calculation: z.string().min(1).max(2000) }).strict();
 const receiptInputSchema = z.object({ workspaceId: z.uuid(), fetchedAt: z.iso.datetime({ offset: true }), calculationVersion: z.string().min(1).max(200), sourceVersion: z.string().min(1).max(200),
   query: z.record(z.string(), z.json()), scopes: z.array(z.enum(AI_DATA_SCOPES)).max(4), sources: z.array(sourceSchema).max(100000), metrics: z.array(metricSchema).max(2000) }).strict();

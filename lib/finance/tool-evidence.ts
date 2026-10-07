@@ -44,7 +44,9 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
     const qualifiers = [...inherited.qualifiers];
     if ((row.status === "ambiguous" || row.balanceStatus === "ambiguous") && !qualifiers.includes("ambiguous_evidence")) qualifiers.push("ambiguous_evidence");
     const coverage = object(row.evidence);
-    if (coverage.excludedReviewRows && !qualifiers.includes("partial_classification")) qualifiers.push("partial_classification");
+    const classificationCount = object(object(row.sourceCoverage).exclusions).classification;
+    if (([coverage.excludedReviewRows, row.excludedReviewRows, classificationCount].some(count => typeof count === "number" && count > 0) || row.classificationPartial === true) && !qualifiers.includes("partial_classification")) qualifiers.push("partial_classification");
+    if (path.includes("budgets") && row.partial === true && !qualifiers.includes("partial_budget")) qualifiers.push("partial_budget");
     if ((row.classificationStatus === "unresolved" || Array.isArray(row.review_reasons) && row.review_reasons.length || Array.isArray(row.reviewReasons) && row.reviewReasons.length) && !qualifiers.includes("unresolved_included")) qualifiers.push("unresolved_included");
     if (name === "forecast_evaluate" || path.includes("forecast") || path.includes("obligations")) { if (!qualifiers.includes("assumption")) qualifiers.push("assumption"); }
     for (const [key, child] of Object.entries(row)) {
