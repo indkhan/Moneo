@@ -1,16 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
-import { goalsForArtifact, spendingForArtifact, tripForArtifact } from "@/lib/artifacts/finance-sdk";
+import { goalsForArtifact, spendingForArtifact, tripForArtifact, tripEditorForArtifact } from "@/lib/artifacts/finance-sdk";
 import { buildCalculatorSnapshot } from "@/lib/artifacts/snapshot";
 import { artifactKindSchema, calculatorManifestSchema, normalizeCalculatorParams, checkStateCompatibility, type ArtifactKind } from "@/lib/artifacts/spec";
 import { parseManualAmount } from "@/app/money/transactions/input";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { pinArtifact, renameArtifact, unpinArtifact } from "../actions";
-import { TripStateForm } from "../trip-state-form";
+import { DatedTripForm } from "../dated-trip-form";
+import { tripScenarioSchema } from "@/lib/finance/trip-scenario";
+import { assertTripCostCurrency, restoreTripCalculatorParams, tripStateForScenario } from "@/lib/artifacts/trip-params";
 import { SpendingChart } from "../spending-chart";
-import { ForecastEvidence } from "../forecast-evidence";
 import { CalculatorPanel } from "../calculator-panel";
 import { GenerateCalculatorForm } from "../generate-calculator-form";
 import { VersionEditor } from "../version-editor";
@@ -48,7 +49,7 @@ export default async function ArtifactPage({ params, searchParams }: {
     supabase.from("artifact_versions").select("id, version, status, error, created_at, manifest, source")
       .eq("workspace_id", workspace.id).eq("artifact_id", id).order("version", { ascending: false }).limit(20),
   ]);
-  const stateValue = (state?.state ?? {}) as Record<string, number | string>;
+  let stateValue = (state?.state ?? {}) as Record<string, unknown>;
   const costMinor = Number.isSafeInteger((stateValue as { costMinor?: number }).costMinor) && (stateValue as { costMinor?: number }).costMinor! >= 0
     ? BigInt((stateValue as { costMinor?: number }).costMinor!) : 90000n;
 
@@ -58,22 +59,39 @@ export default async function ArtifactPage({ params, searchParams }: {
   let sourceCoverage: SourceCoverage | undefined;
   let sourceCoverageByOperation: Record<string, SourceCoverage> | undefined;
   let initialParams: Record<string, number | string> = {};
+  let inputWarnings: string[] = [];
   if (isCalculator && version) {
-    initialParams = normalizeCalculatorParams(manifestParsed.data, stateValue, "restore");
+    if (manifestParsed.data.sdk.includes("forecast") && stateValue.tripScenario !== undefined) {
+      stateValue = tripStateForScenario(stateValue, tripScenarioSchema.parse(stateValue.tripScenario), workspace.display_currency);
+    }
+    initialParams = restoreTripCalculatorParams(manifestParsed.data, stateValue);
+    inputWarnings = checkStateCompatibility(stateValue, manifestParsed.data);
+    if (manifestParsed.data.sdk.includes("forecast") && stateValue.tripScenario !== undefined) {
+      inputWarnings = inputWarnings.map(warning => /^Stored param (costMinor|tripDate|accountId) /.test(warning)
+        ? warning.replace("default applies", "saved dated scenario retained; edit the native budget or use a compatible calculator") : warning);
+    }
     try {
+      if (manifestParsed.data.sdk.includes("forecast")) assertTripCostCurrency(manifestParsed.data.params.costMinor?.currency, workspace.display_currency);
+      if (manifestParsed.data.sdk.includes("forecast") && stateValue.tripScenario !== undefined) {
+        try { normalizeCalculatorParams(manifestParsed.data, initialParams); }
+        catch { throw new Error("This calculator cannot represent the saved dated scenario. Edit the native budget or use a compatible calculator; the saved scenario is unchanged."); }
+      }
       const built = await buildCalculatorSnapshot(id, kind, {
+        manifest: manifestParsed.data,
         query: q.slice(0, 100),
         month: typeof initialParams.month === "string" ? initialParams.month : undefined,
         reportingView: kind === "spending_explorer" ? nativeReportingView : z.enum(["original", "base"]).optional().parse(initialParams.reportingView),
         costMinor: typeof initialParams.costMinor === "number" && Number.isSafeInteger(initialParams.costMinor) ? BigInt(initialParams.costMinor) : typeof initialParams.costMinor === "string" && /^-?\d+$/.test(initialParams.costMinor) ? BigInt(initialParams.costMinor) : costMinor,
         sdk: manifestParsed.data.sdk,
         investigation: manifestParsed.data.investigation,
+        tripScenario: stateValue.tripScenario === undefined ? undefined : tripScenarioSchema.parse(stateValue.tripScenario),
+        tripParams: initialParams,
       });
       snapshot = built.snapshot;
       sourceCoverage = built.snapshot.sourceCoverage;
       sourceCoverageByOperation = built.snapshot.sourceCoverageByOperation;
-    } catch {
-      snapshot = { unavailable: "Snapshot unavailable" };
+    } catch (failure) {
+      snapshot = { unavailable: failure instanceof Error && (failure.message.includes("cannot represent the saved dated scenario") || failure.message.startsWith("Trip cost currency ")) ? failure.message : "Snapshot unavailable" };
     }
   }
 
@@ -90,7 +108,7 @@ export default async function ArtifactPage({ params, searchParams }: {
     <p className="mt-2 text-sm text-muted-foreground">Live financial data · trusted {artifact.kind.replaceAll("_", " ")} v{version?.version ?? "?"}</p>
     <RenameArtifactForm artifactId={id} activeVersionId={artifact.active_version_id} name={artifact.name} action={renameArtifact} />
     {artifact.kind === "spending_explorer" && <SpendingExplorer id={id} query={q.slice(0, 100)} view={nativeReportingView} locale={workspace.locale} />}
-    {artifact.kind === "trip_planner" && <TripPlanner id={id} costMinor={costMinor} stateVersion={state?.version ?? 0} />}
+    {artifact.kind === "trip_planner" && <TripPlanner id={id} costMinor={costMinor} stateVersion={state?.version ?? 0} scenario={stateValue.tripScenario} />}
     {artifact.kind === "goal_tracker" && <GoalTracker id={id} scenarioGoalId={goalId} extra={extra} />}
     {sourceCoverage && <SourceCoverageDetails coverage={sourceCoverage} />}
     {Object.entries(sourceCoverageByOperation ?? {}).map(([operation, coverage]) => <div key={operation}><p className="text-xs">{operation} evidence</p><SourceCoverageDetails coverage={coverage} /></div>)}
@@ -102,7 +120,7 @@ export default async function ArtifactPage({ params, searchParams }: {
         snapshot={snapshot}
         initialParams={initialParams}
         manifest={manifestParsed.data}
-        inputWarnings={checkStateCompatibility(stateValue, manifestParsed.data)}
+        inputWarnings={inputWarnings}
         currency={workspace.display_currency}
         versionLabel={`v${version.version}`}
         artifactId={id}
@@ -158,22 +176,21 @@ async function SpendingExplorer({ id, query, view, locale }: { id: string; query
   </section>;
 }
 
-async function TripPlanner({ id, costMinor, stateVersion }: { id: string; costMinor: bigint; stateVersion: number }) {
-  let data: Awaited<ReturnType<typeof tripForArtifact>>;
-  try { data = await tripForArtifact(id, costMinor); }
-  catch { return <p role="status" className="mt-8 rounded border p-5">Forecast evidence is unavailable. Check this tool&apos;s permissions and AI data access in Settings.</p>; }
+async function TripPlanner({ id, costMinor, stateVersion, scenario }: { id: string; costMinor: bigint; stateVersion: number; scenario?: unknown }) {
+  let data: Awaited<ReturnType<typeof tripForArtifact>> | undefined;
+  let editor: Awaited<ReturnType<typeof tripEditorForArtifact>> | undefined;
+  try { data = await tripForArtifact(id, costMinor, undefined, [], scenario); }
+  catch {
+    if (scenario !== undefined) {
+      try { editor = await tripEditorForArtifact(id, scenario); }
+      catch { /* Withhold editor and account data when evidence access is denied. */ }
+    }
+  }
+  const available = data ?? editor;
+  if (!available) return <p role="status" className="mt-8 rounded border p-5">Forecast evidence is unavailable. Check this tool&apos;s permissions and AI data access in Settings.</p>;
   return <section className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
-    <h2 className="text-xl font-semibold tracking-tight text-foreground">Trip cost</h2>
-    <TripStateForm artifactId={id} costMinor={costMinor.toString()} stateVersion={stateVersion} currency={data.currency} />
-    <p className="mt-3 text-sm text-muted-foreground">Hypothetical one-time cost on {data.tripDate}; no goal or account is changed.</p>
-    {data.sourceCoverage && <SourceCoverageDetails coverage={data.sourceCoverage} />}
-    {data.unavailable && <p className="mt-4">{data.unavailable}</p>}
-    <div className="mt-5 grid gap-3 sm:grid-cols-2">
-      <div className="rounded-xl border border-border bg-card p-5 shadow-sm"><h3>Chosen-account headroom</h3><p className="mt-2 text-xl">{data.baseline.status === "available" ? money(data.baseline.amountMinor, data.currency) : "Unavailable"}</p></div>
-      <div className="rounded-xl border border-border bg-card p-5 shadow-sm"><h3>With dated trip cost</h3><p className="mt-2 text-xl">{data.withTrip?.status === "available" ? money(data.withTrip.amountMinor, data.currency) : "Unavailable"}</p></div>
-    </div>
-    <ForecastEvidence evidence={data} />
-    {data.tripLiquidity && <div className="mt-4"><h3 className="font-semibold">Dated trip evidence</h3><ForecastEvidence evidence={{ accountId: data.accountId, liquidity: data.tripLiquidity }} /></div>}
+    <h2 className="text-xl font-semibold tracking-tight text-foreground">Dated trip planner</h2>
+    <DatedTripForm artifactId={id} stateVersion={stateVersion} initial={available.scenario} initialResult={data?.tripResult ?? null} currency={available.currency} initialError={editor?.error} accounts={available.accounts} sourceCoverage={data?.sourceCoverage} />
   </section>;
 }
 

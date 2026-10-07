@@ -1,5 +1,6 @@
 import { requireWorkspace } from "@/lib/auth";
-import { accountLiquidity, serializeAccountLiquidity, withInternalFunding, summarizeCashflow, type CashflowTransaction } from "@/lib/finance/calculations";
+import { withInternalFunding, summarizeCashflow, type CashflowTransaction } from "@/lib/finance/calculations";
+import { defaultTripScenario, evaluateTripScenario, tripHorizon, tripScenarioSchema } from "@/lib/finance/trip-scenario";
 import { evaluatePlan } from "@/lib/finance/model";
 import { getBalances } from "@/lib/finance/tools";
 import { calendarDate } from "@/lib/finance/calendar";
@@ -9,6 +10,8 @@ import { buildSourceCoverage, loadSourceCoverage } from "@/lib/finance/source-co
 import { expenditurePosting, reportExpenditure } from "@/lib/finance/expenditure";
 import { loadExpenditureRates } from "@/lib/finance/expenditure-rates";
 import { runInvestigation } from "@/lib/finance/investigation-reader";
+import { assertTripCostCurrency, tripScenarioForParams } from "./trip-params";
+import { evidenceFingerprint } from "@/lib/finance/evidence-receipts";
 
 export async function investigationForArtifact(artifactId: string, input: unknown, permission: "spending" | "cashflow" = "spending") {
   const context = await requirePermission(artifactId, permission);
@@ -111,37 +114,50 @@ export async function spendingForArtifact(artifactId: string, query: string, per
   return { summary, byAccount, reporting, conversionCoverage: reporting?.conversionCoverage, resultBasis: reporting?.resultBasis, sourceCoverage, transactions: transactions.filter(row => row.status === "posted" && row.kind !== "transfer" && !row.review_reasons?.length), currency: workspace.display_currency, from, to, timezone: workspace.timezone ?? "Europe/Berlin" };
 }
 
-export async function tripForArtifact(artifactId: string, costMinor: bigint, accountId?: string, funding: Parameters<typeof withInternalFunding>[1] = []) {
-  if (typeof costMinor !== "bigint" || costMinor < 0n) throw new Error("Invalid trip cost");
+export async function tripForArtifact(artifactId: string, costMinor: bigint, accountId?: string, funding: Parameters<typeof withInternalFunding>[1] = [], rawScenario?: unknown, params: Record<string, string | number> = {}, costCurrency?: string) {
+  if (typeof costMinor !== "bigint" || costMinor < 0n || (rawScenario === undefined && costMinor > 999999999999999999n)) throw new Error("Invalid trip cost");
   const { workspace, settings } = await requirePermission(artifactId, "forecast");
-  const baseline = await evaluatePlan(30, undefined, settings?.ai_data_scopes.includes("imports") ?? false);
-  if (settings?.ai_data_scopes.includes("imports")) {
-    const current = await requireWorkspace();
-    if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
-    requireAiScope(current.settings, "accounts", "transactions", "planning", "imports");
-  }
-  const today = baseline.input.startDate ?? calendarDate(new Date(), workspace.timezone);
-  const tripDate = new Date(Date.parse(`${today}T00:00:00Z`) + 7 * 86400000).toISOString().slice(0, 10);
+  assertTripCostCurrency(costCurrency, workspace.display_currency);
+  const today = calendarDate(new Date(), workspace.timezone);
+  accountId = typeof params.accountId === "string" && params.accountId ? params.accountId : accountId;
+  const requested = tripScenarioForParams(rawScenario === undefined ? defaultTripScenario(today, workspace.display_currency, accountId ?? "unselected", costMinor) : tripScenarioSchema.parse(rawScenario), params, workspace.display_currency);
+  const horizon = tripHorizon(today, requested);
+  const baseline = await evaluatePlan(horizon.days, undefined, settings?.ai_data_scopes.includes("imports") ?? false);
+  const current = await requirePermission(artifactId, "forecast");
+  if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
+  if (settings?.ai_data_scopes.includes("imports")) requireAiScope(current.settings, "imports");
   const selectedId = accountId ?? baseline.preferences?.spending_account_id ?? (baseline.input.accounts.length === 1 ? baseline.input.accounts[0].id : undefined);
-  const account = baseline.input.accounts.find(item => item.id === selectedId);
-  if (accountId && !account) throw new Error("Unknown account");
-  const input = withInternalFunding(baseline.input, funding);
-  const liquidity = accountLiquidity(input);
-  const selected = account && liquidity.status === "available" ? liquidity.accounts.find(item => item.accountId === account.id) : null;
-  const tripLiquidity = account ? accountLiquidity({ ...input, scenarioEvents: [
-    ...(input.scenarioEvents ?? []),
-    { date: tripDate, accountId: account.id, expectedMinor: -costMinor,
-      conservativeMinor: -costMinor, optimisticMinor: -costMinor },
-  ] }) : null;
-  const withTrip = tripLiquidity?.status === "available" ? tripLiquidity.accounts.find(item => item.accountId === account!.id) : null;
-  return { baseline: selected ? { status: "available" as const, ...selected, amountMinor: selected.spendableMinor, limitingDate: selected.spendingLimitingDate } : { status: "unavailable" as const },
-    withTrip: withTrip ? { status: "available" as const, ...withTrip, amountMinor: withTrip.spendableMinor, limitingDate: withTrip.spendingLimitingDate } : null,
-    tripDate, sourceCoverage: baseline.sourceCoverage, resultBasis: baseline.resultBasis, currency: workspace.display_currency, accountId: account?.id ?? null,
-    sourceVersion: baseline.sourceVersion,
-    calculationEvidence: JSON.parse(JSON.stringify({ source: baseline.calculationEvidence, input, costMinor, tripDate }, (_key, value) => typeof value === "bigint" ? value.toString() : value)),
-    liquidity: serializeAccountLiquidity(liquidity),
-    tripLiquidity: tripLiquidity ? serializeAccountLiquidity(tripLiquidity) : null,
-    unavailable: !account ? "Choose a paying account; aggregate cash requires explicit funding" : !selected ? "Forecast unavailable" : null };
+  if (accountId && !baseline.input.accounts.some(item => item.id === accountId)) throw new Error("Unknown account");
+  const scenario = rawScenario === undefined ? { ...requested, payments: requested.payments.map(item => ({ ...item, accountId: selectedId ?? "unselected" })) } : requested;
+  const result = evaluateTripScenario(withInternalFunding(baseline.input, funding), scenario);
+  const selected = result.liquidity.status === "available" ? result.liquidity.accounts.find(item => item.accountId === result.accountId) : null;
+  const withTrip = result.tripLiquidity.status === "available" ? result.tripLiquidity.accounts.find(item => item.accountId === result.accountId) : null;
+  const calculationEvidence = JSON.parse(JSON.stringify({ source: baseline.calculationEvidence,
+    input: withInternalFunding(baseline.input, funding), scenario, result }, (_key, value) => typeof value === "bigint" ? value.toString() : value));
+  return { ...result, tripResult: result,
+    calculationEvidence, sourceVersion: evidenceFingerprint(calculationEvidence),
+    baseline: selected ? { status: "available" as const, ...selected, amountMinor: BigInt(selected.spendableMinor), limitingDate: selected.spendingLimitingDate } : { status: "unavailable" as const },
+    withTrip: withTrip ? { status: "available" as const, ...withTrip, amountMinor: BigInt(withTrip.spendableMinor), limitingDate: withTrip.spendingLimitingDate } : null,
+    tripDate: scenario.startsOn, sourceCoverage: baseline.sourceCoverage, resultBasis: baseline.resultBasis,
+    accounts: baseline.input.accounts.map(item => ({ id: item.id, currencyCode: item.currencyCode, name: baseline.accountLabels?.find(account => account.id === item.id)?.name ?? item.id })),
+    unavailable: !selectedId && rawScenario === undefined ? "Choose a paying account; aggregate cash requires explicit funding" : result.unavailable };
+}
+
+// Date-invalid saved budgets remain editable, but evidence permissions are still required.
+export async function tripEditorForArtifact(artifactId: string, rawScenario: unknown) {
+  const { workspace, settings } = await requirePermission(artifactId, "forecast");
+  const scenario = tripScenarioSchema.parse(rawScenario);
+  let error = "";
+  try { tripHorizon(calendarDate(new Date(), workspace.timezone), scenario); }
+  catch (failure) { error = failure instanceof Error ? failure.message : "Trip dates unavailable"; }
+  if (!error) throw new Error("Trip dates are valid; forecast evidence is unavailable");
+  const baseline = await evaluatePlan(1, undefined, settings?.ai_data_scopes.includes("imports") ?? false);
+  const current = await requirePermission(artifactId, "forecast");
+  if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
+  if (settings?.ai_data_scopes.includes("imports")) requireAiScope(current.settings, "imports");
+  return { scenario, currency: workspace.display_currency, error,
+    accounts: baseline.input.accounts.map(item => ({ id: item.id, currencyCode: item.currencyCode,
+      name: baseline.accountLabels?.find(account => account.id === item.id)?.name ?? item.id })) };
 }
 
 export async function goalsForArtifact(artifactId: string) {

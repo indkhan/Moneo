@@ -1,4 +1,5 @@
 "use client";
+import { assertTripCostCurrency } from "@/lib/artifacts/trip-params";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
@@ -12,6 +13,7 @@ import { formatMoney } from "@/lib/finance/format";
 import { ForecastEvidence, type ForecastEvidenceInput } from "./forecast-evidence";
 import { CalculatorRows } from "./calculator-rows";
 import { useStateDraft, StateDraftRecovery } from "./use-state-draft";
+import { refreshTripSnapshot } from "@/lib/artifacts/trip-preview";
 
 const Chart = dynamic(() => import("echarts-for-react"), { ssr: false });
 
@@ -53,7 +55,7 @@ export function CalculatorPanel({
   const params = draft.value, setParams = draft.edit;
   const dependencies = useMemo(() => ({ source, snapshot, params, manifest, versionLabel, artifactId }), [source, snapshot, params, manifest, versionLabel, artifactId]);
   const [completed, setCompleted] = useState<{ dependencies: typeof dependencies; output: CalculatorOutput; params: Record<string, string | number>; snapshot: unknown; versionLabel: string; completedAt: string; evidenceRevision: string } | null>(null);
-  const output = completed?.output ?? null;
+  const output = completed?.dependencies === dependencies ? completed.output : null;
   const [status, setStatus] = useState<"idle" | "running" | "done" | "error" | "stopped">("idle");
   const exportable = status === "done" && completed?.dependencies === dependencies;
   const [error, setError] = useState("");
@@ -61,13 +63,20 @@ export function CalculatorPanel({
   const stopped = useRef(false);
   const activeRun = useRef<AbortController | null>(null);
   const monthChanged = typeof params.month === "string" && params.month !== initialParams.month;
+  const tripChanged = manifest.sdk.includes("forecast") && ["costMinor", "tripDate", "accountId"].some(key => params[key] !== initialParams[key]);
+  const shownSnapshot = completed?.dependencies === dependencies ? completed.snapshot : snapshot;
 
   const paramEntries = useMemo(() => Object.entries(manifest.params), [manifest.params]);
 
   const inputError = useMemo(() => {
-    try { normalizeCalculatorParams(calculatorManifestSchema.parse(manifest), params); return ""; }
+    try {
+      const parsed = calculatorManifestSchema.parse(manifest);
+      const forecastCurrency = currency ?? (snapshot !== null && typeof snapshot === "object" && "currency" in snapshot && typeof snapshot.currency === "string" ? snapshot.currency : undefined);
+      if (parsed.sdk.includes("forecast") && forecastCurrency) assertTripCostCurrency(parsed.params.costMinor?.currency, forecastCurrency);
+      normalizeCalculatorParams(parsed, params); return "";
+    }
     catch (failure) { return failure instanceof Error ? failure.message : "Invalid inputs"; }
-  }, [manifest, params]);
+  }, [manifest, params, currency, snapshot]);
 
   useEffect(() => {
     stopped.current = false;
@@ -86,7 +95,7 @@ export function CalculatorPanel({
           return;
         }
         const runParams = normalizeCalculatorParams(calculatorManifestSchema.parse(manifest), params);
-        const runSnapshot = structuredClone(snapshot);
+        const runSnapshot = structuredClone(tripChanged ? await refreshTripSnapshot(snapshot, runParams, artifactId, controller.signal) : snapshot);
         const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(runSnapshot)));
         const evidenceRevision = `sha256:${Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("")}`;
         if (stopped.current || runId.current !== id) return;
@@ -108,7 +117,7 @@ export function CalculatorPanel({
       controller.abort();
       if (activeRun.current === controller) activeRun.current = null;
     };
-  }, [dependencies, source, snapshot, params, monthChanged, manifest, inputError, versionLabel]);
+  }, [dependencies, source, snapshot, params, monthChanged, tripChanged, manifest, inputError, versionLabel, artifactId]);
 
   function stop() {
     stopped.current = true;
@@ -128,9 +137,10 @@ export function CalculatorPanel({
   return (
     <section aria-label="Generated calculator output" className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
       {snapshot !== null && typeof snapshot === "object" && "partial" in snapshot && snapshot.partial === true && <p role="status" className="mb-4 text-sm text-amber-700">Partial financial data: transactions awaiting classification are excluded. Review them in Import before relying on these totals.</p>}
-      {snapshot !== null && typeof snapshot === "object" && "unavailable" in snapshot && typeof snapshot.unavailable === "string" && snapshot.unavailable && <p role="alert" className="mb-4 text-sm text-muted-foreground">{snapshot.unavailable}</p>}
-      <ForecastEvidence evidence={snapshot !== null && typeof snapshot === "object" && "forecast" in snapshot ? (snapshot.forecast ?? {}) as ForecastEvidenceInput : (snapshot ?? {}) as ForecastEvidenceInput} locale={locale} />
-      {coverageWarnings(snapshot).map(warning => <p key={warning} role="status" className="mb-4 text-sm text-amber-700">{warning}</p>)}
+      {shownSnapshot !== null && typeof shownSnapshot === "object" && "unavailable" in shownSnapshot && typeof shownSnapshot.unavailable === "string" && shownSnapshot.unavailable && <p role="alert" className="mb-4 text-sm text-muted-foreground">{shownSnapshot.unavailable}</p>}
+      {tripChanged && completed?.dependencies !== dependencies && <p role="status" className="mb-4 text-sm">Recalculating the local dated trip inputs. Saved forecast evidence appears below until this preview completes.</p>}
+      <ForecastEvidence evidence={shownSnapshot !== null && typeof shownSnapshot === "object" && "forecast" in shownSnapshot ? (shownSnapshot.forecast ?? {}) as ForecastEvidenceInput : (shownSnapshot ?? {}) as ForecastEvidenceInput} locale={locale} />
+      {coverageWarnings(shownSnapshot).map(warning => <p key={warning} role="status" className="mb-4 text-sm text-amber-700">{warning}</p>)}
       {inputWarnings.map(warning => <p key={warning} role="status" className="mb-4 text-sm text-amber-700">{warning}</p>)}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Generated calculator · {versionLabel}</h2>

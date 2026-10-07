@@ -219,5 +219,6 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
     wealth, debts, preferences, preferencesVersion, allocations, assumptions, rates, recurringSeries, settlements, sourceMetadata, scenario: scenarioEvidence, conversions };
   return { forecast, available, liquidity: accountLiquidity(input), input, preferences, preferencesVersion, sourceCoverage,
     calculationEvidence, sourceVersion: evidenceFingerprint(calculationEvidence),
+    accountLabels: spendable.map(account => ({ id: account.id, name: account.name })),
     resultBasis: "accepted balance evidence and confirmed assumptions; source completeness unknown" };
 }

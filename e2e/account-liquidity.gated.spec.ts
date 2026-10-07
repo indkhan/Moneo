@@ -43,6 +43,7 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: base.hostname, path: "/", sameSite: "Lax" as const })));
     const page = await context.newPage();
     page.setDefaultTimeout(15_000);
+    page.setDefaultNavigationTimeout(30_000);
     const providerCalls: string[] = [];
     await context.route(/openrouter\.ai/, route => { providerCalls.push(route.request().url()); return route.abort(); });
     await page.goto(`/?account=${checking}`);
@@ -108,7 +109,7 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     await db`update public.artifacts set active_version_id=${version} where id=${artifact} and workspace_id=${workspace!}`;
     await db`insert into public.artifact_state(artifact_id,workspace_id,state) values(${artifact},${workspace!},'{"costMinor":10000}'::jsonb)`;
     await page.goto(`/ai/library/${artifact}`);
-    const nativeTrip = page.locator("section").filter({ has: page.getByRole("heading", { name: "Trip cost", exact: true }) });
+    const nativeTrip = page.locator("section").filter({ has: page.getByRole("heading", { name: "Dated trip planner", exact: true }) });
     await expect(page.getByRole("region", { name: "Generated calculator output" })).toHaveCount(0);
     await expect(nativeTrip).toContainText("Chosen-account headroom"); await expect(nativeTrip).toContainText("Aggregate headroom: EUR 600.00");
     await expect(nativeTrip).toContainText(`${checking} funding shortfall: EUR 400.00`);
@@ -150,14 +151,14 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     await expect(calculator).toContainText("Chosen-account headroom"); await expect(calculator).toContainText("-EUR 400.00");
     await expect(calculator).toContainText("funding shortfall: EUR 400.00"); await expect(calculator).toContainText(tomorrow);
     await expect(calculator).toContainText("Recurring bill QA"); await expect(calculator).toContainText("No automatic funding");
-    await expect(calculator).toContainText("Chosen-account headroom after dated trip: -50000 minor units.");
+    await expect(calculator).toContainText("Conservative minimum headroom over the dated trip horizon: -50000 minor units");
     await page.screenshot({ path: testInfo.outputPath("artifact-dated-checking.png"), fullPage: true });
     await db`update public.forecast_preferences set spending_account_id=${savings}, safety_buffer_minor=10000 where workspace_id=${workspace!}`;
     await db`update public.financial_assumptions set removed_at=now() where workspace_id=${workspace!}`;
     await db`update public.balance_snapshots set amount_minor=case when account_id=${savings} then 100000 else 0 end where workspace_id=${workspace!}`;
     await page.reload(); await expect(calculator).toContainText("Workspace buffer: EUR 100.00");
     await expect(calculator).toContainText("Aggregate headroom: EUR 900.00");
-    await expect(calculator).toContainText("Chosen-account headroom after dated trip: 80000 minor units.");
+    await expect(calculator).toContainText("Conservative minimum headroom over the dated trip horizon: 80000 minor units");
     await expect(calculator).not.toContainText("funding shortfall:");
     expect(providerCalls).toEqual([]);
   } finally {

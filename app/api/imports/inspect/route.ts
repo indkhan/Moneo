@@ -2,7 +2,7 @@ import { generateObject } from "ai";
 import { modelForSettings } from "@/lib/ai/provider";
 import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { requireWorkspace } from "@/lib/auth";
-import { mappingSchema, parseCsv, parseExcel, previewImport, proposeAccountRoutes, proposeKnownStatementMapping, proposeStatementTimezones, validateAiMapping } from "@/lib/csv";
+import { mappingSchema, parseCsv, inspectExcel, workbookScopeSchema, previewImport, proposeAccountRoutes, proposeKnownStatementMapping, proposeStatementTimezones, validateAiMapping } from "@/lib/csv";
 
 export async function POST(request: Request) {
   let workspaceCurrency: string;
@@ -21,20 +21,26 @@ export async function POST(request: Request) {
     return Response.json({ error: "Choose a CSV or XLSX file under 10 MB" }, { status: 400 });
 
   try {
-    const rows = file.name.toLowerCase().endsWith(".csv")
-      ? parseCsv(await file.text())
-      : await parseExcel(await file.arrayBuffer());
-    if (!rows.length) throw new Error("File has no data rows");
-    const headers = Object.keys(rows[0]).filter(header => !header.startsWith("__moneo_csv_"));
     const supplied = form.get("mapping");
     if (typeof supplied === "string" && supplied.length > 10_000_000) throw new Error("Reviewed mapping exceeds the 10 MB limit");
+    const suppliedMapping = typeof supplied === "string" ? JSON.parse(supplied) : undefined;
+    const selected = form.get("workbookScope");
+    if (typeof selected === "string" && selected.length > 100_000) throw new Error("Workbook scope exceeds its limit");
+    const scopeInput = typeof selected === "string" ? JSON.parse(selected) : suppliedMapping?.workbookScope;
+    const workbookScope = scopeInput ? workbookScopeSchema.parse(scopeInput) : undefined;
+    const workbook = file.name.toLowerCase().endsWith(".xlsx") ? await inspectExcel(await file.arrayBuffer(), workbookScope) : undefined;
+    if (workbook && !workbookScope) return Response.json({ headers: [], sample: [], mapping: null, preview: null, workbook: {inventory: workbook.inventory}, needsWorkbookSelection: true });
+    if (!workbook && workbookScope) throw new Error("Workbook scope is only valid for XLSX files");
+    const rows = workbook?.rows ?? parseCsv(await file.text());
+    if (!rows.length) throw new Error("Selected file scope has no data rows");
+    const headers = Object.keys(rows[0]).filter(header => !header.startsWith("__moneo_csv_"));
     const knownMapping = proposeKnownStatementMapping(rows, file.name.replace(/\.(csv|xlsx)$/i, ""), workspaceCurrency);
     let mapping;
     let preview;
     let previewError: string | undefined;
     let aiError: string | undefined;
     if (typeof supplied === "string") {
-      mapping = proposeStatementTimezones(rows, proposeAccountRoutes(rows, JSON.parse(supplied)), settings?.timezone);
+      mapping = proposeStatementTimezones(rows, proposeAccountRoutes(rows, suppliedMapping), settings?.timezone);
     } else if (knownMapping) {
       mapping = proposeStatementTimezones(rows, knownMapping, settings?.timezone);
     } else {
@@ -54,12 +60,14 @@ export async function POST(request: Request) {
         mapping = undefined;
       }
     }
+    if (mapping && workbookScope) mapping = { ...mapping, workbookScope };
     if (mapping) {
       try { preview = previewImport(rows, mapping); }
       catch (error) { previewError = error instanceof Error ? error.message : "Review the source mapping"; }
     }
     return new Response(JSON.stringify({
       headers,
+      ...(workbook ? { workbook: { inventory: workbook.inventory }, workbookScope } : {}),
       warnings: headers.some(header => /^(type|fee)$/i.test(header.trim()))
         ? ["Source type and fee evidence is preserved. Transfers, refunds, exchanges and fees require transaction review; no internal movement or separate fee is guessed."] : [],
       sample: rows.slice(0, 5),

@@ -108,7 +108,7 @@ describe("generated calculator smoke validation", () => {
 
   it("keeps fallback financial arithmetic exact beyond JavaScript's numeric ceiling", async () => {
     expect(await evaluateIsolated(FALLBACK_CALCULATORS.trip_planner.source, { snapshot: { baselineAvailableMinor: "9007199254740993", evaluatedCostMinor: "1", withTripAvailableMinor: "9007199254740992" }, params: { costMinor: 1 } }))
-      .toMatchObject({ numbers: { remainingMinor: "9007199254740992" } });
+      .toMatchObject({ numbers: { minimumHeadroomMinor: "9007199254740992" } });
     expect(await evaluateIsolated(FALLBACK_CALCULATORS.spending_explorer.source, { snapshot: { spendingMinor: "9007199254740993", daily: [{ date: "2026-10-01", spendingMinor: "9007199254740993" }] }, params: {} }))
       .toMatchObject({ numbers: { averageMinorPerDay: "9007199254740993" } });
   });
@@ -238,6 +238,6 @@ it("includes nested unavailable periods while retaining successful sibling evide
 
 it("trip fallback consumes the dated host scenario rather than subtracting from the baseline minimum", async () => {
   const snapshot = { baselineAvailableMinor: "60000", withTripAvailableMinor: "20000", evaluatedCostMinor: "10000" };
-  expect(await evaluateIsolated(FALLBACK_CALCULATORS.trip_planner.source, { snapshot, params: { costMinor: 10000 } })).toMatchObject({ numbers: { remainingMinor: "20000" } });
-  expect(await evaluateIsolated(FALLBACK_CALCULATORS.trip_planner.source, { snapshot, params: { costMinor: 20000 } })).toMatchObject({ unavailable: expect.stringContaining("Save inputs") });
+  expect(await evaluateIsolated(FALLBACK_CALCULATORS.trip_planner.source, { snapshot, params: { costMinor: 10000 } })).toMatchObject({ numbers: { minimumHeadroomMinor: "20000" } });
+  expect(await evaluateIsolated(FALLBACK_CALCULATORS.trip_planner.source, { snapshot, params: { costMinor: 20000 } })).toMatchObject({ unavailable: expect.stringContaining("Recalculate inputs") });
 });
