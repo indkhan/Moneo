@@ -65,7 +65,10 @@ function metricValue(row: InvestigationRow, metric: InvestigationSpec["metric"])
   const amount = BigInt(row.amountMinor);
   if (metric === "count") return 1n;
   if (metric === "absolute") return abs(amount);
-  if (metric === "signed" || metric === "net") return amount;
+  if (metric === "signed") return amount;
+  // Transfer principals are gross flows, never financial income/spending/net.
+  if (row.kind === "transfer") return 0n;
+  if (metric === "net") return amount;
   if (metric === "income") return row.kind !== "refund" && amount > 0n ? amount : 0n;
   return row.kind === "refund" || amount < 0n ? -amount : 0n;
 }

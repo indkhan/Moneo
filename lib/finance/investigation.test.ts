@@ -74,4 +74,12 @@ describe("deterministic investigations", () => {
     expect(missing.records.total).toBe(2);
     expect(missing.coverage.missingConversionRows).toBe(2);
   });
+  it("keeps selected transfer principals neutral for accounting metrics and explicit for gross-flow metrics", () => {
+    const rows = [{ ...row("transfer", "-500"), kind: "transfer" as const }, row("fee", "-5")];
+    const args = { ...query, kinds: ["ordinary", "transfer", "refund"] };
+    expect(investigate(args, rows, context).groups[0].currentMinor).toBe("5");
+    expect(investigate({ ...args, metric: "net" }, rows, context).groups[0].currentMinor).toBe("-5");
+    expect(investigate({ ...args, metric: "signed" }, rows, context).groups[0].currentMinor).toBe("-505");
+    expect(investigate({ ...args, metric: "absolute" }, rows, context).groups[0].currentMinor).toBe("505");
+  });
 });
