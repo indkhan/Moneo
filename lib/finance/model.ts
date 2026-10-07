@@ -186,7 +186,9 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
       let pendingHoldMinor = 0n;
       for (const row of balanceEvidence.ledger) {
         if (row.account_id !== account.id || row.status !== "pending" || row.posted_on > startDate || BigInt(row.amount_minor) >= 0n) continue;
-        const hold = convert(-BigInt(row.amount_minor), row.currency_code, startDate);
+        const outstanding = -BigInt(row.amount_minor) - BigInt(row.pending_released_minor ?? "0");
+        if (outstanding < 0n) throw new Error("Pending releases exceed the recorded hold");
+        const hold = convert(outstanding, row.currency_code, startDate);
         if (hold === null) missingInputs.push(`fx:pending:${account.id}`);
         else pendingHoldMinor += hold;
       }

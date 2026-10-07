@@ -12,6 +12,7 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { DEFAULT_SORT, SORT_ORDER, cursorClause, nextCursorForRow, parseTransactionParams, toQueryParams, type ParsedTransactionParams } from "./filters";
 import { invalidStoredViewScope, normalizeEventName, normalizeTag, parseStoredFilters, parseViewId, type SaveInput } from "../views/validate";
 import { SavedViewsPanel } from "../views/panel";
+import { PendingHoldPanel } from "./pending-hold-panel";
 
 type Filters = { linkSearch?: string; q?: string; from?: string; to?: string; account?: string; status?: string; kind?: string; direction?: string; category?: string; merchant?: string; minAmount?: string; maxAmount?: string; sort?: string; cursor?: string; transaction?: string; view?: string; tag?: string; event?: string };
 
@@ -306,6 +307,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     {next && <Link className="mt-5 inline-block underline" href={`/money/transactions?${nextParams}`}>Next page</Link>}
     <EditingHistory query={current.toString()} />
     {selected && <aside aria-label="Transaction details" className="fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto border-l border-border bg-card p-6 shadow-2xl [&_input:not([type=hidden])]:border-border [&_select]:border-border [&_textarea]:border-border">
+      {selected.status === "pending" && selected.kind === "ordinary" && BigInt(selected.amount_minor) < 0n && <PendingHoldPanel transaction={selected} />}
       <Link href={`/money/transactions?${current}`} className="text-sm underline">Close</Link>
       <h2 className="mt-6 text-xl font-semibold">{selected.description}</h2>
       <p className="mt-2">{selected.posted_on} · {selected.amount_minor} minor units {selected.currency_code}</p>

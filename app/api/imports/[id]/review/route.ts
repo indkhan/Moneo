@@ -4,10 +4,12 @@ import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { mapRows, parseCsv, parseExcel } from "@/lib/csv";
 import { importRowPayload } from "@/lib/import-row";
+import { pendingSettlementSchema } from "@/lib/finance/pending-holds";
 
 const reviewSchema = z.object({ sourceId: z.string().min(1), action: z.enum(["accept", "reject"]),
   expectedRouteId: z.string().uuid().nullable().optional(), accountId: z.string().uuid().optional(),
-  expectedAccountVersion: z.number().int().positive().optional() }).strict();
+  expectedAccountVersion: z.number().int().positive().optional(), settlement: pendingSettlementSchema.optional() }).strict()
+  .refine(input => !input.settlement || input.action === "accept", "Only accepted posted evidence can settle a hold");
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -15,7 +17,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
   const { id } = await params;
   try {
-    const { sourceId, action, expectedRouteId, accountId, expectedAccountVersion } = reviewSchema.parse(await request.json());
+    const { sourceId, action, expectedRouteId, accountId, expectedAccountVersion, settlement } = reviewSchema.parse(await request.json());
     const { supabase, workspace } = context;
     const { data: source, error: sourceError } = await supabase.from("source_transactions")
       .select("id, row_number, original_row, status, normalized_row").eq("id", sourceId).eq("import_id", id)
@@ -42,11 +44,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         p_mapping: imported.mapping, p_routes: imported.route_accounts, p_row: { ...importRowPayload(workspace.id, id, mapped), sourceId } });
       if (prepared.error) throw prepared.error;
     }
-    const result = await supabase.rpc("resolve_normalized_import_review", {
-      p_source_id: sourceId, p_action: action, p_expected_route_id: expectedRouteId ?? null,
+    const result = await supabase.rpc(settlement ? "settle_import_review" : "resolve_normalized_import_review", {
+      p_source_id: sourceId, ...(settlement ? {
+        p_pending_id: settlement.pendingId, p_pending_version: settlement.pendingVersion,
+        p_expected_released_minor: settlement.expectedReleasedMinor, p_released_minor: settlement.releasedMinor,
+        p_note: settlement.note, p_request_id: settlement.requestId,
+      } : { p_action: action }), p_expected_route_id: expectedRouteId ?? null,
       p_account_id: accountId ?? null, p_expected_account_version: expectedAccountVersion ?? null,
     });
-    if (result.error) throw result.error;
+    if (result.error) return Response.json({ error: result.error.message }, { status: result.error.code === "PT409" ? 409 : 400 });
     return Response.json({ status: result.data.status });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Review failed" }, { status: 400 });

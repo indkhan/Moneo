@@ -29,7 +29,7 @@ begin
   perform set_config('request.jwt.claim.sub', user_b::text, true);
   -- Each table gets a real foreign record so an empty-table pass cannot hide missing RLS.
   foreach target_table in array array['accounts','balance_snapshots','data_sources','imports','source_transactions','categories','merchants',
-    'transactions','transaction_sources','correction_events','goals','goal_allocations','financial_assumptions','scenarios','scenario_overrides',
+    'transactions','pending_hold_resolutions','transaction_sources','correction_events','goals','goal_allocations','financial_assumptions','scenarios','scenario_overrides',
     'forecast_runs','background_jobs','saved_analyses','artifacts','artifact_versions','artifact_state','dashboard_items','conversations','messages',
     'recurring_series','recurring_series_transactions','recurring_occurrence_settlements','fx_rates','spending_plans','transaction_views','planning_events','chat_requests','manual_transaction_entries','transaction_batches','workspace_settings','dashboard_layouts','transaction_split_sets','transaction_splits','summary_runs','goal_events','wealth_items','wealth_events','goal_reservation_events','forecast_preferences','forecast_preference_events','money_metadata_events','spending_plan_limits','artifact_generation_requests','scenario_events','transaction_links','transaction_link_fees','insight_preferences','insight_dismissals','import_control_events'] loop
     data := jsonb_build_object('id',md5(target_table||workspace_b)::uuid,'workspace_id',workspace_b,'name','Synthetic foreign',
@@ -56,6 +56,7 @@ begin
       'status', case target_table when 'source_transactions' then 'review' when 'imports' then 'completed' when 'background_jobs' then 'completed'
         when 'chat_requests' then 'running' when 'artifact_versions' then 'validated' when 'recurring_series' then 'pending' when 'goals' then 'active' else 'posted' end);
     if target_table='artifact_versions' then data := data || '{"source":"return {};"}'::jsonb; end if;
+    if target_table='pending_hold_resolutions' then data := data || jsonb_build_object('pending_transaction_id',md5('transactions'||workspace_b)::uuid,'released_minor','100','operation','cancel','input','{}'::jsonb,'receipt','{}'::jsonb,'note','Synthetic foreign hold'); end if;
     if target_table='balance_snapshots' then data := data - 'source_transaction_id'; end if;
     if target_table='dashboard_layouts' then data := data || '{"items":[]}'::jsonb; end if;
     if target_table='transaction_splits' then data := data || jsonb_build_object('parent_transaction_id',md5('transactions'||workspace_b)::uuid,'split_set_id',md5('transaction_split_sets'||workspace_b)::uuid,'ordinal',1); end if;

@@ -81,3 +81,20 @@ describe("local financial calendar", () => {
     expect(calendarDate("2024-02-29T23:30:00Z")).toBe("2024-03-01");
   });
 });
+
+it("loads all active partial releases, ignores undo and preserves pending source amounts", async () => {
+  const canonical = { ...transaction, status: "pending", amount_minor: "-2000" };
+  const tables: Record<string, unknown[]> = { accounts, balance_snapshots: [snapshot], transactions: [canonical], transaction_link_fees: [],
+    pending_hold_resolutions: [
+      { pending_transaction_id: canonical.id, released_minor: "500", undone_at: null },
+      { pending_transaction_id: canonical.id, released_minor: "700", undone_at: null },
+      { pending_transaction_id: canonical.id, released_minor: "800", undone_at: now },
+    ] };
+  const from = (table: string) => {
+    const query = { select: () => query, eq: () => query, order: () => query, range: async () => ({ data: tables[table], error: null }) };
+    return query;
+  };
+  const evidence = await loadBalanceEvidence({ from } as unknown as SupabaseClient, "workspace", now);
+  expect(evidence.ledger[0]).toMatchObject({ amount_minor: "-2000", canonical_amount_minor: "-2000", pending_released_minor: "1200" });
+  expect(canonical.amount_minor).toBe("-2000");
+});

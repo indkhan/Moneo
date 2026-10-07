@@ -12,7 +12,7 @@ export function settlementReceipt(row: OccurrencePosting): SettlementReceipt {
 }
 export function settlementPosting(item: Obligation, link: OccurrenceSettlement, ledger: OccurrencePosting[]) {
   const row = ledger.find(row => row.id === link.transaction_id);
-  if (link.undone_at || !row || !["pending", "posted"].includes(row.status) || row.account_id !== item.account_id || row.currency_code !== item.currency_code ||
+  if (link.undone_at || !row || (row.status === "pending" && BigInt(row.pending_released_minor ?? "0") > 0n) || !["pending", "posted"].includes(row.status) || row.account_id !== item.account_id || row.currency_code !== item.currency_code ||
     row.kind !== "ordinary" || row.review_reasons?.length || JSON.stringify(settlementReceipt(row)) !== JSON.stringify(settlementReceipt({ ...row, ...link.receipt, canonical_amount_minor: link.receipt.amount_minor }))) return null;
   const amount = BigInt(row.canonical_amount_minor ?? row.amount_minor);
   return amount !== 0n && (amount < 0n) === (BigInt(item.amount_minor) < 0n) ? row : null;

@@ -46,3 +46,8 @@ it("consumes a pending debit by the same booked-date criterion as opening holds"
 it("projects a future booked-date pending debit not deducted from opening holds", () => {
   expect(reconcileOccurrence(item, "2026-10-06", [{ ...link, completes_occurrence: true }], [{ ...row, status: "pending", posted_on: "2026-10-08", posted_at: "2026-10-06T08:00:00Z" }], "2026-10-06T12:00:00Z", "2026-10-06")).toEqual([{ date: "2026-10-08", amountMinor: -4000n, observed: true }]);
 });
+
+it("does not treat a retired pending hold as recurring fulfillment", () => {
+  expect(reconcileOccurrence(item, "2026-10-06", [{ ...link, completes_occurrence: true }], [{ ...row, status: "pending", pending_released_minor: "4000" }], "2026-10-06T12:00:00Z", "2026-10-06"))
+    .toEqual([{ date: "2026-10-06", amountMinor: -10000n, observed: false }]);
+});

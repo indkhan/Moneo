@@ -39,3 +39,12 @@ it("keeps linked accounts out of additional net worth and flags historical evide
   expect(wealthEvidence([base, { ...base, id: "holding", linked_account_id: "investment" }, { ...base, id: "old", as_of: "2026-10-01" }], "2026-10-02"))
     .toMatchObject({ included: [{ id: "asset", amountMinor: 10000n }], excludedLinked: ["holding"], missingInputs: ["valuation:old:historical"] });
 });
+
+it("does not use a canceled pending authorization to suppress a debt payment", () => {
+  const debt: WealthItem = { id: "debt", name: "Loan", kind: "debt", amount_minor: "-10000", currency_code: "EUR", as_of: "2026-10-02", linked_account_id: null,
+    quantity_text: null, unit_price_text: null, cost_basis_minor: null, payment_account_id: "cash", annual_rate_text: "0", monthly_payment_minor: "6000", next_payment_on: "2026-10-02",
+    payment_assumption_id: null, payment_transaction_id: "hold", version: 1, removed_at: null };
+  const ledger = [{ id: "hold", account_id: "cash", amount_minor: "-6000", currency_code: "EUR", posted_on: "2026-10-02", status: "pending", pending_released_minor: "6000" }];
+  expect(buildDebtForecast([debt], [{ id: "cash", type: "checking", currency_code: "EUR" }], ledger, [], "2026-10-02", 60).missingInputs).toContain("debt:debt:pending repayment association changed");
+  expect(buildDebtForecast([{ ...debt, payment_transaction_id: null }], [{ id: "cash", type: "checking", currency_code: "EUR" }], [{ ...ledger[0], pending_released_minor: "500" }], [], "2026-10-02", 60).missingInputs).toContain("debt:debt:pending repayment needs association");
+});

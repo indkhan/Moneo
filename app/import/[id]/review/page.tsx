@@ -4,6 +4,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { ClassificationActions, ReviewActions } from "./actions";
 import { formatMoney } from "@/lib/finance/format";
 import { mappingSchema, mapImportReviewRow, type SourceRow } from "@/lib/csv";
+import { PendingSettlement } from "./pending-settlement";
 
 export default async function ImportReviewPage({ params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -39,7 +40,7 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
     {error && <p role="alert">Could not load review rows: {error.message}</p>}
     {!error && !rows?.length && <p>No rows awaiting review.</p>}
     {rows?.map((row) => {
-      const normalized = row.normalized_row as { accountId?: string | null; row?: { currencyCode: string } } | null;
+      const normalized = row.normalized_row as { accountId?: string | null; row?: { currencyCode: string; status: string } } | null;
       let currency = normalized?.row?.currencyCode;
       let frozenId = normalized?.accountId ?? null;
       if (!normalized) try {
@@ -58,6 +59,8 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
       {imported.status === "completed" && <ReviewActions importId={id} sourceId={row.id} frozenId={frozenId} frozenName={frozen?.name}
         unavailable={!frozen || !!frozen.archived_at || frozen.currency_code !== currency}
         destinations={destinations.error ? [] : (destinations.data ?? []).filter(account => !account.archived_at && account.currency_code === currency)} />}
+      {imported.status === "completed" && row.external_id && frozenId && currency && normalized?.row?.status === "posted" &&
+        <PendingSettlement importId={id} sourceId={row.id} externalId={row.external_id} accountId={frozenId} currency={currency} />}
     </article>; })}
     {rows?.length === 100 && <p>Showing the first 100 rows.</p>}
     <section className="space-y-3" aria-label="Source coverage and reviewed interpretation">

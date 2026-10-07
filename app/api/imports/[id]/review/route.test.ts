@@ -66,3 +66,13 @@ it("passes only an explicitly reviewed destination snapshot", async () => {
   expect(response.status).toBe(200);
   expect(fixture.calls[0]).toMatchObject({ p_account_id: accountId, p_expected_route_id: expectedRouteId, p_expected_account_version: 4 });
 });
+
+it("accepts settlement only through the atomic normalized settlement RPC", async () => {
+  fixture.source = { id: "source", status: "review", normalized_row: {} };
+  const settlement = { pendingId: "11111111-1111-4111-a111-111111111111", pendingVersion: 0, expectedReleasedMinor: "0", releasedMinor: "2000", note: "Bank reference confirmed", requestId: "22222222-2222-4222-a222-222222222222" };
+  const response = await POST(new Request("http://localhost/review", { method: "POST", body: JSON.stringify({ sourceId: "source", action: "accept", settlement }) }), { params: Promise.resolve({ id: "import" }) });
+  expect(response.status).toBe(200);
+  expect(fixture.calls).toEqual([{ rpcName: "settle_import_review", p_source_id: "source", p_pending_id: settlement.pendingId,
+    p_pending_version: 0, p_expected_released_minor: "0", p_released_minor: "2000", p_note: settlement.note, p_request_id: settlement.requestId,
+    p_expected_route_id: null, p_account_id: null, p_expected_account_version: null }]);
+});
