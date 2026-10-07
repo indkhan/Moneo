@@ -1,5 +1,5 @@
 import {describe, expect, it, vi} from "vitest";
-import {investigate, type InvestigationRow} from "./investigation";
+import {investigate, type InvestigationRow, type InvestigationSpec} from "./investigation";
 import {resolveReviewRequest} from "./review-request";
 import {runReviewInvestigation} from "./review-controller";
 
@@ -9,7 +9,7 @@ function row(id: string, merchantId: string, amountMinor: string, date: string, 
   return {id, parentId: id, merchantId, accountId: "account", categoryId: null, amountMinor, date, currency, status: "posted", kind: "ordinary", tags: [], event: null, reviewReasons: [], version: 1, description: "synthetic"};
 }
 const rows = [row("decline", "decline", "-9007199254740993", "2026-08-03"), row("steady", "steady", "-9007199254740994", "2026-09-03"), row("steady-old", "steady", "-9007199254740994", "2026-08-03"), row("usd", "usd", "-20", "2026-09-03", "USD")];
-const read = vi.fn(async (query, signal: AbortSignal) => {
+const read = vi.fn(async (query: InvestigationSpec, signal: AbortSignal) => {
   signal.throwIfAborted();
   return {result: investigate(query, rows, context), receiptId: `receipt-${read.mock.calls.length}`};
 });
