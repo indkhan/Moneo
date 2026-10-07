@@ -32,11 +32,11 @@ export async function captureToolEvidence(name: string, input: unknown, result: 
     const dataset = await loadInvestigationDataset(args.query, context, { canReadImports: unique.includes("imports"), includeAll: true });
     const baseline = investigationReceipt(dataset, unique);
     receipts.push(createEvidenceReceipt({ workspaceId: baseline.workspaceId, fetchedAt: baseline.fetchedAt, scopes: baseline.scopes, calculationVersion: baseline.calculationVersion, sourceVersion: baseline.sourceVersion,
-      query: { ...baseline.query, includeAll: true }, sources: baseline.sources.map(source => ({ id: source.id, type: source.type, entityId: source.entityId, version: source.version, record: source.record })), metrics: baseline.metrics }));
+      query: { ...baseline.query, includeAll: true }, sources: baseline.sources.map(source => ({ id: source.id, type: source.type, entityId: source.entityId, version: source.version, record: source.record })), metrics: baseline.metrics, limitations: baseline.limitations }));
     const hypothetical = investigationReceipt({ ...dataset, rows: dataset.rows.map(row => ({ ...row, ...args.overrides.find(override => override.id === row.id) })) }, unique);
     receipts.push(createEvidenceReceipt({ workspaceId: hypothetical.workspaceId, fetchedAt: hypothetical.fetchedAt, scopes: hypothetical.scopes, calculationVersion: hypothetical.calculationVersion, sourceVersion: hypothetical.sourceVersion,
       query: { ...hypothetical.query, kind: "scenario", overrides: args.overrides },
-      sources: hypothetical.sources.map(source => ({ id: source.id, type: source.type, entityId: source.entityId, version: source.version, record: source.record })), metrics: hypothetical.metrics.map(metric => ({ ...metric, label: `Hypothetical ${metric.label}`, qualifiers: [...new Set([...metric.qualifiers, "assumption"])] })) }));
+      sources: hypothetical.sources.map(source => ({ id: source.id, type: source.type, entityId: source.entityId, version: source.version, record: source.record })), metrics: hypothetical.metrics.map(metric => ({ ...metric, label: `Hypothetical ${metric.label}`, qualifiers: [...new Set([...metric.qualifiers, "assumption"])] })), limitations: hypothetical.limitations }));
   } else {
     const supported = name === "accounts_getBalances" ? await getBalances(context, unique.includes("imports"), true) : await retainToolSourceSupport(name, input, result, context, unique.includes("imports"));
     receipts.push(toolResultReceipt(name, input, supported, { workspaceId: context.workspace.id, fetchedAt: new Date().toISOString(), timezone: context.workspace.timezone }, unique));

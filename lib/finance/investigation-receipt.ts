@@ -10,6 +10,10 @@ export function investigationReceipt(dataset: { spec: InvestigationSpec; rows: I
   const qualifiers: EvidenceReceiptInput["metrics"][number]["qualifiers"] = ["partial_coverage"];
   if (result.coverage.classificationExcluded) qualifiers.push("partial_classification");
   if (result.coverage.unresolvedIncluded) qualifiers.push("unresolved_included");
+  const limitations: NonNullable<EvidenceReceiptInput["limitations"]> = (result.reporting?.exclusions ?? [])
+    .filter(row => ["missing-rate", "ambiguous-rate", "invalid-rate"].includes(row.reason))
+    .slice(0, 100).map(row => ({ id: evidenceFingerprint(row), kind: "unavailable", nextStep: "supporting_records",
+      message: `Conversion unavailable (${row.reason}) for ${row.currencyCode} to ${result.reporting!.currency} on ${row.postedOn}. Supply one valid direct posting-date rate or choose original-currency analysis. Affected period/group totals are unavailable; converted subsets are not upper or lower bounds.` }));
   const caption = (text: string) => text.length > 200 ? `${text.slice(0, 197)}...` : text;
   const metrics: EvidenceReceiptInput["metrics"] = result.groups.flatMap(group => {
     const key = evidenceFingerprint(group.key).slice(0, 32);
@@ -22,5 +26,5 @@ export function investigationReceipt(dataset: { spec: InvestigationSpec; rows: I
   });
   return createEvidenceReceipt({ workspaceId: dataset.context.workspaceId, fetchedAt: dataset.context.capturedAt, calculationVersion: INVESTIGATION_CALCULATION_VERSION, sourceVersion: dataset.sourceRevision,
     scopes, query: JSON.parse(JSON.stringify({ kind: "investigation", spec, groups: result.groups, sourceCoverage: result.coverage.sourceCoverage, reporting: result.reporting })),
-    sources: records.map(row => ({ id: row.id, entityId: row.parentId, type: "transaction", version: evidenceFingerprint({ version: row.version, sources: row.sourceVersions, amount: row.amountMinor, reportingAmount: row.reportingAmountMinor }), record: JSON.parse(JSON.stringify(row)) })), metrics });
+    sources: records.map(row => ({ id: row.id, entityId: row.parentId, type: "transaction", version: evidenceFingerprint({ version: row.version, sources: row.sourceVersions, amount: row.amountMinor, reportingAmount: row.reportingAmountMinor }), record: JSON.parse(JSON.stringify(row)) })), metrics, ...(limitations.length ? { limitations } : {}) });
 }

@@ -53,3 +53,11 @@ it("retains account calculation source records without returning those private r
   expect(receipts[0].metrics[0]).toMatchObject({ valueMinor: "10" });
   expect(original[0].balance.amount_minor).toBe("9");
 });
+it("preserves conversion blockers in both baseline and hypothetical scenario receipts", async () => {
+  const id = "00000000-0000-4000-8000-000000000002";
+  const spec = investigationSchema.parse({ version: 1, period: { from: "2026-09-01", to: "2026-09-30" }, currencyPolicy: { mode: "base", currency: "EUR" } });
+  fixture.dataset.mockResolvedValue({ spec, rows: [{ id, parentId: id, accountId: "owned", categoryId: null, merchantId: null, date: "2026-09-01", amountMinor: "-10", currency: "USD", status: "posted", kind: "ordinary", tags: [], event: null, reviewReasons: [], version: 1, description: "Synthetic" }], context: { workspaceId: context.workspace.id, capturedAt: "2026-10-01T00:00:00Z" }, sourceRevision: "v1" });
+  const service = { from: () => ({ insert: async () => ({ error: null }) }) } as unknown as SupabaseClient;
+  const receipts = await captureToolEvidence("finance_scenario", { query: spec, overrides: [{ id, amountMinor: "-30" }] }, {}, context, service);
+  for (const receipt of receipts) expect(receipt.limitations).toContainEqual(expect.objectContaining({ kind: "unavailable", message: expect.stringContaining("missing-rate") }));
+});
