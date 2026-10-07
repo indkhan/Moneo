@@ -32,7 +32,7 @@ begin
     execute 'reset role';
     if (select jsonb_agg(to_jsonb(t) order by t.id) from public.transactions t where workspace_id=w) is distinct from before_ledger then raise exception 'Confirmation changed ledger sources'; end if;
     -- New UI boundary must reject stale evidence before persisting any decision.
-    stale:=jsonb_set(evidence,'{0,version}',to_jsonb(-1));
+    stale:=jsonb_set(evidence,'{0,version}',to_jsonb((evidence->0->>'version')::integer+1));
     execute 'set local role authenticated';
     begin
       perform public.review_recurring_series('confirmed',account,'MNE014 '||cadence,cadence,'EUR',stale,ids[1]);
@@ -68,5 +68,52 @@ begin
     raise exception 'Foreign source accepted';
   exception when sqlstate 'P0002' then null; end;
   execute 'reset role';
+end;
+$$;
+
+-- Distinct runs, active-overlap guard and merchant correction share existing triggers.
+do $$
+declare actor uuid:=gen_random_uuid(); w uuid; account uuid:=gen_random_uuid(); merchant uuid:=gen_random_uuid(); replacement uuid:=gen_random_uuid();
+  ids uuid[]:=array[gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),gen_random_uuid()];
+  first_sources jsonb; second_sources jsonb; first_series public.recurring_series%rowtype; second_series public.recurring_series%rowtype;
+  version_before integer; i integer;
+begin
+  insert into auth.users(id,email) values(actor,'mne014-runs-'||actor||'@example.invalid');
+  select id into strict w from public.workspaces where owner_id=actor;
+  insert into public.accounts(id,workspace_id,name,currency_code) values(account,w,'Separate synthetic runs','EUR');
+  insert into public.merchants(id,workspace_id,name,normalized_name) values(merchant,w,'Stable owned merchant','stable owned merchant'),(replacement,w,'Corrected merchant','corrected merchant');
+  perform set_config('request.jwt.claim.sub',actor::text,true);
+  for i in 1..6 loop
+    insert into public.transactions(id,workspace_id,account_id,posted_on,description,amount_minor,currency_code,status,kind,merchant_id)
+      values(ids[i],w,account,((case when i<=3 then '2024-01-31' else '2026-01-31' end)::date+make_interval(months=>(i-1)%3))::date,'Different recorded description '||i,-2000,'EUR','posted','ordinary',merchant);
+  end loop;
+  select jsonb_agg(public.recurring_evidence_snapshot(t)||jsonb_build_object('version',t.version) order by t.posted_on,t.id) into first_sources from public.transactions t where id=any(ids[1:3]);
+  select jsonb_agg(public.recurring_evidence_snapshot(t)||jsonb_build_object('version',t.version) order by t.posted_on,t.id) into second_sources from public.transactions t where id=any(ids[4:6]);
+  execute 'set local role authenticated';
+  first_series:=public.review_recurring_series('confirmed',account,'Same display label','monthly','EUR',first_sources,ids[1]);
+  second_series:=public.review_recurring_series('dismissed',account,'Same display label','monthly','EUR',second_sources,ids[4]);
+  if first_series.id=second_series.id or first_series.normalized_label=second_series.normalized_label then raise exception 'Separate runs collided'; end if;
+  begin
+    perform public.review_recurring_series('confirmed',account,'Same display label','monthly','EUR',second_sources,ids[4]);
+    raise exception 'Two overlapping active inference schedules accepted';
+  exception when sqlstate '22023' then null; end;
+  execute 'reset role';
+  select version into version_before from public.financial_assumptions where id=first_series.assumption_id;
+  perform public.edit_assumption(first_series.assumption_id,version_before,'{"enabled":false}',gen_random_uuid());
+  select version into version_before from public.financial_assumptions where id=first_series.assumption_id;
+  execute 'set local role authenticated';
+  second_series:=public.review_recurring_series('confirmed',account,'Same display label','monthly','EUR',second_sources,ids[4]);
+  perform public.review_recurring_series('confirmed',account,'Same display label','monthly','EUR',first_sources,ids[1]);
+  execute 'reset role';
+  if not exists(select 1 from public.financial_assumptions where id=first_series.assumption_id and source='user' and not enabled and version=version_before) then raise exception 'Inference overwrote manual disable'; end if;
+  if (select count(*) from public.financial_assumptions where workspace_id=w and enabled)<>1 then raise exception 'Run confirmation double-counted active inference'; end if;
+  -- Fixture-only row correction exercises the real evidence trigger. UI correction/Undo
+  -- separately uses verified-transfer receipts in existing regressions/browser gate.
+  update public.transactions set merchant_id=replacement,version=version+1 where id=ids[6] and workspace_id=w;
+  if not exists(select 1 from public.recurring_series where id=second_series.id and evidence_invalidated) or exists(select 1 from public.financial_assumptions where id=second_series.assumption_id and enabled) then raise exception 'Merchant correction retained inference'; end if;
+  update public.transactions set merchant_id=merchant,version=version+1 where id=ids[6] and workspace_id=w;
+  if exists(select 1 from public.recurring_series where id=second_series.id and evidence_invalidated) or not exists(select 1 from public.financial_assumptions where id=second_series.assumption_id and enabled) then raise exception 'Merchant restoration failed existing Undo propagation'; end if;
+  if (select count(*) from public.planning_events where workspace_id=w) < 4 then raise exception 'Assumption history lost'; end if;
+  if (select count(*) from public.transactions where workspace_id=w and amount_minor=-2000 and merchant_id=merchant)<>6 then raise exception 'Correction/restoration changed original money or source count'; end if;
 end;
 $$;

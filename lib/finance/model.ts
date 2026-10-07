@@ -77,7 +77,7 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
       evidence?.wealth ?? loadWealthItems(supabase, workspace.id),
       supabase.from("forecast_preferences").select("currency_code, safety_buffer_minor::text, daily_spending_minor::text, uncertainty_bps, spending_account_id, spending_starts_on, version").eq("workspace_id", workspace.id).maybeSingle(),
       allRows(supabase.from("goal_allocations").select("account_id, amount_minor::text").eq("workspace_id", workspace.id).order("id")),
-      allRows(supabase.from("financial_assumptions").select("id, name, source, account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, enabled")
+      allRows(supabase.from("financial_assumptions").select("id, name, source, account_id, amount_minor::text, currency_code, cadence, starts_on, schedule_anchor_on, ends_on, enabled")
         .eq("workspace_id", workspace.id).eq("enabled", true).eq("confirmed", true).is("removed_at", null).order("id")),
       allRows(supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
         .eq("workspace_id", workspace.id).eq("to_currency", workspace.display_currency).order("id")),

@@ -347,6 +347,7 @@ export const financialAssumptions = pgTable("financial_assumptions", {
   currencyCode: text("currency_code").notNull(),
   cadence: text("cadence").notNull(),
   startsOn: date("starts_on").notNull(),
+  scheduleAnchorOn: date("schedule_anchor_on"),
   endsOn: date("ends_on"),
   source: text("source").notNull(),
   confidence: integer("confidence"),
@@ -356,7 +357,7 @@ export const financialAssumptions = pgTable("financial_assumptions", {
   removedAt: timestamp("removed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
-  check("financial_assumptions_cadence_check", sql`${table.cadence} in ('once', 'daily', 'weekly', 'monthly', 'yearly')`),
+  check("financial_assumptions_cadence_check", sql`${table.cadence} in ('once', 'daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly')`),
   check("financial_assumptions_confidence_check", sql`${table.confidence} between 0 and 100`),
   check("financial_assumptions_dates", sql`${table.endsOn} is null or ${table.endsOn} >= ${table.startsOn}`),
 ]);
@@ -386,7 +387,7 @@ export const scenarioOverrides = pgTable("scenario_overrides", {
   version: integer("version").notNull().default(1),
   removedAt: timestamp("removed_at", { withTimezone: true }),
 }, (table) => [
-  check("scenario_overrides_cadence_check", sql`${table.cadence} in ('once', 'daily', 'weekly', 'monthly', 'yearly')`),
+  check("scenario_overrides_cadence_check", sql`${table.cadence} in ('once', 'daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly')`),
   check("scenario_overrides_dates", sql`${table.endsOn} is null or ${table.endsOn} >= ${table.startsOn}`),
 ]);
 
@@ -518,6 +519,8 @@ export const recurringSeries = pgTable("recurring_series", {
   accountId: uuid("account_id").notNull().references(() => accounts.id),
   label: text("label").notNull(),
   normalizedLabel: text("normalized_label").notNull(),
+  runAnchorId: uuid("run_anchor_id"),
+  merchantIdentity: text("merchant_identity"),
   cadence: text("cadence").notNull(),
   currencyCode: text("currency_code").notNull(),
   amountMinMinor: bigint("amount_min_minor", { mode: "bigint" }).notNull(),
@@ -532,7 +535,7 @@ export const recurringSeries = pgTable("recurring_series", {
 }, (table) => [
   unique("recurring_series_workspace_unique").on(table.workspaceId, table.accountId, table.normalizedLabel, table.cadence, table.currencyCode),
   index("recurring_series_workspace_status").on(table.workspaceId, table.status),
-  check("recurring_series_cadence_check", sql`${table.cadence} in ('weekly', 'monthly')`),
+  check("recurring_series_cadence_check", sql`${table.cadence} in ('weekly', 'biweekly', 'monthly', 'quarterly', 'yearly')`),
   check("recurring_series_occurrences_check", sql`${table.occurrences} >= 3`),
   check("recurring_series_confidence_check", sql`${table.confidence} between 0 and 100`),
   check("recurring_series_status_check", sql`${table.status} in ('pending', 'confirmed', 'dismissed')`),
