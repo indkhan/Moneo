@@ -42,4 +42,3 @@ $$;
 revoke all on function public.save_validated_generated_artifact_version(uuid,uuid,text,jsonb,text,text,uuid)
   from public,anon,authenticated;
 grant execute on function public.save_validated_generated_artifact_version(uuid,uuid,text,jsonb,text,text,uuid) to service_role;
-

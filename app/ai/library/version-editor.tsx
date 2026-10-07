@@ -187,7 +187,7 @@ export function VersionEditor({
                 disabled={saving || dirty}
                 className="mt-2 rounded border px-3 py-1 text-xs"
                 onClick={() => {
-                  edit({ source: v.source!, manifestText: JSON.stringify(v.manifest ?? {}, null, 2) });
+                  edit({ source: v.source!, manifestText: JSON.stringify(v.manifest, null, 2) });
                   setStatus(`Loaded failed v${v.version} into the editor; fix and save to retry. Active version preserved until a candidate validates.`);
                 }}
               >
