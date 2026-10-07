@@ -767,3 +767,18 @@ export const workspaceSettings = pgTable("workspace_settings", {
   check("workspace_settings_summary_cadence_check", sql`${table.summaryCadence} in ('none','weekly','monthly')`),
   check("workspace_settings_summary_time_check", sql`${table.summaryTime} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
 ]);
+
+export const pendingHoldResolutions = pgTable("pending_hold_resolutions", {
+  id: uuid("id").defaultRandom().primaryKey(), workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  pendingTransactionId: uuid("pending_transaction_id").references(() => transactions.id, { onDelete: "set null" }),
+  postedTransactionId: uuid("posted_transaction_id").references(() => transactions.id, { onDelete: "set null" }),
+  operation: text("operation").notNull(), releasedMinor: bigint("released_minor", { mode: "bigint" }).notNull(),
+  requestId: uuid("request_id").notNull(), input: jsonb("input").notNull(), receipt: jsonb("receipt").notNull(), note: text("note").notNull(),
+  actorId: uuid("actor_id").notNull().references(() => authUsers.id), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  undoneAt: timestamp("undone_at", { withTimezone: true }), undoneBy: uuid("undone_by").references(() => authUsers.id),
+}, table => [unique("pending_hold_resolutions_workspace_id_request_id_key").on(table.workspaceId, table.requestId),
+  index("pending_hold_resolutions_active_pending").on(table.pendingTransactionId).where(sql`${table.undoneAt} is null`),
+  uniqueIndex("pending_hold_resolutions_active_posted").on(table.postedTransactionId).where(sql`${table.undoneAt} is null and ${table.postedTransactionId} is not null`),
+  check("pending_hold_resolutions_operation_check", sql`${table.operation} in ('settle','cancel')`),
+  check("pending_hold_resolutions_released_minor_check", sql`${table.releasedMinor}>0`),
+  check("pending_hold_resolutions_note_check", sql`length(btrim(${table.note})) between 1 and 500`)]);

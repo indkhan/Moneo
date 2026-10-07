@@ -84,7 +84,7 @@ export async function loadWealthItems(client: SupabaseClient, workspaceId: strin
   }
 }
 
-export function buildDebtForecast(items: WealthItem[], accounts: { id: string; type?: string; currency_code: string; archived_at?: string | null }[], ledger: { id: string; account_id: string; amount_minor: string | number; currency_code: string; posted_on: string; status: string }[], assumptions: { id: string; account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null }[], today: string, days: number): { events: { date: string; accountId: string; currencyCode: string; amountMinor: bigint }[]; excludedAssumptionIds: string[]; missingInputs: string[] } {
+export function buildDebtForecast(items: WealthItem[], accounts: { id: string; type?: string; currency_code: string; archived_at?: string | null }[], ledger: { id: string; account_id: string; amount_minor: string | number; currency_code: string; posted_on: string; status: string; pending_released_minor?: string }[], assumptions: { id: string; account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null }[], today: string, days: number): { events: { date: string; accountId: string; currencyCode: string; amountMinor: bigint }[]; excludedAssumptionIds: string[]; missingInputs: string[] } {
   const minor = (value: string | number) => { if (typeof value === "number" && !Number.isSafeInteger(value)) throw new Error("Unsafe debt ledger money"); return BigInt(value); };
   const events: { date: string; accountId: string; currencyCode: string; amountMinor: bigint }[] = [];
   const excludedAssumptionIds: string[] = []; const missingInputs: string[] = []; const provenance = new Set<string>();
@@ -108,7 +108,7 @@ export function buildDebtForecast(items: WealthItem[], accounts: { id: string; t
     try { payments = debtPayments({ principalMinor: BigInt(item.amount_minor), annualRate: item.annual_rate_text, monthlyPaymentMinor: BigInt(item.monthly_payment_minor!), nextPaymentOn: item.next_payment_on }, today, days); }
     catch { missing("repayment assumptions need update"); continue; }
     const pending = item.payment_transaction_id ? ledger.find(row => row.id === item.payment_transaction_id) : undefined;
-    if (item.payment_transaction_id && (!pending || pending.account_id !== account.id || pending.currency_code !== item.currency_code || pending.status !== "pending" || pending.posted_on !== item.next_payment_on || minor(pending.amount_minor) !== -BigInt(item.monthly_payment_minor!))) {
+    if (item.payment_transaction_id && (!pending || BigInt(pending.pending_released_minor ?? "0") > 0n || pending.account_id !== account.id || pending.currency_code !== item.currency_code || pending.status !== "pending" || pending.posted_on !== item.next_payment_on || minor(pending.amount_minor) !== -BigInt(item.monthly_payment_minor!))) {
       missing("pending repayment association changed"); continue;
     }
     if (pending && payments[0] && minor(pending.amount_minor) !== -payments[0].paymentMinor) { missing("pending repayment differs from final payoff"); continue; }
@@ -116,9 +116,9 @@ export function buildDebtForecast(items: WealthItem[], accounts: { id: string; t
     const missingBeforePayments = missingInputs.length;
     for (const payment of payments) {
       // Current booked balances already deduct these dated pending holds in evaluatePlan.
-      const matchingHolds = payment.date <= today ? ledger.filter(row => row.account_id === account.id && row.currency_code === item.currency_code && row.status === "pending" && row.posted_on === payment.date && minor(row.amount_minor) === -payment.paymentMinor) : [];
+      const matchingHolds = payment.date <= today ? ledger.filter(row => row.account_id === account.id && row.currency_code === item.currency_code && row.status === "pending" && BigInt(row.pending_released_minor ?? "0") < -minor(row.amount_minor) && row.posted_on === payment.date && minor(row.amount_minor) === -payment.paymentMinor) : [];
       if (matchingHolds.length) {
-        if (matchingHolds.length !== 1 || matchingHolds[0].id !== item.payment_transaction_id) missing("pending repayment needs association");
+        if (matchingHolds.length !== 1 || matchingHolds[0].id !== item.payment_transaction_id || BigInt(matchingHolds[0].pending_released_minor ?? "0") > 0n) missing("pending repayment needs association");
         continue;
       }
       itemEvents.push({ date: payment.date, accountId: account.id, currencyCode: item.currency_code, amountMinor: -payment.paymentMinor });
