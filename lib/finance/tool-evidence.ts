@@ -6,7 +6,7 @@ import { z } from "zod";
 export const TOOL_CALCULATION_VERSION = "finance-tools-v1-exact-evidence";
 const labels: Record<string, string> = {
   incomeMinor: "Income", spendingMinor: "Spending", netMinor: "Net cashflow", balanceMinor: "Booked balance", amount_minor: "Recorded source posting",
-  snapshot_amount_minor: "Dated recorded balance", target_minor: "Goal target", recorded_saved_minor: "Dated recorded savings", reservedMinor: "Virtual reservation",
+  snapshot_amount_minor: "Dated recorded balance", snapshotBalanceMinor: "Dated recorded balance", target_minor: "Goal target", recorded_saved_minor: "Dated recorded savings", reservedMinor: "Virtual reservation",
   targetMinor: "Goal target", recordedSavedMinor: "Dated recorded savings", amountMinor: "Recorded amount",
   planned_monthly_minor: "Planned monthly contribution", plannedMonthlyMinor: "Planned monthly contribution", remainingMinor: "Remaining amount", limitMinor: "Budget limit",
   spentMinor: "Booked budget spending", carriedMinor: "Budget carry", allowanceMinor: "Budget allowance", expectedMinor: "Expected-case forecast",
@@ -27,11 +27,12 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
   const sourceVersion = toolSourceVersion(result), sourceId = `${sourceVersion.slice(0, 8)}-${sourceVersion.slice(8, 12)}-5${sourceVersion.slice(13, 16)}-8${sourceVersion.slice(17, 20)}-${sourceVersion.slice(20, 32)}`;
   const metrics: EvidenceReceiptInput["metrics"] = [];
   const today = calendarDate(context.fetchedAt, context.timezone);
+  const datedValue = (value: unknown) => typeof value !== "string" ? null : z.iso.date().safeParse(value).success ? value : z.iso.datetime({ offset: true }).safeParse(value).success ? calendarDate(value, context.timezone) : null;
   function walk(value: unknown, path: string[], inherited: { currency?: string; period: { from: string; to: string }; qualifiers: EvidenceReceiptInput["metrics"][number]["qualifiers"] }) {
     if (Array.isArray(value)) { value.forEach((child, index) => walk(child, [...path, String(index)], inherited)); return; }
     const row = object(value); if (!Object.keys(row).length) return;
     const currency = [row.currencyCode, row.currency_code, row.currency, inherited.currency].find(item => typeof item === "string") as string | undefined;
-    const dated = typeof row.posted_on === "string" ? row.posted_on : typeof row.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(row.date) ? row.date : typeof row.evaluated_at === "string" ? row.evaluated_at.slice(0, 10) : typeof row.as_of === "string" ? row.as_of.slice(0, 10) : null;
+    const dated = datedValue(row.posted_on) ?? datedValue(row.date) ?? datedValue(row.evaluatedAt ?? row.evaluated_at) ?? datedValue(row.asOf ?? row.as_of);
     const named = object(row.period);
     const month = typeof row.month === "string" && /^\d{4}-\d{2}$/.test(row.month) ? row.month : null;
     const monthEnd = month ? new Date(Date.parse(`${month}-01T00:00:00Z`) + 32 * 86400000).toISOString().slice(0, 7) : null;
@@ -41,11 +42,11 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
         : month && lastMonthDate ? { from: `${month}-01`, to: today >= `${month}-01` && today < lastMonthDate ? today : lastMonthDate }
         : dated ? { from: dated, to: dated } : inherited.period;
     const qualifiers = [...inherited.qualifiers];
-    if (row.status === "ambiguous" && !qualifiers.includes("ambiguous_evidence")) qualifiers.push("ambiguous_evidence");
+    if ((row.status === "ambiguous" || row.balanceStatus === "ambiguous") && !qualifiers.includes("ambiguous_evidence")) qualifiers.push("ambiguous_evidence");
     const coverage = object(row.evidence);
     if (coverage.excludedReviewRows && !qualifiers.includes("partial_classification")) qualifiers.push("partial_classification");
     if ((row.classificationStatus === "unresolved" || Array.isArray(row.review_reasons) && row.review_reasons.length || Array.isArray(row.reviewReasons) && row.reviewReasons.length) && !qualifiers.includes("unresolved_included")) qualifiers.push("unresolved_included");
-    if (name === "forecast_evaluate" || path.includes("forecast") || path.includes("obligations") || path.includes("goals")) { if (!qualifiers.includes("assumption")) qualifiers.push("assumption"); }
+    if (name === "forecast_evaluate" || path.includes("forecast") || path.includes("obligations")) { if (!qualifiers.includes("assumption")) qualifiers.push("assumption"); }
     for (const [key, child] of Object.entries(row)) {
       if ((key === "netWorth" || key === "accountBalanceTotals") && child && typeof child === "object") {
         for (const [code, amount] of Object.entries(child)) if (/^[A-Z]{3}$/.test(code) && (amount === null || typeof amount === "string" && /^-?(?:0|[1-9]\d{0,79})$/.test(amount))) {
@@ -54,15 +55,17 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
         }
       } else
       if (Object.hasOwn(labels, key) && currency && (child === null || typeof child === "string" && /^-?(?:0|[1-9]\d{0,79})$/.test(child))) {
-        const metricCurrency = key === "snapshot_amount_minor" ? typeof row.snapshot_currency_code === "string" ? row.snapshot_currency_code : null : currency;
+        const snapshot = key === "snapshot_amount_minor" || key === "snapshotBalanceMinor";
+        const snapshotCurrency = row.snapshotCurrencyCode ?? row.snapshot_currency_code;
+        const metricCurrency = snapshot ? typeof snapshotCurrency === "string" ? snapshotCurrency : null : currency;
         if (!metricCurrency) continue;
         const qualification = [...qualifiers];
         if (key === "amount_minor" && ["transactions_search", "finance_detail"].includes(name)) qualification.push("source_posting");
-        if (["snapshot_amount_minor", "recorded_saved_minor", "recordedSavedMinor"].includes(key)) qualification.push("manual_evidence", "dated_snapshot");
+        if (snapshot || ["recorded_saved_minor", "recordedSavedMinor"].includes(key) || path.includes("wealth")) qualification.push("manual_evidence", "dated_snapshot");
         if (key === "reservedMinor") qualification.push("virtual_reservation");
         if (["target_minor", "targetMinor", "limitMinor", "allowanceMinor"].includes(key) || key.startsWith("planned")) qualification.push("assumption");
-        const manualDate = key === "recordedSavedMinor" && typeof row.savedAsOf === "string" ? row.savedAsOf : key === "snapshot_amount_minor" && typeof row.as_of === "string" ? row.as_of.slice(0, 10) : null;
-        metrics.push({ id: [...path, key].join(".") || key, label: key === "amount_minor" && path.includes("balance") ? "Booked balance" : labels[key], valueMinor: child as string | null, currency: metricCurrency, period: manualDate ? { from: manualDate, to: manualDate } : period,
+        const manualDate = ["recorded_saved_minor", "recordedSavedMinor"].includes(key) ? datedValue(row.savedAsOf ?? row.saved_as_of) : snapshot ? datedValue(row.asOf ?? row.as_of) : null;
+        metrics.push({ id: [...path, key].join(".") || key, label: path.includes("wealth") && ["amountMinor", "amount_minor"].includes(key) ? "Dated manual wealth value" : key === "amount_minor" && path.includes("balance") ? "Booked balance" : labels[key], valueMinor: child as string | null, currency: metricCurrency, period: manualDate ? { from: manualDate, to: manualDate } : period,
           qualifiers: [...new Set(qualification)], sourceIds: [sourceId], calculation: `${name}: exact deterministic field ${[...path, key].join(".")}. Full query inputs, calculation output and supporting record evidence are retained below.` });
       } else if (key !== "calculationEvidence" && key !== "queryInvestigation" && key !== "investigation") walk(child, [...path, key], { currency: /^[A-Z]{3}$/.test(key) ? key : currency, period, qualifiers });
     }

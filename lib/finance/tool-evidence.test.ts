@@ -23,6 +23,16 @@ it("keeps an ambiguous JPY snapshot separate from the EUR account currency", () 
   expect(published).not.toContain("EUR 1.00");
   expect(published).toContain("Ambiguous balance evidence");
 });
+it("uses actual balance clocks, workspace calendar dates and manual wealth dates rather than review ranges", () => {
+  const review = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-07-01", to: "2026-09-30" }, accounts: [{ currencyCode: "EUR", balanceMinor: "10", snapshotBalanceMinor: "20", snapshotCurrencyCode: "EUR", evaluatedAt: "2026-10-01T22:30:00Z", asOf: "2026-09-01T22:30:00Z" }], planning: { wealth: { included: [{ currencyCode: "EUR", amountMinor: "30", asOf: "2026-08-05", provenance: "manual valuation" }] }, goals: [{ currency: "EUR", recordedSavedMinor: "40", savedAsOf: "2026-08-06" }] } }, { ...context, timezone: "Europe/Berlin" }, ["accounts", "transactions", "planning"]);
+  expect(review.metrics.find(metric => metric.label === "Booked balance")?.period).toEqual({ from: "2026-10-02", to: "2026-10-02" });
+  expect(review.metrics.find(metric => metric.label === "Dated recorded balance")?.period).toEqual({ from: "2026-09-02", to: "2026-09-02" });
+  expect(review.metrics.find(metric => metric.label === "Dated manual wealth value")).toMatchObject({ period: { from: "2026-08-05", to: "2026-08-05" }, qualifiers: expect.arrayContaining(["manual_evidence", "dated_snapshot"]) });
+  expect(review.metrics.find(metric => metric.label === "Dated recorded savings")?.qualifiers).not.toContain("assumption");
+  const snake = toolResultReceipt("accounts_getBalances", {}, [{ currency_code: "EUR", balance: { amount_minor: "10", evaluated_at: "2026-10-01T22:30:00Z", snapshot_amount_minor: "20", snapshot_currency_code: "EUR", as_of: "2026-09-01" } }], { ...context, timezone: "Europe/Berlin" }, ["accounts"]);
+  expect(snake.metrics.find(metric => metric.label === "Booked balance")?.period).toEqual({ from: "2026-10-02", to: "2026-10-02" });
+  expect(snake.metrics.find(metric => metric.label === "Dated recorded balance")?.period).toEqual({ from: "2026-09-01", to: "2026-09-01" });
+});
 it("malformed provider prose visibly falls back to supported financial measures and never publishes invented links", () => {
   const receipt = toolResultReceipt("analytics_cashflow", {}, { from: "2026-09-01", to: "2026-09-30", currencyCode: "EUR", spendingMinor: "25" }, context, ["transactions"]);
   const result = providerFinancialAnswer("EUR 999999.00 [proof](/made-up)", [receipt], context.workspaceId);
