@@ -4,6 +4,7 @@ import {createServerClient} from "@supabase/ssr";
 import {randomBytes, randomUUID} from "node:crypto";
 import {appendFileSync, mkdirSync} from "node:fs";
 import postgres from "postgres";
+import {recurringFixtureCalendar} from "./recurring-calendar";
 
 const configured = process.env.SUPABASE_DB_URL && process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 test.skip(!configured, "Requires root release, disposable real auth and deployed reviewed MNE014 migration 017; a skip is not acceptance");
@@ -31,23 +32,19 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       [{id: workspace}] = await db`select id from public.workspaces where owner_id=${user}`; record("workspace_owned");
       const account = randomUUID(), counterpart = randomUUID(), merchant = randomUUID(), ids = [randomUUID(), randomUUID(), randomUUID()], credit = randomUUID();
       const label = `MNE014 ${cadence} ${runId.slice(0, 8)}`, creditLabel = `${label} counterpart`;
-      const months = {monthly: 1, quarterly: 3, yearly: 12}[cadence as "monthly" | "quarterly" | "yearly"] ?? 0;
-      const stepDays = cadence === "weekly" ? 7 : cadence === "biweekly" ? 14 : 0;
-      const [{today, latest, anchor, next, future_count: futureCount}] = await db`
-        with dates as (select (now() at time zone 'UTC')::date as today), recurrence as (
-          select today, today-1 as latest, case when ${months}>0 then ((today-1)-make_interval(months=>${months * 2}))::date else today-1-${stepDays * 2} end as anchor from dates
-        ) select today::text,latest::text,anchor::text,
-          (case when ${months}>0 then anchor+make_interval(months=>${months * 3}) else anchor+${stepDays * 3} end)::date::text as next,
-          (select count(*)::int from generate_series(1,60) n where
-            (case when ${months}>0 then anchor+make_interval(months=>${months}*n) else anchor+${stepDays}*n end)::date>=today and
-            (case when ${months}>0 then anchor+make_interval(months=>${months}*n) else anchor+${stepDays}*n end)::date<today+365) as future_count from recurrence`;
+      const [{today: clockDate}] = await db`select (now() at time zone 'UTC')::date::text as today`;
+      const {today,anchor,dates,latest,next,months,days:stepDays}=recurringFixtureCalendar(clockDate,cadence);
+      const [{future_count:futureCount}]=await db`
+        select (select count(*)::int from generate_series(1,60) n where
+          (case when ${months}>0 then ${anchor}::date+make_interval(months=>${months}*n) else ${anchor}::date+${stepDays}*n end)::date>=${today}::date and
+          (case when ${months}>0 then ${anchor}::date+make_interval(months=>${months}*n) else ${anchor}::date+${stepDays}*n end)::date<${today}::date+365) as future_count`;
       await db.begin(async tx => {
         await tx`insert into public.workspace_settings(workspace_id,timezone,locale) values(${workspace!},'UTC','en-US')`;
         await tx`insert into public.accounts(id,workspace_id,name,currency_code,type) values(${account},${workspace!},${label},'EUR','checking'),(${counterpart},${workspace!},${creditLabel},'EUR','checking')`;
         await tx`insert into public.merchants(id,workspace_id,name,normalized_name) values(${merchant},${workspace!},${label},${label.toLowerCase()})`;
         for (const [index, id] of ids.entries()) {
           await tx`insert into public.transactions(id,workspace_id,account_id,posted_on,description,amount_minor,currency_code,status,kind,merchant_id)
-            values(${id},${workspace!},${account},(case when ${months}>0 then ${anchor}::date+make_interval(months=>${months * index}) else ${anchor}::date+${stepDays * index} end)::date,${label + " invoice " + index},-2000,'EUR','posted','ordinary',${merchant})`;
+            values(${id},${workspace!},${account},${dates[index]}::date,${label + " invoice " + index},-2000,'EUR','posted','ordinary',${merchant})`;
         }
         await tx`insert into public.transactions(id,workspace_id,account_id,posted_on,description,amount_minor,currency_code,status,kind) values(${credit},${workspace!},${counterpart},${latest},${creditLabel},2000,'EUR','posted','ordinary')`;
         for (const [id, balance] of [[account, "200000"], [counterpart, "0"]]) {
