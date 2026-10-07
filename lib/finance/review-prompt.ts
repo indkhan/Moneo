@@ -11,9 +11,22 @@ export function buildReviewPrompt(request: ReviewRequest, receipts: EvidenceRece
   }));
   const context = {question: request.question, focus: request.focus, query: request.query, output: request.output,
     limitations: [...limitations, "Synthesis input is bounded; complete calculation inputs, omitted measures and supporting records remain in retained receipts. Unseen findings must not be inferred."],
-    evidenceReceipts: [] as {id: string; fetchedAt: string; metrics: Omit<EvidenceReceipt["metrics"][number], "sourceIds" | "calculation" | "aggregation">[]}[]};
+    evidenceReceipts: [] as {id: string; fetchedAt: string; metrics: Omit<EvidenceReceipt["metrics"][number], "sourceIds" | "calculation" | "aggregation">[]; limitations?: EvidenceReceipt["limitations"]}[]};
   const fits = () => Buffer.byteLength(system, "utf8") + Buffer.byteLength(JSON.stringify(context), "utf8") <= MAX_INPUT_BYTES;
   if (!fits()) return null;
+  // A wholly unavailable query still needs its actual blocker and a usable reference.
+  boundedLimitations: for (const receipt of queries) {
+    for (const limitation of receipt.limitations ?? []) {
+      let target = context.evidenceReceipts.find(item => item.id === receipt.id);
+      if (!target) {target = {id: receipt.id, fetchedAt: receipt.fetchedAt, metrics: [], limitations: []}; context.evidenceReceipts.push(target);}
+      target.limitations!.push(limitation);
+      if (!fits()) {
+        target.limitations!.pop();
+        if (!target.limitations!.length) context.evidenceReceipts.splice(context.evidenceReceipts.indexOf(target), 1);
+        break boundedLimitations;
+      }
+    }
+  }
   const total = queries.reduce((count, receipt) => count + receipt.metrics.length, 0);
   let included = 0;
   // Round-robin gives each dated query a chance before adding more measures from any one query.
@@ -29,7 +42,7 @@ export function buildReviewPrompt(request: ReviewRequest, receipts: EvidenceRece
       if (fits()) included++;
       else {
         target.metrics.pop();
-        if (!target.metrics.length) context.evidenceReceipts.splice(context.evidenceReceipts.indexOf(target), 1);
+        if (!target.metrics.length && !target.limitations?.length) context.evidenceReceipts.splice(context.evidenceReceipts.indexOf(target), 1);
         break boundedInput;
       }
     }

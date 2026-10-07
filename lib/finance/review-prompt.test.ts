@@ -6,6 +6,13 @@ import {buildReviewPrompt} from "./review-prompt";
 const request = resolveReviewRequest({version: 1, question: "Explain September subscriptions", focus: "Subscriptions"}, "2026-10-07");
 const receipt = createEvidenceReceipt({workspaceId: "11111111-1111-4111-8111-111111111111", fetchedAt: "2026-10-07T00:00:00Z", sourceVersion: "source", calculationVersion: "v1", scopes: ["transactions"], query: {kind: "synthetic"}, sources: [],
   metrics: Array.from({length: 200}, (_, id) => ({id: String(id), label: `Measure ${id}`, valueMinor: "9007199254740993", currency: "EUR", period: request.query.period, qualifiers: ["partial_coverage"], sourceIds: [], calculation: "Complete retained calculation ".repeat(50)}))});
+it("retains referenced deterministic blockers even when a receipt has no numerical measures", () => {
+  const limitation = {id: "missing-usd-rate", kind: "missing_input" as const, message: "USD to EUR rate is missing for 2026-09-02; provide the direct posting-date rate.", nextStep: "assumptions" as const};
+  const unavailable = {...receipt, metrics: [], limitations: [limitation]};
+  const result = buildReviewPrompt(request, [unavailable], [], "strict");
+  expect(JSON.parse(result!.prompt).evidenceReceipts).toEqual([{id: receipt.id, fetchedAt: receipt.fetchedAt, metrics: [], limitations: [limitation]}]);
+  expect(Buffer.byteLength(result!.prompt) + Buffer.byteLength(result!.system)).toBeLessThanOrEqual(32000);
+});
 it("bounds actual model input bytes while preserving exact referenced measures, question and limits", () => {
   const result = buildReviewPrompt(request, [receipt], ["Some supporting evidence was unavailable"], "strict claim instructions");
   expect(result).not.toBeNull();
