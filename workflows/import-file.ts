@@ -147,4 +147,3 @@ async function maybeStartFirstReview(importId: string, workspaceId: string) {
   if (inserted.error) throw inserted.error;
   await dispatchFinancialReview(db, jobId, workspaceId, false);
 }
-
