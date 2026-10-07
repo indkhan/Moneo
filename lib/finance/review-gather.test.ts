@@ -14,7 +14,7 @@ beforeEach(() => {
   fixture.persist.mockImplementation(async (_db, receipt) => receipt);
   fixture.load.mockImplementation(async spec => ({spec, rows: [{id: "22222222-2222-4222-8222-222222222222", parentId: "22222222-2222-4222-8222-222222222222", accountId: "owned", categoryId: null, merchantId: null, date: "2026-09-02", amountMinor: "-9007199254740993", currency: "EUR", status: "posted", kind: "ordinary", tags: [], event: null, reviewReasons: [], version: 1, description: "synthetic"}], context: {workspaceId, capturedAt: "2026-10-07T00:00:00Z"}, sourceRevision: "v1"}));
 });
-const options = () => ({workspaceId, client: vi.fn((_signal?: AbortSignal) => ({} as SupabaseClient)), checkpoint: vi.fn(async () => {})});
+const options = () => ({workspaceId, client: vi.fn((signal?: AbortSignal) => {void signal; return {} as SupabaseClient;}), checkpoint: vi.fn(async () => {})});
 it("reads the frozen dates once, retains exact full receipts and checkpoints only after persistence", async () => {
   const dependencies = options();
   const progress = await gatherReviewInvestigation(request, dependencies);

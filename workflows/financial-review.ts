@@ -9,15 +9,27 @@ import { modelForSettings } from "@/lib/ai/provider";
 import { loadWorkspaceSettings, requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
 import { captureToolEvidence } from "@/lib/finance/capture-evidence";
-import { loadEvidenceReceipt, type EvidenceReceipt } from "@/lib/finance/evidence-receipts";
+import { loadEvidenceReceipt, evidenceFingerprint, type EvidenceReceipt } from "@/lib/finance/evidence-receipts";
+import {gatherReviewInvestigation} from "@/lib/finance/review-gather";
+import {resolveReviewRequest, scheduledReviewRequest} from "@/lib/finance/review-request";
+import type {ReviewProgress} from "@/lib/finance/review-controller";
+import {buildReviewPrompt} from "@/lib/finance/review-prompt";
+import {synthesizeReview} from "@/lib/finance/review-synthesis";
 import { FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/finance/tool-evidence";
 import type { requireWorkspace } from "@/lib/auth";
 
-function service() {
+function service(signal?: AbortSignal) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new FatalError("Financial review service is not configured");
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false }, ...(signal ? {global: {fetch: (input, init) =>
+    fetch(input, {...init, signal: AbortSignal.any([signal, ...(init?.signal ? [init.signal] : [])])})}} : {}) });
+}
+
+async function checkpointReview(db: ReturnType<typeof service>, jobId: string, workspaceId: string, runId: string, progress: ReviewProgress) {
+  const saved = await db.rpc("checkpoint_financial_investigation", {p_job_id: jobId, p_workspace_id: workspaceId, p_run_id: runId, p_progress: progress});
+  if (saved.error) throw saved.error;
+  if (saved.data !== true) throw new FatalError("Investigation is no longer active");
 }
 
 function reviewScopes(settings: WorkspaceSettings, planning = false, imports = false) {
@@ -108,6 +120,43 @@ async function gatherEvidence(jobId: string, workspaceId: string, scheduled: boo
     const settings = await loadWorkspaceSettings(db, workspaceId);
     if (!await summaryStillEnabled(db, jobId, workspaceId, settings, scheduled)) return null;
     reviewScopes(settings);
+    const job = await db.from("background_jobs").select("review_request, review_progress").eq("id", jobId).eq("workspace_id", workspaceId).single();
+    if (job.error) throw job.error;
+    let request = job.data.review_request ? resolveReviewRequest(job.data.review_request, job.data.review_request.query.period.to) : null;
+    if (!request && scheduled) {
+      const cadence = await db.from("summary_runs").select("cadence,period_start").eq("job_id", jobId).eq("workspace_id", workspaceId).single();
+      if (cadence.error) throw cadence.error;
+      if (!["weekly", "monthly"].includes(cadence.data.cadence) || !cadence.data.period_start) throw new FatalError("Scheduled review period is unavailable");
+      request = scheduledReviewRequest(cadence.data.cadence, cadence.data.period_start);
+    }
+    if (request) {
+      const stopped = new AbortController(), finished = new AbortController();
+      let monitorError: unknown;
+      const monitor = (async () => {
+        while (!finished.signal.aborted) {
+          await delay(500, undefined, {signal: finished.signal});
+          const current = await db.from("background_jobs").select("status,cancel_requested,workflow_run_id").eq("id", jobId).eq("workspace_id", workspaceId)
+            .abortSignal(AbortSignal.any([finished.signal, AbortSignal.timeout(2000)])).single();
+          if (finished.signal.aborted) return;
+          if (current.error) throw current.error;
+          if (current.data.cancel_requested || current.data.workflow_run_id !== runId || !["queued", "running"].includes(current.data.status)) {
+            stopped.abort(new Error("Investigation stopped")); return;
+          }
+        }
+      })().catch(error => {if (!finished.signal.aborted) {monitorError = error; stopped.abort(error);}});
+      try {
+        const progress = await gatherReviewInvestigation(request, {workspaceId, client: service, signal: stopped.signal,
+          checkpoint: value => checkpointReview(db, jobId, workspaceId, runId, value)}, job.data.review_progress ?? undefined);
+        if (monitorError) throw monitorError;
+        if (!await enterStage(db, jobId, workspaceId, runId, "gathering_evidence")) return null;
+        return {period: request.query.period, sourceCoverage: {importStatuses: null}, planning: {unavailable: "Planning evidence was not included in this query."},
+          reviewInvestigation: {request, progress}, verification: {version: 1, method: "structured-evidence-v1", receiptIds: [...new Set(progress.queries.flatMap(query => query.receiptId ? [query.receiptId] : []))]}};
+      } catch (error) {
+        // The reader settles its actual HTTP transport before cancellation is acknowledged.
+        if (stopped.signal.aborted && !monitorError && !await enterStage(db, jobId, workspaceId, runId, "gathering_evidence")) return null;
+        throw error;
+      } finally {finished.abort(); await monitor;}
+    }
     const workspace = await db.from("workspaces").select("id, display_currency").eq("id", workspaceId).single();
     if (workspace.error) throw workspace.error;
     const raw = await loadFinancialReviewEvidence(db, { ...workspace.data, timezone: settings.timezone }, settings);
@@ -159,6 +208,21 @@ async function writeReview(jobId: string, workspaceId: string, evidence: NonNull
     })().catch(error => {
       if (!finished.signal.aborted) { monitoringError = error; stopped.abort(error); }
     });
+    if (evidence.reviewInvestigation) {
+      const current = await db.from("background_jobs").select("review_progress").eq("id", jobId).eq("workspace_id", workspaceId).single();
+      if (current.error) throw current.error;
+      const progress: ReviewProgress = current.data.review_progress ?? evidence.reviewInvestigation.progress;
+      const priorityIds = evidence.reviewInvestigation.progress.queries.flatMap(query => query.result?.groups.flatMap(group =>
+        ["current", "comparison", "delta"].map(kind => `${evidenceFingerprint(group.key).slice(0, 32)}:${kind}`)) ?? []);
+      const input = buildReviewPrompt(evidence.reviewInvestigation.request, receipts, progress.limitations,
+        `Answer the retained question within its exact dated query and focus using supplied evidence. ${FINANCIAL_ANSWER_INSTRUCTIONS}`, priorityIds);
+      const result = await synthesizeReview(progress, input, {signal: stopped.signal,
+        checkpoint: value => checkpointReview(db, jobId, workspaceId, runId, value), generate: options => generateText({model, ...options})});
+      if (monitoringError) throw monitoringError;
+      if (!await enterStage(db, jobId, workspaceId, runId, "writing_review")) return null;
+      return providerFinancialAnswer(result.text ?? "{}", receipts, workspaceId).body +
+        (result.limitation ? `\n\n${result.limitation}` : "") + (progress.limitations.length ? `\n\n${progress.limitations.join("\n\n")}` : "");
+    }
     const result = await generateText({ model, maxOutputTokens: 4000, maxRetries: 0, abortSignal: AbortSignal.any([stopped.signal, AbortSignal.timeout(90_000)]),
       system: `Write a personal-finance review using only supplied dated evidence. Cover cashflow, material changes, budgets, obligations, goals, wealth/debt and forecasts when retained measures are available. ${FINANCIAL_ANSWER_INSTRUCTIONS}`,
       prompt: JSON.stringify({ datedReviewSnapshot: evidence, evidenceReceipts: receipts.map(receipt => ({ id: receipt.id, metrics: receipt.metrics })) }) });
