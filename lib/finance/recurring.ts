@@ -145,7 +145,7 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
     for (const candidate of candidates) {
       if (candidate.rows.some(row => assigned.has(row.id))) continue;
       const observed = candidate.rows;
-      const ordered = observed.slice(-1000); // Matches the existing owned RPC evidence ceiling.
+      const ordered = observed.length > 1000 ? [observed[0], ...observed.slice(-999)] : observed; // Preserve the owned calendar anchor inside the RPC ceiling.
       const selectedDates = new Set(ordered.map(row => row.date));
       const sameDateAlternatives = group.filter(row => selectedDates.has(row.date) &&
         amountFits(row.amountMinor < ordered[0].amountMinor ? row.amountMinor : ordered[0].amountMinor,
@@ -180,9 +180,7 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
         transactionIds: ordered.map((item) => item.id),
         occurrences: ordered.length,
         confidence,
-        missingPeriods: ordered.slice(1).reduce((missing, row, index) => missing +
-          occurrenceIndex(observed[0].date, row.date, cadences.find(item => item.cadence === candidate.cadence)!).index -
-          occurrenceIndex(observed[0].date, ordered[index].date, cadences.find(item => item.cadence === candidate.cadence)!).index - 1, 0),
+        missingPeriods: candidate.missing,
         anchorDate: observed[0].date,
         runAnchorId: observed[0].id,
         observedOccurrences: observed.length,

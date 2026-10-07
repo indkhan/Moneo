@@ -61,7 +61,8 @@ it("limits review evidence to 1000 actual sources while retaining the original c
   const rows = Array.from({length: 1001}, (_, index) => posting(`long-${index}`, new Date(Date.UTC(2000, 0, 3 + index * 7)).toISOString().slice(0, 10)));
   const weekly = detectRecurring(rows).find(series => series.cadence === "weekly")!;
   expect(weekly.transactionIds).toHaveLength(1000);
-  expect(weekly.transactionIds[0]).toBe("long-1");
+  expect(weekly.transactionIds[0]).toBe("long-0");
+  expect(weekly.transactionIds[1]).toBe("long-2");
   expect(weekly).toMatchObject({anchorDate: "2000-01-03", observedOccurrences: 1001, evidenceLimited: true});
 });
 
@@ -72,4 +73,11 @@ it("does not turn thousands of same-day observations into separate recurring rev
   expect(result).toHaveLength(1);
   expect(result[0]).toMatchObject({cadence: "monthly", occurrences: 3, sameDateAlternatives: 2997});
   console.info(`MNE014 focused dense group: ${Math.round(performance.now()-started)}ms`);
+});
+
+it("keeps the original owned anchor among bounded evidence for correction and undo", () => {
+  const rows = Array.from({length: 1001}, (_, index) => posting(`anchor-${index}`, new Date(Date.UTC(2000, 0, 3 + index * 7)).toISOString().slice(0, 10)));
+  const weekly = detectRecurring(rows).find(series => series.cadence === "weekly")!;
+  expect(weekly.transactionIds).toContain(weekly.runAnchorId);
+  expect(weekly.missingPeriods).toBe(0);
 });
