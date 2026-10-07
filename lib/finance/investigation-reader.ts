@@ -31,7 +31,7 @@ type LedgerRow = {
   tags: string[]; event_name: string | null; review_reasons: string[]; version: number; description: string; refund_of_id: string | null;
 };
 type Source = { id: string; import_id: string; status: string; review_reasons: string[]; normalized_row: unknown; fee_evidence: unknown;
-  imports: { run_version: number; status: string; undone_at: string | null } | null; transaction_sources: { transaction_id: string }[] };
+  imports: { run_version: number; status: string; undone_at: string | null } | null; transaction_sources: { transaction_id: string }[] | { transaction_id: string } | null };
 
 async function loadRows(context: Context, spec: InvestigationSpec, includeAll = false, canReadImports = true) {
   const { supabase, workspace } = context;
@@ -46,7 +46,7 @@ async function loadRows(context: Context, spec: InvestigationSpec, includeAll = 
     canReadImports ? allRows<Source>(supabase.from("source_transactions").select("id, import_id, status, review_reasons, normalized_row, fee_evidence, imports(run_version, status, undone_at), transaction_sources(transaction_id)").eq("workspace_id", workspace.id).order("id")) : [],
   ]);
   const byParent = new Map<string, unknown[]>();
-  for (const source of sources) for (const link of source.transaction_sources ?? []) {
+  for (const source of sources) for (const link of Array.isArray(source.transaction_sources) ? source.transaction_sources : source.transaction_sources ? [source.transaction_sources] : []) {
     const values = byParent.get(link.transaction_id) ?? [];
     values.push({ id: source.id, importId: source.import_id, link: `/import/${encodeURIComponent(source.import_id)}/review`, status: source.status, import: source.imports,
       identity: investigationIdentity({ normalized: source.normalized_row, fees: source.fee_evidence, reviewReasons: source.review_reasons }) });

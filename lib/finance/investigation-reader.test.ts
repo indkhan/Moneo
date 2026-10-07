@@ -11,7 +11,7 @@ function context() {
       gte: () => query, lte: () => query, order: () => query,
       range: (from: number) => { offset = from; return query; },
       then(resolve: (value: unknown) => unknown) {
-        const data = table === "accounts" ? [{ id, name: "Checking" }] : table === "effective_transactions" && !offset
+        const data = table === "accounts" ? [{ id, name: "Checking" }] : table === "source_transactions" && !offset ? [{ id: "source", import_id: "import", status: "new", normalized_row: {}, fee_evidence: null, review_reasons: [], transaction_sources: { transaction_id: id }, imports: { run_version: 1, status: "completed", undone_at: null } }] : table === "effective_transactions" && !offset
           ? [{ id, parent_transaction_id: id, account_id: id, category_id: null, merchant_id: null, posted_on: "2026-09-01", amount_minor: "-100", currency_code: "EUR", status: "posted", kind: "ordinary", tags: [], event_name: null, review_reasons: [], version: 1, description: "Synthetic" }] : [];
         return Promise.resolve(resolve({ data, error: null }));
       },
@@ -26,6 +26,7 @@ it("scopes every read to the owned workspace and resolves names before executing
   const result = await runInvestigation(query, ctx);
   expect(result.groups[0].currentMinor).toBe("100");
   expect(result.interpretedFilters.accounts?.include).toEqual([{ id }]);
+  expect(result.records.items[0].sourceVersions).toMatchObject([{ id: "source", importId: "import", link: "/import/import/review" }]);
   expect(calls.length).toBeGreaterThan(4);
   expect(calls.every(([, key, value]) => key === "workspace_id" && value === "owned")).toBe(true);
   expect((await loadInvestigationEntities(ctx)).accounts).toEqual([{ id, name: "Checking" }]);
