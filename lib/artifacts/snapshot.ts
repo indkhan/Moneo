@@ -55,7 +55,7 @@ export type CalculatorSnapshot = { coverage?: SnapshotCoverage; sourceCoverage?:
 export async function buildCalculatorSnapshot(
   artifactId: string,
   kind: ArtifactKind,
-  opts?: { query?: string; month?: string; reportingView?: "original" | "base"; investigation?: InvestigationSpec; costMinor?: bigint; accountId?: string; tripScenario?: TripScenario; funding?: Parameters<typeof tripForArtifact>[3]; sdk?: string[]; spendingOperation?: "spending" | "cashflow" },
+  opts?: { query?: string; month?: string; reportingView?: "original" | "base"; investigation?: InvestigationSpec; costMinor?: bigint; accountId?: string; tripScenario?: TripScenario; tripParams?: Record<string, string | number>; funding?: Parameters<typeof tripForArtifact>[3]; sdk?: string[]; spendingOperation?: "spending" | "cashflow" },
 ): Promise<{ snapshot: CalculatorSnapshot; stateParams: Record<string, number | string> }> {
   if (kind.startsWith("custom_")) {
     const operations = [...new Set(opts?.sdk ?? [])];
@@ -124,7 +124,7 @@ export async function buildCalculatorSnapshot(
     };
   }
   if (kind === "trip_planner") {
-    const data = await tripForArtifact(artifactId, opts?.costMinor ?? 90000n, opts?.accountId, opts?.funding, opts?.tripScenario);
+    const data = await tripForArtifact(artifactId, opts?.costMinor ?? 90000n, opts?.accountId, opts?.funding, opts?.tripScenario, opts?.tripParams);
     const baselineAmount = data.baselineAvailableMinor ?? (data.baseline.status === "available" ? data.baseline.amountMinor.toString() : null);
     const costText = data.costMinor ?? (opts?.costMinor ?? 90000n).toString();
     return {

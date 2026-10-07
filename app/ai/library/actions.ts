@@ -4,9 +4,9 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { artifactKindSchema, calculatorManifestSchema, normalizeCalculatorParams } from "@/lib/artifacts/spec";
-import { tripCostMinor, tripHorizon, tripScenarioSchema } from "@/lib/finance/trip-scenario";
+import { tripHorizon, tripScenarioSchema } from "@/lib/finance/trip-scenario";
 import { calendarDate } from "@/lib/finance/calendar";
-import { tripScenarioForParams } from "@/lib/artifacts/trip-params";
+import { tripScenarioForParams, tripStateForScenario } from "@/lib/artifacts/trip-params";
 import { tripForArtifact } from "@/lib/artifacts/finance-sdk";
 
 const kind = artifactKindSchema;
@@ -126,10 +126,7 @@ export async function saveDatedTripState(form: FormData) {
   const { data: accounts, error: accountsError } = await supabase.from("accounts").select("id").eq("workspace_id", workspace.id).in("id", accountIds);
   if (accountsError) throw accountsError;
   if (accountIds.some(id => !accounts?.some(account => account.id === id))) throw new Error("Unknown paying or receiving account");
-  const cost = tripCostMinor(scenario, workspace.display_currency);
-  const next: Record<string, unknown> = { ...((current.state as Record<string, unknown>) ?? {}), tripScenario: scenario };
-  if (cost === null) delete next.costMinor;
-  else next.costMinor = cost <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(cost) : cost.toString();
+  const next = tripStateForScenario((current.state as Record<string, unknown>) ?? {}, scenario, workspace.display_currency);
   const { data: saved, error } = await supabase.from("artifact_state").update({
     state: next, version: expectedVersion + 1, updated_at: new Date().toISOString(),
   }).eq("workspace_id", workspace.id).eq("artifact_id", artifactId).eq("version", expectedVersion).select("version").maybeSingle();

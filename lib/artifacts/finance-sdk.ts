@@ -10,6 +10,7 @@ import { buildSourceCoverage, loadSourceCoverage } from "@/lib/finance/source-co
 import { expenditurePosting, reportExpenditure } from "@/lib/finance/expenditure";
 import { loadExpenditureRates } from "@/lib/finance/expenditure-rates";
 import { runInvestigation } from "@/lib/finance/investigation-reader";
+import { tripScenarioForParams } from "./trip-params";
 
 export async function investigationForArtifact(artifactId: string, input: unknown, permission: "spending" | "cashflow" = "spending") {
   const context = await requirePermission(artifactId, permission);
@@ -112,11 +113,12 @@ export async function spendingForArtifact(artifactId: string, query: string, per
   return { summary, byAccount, reporting, conversionCoverage: reporting?.conversionCoverage, resultBasis: reporting?.resultBasis, sourceCoverage, transactions: transactions.filter(row => row.status === "posted" && row.kind !== "transfer" && !row.review_reasons?.length), currency: workspace.display_currency, from, to, timezone: workspace.timezone ?? "Europe/Berlin" };
 }
 
-export async function tripForArtifact(artifactId: string, costMinor: bigint, accountId?: string, funding: Parameters<typeof withInternalFunding>[1] = [], rawScenario?: unknown) {
+export async function tripForArtifact(artifactId: string, costMinor: bigint, accountId?: string, funding: Parameters<typeof withInternalFunding>[1] = [], rawScenario?: unknown, params: Record<string, string | number> = {}) {
   if (typeof costMinor !== "bigint" || costMinor < 0n || (rawScenario === undefined && costMinor > 999999999999999999n)) throw new Error("Invalid trip cost");
   const { workspace, settings } = await requirePermission(artifactId, "forecast");
   const today = calendarDate(new Date(), workspace.timezone);
-  const requested = rawScenario === undefined ? defaultTripScenario(today, workspace.display_currency, accountId ?? "unselected", costMinor) : tripScenarioSchema.parse(rawScenario);
+  accountId = typeof params.accountId === "string" && params.accountId ? params.accountId : accountId;
+  const requested = tripScenarioForParams(rawScenario === undefined ? defaultTripScenario(today, workspace.display_currency, accountId ?? "unselected", costMinor) : tripScenarioSchema.parse(rawScenario), params, workspace.display_currency);
   const horizon = tripHorizon(today, requested);
   const baseline = await evaluatePlan(horizon.days, undefined, settings?.ai_data_scopes.includes("imports") ?? false);
   const current = await requirePermission(artifactId, "forecast");

@@ -1,6 +1,23 @@
 import { addTripDays, tripCostMinor, tripScenarioSchema, type TripScenario } from "@/lib/finance/trip-scenario";
 import { z } from "zod";
 
+export function tripStateForScenario(state: Record<string, unknown>, scenario: TripScenario, currencyCode: string): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...state, tripScenario: scenario };
+  const cost = tripCostMinor(scenario, currencyCode);
+  if (cost === null) delete next.costMinor;
+  else next.costMinor = cost <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(cost) : cost.toString();
+  // A single same-currency cost can round-trip through generated scalar inputs.
+  const payment = scenario.payments[0];
+  if (scenario.payments.length === 1 && payment.kind === "cost" && !payment.fx && payment.currencyCode === currencyCode) {
+    next.tripDate = scenario.startsOn;
+    next.accountId = payment.accountId;
+  } else {
+    delete next.tripDate;
+    delete next.accountId;
+  }
+  return next;
+}
+
 export function tripScenarioForParams(scenario: TripScenario, params: Record<string, string | number>, currencyCode = scenario.payments[0].currencyCode): TripScenario {
   const hasCost = params.costMinor !== undefined;
   const cost = hasCost ? z.string().regex(/^\d{1,18}$/).parse(String(params.costMinor)) : undefined;

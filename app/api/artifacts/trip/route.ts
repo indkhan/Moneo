@@ -2,9 +2,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { buildCalculatorSnapshot } from "@/lib/artifacts/snapshot";
 import { artifactKindSchema, calculatorManifestSchema, normalizeCalculatorParams } from "@/lib/artifacts/spec";
-import { defaultTripScenario, tripCostMinor, tripScenarioSchema } from "@/lib/finance/trip-scenario";
-import { tripScenarioForParams } from "@/lib/artifacts/trip-params";
-import { calendarDate } from "@/lib/finance/calendar";
+import { tripCostMinor, tripScenarioSchema } from "@/lib/finance/trip-scenario";
 
 export async function POST(request: Request) {
   try {
@@ -25,6 +23,7 @@ export async function POST(request: Request) {
     let investigation: import("@/lib/finance/investigation").InvestigationSpec | undefined;
     let month: string | undefined;
     let reportingView: "original" | "base" | undefined;
+    let tripParams: Record<string, string | number> | undefined;
     if ("scenario" in args) {
       if (kind !== "trip_planner") throw new Error("Trip inputs require a trip planner");
     } else {
@@ -36,19 +35,16 @@ export async function POST(request: Request) {
       if (manifest.kind !== kind || !manifest.sdk.includes("forecast")) throw new Error("Forecast permission is not declared");
       if (Object.keys(args.params).some(key => !(key in manifest.params))) throw new Error("Undeclared trip parameter");
       const params = normalizeCalculatorParams(manifest, args.params);
+      tripParams = params;
       sdk = manifest.sdk; investigation = manifest.investigation;
       month = typeof params.month === "string" ? params.month : undefined;
       reportingView = z.enum(["original", "base"]).optional().parse(params.reportingView);
       costMinor = BigInt(z.string().regex(/^\d{1,18}$/).parse(String(params.costMinor ?? 0)));
       const state = (saved?.state ?? {}) as Record<string, unknown>;
-      const existing = args.baseScenario ?? (state.tripScenario === undefined ? defaultTripScenario(calendarDate(new Date(), workspace.timezone), workspace.display_currency,
-        typeof params.accountId === "string" && params.accountId ? params.accountId : "unselected", costMinor) : tripScenarioSchema.parse(state.tripScenario));
-      scenario = tripScenarioForParams(existing, params, workspace.display_currency);
-      // Unselected legacy tools retain the host's explicit default spending-account choice.
-      if (!args.baseScenario && state.tripScenario === undefined && !params.accountId && !params.tripDate) scenario = undefined;
+      scenario = args.baseScenario ?? (state.tripScenario === undefined ? undefined : tripScenarioSchema.parse(state.tripScenario));
     }
     if (scenario) costMinor = tripCostMinor(scenario, workspace.display_currency) ?? 0n;
-    const result = await buildCalculatorSnapshot(args.artifactId, kind, { costMinor, tripScenario: scenario, sdk, investigation, month, reportingView });
+    const result = await buildCalculatorSnapshot(args.artifactId, kind, { costMinor, tripScenario: scenario, tripParams, sdk, investigation, month, reportingView });
     return Response.json(result.snapshot, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Trip preview unavailable";

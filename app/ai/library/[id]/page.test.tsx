@@ -16,9 +16,9 @@ vi.mock("../generate-calculator-form", () => ({ GenerateCalculatorForm: () => nu
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }), notFound: vi.fn() }));
 
 beforeEach(() => { vi.mocked(buildCalculatorSnapshot).mockResolvedValue({ snapshot: { currency: "EUR" }, stateParams: {} }); });
-async function restored(kind: "custom_report" | "trip_planner", state: Record<string, unknown>) {
+async function restored(kind: "custom_report" | "trip_planner", state: Record<string, unknown>, params?: Record<string, unknown>) {
   const key = kind === "trip_planner" ? "costMinor" : "amount";
-  const manifest = { kind, runtime: "quickjs-calculator-v1", sdk: [], params: { [key]: { type: "number", default: 50, min: 0, max: 100 } } };
+  const manifest = { kind, runtime: "quickjs-calculator-v1", sdk: params ? ["forecast"] : [], params: params ?? { [key]: { type: "number", default: 50, min: 0, max: 100 } } };
   const from = (table: string) => {
     const data = table === "artifacts" ? { kind, name: "Synthetic", active_version_id: "version" } : table === "artifact_state" ? { state } : table === "artifact_versions" ? { version: 1, source: "input => ({summary:'ok'})", manifest } : null;
     const query = { select: () => query, eq: () => query, order: () => query, single: async () => ({ data }), maybeSingle: async () => ({ data }), limit: async () => ({ data: [] }) };
@@ -43,6 +43,20 @@ it("page keeps generated trip defaults when no legacy cost exists", async () => 
 it("snapshot failure retains compatible saved inputs", async () => {
   vi.mocked(buildCalculatorSnapshot).mockRejectedValue(new Error("Synthetic denied evidence"));
   expect((await panel("trip_planner", { costMinor: 75 })).initialParams).toEqual({ costMinor: 75 });
+});
+it("restores stale scalar date/account inputs from the saved native simple budget", async () => {
+  const scenario = defaultTripScenario("2026-10-02", "EUR", "b", 75n);
+  const page = await restored("trip_planner", { costMinor: 50, tripDate: "2026-10-08", accountId: "a", tripScenario: scenario }, {
+    costMinor: { type: "number", default: 50, min: 0, max: 100 }, tripDate: { type: "string", default: "2026-10-08" }, accountId: { type: "string", default: "a" },
+  });
+  const props = (page.props.children as ReactElement<{ initialParams: Record<string, unknown> }>[]).find(child => child?.type === CalculatorPanel)!.props;
+  expect(props.initialParams).toEqual({ costMinor: 75, tripDate: "2026-10-09", accountId: "b" });
+  expect(buildCalculatorSnapshot).toHaveBeenLastCalledWith("synthetic", "trip_planner", expect.objectContaining({ tripScenario: scenario, tripParams: props.initialParams }));
+});
+it("passes declared date/account defaults to first-load evidence without a saved scenario", async () => {
+  const page = await restored("trip_planner", {}, { costMinor: { type: "number", default: 75 }, tripDate: { type: "string", default: "2026-10-09" }, accountId: { type: "string", default: "b" } });
+  const props = (page.props.children as ReactElement<{ initialParams: Record<string, unknown> }>[]).find(child => child?.type === CalculatorPanel)!.props;
+  expect(buildCalculatorSnapshot).toHaveBeenLastCalledWith("synthetic", "trip_planner", expect.objectContaining({ tripScenario: undefined, tripParams: props.initialParams }));
 });
 it("never reuses an uncontrolled rename value with a refreshed expected revision", async () => {
   const page = await restored("custom_report", {});

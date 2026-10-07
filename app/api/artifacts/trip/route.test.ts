@@ -12,7 +12,7 @@ function request(body: unknown) { return new Request("http://localhost/api/artif
 beforeEach(() => { fixture.kind = "trip_planner"; fixture.sdk = ["forecast"]; fixture.state = { tripScenario: defaultTripScenario("2026-10-01", "EUR", "a", 20000n) }; vi.mocked(buildCalculatorSnapshot).mockReset().mockResolvedValue({ snapshot: { currency: "EUR", withTripAvailableMinor: "10000" }, stateParams: {} }); });
 it("recomputes local cost inputs through owned host evidence without saving or an LLM", async () => {
   expect((await POST(request({ artifactId: id, params: { costMinor: 30000 } }))).status).toBe(200);
-  expect(buildCalculatorSnapshot).toHaveBeenCalledWith(id, "trip_planner", expect.objectContaining({ costMinor: 30000n, tripScenario: expect.objectContaining({ payments: [expect.objectContaining({ amountMinor: "30000" })] }) }));
+  expect(buildCalculatorSnapshot).toHaveBeenCalledWith(id, "trip_planner", expect.objectContaining({ tripParams: { costMinor: 30000 }, tripScenario: fixture.state.tripScenario }));
 });
 it("rejects malformed, undeclared or unpermitted requests before financial evaluation", async () => {
   expect((await POST(request({ artifactId: id, params: { invented: 1 } }))).status).toBe(400);

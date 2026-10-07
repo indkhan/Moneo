@@ -13,6 +13,22 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
 } } }) }));
 afterEach(() => vi.useRealTimers());
 
+it.each([true, false])("first-load parameters and the local preview use the same dated paying-account evidence (explicit account: %s)", async explicitAccount => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
+  fixture.input = { startDate: "2026-10-01", horizonDays: 30, currencyCode: "EUR", accounts: [{ id: "a", currencyCode: "EUR", balanceMinor: 100000n }, ...(explicitAccount ? [{ id: "b", currencyCode: "EUR", balanceMinor: 50000n }] : [])], events: [] };
+  fixture.scenario = undefined;
+  const params = { costMinor: 20000, tripDate: "2026-10-09", ...(explicitAccount ? { accountId: "b" } : {}) };
+  fixture.manifest = { ...FALLBACK_CALCULATORS.trip_planner.manifest, params: { costMinor: { type: "number", default: 20000 }, tripDate: { type: "string", default: params.tripDate }, ...(explicitAccount ? { accountId: { type: "string", default: "b" } } : {}) } };
+  // These are the normalized manifest defaults on a new calculator, before any local edits.
+  const built = await buildCalculatorSnapshot("00000000-0000-4000-8000-000000000001", "trip_planner", { costMinor: 20000n, tripParams: params });
+  expect(built.snapshot).toMatchObject({ tripDate: "2026-10-09", accountId: explicitAccount ? "b" : "a", withTripAvailableMinor: explicitAccount ? "30000" : "80000" });
+  const result = await evaluateIsolated(FALLBACK_CALCULATORS.trip_planner.source, { snapshot: built.snapshot, params });
+  expect(result).toMatchObject({ numbers: { minimumHeadroomMinor: explicitAccount ? "30000" : "80000" } });
+  const response = await POST(new Request("http://localhost/api/artifacts/trip", { method: "POST", body: JSON.stringify({ artifactId: "00000000-0000-4000-8000-000000000001", params }) }));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual(built.snapshot);
+});
+
 it("retains a complete multiple-account dated budget in the artifact instead of requiring a single selected account", async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
   fixture.input = { startDate: "2026-10-01", horizonDays: 29, currencyCode: "EUR", accounts: [{ id: "a", currencyCode: "EUR", balanceMinor: 10000n }, { id: "b", currencyCode: "EUR", balanceMinor: 10000n }], events: [{ accountId: "a", date: "2026-10-03", expectedMinor: 100000n }] };

@@ -10,6 +10,7 @@ import { formatMoney } from "@/lib/finance/format";
 import { pinArtifact, renameArtifact, unpinArtifact } from "../actions";
 import { DatedTripForm } from "../dated-trip-form";
 import { tripScenarioSchema } from "@/lib/finance/trip-scenario";
+import { tripStateForScenario } from "@/lib/artifacts/trip-params";
 import { SpendingChart } from "../spending-chart";
 import { CalculatorPanel } from "../calculator-panel";
 import { GenerateCalculatorForm } from "../generate-calculator-form";
@@ -48,7 +49,7 @@ export default async function ArtifactPage({ params, searchParams }: {
     supabase.from("artifact_versions").select("id, version, status, error, created_at, manifest, source")
       .eq("workspace_id", workspace.id).eq("artifact_id", id).order("version", { ascending: false }).limit(20),
   ]);
-  const stateValue = (state?.state ?? {}) as Record<string, unknown>;
+  let stateValue = (state?.state ?? {}) as Record<string, unknown>;
   const costMinor = Number.isSafeInteger((stateValue as { costMinor?: number }).costMinor) && (stateValue as { costMinor?: number }).costMinor! >= 0
     ? BigInt((stateValue as { costMinor?: number }).costMinor!) : 90000n;
 
@@ -59,6 +60,9 @@ export default async function ArtifactPage({ params, searchParams }: {
   let sourceCoverageByOperation: Record<string, SourceCoverage> | undefined;
   let initialParams: Record<string, number | string> = {};
   if (isCalculator && version) {
+    if (manifestParsed.data.sdk.includes("forecast") && stateValue.tripScenario !== undefined) {
+      stateValue = tripStateForScenario(stateValue, tripScenarioSchema.parse(stateValue.tripScenario), workspace.display_currency);
+    }
     initialParams = normalizeCalculatorParams(manifestParsed.data, stateValue, "restore");
     try {
       const built = await buildCalculatorSnapshot(id, kind, {
@@ -69,6 +73,7 @@ export default async function ArtifactPage({ params, searchParams }: {
         sdk: manifestParsed.data.sdk,
         investigation: manifestParsed.data.investigation,
         tripScenario: stateValue.tripScenario === undefined ? undefined : tripScenarioSchema.parse(stateValue.tripScenario),
+        tripParams: initialParams,
       });
       snapshot = built.snapshot;
       sourceCoverage = built.snapshot.sourceCoverage;
