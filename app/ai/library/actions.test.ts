@@ -5,17 +5,18 @@ import { addTripDays, defaultTripScenario, tripScenarioSchema } from "@/lib/fina
 import { calculatorManifestSchema } from "@/lib/artifacts/spec";
 import { restoreTripCalculatorParams, tripStateForScenario } from "@/lib/artifacts/trip-params";
 
-const fixture = vi.hoisted(() => ({ version: 2, balanceMinor: 100000n, update: vi.fn(), filters: [] as [string, unknown][], state: { costMinor: 200 } as Record<string, unknown>, sdk: [] as string[], params: { costMinor: { type: "number", default: 100, min: 0, max: 100000 } } as Record<string, unknown> }));
+const fixture = vi.hoisted(() => ({ version: 2, balanceMinor: 100000n, update: vi.fn(), accounts: [{ id: "a" }, { id: "b" }] as { id: string }[], filters: [] as [string, unknown][], state: { costMinor: 200 } as Record<string, unknown>, sdk: [] as string[], params: { costMinor: { type: "number", default: 100, min: 0, max: 100000 } } as Record<string, unknown> }));
 vi.mock("@/lib/finance/model", () => ({ evaluatePlan: async (days: number) => ({ input: { startDate: "2026-10-07", horizonDays: days, currencyCode: "EUR", accounts: [{ id: "a", currencyCode: "EUR", balanceMinor: fixture.balanceMinor }], events: [] } }) }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "owned", display_currency: "EUR", timezone: "Europe/Berlin" }, supabase: { from: (table: string) => {
   const query = { select: () => query, eq: (key: string, value: unknown) => { fixture.filters.push([key, value]); return query; },
     single: async () => ({ data: table === "artifacts" ? { kind: "trip_planner", active_version_id: "active", permissions: ["forecast"] } : table === "artifact_versions" ? { manifest: { kind: "trip_planner", runtime: "quickjs-calculator-v1", sdk: fixture.sdk, params: fixture.params } } : { state: fixture.state, version: fixture.version }, error: null }),
-    in: async () => ({ data: [{ id: "a" }, { id: "b" }], error: null }),
+    is: (key: string, value: unknown) => { fixture.filters.push([key, value]); return query; },
+    in: async () => ({ data: fixture.accounts, error: null }),
     update: (value: unknown) => { fixture.update(value); return query; }, maybeSingle: async () => ({ data: { version: fixture.version + 1 }, error: null }) };
   return query;
 } } }) }));
-beforeEach(() => { fixture.version = 2; fixture.balanceMinor = 100000n; fixture.update.mockClear(); fixture.filters = []; fixture.sdk = []; fixture.state = { costMinor: 200 }; fixture.params = { costMinor: { type: "number", default: 100, min: 0, max: 100000 } }; });
+beforeEach(() => { fixture.accounts = [{ id: "a" }, { id: "b" }]; fixture.version = 2; fixture.balanceMinor = 100000n; fixture.update.mockClear(); fixture.filters = []; fixture.sdk = []; fixture.state = { costMinor: 200 }; fixture.params = { costMinor: { type: "number", default: 100, min: 0, max: 100000 } }; });
 afterEach(() => vi.useRealTimers());
 function form(version: string) { const form = new FormData(); Object.entries({ artifactId: "00000000-0000-4000-8000-000000000001", params: '{"costMinor":300}', costMinor: "300", expectedVersion: version }).forEach(([key,value]) => form.set(key,value)); return form; }
 it.each(["costMinor", "tripDate", "accountId"])("Restore then Save rejects incompatible authoritative scenario scalar: %s", async key => {
@@ -112,4 +113,40 @@ it.each(["tripDate", "accountId"])("Save preserves current native scalar cost wh
   const saved = fixture.update.mock.lastCall![0].state;
   const after = await buildCalculatorSnapshot("synthetic", "trip_planner", { costMinor: 200n, tripScenario: saved.tripScenario, tripParams: params });
   expect(after.snapshot).toEqual(before.snapshot);
+});
+
+it.each(["missing", "foreign", "archived", "", 0])("generated Save rejects unusable account without updating revision: %s", async accountId => {
+  fixture.sdk = ["forecast"];
+  fixture.state = { tripScenario: defaultTripScenario(new Date().toISOString().slice(0, 10), "EUR", "a", 200n) };
+  fixture.params = { accountId: { type: typeof accountId === "number" ? "number" : "string", default: accountId } };
+  const input = form("2"); input.set("params", JSON.stringify({ accountId }));
+  await expect(saveCalculatorParams(input)).rejects.toThrow();
+  expect(fixture.update).not.toHaveBeenCalled();
+  expect(fixture.version).toBe(2);
+});
+it.each([saveCalculatorParams, saveDatedTripState])("all scenario saves validate every owned active payment account", async save => {
+  const scenario = defaultTripScenario(new Date().toISOString().slice(0, 10), "EUR", "a", 200n);
+  scenario.payments.push({ ...scenario.payments[0], kind: "contribution", accountId: "archived" });
+  fixture.state = { tripScenario: scenario }; fixture.sdk = ["forecast"];
+  fixture.params = { note: { type: "string", default: "retain" } };
+  const input = form("2"); input.set("params", '{"note":"retain"}'); input.set("scenario", JSON.stringify(scenario));
+  await expect(save(input)).rejects.toThrow("Unknown paying or receiving account");
+  expect(fixture.update).not.toHaveBeenCalled();
+  expect(fixture.filters).toContainEqual(["archived_at", null]);
+});
+it("generated Save accepts an owned active replacement account", async () => {
+  fixture.sdk = ["forecast"];
+  fixture.state = { tripScenario: defaultTripScenario(new Date().toISOString().slice(0, 10), "EUR", "a", 200n) };
+  fixture.params = { accountId: { type: "string", default: "a" } };
+  const input = form("2"); input.set("params", '{"accountId":"b"}');
+  expect(await saveCalculatorParams(input)).toMatchObject({ saved: true, version: 3 });
+  expect(fixture.update.mock.lastCall![0].state.tripScenario.payments[0].accountId).toBe("b");
+  expect(fixture.filters).toContainEqual(["archived_at", null]);
+});
+
+it("generated cost-only Save rejects an absent selected account", async () => {
+  fixture.sdk = ["forecast"];
+  fixture.state = { tripScenario: defaultTripScenario(new Date().toISOString().slice(0, 10), "EUR", "unselected", 200n) };
+  await expect(saveCalculatorParams(form("2"))).rejects.toThrow("Unknown paying or receiving account");
+  expect(fixture.update).not.toHaveBeenCalled();
 });
