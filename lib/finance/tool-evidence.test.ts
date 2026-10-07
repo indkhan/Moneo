@@ -42,6 +42,18 @@ it("rejects canonical parents summed with effective components but permits disjo
   expect(sum([0, 2], "-150").accepted).toHaveLength(1);
   expect(receipt.metrics[1].label).toContain("component");
 });
+it("rejects repeated contributions across independently retained cashflow queries", () => {
+  const first = toolResultReceipt("analytics_cashflow", { query: "first" }, { from: "2026-10-07", to: "2026-10-07", currencyCode: "EUR", spendingMinor: "100", calculationEvidence: { rows: [{ id: "component", parent_transaction_id: "parent" }] } }, context, ["transactions"]);
+  const second = toolResultReceipt("analytics_cashflow", { query: "second" }, { from: "2026-10-07", to: "2026-10-07", currencyCode: "EUR", spendingMinor: "100", calculationEvidence: { rows: [{ id: "component", parent_transaction_id: "parent" }] } }, context, ["transactions"]);
+  const answer = providerFinancialAnswer(JSON.stringify({ claims: [{ operation: "sum", operands: [first, second].map(receipt => ({ receiptId: receipt.id, metricId: receipt.metrics[0].id })), valueMinor: "200", currency: "EUR", periods: [first.metrics[0].period, second.metrics[0].period], qualifiers: ["partial_coverage"] }], interpretation: [] }), [first, second], context.workspaceId);
+  expect(answer.accepted.some(claim => claim.operation === "sum")).toBe(false);
+  expect(answer.body).toContain("Unsupported sections were removed");
+});
+it("distinguishes effective detail records from their canonical parent", () => {
+  const receipt = toolResultReceipt("finance_detail", {}, { transaction: { id: "parent", amount_minor: "-100", currency_code: "EUR", posted_on: "2026-10-07" }, effectiveRows: [{ id: "component", parentId: "parent", amountMinor: "-100", currency: "EUR", date: "2026-10-07" }] }, context, ["transactions"]);
+  expect(receipt.metrics[1].label).toContain("component");
+  expect(receipt.metrics[1].aggregation?.parents).toEqual(["parent"]);
+});
 it("explains retained unavailable inputs without accepting provider assertions", () => {
   const receipt = toolResultReceipt("forecast_evaluate", {}, { status: "unavailable", missingInputs: ["Current booked balance for Checking is unavailable"] }, context, ["accounts", "planning"]);
   const answer = providerFinancialAnswer("Checking has EUR999999", [receipt], context.workspaceId);

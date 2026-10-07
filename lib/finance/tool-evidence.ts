@@ -70,15 +70,15 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
         const metricCurrency = snapshot ? typeof snapshotCurrency === "string" ? snapshotCurrency : null : currency;
         if (!metricCurrency) continue;
         const qualification = [...qualifiers];
-        const component = typeof row.parent_transaction_id === "string";
-        const posting = key === "amount_minor" && ["transactions_search", "finance_detail"].includes(name);
+        const component = typeof row.parent_transaction_id === "string" || typeof row.parentId === "string";
+        const posting = ["amount_minor", "amountMinor"].includes(key) && ["transactions_search", "finance_detail"].includes(name);
         if (posting && !component) qualification.push("source_posting");
         if (snapshot || ["recorded_saved_minor", "recordedSavedMinor"].includes(key) || path.includes("wealth")) qualification.push("manual_evidence", "dated_snapshot");
         if (key === "reservedMinor") qualification.push("virtual_reservation");
         if (["target_minor", "targetMinor", "limitMinor", "allowanceMinor"].includes(key) || key.startsWith("planned")) qualification.push("assumption");
         const manualDate = ["recorded_saved_minor", "recordedSavedMinor"].includes(key) ? datedValue(row.savedAsOf ?? row.saved_as_of) : snapshot ? datedValue(row.asOf ?? row.as_of) : null;
         const postingId = typeof row.id === "string" ? row.id : null;
-        const parentId = component ? row.parent_transaction_id as string : postingId;
+        const parentId = component ? (row.parent_transaction_id ?? row.parentId) as string : postingId;
         const retainedRows = object(object(result).calculationEvidence).rows;
         const aggregateRows = name === "analytics_cashflow" && ["incomeMinor", "spendingMinor", "netMinor"].includes(key) && Array.isArray(retainedRows) ? retainedRows.map(object) : null;
         const aggregation = posting && postingId && parentId ? { kind: "signed-original", ids: [postingId], parents: [parentId], canonicalParents: component ? [] : [parentId] }
