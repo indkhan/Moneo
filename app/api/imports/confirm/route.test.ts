@@ -1,9 +1,10 @@
+import ExcelJS from "exceljs";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { POST } from "./route";
 import { start } from "workflow/api";
 
 const fixture = vi.hoisted(() => ({
-  imports: [] as { id: string; status: string }[], inserts: [] as Record<string, unknown>[], race: false,
+  imports: [] as { id: string; status: string; mapping?: Record<string, unknown> }[], inserts: [] as Record<string, unknown>[], race: false,
 }));
 vi.mock("workflow/api", () => ({ start: vi.fn() }));
 vi.mock("@/workflows/import-file", () => ({ importFile: vi.fn() }));
@@ -23,7 +24,7 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({
         single: async () => {
           if (!insertion) return result();
           if (fixture.race) {
-            fixture.imports.push({ id: "concurrent-import", status: "queued" });
+            fixture.imports.push({ id: "concurrent-import", status: "queued", mapping: insertion.mapping as Record<string, unknown> });
             return { data: null, error: { code: "23505", message: "duplicate active file" } };
           }
           fixture.imports.push({ id: "new-import", status: String(insertion.status) });
@@ -40,6 +41,39 @@ beforeEach(() => {
   fixture.imports = [{ id: "old-import", status: "undone" }];
   fixture.inserts = [];
   fixture.race = false;
+});
+
+async function scopedWorkbookRequest() {
+  const book = new ExcelJS.Workbook();
+  for (const name of ["First","Second"]) book.addWorksheet(name).addRows([["Date","Description","Amount"],["2026-09-01",name,"1.00"]]);
+  const form = new FormData();
+  form.set("file",new File([Uint8Array.from(await book.xlsx.writeBuffer() as unknown as number[])],"scoped.xlsx"));
+  form.set("mapping",JSON.stringify({...JSON.parse(String((await request().formData()).get("mapping"))),workbookScope:{version:"xlsx-scope-v1",tables:[{sheetId:1,headerRow:1,endRow:2},{sheetId:2,headerRow:1,endRow:2}]}}));
+  return new Request("http://localhost/api/imports/confirm",{method:"POST",body:form});
+}
+
+it("deduplicates the same workbook scope regardless of selection order", async () => {
+  const req = await scopedWorkbookRequest(); const mapping = JSON.parse(String((await req.clone().formData()).get("mapping")));
+  fixture.imports.push({id:"active-workbook",status:"completed",mapping:{workbookScope:{...mapping.workbookScope,tables:[...mapping.workbookScope.tables].reverse()}}});
+  const response = await POST(req);
+  expect(response.status).toBe(200);expect(await response.json()).toEqual({importId:"active-workbook",status:"completed"});
+  expect(fixture.inserts).toHaveLength(0);expect(start).not.toHaveBeenCalled();
+});
+
+it("refuses changing active reviewed scope or silently upgrading a legacy workbook", async () => {
+  for (const mapping of [{workbookScope:{version:"xlsx-scope-v1",tables:[{sheetId:1,headerRow:1,endRow:2}]}},{}]) {
+    fixture.imports = [{id:"active-workbook",status:"completed",mapping}];
+    const response = await POST(await scopedWorkbookRequest());
+    expect(response.status).toBe(409);expect(await response.json()).toMatchObject({importId:"active-workbook",error:expect.stringContaining("different reviewed workbook scope")});
+    expect(fixture.inserts).toHaveLength(0);expect(start).not.toHaveBeenCalled();
+  }
+});
+
+it("returns the same scope after a concurrent workbook confirmation", async () => {
+  fixture.race=true;
+  const response=await POST(await scopedWorkbookRequest());
+  expect(response.status).toBe(200);expect(await response.json()).toEqual({importId:"concurrent-import",status:"queued"});
+  expect(start).not.toHaveBeenCalled();
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
 
@@ -127,4 +161,14 @@ it("returns the concurrent active import rather than an undone historical import
   fixture.race = true;
   expect(await (await POST(request())).json()).toEqual({ importId: "concurrent-import", status: "queued" });
   expect(start).not.toHaveBeenCalled();
+});
+
+it("requires a frozen reviewed workbook scope even for a one-sheet new confirmation",async () => {
+  const book = new ExcelJS.Workbook();book.addWorksheet("Checking").addRows([["Date","Description","Amount"],["2026-09-01","Synthetic checking","-12.34"]]);
+  const bytes = await book.xlsx.writeBuffer();const form=new FormData();
+  form.set("file",new File([Uint8Array.from(bytes as unknown as number[])],"synthetic.xlsx"));
+  form.set("mapping",JSON.stringify({accountName:"Synthetic",currencyCode:"EUR",dateColumn:"Date",descriptionColumn:"Description",amountColumn:"Amount",dateFormat:"iso",amountSign:"signed",numericConvention:"decimal-dot"}));
+  const response=await POST(new Request("http://localhost/api/imports/confirm",{method:"POST",body:form}));
+  expect(response.status).toBe(400);expect(await response.json()).toMatchObject({error:expect.stringMatching(/workbook scope/i)});
+  expect(start).not.toHaveBeenCalled();expect(fixture.inserts).toHaveLength(0);
 });

@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import type { ImportMapping, SourceRow } from "@/lib/csv";
+import type { ImportMapping, SourceRow, WorkbookScope } from "@/lib/csv";
+import { WorkbookScopeReview, type WorkbookSheet } from "./workbook-scope";
 import { formatMoney } from "@/lib/finance/format";
 
 type Preview = {
@@ -21,7 +22,7 @@ type Preview = {
   dateRange: { from?: string; to?: string };
   examples: { postedOn: string; description: string; amountMinor: string; currencyCode: string; status?: string; merchant?: string; category?: string }[];
 };
-type Inspection = { headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string; previewError?: string; warnings?: string[] };
+type Inspection = { workbook?: {inventory: WorkbookSheet[]}; workbookScope?: WorkbookScope; needsWorkbookSelection?: boolean; headers: string[]; sample: SourceRow[]; mapping: ImportMapping | null; preview: Preview | null; aiError?: string; previewError?: string; warnings?: string[] };
 type ImportStatus = { id: string; filename: string; status: string; run_version: number; total_rows: number; new_rows: number; matched_rows: number; review_rows: number; classification_review_rows?: number; rejected_rows: number; error: string | null; created_at: string };
 type HistoryUpdate = Partial<ImportStatus> & Pick<ImportStatus, "id" | "status" | "run_version">;
 type UndoPreview = { import_id: string; filename: string; status: string; deletable_transactions: number; deletable_balances: number; blockers: string[]; safe: boolean };
@@ -136,7 +137,7 @@ export default function ImportPage() {
     return () => clearInterval(timer);
   }, [history]);
 
-  async function inspect(target: File, corrected?: ImportMapping) {
+  async function inspect(target: File, corrected?: ImportMapping, workbookScope?: WorkbookScope) {
     setRowsReviewed(false);
     inspectionRequest.current?.abort();
     const controller = new AbortController();
@@ -148,11 +149,13 @@ export default function ImportPage() {
       const form = new FormData();
       form.set("file", target);
       if (corrected) form.set("mapping", JSON.stringify(corrected));
+      if (workbookScope) form.set("workbookScope", JSON.stringify(workbookScope));
       const response = await fetch("/api/imports/inspect", { method: "POST", body: form, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(45_000)]) });
       const result = await response.json();
       if (inspectionRequest.current !== controller) return;
       if (!response.ok) throw new Error(result.error ?? "Inspection failed");
       setInspection(result);
+      if (result.needsWorkbookSelection) { setMapping(null); setEditing(false); return; }
       const column = (name: string) => result.headers.find((header: string) => header.toLowerCase() === name);
       setMapping(result.mapping ?? {
         accountName: target.name.replace(/\.(csv|xlsx)$/i, ""),
@@ -162,6 +165,7 @@ export default function ImportPage() {
         amountColumn: column("amount"),
         dateFormat: "iso",
         amountSign: "signed",
+        ...(result.workbookScope ? {workbookScope: result.workbookScope} : {}),
       });
       setEditing(!result.mapping || !result.preview || result.mapping.amountSign === "outflow-positive");
     } catch (cause) {
@@ -325,6 +329,9 @@ export default function ImportPage() {
     {error && <p role="alert" className="text-red-700 dark:text-red-300">{error}</p>}
     {file && inspection && <section className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 className="text-xl font-semibold tracking-tight text-foreground">{file.name} ({index + 1} of {files.length})</h2>
+      {inspection.workbook && <WorkbookScopeReview key={`${index}:${file.name}:${file.lastModified}:${file.size}`} inventory={inspection.workbook.inventory} initialScope={inspection.workbookScope} busy={busy}
+        onEdit={() => { setMapping(null); setEditing(false); setRowsReviewed(false); setInspection(previous => previous ? {...previous,preview:null} : null); }}
+        onPreview={scope => void inspect(file, undefined, scope)} />}
       {inspection.aiError && <p>Automatic interpretation unavailable. Choose the columns below.</p>}
       {inspection.previewError && <p role="alert">{inspection.previewError}</p>}
       {mapping && <label className="grid gap-1 text-sm">Source numeric convention

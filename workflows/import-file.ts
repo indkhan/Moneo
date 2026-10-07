@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { decideImportMatch } from "@/lib/import-match";
-import { inspectRows, parseCsv, parseExcel, type MappedRow } from "@/lib/csv";
+import { inspectRows, mappingSchema, parseCsv, parseExcel, parseLegacyExcel, type MappedRow } from "@/lib/csv";
 import { modelForSettings } from "@/lib/ai/provider";
 import { loadWorkspaceSettings, requireAiScope } from "@/lib/settings";
 import { importRowPayload, stableId } from "@/lib/import-row";
@@ -48,7 +48,8 @@ async function processImport(importId: string, workspaceId: string, from: number
     const bytes = await blob.arrayBuffer();
     if (createHash("sha256").update(new Uint8Array(bytes)).digest("hex") !== imported.file_hash) throw new Error("Stored import file differs from the reviewed original");
     const extension = imported.storage_path.split(".").pop();
-    const rows = extension === "csv" ? parseCsv(new TextDecoder().decode(bytes)) : await parseExcel(bytes);
+    const confirmedMapping = mappingSchema.parse(imported.mapping);
+    const rows = extension === "csv" ? parseCsv(new TextDecoder().decode(bytes)) : confirmedMapping.workbookScope ? await parseExcel(bytes, confirmedMapping.workbookScope) : await parseLegacyExcel(bytes);
     const { mapped, unresolvedRows, excludedRows } = inspectRows(rows, imported.mapping);
     if (unresolvedRows.length) throw new Error(unresolvedRows[0].message);
     const accountIds = new Map<string, string>();
