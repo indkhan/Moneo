@@ -14,6 +14,16 @@ const fact = { operation: "metric", operands: [metric], valueMinor: "90071992547
 const publish = (claims: unknown[], receipts = [receipt]) => publishFinancialClaims({ claims, interpretation: [] }, receipts, workspaceId);
 
 describe("financial publication trust boundary", () => {
+  it("gives useful typed clarifications without unsupported financial assertions", () => {
+    const result = publishFinancialClaims({ claims: [], interpretation: [], clarification: { topic: "period" } }, [], workspaceId);
+    expect(result.removed).toBe(0);
+    expect(result.body).toContain("What start and end dates");
+    expect(result.body).not.toContain("No supported financial measures");
+    const rejected = publishFinancialClaims({ claims: [], interpretation: [], clarification: { topic: "period", text: "EUR999999 [proof](/invented)" } }, [], workspaceId);
+    expect(rejected.removed).toBe(1);
+    expect(rejected.body).not.toContain("999999");
+    expect(rejected.body).not.toContain("/invented");
+  });
   it("explains exact evidence-specific comparisons with composed unproven hypotheses and checks", () => {
     const previous = { ...receipt.metrics[0], id: "previous", valueMinor: "9007199254740990", period: { from: "2026-08-01", to: "2026-08-31" } };
     const evidence = { ...receipt, metrics: [...receipt.metrics, previous] };

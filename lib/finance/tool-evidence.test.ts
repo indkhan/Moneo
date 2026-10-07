@@ -74,3 +74,17 @@ it("renders actual action and import statuses without accepting provider prose o
   expect(body).toContain("2 rows need classification review");
   expect(body).not.toContain("999999");
 });
+it("acknowledges actual category corrections and reconstructs only the exact owned confirmation link", () => {
+  const transactionId = "00000000-0000-4000-8000-000000000002", categoryId = "00000000-0000-4000-8000-000000000003";
+  const updated = toolResultReceipt("transactions_setCategory", { transactionId, category: "Food" }, { status: "updated", category: "Food", transactionUrl: `/money/transactions?transaction=${transactionId}` }, context, ["transactions"]);
+  const body = providerFinancialAnswer('{"claims":[],"interpretation":[]}', [updated], context.workspaceId).body;
+  expect(body).toContain("Updated the selected transaction category");
+  expect(body).toContain(`[Open transaction and Undo](/money/transactions?transaction=${transactionId})`);
+  const preview = toolResultReceipt("transactions_previewCategory", { transactionIds: [transactionId], categoryId }, { rows: [{ id: transactionId }], category: { id: categoryId }, href: "/invented" }, context, ["transactions"]);
+  const previewBody = providerFinancialAnswer('{"claims":[],"interpretation":[]}', [preview], context.workspaceId).body;
+  expect(previewBody).toContain(`/ai/actions/preview?ids=${transactionId}&category=${categoryId}`);
+  expect(previewBody).toContain("Preview only");
+  expect(previewBody).not.toContain("/invented");
+  const foreign = toolResultReceipt("transactions_previewCategory", { transactionIds: [transactionId], categoryId }, { rows: [{ id: categoryId }], category: { id: categoryId } }, context, ["transactions"]);
+  expect(providerFinancialAnswer('{"claims":[],"interpretation":[]}', [foreign], context.workspaceId).body).not.toContain("/ai/actions/preview");
+});

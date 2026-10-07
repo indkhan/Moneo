@@ -36,8 +36,10 @@ const explanationSchema = z.object({
   nextSteps: z.array(topicSchema).max(4).default([]),
 }).strict();
 const interpretationSchema = z.union([nextStepSchema, explanationSchema]);
+const clarificationSchema = z.object({ topic: z.enum(["welcome", "help", "question", "period", "comparison_period", "account", "category", "merchant", "currency", "classification", "goal", "assumptions"]) }).strict();
 export const financialAnswerSchema = z.object({
   claims: z.array(financialClaimSchema).max(100), interpretation: z.array(interpretationSchema).max(20),
+  clarification: clarificationSchema.optional(),
 }).strict();
 type Claim = z.infer<typeof financialClaimSchema>;
 const qualifications: Record<string, string> = {
@@ -75,9 +77,28 @@ function resolve(reference: z.infer<typeof referenceSchema>, receipts: Financial
   return { receipt, metric, value: BigInt(metric.valueMinor!) };
 }
 export function publishFinancialClaims(input: unknown, receipts: FinancialEvidenceReceipt[], workspaceId: string) {
-  const envelope = z.object({ claims: z.array(z.unknown()).max(100), interpretation: z.array(z.unknown()).max(20) }).strict().safeParse(input);
+  const envelope = z.object({ claims: z.array(z.unknown()).max(100), interpretation: z.array(z.unknown()).max(20), clarification: z.unknown().optional() }).strict().safeParse(input);
   const accepted: Claim[] = [], measured: string[] = [], interpretation: string[] = [];
   let removed = envelope.success ? 0 : 1;
+  const clarifications = {
+    welcome: "Hello. What would you like to investigate? Tell me the financial question and dates you have in mind.",
+    help: "I can help inspect permitted records, compare periods, explain retained financial calculations, and prepare a category-change preview. Tell me the question and scope you want to use.",
+    question: "What would you like to investigate? Tell me the financial question, dates and any account or category scope.",
+    period: "What start and end dates should I use for this investigation?",
+    comparison_period: "Which two date ranges should I compare?",
+    account: "Which owned account or accounts should I include or exclude? You can choose their names or IDs from Money.",
+    category: "Which owned categories should I include or exclude?",
+    merchant: "Which owned merchant or merchants should I include or exclude?",
+    currency: "Which currency view should I use: separate original currencies or a chosen base currency with evidenced posting-date conversion?",
+    classification: "Should I use resolved financial classifications, or show unresolved source evidence separately?",
+    goal: "Which goal and dated recorded savings should I use?",
+    assumptions: "Which forecast horizon, account and conditional assumptions should I evaluate?",
+  };
+  let clarification: string | null = null;
+  if (envelope.success && envelope.data.clarification !== undefined) {
+    const parsed = clarificationSchema.safeParse(envelope.data.clarification);
+    if (parsed.success) clarification = clarifications[parsed.data.topic]; else removed++;
+  }
   for (const raw of envelope.success ? envelope.data.claims : []) {
     try {
       const claim = financialClaimSchema.parse(raw);
@@ -147,7 +168,7 @@ export function publishFinancialClaims(input: unknown, receipts: FinancialEviden
     } catch { removed++; }
   }
   return {
-    accepted, removed,
-    body: [measured.length ? `Measured facts\n\n${measured.join("\n")}` : "No supported financial measures were available for publication.", interpretation.length ? `Interpretation — conditional next steps\n\n${interpretation.join("\n")}` : "", removed ? "Unsupported sections were removed before publication; only validated evidence is shown." : ""].filter(Boolean).join("\n\n"),
+    accepted, removed, clarified: clarification !== null,
+    body: [measured.length ? `Measured facts\n\n${measured.join("\n")}` : clarification ?? clarifications.question, interpretation.length ? `Interpretation — conditional next steps\n\n${interpretation.join("\n")}` : "", measured.length && clarification ? clarification : "", removed ? "Unsupported sections were removed before publication; only validated evidence is shown." : ""].filter(Boolean).join("\n\n"),
   };
 }

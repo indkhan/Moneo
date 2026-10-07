@@ -223,6 +223,16 @@ it("investigates remaining evidence when planning is already revoked before a ne
   await expect(tools.reviews_investigate.execute()).resolves.toEqual({ source: "exact evidence" });
   expect(loadFinancialReviewEvidence).toHaveBeenCalledWith(current.supabase, current.workspace, reduced.settings, undefined);
 });
+it("publishes a useful typed clarification when no financial measure is needed", async () => {
+  vi.mocked(generateText).mockResolvedValueOnce({ text: JSON.stringify({ claims: [], interpretation: [], clarification: { topic: "period" } }), totalUsage: {} } as never);
+  const response = await POST(request("Please compare my spending")), body = await response.json();
+  expect(response.status).toBe(200);
+  expect(body.answer).toContain("What start and end dates");
+  expect(body.answer).not.toContain("No supported financial measures");
+  expect(body.answer).not.toContain("Unsupported sections");
+  const { supabase } = await requireWorkspace();
+  expect(vi.mocked(supabase.rpc).mock.calls.find(call => call[0] === "finish_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
+});
 it.each(["planning", "imports"] as const)("carries actual %s reads across a revocation between post-read and capture", async revoked => {
   await POST(request("Review my finances"));
   const current = await requireWorkspace();
