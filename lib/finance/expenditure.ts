@@ -63,6 +63,8 @@ export function reportExpenditure(rows: ExpenditurePosting[], rates: Expenditure
     } });
   }
   return { ...options, status: incomplete ? "incomplete" as const : "complete" as const, totals: incomplete ? null : serialize(available), availableTotals: serialize(available), perCurrency: Object.fromEntries(Object.entries(perCurrency).map(([currency, total]) => [currency, serialize(total)])), postings, exclusions,
+    resultBasis: "accepted reviewed postings; statement completeness is not established" as const,
+    conversionCoverage: { status: incomplete ? "incomplete" as const : "complete" as const, missingRateCount: exclusions.filter(row => row.reason === "missing-rate").length, invalidRateCount: exclusions.filter(row => row.reason === "invalid-rate").length, ambiguousRateCount: exclusions.filter(row => row.reason === "ambiguous-rate").length, excludedClassificationCount: exclusions.filter(row => row.reason === "classification-review").length },
     scopedTransactionCount, includedTransactionCount: postings.filter(row => options.view === "original" || row.reportingAmountMinor !== null).length,
     policy: { rateDate: "exact-posting-date" as const, pair: "direct" as const, rounding: "per-posting-half-away-from-zero" as const },
     limitation: incomplete ? "Missing conversion evidence or excluded classifications are unknown; partial totals are not upper or lower bounds." : null };

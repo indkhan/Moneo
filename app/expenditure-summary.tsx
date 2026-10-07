@@ -13,7 +13,7 @@ export function ExpenditureSummary({ report, locale, accountId, coverage }: { re
       <Link href={href("original")} aria-current={report.view === "original" ? "page" : undefined} className="text-brand underline">Original currencies</Link>
     </nav>
     {report.view === "base" && (report.totals ? <p className="mt-3 font-mono text-2xl font-semibold">{money(report.totals.spendingMinor, report.currencyCode)}</p> : <><p className="mt-3 font-semibold text-amber-700">Incomplete base-currency report</p><p className="mt-2 text-sm">Available converted subtotal: {money(report.availableTotals.spendingMinor, report.currencyCode)}</p><p className="mt-2 text-xs text-muted-foreground">{report.limitation}</p></>)}
-    <p className="mt-2 text-xs text-muted-foreground">{report.from} to {report.to}; posted spending net of refunds. Pending and transfer principal excluded.</p>
+    <p className="mt-2 text-xs text-muted-foreground">{report.from} to {report.to}; accepted reviewed postings, net of refunds. Pending and transfer principal excluded. Statement completeness is not established.</p>
     {report.view === "base" && <p className="mt-2 text-xs text-muted-foreground">Exact posting-date direct FX rates; each posting rounds half away from zero before aggregation.</p>}
     {report.view === "original" && report.status === "incomplete" && <p className="mt-2 text-xs text-amber-700">Incomplete: {report.limitation}</p>}
     <ul aria-label="Original currency spending subtotals" className="mt-3 space-y-1 text-sm">{Object.entries(report.perCurrency).map(([currency, totals]) => <li key={currency}>{currency}: {money(totals.spendingMinor, currency)} original spending</li>)}</ul>

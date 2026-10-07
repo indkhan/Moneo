@@ -63,4 +63,8 @@ describe("authoritative expenditure reporting", () => {
     const row = { ...posting("split", 1n, "USD", { kind: "refund", accountId: "synthetic-account" }), parentTransactionId: "canonical-parent" };
     expect(reportExpenditure([row], [rate], options).postings[0]).toMatchObject({ kind: "refund", accountId: "synthetic-account", parentTransactionId: "canonical-parent" });
   });
+  it("labels complete conversion coverage as accepted-record evidence rather than complete statements", () => {
+    expect(reportExpenditure([posting("a", -100n)], [rate], options)).toMatchObject({ conversionCoverage: { status: "complete", missingRateCount: 0, excludedClassificationCount: 0 }, resultBasis: "accepted reviewed postings; statement completeness is not established" });
+    expect(reportExpenditure([posting("a", -100n), posting("unknown", -1n, "EUR", { reviewReasons: ["kind"] })], [], options)).toMatchObject({ conversionCoverage: { status: "incomplete", missingRateCount: 1, excludedClassificationCount: 1 } });
+  });
 });
