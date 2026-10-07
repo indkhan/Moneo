@@ -182,7 +182,10 @@ export async function POST(request: Request) {
     if (request.signal.aborted) throw new Error("Request canceled");
     requireAiScope(current.settings, ...evidenceReceipts.flatMap(receipt => receipt.scopes));
     const answer = publication.body;
-    const finished = await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "completed", p_content: answer, p_usage: reportedUsage(model.modelId, result.totalUsage) });
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Verified chat publication service is not configured");
+    const publicationService = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+    const finished = await publicationService.rpc("finish_verified_chat_request", { p_request_id: requestId, p_actor_id: current.user.id, p_workspace_id: workspace.id, p_content: answer,
+      p_receipt_ids: evidenceReceipts.map(receipt => receipt.id), p_scopes: [...new Set(evidenceReceipts.flatMap(receipt => receipt.scopes))], p_usage: reportedUsage(model.modelId, result.totalUsage) });
     if (finished.error) throw finished.error;
     if (finished.data !== "completed") return Response.json({ status: finished.data, error: `Request is ${finished.data}` }, { status: 409 });
     const toolsUsed = [...new Set((result.steps ?? []).flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [toolResult.toolName] : [])))];

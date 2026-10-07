@@ -23,7 +23,13 @@ begin
     raise exception 'Canceled requests must prevent writes';
   exception when sqlstate '57014' then null;
   end;
-  perform public.finish_chat_request(r,'completed','Late answer');
+  begin
+    perform public.finish_chat_request(r,'completed','Unvalidated answer');
+    raise exception 'Owner completion must require trusted publication';
+  exception when sqlstate '42501' then null; end;
+  perform set_config('request.jwt.claim.role','service_role',true);
+  perform public.finish_verified_chat_request(r,u,w,'Late answer',array[]::uuid[],array[]::text[],null);
+  perform set_config('request.jwt.claim.role','authenticated',true);
   if exists(select 1 from public.messages where reply_to=r) then raise exception 'Canceled request must not save late replies'; end if;
   perform public.start_chat_request(r2,c,'Change my Amazon to Groceries','{}');
   begin

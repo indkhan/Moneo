@@ -15,6 +15,7 @@ it.skipIf(process.env.RUN_VERIFIED_EVIDENCE_DB_TESTS !== "1")("enforces owned sc
     try { await db.begin(async tx => {
       await tx.unsafe(`create schema ${disposable}; grant usage on schema ${disposable} to authenticated,anon,service_role`);
       const migration = readFileSync("supabase/migrations/202610060014_verified_financial_evidence.sql", "utf8")
+        .split("-- Verified chat publication:")[0]
         .replaceAll("public.financial_evidence_receipts", `${disposable}.financial_evidence_receipts`)
         .replaceAll("public.prevent_financial_evidence_update", `${disposable}.prevent_financial_evidence_update`);
       await tx.unsafe(migration);
@@ -55,6 +56,7 @@ it.skipIf(process.env.RUN_VERIFIED_EVIDENCE_DB_TESTS !== "1")("concurrent captur
     const workspaceId = await db.begin(async tx => {
       await tx.unsafe(`create schema ${disposable}`);
       const migration = readFileSync("supabase/migrations/202610060014_verified_financial_evidence.sql", "utf8")
+        .split("-- Verified chat publication:")[0]
         .replaceAll("public.financial_evidence_receipts", `${disposable}.financial_evidence_receipts`)
         .replaceAll("public.prevent_financial_evidence_update", `${disposable}.prevent_financial_evidence_update`);
       await tx.unsafe(migration);
