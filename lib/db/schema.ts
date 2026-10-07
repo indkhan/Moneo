@@ -432,6 +432,8 @@ export const backgroundJobs = pgTable("background_jobs", {
   kind: text("kind").notNull(),
   requestId: uuid("request_id"),
   chatRequestId: uuid("chat_request_id").references((): AnyPgColumn => chatRequests.id, { onDelete: "set null" }),
+  reviewRequest: jsonb("review_request"),
+  reviewProgress: jsonb("review_progress"),
   workflowRunId: text("workflow_run_id"),
   dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
   status: text("status").notNull().default("queued"),
@@ -445,6 +447,8 @@ export const backgroundJobs = pgTable("background_jobs", {
   check("background_jobs_status_check", sql`${table.status} in ('queued', 'running', 'completed', 'failed', 'canceled')`),
   unique("background_jobs_workspace_request_key").on(table.workspaceId, table.requestId),
   unique("background_jobs_workflow_run_key").on(table.workflowRunId),
+  check("background_jobs_review_request_check", sql`${table.reviewRequest} is null or (jsonb_typeof(${table.reviewRequest}) = 'object' and octet_length(${table.reviewRequest}::text) <= 65536)`),
+  check("background_jobs_review_progress_check", sql`${table.reviewProgress} is null or (jsonb_typeof(${table.reviewProgress}) = 'object' and octet_length(${table.reviewProgress}::text) <= 262144)`),
 ]);
 
 export const savedAnalyses = pgTable("saved_analyses", {
