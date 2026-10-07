@@ -61,18 +61,22 @@ it("publishes supported tool claims with application amounts and calculation lin
   expect(body.answer).not.toContain("Unsupported sections");
   expect(serviceRpc.mock.calls.find(call => call[0] === "finish_verified_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
 });
-it("offers scoped investigation and exact-intent review start within four model steps", async () => {
+it("offers scoped investigation and question-bound review start within four model steps", async () => {
   expect((await POST(request("Start a deep financial review"))).status).toBe(200);
   const options = vi.mocked(generateText).mock.calls[0][0];
   expect(options.stopWhen).toBe(4);
   const tools = options.tools as unknown as Record<string, { execute: () => Promise<unknown> }>;
   expect(await tools.reviews_investigate.execute()).toEqual({ source: "exact evidence" });
   expect(await tools.reviews_start.execute()).toMatchObject({ jobId: "job", status: "queued", href: "/ai" });
-  expect(startFinancialReview).toHaveBeenCalledWith(expect.anything(), "workspace", requestId, requestId);
+  expect(startFinancialReview).toHaveBeenCalledWith(expect.anything(), "workspace", requestId, requestId, expect.objectContaining({question: "Start a deep financial review"}));
 });
-it("questions do not expose the review-start tool", async () => {
-  await POST(request("Should I start a deep financial review?"));
-  expect(vi.mocked(generateText).mock.calls[0][0].tools).not.toHaveProperty("reviews_start");
+it.each(["Run a deep financial review for September", "Review my finances and focus on subscriptions", "Investigate the decline in grocery spending"])("accepts ordinary investigation phrasing and retains exact question, chosen dates and focus: %s", async message => {
+  await POST(request(message));
+  const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, {execute: (input: unknown) => Promise<unknown>}>;
+  expect(tools).toHaveProperty("reviews_start");
+  const query = {version: 1, period: {from: "2026-09-01", to: "2026-09-30"}, comparison: {from: "2026-08-01", to: "2026-08-31"}, groupBy: ["merchant"]};
+  await tools.reviews_start.execute({query, focus: "Subscriptions", output: "answer"});
+  expect(startFinancialReview).toHaveBeenLastCalledWith(expect.anything(), "workspace", requestId, requestId, expect.objectContaining({question: message, query: expect.objectContaining(query), focus: "Subscriptions", output: "answer"}));
 });
 it("creates a trusted chart only for an explicit artifact request and reuses it within the request", async () => {
   await POST(request("Can you create a monthly spending chart?"));
@@ -152,7 +156,7 @@ it.each(readTools)("withholds %s when %s is revoked during its paused read", asy
   let received: unknown;
   vi.mocked(generateText).mockImplementationOnce(async options => {
     const tools = options.tools as unknown as Record<string, { execute: (input: unknown) => Promise<unknown> }>;
-    const result = tools[name].execute({ query: "synthetic", from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR", horizonDays: 30, transactionIds: [requestId], categoryId: requestId });
+    const result = tools[name].execute(name === "reviews_start" ? {} : { query: "synthetic", from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR", horizonDays: 30, transactionIds: [requestId], categoryId: requestId });
     await started;
     vi.mocked(requireWorkspace).mockResolvedValue({ ...current, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: DEFAULT_SETTINGS.ai_data_scopes.filter(value => value !== scope) } });
     release({ synthetic: "withheld evidence" } as never);

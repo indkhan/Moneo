@@ -6,7 +6,8 @@ import { requireWorkspace } from "@/lib/auth";
 import { requireAiScope, type AiDataScope } from "@/lib/settings";
 import { calendarDate } from "@/lib/finance/calendar";
 import { reportedUsage } from "@/lib/ai/usage";
-import { isExplicitReviewRequest, parseCategoryCommand } from "@/lib/ai/write-intent";
+import { parseCategoryCommand } from "@/lib/ai/write-intent";
+import {reviewRequestSchema, resolveReviewRequest} from "@/lib/finance/review-request";
 import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
 import { startFinancialReview } from "@/lib/finance/start-review";
 import { categoryPreviewSchema, loadCategoryPreview } from "@/lib/finance/edit-preview";
@@ -64,7 +65,6 @@ export async function POST(request: Request) {
   const categoryCommand = parseCategoryCommand(message);
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
-  const canStartReview = canInvestigate && isExplicitReviewRequest(message);
   const canCreateArtifact = /(?:^|[.!?]\s+)(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:create|build|make)\b[^.!?]*\b(?:chart|artifact|tool|dashboard|tracker|planner)\b/i.test(message);
   // These checks govern new tool results, not evidence already sent to the provider.
   const readScopes = new WeakMap<object, AiDataScope[]>();
@@ -148,10 +148,12 @@ export async function POST(request: Request) {
           loadCategoryPreview(latest.supabase, workspace.id, transactionIds, categoryId)) }) } : {}),
         ...(canInvestigate ? { reviews_investigate: tool({ description: "Investigate the selected query or an explicitly dated default review, with exact spending changes, account evidence, classification limitations and permitted planning evidence. Read-only.", inputSchema: z.object({ query: investigationSchema.optional() }).strict(), execute: ({ query } = {}) => aiEvidence(["accounts", "transactions"], latest =>
           loadFinancialReviewEvidence(latest.supabase, latest.workspace, latest.settings, query), true, true) }) } : {}),
-        ...(canStartReview ? { reviews_start: tool({ description: "Start the deep financial review explicitly requested in this exact user message. Creates one durable, cancelable job; repeated calls reuse it. No financial data changes.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], async latest => {
+        ...(canInvestigate ? { reviews_start: tool({ description: "Investigate the current user's finance question through a bounded, durable, cancelable review. Preserve their chosen dates, entities and focus in query/focus; the application binds the exact question. Use ordinary finance queries for quick answers, and this tool when follow-up evidence gathering or a saved report is useful. Do not start when the user declines investigation or only asks what a review does. Repeated calls reuse one job; no canonical financial changes or artifact generation.", inputSchema: reviewRequestSchema.omit({question: true, version: true}), execute: (input = {includePlanning: false, output: "answer", budget: {maxQueries: 6, maxSupportRecords: 60, maxOutputTokens: 4000, maxDurationMs: 90000}}) => aiEvidence(["accounts", "transactions"], async latest => {
           if (request.signal.aborted) throw new Error("Request canceled");
           if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) throw new Error("Financial review service is not configured");
-          return { ...await startFinancialReview(latest.supabase, workspace.id, requestId, requestId), href: "/ai" };
+          const specification = resolveReviewRequest({...input, version: 1, question: message}, calendarDate(new Date(), latest.settings.timezone));
+          if (specification.includePlanning) requireAiScope(latest.settings, "planning");
+          return { ...await startFinancialReview(latest.supabase, workspace.id, requestId, requestId, specification), href: "/ai" };
         }) }) } : {}),
         ...(settings.ai_data_scopes.includes("accounts") ? { accounts_list: tool({ description: "List the user's accounts", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => listAccounts(latest)) }),
         accounts_getBalances: tool({ description: "Get dated balances, provenance and source coverage", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => getBalances(latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }) } : {}),
