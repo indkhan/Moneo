@@ -24,6 +24,14 @@ function assertStorageCompatible(value: unknown): void {
   }
 }
 
+export const workbookScopeSchema = z.object({
+  version: z.literal("xlsx-scope-v1"),
+  tables: z.array(z.object({ sheetId: z.number().int().positive(), headerRow: z.number().int().positive(), endRow: z.number().int().positive() }).strict()
+    .refine(table => table.endRow > table.headerRow, "A table needs data rows after its header")).min(1).max(100),
+}).strict();
+export type WorkbookScope = z.infer<typeof workbookScopeSchema>;
+
+
 export const mappingSchema = z.object({
   accountName: z.string().trim().min(1).refine(value => Array.from(value).length <= 100, "Account name exceeds 100 characters"),
   currencyCode: z.string().regex(/^[A-Z]{3}$/),
@@ -56,6 +64,7 @@ export const mappingSchema = z.object({
   numericConvention: z.enum(["decimal-dot", "decimal-comma"]).optional(),
   parserVersion: z.literal("numeric-convention-v2").optional(),
   rowContractVersion: z.literal("normalized-row-v1").optional(),
+  workbookScope: workbookScopeSchema.optional(),
   rowDecisions: z.array(z.discriminatedUnion("action", [
     z.object({ rowNumber: z.number().int().min(2), action: z.literal("correct"),
       values: z.record(z.string(), z.string().max(100_000)).refine(value => Object.keys(value).length > 0, "Correction needs source values") }).strict(),
@@ -85,7 +94,7 @@ export function proposeKnownStatementMapping(rows: SourceRow[], accountName: str
 export function validateImportConfirmation(rows: SourceRow[], input: unknown): ImportMapping {
   const mapping = validateMapping(input, rows);
   if (!mapping.numericConvention) throw new Error("Review and select the source numeric convention before importing");
-  const naive = reviewedSourceRows(rows, mapping).some(row => row && /[ T]\d{2}:\d{2}:\d{2}$/.test(row[mapping.dateColumn]?.trim() ?? ""));
+  const naive = reviewedSourceRows(rows, mapping).some(row => row && /[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?$/.test(row[mapping.dateColumn]?.trim() ?? ""));
   if (naive && (!mapping.timestampTimezone || !mapping.timestampTimezoneConfirmed))
     throw new Error("Review and confirm the source timestamp timezone before importing");
   mapRows(rows, mapping);
@@ -93,7 +102,7 @@ export function validateImportConfirmation(rows: SourceRow[], input: unknown): I
 }
 
 export function proposeStatementTimezones(rows: SourceRow[], mapping: ImportMapping, workspaceTimezone = "Europe/Berlin"): ImportMapping {
-  const naive = rows.some(row => /[ T]\d{2}:\d{2}:\d{2}$/.test(row[mapping.dateColumn]?.trim() ?? ""));
+  const naive = rows.some(row => /[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?$/.test(row[mapping.dateColumn]?.trim() ?? ""));
   return { ...mapping, calendarTimezone: workspaceTimezone,
     ...(naive ? { timestampTimezone: mapping.timestampTimezone ?? workspaceTimezone,
       timestampTimezoneConfirmed: mapping.timestampTimezoneConfirmed ?? false } : {}) };
@@ -131,20 +140,55 @@ function cellText(cell: ExcelJS.Cell): string {
   return String(value);
 }
 
-export async function parseExcel(file: ArrayBuffer): Promise<SourceRow[]> {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(file);
-  const sheet = workbook.worksheets[0];
-  if (!sheet) throw new Error("Workbook has no sheets");
-  const headers = Array.from({ length: sheet.columnCount }, (_, i) => cellText(sheet.getRow(1).getCell(i + 1)).trim());
-  if (headers.some((h) => !h) || new Set(headers).size !== headers.length) throw new Error("Missing or duplicate XLSX headers");
+
+function workbookRows(workbook: ExcelJS.Workbook, input?: WorkbookScope): SourceRow[] {
+  if (!workbook.worksheets.length) throw new Error("Workbook has no sheets");
+  if (!input && workbook.worksheets.length !== 1) throw new Error("Select the included worksheets and table scope before importing");
+  const scope = input ? workbookScopeSchema.parse(input) : { version: "xlsx-scope-v1", tables: [{ sheetId: workbook.worksheets[0].id, headerRow: 1, endRow: workbook.worksheets[0].rowCount }] };
+  const selected = scope.tables.map(table => {
+    const sheet = workbook.getWorksheet(table.sheetId);
+    if (!sheet || table.endRow > sheet.rowCount || !sheet.rowCount) throw new Error("Selected worksheet table is unavailable or empty");
+    return { ...table, sheet, sheetIndex: workbook.worksheets.indexOf(sheet) };
+  }).sort((a, b) => a.sheetIndex - b.sheetIndex || a.headerRow - b.headerRow);
   const rows: SourceRow[] = [];
-  sheet.eachRow((row, rowNumber) => {
-    if (rowNumber === 1 || !row.hasValues) return;
-    rows.push(Object.fromEntries(headers.map((header, i) => [header, cellText(row.getCell(i + 1))])));
-  });
+  let previous: typeof selected[number] | undefined;
+  let sharedHeaders: string[] | undefined;
+  for (const table of selected) {
+    if (previous?.sheet.id === table.sheet.id && table.headerRow <= previous.endRow) throw new Error("Selected workbook tables overlap");
+    previous = table;
+    const header = table.sheet.getRow(table.headerRow);
+    const headers = Array.from({length: header.cellCount}, (_, index) => cellText(header.getCell(index + 1)).trim());
+    if (!headers.length || headers.some(value => !value || value.startsWith("__moneo_csv_")) || new Set(headers).size !== headers.length) throw new Error("Missing, duplicate or reserved XLSX headers");
+    if (sharedHeaders && JSON.stringify(headers) !== JSON.stringify(sharedHeaders)) throw new Error("Select tables with matching headers; inspect differently structured tables separately");
+    sharedHeaders = headers;
+    for (let rowNumber = table.headerRow + 1; rowNumber <= table.endRow; rowNumber++) {
+      const row = table.sheet.getRow(rowNumber);
+      if (!row.hasValues) continue;
+      const values: SourceRow = Object.fromEntries(headers.map((name, index) => {
+        const value = row.getCell(index + 1).value;
+        return [name, input && value instanceof Date ? value.toISOString().replace(/Z$/, "").replace(/\.000$/, "") : cellText(row.getCell(index + 1))];
+      }));
+      if (input) values.__moneo_csv_xlsx_source = JSON.stringify({ version: "xlsx-scope-v1", sheetId: table.sheet.id, sheetName: table.sheet.name, sheetState: table.sheet.state, headerRow: table.headerRow, rowNumber,
+        cells: Object.fromEntries(headers.map((name, index) => { const cell = row.getCell(index + 1); return [name, { type: cell.type, value: cell.value, numberFormat: cell.numFmt }]; })) });
+      rows.push(values);
+    }
+  }
   assertStorageCompatible(rows);
   return rows;
+}
+
+export async function inspectExcel(file: ArrayBuffer, scope?: WorkbookScope) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(file);
+  const inventory = workbook.worksheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name, state: sheet.state, rowCount: sheet.rowCount, columnCount: sheet.columnCount,
+    preview: Array.from({length: Math.min(sheet.rowCount, 20)}, (_, index) => ({rowNumber: index + 1, values: Array.from({length: Math.min(sheet.columnCount, 50)}, (_, column) => cellText(sheet.getRow(index + 1).getCell(column + 1))) })) }));
+  return { inventory, rows: scope ? workbookRows(workbook, scope) : null };
+}
+
+export async function parseExcel(file: ArrayBuffer, scope?: WorkbookScope): Promise<SourceRow[]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(file);
+  return workbookRows(workbook, scope);
 }
 
 export function validateMapping(input: unknown, rows: SourceRow[]): ImportMapping {
@@ -242,7 +286,7 @@ function pow10(exponent: number): bigint {
 function parseDate(input: string, format: ImportMapping["dateFormat"]): string {
   const value = input.trim();
   const match = format === "iso"
-    ? /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:Z|[+-]\d{2}:[0-5]\d)?)?$/.exec(value)
+    ? /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-]\d{2}:[0-5]\d)?)?$/.exec(value)
     : /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/.exec(value);
   if (!match) throw new Error(`Invalid date: ${input}`);
   const [year, month, day] = format === "iso"
@@ -255,7 +299,7 @@ function parseDate(input: string, format: ImportMapping["dateFormat"]): string {
 }
 
 function parseTimestamp(value: string, timeZone?: string): string | undefined {
-  const match = /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{2}):(\d{2}):(\d{2})(Z|[+-]\d{2}:\d{2})?$/.exec(value.trim());
+  const match = /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-]\d{2}:\d{2})?$/.exec(value.trim());
   if (!match) return undefined;
   if (match[7]) {
     const instant = new Date(value.trim().replace(" ", "T"));
@@ -392,6 +436,19 @@ export function inspectRows(rows: SourceRow[], input: unknown) {
         }
         if (columns.some(column => !Object.hasOwn(decision.values, column))) throw new Error("CSV field mismatch: review all mapped cells before accepting the corrected interpretation");
       }
+      if (rows[index].__moneo_csv_xlsx_source) {
+        const evidence = JSON.parse(rows[index].__moneo_csv_xlsx_source) as {cells: Record<string,{value: unknown}>};
+        for (const column of [mapping.amountColumn, mapping.debitColumn, mapping.creditColumn, mapping.balanceColumn, mapping.feeColumn].filter((name): name is string => Boolean(name))) {
+          const original = evidence.cells[column]?.value;
+          const value = original && typeof original === "object" && "result" in original ? original.result : original;
+          if (typeof value !== "number") continue;
+          const significantDigits = String(value).split(/e/i)[0].replace(/[-.]/g, "").replace(/^0+/, "").length;
+          const decision = decisions.get(index + 2);
+          if ((!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER || significantDigits > 15) &&
+            !Object.hasOwn(decision?.action === "correct" ? decision.values : {}, column))
+            throw new Error(`Unsafe XLSX numeric precision in ${column}: review an exact source string or explicitly correct/exclude the observation`);
+        }
+      }
       const description = sourceRow[mapping.descriptionColumn]?.trim();
       if (!description) throw new Error("Missing description");
       // PostgreSQL length counts Unicode code points, rather than UTF-16 units.
@@ -522,7 +579,7 @@ export function previewImport(rows: SourceRow[], input: unknown) {
     pendingRows: mapped.filter((row) => row.status === "pending").length,
     postedRows: mapped.filter((row) => row.status === "posted").length,
     classificationReviewRows: mapped.filter(row => row.reviewReasons.length > 0).length,
-    timestampReviewRequired: reviewedSourceRows(rows, mapping).some(row => row && /[ T]\d{2}:\d{2}:\d{2}$/.test(row[mapping.dateColumn]?.trim() ?? "")),
+    timestampReviewRequired: reviewedSourceRows(rows, mapping).some(row => row && /[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?$/.test(row[mapping.dateColumn]?.trim() ?? "")),
     dateRange: { from: dates[0], to: dates[dates.length - 1] },
     examples: mapped.slice(0, 5),
   };

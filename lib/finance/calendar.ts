@@ -6,7 +6,7 @@ export function calendarDate(value: string | Date = new Date(), timeZone = "Euro
 }
 
 export function reviewedLocalTimestamp(value: string, timeZone: string): string {
-  const match = /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(value.trim());
+  const match = /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/.exec(value.trim());
   if (!match) throw new Error("Invalid local timestamp");
   const wall = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]), Number(match[6]));
   const checked = new Date(wall);
@@ -24,7 +24,7 @@ export function reviewedLocalTimestamp(value: string, timeZone: string): string 
     if (localWall(candidate) === wall) candidates.add(candidate);
   }
   if (candidates.size !== 1) throw new Error("Source timestamp is ambiguous or nonexistent in the reviewed timezone");
-  return new Date([...candidates][0]).toISOString();
+  return new Date([...candidates][0] + Number((match[7] ?? "").padEnd(3, "0"))).toISOString();
 }
 
 export function calendarDayBoundary(date: string, timeZone = "Europe/Berlin"): string {
