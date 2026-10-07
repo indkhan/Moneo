@@ -17,6 +17,6 @@ export function parseInvestigationParams(params: Record<string, string | string[
     tags: { include: labelList("tags"), exclude: labelList("excludeTags") }, events: { include: labelList("events"), exclude: labelList("excludeEvents") },
     groupBy: list("groupBy"), metric: first("metric") || "spending", classifications: first("classifications") || "resolved",
     statuses: list("statuses").length ? list("statuses") : ["posted"], kinds: list("kinds").length ? list("kinds") : ["ordinary", "refund"],
-    sort: first("sort") || "absolute-delta-desc", currencyPolicy: { mode: "original", ...(first("currency") ? { currencies: [first("currency")] } : {}) },
+    sort: first("sort") || "absolute-delta-desc", currencyPolicy: first("currencyMode") === "base" ? { mode: "base", currency: first("currency") } : { mode: "original", ...(first("currency") ? { currencies: [first("currency")] } : {}) },
   });
 }

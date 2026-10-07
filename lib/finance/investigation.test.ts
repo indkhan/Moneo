@@ -58,4 +58,18 @@ describe("deterministic investigations", () => {
     expect(investigate(query, changed, context).evidenceId).not.toBe(first.evidenceId);
     expect(() => investigate({ ...query, page: { cursor: first.records.nextCursor } }, changed, context)).toThrow("changed");
   });
+  it("allocates canonical FX rounding across split groups once and preserves full support on missing rates", () => {
+    const rows = [{ ...row("a", "-1"), currency: "USD", parentId: "parent" },
+      { ...row("b", "-1"), currency: "USD", parentId: "parent", categoryId: null }];
+    const args = { ...query, categories: undefined, currencyPolicy: { mode: "base", currency: "EUR" }, groupBy: ["category"] };
+    const rates = [{ id: "rate", fromCurrency: "USD", toCurrency: "EUR", rateText: "0.5", rateDate: "2026-09-01", source: "synthetic" }];
+    const result = investigate(args, rows, { ...context, rates });
+    expect(result.groups.map(g => g.currentMinor).sort()).toEqual(["0", "1"]);
+    expect(result.reporting?.policy.aggregation).toBe("canonical-parent-financial-kind");
+    expect(result.reporting?.allocationPolicy).toContain("largest-remainder");
+    const missing = investigate(args, rows, context);
+    expect(missing.groups.every(g => g.currentMinor === null)).toBe(true);
+    expect(missing.records.total).toBe(2);
+    expect(missing.coverage.missingConversionRows).toBe(2);
+  });
 });

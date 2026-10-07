@@ -73,15 +73,17 @@ export async function loadInvestigationDataset(input: unknown, context?: Context
   const ctx = context ?? await requireWorkspace();
   const spec = resolveInvestigation(input, await loadInvestigationEntities(ctx));
   const canReadImports = options.canReadImports ?? true;
-  const [rows, metadata] = await Promise.all([loadRows(ctx, spec, options.includeAll ?? false, canReadImports), loadSourceCoverageMetadata(ctx.supabase, ctx.workspace.id, canReadImports)]);
+  const [rows, metadata, rates] = await Promise.all([loadRows(ctx, spec, options.includeAll ?? false, canReadImports), loadSourceCoverageMetadata(ctx.supabase, ctx.workspace.id, canReadImports),
+    spec.currencyPolicy.mode === "base" ? allRows<{ id: string; from_currency: string; to_currency: string; rate_text: string; rate_date: string; source: string }>(ctx.supabase.from("fx_rates").select("id, from_currency, to_currency, rate_text, rate_date, source").eq("workspace_id", ctx.workspace.id).order("id")) : []]);
   const accountIds = spec.accounts?.include?.flatMap(ref => "id" in ref ? [ref.id] : []);
-  const scope = { ...(accountIds?.length ? { accountIds } : {}), ...(spec.currencyPolicy.currencies?.length === 1 ? { currencyCode: spec.currencyPolicy.currencies[0] } : {}) };
+  const scope = { ...(accountIds?.length ? { accountIds } : {}), ...(spec.currencyPolicy.mode === "original" && spec.currencyPolicy.currencies?.length === 1 ? { currencyCode: spec.currencyPolicy.currencies[0] } : {}) };
   const effective = rows.map(r => ({ account_id: r.accountId, posted_on: r.date, currency_code: r.currency, status: r.status, kind: r.kind, review_reasons: r.reviewReasons }));
   const sourceCoverage = { current: buildSourceCoverage({ ...spec.period, ...scope }, effective, metadata?.imports, metadata?.sources),
     comparison: spec.comparison ? buildSourceCoverage({ ...spec.comparison, ...scope }, effective, metadata?.imports, metadata?.sources) : null,
     attribution: "Period/account source coverage spans all categories; query filters and eligibility are reported separately." };
-  return { spec, rows, context: { workspaceId: ctx.workspace.id, capturedAt: new Date().toISOString(), sourceCoverage },
-    sourceRevision: investigationIdentity({ rows, metadata }) };
+  return { spec, rows, context: { workspaceId: ctx.workspace.id, capturedAt: new Date().toISOString(), sourceCoverage,
+    rates: rates.map(r => ({ id: r.id, fromCurrency: r.from_currency, toCurrency: r.to_currency, rateText: r.rate_text, rateDate: r.rate_date, source: r.source })) },
+    sourceRevision: investigationIdentity({ rows, metadata, rates }) };
 }
 export async function runInvestigation(input: unknown, context?: Context, options: { canReadImports?: boolean } = {}) {
   const data = await loadInvestigationDataset(input, context, options);

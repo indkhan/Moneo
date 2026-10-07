@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { reportExpenditure, type ExpenditureRate } from "./expenditure";
+import { minorDigits } from "./fx";
 
 const period = z.object({ from: z.iso.date(), to: z.iso.date() }).strict().refine(p => p.from <= p.to, "From date is after to date");
 const entity = z.union([z.object({ id: z.uuid() }).strict(), z.object({ name: z.string().trim().min(1).max(120) }).strict()]);
@@ -12,7 +14,10 @@ export const investigationSchema = z.object({
   statuses: z.array(z.enum(["posted", "pending"])).min(1).max(2).default(["posted"]),
   classifications: z.enum(["resolved", "all", "unresolved"]).default("resolved"),
   kinds: z.array(z.enum(["ordinary", "refund", "transfer"])).min(1).max(3).default(["ordinary", "refund"]),
-  currencyPolicy: z.object({ mode: z.literal("original"), currencies: z.array(z.string().regex(/^[A-Z]{3}$/)).min(1).max(50).optional() }).strict().default({ mode: "original" }),
+  currencyPolicy: z.discriminatedUnion("mode", [
+    z.object({ mode: z.literal("original"), currencies: z.array(z.string().regex(/^[A-Z]{3}$/)).min(1).max(50).optional() }).strict(),
+    z.object({ mode: z.literal("base"), currency: z.string().regex(/^[A-Z]{3}$/).refine(c => { try { minorDigits(c); return true; } catch { return false; } }) }).strict(),
+  ]).default({ mode: "original" }),
   metric: z.enum(["spending", "income", "net", "signed", "absolute", "count"]).default("spending"),
   groupBy: z.array(z.enum(["account", "category", "merchant", "tag", "event", "date", "month", "kind", "status"])).max(5).default([]).refine(a => new Set(a).size === a.length, "Duplicate grouping dimension"),
   sort: z.enum(["delta-desc", "delta-asc", "absolute-delta-desc", "current-desc", "current-asc", "key"]).default("absolute-delta-desc"),
@@ -80,18 +85,51 @@ export function investigationGroup(row: InvestigationRow, dimensions: Investigat
       d === "tag" ? [...new Set(row.tags)].sort() : d === "event" ? row.event : d === "date" ? row.date : d === "month" ? row.date.slice(0, 7) : row[d],
   ]));
 }
-export type InvestigationContext = { workspaceId: string; capturedAt: string; sourceCoverage?: unknown };
+export type InvestigationContext = { workspaceId: string; capturedAt: string; sourceCoverage?: unknown; rates?: ExpenditureRate[] };
+
+function allocatedReporting(rows: InvestigationRow[], spec: InvestigationSpec, rates: ExpenditureRate[]) {
+  if (spec.currencyPolicy.mode !== "base") return null;
+  if (spec.statuses.some(s => s !== "posted") || spec.classifications !== "resolved" || spec.kinds.includes("transfer")) throw new Error("Base currency accounting requires posted, resolved ordinary/refund records; use original currency for provisional or transfer analysis");
+  const from = [spec.period.from, spec.comparison?.from].filter((v): v is string => Boolean(v)).sort()[0];
+  const to = [spec.period.to, spec.comparison?.to].filter((v): v is string => Boolean(v)).sort().at(-1)!;
+  const report = reportExpenditure(rows.map(r => ({ id: r.id, parentTransactionId: r.parentId, accountId: r.accountId,
+    amountMinor: BigInt(r.amountMinor), currencyCode: r.currency, postedOn: r.date, status: r.status, kind: r.kind, reviewReasons: r.reviewReasons, version: r.version })), rates, { view: "base", currencyCode: spec.currencyPolicy.currency, from, to });
+  const allocated = new Map<string, string | null>();
+  for (const posting of report.postings) {
+    if (posting.reportingAmountMinor === null || !posting.rate || !posting.rounding) {
+      for (const child of posting.sourcePostings) allocated.set(child.id, null);
+      continue;
+    }
+    const denominator = BigInt(posting.rounding.scaledDenominator);
+    const multiplier = BigInt(posting.rate.numerator) * 10n ** BigInt(minorDigits(spec.currencyPolicy.currency));
+    const shares = posting.sourcePostings.map(child => {
+      const scaled = BigInt(child.originalAmountMinor) * multiplier;
+      let floor = scaled / denominator, remainder = scaled % denominator;
+      if (remainder < 0n) { floor--; remainder += denominator; }
+      return { id: child.id, floor, remainder };
+    });
+    let remaining = BigInt(posting.reportingAmountMinor) - shares.reduce((sum, share) => sum + share.floor, 0n);
+    for (const share of shares.sort((a, b) => compare(b.remainder, a.remainder) || a.id.localeCompare(b.id))) {
+      if (remaining > 0n) { share.floor++; remaining--; }
+      allocated.set(share.id, share.floor.toString());
+    }
+    if (remaining !== 0n) throw new Error("Inconsistent canonical reporting allocation");
+  }
+  return { report: { ...report, allocationPolicy: "largest-remainder of exact signed component quotas; canonical rounded amount conserved; ties by effective ID" }, allocated };
+}
 
 /** All effective records are loaded before totals; pagination applies solely to support. No financial writes. */
 export function investigate(input: unknown, rows: InvestigationRow[], context: InvestigationContext) {
   const spec = investigationSchema.parse(input);
   const { page, ...meaning } = spec;
+  const reporting = allocatedReporting(rows, spec, context.rates ?? []);
   const queryId = investigationIdentity({ workspaceId: context.workspaceId, ...meaning });
-  const evidenceId = investigationIdentity({ queryId, rows: [...rows].sort((a, b) => a.id.localeCompare(b.id)), sourceCoverage: context.sourceCoverage ?? null });
+  const evidenceId = investigationIdentity({ queryId, rows: [...rows].sort((a, b) => a.id.localeCompare(b.id)), sourceCoverage: context.sourceCoverage ?? null, reporting: reporting?.report ?? null });
   const excluded = { outsidePeriod: 0, filtersExcluded: 0, pendingExcluded: 0, transferExcluded: 0, classificationExcluded: 0, currencyExcluded: 0 };
   const selected: { row: InvestigationRow; current: boolean; comparison: boolean; key: string }[] = [];
-  const groups = new Map<string, { key: string; dimensions: ReturnType<typeof investigationGroup>; currency: string; current: bigint; comparison: bigint; currentCount: number; comparisonCount: number }>();
+  const groups = new Map<string, { key: string; dimensions: ReturnType<typeof investigationGroup>; currency: string; current: bigint; comparison: bigint; currentCount: number; comparisonCount: number; missingCurrent: number; missingComparison: number }>();
   let unresolvedIncluded = 0;
+  let missingConversionRows = 0;
   for (const row of rows) {
     const current = row.date >= spec.period.from && row.date <= spec.period.to;
     const comparison = Boolean(spec.comparison && row.date >= spec.comparison.from && row.date <= spec.comparison.to);
@@ -100,12 +138,16 @@ export function investigate(input: unknown, rows: InvestigationRow[], context: I
     if (!spec.statuses.includes(row.status)) { excluded.pendingExcluded++; continue; }
     if (!spec.kinds.includes(row.kind)) { excluded.transferExcluded++; continue; }
     if ((spec.classifications === "resolved" && row.reviewReasons.length) || (spec.classifications === "unresolved" && !row.reviewReasons.length)) { excluded.classificationExcluded++; continue; }
-    if (spec.currencyPolicy.currencies && !spec.currencyPolicy.currencies.includes(row.currency)) { excluded.currencyExcluded++; continue; }
+    if (spec.currencyPolicy.mode === "original" && spec.currencyPolicy.currencies && !spec.currencyPolicy.currencies.includes(row.currency)) { excluded.currencyExcluded++; continue; }
     if (row.reviewReasons.length) unresolvedIncluded++;
     const dimensions = investigationGroup(row, spec.groupBy);
-    const key = JSON.stringify([row.currency, dimensions]);
-    const group = groups.get(key) ?? { key, dimensions, currency: row.currency, current: 0n, comparison: 0n, currentCount: 0, comparisonCount: 0 };
-    const value = metricValue(row, spec.metric);
+    const currency = spec.currencyPolicy.mode === "base" ? spec.currencyPolicy.currency : row.currency;
+    const key = JSON.stringify([currency, dimensions]);
+    const group = groups.get(key) ?? { key, dimensions, currency, current: 0n, comparison: 0n, currentCount: 0, comparisonCount: 0, missingCurrent: 0, missingComparison: 0 };
+    const converted = reporting?.allocated.get(row.id);
+    const missing = reporting !== null && converted == null && spec.metric !== "count";
+    if (missing) { missingConversionRows++; if (current) group.missingCurrent++; if (comparison) group.missingComparison++; }
+    const value = missing ? 0n : metricValue(reporting && converted != null ? { ...row, amountMinor: converted } : row, spec.metric);
     if (current) { group.current += value; group.currentCount++; }
     if (comparison) { group.comparison += value; group.comparisonCount++; }
     groups.set(key, group);
@@ -128,12 +170,16 @@ export function investigate(input: unknown, rows: InvestigationRow[], context: I
     offset = parsed.offset;
   }
   const nextOffset = offset + page.size;
-  const record = ({ row, current, comparison, key }: typeof selected[number]) => ({ ...row, current, comparison, groupKey: key, link: `/money/transactions?transaction=${encodeURIComponent(row.parentId)}` });
+  const record = ({ row, current, comparison, key }: typeof selected[number]) => ({ ...row, current, comparison, groupKey: key, reportingAmountMinor: reporting ? reporting.allocated.get(row.id) ?? null : null, link: `/money/transactions?transaction=${encodeURIComponent(row.parentId)}` });
   return {
     version: 1 as const, queryId, evidenceId, evidence: { mode: "live" as const, capturedAt: context.capturedAt, datedSnapshot: false },
     interpretedFilters: meaning, metric: spec.metric, currencyPolicy: spec.currencyPolicy,
-    groups: sorted.map(g => ({ key: g.key, dimensions: g.dimensions, currency: g.currency, currentMinor: g.current.toString(), comparisonMinor: spec.comparison ? g.comparison.toString() : null, deltaMinor: spec.comparison ? (g.current - g.comparison).toString() : null, currentCount: g.currentCount, comparisonCount: g.comparisonCount })),
-    coverage: { ...excluded, effectiveRowsObserved: rows.length, includedRows: selected.length, unresolvedIncluded, partial: excluded.classificationExcluded > 0 || unresolvedIncluded > 0, sourceCoverage: context.sourceCoverage ?? { status: "unknown", statementCompleteness: "unknown" }, limitation: "Accepted/effective ledger scope only. Classification exclusions and unresolved amounts are not upper or lower bounds. Statement completeness is determined separately by source coverage." },
+    reporting: reporting ? { currency: spec.currencyPolicy.mode === "base" ? spec.currencyPolicy.currency : null,
+      policy: reporting.report.policy, allocationPolicy: reporting.report.allocationPolicy,
+      postings: reporting.report.postings.filter(p => p.sourcePostings.some(s => selected.some(r => r.row.id === s.id))),
+      basis: "Canonical conversion before entity filters; groups contain only the selected allocated components." } : null,
+    groups: sorted.map(g => ({ key: g.key, dimensions: g.dimensions, currency: g.currency, currentMinor: g.missingCurrent ? null : g.current.toString(), comparisonMinor: spec.comparison && !g.missingComparison ? g.comparison.toString() : null, deltaMinor: spec.comparison && !g.missingCurrent && !g.missingComparison ? (g.current - g.comparison).toString() : null, availableCurrentMinor: g.current.toString(), availableComparisonMinor: g.comparison.toString(), currentCount: g.currentCount, comparisonCount: g.comparisonCount })),
+    coverage: { ...excluded, effectiveRowsObserved: rows.length, includedRows: selected.length, unresolvedIncluded, missingConversionRows, partial: excluded.classificationExcluded > 0 || unresolvedIncluded > 0 || missingConversionRows > 0, sourceCoverage: context.sourceCoverage ?? { status: "unknown", statementCompleteness: "unknown" }, limitation: "Accepted/effective ledger scope only. Classification exclusions, unresolved amounts and missing conversions are not upper or lower bounds. Statement completeness is determined separately by source coverage." },
     records: { total: supporting.length, items: supporting.slice(offset, nextOffset).map(record), nextCursor: nextOffset < supporting.length ? Buffer.from(JSON.stringify({ evidenceId, offset: nextOffset, scope: investigationIdentity({ groupKey: page.groupKey ?? null, period: page.period }) })).toString("base64url") : null },
   };
 }
