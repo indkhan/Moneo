@@ -26,6 +26,13 @@ test("dated native budgets and unsaved calculator inputs agree without financial
     const created = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { qa_test: "mne031", run_id: runId } });
     expect(created.error).toBeNull(); user = created.data.user!.id;
     [{ id: workspace }] = await db`select id from public.workspaces where owner_id=${user}`;
+    const assertOwner = async () => {
+      const owned = await admin.auth.admin.getUserById(user!);
+      expect(owned.error).toBeNull();
+      expect(owned.data.user?.user_metadata).toMatchObject({ qa_test: "mne031", run_id: runId });
+      expect((await db`select owner_id from public.workspaces where id=${workspace!}`)[0]?.owner_id).toBe(user);
+    };
+    await assertOwner();
     writeFileSync(journal, JSON.stringify({ user, workspace, checking, savings, artifact, version, status: "created" }));
     const now = new Date().toISOString(), today = now.slice(0, 10), tomorrow = addTripDays(today, 1), salaryDate = addTripDays(today, 2), tripDate = addTripDays(today, 7), hotelDate = addTripDays(today, 10);
     const scenario = defaultTripScenario(today, "EUR", checking, 20000n);
@@ -143,10 +150,60 @@ test("dated native budgets and unsaved calculator inputs agree without financial
     await expect(panel).toContainText("Conservative minimum headroom over the dated trip horizon: -10000 minor units");
     await expect(print).toBeEnabled();
     await page.screenshot({ path: testInfo.outputPath("calculator-unsaved-and-persisted.png"), fullPage: true });
+
+    // Generated Save has persisted scalar date/account inputs. Native Save must replace them.
+    await native.getByLabel("Trip start").fill(tripDate);
+    await native.getByLabel("Trip end").fill(tripDate);
+    await native.getByLabel("Payment date").first().fill(tripDate);
+    await native.getByLabel("Paying / receiving account").first().selectOption(savings);
+    await amount.fill("2000");
+    await expect(results.getByRole("heading", { name: "With-trip minimum headroom" }).locator("..")).toContainText("EUR 80.00");
+    await native.getByRole("button", { name: "Save scenario", exact: true }).click();
+    await expect(native).toContainText("Inputs saved.");
+    expect((await readState()).state).toMatchObject({ costMinor: 2000, tripDate, accountId: savings });
+    await page.reload();
+    await expect(panel.getByLabel("Trip date", { exact: true })).toHaveValue(tripDate);
+    await expect(panel.getByLabel("Paying account ID", { exact: true })).toHaveValue(savings);
+    await expect(panel).toContainText("Conservative minimum headroom over the dated trip horizon: 8000 minor units");
+    await expect(panel).not.toContainText("Recalculate the dated trip inputs");
+    await expect(print).toBeEnabled();
+    await page.screenshot({ path: testInfo.outputPath("native-save-after-generated-save.png"), fullPage: true });
+
+    // A cost-only generated version must also use the saved native date and paying account.
+    let activeVersionId = (await (await page.request.get(`/api/artifacts/${artifact}/versions`)).json()).activeVersionId;
+    const costOnly = await page.request.post(`/api/artifacts/${artifact}/versions`, { data: { source: fallback.source, expectedActiveVersionId: activeVersionId, manifest: fallback.manifest } });
+    expect(costOnly.ok(), await costOnly.text()).toBe(true);
+    await page.reload();
+    await expect(panel).toContainText("Conservative minimum headroom over the dated trip horizon: 8000 minor units");
+    await expect(panel).toContainText(`Chosen-account headroom - ${savings}`);
+
+    // New calculator first load: defaults have no saved scenario and differ from host defaults.
+    for (const explicitAccount of [true, false]) {
+      await assertOwner();
+      await db`update public.artifact_state set state='{}'::jsonb,version=version+1 where artifact_id=${artifact} and workspace_id=${workspace!}`;
+      activeVersionId = (await (await page.request.get(`/api/artifacts/${artifact}/versions`)).json()).activeVersionId;
+      const defaults = await page.request.post(`/api/artifacts/${artifact}/versions`, { data: { source: fallback.source, expectedActiveVersionId: activeVersionId,
+        manifest: { ...fallback.manifest, params: { costMinor: { type: "number", default: 20000, min: 0, max: 10000000, label: "Trip cost" }, tripDate: { type: "string", default: hotelDate, maxLength: 10, label: "Trip date" }, ...(explicitAccount ? { accountId: { type: "string", default: savings, maxLength: 100, label: "Paying account ID" } } : {}) } } } });
+      expect(defaults.ok(), await defaults.text()).toBe(true);
+      await page.reload();
+      await expect(panel.getByLabel("Trip date", { exact: true })).toHaveValue(hotelDate);
+      if (explicitAccount) await expect(panel.getByLabel("Paying account ID", { exact: true })).toHaveValue(savings);
+      await expect(panel).toContainText(`Conservative minimum headroom over the dated trip horizon: ${explicitAccount ? "-10000" : "10000"} minor units`);
+      await expect(panel).toContainText(`Chosen-account headroom - ${explicitAccount ? savings : checking}`);
+      await expect(panel).toContainText(addTripDays(hotelDate, 21));
+      await expect(print).toBeEnabled();
+      await page.screenshot({ path: testInfo.outputPath(`manifest-default-${explicitAccount ? "date-account" : "date-only"}.png`), fullPage: true });
+      expect((await readState()).state).toEqual({});
+    }
     expect(await fingerprint()).toBe(financialBefore);
     expect(modelRequests).toEqual([]);
   } finally {
     await context?.close().catch(() => {});
+    if (user) {
+      const owned = await admin.auth.admin.getUserById(user);
+      expect(owned.error).toBeNull();
+      expect(owned.data.user?.user_metadata).toMatchObject({ qa_test: "mne031", run_id: runId });
+    }
     if (workspace) await db.begin(async tx => {
       expect((await tx`select owner_id from public.workspaces where id=${workspace!}`)[0]?.owner_id).toBe(user);
       await tx`update public.artifacts set active_version_id=null where workspace_id=${workspace!}`;
@@ -154,8 +211,12 @@ test("dated native budgets and unsaved calculator inputs agree without financial
       await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
     });
     if (user) { expect((await admin.auth.admin.deleteUser(user)).error).toBeNull(); expect((await db`select id from auth.users where id=${user}`).length).toBe(0); }
+    if (workspace) {
+      expect((await db`select id from public.workspaces where id=${workspace}`).length).toBe(0);
+      for (const table of ["artifact_state", "artifact_versions", "artifacts", "financial_assumptions", "balance_snapshots", "accounts"]) expect((await db`select count(*)::int remaining from ${db("public." + table)} where workspace_id=${workspace}`)[0].remaining).toBe(0);
+    }
     expect(await db`select version from supabase_migrations.schema_migrations order by version`).toEqual(migrationLedger);
-    writeFileSync(journal, JSON.stringify({ user, workspace, status: "cleaned", migrationLedgerUnchanged: true }));
+    writeFileSync(journal, JSON.stringify({ user, workspace, status: "cleaned", exactCleanupZero: true, migrationLedgerUnchanged: true }));
     await db.end();
   }
 });
