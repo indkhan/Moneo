@@ -77,6 +77,9 @@ begin
       from information_schema.columns c where c.table_schema=app_schema and c.table_name=target_table and data ? c.column_name;
     execute format('insert into %I.%I (%s) select %s from jsonb_populate_record(null::%I.%I,$1)',app_schema,target_table,columns,columns,app_schema,target_table) using data;
   end loop;
+  insert into public.financial_evidence_receipts(id,workspace_id,scopes,receipt)
+    values(md5('financial_evidence_receipts'||workspace_b)::uuid,workspace_b,array[]::text[],
+      jsonb_build_object('id',md5('financial_evidence_receipts'||workspace_b)::uuid,'workspaceId',workspace_b,'query','{}'::jsonb,'metrics','[]'::jsonb,'sources','[]'::jsonb,'scopes','[]'::jsonb));
   insert into public.accounts(workspace_id,name,currency_code) values(workspace_a,'Synthetic own','EUR');
   foreign_transaction := md5('transactions'||workspace_b)::uuid;
   foreign_account := md5('accounts'||workspace_b)::uuid;

@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { calendarDate } from "./calendar";
 import { buildSourceCoverage, type loadSourceCoverageMetadata } from "./source-coverage";
 
-export type BalanceAccount = { id: string; name: string; currency_code: string; type?: string; archived_at?: string | null };
+export type BalanceAccount = { id: string; name: string; currency_code: string; type?: string; archived_at?: string | null; version?: number };
 export type BalanceSnapshot = { id?: string; account_id: string; amount_minor: string | number; currency_code: string; as_of: string; provenance: string;
   boundary_kind?: string; source_transaction_id?: string | null; covered_transactions?: CoveredTransaction[] | null;
   actor_id?: string | null; undone_at?: string | null; version?: number; created_at?: string };
@@ -119,7 +119,7 @@ export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: strin
     }
   }
   const [accounts, snapshots, ledger, fees, resolutions] = await Promise.all([
-    rows<BalanceAccount>("accounts", "id, name, type, currency_code, archived_at"),
+    rows<BalanceAccount>("accounts", "id, name, type, currency_code, archived_at, version"),
     rows<BalanceSnapshot>("balance_snapshots", "id, account_id, amount_minor::text, currency_code, as_of, provenance, boundary_kind, source_transaction_id, covered_transactions, actor_id, undone_at, version, created_at"),
     rows<BalanceTransaction & { transaction_sources?: { source_transaction_id: string }[] }>("transactions", "id, account_id, amount_minor::text, currency_code, posted_on, posted_at, status, version, description, kind, review_reasons, transaction_sources(source_transaction_id)"),
     rows<{ transaction_id: string; fee_minor: string; treatment: string; transaction_links: { undone_at: string | null } }>("transaction_link_fees", "id, transaction_id, fee_minor::text, treatment, transaction_links!inner(undone_at)"),

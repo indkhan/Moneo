@@ -39,18 +39,24 @@ export const FALLBACK_CALCULATORS: Record<ArtifactKind, { source: string; manife
     },
   },
   trip_planner: {
-    label: "Trip remainder (fallback)",
+    label: "Dated trip headroom (fallback)",
     source: `(input) => {
   const s = input && input.snapshot ? input.snapshot : {};
   if (s.unavailable || s.baselineAvailableMinor === null || s.baselineAvailableMinor === undefined)
     return { unavailable: s.unavailable || "A dated balance in the display currency is required" };
-  const cost = String(input && input.params ? input.params.costMinor : 0);
+  const params = input && input.params ? input.params : {};
+  const cost = String(params.costMinor || 0);
   if (cost !== s.evaluatedCostMinor || s.withTripAvailableMinor === null || s.withTripAvailableMinor === undefined)
-    return { unavailable: "Save inputs to load the host's dated trip scenario for this cost." };
+    return { unavailable: "Recalculate inputs to load the host's dated trip scenario for this cost." };
+  if ((params.tripDate && params.tripDate !== s.tripDate) || (params.accountId && params.accountId !== s.accountId))
+    return { unavailable: "Recalculate the dated trip inputs before using this forecast." };
   const rest = s.withTripAvailableMinor;
   return {
-    summary: "Chosen-account headroom after dated trip: " + String(rest) + " minor units.",
-    numbers: { baselineMinor: s.baselineAvailableMinor, costMinor: String(cost), remainingMinor: rest }
+    summary: "Conservative minimum headroom over the dated trip horizon: " + String(rest) + " minor units; limited on " + String(s.limitingDate || "unknown") + ".",
+    numbers: { baselineMinor: s.baselineAvailableMinor, costMinor: String(cost), minimumHeadroomMinor: rest,
+      limitingDate: s.limitingDate || "unknown", horizonFrom: s.horizon ? s.horizon.from : "unknown", horizonTo: s.horizon ? s.horizon.to : "unknown",
+      ...(s.afterTripMinor !== null && s.afterTripMinor !== undefined ? { afterTripMinor: s.afterTripMinor } : {}) },
+    warning: "The horizon minimum is distinct from end-of-trip headroom. Hypothetical costs and external contributions do not change financial records; source completeness remains unknown."
   };
 }`,
     manifest: {

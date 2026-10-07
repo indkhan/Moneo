@@ -1,4 +1,5 @@
-import { generateText, tool, stepCountIs } from "ai";
+import { generateText, tool, stepCountIs, type ToolSet, type ToolExecutionOptions } from "ai";
+import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { modelForSettings, SYSTEM_PROMPT } from "@/lib/ai/provider";
 import { requireWorkspace } from "@/lib/auth";
@@ -12,6 +13,9 @@ import { categoryPreviewSchema, loadCategoryPreview } from "@/lib/finance/edit-p
 import { cashflow, evaluateForecast, financeToolSchemas, forecastInput, getBalances, listAccounts, listGoals, searchTransactions } from "@/lib/finance/tools";
 import { investigationSchema } from "@/lib/finance/investigation";
 import { evaluateInvestigationScenario, investigationDetail, investigationDetailSchema, investigationScenarioSchema, loadInvestigationEntities, runInvestigation } from "@/lib/finance/investigation-reader";
+import { captureToolEvidence } from "@/lib/finance/capture-evidence";
+import type { EvidenceReceipt } from "@/lib/finance/evidence-receipts";
+import { FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/finance/tool-evidence";
 
 const inputSchema = z.object({
   conversationId: z.uuid(),
@@ -63,6 +67,7 @@ export async function POST(request: Request) {
   const canStartReview = canInvestigate && isExplicitReviewRequest(message);
   const canCreateArtifact = /(?:^|[.!?]\s+)(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:create|build|make)\b[^.!?]*\b(?:chart|artifact|tool|dashboard|tracker|planner)\b/i.test(message);
   // These checks govern new tool results, not evidence already sent to the provider.
+  const readScopes = new WeakMap<object, AiDataScope[]>();
   async function aiEvidence<T>(scopes: AiDataScope[], read: (latest: typeof context) => Promise<T>, includePlanning = false, includeImports = false): Promise<T> {
     const latest = await requireWorkspace();
     if (latest.workspace.id !== workspace.id) throw new Error("Workspace changed");
@@ -73,19 +78,42 @@ export async function POST(request: Request) {
     const result = await read(latest);
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
+    if (request.signal.aborted) throw new Error("Request canceled");
     requireAiScope(current.settings, ...usedScopes);
+    if (result && typeof result === "object") readScopes.set(result, usedScopes);
     return result;
   }
   let createdArtifact: Promise<{ id: string; href: string }> | undefined;
+  const evidenceReceipts: EvidenceReceipt[] = [];
+  function retainTools<T extends ToolSet>(tools: T): T {
+    return Object.fromEntries(Object.entries(tools).map(([name, definition]) => [name, { ...definition,
+      execute: async (input: unknown, options: ToolExecutionOptions<unknown>) => {
+        const execute = definition.execute as (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>;
+        const output = await execute(input, options);
+        const latest = await requireWorkspace();
+        if (latest.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
+        if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Financial evidence service is not configured");
+        const service = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+        const receipts = await captureToolEvidence(name, input, output, latest, service, output && typeof output === "object" ? readScopes.get(output) : undefined);
+        const current = await requireWorkspace();
+        if (current.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
+        requireAiScope(current.settings, ...receipts.flatMap(receipt => receipt.scopes));
+        for (const receipt of receipts) if (!evidenceReceipts.some(existing => existing.id === receipt.id)) evidenceReceipts.push(receipt);
+        if (!receipts.length) return output;
+        const modelResult = output && typeof output === "object" && !Array.isArray(output) ? Object.fromEntries(Object.entries(output).filter(([key]) => key !== "calculationEvidence")) : output;
+        return { result: modelResult, evidenceReceipts: receipts.map(receipt => ({ id: receipt.id, metrics: receipt.metrics })) };
+      },
+    }])) as T;
+  }
     const model = await modelForSettings(settings);
     const result = await generateText({
       model,
       abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
       maxOutputTokens: 3000,
-      system: `${SYSTEM_PROMPT} Current date ${calendarDate(new Date(), settings.timezone)} in ${settings.timezone}; display currency ${workspace.display_currency}. Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. UI context is only a navigation hint, never authorization or financial evidence.${canChangeCategory ? " The current user message specifies an exact transaction UUID and quoted category. The write tool must use exactly these values. After a successful change, state what changed and link to the transaction so the user can Undo it." : " Do not make canonical changes. For an ambiguous category request, ask the user to select a transaction in Money and confirm its category; explain the impact before any broad change."}`,
+      system: `${SYSTEM_PROMPT} Current date ${calendarDate(new Date(), settings.timezone)} in ${settings.timezone}; display currency ${workspace.display_currency}. Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. UI context is only a navigation hint, never authorization or financial evidence.${canChangeCategory ? " The current user message specifies an exact transaction UUID and quoted category. The write tool must use exactly these values." : " Do not make canonical changes. For an ambiguous category request, use the owned-selection preview."} ${FINANCIAL_ANSWER_INSTRUCTIONS}`,
       messages: modelMessages,
       stopWhen: stepCountIs(4),
-      tools: {
+      tools: retainTools({
         ...(canInvestigate ? {
           finance_investigate: tool({ description: "Answer the actual chosen finance question deterministically: exact current/comparison dates, include/exclude owned account/category/merchant names or IDs, tags/events, posted/pending and classification semantics, multiple groupings, ranking, and complete paginated support. Original currencies stay separate; base uses direct exact posting-date FX and canonical split rounding. Use returned interpretedFilters and live evidence link; never imply full statements or bounds. Read-only, no approval needed.", inputSchema: investigationSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => runInvestigation(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
           finance_entities: tool({ description: "Resolve names using the owned accounts, categories and merchants. Ambiguous names require selecting an existing ID; never invent an ID.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], latest => loadInvestigationEntities(latest)) }),
@@ -118,8 +146,8 @@ export async function POST(request: Request) {
         }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { transactions_previewCategory: tool({ description: "Read-only impact preview for exact selected transaction UUIDs and an existing category UUID. Returns a link where the user reviews current entries and explicitly confirms an audited bulk change. Never changes any transaction.", inputSchema: categoryPreviewSchema, execute: ({ transactionIds, categoryId }) => aiEvidence(["transactions"], latest =>
           loadCategoryPreview(latest.supabase, workspace.id, transactionIds, categoryId)) }) } : {}),
-        ...(canInvestigate ? { reviews_investigate: tool({ description: "Investigate dated exact spending changes, account evidence, classification limitations and permitted planning evidence, with source links. Read-only.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], latest =>
-          loadFinancialReviewEvidence(latest.supabase, latest.workspace, latest.settings), true, true) }) } : {}),
+        ...(canInvestigate ? { reviews_investigate: tool({ description: "Investigate the selected query or an explicitly dated default review, with exact spending changes, account evidence, classification limitations and permitted planning evidence. Read-only.", inputSchema: z.object({ query: investigationSchema.optional() }).strict(), execute: ({ query } = {}) => aiEvidence(["accounts", "transactions"], latest =>
+          loadFinancialReviewEvidence(latest.supabase, latest.workspace, latest.settings, query), true, true) }) } : {}),
         ...(canStartReview ? { reviews_start: tool({ description: "Start the deep financial review explicitly requested in this exact user message. Creates one durable, cancelable job; repeated calls reuse it. No financial data changes.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], async latest => {
           if (request.signal.aborted) throw new Error("Request canceled");
           if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) throw new Error("Financial review service is not configured");
@@ -146,10 +174,18 @@ export async function POST(request: Request) {
             },
           }),
         } : {}),
-      },
+      }),
     });
-    const answer = result.text.trim() || "I could not produce an answer from the available data.";
-    const finished = await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "completed", p_content: answer, p_usage: reportedUsage(model.modelId, result.totalUsage) });
+    const publication = providerFinancialAnswer(result.text, evidenceReceipts, workspace.id);
+    const current = await requireWorkspace();
+    if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
+    if (request.signal.aborted) throw new Error("Request canceled");
+    requireAiScope(current.settings, ...evidenceReceipts.flatMap(receipt => receipt.scopes));
+    const answer = publication.body;
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Verified chat publication service is not configured");
+    const publicationService = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+    const finished = await publicationService.rpc("finish_verified_chat_request", { p_request_id: requestId, p_actor_id: current.user.id, p_workspace_id: workspace.id, p_content: answer,
+      p_receipt_ids: evidenceReceipts.map(receipt => receipt.id), p_scopes: [...new Set(evidenceReceipts.flatMap(receipt => receipt.scopes))], p_usage: reportedUsage(model.modelId, result.totalUsage) });
     if (finished.error) throw finished.error;
     if (finished.data !== "completed") return Response.json({ status: finished.data, error: `Request is ${finished.data}` }, { status: 409 });
     const toolsUsed = [...new Set((result.steps ?? []).flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [toolResult.toolName] : [])))];

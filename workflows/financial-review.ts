@@ -8,6 +8,10 @@ import { getRun } from "workflow/api";
 import { modelForSettings } from "@/lib/ai/provider";
 import { loadWorkspaceSettings, requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
+import { captureToolEvidence } from "@/lib/finance/capture-evidence";
+import { loadEvidenceReceipt, type EvidenceReceipt } from "@/lib/finance/evidence-receipts";
+import { FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/finance/tool-evidence";
+import type { requireWorkspace } from "@/lib/auth";
 
 function service() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -106,13 +110,19 @@ async function gatherEvidence(jobId: string, workspaceId: string, scheduled: boo
     reviewScopes(settings);
     const workspace = await db.from("workspaces").select("id, display_currency").eq("id", workspaceId).single();
     if (workspace.error) throw workspace.error;
-    return await loadFinancialReviewEvidence(db, { ...workspace.data, timezone: settings.timezone }, settings);
+    const raw = await loadFinancialReviewEvidence(db, { ...workspace.data, timezone: settings.timezone }, settings);
+    const captureContext = { supabase: db, workspace: { ...workspace.data, id: workspaceId, timezone: settings.timezone }, settings } as Awaited<ReturnType<typeof requireWorkspace>>;
+    const receipts = await captureToolEvidence("reviews_investigate", {}, raw, captureContext, db);
+    // Full calculation inputs and supporting rows remain in immutable receipts,
+    // while the original dated review snapshot stays within its publication bound.
+    const summary = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== "calculationEvidence")) as Omit<typeof raw, "calculationEvidence">;
+    return { ...summary, verification: { version: 1, method: "structured-evidence-v1", receiptIds: receipts.map(receipt => receipt.id) } };
   } catch (error) {
     retryFailure(error);
   }
 }
 
-async function writeReview(jobId: string, workspaceId: string, evidence: Awaited<ReturnType<typeof loadFinancialReviewEvidence>>, scheduled: boolean, runId: string) {
+async function writeReview(jobId: string, workspaceId: string, evidence: NonNullable<Awaited<ReturnType<typeof gatherEvidence>>>, scheduled: boolean, runId: string) {
   "use step";
   const stopped = new AbortController();
   const finished = new AbortController();
@@ -124,6 +134,13 @@ async function writeReview(jobId: string, workspaceId: string, evidence: Awaited
     const settings = await loadWorkspaceSettings(db, workspaceId);
     if (!await summaryStillEnabled(db, jobId, workspaceId, settings, scheduled)) return null;
     reviewScopes(settings, !("unavailable" in evidence.planning), evidence.sourceCoverage?.importStatuses != null);
+    const receipts: EvidenceReceipt[] = [];
+    for (const id of evidence.verification.receiptIds) {
+      const receipt = await loadEvidenceReceipt(db, workspaceId, id);
+      if (!receipt) throw new FatalError("Retained review evidence is unavailable");
+      requireAiScope(settings, ...receipt.scopes);
+      receipts.push(receipt);
+    }
     const model = await modelForSettings(settings, { effort: "minimal", exclude: true });
     // Recheck after asynchronous preparation, before submitting financial context.
     if (!await enterStage(db, jobId, workspaceId, runId, "writing_review")) return null;
@@ -143,12 +160,11 @@ async function writeReview(jobId: string, workspaceId: string, evidence: Awaited
       if (!finished.signal.aborted) { monitoringError = error; stopped.abort(error); }
     });
     const result = await generateText({ model, maxOutputTokens: 4000, maxRetries: 0, abortSignal: AbortSignal.any([stopped.signal, AbortSignal.timeout(90_000)]),
-      system: "Write a personal-finance review using only supplied dated evidence. Cover period cashflow, category and merchant changes, budget pressure, confirmed obligations, goals, wealth/debt and forecast when available. Cite exact currency, period and supplied internal source links for numerical claims. Distinguish recorded savings from virtual reservations, booked balances from available funds, historical valuations from current net worth, and assumptions from forecasts. Call unavailable and partial evidence out explicitly. Group changes show evidence, not causes; never invent explanations or financial data. Offer conditional, reviewable next steps rather than certainty.",
-      prompt: JSON.stringify(evidence) });
+      system: `Write a personal-finance review using only supplied dated evidence. Cover cashflow, material changes, budgets, obligations, goals, wealth/debt and forecasts when retained measures are available. ${FINANCIAL_ANSWER_INSTRUCTIONS}`,
+      prompt: JSON.stringify({ datedReviewSnapshot: evidence, evidenceReceipts: receipts.map(receipt => ({ id: receipt.id, metrics: receipt.metrics })) }) });
     if (monitoringError) throw monitoringError;
     if (!await enterStage(db, jobId, workspaceId, runId, "writing_review")) return null;
-    if (!result.text.trim()) throw new Error("AI returned an empty review");
-    return result.text.trim() + (result.finishReason === "length" ? "\n\nIncomplete review: the provider reached its output limit. The saved evidence remains available; further findings may be missing." : "");
+    return providerFinancialAnswer(result.text, receipts, workspaceId).body + (result.finishReason === "length" ? "\n\nIncomplete review: the provider reached its output limit. The saved evidence remains available; further findings may be missing." : "");
   } catch (error) {
     // Awaiting generateText above ensures its application transport has settled
     // before a cancellation can become acknowledged in the application row.
@@ -160,7 +176,7 @@ async function writeReview(jobId: string, workspaceId: string, evidence: Awaited
   }
 }
 
-async function saveReview(jobId: string, workspaceId: string, evidence: Awaited<ReturnType<typeof loadFinancialReviewEvidence>>, body: string, scheduled: boolean, runId: string) {
+async function saveReview(jobId: string, workspaceId: string, evidence: NonNullable<Awaited<ReturnType<typeof gatherEvidence>>>, body: string, scheduled: boolean, runId: string) {
   "use step";
   try {
     const db = service();

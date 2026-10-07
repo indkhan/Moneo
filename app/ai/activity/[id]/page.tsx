@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { reviewFreshness } from "@/lib/finance/review-freshness";
+import { ReviewVerification } from "@/components/review-verification";
+import { AiMessage } from "@/components/ai-message";
 
 function truncate(value: string | null | undefined, max = 280) {
   if (!value) return "";
@@ -83,7 +85,8 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
       {analysis && (
         <article className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
           <p className="text-sm text-muted-foreground">Saved {new Date(analysis.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })} · Evidence {freshness?.status}: {freshness?.reason}</p>
-          <p className="mt-3 whitespace-pre-wrap text-sm">{analysis.body}</p>
+          <ReviewVerification evidence={analysis.evidence} />
+          <div className="mt-3 text-sm"><AiMessage content={analysis.body} /></div>
           {evidence?.period && (
             <p className="mt-3 text-sm text-muted-foreground">
               Evidence period {evidence.period.from ?? "?"} to {evidence.period.to ?? "?"}

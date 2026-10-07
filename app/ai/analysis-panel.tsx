@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ReviewFreshness } from "@/lib/finance/review-freshness";
 import { AiMessage } from "@/components/ai-message";
+import { ReviewVerification } from "@/components/review-verification";
 
 type Review = { id: string; status: string; stage: string; cancel_requested?: boolean; error: string | null; analysis?: { title: string; body: string; evidence: unknown; created_at: string; freshness: ReviewFreshness } | null };
 
@@ -63,6 +64,7 @@ export function AnalysisPanel({ locale, timezone }: { locale: string; timezone: 
       {["queued", "running"].includes(review.status) && !review.cancel_requested && <button onClick={cancel} className="mt-2 text-sm underline">Stop</button>}
       {review.status === "canceled" && <p className="mt-2 text-sm text-muted-foreground">{review.stage === "cancellation_unconfirmed" ? "Stop requested. The runtime ended, but request termination could not be confirmed." : "Application work stopped."} Completed edits remain in history. A provider may already have processed submitted data.</p>}
       {review.analysis && <p className="mt-3 text-sm text-muted-foreground">Saved {new Date(review.analysis.created_at).toLocaleString(locale, { timeZone: timezone })} · Evidence {review.analysis.freshness.status}: {review.analysis.freshness.reason}</p>}
+      {review.analysis && <ReviewVerification evidence={review.analysis.evidence} />}
       {review.analysis && <article className="mt-4"><h3 className="font-semibold">{review.analysis.title}</h3><div className="mt-2"><AiMessage content={review.analysis.body} /></div><details className="mt-3 rounded-lg border border-border bg-muted p-3"><summary className="cursor-pointer font-mono text-xs">Evidence</summary><pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-words text-xs">{JSON.stringify(review.analysis.evidence, null, 2)}</pre></details></article>}
     </div>}
   </section>;
