@@ -25,7 +25,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
     const record = (phase: string, fields: Record<string, unknown> = {}) => appendFileSync(journal, JSON.stringify({task: "MNE014", runId, project, cadence, user, workspace, phase, ...fields}) + "\n");
     record("prepared");
     try {
-      expect((await db`select 1 from information_schema.columns where table_schema='public' and table_name='financial_assumptions' and column_name='schedule_anchor_on'`).length, "Root must deploy reviewed 017 before this browser gate").toBe(1);
+      expect((await db`select 1 from information_schema.columns where table_schema='public' and table_name='financial_assumptions' and column_name in ('schedule_anchor_on','recurring_evidence_eligible')`).length, "Root must deploy reviewed 017 before this browser gate").toBe(2);
       const email = `mne014-${runId}@example.invalid`, password = randomBytes(24).toString("hex");
       const created = await admin.auth.admin.createUser({email, password, email_confirm: true, user_metadata: {qa_test: "MNE014", run_id: runId}});
       expect(created.error).toBeNull(); user = created.data.user!.id; record("auth_created");
@@ -33,7 +33,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       const account = randomUUID(), counterpart = randomUUID(), merchant = randomUUID(), ids = [randomUUID(), randomUUID(), randomUUID()], credit = randomUUID();
       const label = `MNE014 ${cadence} ${runId.slice(0, 8)}`, creditLabel = `${label} counterpart`;
       const [{today: clockDate}] = await db`select (now() at time zone 'UTC')::date::text as today`;
-      const {today,anchor,dates,latest,next,months,days:stepDays}=recurringFixtureCalendar(clockDate,cadence);
+      const {today,anchor,dates,latest,postedLatest,next,months,days:stepDays}=recurringFixtureCalendar(clockDate,cadence,true);
       const [{future_count:futureCount}]=await db`
         select (select count(*)::int from generate_series(1,60) n where
           (case when ${months}>0 then ${anchor}::date+make_interval(months=>${months}*n) else ${anchor}::date+${stepDays}*n end)::date>=${today}::date and
@@ -44,9 +44,9 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
         await tx`insert into public.merchants(id,workspace_id,name,normalized_name) values(${merchant},${workspace!},${label},${label.toLowerCase()})`;
         for (const [index, id] of ids.entries()) {
           await tx`insert into public.transactions(id,workspace_id,account_id,posted_on,description,amount_minor,currency_code,status,kind,merchant_id)
-            values(${id},${workspace!},${account},${dates[index]}::date,${label + " invoice " + index},-2000,'EUR','posted','ordinary',${merchant})`;
+            values(${id},${workspace!},${account},${index===2 ? postedLatest : dates[index]}::date,${label + " invoice " + index},-2000,'EUR','posted','ordinary',${merchant})`;
         }
-        await tx`insert into public.transactions(id,workspace_id,account_id,posted_on,description,amount_minor,currency_code,status,kind) values(${credit},${workspace!},${counterpart},${latest},${creditLabel},2000,'EUR','posted','ordinary')`;
+        await tx`insert into public.transactions(id,workspace_id,account_id,posted_on,description,amount_minor,currency_code,status,kind) values(${credit},${workspace!},${counterpart},${postedLatest},${creditLabel},2000,'EUR','posted','ordinary')`;
         for (const [id, balance] of [[account, "200000"], [counterpart, "0"]]) {
           const covered = await tx`select id,version,amount_minor::text,currency_code,posted_on::text,posted_at from public.transactions where workspace_id=${workspace!} and account_id=${id}`;
           await tx`insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance,boundary_kind,covered_transactions,actor_id)
@@ -65,7 +65,8 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       await page.route(/\/api\/(chat|analysis|ai)(\/|\?|$)/, async route => {aiRequests++; await route.abort();});
       const candidate = page.locator("article").filter({hasText: `${label} invoice`});
       const forecast = page.locator("section").filter({has: page.getByRole("heading", {name: "Liquid balance horizon",exact: true})});
-      const expected = `EUR ${(2000 - futureCount * 20).toFixed(2)}`;
+      expect(latest > today).toBe(true); expect(postedLatest).toBe(today); expect(futureCount).toBeGreaterThan(0);
+      const expected = `EUR ${(2000 - (futureCount-1) * 20).toFixed(2)}`;
       await page.goto("/money/recurring");
       await expect(candidate).toHaveCount(1); await expect(candidate).toContainText(cadence);
       await expect(candidate).toContainText("3 observed payments");
@@ -100,6 +101,16 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       await expect(detail.getByRole("heading", {name: "Verified transfer",exact: true})).toBeVisible();
       await page.goto("/money/recurring"); await expect(candidate).toContainText("Confirmed");
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
+      // Paid today for a future slot: provenance-only Plan toggles must not pay it twice.
+      const schedule=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} invoice 0`,exact:true})});
+      await schedule.getByRole("button",{name:"Disable",exact:true}).click();
+      await expect(forecast).toContainText("EUR 2000.00");
+      const disabledSchedule=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} invoice 0 (disabled)`,exact:true})});
+      await disabledSchedule.getByRole("button",{name:"Enable",exact:true}).click();
+      await expect(forecast).toContainText(expected);
+      const [toggled]=await db`select source,recurring_evidence_eligible,starts_on::text,schedule_anchor_on::text from public.financial_assumptions where id=${generated.id} and workspace_id=${workspace!}`;
+      expect(toggled).toMatchObject({source:"user",recurring_evidence_eligible:true,starts_on:latest,schedule_anchor_on:anchor});
+      record("early_payment_toggle_verified",{scheduledOn:latest,postedOn:postedLatest});
       expect(await db`select id,posted_on::text,description,amount_minor::text,currency_code,merchant_id from public.transactions where workspace_id=${workspace!} order by id`).toEqual(original);
       expect(aiRequests).toBe(0); expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       record("lifecycle_verified", {aiRequests, futureCount});

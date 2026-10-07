@@ -11,3 +11,10 @@ it.each([
   expect(fixture.dates).toEqual(dates);
   expect(fixture.latest).toBe(latest);
 });
+
+it.each(["weekly","biweekly","monthly","quarterly","yearly"] as const)("prepares a paid-early future %s slot even at a clamped month boundary", cadence=>{
+  const fixture=recurringFixtureCalendar("2026-08-27",cadence,true);
+  expect(fixture.latest > fixture.today).toBe(true);
+  expect(fixture.dates[2]).toBe(fixture.latest);
+  expect(fixture.postedLatest).toBe(fixture.today);
+});
