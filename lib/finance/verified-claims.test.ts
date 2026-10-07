@@ -14,6 +14,14 @@ const fact = { operation: "metric", operands: [metric], valueMinor: "90071992547
 const publish = (claims: unknown[], receipts = [receipt]) => publishFinancialClaims({ claims, interpretation: [] }, receipts, workspaceId);
 
 describe("financial publication trust boundary", () => {
+  it("validates complete large support without repeatedly traversing source records", () => {
+    let reads = 0;
+    const ids = Array.from({ length: 1000 }, (_, index) => `record-${index}`);
+    const sources = ids.map(id => ({ get id() { if (++reads > ids.length * 5) throw new Error("Supporting-record traversal exceeded its linear budget"); return id; }, type: "transaction", version: "1", href: "/money/transactions" }));
+    const evidence = { ...receipt, sources, metrics: [{ ...receipt.metrics[0], sourceIds: ids }] };
+    expect(publish([{ ...fact, sourceIds: ids }], [evidence]).accepted).toHaveLength(1);
+    expect(reads).toBeLessThanOrEqual(ids.length * 5);
+  });
   it("gives useful typed clarifications without unsupported financial assertions", () => {
     const result = publishFinancialClaims({ claims: [], interpretation: [], clarification: { topic: "period" } }, [], workspaceId);
     expect(result.removed).toBe(0);

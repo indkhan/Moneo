@@ -70,10 +70,9 @@ function resolve(reference: z.infer<typeof referenceSchema>, receipts: Financial
   const metric = metrics[0];
   if (!/^-?(?:0|[1-9]\d{0,79})$/.test(metric.valueMinor!) || !periodSchema.safeParse(metric.period).success
     || metric.qualifiers.some(value => !Object.hasOwn(qualifications, value))) throw new Error("Invalid deterministic metric");
-  for (const id of metric.sourceIds) {
-    const sources = receipt.sources.filter(source => source.id === id);
-    if (sources.length !== 1) throw new Error("Missing supporting source");
-  }
+  const sourceCounts = new Map<string, number>();
+  for (const source of receipt.sources) sourceCounts.set(source.id, (sourceCounts.get(source.id) ?? 0) + 1);
+  for (const id of metric.sourceIds) if (sourceCounts.get(id) !== 1) throw new Error("Missing supporting source");
   return { receipt, metric, value: BigInt(metric.valueMinor!) };
 }
 export function publishFinancialClaims(input: unknown, receipts: FinancialEvidenceReceipt[], workspaceId: string) {
