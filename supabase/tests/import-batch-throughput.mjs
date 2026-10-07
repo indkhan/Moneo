@@ -12,10 +12,11 @@ assert(connection.hostname === `db.${project}.supabase.co` || connection.usernam
 const db = postgres(connection.toString(), { ssl: "require", max: 1, onnotice: () => {}, connection: { application_name: "mne015-throughput", lock_timeout: "10s", statement_timeout: "120s" } });
 const schema = `mne015_throughput_qa_${randomUUID().replaceAll("-", "")}`;
 const isolated = text => text.replace(/\bpublic\./g, `${schema}.`).replace(/\bauth\.users\b/g, `${schema}.auth_users`);
-const history = await db`select version from supabase_migrations.schema_migrations order by version`;
 const results = [], plans = {}, rollback = new Error("Successful owned throughput rollback");
 let managedAuthRelationLocks;
 try {
+  const history = await db`select version from supabase_migrations.schema_migrations order by version`;
+  try {
   await db.begin(async tx => {
     await tx.unsafe(`create schema ${schema}; create table ${schema}.auth_users(id uuid primary key,email text); grant usage on schema ${schema} to authenticated,service_role`);
     for (const file of readdirSync("supabase/migrations").filter(file => file.endsWith(".sql")).sort()) {
@@ -71,8 +72,8 @@ try {
 finally {
   assert.equal((await db`select 1 from pg_namespace where nspname=${schema}`).length, 0);
   assert.deepEqual(await db`select version from supabase_migrations.schema_migrations order by version`, history);
-  await db.end();
 }
+} finally { await db.end(); }
 mkdirSync(".qa", { recursive: true });
 writeFileSync(".qa/mne015-throughput.json", JSON.stringify({ scope: "Fresh complete private application schema; direct SQL RPC execution in one serialized rollback transaction; managed auth-table locks during policy DDL; not hosted Workflow end-to-end latency or peak memory", results, plans, managedAuthRelationLocks, schemaRemoved: true, migrationHistoryUnchanged: true }, null, 2));
 console.log("PASS: candidate schema, all synthetic DML and migration history rollback verified");

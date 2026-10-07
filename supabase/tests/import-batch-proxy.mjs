@@ -27,25 +27,30 @@ const definitions = {
   ingest_import_batch: ["p_import_id", "p_workspace_id", "p_run_version", "p_offset", "p_decisions"],
 };
 const privateNames = [...Object.keys(definitions), "import_staging", "prevent_import_staging_update"];
-const history = await db`select version from supabase_migrations.schema_migrations order by version`;
 const counts = { rpc: {}, sourceDownloads: 0, candidateBoundaryPauses: 0 };
 mkdirSync(".qa", { recursive: true });
-if (!recoveryOnly) {
-  assert(!existsSync(journal), "Resolve the exact prior proxy journal before starting another fixture");
-  writeFileSync(journal, JSON.stringify({ schema, project, fixture, port: 3053 }));
-}
-let server, closing = false, paused = false;
+let history, server, closing = false, paused = false, ownsSchema = Boolean(recovery);
 async function cleanup() {
   if (closing) return; closing = true;
+  try {
   server?.closeAllConnections(); await new Promise(resolve => server ? server.close(resolve) : resolve());
+  if (ownsSchema && history) {
   await db.unsafe(`drop schema if exists ${schema} cascade`);
   assert.equal((await db`select 1 from pg_namespace where nspname=${schema}`).length, 0);
   assert.deepEqual(await db`select version from supabase_migrations.schema_migrations order by version`, history);
   writeFileSync(report, JSON.stringify({ schemaRemoved: true, migrationHistoryUnchanged: true, ...counts }, null, 2));
-  unlinkSync(journal); await db.end();
+  unlinkSync(journal);
   console.log("PASS: precisely owned candidate schema removed; public migration history unchanged");
+  }
+  } finally { await db.end(); }
 }
 try {
+  history = await db`select version from supabase_migrations.schema_migrations order by version`;
+  if (!recoveryOnly) {
+    assert(!existsSync(journal), "Resolve the exact prior proxy journal before starting another fixture");
+    writeFileSync(journal, JSON.stringify({ schema, project, fixture, port: 3053 }));
+    ownsSchema = true;
+  }
   if (recoveryOnly) { assert(!existsSync(fixture), "Clean the exact owned browser fixture first"); await cleanup(); process.exit(0); }
   await db.unsafe(`create schema ${schema}; grant usage on schema ${schema} to service_role`);
   let sql = readFileSync("supabase/migrations/202610070015_normalized_import_batches.sql", "utf8").split("-- Deployment indexes:")[0];

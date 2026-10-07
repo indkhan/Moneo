@@ -13,9 +13,13 @@ const names = ["import_staging", "prevent_import_staging_update", "read_import_s
 let sql = readFileSync("supabase/migrations/202610070015_normalized_import_batches.sql", "utf8").split("-- Deployment indexes:")[0];
 for (const name of names) sql = sql.replaceAll(`public.${name}`, `${schema}.${name}`);
 const journal = `.qa/mne015-concurrency-${actor}.json`; mkdirSync(".qa", { recursive: true });
-const history = await db`select version from supabase_migrations.schema_migrations order by version`;
-let workspace, releaseOnFailure;
-writeFileSync(journal, JSON.stringify({ actor, schema, project }));
+let workspace, releaseOnFailure, workersClosing;
+async function closeWorkers() {
+  workersClosing ??= Promise.allSettled([holder.end(), waiter.end(), overlap.end()]);
+  const results = await workersClosing;
+  const failed = results.find(result => result.status === 'rejected');
+  if (failed) throw failed.reason;
+}
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function stage(imported, account, source) {
   await db`insert into public.imports(id,workspace_id,filename,storage_path,file_hash,status,total_rows,mapping) values(${imported},${workspace},'race.csv',${workspace + '/race.csv'},${imported},'queued',1,'{"rowContractVersion":"normalized-row-v1","accountName":"Batch race","currencyCode":"EUR","dateColumn":"Date","descriptionColumn":"Description","amountColumn":"Amount","dateFormat":"iso","amountSign":"signed"}')`;
@@ -25,6 +29,9 @@ async function stage(imported, account, source) {
 }
 const ingest = (client, imported, action = "new", version = 1) => client.unsafe(`select ${schema}.ingest_import_batch($1::uuid,$2::uuid,$3::integer,0,$4::jsonb)`, [imported, workspace, version, [{ rowNumber: 2, action }]]);
 try {
+  const history = await db`select version from supabase_migrations.schema_migrations order by version`;
+  writeFileSync(journal, JSON.stringify({ actor, schema, project }));
+  try {
   await db.unsafe(`create schema ${schema}; grant usage on schema ${schema} to service_role`); await db.unsafe(sql);
   await db`insert into auth.users(id,email,raw_user_meta_data) values(${actor},${`qa-batch-race-${actor}@example.invalid`},'{"qa_test":"mne015-batch-race"}')`;
   [{ id: workspace }] = await db`select id from public.workspaces where owner_id=${actor}`;
@@ -68,7 +75,7 @@ try {
   console.log("PASS: actual in-flight batch/cancel lock waiter, invisible uncommitted progress, resume fencing, concurrent retries and overlap review preserve exact financial/source effects");
 } finally {
   releaseOnFailure?.();
-  await holder.end(); await waiter.end(); await overlap.end();
+  await closeWorkers();
   if (workspace) {
     assert.equal((await db`select w.id from public.workspaces w join auth.users u on u.id=w.owner_id where w.id=${workspace} and w.owner_id=${actor} and u.raw_user_meta_data->>'qa_test'='mne015-batch-race'`).length, 1);
     await db.begin(async tx => {
@@ -85,5 +92,9 @@ try {
   } else { await db.unsafe(`drop schema if exists ${schema} cascade`); }
   assert.equal((await db`select 1 from pg_namespace where nspname=${schema}`).length, 0);
   assert.deepEqual(await db`select version from supabase_migrations.schema_migrations order by version`, history);
-  unlinkSync(journal); await db.end(); console.log("PASS: precisely owned schema/auth/workspace cleanup zero; migration history unchanged");
+  unlinkSync(journal); console.log("PASS: precisely owned schema/auth/workspace cleanup zero; migration history unchanged");
+}
+} finally {
+  releaseOnFailure?.();
+  try { await closeWorkers(); } finally { await db.end(); }
 }
