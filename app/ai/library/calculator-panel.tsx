@@ -51,8 +51,11 @@ export function CalculatorPanel({
 }) {
   const draft = useStateDraft(initialParams, stateVersion, saveCalculatorParams);
   const params = draft.value, setParams = draft.edit;
-  const [output, setOutput] = useState<CalculatorOutput | null>(null);
+  const dependencies = useMemo(() => ({ source, snapshot, params, manifest, versionLabel, artifactId }), [source, snapshot, params, manifest, versionLabel, artifactId]);
+  const [completed, setCompleted] = useState<{ dependencies: typeof dependencies; output: CalculatorOutput; params: Record<string, string | number>; snapshot: unknown; versionLabel: string; completedAt: string; evidenceRevision: string } | null>(null);
+  const output = completed?.output ?? null;
   const [status, setStatus] = useState<"idle" | "running" | "done" | "error" | "stopped">("idle");
+  const exportable = status === "done" && completed?.dependencies === dependencies;
   const [error, setError] = useState("");
   const runId = useRef(0);
   const stopped = useRef(false);
@@ -78,15 +81,20 @@ export function CalculatorPanel({
       try {
         if (inputError) throw new Error(inputError);
         if (monthChanged) {
-          setOutput({ unavailable: "Save inputs to load financial evidence for the selected month." });
+          setCompleted(null);
           setStatus("done");
           return;
         }
-        const result = (await runIsolatedArtifact(source, { snapshot, params }, controller.signal, manifest)) as CalculatorOutput;
+        const runParams = normalizeCalculatorParams(calculatorManifestSchema.parse(manifest), params);
+        const runSnapshot = structuredClone(snapshot);
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(runSnapshot)));
+        const evidenceRevision = `sha256:${Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("")}`;
+        if (stopped.current || runId.current !== id) return;
+        const result = (await runIsolatedArtifact(source, { snapshot: runSnapshot, params: runParams }, controller.signal, manifest)) as CalculatorOutput;
         if (stopped.current || runId.current !== id) return;
         const outputErrors = checkOutputShape(result);
         if (outputErrors.length) throw new Error(outputErrors.join("; "));
-        setOutput(result && typeof result === "object" ? result : null);
+        setCompleted(result && typeof result === "object" ? { dependencies, output: result, params: runParams, snapshot: runSnapshot, versionLabel, completedAt: new Date().toISOString(), evidenceRevision } : null);
         setStatus("done");
       } catch (err) {
         if (stopped.current || runId.current !== id) return;
@@ -100,7 +108,7 @@ export function CalculatorPanel({
       controller.abort();
       if (activeRun.current === controller) activeRun.current = null;
     };
-  }, [source, snapshot, params, monthChanged, manifest, inputError]);
+  }, [dependencies, source, snapshot, params, monthChanged, manifest, inputError, versionLabel]);
 
   function stop() {
     stopped.current = true;
@@ -110,9 +118,9 @@ export function CalculatorPanel({
   }
 
   function exportResult(format: "print" | "png") {
-    if (!output || status !== "done") return;
+    if (!exportable || !completed) return;
     try {
-      const text = calculatorExportText(title, versionLabel, output, params, snapshot, locale);
+      const text = calculatorExportText(title, completed.versionLabel, completed.output, completed.params, completed.snapshot, locale, { artifactId: completed.dependencies.artifactId, completedAt: completed.completedAt, evidenceRevision: completed.evidenceRevision });
       if (format === "print") printCalculator(text); else downloadCalculatorPng(text);
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Export unavailable"); }
   }
@@ -127,8 +135,8 @@ export function CalculatorPanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Generated calculator · {versionLabel}</h2>
         <div className="flex gap-2 text-sm">
-          <button type="button" disabled={status !== "done" || !output} onClick={() => exportResult("print")} className="rounded border px-3 py-1 disabled:opacity-50">Print / PDF</button>
-          <button type="button" disabled={status !== "done" || !output} onClick={() => exportResult("png")} className="rounded border px-3 py-1 disabled:opacity-50">Export PNG</button>
+          <button type="button" disabled={!exportable} onClick={() => exportResult("print")} className="rounded border px-3 py-1 disabled:opacity-50">Print / PDF</button>
+          <button type="button" disabled={!exportable} onClick={() => exportResult("png")} className="rounded border px-3 py-1 disabled:opacity-50">Export PNG</button>
           <button type="button" onClick={stop} className="rounded border px-3 py-1">
             Stop
           </button>
@@ -185,13 +193,15 @@ export function CalculatorPanel({
       )}
 
       <p role="status" className="mt-3 text-sm text-muted-foreground">
+        {monthChanged && "Save inputs to load financial evidence for the selected month."}
+        {status === "done" && !exportable && !monthChanged && "Inputs or evidence changed. Recalculating?"}
         {status === "running" && "Running in QuickJS/Web Worker…"}
         {status === "stopped" && "Stopped. Re-run to execute again."}
         {status === "error" && `Calculator failed: ${error}`}
       </p>
       {error && status !== "error" && <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
 
-      {status === "done" && output && (
+      {exportable && output && (
         <div className="mt-3 text-sm">
           {output.unavailable && <p>{output.unavailable}</p>}
           {output.warning && <p className="text-muted-foreground">Note: {output.warning}</p>}
