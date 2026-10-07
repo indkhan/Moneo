@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { setManualBalance, undoManualBalance } from "./actions";
-import { balanceReviewRows, type BalanceAccount, type BalanceSnapshot, type BalanceTransaction } from "@/lib/finance/balances";
+import { setManualBalance, undoManualBalance, confirmRecordedBalance } from "./actions";
+import { balanceReviewRows, resolveBalances, type BalanceAccount, type BalanceSnapshot, type BalanceTransaction } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
-import { formatMoney } from "@/lib/finance/format";
+import { formatInputAmount, formatMoney } from "@/lib/finance/format";
 import { buildSourceCoverage, type SourceCoverage } from "@/lib/finance/source-coverage";
 import { SourceCoverageDetails } from "./source-coverage";
 
@@ -16,8 +16,32 @@ export function ManualBalanceForm({ account, snapshots, ledger, asOf, timeZone, 
   const review = balanceReviewRows(ledger, account.id, asOf, timeZone);
   const descriptions = new Map(ledger.map(row => [row.id, row.description]));
   const today = calendarDate(asOf, timeZone);
+  const balance = resolveBalances([account], snapshots, ledger, asOf, timeZone)[0].balance;
+  const boundary = balance.as_of ? calendarDate(balance.as_of, timeZone) : today;
+  const changes = ledger.filter(row => row.account_id === account.id && row.status === "posted" &&
+    (row.posted_at ? Date.parse(row.posted_at) > Date.parse(balance.as_of ?? asOf) : row.posted_on > boundary) &&
+    (row.posted_at ? Date.parse(row.posted_at) <= Date.parse(asOf) : row.posted_on <= today))
+    .sort((a, b) => a.posted_on.localeCompare(b.posted_on) || a.id.localeCompare(b.id));
   return <>
     <SourceCoverageDetails coverage={account.sourceCoverage ?? buildSourceCoverage({ from: "0001-01-01", to: today, accountId: account.id, currencyCode: account.currency_code, ledgerBasis: "balance_activity" }, ledger.map(row => ({ ...row, kind: row.kind ?? "ordinary" })))} />
+    {!account.archived_at && balance.status === "stale" && balance.estimated_amount_minor !== null && <details className="mt-4 rounded-md border border-border p-3 text-xs">
+      <summary className="cursor-pointer font-medium text-brand">Confirm recorded balance</summary>
+      <p className="mt-2">Recorded changes since {boundary} give an unverified booked estimate of {formatMoney(balance.estimated_amount_minor, account.currency_code, locale)} before pending holds.</p>
+      <ul className="mt-2 max-h-60 space-y-1 overflow-auto">{changes.map(row => <li key={row.id}>{row.description ?? "Recorded posting"} — {formatMoney(row.amount_minor, row.currency_code, locale)} — {row.posted_at ? calendarDate(row.posted_at, timeZone) : row.posted_on}</li>)}</ul>
+      {changes.length === 0 && <p className="mt-2">No later posted activity is recorded. This does not prove that activity is complete.</p>}
+      <p className="mt-2 text-muted-foreground">Check this amount against your bank. If it differs, use the booked balance form below. Missing statement periods remain unknown; confirmation does not fill them in.</p>
+      <form action={confirmRecordedBalance} className="mt-3 space-y-2">
+        <input type="hidden" name="accountId" value={account.id} />
+        <input type="hidden" name="requestId" value={randomUUID()} />
+        <input type="hidden" name="expectedSnapshotId" value={latest?.id ?? ""} />
+        <input type="hidden" name="expectedVersion" value={latest?.version ?? 0} />
+        <input type="hidden" name="coveredTransactions" value={JSON.stringify(review)} />
+        <input type="hidden" name="amount" value={formatInputAmount(balance.estimated_amount_minor, account.currency_code)} />
+        <input type="hidden" name="asOf" value={today} />
+        <label className="flex items-start gap-2"><input type="checkbox" name="reviewedActivity" required /><span>I checked my bank and confirm this booked balance before pending holds includes all recorded postings through {today}.</span></label>
+        <button className="font-medium text-brand hover:underline">Confirm balance without retyping</button>
+      </form>
+    </details>}
     <form action={setManualBalance} className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4 text-xs">
       <input type="hidden" name="accountId" value={account.id} />
       <input type="hidden" name="requestId" value={randomUUID()} />
