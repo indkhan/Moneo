@@ -20,8 +20,8 @@ export function expandSchedule(item: Scheduled, start: string, days: number, unc
   const elapsedDays = Math.max(0, Math.floor((horizon.getTime() - first.getTime()) / 86400000));
   let firstIndex = 0;
   if (item.cadence === "daily") firstIndex = elapsedDays;
-  else if (item.cadence === "weekly") firstIndex = Math.floor(elapsedDays / 7);
-  else if (item.cadence === "monthly") firstIndex = Math.max(0, (horizon.getUTCFullYear() - first.getUTCFullYear()) * 12 + horizon.getUTCMonth() - first.getUTCMonth() - 1);
+  else if (item.cadence === "weekly" || item.cadence === "biweekly") firstIndex = Math.floor(elapsedDays / (item.cadence === "weekly" ? 7 : 14));
+  else if (item.cadence === "monthly" || item.cadence === "quarterly") firstIndex = Math.max(0, Math.floor(((horizon.getUTCFullYear() - first.getUTCFullYear()) * 12 + horizon.getUTCMonth() - first.getUTCMonth()) / (item.cadence === "monthly" ? 1 : 3)) - 1);
   else if (item.cadence === "yearly") firstIndex = Math.max(0, horizon.getUTCFullYear() - first.getUTCFullYear() - 1);
   const startMonth = first.getUTCMonth();
   const startDate = first.getUTCDate();
@@ -29,10 +29,10 @@ export function expandSchedule(item: Scheduled, start: string, days: number, unc
     const date = new Date(first);
     if (item.cadence === "once" && n > 0) break;
     if (item.cadence === "daily") date.setUTCDate(first.getUTCDate() + n);
-    else if (item.cadence === "weekly") date.setUTCDate(first.getUTCDate() + 7 * n);
-    else if (item.cadence === "monthly") {
+    else if (item.cadence === "weekly" || item.cadence === "biweekly") date.setUTCDate(first.getUTCDate() + (item.cadence === "weekly" ? 7 : 14) * n);
+    else if (item.cadence === "monthly" || item.cadence === "quarterly") {
       date.setUTCDate(1);
-      date.setUTCMonth(first.getUTCMonth() + n);
+      date.setUTCMonth(first.getUTCMonth() + (item.cadence === "monthly" ? 1 : 3) * n);
       const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
       date.setUTCDate(Math.min(startDate, lastDay));
     } else if (item.cadence === "yearly") {

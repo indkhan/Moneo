@@ -28,3 +28,11 @@ describe("financial assumptions", () => {
     expect(events.map(event => event.date)).toEqual(["2026-06-15"]);
   });
 });
+it.each([
+  { cadence: "biweekly", anchor: "2020-01-03", start: "2026-01-01", days: 45, expected: ["2026-01-09", "2026-01-23", "2026-02-06"] },
+  { cadence: "quarterly", anchor: "2024-01-31", start: "2026-02-01", days: 200, expected: ["2026-04-30", "2026-07-31"] },
+])("expands $cadence from the original calendar anchor with exact money", ({cadence, anchor, start, days, expected}) => {
+  const events = expandSchedule({account_id: "cash", amount_minor: "-9007199254740993", currency_code: "EUR", cadence, starts_on: anchor, ends_on: null}, start, days);
+  expect(events.map(event => event.date)).toEqual(expected);
+  expect(events.every(event => event.expectedMinor === -9007199254740993n)).toBe(true);
+});
