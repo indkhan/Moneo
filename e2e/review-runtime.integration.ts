@@ -218,3 +218,24 @@ test("a repeated request reconciles a runtime whose terminal DB writes exhausted
     expect(state.saves).toBe(0); expect(state.runs).toHaveLength(1);
   } finally { expect((await (await request.delete(fixture)).json()).removed).toBe(true); }
 });
+
+test("Stop aborts the actual AI SDK/OpenRouter HTTP transport in an installed Workflow step", async ({ request }) => {
+  const id = randomUUID(), workspace = randomUUID();
+  const fixture = `http://127.0.0.1:3041/fixture/${id}`;
+  await request.post("http://127.0.0.1:3041/fixture", { data: { id, workspace, mode: "provider-stop" } });
+  try {
+    expect((await request.post("/api/reviews", { data: { job: id, workspace, claimed: true, scheduled: false } })).ok()).toBe(true);
+    await expect.poll(async () => (await (await request.get(fixture)).json()).attempts.provider, { timeout: 90_000 }).toBe(1);
+    const before = await (await request.get(fixture)).json();
+    const stoppedAt = Date.now();
+    await request.patch(fixture, { data: { cancel_requested: true, stage: "cancel_requested" } });
+    await expect.poll(async () => (await (await request.get(fixture)).json()).provider_aborted, { timeout: 5000, intervals: [100] }).toBe(true);
+    await expect.poll(async () => (await (await request.get(fixture)).json()).status, { timeout: 5000, intervals: [100] }).toBe("canceled");
+    const after = await (await request.get(fixture)).json();
+    expect(after.provider_aborted_at - stoppedAt).toBeLessThan(3000);
+    expect(after.attempts.provider).toBe(1); expect(after.saves).toBe(0);
+    await expect.poll(async () => (await (await request.get(`/api/reviews?run=${before.workflow_run_id}`)).json()).status, { timeout: 5000 }).toBe("cancelled");
+    // A fresh request is the reload source of truth, independent of in-memory UI state.
+    expect(await (await request.get(fixture)).json()).toMatchObject({ status: "canceled", cancel_requested: true, saves: 0 });
+  } finally { await request.delete(fixture); }
+});

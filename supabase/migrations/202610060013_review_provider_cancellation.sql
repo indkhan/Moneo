@@ -35,4 +35,3 @@ end;
 $$;
 revoke all on function public.fail_financial_review(uuid,uuid,text,text,text) from public,anon,authenticated;
 grant execute on function public.fail_financial_review(uuid,uuid,text,text,text) to service_role;
-
