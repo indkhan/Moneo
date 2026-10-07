@@ -84,6 +84,7 @@ begin
     raise exception 'Invalid investigation progress' using errcode='22023';
   end if;
   if old_progress is not null and (old_progress->'startedAt' is distinct from p_progress->'startedAt'
+    or old_progress->>'synthesisAttempted'='true' and p_progress->>'synthesisAttempted' is distinct from 'true'
     or jsonb_array_length(old_progress->'queries')>jsonb_array_length(p_progress->'queries')
     or (old_progress->>'supportRecords')::integer>(p_progress->>'supportRecords')::integer
     or exists(select 1 from jsonb_array_elements(old_progress->'queries') with ordinality as entry(value,position)

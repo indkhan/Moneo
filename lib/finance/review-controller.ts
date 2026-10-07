@@ -13,6 +13,7 @@ export type ReviewProgress = {
   version: 1; request: ReviewRequest; startedAt: number; supportRecords: number;
   queries: {query: Pick<InvestigationSpec, "page">; status: "reading" | "completed" | "unavailable"; receiptId?: string; result?: Summary}[];
   limitations: string[];
+  synthesisAttempted?: boolean;
 };
 type Dependencies = {
   read: (query: InvestigationSpec, signal: AbortSignal) => Promise<{result: Result; receiptId: string}>;
