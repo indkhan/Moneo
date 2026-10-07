@@ -16,7 +16,7 @@ export async function investigationForArtifact(artifactId: string, input: unknow
   const result = await runInvestigation(input, context, { canReadImports: context.settings.ai_data_scopes.includes("imports") });
   // Do not silently drop groups/provenance to fit the generated-code memory budget.
   if (result.groups.length > 500 || (result.reporting?.postings.length ?? 0) > 500) throw new Error("Artifact investigation exceeds 500 groups or canonical postings; narrow its scope or open the complete Money investigation");
-  const latest = await requireWorkspace();
+  const latest = await requirePermission(artifactId, permission);
   if (latest.workspace.id !== context.workspace.id) throw new Error("Workspace changed");
   requireAiScope(latest.settings, "accounts", "transactions", ...(context.settings.ai_data_scopes.includes("imports") ? ["imports" as const] : []));
   return result;
@@ -159,3 +159,4 @@ export async function goalsForArtifact(artifactId: string) {
     sourceCoverage: buildSourceCoverage({ from, to: today, recordBasis: "manual_goals" }, []),
     resultBasis: "dated recorded savings and virtual reservations; source completeness not evaluated" };
 }
+
