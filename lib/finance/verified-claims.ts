@@ -5,7 +5,7 @@ export type FinancialEvidenceReceipt = {
   id: string; workspaceId: string; fetchedAt: string; calculationVersion: string; sourceVersion: string;
   query: unknown;
   sources: { id: string; type: string; version: string; href: string }[];
-  metrics: { id: string; label: string; valueMinor: string | null; currency: string; unit?: "money" | "count"; period: { from: string; to: string }; qualifiers: string[]; sourceIds: string[]; calculation: string }[];
+  metrics: { id: string; label: string; valueMinor: string | null; currency: string; unit?: "money" | "count"; period: { from: string; to: string }; qualifiers: string[]; sourceIds: string[]; calculation: string; aggregation?: { kind: string; ids: string[]; parents: string[]; canonicalParents: string[] } }[];
 };
 const periodSchema = z.object({ from: z.iso.date(), to: z.iso.date() }).strict().refine(value => value.from <= value.to);
 const referenceSchema = z.object({ receiptId: z.uuid(), metricId: z.string().min(1).max(200) }).strict();
@@ -107,6 +107,14 @@ export function publishFinancialClaims(input: unknown, receipts: FinancialEviden
       if (evidence.some(({ metric }) => metric.currency !== claim.currency)) throw new Error("Currency mismatch");
       if (claim.periods.length !== evidence.length || evidence.some(({ metric }, index) => JSON.stringify(metric.period) !== JSON.stringify(claim.periods[index]))) throw new Error("Period mismatch");
       if (claim.operation === "sum" && evidence.some(({ metric }) => metric.period.from !== evidence[0].metric.period.from || metric.period.to !== evidence[0].metric.period.to)) throw new Error("Sum period mismatch");
+      if (claim.operation === "sum") {
+        const aggregates = evidence.map(({ metric }) => metric.aggregation);
+        if (aggregates.some(value => !value || value.kind !== aggregates[0]?.kind)) throw new Error("Aggregation compatibility unavailable");
+        for (let index = 0; index < aggregates.length; index++) for (let other = index + 1; other < aggregates.length; other++) {
+          const first = aggregates[index]!, second = aggregates[other]!;
+          if (first.ids.some(id => second.ids.includes(id)) || first.canonicalParents.some(id => second.parents.includes(id)) || second.canonicalParents.some(id => first.parents.includes(id))) throw new Error("Overlapping financial contributions");
+        }
+      }
       const required = [...new Set(evidence.flatMap(({ metric }) => metric.qualifiers))];
       const sources = [...new Set(evidence.flatMap(({ metric }) => metric.sourceIds))];
       if (!sameSet(claim.qualifiers, required) || claim.sourceIds && !sameSet(claim.sourceIds, sources)) throw new Error("Missing qualifiers or invalid links");

@@ -33,6 +33,15 @@ it("uses actual balance clocks, workspace calendar dates and manual wealth dates
   expect(snake.metrics.find(metric => metric.label === "Booked balance")?.period).toEqual({ from: "2026-10-02", to: "2026-10-02" });
   expect(snake.metrics.find(metric => metric.label === "Dated recorded balance")?.period).toEqual({ from: "2026-09-01", to: "2026-09-01" });
 });
+it("rejects canonical parents summed with effective components but permits disjoint postings", () => {
+  const result = [{ id: "parent", amountBasis: "canonical_parent", amount_minor: "-100", currency_code: "EUR", posted_on: "2026-10-07", effectiveRows: [{ id: "component", parent_transaction_id: "parent", amount_minor: "-100", currency_code: "EUR" }] }, { id: "other", amountBasis: "canonical_parent", amount_minor: "-50", currency_code: "EUR", posted_on: "2026-10-07" }];
+  const receipt = toolResultReceipt("transactions_search", {}, result, context, ["transactions"]);
+  const sum = (indices: number[], valueMinor: string) => providerFinancialAnswer(JSON.stringify({ claims: [{ operation: "sum", operands: indices.map(index => ({ receiptId: receipt.id, metricId: receipt.metrics[index].id })), valueMinor, currency: "EUR", periods: indices.map(index => receipt.metrics[index].period), qualifiers: [...new Set(indices.flatMap(index => receipt.metrics[index].qualifiers))] }], interpretation: [] }), [receipt], context.workspaceId);
+  expect(sum([0, 1], "-200").accepted.some(claim => claim.operation === "sum")).toBe(false);
+  expect(sum([0, 1], "-200").body).toContain("Unsupported sections were removed");
+  expect(sum([0, 2], "-150").accepted).toHaveLength(1);
+  expect(receipt.metrics[1].label).toContain("component");
+});
 it("retains forward review forecast horizons and limiting dates", () => {
   const receipt = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-07-10", to: "2026-10-07" }, planning: { forecast: { evaluatedOn: "2026-10-07", horizonDays: 90, currencyCode: "EUR", availableToSpendMinor: "100", limitingDate: "2026-11-01" } } }, context, ["accounts", "transactions", "planning"]);
   expect(receipt.metrics[0]).toMatchObject({ period: { from: "2026-10-07", to: "2027-01-04" }, qualifiers: expect.arrayContaining(["assumption"]) });

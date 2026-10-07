@@ -10,6 +10,7 @@ const sourceSchema = z.object({ id: z.string().min(1).max(200), type: z.enum(["t
 const period = z.object({ from: z.iso.date(), to: z.iso.date() }).strict().refine(value => value.from <= value.to);
 const metricSchema = z.object({ id: z.string().min(1).max(200), label: z.string().min(1).max(200), valueMinor: z.string().regex(/^-?(?:0|[1-9]\d{0,79})$/).nullable(),
   unit: z.enum(["money", "count"]).optional(),
+  aggregation: z.object({ kind: z.string().min(1).max(200), ids: z.array(z.string().min(1).max(200)).max(100000), parents: z.array(z.string().min(1).max(200)).max(100000), canonicalParents: z.array(z.string().min(1).max(200)).max(100000) }).strict().optional(),
   currency: z.string().regex(/^[A-Z]{3}$/).refine(value => { try { minorDigits(value); return true; } catch { return false; } }), period,
   qualifiers: z.array(z.enum(["partial_classification", "partial_coverage", "unresolved_included", "dated_snapshot", "assumption", "manual_evidence", "virtual_reservation", "source_posting", "ambiguous_evidence", "partial_budget"])).max(30),
   sourceIds: z.array(z.string().min(1).max(200)).max(100000), calculation: z.string().min(1).max(2000) }).strict();
