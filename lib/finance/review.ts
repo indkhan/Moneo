@@ -1,7 +1,7 @@
 import { netWorth, summarizeCashflow, type CashflowTransaction } from "./calculations";
 import { resolveBalances, type BalanceTransaction, type BalanceSnapshot } from "./balances";
 import { goalContributionProjection } from "./goals";
-import { rolloverBudget, spendingForCategory, type MonthlyLimit } from "./spending-plans";
+import { budgetProgress, type MonthlyLimit } from "./spending-plans";
 import { wealthEvidence, type WealthValue } from "./wealth";
 
 type Account = { id: string; name: string; currency_code: string };
@@ -41,14 +41,11 @@ export function buildPlanningReview(input: {
     budgets: input.budgets.filter(budget => budget.enabled).map(budget => {
       const rows = input.transactions.map(row => ({ amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code, status: row.status, kind: row.kind, reviewReasons: row.review_reasons, postedOn: row.posted_on, categoryId: row.category_id, ...(row.refund_of_id ? { refundOfCategoryId: row.refund_category_id ?? null } : {}) }));
       const month = input.today.slice(0, 7);
-      const spent = spendingForCategory(rows, budget.category_id, budget.currency_code, month);
-      const rollover = budget.rollover ? budget.rollover_from ? rolloverBudget(rows, budget.category_id, budget.currency_code, budget.rollover_from.slice(0, 7), month, BigInt(budget.limit_minor), (input.budgetHistory ?? []).filter(item => item.plan_id === budget.id)) : { status: "unavailable" as const, missingInput: "Rollover start month is missing" } : null;
-      const partial = rollover?.status === "unavailable" || rows.some(row => row.status === "posted" && row.currencyCode === budget.currency_code && row.postedOn.startsWith(month) && row.reviewReasons?.length);
-      const remaining = partial ? null : rollover?.status === "available" ? rollover.remainingMinor : BigInt(budget.limit_minor) - spent;
+      const progress = budgetProgress(rows, budget.category_id, budget.currency_code, month, BigInt(budget.limit_minor), budget.rollover ? { startsMonth: budget.rollover_from?.slice(0, 7) ?? null, history: (input.budgetHistory ?? []).filter(item => item.plan_id === budget.id) } : undefined);
       return { id: budget.id, category: input.categories.find(category => category.id === budget.category_id)?.name ?? "Unknown", currency: budget.currency_code,
-        month, limitMinor: budget.limit_minor, spentMinor: spent.toString(), remainingMinor: remaining?.toString() ?? null, overLimit: remaining === null ? null : remaining < 0n,
-        carriedMinor: rollover?.status === "available" ? rollover.carriedMinor.toString() : budget.rollover ? null : "0", allowanceMinor: rollover?.status === "available" ? rollover.allowanceMinor.toString() : budget.rollover ? null : budget.limit_minor,
-        limitation: rollover?.status === "unavailable" ? rollover.missingInput : partial ? "Current-month financial classification needs review" : null, partial, link: "/plan/spending" };
+        month, limitMinor: budget.limit_minor, spentMinor: progress.spentMinor.toString(), remainingMinor: progress.remainingMinor?.toString() ?? null, overLimit: progress.overLimit,
+        carriedMinor: progress.carriedMinor?.toString() ?? null, allowanceMinor: progress.allowanceMinor?.toString() ?? null,
+        limitation: progress.limitation, partial: progress.partial, link: "/plan/spending" };
     }),
     limits: ["Recorded savings are dated manual evidence; reservations are separate virtual earmarks", "Contribution dates assume the stated monthly plan and do not prove affordability", "Monthly budgets count reviewed booked spending and refunds; incomplete imports may understate pressure"],
   };

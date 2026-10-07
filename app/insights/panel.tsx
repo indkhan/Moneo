@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildInsights, insightPreferencesSchema, defaultInsightPreferences, type InsightInput } from "@/lib/finance/insights";
 import { type ReviewTransaction } from "@/lib/finance/review";
-import { spendingForCategory, rolloverBudget, type MonthlyLimit } from "@/lib/finance/spending-plans";
+import { budgetProgress, type MonthlyLimit } from "@/lib/finance/spending-plans";
 import { type WorkspaceSettings } from "@/lib/settings";
 import type { evaluatePlan } from "@/lib/finance/model";
 import { dismissInsight } from "./actions";
@@ -65,12 +65,10 @@ async function loadInsights({ db, workspaceId, currency, today, settings, projec
       ...(row.refund_of_id ? { refundOfCategoryId: row.refund_category_id ?? null } : {}) }));
     const budgetEvidence: InsightInput["budgets"] = [];
     for (const budget of budgets.filter(budget => budget.enabled)) {
-      const partial = transactions.some(row => row.status === "posted" && row.posted_on.startsWith(today.slice(0, 7)) && row.review_reasons?.length && row.currency_code === budget.currency_code);
-      const result = budget.rollover ? rolloverBudget(spendingRows, budget.category_id, budget.currency_code, budget.rollover_from.slice(0, 7), today.slice(0, 7), BigInt(budget.limit_minor), limits.filter(limit => limit.plan_id === budget.id)) : null;
-      if (result?.status === "unavailable") { warnings.push(result.missingInput); continue; }
+      const progress = budgetProgress(spendingRows, budget.category_id, budget.currency_code, today.slice(0, 7), BigInt(budget.limit_minor), budget.rollover ? { startsMonth: budget.rollover_from.slice(0, 7), history: limits.filter(limit => limit.plan_id === budget.id) } : undefined);
+      if (progress.allowanceMinor === null) { if (progress.limitation) warnings.push(progress.limitation); continue; }
       budgetEvidence.push({ id: budget.id, name: categories.find(category => category.id === budget.category_id)?.name ?? "Category", currency: budget.currency_code,
-        spentMinor: result?.status === "available" ? result.spentMinor.toString() : spendingForCategory(spendingRows, budget.category_id, budget.currency_code, today.slice(0, 7)).toString(),
-        allowanceMinor: result?.status === "available" ? result.allowanceMinor.toString() : budget.limit_minor, partial });
+        spentMinor: progress.spentMinor.toString(), allowanceMinor: progress.allowanceMinor.toString(), partial: progress.partial });
     }
     const events = projection.input.events.filter(event => event.source !== "estimated" && event.expectedMinor < 0n);
     const obligations = new Map<string, InsightInput["obligations"][number]>();

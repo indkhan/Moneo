@@ -79,3 +79,13 @@ it("combines current standalone wealth with account totals once and keeps histor
   expect(reviewNetWorth({ EUR: "10000", USD: null }, [item, { ...item, id: "linked", linked_account_id: "account" }], "2026-10-02")).toEqual({ EUR: "15000", USD: null });
   expect(reviewNetWorth({ EUR: "10000" }, [{ ...item, as_of: "2026-10-01" }], "2026-10-02")).toEqual({ EUR: null });
 });
+
+it("keeps unrelated category uncertainty out of an otherwise complete budget", () => {
+  const input = { today: "2026-10-02", goals: [], allocations: [], categories: [],
+    budgets: [{ id: "b", category_id: "food", currency_code: "EUR", limit_minor: "10000", enabled: true }],
+    transactions: [
+      { id: "known", amount_minor: "-1000", currency_code: "EUR", status: "posted", kind: "ordinary", category_id: "food", posted_on: "2026-10-01", merchant_id: null },
+      { id: "unknown", amount_minor: "-20000", currency_code: "EUR", status: "posted", kind: "ordinary", category_id: "other", posted_on: "2026-10-02", merchant_id: null, review_reasons: ["unknown_type"] },
+    ] };
+  expect(buildPlanningReview(input).budgets[0]).toMatchObject({ spentMinor: "1000", remainingMinor: "9000", overLimit: false, partial: false });
+});

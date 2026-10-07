@@ -59,6 +59,27 @@ export function spendingForCategory(
   return spent;
 }
 
+// A posted unresolved classification can change spending only in its posting
+// currency and attributable category. Unknown categories can affect any plan.
+function classificationNeedsReview(transactions: SpendingPlanTransaction[], categoryId: string, currency: string, month: string): boolean {
+  return transactions.some(item => {
+    if (item.status !== "posted" || !item.reviewReasons?.length || item.currencyCode !== currency || !item.postedOn.startsWith(month)) return false;
+    const category = item.kind === "refund" && item.refundOfCategoryId !== undefined ? item.refundOfCategoryId : item.categoryId;
+    return category === null || category === categoryId;
+  });
+}
+
+export function budgetProgress(transactions: SpendingPlanTransaction[], categoryId: string, currency: string, month: string, limit: bigint | null, rollover?: { startsMonth: string | null; history: MonthlyLimit[] }) {
+  const spentMinor = spendingForCategory(transactions, categoryId, currency, month);
+  const rolloverResult = rollover && limit !== null ? rollover.startsMonth ? rolloverBudget(transactions, categoryId, currency, rollover.startsMonth, month, limit, rollover.history) : { status: "unavailable" as const, missingInput: "Rollover start month is missing" } : null;
+  const classificationPartial = classificationNeedsReview(transactions, categoryId, currency, month);
+  const limitation = limit === null ? "Historical target unavailable" : rolloverResult?.status === "unavailable" ? rolloverResult.missingInput : classificationPartial ? "Current-month financial classification needs review" : null;
+  const carriedMinor = rollover ? rolloverResult?.status === "available" ? rolloverResult.carriedMinor : null : 0n;
+  const allowanceMinor = rollover ? rolloverResult?.status === "available" ? rolloverResult.allowanceMinor : null : limit;
+  const remainingMinor = limitation === null && allowanceMinor !== null ? allowanceMinor - spentMinor : null;
+  return { spentMinor, carriedMinor, allowanceMinor, remainingMinor, overLimit: remainingMinor === null ? null : remainingMinor < 0n, partial: limitation !== null, limitation, rolloverResult };
+}
+
 export type MonthlyLimit = { effective_month: string; limit_minor: string; enabled: boolean; version: number };
 export function rolloverBudget(transactions: SpendingPlanTransaction[], categoryId: string, currency: string, startsMonth: string, month: string, currentLimit: bigint, history: MonthlyLimit[]):
   | { status: "unavailable"; missingInput: string }
@@ -75,10 +96,11 @@ export function rolloverBudget(transactions: SpendingPlanTransaction[], category
     const previous = `${Math.floor(index / 12).toString().padStart(4, "0")}-${(index % 12 + 1).toString().padStart(2, "0")}`;
     const known = ordered.filter(item => item.effective_month.slice(0, 7) <= previous).at(-1);
     if (!known) return { status: "unavailable", missingInput: `No recorded budget target for ${previous}; choose a supported rollover start month` };
-    if (transactions.some(item => item.postedOn.startsWith(previous) && item.status === "posted" && item.reviewReasons?.length && item.currencyCode === currency && (item.categoryId === null || item.categoryId === categoryId || item.refundOfCategoryId === categoryId))) return { status: "unavailable", missingInput: `Financial classification needs review in ${previous}` };
+    if (classificationNeedsReview(transactions, categoryId, currency, previous)) return { status: "unavailable", missingInput: `Financial classification needs review in ${previous}` };
     if (!known.enabled) { carriedMinor = 0n; continue; }
     carriedMinor += BigInt(known.limit_minor) - spendingForCategory(transactions, categoryId, currency, previous);
   }
+  if (classificationNeedsReview(transactions, categoryId, currency, month)) return { status: "unavailable", missingInput: "Current-month financial classification needs review" };
   const spentMinor = spendingForCategory(transactions, categoryId, currency, month);
   const allowanceMinor = currentLimit + carriedMinor;
   return { status: "available", carriedMinor, allowanceMinor, spentMinor, remainingMinor: allowanceMinor - spentMinor };
