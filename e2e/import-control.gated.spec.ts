@@ -65,7 +65,9 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     };
     await expect.poll(async()=>{const row=await counts();return row.sources>0&&row.sources<1000;},{timeout:60_000,intervals:[100]}).toBe(true);
     const initial=[...(await db`select id,row_number,original_row from public.source_transactions where import_id=${importId} order by row_number`)];
+    const stopResponse=page.waitForResponse(response=>response.url().endsWith(`/api/imports/${importId}/control`)&&response.request().method()==="POST");
     await history.getByRole("button",{name:"Stop import",exact:true}).click();
+    expect((await stopResponse).ok()).toBe(true);
     await expect(history.getByRole("status")).toHaveText("canceled");
     const stopped=await counts();expect(stopped.sources).toBeGreaterThan(0);expect(stopped.sources).toBeLessThan(1000);expect(stopped.transactions).toBe(stopped.sources);
     const [{run_version:stoppedVersion,source_id:source,storage_path:storagePath}]=await db`select run_version,source_id,storage_path from public.imports where id=${importId} and workspace_id=${workspace}`;
@@ -92,9 +94,13 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     const repeated=await context.request.post("/api/imports/confirm",{multipart});
     expect(repeated.ok()).toBe(true);expect((await repeated.json()).importId).toBe(importId);
     expect((await db`select count(*)::int as count from public.imports where workspace_id=${workspace}`)[0].count).toBe(1);
+    const undoPreview=page.waitForResponse(response=>response.url().endsWith(`/api/imports/${importId}/undo`)&&response.request().method()==="GET");
     await history.getByRole("button",{name:"Undo import",exact:true}).click();
+    expect((await undoPreview).ok()).toBe(true);
     await expect(history).toContainText("remove 1000 transactions and 0 balance snapshots");
+    const undoResponse=page.waitForResponse(response=>response.url().endsWith(`/api/imports/${importId}/undo`)&&response.request().method()==="POST");
     await history.getByRole("button",{name:"Confirm undo 1000 transactions",exact:true}).click();
+    expect((await undoResponse).ok()).toBe(true);
     await expect(history).toHaveCount(0);
     expect((await db`select status from public.imports where id=${importId}`)[0].status).toBe("undone");
     await expect.poll(async()=> (await counts()).transactions).toBe(0);

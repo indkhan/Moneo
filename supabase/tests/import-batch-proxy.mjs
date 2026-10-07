@@ -13,7 +13,7 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const connection = new URL(process.env.SUPABASE_DB_URL);
 const project = new URL(origin).hostname.split(".")[0];
 assert(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`));
-const db = postgres(connection.toString(), { ssl: "require", max: 4, connect_timeout: 10, onnotice: () => {} });
+const db = postgres(connection.toString(), { ssl: "require", max: 4, connect_timeout: 10, onnotice: () => {}, connection: { application_name: "mne015-batch-proxy", lock_timeout: "10s", statement_timeout: "120s" } });
 const journal = ".qa/mne015-proxy.json", fixture = ".qa/mne015-fixture.json", report = ".qa/mne015-proxy-counts.json";
 const recoveryOnly = process.argv.includes("--cleanup");
 const recovery = recoveryOnly ? JSON.parse(readFileSync(journal, "utf8")) : null;
@@ -98,4 +98,6 @@ try {
   console.log("READY: owned candidate batch RPC proxy localhost3053; no public DDL");
   process.once("SIGINT", () => cleanup().then(() => process.exit(0)).catch(error => { console.error(error.message); process.exit(1); }));
   process.once("SIGTERM", () => cleanup().then(() => process.exit(0)).catch(error => { console.error(error.message); process.exit(1); }));
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", command => { if (command.trim() === "cleanup") cleanup().then(() => process.exit(0)).catch(error => { console.error(error.message); process.exit(1); }); });
 } catch (error) { await cleanup(); throw error; }

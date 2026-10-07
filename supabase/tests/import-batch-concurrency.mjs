@@ -6,7 +6,7 @@ import postgres from "postgres";
 process.loadEnvFile(".env");
 const connection = new URL(process.env.SUPABASE_DB_URL), project = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
 assert(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`));
-const options = { ssl: "require", max: 1, onnotice: () => {} };
+const options = { ssl: "require", max: 1, onnotice: () => {}, connection: { application_name: "mne015-batch-race", lock_timeout: "10s", statement_timeout: "120s" } };
 const db = postgres(connection.toString(), options), holder = postgres(connection.toString(), options), waiter = postgres(connection.toString(), options), overlap = postgres(connection.toString(), options);
 const schema = `mne015_concurrency_qa_${randomUUID().replaceAll("-", "")}`, actor = randomUUID();
 const names = ["import_staging", "prevent_import_staging_update", "read_import_stage", "stage_import_rows", "import_batch_candidates", "ingest_import_batch"];
