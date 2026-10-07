@@ -37,8 +37,8 @@ test("dated observations remain visible and explicit booked confirmation reloads
       await tx`insert into public.transactions(workspace_id,account_id,posted_on,description,amount_minor,currency_code,status) values
         (${workspace!},${account},${prior},'Earlier dated posting',-100,'EUR','posted'),(${workspace!},${account},${today},'Today dated posting',-250,'EUR','posted'),
         (${workspace!},${account},${today},'Synthetic pending hold',-500,'EUR','pending')`;
-      await tx`insert into public.wealth_items(workspace_id,kind,name,amount_minor,currency_code,as_of) values
-        (${workspace!},'asset','Historical asset QA',20000,'EUR',${old}),(${workspace!},'debt','Historical debt QA',-10000,'EUR',${prior}),(${workspace!},'asset','Original yen QA',300,'JPY',${old})`;
+      await tx`insert into public.wealth_items(id,workspace_id,kind,name,amount_minor,currency_code,as_of) values
+        (${randomUUID()},${workspace!},'asset','Historical asset QA',20000,'EUR',${old}),(${randomUUID()},${workspace!},'debt','Historical debt QA',-10000,'EUR',${prior}),(${randomUUID()},${workspace!},'asset','Original yen QA',300,'JPY',${old})`;
     });
     const ledger = async () => db`select id,amount_minor::text,currency_code,posted_on::text,posted_at::text,status,version from public.transactions where workspace_id=${workspace!} order by id`;
     const originalLedger = await ledger();
@@ -52,7 +52,10 @@ test("dated observations remain visible and explicit booked confirmation reloads
     await context.addCookies([...cookies].map(([name, value]) => ({name, value, domain: "localhost", path: "/", sameSite: "Lax" as const})));
     const page = await context.newPage(), modelRequests: string[] = [];
     page.on("request", request => {if (/openrouter|\/api\/chat|\/api\/analysis/.test(request.url())) modelRequests.push(request.url());});
-    await page.goto("/");
+    page.setDefaultTimeout(30_000);
+    console.log('MNE012 step: opening Home');
+    await page.goto("/", {waitUntil: 'domcontentloaded'});
+    console.log('MNE012 step: dated observations');
     const dated = page.locator("details").filter({has: page.locator("summary").filter({hasText: /^Recorded net worth by currency$/})});
     await dated.locator("summary").click();
     await expect(dated).toContainText("EUR 200.00"); await expect(dated).toContainText("JPY 300");
@@ -64,6 +67,7 @@ test("dated observations remain visible and explicit booked confirmation reloads
     const confirmation = card.getByRole("checkbox", {name: /I checked my bank/});
     await expect(confirmation).not.toBeChecked();
     await confirmation.check();
+    console.log('MNE012 step: confirming booked balance');
     await card.getByRole("button", {name: "Confirm balance without retyping", exact: true}).click();
     await expect(async () => {await page.reload(); expect(await cash()).toMatchObject({status: "current", amount_minor: "9650"});}).toPass({timeout: 30_000});
     const [saved] = await db`select amount_minor::text,boundary_kind,covered_transactions,actor_id from public.balance_snapshots where account_id=${account} order by created_at desc,id desc`;
@@ -72,6 +76,7 @@ test("dated observations remain visible and explicit booked confirmation reloads
     expect(plan.input.missingInputs?.some(input => input.includes("principal valuation is historical"))).toBe(true);
     await card.getByText("Manual balance history and undo", {exact: true}).click();
     await card.getByRole("button", {name: "Undo balance", exact: true}).click();
+    console.log('MNE012 step: Undo submitted');
     await expect(async () => {await page.reload(); expect(await cash()).toMatchObject({status: "stale", amount_minor: null, estimated_amount_minor: "9650"});}).toPass({timeout: 30_000});
     expect((await db`select count(*)::int count from public.balance_snapshots where account_id=${account} and undone_at is not null`)[0].count).toBe(1);
     expect(await ledger()).toEqual(originalLedger);
@@ -80,7 +85,7 @@ test("dated observations remain visible and explicit booked confirmation reloads
     await page.screenshot({path: info.outputPath("dated-observations-confirmation-undo.png"), fullPage: true});
   } finally {
     try {
-      await context?.close();
+      await context?.close().catch(() => {});
       if (user) {const owned = await admin.auth.admin.getUserById(user); expect(owned.error).toBeNull(); expect(owned.data.user?.user_metadata).toMatchObject({qa_test: "mne012", run_id: run});}
       const tables = ["wealth_events", "wealth_items", "balance_snapshots", "transactions", "accounts", "workspace_settings"];
       if (workspace) await db.begin(async tx => {
