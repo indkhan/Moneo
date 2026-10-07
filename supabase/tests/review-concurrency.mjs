@@ -55,7 +55,7 @@ try {
   await whileBlocked(async tx => {
     await tx`select set_config('request.jwt.claim.sub',${user},true)`;
     await tx.unsafe("set local role authenticated");
-    assert.equal((await tx`select public.cancel_financial_review(${job}) status`)[0].status, "canceled");
+    assert.equal((await tx`select public.cancel_financial_review(${job}) status`)[0].status, "cancel_requested");
   }, tx => finish(tx, job), "finish_financial_review");
   await whileBlocked(async tx => {
     await tx`select set_config('request.jwt.claim.sub',${user},true)`;

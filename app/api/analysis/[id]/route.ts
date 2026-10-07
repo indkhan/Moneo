@@ -8,7 +8,7 @@ export async function GET(_request: Request, { params }: Context) {
   try { context = await requireWorkspace(); }
   catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
   const { id } = await params;
-  const job = await context.supabase.from("background_jobs").select("id, status, stage, error, created_at, updated_at")
+  const job = await context.supabase.from("background_jobs").select("id, status, stage, cancel_requested, error, created_at, updated_at")
     .eq("id", id).eq("workspace_id", context.workspace.id).eq("kind", "financial_review").maybeSingle();
   if (job.error) return Response.json({ error: job.error.message }, { status: 500 });
   if (!job.data) return Response.json({ error: "Review not found" }, { status: 404 });

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@supabase/supabase-js";
 import { getRun, start } from "workflow/api";
+import { getWorld } from "workflow/runtime";
 import { financialReview } from "@/workflows/financial-review";
 
 export async function startFinancialReview(db: SupabaseClient, workspaceId: string, requestId: string, chatRequestId?: string) {
@@ -36,8 +37,20 @@ export async function dispatchFinancialReview(service: SupabaseClient, jobId: st
       if (!["failed", "cancelled", "completed"].includes(runtime)) throw new Error("Financial review deadline cancellation was not acknowledged");
     }
     if (["failed", "cancelled", "completed"].includes(runtime) || !exists && expired) {
+      let cancellationUnconfirmed = false;
+      // run.cancel() fences future steps but does not abort an in-flight fetch.
+      // Give the worker time to acknowledge. A stale running step converges to
+      // a terminal business receipt with explicit unconfirmed termination.
+      if (runtime === "cancelled" && job.cancel_requested) {
+        const canceledAt = await run.completedAt;
+        const steps = await getWorld().steps.list({ runId: job.workflow_run_id, resolveData: "none", pagination: { limit: 1000 } });
+        if (steps.hasMore || steps.data.some(step => step.status === "running")) {
+          if (!canceledAt && !expired || canceledAt && Date.now() - canceledAt.getTime() < 120_000) return { jobId, status: job.status };
+          cancellationUnconfirmed = true;
+        }
+      }
       const failed = await service.rpc("fail_financial_review", { p_job_id: jobId, p_workspace_id: workspaceId, p_run_id: job.workflow_run_id,
-        p_stage: deadlineCancellation ? "runtime_deadline" : "runtime_reconciliation",
+        p_stage: cancellationUnconfirmed ? "cancellation_unconfirmed" : deadlineCancellation ? "runtime_deadline" : "runtime_reconciliation",
         p_error: deadlineCancellation ? `Financial review exceeded the 24-hour dispatch deadline; Workflow ${runtime}` : `Workflow ${runtime} before application finalization` });
       if (failed.error) throw failed.error;
       if (!["queued", "running", "failed", "completed", "canceled"].includes(failed.data)) throw new Error("Invalid financial review reconciliation receipt");

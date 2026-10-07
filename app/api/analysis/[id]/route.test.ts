@@ -16,3 +16,9 @@ it("keeps foreign or missing review cancellation unavailable", async () => {
   const response = await DELETE(new Request("http://localhost"), { params: Promise.resolve({ id: "foreign" }) });
   expect(response.status).toBe(404);
 });
+
+it("returns a cancellation request without claiming worker acknowledgment", async () => {
+  fixture.rpc.mockResolvedValue({ data: "cancel_requested", error: null });
+  const response = await DELETE(new Request("http://localhost"), { params: Promise.resolve({ id: "job" }) });
+  expect(await response.json()).toEqual({ status: "cancel_requested" });
+});

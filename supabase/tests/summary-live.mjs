@@ -46,7 +46,7 @@ try {
   await db.begin(async tx => {
     await tx`select set_config('request.jwt.claim.sub',${user},true)`;
     await tx.unsafe("set local role authenticated");
-    assert.equal((await tx`select public.cancel_financial_review(${monthly[0].job_id}) status`)[0].status, "canceled");
+    assert.equal((await tx`select public.cancel_financial_review(${monthly[0].job_id}) status`)[0].status, "cancel_requested");
   });
   await db`update public.workspace_settings set summary_cadence='none' where workspace_id=${workspace}`;
   await cron();
