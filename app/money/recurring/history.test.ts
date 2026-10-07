@@ -7,7 +7,7 @@ const renderedText = (node: unknown): string => {
   if (node && typeof node === "object" && "props" in node) return renderedText((node as {props: {children?: unknown}}).props.children);
   return typeof node === "string" || typeof node === "number" ? String(node) : "";
 };
-let postings: {id: string; posted_on: string; description: string; amount_minor: string; currency_code: string; account_id: string; merchant_id: null; version: number}[] = [];
+let postings: {id: string; posted_on: string; description: string; amount_minor: string; currency_code: string; account_id: string; merchant_id: string | null; version: number}[] = [];
 vi.mock("@/lib/auth", () => ({requireWorkspace: async () => ({workspace: {id: "workspace", locale: "en-US"}, supabase: {
   from: (table: string) => {
     const read: typeof reads[number] = {table, orders: [], columns: ""}; reads.push(read);
@@ -62,4 +62,32 @@ it("does not label an intentionally disabled user schedule as used in forecast",
   const text = renderedText(await RecurringPage());
   expect(text).toContain("intentional Plan schedule");
   expect(text).not.toContain("used in forecast");
+});
+
+const formInputs = (node: unknown): {name: string; value: string}[] => {
+  if (Array.isArray(node)) return node.flatMap(formInputs);
+  if (node && typeof node === "object" && "props" in node) {
+    const props = (node as {props: {name?: string; value?: string; children?: unknown}}).props;
+    return [...(props.name && typeof props.value === "string" ? [{name: props.name, value: props.value}] : []), ...formInputs(props.children)];
+  }
+  return [];
+};
+it("keeps a valid 1000-source multibyte candidate below the default Server Action body limit", async () => {
+  stored = [];
+  postings = Array.from({length: 1000}, (_, index) => ({
+    id: `${String(index).padStart(8,"0")}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
+    posted_on: new Date(Date.UTC(1940, index, 3)).toISOString().slice(0,10),
+    description: index < 2 ? "Subscription" : "\u{1F4B0}".repeat(245) + ` ref ${index}`,
+    amount_minor: "-9007199254740993",currency_code: "EUR",account_id: "cash",
+    merchant_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",version: 2147483647,
+  }));
+  const inputs = formInputs(await RecurringPage());
+  const evidence = inputs.find(input => input.name === "sourceEvidence")!;
+  expect(evidence).toBeDefined();
+  const form = new FormData();
+  for (const input of inputs.slice(0,inputs.findIndex(input => input.name === "evidenceLimited")+1)) form.set(input.name,input.value);
+  const request = new Request("http://localhost/recurring",{method:"POST",body:form});
+  const bytes = (await request.arrayBuffer()).byteLength;
+  expect(bytes).toBeLessThan(128000);
+  expect(JSON.parse(evidence.value)).toEqual(postings.map(({id,version})=>({id,version})));
 });

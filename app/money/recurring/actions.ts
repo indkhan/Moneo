@@ -10,16 +10,14 @@ import { recurringCadences } from "@/lib/finance/cadences";
 
 const uuid = z.uuid();
 const currency = z.string().regex(/^[A-Z]{3}$/);
-const receipt = z.object({
-  id: uuid, version: z.number().int().min(0).max(2147483647), account_id: uuid,
-  posted_on: z.iso.date(), description: z.string(), amount_minor: z.string().regex(/^-?\d+$/),
-  currency_code: currency, status: z.literal("posted"), kind: z.literal("ordinary"),
-  review_reasons: z.array(z.string()).length(0), merchant_id: uuid.nullable(),
-}).strict();
+// Compact expected versions keep 1000-source forms well below Next's default
+// 1MB body limit. Owned full receipts are read and validated under RPC locks.
+const receipt = z.object({id: uuid, version: z.number().int().min(0).max(2147483647)}).strict();
+const receiptPayload = z.string().max(128000).refine(value => Buffer.byteLength(value,"utf8") <= 128000,"Evidence payload too large");
 
 async function decideSeries(form: FormData, decision: "confirmed" | "dismissed") {
   const { supabase } = await requireWorkspace();
-  const raw = z.string().max(2_000_000).parse(form.get("sourceEvidence"));
+  const raw = receiptPayload.parse(form.get("sourceEvidence"));
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { throw new Error("Invalid source evidence"); }
   const evidence = z.array(receipt).min(3).max(1000).parse(parsed);
@@ -27,7 +25,7 @@ async function decideSeries(form: FormData, decision: "confirmed" | "dismissed")
   if (new Set(evidence.map(row => row.id)).size !== evidence.length || !evidence.some(row => row.id === anchor)) throw new Error("Duplicate sources or missing anchor");
   const limited = z.enum(["true", "false"]).parse(form.get("evidenceLimited")) === "true";
   if (limited && evidence.length !== 1000) throw new Error("Invalid limited evidence");
-  const { error } = await supabase.rpc("review_recurring_series", {
+  const { error } = await supabase.rpc("review_recurring_series_versions", {
     p_decision: decision,
     p_account_id: uuid.parse(form.get("accountId")),
     p_label: z.string().trim().min(1).max(200).parse(form.get("label")),

@@ -171,7 +171,7 @@ export default async function RecurringPage() {
                   <input type="hidden" name="label" value={series.label} />
                   <input type="hidden" name="cadence" value={series.cadence} />
                   <input type="hidden" name="currencyCode" value={series.currencyCode} />
-                  <input type="hidden" name="sourceEvidence" value={JSON.stringify(evidence.map(row => ({id: row.id, version: row.version, account_id: row.account_id, posted_on: row.posted_on, description: row.description, amount_minor: row.amount_minor, currency_code: row.currency_code, status: row.status, kind: row.kind, review_reasons: row.review_reasons, merchant_id: row.merchant_id})))} />
+                  <input type="hidden" name="sourceEvidence" value={JSON.stringify(evidence.map(row => ({id: row.id, version: row.version})))} />
                   <input type="hidden" name="runAnchorId" value={series.runAnchorId} />
                   <input type="hidden" name="evidenceLimited" value={String(series.evidenceLimited)} />
                   <button disabled={related.length > 1} className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:opacity-90">Confirm</button>
@@ -181,7 +181,7 @@ export default async function RecurringPage() {
                   <input type="hidden" name="label" value={series.label} />
                   <input type="hidden" name="cadence" value={series.cadence} />
                   <input type="hidden" name="currencyCode" value={series.currencyCode} />
-                  <input type="hidden" name="sourceEvidence" value={JSON.stringify(evidence.map(row => ({id: row.id, version: row.version, account_id: row.account_id, posted_on: row.posted_on, description: row.description, amount_minor: row.amount_minor, currency_code: row.currency_code, status: row.status, kind: row.kind, review_reasons: row.review_reasons, merchant_id: row.merchant_id})))} />
+                  <input type="hidden" name="sourceEvidence" value={JSON.stringify(evidence.map(row => ({id: row.id, version: row.version})))} />
                   <input type="hidden" name="runAnchorId" value={series.runAnchorId} />
                   <input type="hidden" name="evidenceLimited" value={String(series.evidenceLimited)} />
                   <button disabled={related.length > 1} className="rounded-lg border border-border px-4 py-2 text-xs font-medium hover:bg-muted">Not recurring</button>

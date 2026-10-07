@@ -32,7 +32,7 @@ export async function checkSerialization(db, connection, schema, run, record) {
       const [identity]=await tx`select current_user as role,auth.uid() as actor`;
       assert.equal(identity.role,'authenticated');assert.equal(identity.actor,actor);
     }
-    async function review(tx,evidence) {return tx.unsafe(`select (${schema}.review_recurring_series('confirmed',$1,'Serialized merchant','monthly','EUR',$2::jsonb,$3)).id`,[account,tx.json(evidence),evidence[0].id]);}
+    async function review(tx,evidence) {return tx.unsafe(`select (${schema}.review_recurring_series_versions('confirmed',$1,'Serialized merchant','monthly','EUR',$2::jsonb,$3)).id`,[account,tx.json(evidence.map(({id,version})=>({id,version}))),evidence[0].id]);}
     async function observeBlocked() {
       for(let attempt=0;attempt<20;attempt++) {
         const [state]=await db`select wait_event_type, ${pids[0]} = any(pg_blocking_pids(pid)) as owned_blocker from pg_stat_activity where pid=${pids[1]} and application_name=${names[1]}`;

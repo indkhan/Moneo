@@ -297,3 +297,37 @@ begin
   perform set_config('moneo.planning_undo', 'false', true);
 end;
 $$;
+
+-- Compact transport: exact expected source versions are checked under posting locks;
+-- the existing shared decision function still validates complete owned snapshots.
+create function public.review_recurring_series_versions(p_decision text,p_account_id uuid,p_label text,p_cadence text,p_currency_code text,p_evidence jsonb,p_run_anchor_id uuid,p_evidence_limited boolean default false)
+returns public.recurring_series language plpgsql security definer set search_path='' as $$
+declare workspace uuid; ids uuid[]; item jsonb; posting public.transactions%rowtype; receipts jsonb:='[]'::jsonb; expected integer; n integer;
+begin
+ if auth.uid() is null then raise exception 'Authentication required' using errcode='28000'; end if;
+ select workspace_id into workspace from public.accounts where id=p_account_id and public.owns_workspace(workspace_id);
+ if not found then raise exception 'Account not found' using errcode='P0002'; end if;
+ if p_evidence is null or jsonb_typeof(p_evidence)<>'array' then raise exception 'Invalid expected source versions' using errcode='22023'; end if;
+ n:=jsonb_array_length(p_evidence);
+ if n not between 3 and 1000 then raise exception 'Evidence must list 3 to 1000 sources' using errcode='22023'; end if;
+ for item in select value from jsonb_array_elements(p_evidence) loop
+   if jsonb_typeof(item)<>'object' or not(item ?& array['id','version']) or item-array['id','version']<>'{}'::jsonb
+     or jsonb_typeof(item->'id') is distinct from 'string' or (item->>'id')!~'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+     or jsonb_typeof(item->'version') is distinct from 'number' or (item->>'version')!~'^[0-9]+$' or (item->>'version')::numeric>2147483647 then
+     raise exception 'Invalid source version receipt' using errcode='22023';
+   end if;
+ end loop;
+ select array_agg((value->>'id')::uuid) into ids from jsonb_array_elements(p_evidence);
+ if (select count(distinct id) from unnest(ids) id)<>n then raise exception 'Duplicate sources' using errcode='22023'; end if;
+ perform id from public.transactions where id=any(ids) and workspace_id=workspace and account_id=p_account_id order by id for update;
+ if (select count(*) from public.transactions where id=any(ids) and workspace_id=workspace and account_id=p_account_id)<>n then raise exception 'Evidence not found' using errcode='P0002'; end if;
+ for posting in select * from public.transactions where id=any(ids) and workspace_id=workspace and account_id=p_account_id order by posted_on,id loop
+   select (value->>'version')::integer into expected from jsonb_array_elements(p_evidence) where (value->>'id')::uuid=posting.id;
+   if expected is distinct from posting.version then raise exception 'Source changed; reload before deciding' using errcode='40001'; end if;
+   receipts:=receipts||jsonb_build_array(public.recurring_evidence_snapshot(posting)||jsonb_build_object('version',posting.version));
+ end loop;
+ return public.review_recurring_series(p_decision,p_account_id,p_label,p_cadence,p_currency_code,receipts,p_run_anchor_id,p_evidence_limited);
+end;
+$$;
+revoke all on function public.review_recurring_series_versions(text,uuid,text,text,text,jsonb,uuid,boolean) from public,anon;
+grant execute on function public.review_recurring_series_versions(text,uuid,text,text,text,jsonb,uuid,boolean) to authenticated;
