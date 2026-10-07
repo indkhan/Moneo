@@ -41,6 +41,7 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
         : month && lastMonthDate ? { from: `${month}-01`, to: today >= `${month}-01` && today < lastMonthDate ? today : lastMonthDate }
         : dated ? { from: dated, to: dated } : inherited.period;
     const qualifiers = [...inherited.qualifiers];
+    if (row.status === "ambiguous" && !qualifiers.includes("ambiguous_evidence")) qualifiers.push("ambiguous_evidence");
     const coverage = object(row.evidence);
     if (coverage.excludedReviewRows && !qualifiers.includes("partial_classification")) qualifiers.push("partial_classification");
     if ((row.classificationStatus === "unresolved" || Array.isArray(row.review_reasons) && row.review_reasons.length || Array.isArray(row.reviewReasons) && row.reviewReasons.length) && !qualifiers.includes("unresolved_included")) qualifiers.push("unresolved_included");
@@ -53,13 +54,15 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
         }
       } else
       if (Object.hasOwn(labels, key) && currency && (child === null || typeof child === "string" && /^-?(?:0|[1-9]\d{0,79})$/.test(child))) {
+        const metricCurrency = key === "snapshot_amount_minor" ? typeof row.snapshot_currency_code === "string" ? row.snapshot_currency_code : null : currency;
+        if (!metricCurrency) continue;
         const qualification = [...qualifiers];
         if (key === "amount_minor" && ["transactions_search", "finance_detail"].includes(name)) qualification.push("source_posting");
         if (["snapshot_amount_minor", "recorded_saved_minor", "recordedSavedMinor"].includes(key)) qualification.push("manual_evidence", "dated_snapshot");
         if (key === "reservedMinor") qualification.push("virtual_reservation");
         if (["target_minor", "targetMinor", "limitMinor", "allowanceMinor"].includes(key) || key.startsWith("planned")) qualification.push("assumption");
         const manualDate = key === "recordedSavedMinor" && typeof row.savedAsOf === "string" ? row.savedAsOf : key === "snapshot_amount_minor" && typeof row.as_of === "string" ? row.as_of.slice(0, 10) : null;
-        metrics.push({ id: [...path, key].join(".") || key, label: key === "amount_minor" && path.includes("balance") ? "Booked balance" : labels[key], valueMinor: child as string | null, currency, period: manualDate ? { from: manualDate, to: manualDate } : period,
+        metrics.push({ id: [...path, key].join(".") || key, label: key === "amount_minor" && path.includes("balance") ? "Booked balance" : labels[key], valueMinor: child as string | null, currency: metricCurrency, period: manualDate ? { from: manualDate, to: manualDate } : period,
           qualifiers: [...new Set(qualification)], sourceIds: [sourceId], calculation: `${name}: exact deterministic field ${[...path, key].join(".")}. Full query inputs, calculation output and supporting record evidence are retained below.` });
       } else if (key !== "calculationEvidence" && key !== "queryInvestigation" && key !== "investigation") walk(child, [...path, key], { currency: /^[A-Z]{3}$/.test(key) ? key : currency, period, qualifiers });
     }

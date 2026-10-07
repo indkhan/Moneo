@@ -47,6 +47,7 @@ const qualifications: Record<string, string> = {
   dated_snapshot: "Dated snapshot: this measures retained evidence, not a live balance.",
   assumption: "Assumption: this projection is conditional and is not a probability or established outcome.",
   manual_evidence: "Manual evidence: a dated recorded value, not a verified current balance.",
+  ambiguous_evidence: "Ambiguous balance evidence: this recorded source value does not establish an account balance. Resolve conflicting currencies, dates or source boundaries before relying on it.",
   virtual_reservation: "Virtual reservation: an earmark, not money moved or spent.",
   source_posting: "Recorded source posting: this is the canonical parent amount; effective allocations and verified fees determine financial totals. Do not add the parent to its components.",
 };
