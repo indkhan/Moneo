@@ -57,7 +57,13 @@ test("active version CAS preserves clean/dirty editors, two-tab drafts and histo
     await tab.getByLabel("Artifact name", {exact:true}).fill("Synthetic winning rename");
     await tab.locator("form").filter({has:tab.getByLabel("Artifact name", {exact:true})}).getByRole("button", {name:"Save new version",exact:true}).click();
     await expect(tab.getByRole("heading", {name:"Synthetic winning rename",exact:true})).toBeVisible();
+    const beforeStaleSave = await read();
+    const staleSaveResponse = page.waitForResponse(response => new URL(response.url()).pathname === endpoint && response.request().method() === "POST");
     await editor.getByRole("button", { name: "Save new version", exact: true }).click();
+    expect((await staleSaveResponse).status()).toBe(409);
+    const afterStaleSave = await read();
+    expect(afterStaleSave.activeVersionId).toBe(beforeStaleSave.activeVersionId);
+    expect(afterStaleSave.versions).toEqual(beforeStaleSave.versions);
     await expect(editor.getByRole("status")).toContainText("preserved");
     await expect(code).toContainText('"Tab local"');
     await expect(page.getByLabel("Artifact name", {exact:true})).toHaveValue("Synthetic winning rename");
@@ -70,7 +76,13 @@ test("active version CAS preserves clean/dirty editors, two-tab drafts and histo
     await tabEditor.getByRole("textbox", { name: "Calculator source", exact: true }).fill(source("Draft winner"));
     await tabEditor.getByRole("button", { name: "Save new version", exact: true }).click();
     await expect(tab.getByRole("region", { name: "Generated calculator output" })).toContainText("Draft winner");
+    const beforeStaleDraft = await read();
+    const staleDraftResponse = page.waitForResponse(response => new URL(response.url()).pathname === endpoint && response.request().method() === "POST");
     await generator.getByRole("button", { name: "Save as new version", exact: true }).click();
+    expect((await staleDraftResponse).status()).toBe(409);
+    const afterStaleDraft = await read();
+    expect(afterStaleDraft.activeVersionId).toBe(beforeStaleDraft.activeVersionId);
+    expect(afterStaleDraft.versions).toEqual(beforeStaleDraft.versions);
     await expect(generator.getByRole("status")).toContainText("preserved");
     await expect(generator.getByText("Proposed source (inspect before saving)")).toBeVisible();
     const after = await read(); expect(after.activeVersionId).not.toBe(winner);

@@ -103,10 +103,10 @@ try {
     assert.equal(first.source, '(input) => ({summary:"First"})');
     const staleBefore = await snapshot(tx);
     const stale = await tx.savepoint(async point => save(point, initial, "Stale")).then(() => "success", error => error.code);
-    assert.equal(stale, "40001");
+    assert.equal(stale, "PT409");
     assert.deepEqual(await snapshot(tx), staleBefore, "Stale CAS leaves artifact, history and state unchanged");
     const unknownBase = await tx.savepoint(point => save(point, null, "Unknown base")).then(() => "success", error => error.code);
-    assert.equal(unknownBase, "40001", "Unknown legacy draft base cannot bypass CAS");
+    assert.equal(unknownBase, "PT409", "Unknown legacy draft base cannot bypass CAS");
     const [active] = await tx.unsafe(`select active_version_id from ${schema}.artifacts where id=$1`, [artifact]);
     assert.equal(active.active_version_id, first.id);
     assert.equal((await tx.unsafe(`select count(*)::int n from ${schema}.artifact_versions where artifact_id=$1`, [artifact]))[0].n, 2);
@@ -130,7 +130,7 @@ try {
     const oldRename = await tx.savepoint(point => point.unsafe(`select ${schema}.rename_trusted_artifact($1,'Old bypass')`, [artifact])).then(() => "success", error => error.code);
     assert.equal(oldSave, "42501"); assert.equal(oldRename, "42501");
     const staleRename = await tx.savepoint(point => point.unsafe(`select ${schema}.rename_trusted_artifact($1,'Stale rename',$2)`, [artifact, initial])).then(() => "success", error => error.code);
-    assert.equal(staleRename, "40001");
+    assert.equal(staleRename, "PT409");
     await tx.unsafe(`select ${schema}.rename_trusted_artifact($1,'Current rename',$2)`, [artifact, first.id]);
     console.log("PASS verified actor, SDK scope, stale server saves and authenticated renames rejected atomically; failed attempts retained; old RPC CAS bypass denied");
     let latest = (await tx.unsafe(`select active_version_id from ${schema}.artifacts where id=$1`, [artifact]))[0].active_version_id;
@@ -151,7 +151,7 @@ try {
     assert.equal(trusted.source, original.source); assert.deepEqual(trusted.manifest, original.manifest);
     assert.deepEqual(await tx.unsafe(`select state,version from ${schema}.artifact_state where artifact_id=$1`, [artifact]), beforeState);
     const staleRestore = await tx.savepoint(point => point.unsafe(`select ${schema}.restore_trusted_artifact_version($1,$2,$3)`, [artifact, initial, restored.id])).then(() => "success", error => error.code);
-    assert.equal(staleRestore, "40001");
+    assert.equal(staleRestore, "PT409");
     const generatedAsTrusted = await tx.savepoint(point => point.unsafe(`select ${schema}.restore_trusted_artifact_version($1,$2,$3)`, [artifact, first.id, trusted.id])).then(() => "success", error => error.code);
     assert.equal(generatedAsTrusted, "P0002");
     const [sibling] = await tx.unsafe(`select * from ${schema}.create_trusted_artifact('custom_comparison','Synthetic other tool')`);
@@ -199,7 +199,7 @@ try {
       }
       assert(blocked, "Second authenticated activation must wait on the existing artifact lock");
     } finally { release(); }
-    await holder; assert.equal(await waiter, "40001");
+    await holder; assert.equal(await waiter, "PT409");
     assert.equal((await db.unsafe(`select count(*)::int n from ${schema}.artifact_versions where artifact_id=$1`, [artifact]))[0].n, 2);
     console.log("PASS actual concurrent service activation/authenticated trusted-restore RPCs: restore waits, then rejects unseen winner; no losing version inserted");
   }
