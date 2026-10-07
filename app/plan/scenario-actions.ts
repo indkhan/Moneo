@@ -1,5 +1,6 @@
 "use server";
 import { z } from "zod";
+import { scheduleCadences } from "@/lib/finance/cadences";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireWorkspace } from "@/lib/auth";
@@ -29,7 +30,7 @@ export async function updateScenarioEvent(form: FormData) {
   if (error || !data) throw new Error("Scenario event unavailable");
   const starts = z.iso.date().parse(form.get("startsOn")), ends = form.get("endsOn") ? z.iso.date().parse(form.get("endsOn")) : null;
   if (ends && ends < starts) throw new Error("End date cannot precede start date");
-  await edit(form, "override", { name: z.string().trim().min(1).max(120).parse(form.get("name")), amount_delta_minor: parseManualAmount(String(form.get("amount") ?? ""), data.currency_code).toString(), cadence: z.enum(["once", "daily", "weekly", "monthly", "yearly"]).parse(form.get("cadence")), starts_on: starts, ends_on: ends });
+  await edit(form, "override", { name: z.string().trim().min(1).max(120).parse(form.get("name")), amount_delta_minor: parseManualAmount(String(form.get("amount") ?? ""), data.currency_code).toString(), cadence: z.enum(scheduleCadences).parse(form.get("cadence")), starts_on: starts, ends_on: ends });
 }
 export async function removeScenarioRecord(form: FormData) {
   await edit(form, z.enum(["scenario", "override"]).parse(form.get("entityType")), { removed: true });

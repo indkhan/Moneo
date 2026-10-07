@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { detectRecurring } from "@/lib/finance/recurring";
 import { confirmSeries, declineSeries } from "./actions";
-import { confidenceToPercent, formatMoney as formatCurrency, seriesKey } from "./series";
+import { formatMoney as formatCurrency, seriesKey } from "./series";
 import { OccurrenceReview } from "./occurrences";
 
 const MAX_TRANSACTIONS = 10_000;
@@ -18,6 +18,9 @@ type TxRow = {
   account_id: string;
   merchant_id: string | null;
   version: number;
+  status: "posted";
+  kind: "ordinary";
+  review_reasons: string[];
 };
 
 export default async function RecurringPage() {
@@ -33,7 +36,7 @@ export default async function RecurringPage() {
   const [{ data: accounts, error: accountsError }, { data: stored, error: storedError }] = await Promise.all([
     supabase.from("accounts").select("id, name, currency_code").eq("workspace_id", workspace.id).order("name"),
     supabase.from("recurring_series")
-      .select("id, account_id, normalized_label, cadence, currency_code, status, assumption_id, label, evidence_invalidated, evidence_baseline, recurring_series_transactions(transaction_id)")
+      .select("id, account_id, normalized_label, cadence, currency_code, status, assumption_id, label, evidence_invalidated, evidence_baseline, recurring_series_transactions(transaction_id), assumption:financial_assumptions(source,confirmed,enabled,removed_at)")
       .eq("workspace_id", workspace.id),
   ]);
 
@@ -44,7 +47,7 @@ export default async function RecurringPage() {
   let cursor: TxRow | undefined;
   while (rows.length <= MAX_TRANSACTIONS) {
     let query = supabase.from("transactions")
-      .select("id, posted_on, description, amount_minor::text, currency_code, account_id, merchant_id, version")
+      .select("id, posted_on, description, amount_minor::text, currency_code, account_id, merchant_id, version, status, kind, review_reasons")
       .eq("workspace_id", workspace.id)
       .eq("status", "posted")
       .eq("kind", "ordinary").eq("review_reasons", "{}")
@@ -101,7 +104,7 @@ export default async function RecurringPage() {
       <p className="max-w-3xl text-sm text-muted-foreground">
         Estimated patterns inferred from the most recent complete posting dates, up to {MAX_TRANSACTIONS.toLocaleString(workspace.locale)} eligible posted transactions.
         Nothing here affects your forecast until you confirm it. Confirming creates one confirmed
-        financial assumption used by the deterministic forecast; declining disables it.
+        financial assumption used by the deterministic forecast. Decisions preserve intentional schedules edited in Plan. Review existing schedules before confirming another run.
       </p>
 
       {(stored??[]).some(series=>series.evidence_invalidated) && <section aria-label="Recurring source changes" className="rounded-lg border border-amber-500 p-4"><h2 className="font-medium">Confirmed source evidence changed</h2><p className="mt-2 text-sm">Inferred assumptions are disabled when their transaction evidence is reclassified. Intentional user assumptions are retained. Undo the source correction to restore unchanged inference, or review a new valid pattern before confirming it.</p><ul className="mt-3 space-y-3">{(stored??[]).filter(series=>series.evidence_invalidated).map(series=><li key={series.id} className="text-sm"><p>{series.label} · {names[series.account_id]??"Account"}</p><div className="flex flex-wrap gap-3">{((series.evidence_baseline??[]) as {id:string;posted_on:string}[]).map(source=><Link key={source.id} href={`/money/transactions?transaction=${source.id}`} className="underline">Source {source.posted_on}</Link>)}<Link href="/plan" className="underline">Review assumption in Plan</Link></div></li>)}</ul></section>}
@@ -131,14 +134,14 @@ export default async function RecurringPage() {
             item.recurring_series_transactions?.some((link: {transaction_id: string}) => series.transactionIds.includes(link.transaction_id)));
           const state = related.length === 1 ? related[0] : undefined;
           const status = state?.status ?? "pending";
-          const percent = confidenceToPercent(series.confidence);
+          const assumption = Array.isArray(state?.assumption) ? state.assumption[0] : state?.assumption;
           const evidence = series.transactionIds.map((id) => byId.get(id)).filter((row): row is TxRow => Boolean(row));
           return (
             <article key={key} className="rounded-xl border border-border bg-card p-5 shadow-sm">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-base font-semibold">{series.label}</h2>
                 <span className="rounded bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700">Estimated · {series.cadence}</span>
-                {status === "confirmed" && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">Confirmed · used in forecast</span>}
+                {status === "confirmed" && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">Confirmed{assumption?.confirmed && assumption.enabled && !assumption.removed_at ? " used in forecast" : " review schedule in Plan"}</span>}
                 {status === "dismissed" && <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">Dismissed · not recurring</span>}
               </div>
               <p className="mt-3 font-mono text-sm">
@@ -160,30 +163,28 @@ export default async function RecurringPage() {
                 </ul>
                 {evidence.length > 8 && <p className="mt-1 text-muted-foreground">…and {evidence.length - 8} more.</p>}
               </details>
+              {assumption?.source === "user" && <p className="mt-3 text-xs text-muted-foreground">Your intentional Plan schedule is retained when confirming or declining this candidate. Edit or disable it in <Link href="/plan" className="underline">Plan</Link>.</p>}
+              {related.length > 1 && <p role="alert" className="mt-3 text-xs">Evidence overlaps several reviewed runs. Review their schedules in Plan before deciding.</p>}
               <div className="mt-4 flex flex-wrap gap-3">
                 <form action={confirmSeries}>
                   <input type="hidden" name="accountId" value={series.accountId} />
                   <input type="hidden" name="label" value={series.label} />
                   <input type="hidden" name="cadence" value={series.cadence} />
                   <input type="hidden" name="currencyCode" value={series.currencyCode} />
-                  <input type="hidden" name="amountMinMinor" value={series.amountMinMinor.toString()} />
-                  <input type="hidden" name="amountMaxMinor" value={series.amountMaxMinor.toString()} />
-                  <input type="hidden" name="occurrences" value={series.occurrences} />
-                  <input type="hidden" name="confidence" value={percent} />
-                  <input type="hidden" name="transactionIds" value={series.transactionIds.join(",")} />
-                  <button className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:opacity-90">Confirm</button>
+                  <input type="hidden" name="sourceEvidence" value={JSON.stringify(evidence.map(row => ({id: row.id, version: row.version, account_id: row.account_id, posted_on: row.posted_on, description: row.description, amount_minor: row.amount_minor, currency_code: row.currency_code, status: row.status, kind: row.kind, review_reasons: row.review_reasons, merchant_id: row.merchant_id})))} />
+                  <input type="hidden" name="runAnchorId" value={series.runAnchorId} />
+                  <input type="hidden" name="evidenceLimited" value={String(series.evidenceLimited)} />
+                  <button disabled={related.length > 1} className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:opacity-90">Confirm</button>
                 </form>
                 <form action={declineSeries}>
                   <input type="hidden" name="accountId" value={series.accountId} />
                   <input type="hidden" name="label" value={series.label} />
                   <input type="hidden" name="cadence" value={series.cadence} />
                   <input type="hidden" name="currencyCode" value={series.currencyCode} />
-                  <input type="hidden" name="amountMinMinor" value={series.amountMinMinor.toString()} />
-                  <input type="hidden" name="amountMaxMinor" value={series.amountMaxMinor.toString()} />
-                  <input type="hidden" name="occurrences" value={series.occurrences} />
-                  <input type="hidden" name="confidence" value={percent} />
-                  <input type="hidden" name="transactionIds" value={series.transactionIds.join(",")} />
-                  <button className="rounded-lg border border-border px-4 py-2 text-xs font-medium hover:bg-muted">Not recurring</button>
+                  <input type="hidden" name="sourceEvidence" value={JSON.stringify(evidence.map(row => ({id: row.id, version: row.version, account_id: row.account_id, posted_on: row.posted_on, description: row.description, amount_minor: row.amount_minor, currency_code: row.currency_code, status: row.status, kind: row.kind, review_reasons: row.review_reasons, merchant_id: row.merchant_id})))} />
+                  <input type="hidden" name="runAnchorId" value={series.runAnchorId} />
+                  <input type="hidden" name="evidenceLimited" value={String(series.evidenceLimited)} />
+                  <button disabled={related.length > 1} className="rounded-lg border border-border px-4 py-2 text-xs font-medium hover:bg-muted">Not recurring</button>
                 </form>
               </div>
             </article>

@@ -1,11 +1,12 @@
 import Link from "next/link";
+import { recurringCadences } from "@/lib/finance/cadences";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { associateOccurrence, undoOccurrence } from "./actions";
 import { formatMoney } from "./series";
 
 export async function OccurrenceReview({ supabase, workspace, accountNames }: { supabase: SupabaseClient; workspace: { id: string; locale: string }; accountNames: Record<string, string> }) {
   const [assumptions, transactions, settlements] = await Promise.all([
-    supabase.from("financial_assumptions").select("id, name, version, amount_minor::text, currency_code, starts_on").eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).is("removed_at", null).in("cadence", ["weekly", "monthly"]).order("name").limit(500),
+    supabase.from("financial_assumptions").select("id, name, version, amount_minor::text, currency_code, starts_on").eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).is("removed_at", null).in("cadence", recurringCadences).order("name").limit(500),
     supabase.from("transactions").select("id, account_id, description, version, posted_on, status, amount_minor::text, currency_code").eq("workspace_id", workspace.id).eq("kind", "ordinary").eq("review_reasons", "{}").in("status", ["pending", "posted"]).order("posted_on", { ascending: false }).limit(500),
     supabase.from("recurring_occurrence_settlements").select("id, assumption_id, transaction_id, scheduled_on, completes_occurrence, undone_at, version, receipt").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(500),
   ]);

@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import RecurringPage from "./page";
 const reads: {table: string; columns?: string; orders: string[]; cursor?: string}[] = [];
-let stored: {id: string; account_id: string; currency_code: string; cadence: string; normalized_label: string; status: string; recurring_series_transactions: {transaction_id: string}[]}[] = [];
+let stored: {id: string; account_id: string; currency_code: string; cadence: string; normalized_label: string; status: string; assumption?: {source: string; confirmed: boolean; enabled: boolean; removed_at: string | null}; recurring_series_transactions: {transaction_id: string}[]}[] = [];
 const renderedText = (node: unknown): string => {
   if (Array.isArray(node)) return node.map(renderedText).join("");
   if (node && typeof node === "object" && "props" in node) return renderedText((node as {props: {children?: unknown}}).props.children);
@@ -55,4 +55,11 @@ it("recognizes an existing confirmed schedule through owned evidence after run k
   const text = renderedText(await RecurringPage());
   expect(text).toContain("Confirmed");
   expect(text).not.toContain("confidence 70%");
+});
+
+it("does not label an intentionally disabled user schedule as used in forecast", async () => {
+  stored = stored.map(row => ({...row, assumption: {source: "user",enabled: false,removed_at: null}}));
+  const text = renderedText(await RecurringPage());
+  expect(text).toContain("intentional Plan schedule");
+  expect(text).not.toContain("used in forecast");
 });

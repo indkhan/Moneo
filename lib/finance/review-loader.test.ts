@@ -38,3 +38,14 @@ it("loads older rollover evidence without extending the current cashflow summary
   expect(evidence.cashflow).toEqual({});
   expect((evidence.planning as { budgets: unknown[] }).budgets[0]).toMatchObject({ carriedMinor: "8800", remainingMinor: "9800", spentMinor: "0" });
 });
+
+it("includes the confirmed calendar anchor and source basis in planning evidence", async () => {
+  let assumptionColumns = "";
+  const from = (table: string) => {
+    const query = {select: (columns: string) => {if (table === "financial_assumptions") assumptionColumns=columns; return query;},eq: () => query,is: () => query,gte: () => query,lte: () => query,order: () => query,
+      range: async () => ({data: [],error: null})}; return query;
+  };
+  await loadFinancialReviewEvidence({from} as unknown as SupabaseClient,{id: "workspace",display_currency: "EUR",timezone: "Europe/Berlin"},settingsSchema.parse({}));
+  expect(assumptionColumns).toContain("schedule_anchor_on");
+  expect(assumptionColumns).toContain("source");
+});
