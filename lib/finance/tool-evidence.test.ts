@@ -72,7 +72,8 @@ it("preserves unresolved source posting uncertainty without calling its amount s
 it("keeps an ambiguous JPY snapshot separate from the EUR account currency", () => {
   const receipt = toolResultReceipt("accounts_getBalances", {}, [{ currency_code: "EUR", balance: { amount_minor: null, snapshot_amount_minor: "100", snapshot_currency_code: "JPY", status: "ambiguous", as_of: "2026-09-01T00:00:00Z", warnings: ["Snapshot currency differs from account currency"] } }], context, ["accounts"]);
   const snapshot = receipt.metrics.find(metric => metric.label === "Dated recorded balance")!;
-  expect(snapshot).toMatchObject({ currency: "JPY", valueMinor: "100", qualifiers: expect.arrayContaining(["ambiguous_evidence", "manual_evidence", "dated_snapshot"]) });
+  expect(snapshot).toMatchObject({ currency: "JPY", valueMinor: "100", qualifiers: expect.arrayContaining(["ambiguous_evidence", "dated_snapshot"]) });
+  expect(snapshot.qualifiers).not.toContain("manual_evidence");
   const published = providerFinancialAnswer("EUR 1.00 available", [receipt], context.workspaceId).body;
   expect(published).toContain("JPY 100");
   expect(published).not.toContain("EUR 1.00");

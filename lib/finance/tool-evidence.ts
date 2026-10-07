@@ -71,7 +71,8 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
       } else
       if (Object.hasOwn(labels, key) && currency && (child === null || typeof child === "string" && /^-?(?:0|[1-9]\d{0,79})$/.test(child))) {
         const snapshot = key === "snapshot_amount_minor" || key === "snapshotBalanceMinor";
-        const manualBookedBalance = (key === "balanceMinor" || key === "amount_minor" && path.includes("balance")) && typeof row.provenance === "string" && /^manual\b/.test(row.provenance);
+        const bookedBalance = key === "balanceMinor" || key === "amount_minor" && path.includes("balance");
+        const manualBalance = (snapshot || bookedBalance) && typeof row.provenance === "string" && /^manual\b/.test(row.provenance);
         const goalRemainder = key === "remainingMinor" && (Object.hasOwn(row, "savedAsOf") || Object.hasOwn(row, "saved_as_of"));
         const savedEvidence = ["recorded_saved_minor", "recordedSavedMinor"].includes(key) || goalRemainder;
         const snapshotCurrency = row.snapshotCurrencyCode ?? row.snapshot_currency_code;
@@ -81,11 +82,12 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
         const component = typeof row.parent_transaction_id === "string" || typeof row.parentId === "string";
         const posting = ["amount_minor", "amountMinor"].includes(key) && ["transactions_search", "finance_detail"].includes(name);
         if (posting && !component) qualification.push("source_posting");
-        if (snapshot || manualBookedBalance || savedEvidence || path.includes("wealth")) qualification.push("manual_evidence", "dated_snapshot");
+        if (snapshot || bookedBalance || savedEvidence || path.includes("wealth")) qualification.push("dated_snapshot");
+        if (manualBalance || savedEvidence || path.includes("wealth")) qualification.push("manual_evidence");
         if (goalRemainder) qualification.push("assumption");
         if (key === "reservedMinor") qualification.push("virtual_reservation");
         if (["target_minor", "targetMinor", "limitMinor", "allowanceMinor"].includes(key) || key.startsWith("planned")) qualification.push("assumption");
-        const manualDate = savedEvidence ? datedValue(row.savedAsOf ?? row.saved_as_of) : snapshot || manualBookedBalance ? datedValue(row.asOf ?? row.as_of) : null;
+        const manualDate = savedEvidence ? datedValue(row.savedAsOf ?? row.saved_as_of) : snapshot || manualBalance ? datedValue(row.asOf ?? row.as_of) : null;
         const limitingDate = datedValue(key === "spendableMinor" ? row.spendingLimitingDate : key === "aggregateAvailableMinor" ? row.aggregateLimitingDate : row.limitingDate);
         const postingId = typeof row.id === "string" ? row.id : null;
         const parentId = component ? (row.parent_transaction_id ?? row.parentId) as string : postingId;
@@ -128,7 +130,7 @@ export function providerFinancialAnswer(text: string, receipts: EvidenceReceipt[
         return [`Preview only: review the exact selected entries and explicitly confirm the change in the application. [Open category-change confirmation](/ai/actions/preview?${new URLSearchParams({ ids: selected.data.transactionIds.join(","), category: selected.data.categoryId })}).`];
     }
     if (receipt.query.toolName === "artifacts_create" && z.uuid().safeParse(value.id).success) return [`Created the requested tool: [Open tool](/ai/library/${value.id}).`];
-    if (receipt.query.toolName === "reviews_start") return ["The requested review was started. [Track its status](/ai)."]; 
+    if (receipt.query.toolName === "reviews_start") return ["The requested review was started. [Track its status](/ai)."];
     if (receipt.query.toolName === "imports_status" && Array.isArray(value.imports)) return value.imports.flatMap(raw => {
       const row = object(raw);
       if (!z.uuid().safeParse(row.id).success || !["queued", "processing", "completed", "failed", "canceled", "needs_review"].includes(String(row.status))) return [];
