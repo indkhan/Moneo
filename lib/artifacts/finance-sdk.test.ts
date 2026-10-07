@@ -101,3 +101,12 @@ it("evaluates an explicit dated trip with a derived horizon and the shared engin
   if (expected.status === "available") expect(result.withTripAvailableMinor).toBe(expected.accounts[0].spendableMinor.toString());
   vi.useRealTimers();
 });
+
+it("rechecks artifact permission and finance scopes before returning an asynchronous trip preview", async () => {
+  const query = { select: () => query, eq: () => query, single: async () => ({ data: { permissions: ["forecast"], active_version_id: "v" }, error: null }) };
+  const context = { workspace: { id: "w", display_currency: "EUR", timezone: "Europe/Berlin" }, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: ["accounts", "transactions", "planning"] }, supabase: { from: () => query } };
+  vi.mocked(requireWorkspace).mockResolvedValueOnce(context as unknown as Awaited<ReturnType<typeof requireWorkspace>>)
+    .mockResolvedValueOnce({ ...context, settings: { ...context.settings, ai_data_scopes: [] } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  vi.mocked(evaluatePlan).mockResolvedValue({ input: { startDate: new Date().toISOString().slice(0, 10), horizonDays: 29, currencyCode: "EUR", accounts: [{ id: "a", currencyCode: "EUR", balanceMinor: 10000n }], events: [] } } as unknown as Awaited<ReturnType<typeof evaluatePlan>>);
+  await expect(tripForArtifact("synthetic", 20000n)).rejects.toThrow("disabled");
+});

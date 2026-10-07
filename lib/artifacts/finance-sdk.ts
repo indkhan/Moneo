@@ -119,11 +119,9 @@ export async function tripForArtifact(artifactId: string, costMinor: bigint, acc
   const requested = rawScenario === undefined ? defaultTripScenario(today, workspace.display_currency, accountId ?? "unselected", costMinor) : tripScenarioSchema.parse(rawScenario);
   const horizon = tripHorizon(today, requested);
   const baseline = await evaluatePlan(horizon.days, undefined, settings?.ai_data_scopes.includes("imports") ?? false);
-  if (settings?.ai_data_scopes.includes("imports")) {
-    const current = await requireWorkspace();
-    if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
-    requireAiScope(current.settings, "accounts", "transactions", "planning", "imports");
-  }
+  const current = await requirePermission(artifactId, "forecast");
+  if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
+  if (settings?.ai_data_scopes.includes("imports")) requireAiScope(current.settings, "imports");
   const selectedId = accountId ?? baseline.preferences?.spending_account_id ?? (baseline.input.accounts.length === 1 ? baseline.input.accounts[0].id : undefined);
   if (accountId && !baseline.input.accounts.some(item => item.id === accountId)) throw new Error("Unknown account");
   const scenario = rawScenario === undefined ? { ...requested, payments: requested.payments.map(item => ({ ...item, accountId: selectedId ?? "unselected" })) } : requested;
