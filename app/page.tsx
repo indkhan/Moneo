@@ -14,14 +14,16 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { cashflow } from "@/lib/finance/tools";
+import { ExpenditureSummary } from "./expenditure-summary";
 import { SourceCoverageDetails } from "./source-coverage";
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { ArrowRight, Landmark, Plus, Wallet } from "lucide-react";
 
-export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string }> } = {}) {
+export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string; spendingView?: string }> } = {}) {
   const params = await searchParams;
   const accountId = typeof params?.account === "string" ? params.account : undefined;
+  const spendingView = params?.spendingView === "original" ? "original" : "base";
   const supabaseConfig = getSupabaseConfig();
   if (supabaseConfig.status !== "configured") return <main className="mx-auto max-w-3xl p-8">{supabaseConfig.detail}</main>;
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -40,7 +42,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     balanceEvidencePromise,
     supabase.from("transactions").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id),
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
-    cashflow({ from: `${today.slice(0, 7)}-01`, to: today, currencyCode: workspace.display_currency }, context),
+    cashflow({ from: `${today.slice(0, 7)}-01`, to: today, currencyCode: workspace.display_currency, view: spendingView, ...(accountId ? { accountIds: [accountId] } : {}) }, context),
     wealthPromise,
     supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
       .eq("workspace_id", workspace.id).order("rate_date", { ascending: false }).order("created_at", { ascending: false }),
@@ -121,10 +123,10 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
       </section>,
     planning: <section aria-label="Spending and planning" className="grid gap-4 md:grid-cols-2">
         <div><HomeLiquidity liquidity={projection.liquidity} accountId={accountId} names={new Map(accounts.map(account => [account.id, account.name]))} locale={workspace.locale} /><SourceCoverageDetails coverage={projection.sourceCoverage} /></div>
-        <div className="rounded-xl border border-border bg-card p-6 shadow-sm"><h2 className="text-base font-semibold">Spending this month</h2>
+        {"reporting" in spending && spending.reporting ? <ExpenditureSummary report={spending.reporting} locale={workspace.locale} accountId={accountId} coverage={<SourceCoverageDetails coverage={spending.sourceCoverage} />} /> : <div className="rounded-xl border border-border bg-card p-6 shadow-sm"><h2 className="text-base font-semibold">Spending this month</h2>
           {"unavailable" in spending ? <p className="mt-3 text-sm text-muted-foreground">{spending.unavailable}</p> : <><p className="mt-3 font-mono text-2xl font-semibold">{money(spending.spendingMinor, displayCurrency)}</p><p className="mt-2 text-xs text-muted-foreground">{spending.from} to {spending.to}; posted spending net of refunds. Pending and transfers excluded.{spending.evidence.partial ? ` Partial: ${spending.evidence.excludedReviewRows} transactions need classification review.` : ""}</p></>}
           <SourceCoverageDetails coverage={spending.sourceCoverage} />
-          <Link href="/plan/spending" className="mt-3 inline-block text-xs font-medium text-brand">Review monthly spending plans</Link></div>
+          <Link href="/plan/spending" className="mt-3 inline-block text-xs font-medium text-brand">Review monthly spending plans</Link></div>}
       </section>,
     accounts: <section className="space-y-4"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><span className="rounded-lg bg-blue-50 p-2 text-brand"><Landmark size={18} /></span><div><h2 className="text-base font-semibold">Accounts</h2><p className="text-xs text-muted-foreground">Balances you can verify and update</p></div></div><span className="font-mono text-xs text-muted-foreground">{accounts?.length ?? 0} total</span></div>
           {!accounts?.length && <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No accounts yet. <Link className="text-brand underline" href="/import">Import a statement</Link> or add one below.</div>}

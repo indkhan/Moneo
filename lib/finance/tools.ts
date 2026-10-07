@@ -4,10 +4,12 @@ import { requireWorkspace } from "@/lib/auth";
 import { evaluatePlan, evaluatePlanForWorkspace } from "./model";
 import { loadBalanceEvidence, resolveBalances } from "./balances";
 import { loadSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
+import { expenditurePosting, reportExpenditure } from "./expenditure";
+import { loadExpenditureRates } from "./expenditure-rates";
 
 type FinanceContext = Awaited<ReturnType<typeof requireWorkspace>>;
 
-const periodInput = z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().regex(/^[A-Z]{3}$/) });
+const periodInput = z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().regex(/^[A-Z]{3}$/), view: z.enum(["original", "base"]).optional(), accountIds: z.array(z.uuid()).max(100).optional() });
 const searchInput = z.object({ query: z.string().min(1).max(100) });
 export const forecastInput = z.object({
   horizonDays: z.number().int().min(1).max(365).default(30), scenarioId: z.uuid().optional(),
@@ -33,21 +35,30 @@ export async function getBalances(context?: FinanceContext, canReadImports = tru
 }
 
 export async function cashflow(input: unknown, context?: FinanceContext, canReadImports = true) {
-  const { from, to, currencyCode } = periodInput.parse(input);
+  const { from, to, currencyCode, view, accountIds } = periodInput.parse(input);
   if (from > to) throw new Error("From date is after to date");
   const { supabase, workspace } = context ?? await requireWorkspace();
   const rows = [];
   for (let offset = 0; ; offset += 1000) {
-    const { data, error } = await supabase.from("effective_transactions")
-      .select("account_id, amount_minor::text, currency_code, status, kind, review_reasons")
+    let query = supabase.from("effective_transactions")
+      .select("id, parent_transaction_id, account_id, posted_on, version, amount_minor::text, currency_code, status, kind, review_reasons")
       .eq("workspace_id", workspace.id).gte("posted_on", from).lte("posted_on", to)
-      .order("id")
-      .range(offset, offset + 999);
+      .order("id");
+    if (accountIds) query = query.in("account_id", accountIds);
+    const { data, error } = await query.range(offset, offset + 999);
     if (error) throw error;
     rows.push(...(data ?? []));
     if (!data || data.length < 1000) break;
   }
-  const sourceCoverage = await loadSourceCoverage(supabase, workspace.id, { from, to, currencyCode }, rows, canReadImports);
+  const sourceCoverage = await loadSourceCoverage(supabase, workspace.id, { from, to, ...(view ? {} : { currencyCode }), ...(accountIds ? { accountIds } : {}) }, rows, canReadImports);
+  if (view) {
+    const rates = view === "base" ? await loadExpenditureRates(supabase, workspace.id, { from, to, currencyCode }) : [];
+    const reporting = reportExpenditure(rows.map(expenditurePosting), rates, { from, to, currencyCode, view, accountIds });
+    return { from, to, currencyCode, sourceCoverage, reporting, conversionCoverage: reporting.conversionCoverage, resultBasis: reporting.resultBasis,
+      ...(reporting.totals ?? { unavailable: reporting.limitation ?? "Reporting evidence unavailable" }),
+      evidence: { transactionCount: rows.length, includedTransactionCount: reporting.includedTransactionCount, excludedPendingAndTransfers: true,
+        excludedReviewRows: reporting.conversionCoverage.excludedClassificationCount, partial: reporting.status === "incomplete", limitation: reporting.limitation } };
+  }
   const total = summarizeCashflow(rows.map(row => ({
     amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code,
     status: row.status as "posted" | "pending", kind: row.kind as "ordinary" | "transfer" | "refund",

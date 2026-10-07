@@ -7,7 +7,7 @@ import { buildSourceCoverage } from "@/lib/finance/source-coverage";
 
 it("retains source coverage for available and unavailable calculator spending snapshots", async () => {
   const sourceCoverage = buildSourceCoverage({ from: "2026-10-01", to: "2026-10-02" }, []);
-  const data = { sourceCoverage: { ...sourceCoverage, scope: { ...sourceCoverage.scope, descriptionFilter: "none", effectiveRowFilter: "all" } }, timezone: "Europe/Berlin", currency: "EUR", from: "2026-10-01", to: "2026-10-02", transactions: [], byAccount: [],
+  const data = { reporting: undefined, conversionCoverage: undefined, resultBasis: undefined, sourceCoverage: { ...sourceCoverage, scope: { ...sourceCoverage.scope, descriptionFilter: "none", effectiveRowFilter: "all" } }, timezone: "Europe/Berlin", currency: "EUR", from: "2026-10-01", to: "2026-10-02", transactions: [], byAccount: [],
     summary: { incomeMinor: "0", spendingMinor: "0", netMinor: "0", partial: false, excludedReviewRows: 0 } };
   vi.mocked(spendingForArtifact).mockResolvedValue(data as Awaited<ReturnType<typeof spendingForArtifact>>);
   expect((await buildCalculatorSnapshot("a", "spending_explorer")).snapshot).toMatchObject({ sourceCoverage });

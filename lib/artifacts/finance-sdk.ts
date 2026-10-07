@@ -6,6 +6,8 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { requireAiScope } from "@/lib/settings";
 import { z } from "zod";
 import { buildSourceCoverage, loadSourceCoverage } from "@/lib/finance/source-coverage";
+import { expenditurePosting, reportExpenditure } from "@/lib/finance/expenditure";
+import { loadExpenditureRates } from "@/lib/finance/expenditure-rates";
 
 async function requirePermission(artifactId: string, permission: string) {
   const context = await requireWorkspace();
@@ -33,7 +35,8 @@ export async function balancesForArtifact(artifactId: string) {
     sourceCoverage: buildSourceCoverage({ from: "0001-01-01", to: calendarDate(new Date(), context.workspace.timezone), ledgerBasis: "balance_activity" }, []) };
 }
 
-export async function spendingForArtifact(artifactId: string, query: string, permission: "spending" | "cashflow" = "spending", month?: string) {
+export async function spendingForArtifact(artifactId: string, query: string, permission: "spending" | "cashflow" = "spending", month?: string, reportingView?: "original" | "base") {
+  const view = z.enum(["original", "base"]).optional().parse(reportingView);
   const { supabase, workspace, settings } = await requirePermission(artifactId, permission);
   const today = calendarDate(new Date(), workspace.timezone);
   const from = z.iso.date().parse(`${month ?? today.slice(0, 7)}-01`);
@@ -42,22 +45,29 @@ export async function spendingForArtifact(artifactId: string, query: string, per
   nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
   const monthEnd = new Date(nextMonth.getTime() - 86400000).toISOString().slice(0, 10);
   const to = monthEnd < today ? monthEnd : today;
-  const transactions: { id: string; account_id: string; posted_on: string; description: string; amount_minor: string;
+  const transactions: { id: string; parent_transaction_id?: string; version?: number; account_id: string; posted_on: string; description: string; amount_minor: string;
     currency_code: string; category_id: string | null; status: CashflowTransaction["status"];
     kind: CashflowTransaction["kind"]; review_reasons: string[] }[] = [];
   for (let offset = 0; ; offset += 1000) {
     let rows = supabase.from("effective_transactions")
-      .select("id, account_id, posted_on, description, amount_minor::text, currency_code, category_id, status, kind, review_reasons")
-      .eq("workspace_id", workspace.id).eq("status", "posted").neq("kind", "transfer")
+      .select("id, parent_transaction_id, version, account_id, posted_on, description, amount_minor::text, currency_code, category_id, status, kind, review_reasons")
+      .eq("workspace_id", workspace.id)
       .gte("posted_on", from).lte("posted_on", to)
       .order("posted_on", { ascending: false }).order("id");
+    if (!view) rows = rows.eq("status", "posted").neq("kind", "transfer");
     if (query) rows = rows.ilike("description", `%${query.replace(/[%_]/g, "\\$&")}%`);
     const { data, error } = await rows.range(offset, offset + 999);
     if (error) throw error;
     transactions.push(...(data ?? []));
     if (!data || data.length < 1000) break;
   }
-  const summarize = (rows: typeof transactions) => {
+  const rates = view === "base" ? await loadExpenditureRates(supabase, workspace.id, { from, to, currencyCode: workspace.display_currency }) : [];
+  const report = (rows: typeof transactions) => reportExpenditure(rows.map(expenditurePosting), rates, { from, to, currencyCode: workspace.display_currency, view: view! });
+  const reporting = view ? report(transactions) : undefined;
+  const summarize = (rows: typeof transactions, canonical = view ? report(rows) : undefined) => {
+  if (canonical) return { ...(canonical.totals ?? { unavailable: canonical.limitation ?? "Reporting evidence unavailable" }),
+    excludedReviewRows: canonical.conversionCoverage.excludedClassificationCount, partial: canonical.status === "incomplete",
+    conversionCoverage: canonical.conversionCoverage, resultBasis: canonical.resultBasis };
   const total = summarizeCashflow(rows.map(row => ({
     amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code,
     status: row.status as CashflowTransaction["status"], kind: row.kind as CashflowTransaction["kind"],
@@ -73,19 +83,19 @@ export async function spendingForArtifact(artifactId: string, query: string, per
     const group = accounts.get(row.account_id) ?? [];
     group.push(row); accounts.set(row.account_id, group);
   }
-  const summary = summarize(transactions);
+  const summary = summarize(transactions, reporting);
   const byAccount = [...accounts].map(([id, rows]) => ({ id, ...summarize(rows) }));
   const canReadImports = settings?.ai_data_scopes.includes("imports") ?? false;
-  const coverage = await loadSourceCoverage(supabase, workspace.id, { from, to, currencyCode: workspace.display_currency }, transactions, canReadImports);
+  const coverage = await loadSourceCoverage(supabase, workspace.id, { from, to, ...(view ? {} : { currencyCode: workspace.display_currency }) }, transactions, canReadImports);
   if (canReadImports) {
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     requireAiScope(current.settings, "transactions", "imports");
   }
-  const sourceCoverage = { ...coverage, lifecycleExclusionsKnown: false, scope: { ...coverage.scope,
+  const sourceCoverage = { ...coverage, lifecycleExclusionsKnown: !!view, scope: { ...coverage.scope,
     descriptionFilter: query ? "applied; source relevance unknown" : "none",
-    effectiveRowFilter: "posted non-transfer rows; other lifecycle exclusions were not queried" } };
-  return { summary, byAccount, sourceCoverage, transactions: transactions.filter(row => !row.review_reasons?.length), currency: workspace.display_currency, from, to, timezone: workspace.timezone ?? "Europe/Berlin" };
+    effectiveRowFilter: view ? "all lifecycle rows in period; exclusions disclosed by canonical reporting" : "posted non-transfer rows; other lifecycle exclusions were not queried" } };
+  return { summary, byAccount, reporting, conversionCoverage: reporting?.conversionCoverage, resultBasis: reporting?.resultBasis, sourceCoverage, transactions: transactions.filter(row => row.status === "posted" && row.kind !== "transfer" && !row.review_reasons?.length), currency: workspace.display_currency, from, to, timezone: workspace.timezone ?? "Europe/Berlin" };
 }
 
 export async function tripForArtifact(artifactId: string, costMinor: bigint, accountId?: string, funding: Parameters<typeof withInternalFunding>[1] = []) {
