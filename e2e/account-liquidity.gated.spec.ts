@@ -65,6 +65,8 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     await expect(forecast).not.toContainText("Checking QA funding shortfall"); await expect(forecast).toContainText("EUR 600.00");
     await expect(forecast).toContainText("Internal funding in"); await page.screenshot({ path: testInfo.outputPath("plan-timely.png"), fullPage: true });
     await forecast.getByLabel("Funding date", { exact: true }).fill(late); await forecast.getByRole("button", { name: "Evaluate account", exact: true }).click();
+    // GET navigation can commit the loading shell before the streamed plan arrives.
+    await expect(forecast.getByRole("heading", { name: "Liquid balance horizon", exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(forecast).toContainText("Checking QA funding shortfall: EUR 400.00"); await expect(forecast.getByLabel("Funding date", { exact: true })).toHaveValue(late);
     await page.screenshot({ path: testInfo.outputPath("plan-late.png"), fullPage: true });
     // Exact disposable donor reservation: only EUR100 can leave savings without invading protected funds.
