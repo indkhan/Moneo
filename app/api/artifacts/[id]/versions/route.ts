@@ -88,7 +88,7 @@ export async function POST(
   const kind = artifactKindSchema.safeParse(artifact.kind);
   if (!kind.success) return Response.json({ error: "Unsupported artifact kind" }, { status: 400 });
   async function failedSave(error: { code?: string; message?: string } | null) {
-    if (error?.code === "40001") {
+    if (error?.code === "PT409" || error?.code === "40001") {
       const { data: current } = await supabase.from("artifacts").select("active_version_id")
         .eq("workspace_id", workspace.id).eq("id", id).maybeSingle();
       return Response.json({ error: "Active version changed. Your local work is preserved; reload the current version or review it before explicitly replacing it.", activeVersionId: current?.active_version_id ?? null }, { status: 409 });

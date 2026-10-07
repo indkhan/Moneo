@@ -36,8 +36,8 @@ it("passes the expected active version into the locked activation RPC", async ()
   expect(fixture.serviceRpc).toHaveBeenCalledWith("save_validated_generated_artifact_version", expect.objectContaining({ p_expected_active_version_id: base, p_actor_id: "verified-user" }));
   expect(fixture.rpc).not.toHaveBeenCalled();
 });
-it("returns a recoverable conflict from the transaction, including the current revision", async () => {
-  fixture.serviceRpc.mockResolvedValue({ data: null, error: { code: "40001", message: "Active version changed" } });
+it.each(["PT409", "40001"])("returns a recoverable %s conflict from the transaction, including the current revision", async (code) => {
+  fixture.serviceRpc.mockResolvedValue({ data: null, error: { code, message: "Active version changed" } });
   const response = await save({ source: "input => ({})", manifest: {}, expectedActiveVersionId: base });
   expect(response.status).toBe(409);
   expect(await response.json()).toMatchObject({ activeVersionId: base });
