@@ -78,11 +78,31 @@ export async function searchTransactions(input: unknown, context?: FinanceContex
   const { query } = searchInput.parse(input);
   const { supabase, workspace } = context ?? await requireWorkspace();
   const { data, error } = await supabase.from("transactions")
-    .select("id, posted_on, description, amount_minor::text, currency_code, status, kind")
+    .select("id, account_id, posted_on, description, amount_minor::text, currency_code, status, kind, review_reasons, version")
     .eq("workspace_id", workspace.id).ilike("description", `%${query.replace(/[%_]/g, "\\$&")}%`)
     .order("posted_on", { ascending: false }).limit(20);
   if (error) throw error;
-  return data;
+  const parents = data ?? [];
+  type EffectiveSearchRow = { id: string; parent_transaction_id: string; amount_minor: string; currency_code: string; status: string; kind: string; review_reasons: string[] };
+  const effective: EffectiveSearchRow[] = [];
+  if (parents.length) for (let offset = 0; ; offset += 500) {
+    const page = await supabase.from("effective_transactions")
+      .select("id, parent_transaction_id, account_id, posted_on, amount_minor::text, currency_code, status, kind, review_reasons, category_id, merchant_id, version")
+      .eq("workspace_id", workspace.id).in("parent_transaction_id", parents.map(row => row.id)).order("id").range(offset, offset + 499);
+    if (page.error) throw page.error;
+    if (effective.length + (page.data?.length ?? 0) > 100_000) throw new Error("Search allocation evidence exceeds the current limit");
+    effective.push(...(page.data ?? []) as EffectiveSearchRow[]);
+    if (!page.data || page.data.length < 500) break;
+  }
+  return parents.map(row => {
+    const components = effective.filter(component => component.parent_transaction_id === row.id);
+    const unresolved = Boolean(row.review_reasons?.length || components.some(component => component.review_reasons?.length));
+    return { ...row, review_reasons: row.review_reasons ?? [], classificationStatus: unresolved ? "unresolved" : "resolved",
+      financialKind: unresolved ? null : row.kind, confirmedSpending: !unresolved && row.status === "posted" && row.kind === "ordinary" && BigInt(row.amount_minor) < 0n,
+      amountBasis: "canonical_parent", effectiveRows: components,
+      allocationSemantics: "The parent amount is a recorded source posting. Deterministic totals use effective allocations and verified fee components; do not add the parent to its components.",
+      link: `/money/transactions?transaction=${row.id}` };
+  });
 }
 
 export async function listGoals(context?: FinanceContext) {
