@@ -11,6 +11,7 @@ import { expenditurePosting, reportExpenditure } from "@/lib/finance/expenditure
 import { loadExpenditureRates } from "@/lib/finance/expenditure-rates";
 import { runInvestigation } from "@/lib/finance/investigation-reader";
 import { assertTripCostCurrency, tripScenarioForParams } from "./trip-params";
+import { evidenceFingerprint } from "@/lib/finance/evidence-receipts";
 
 export async function investigationForArtifact(artifactId: string, input: unknown, permission: "spending" | "cashflow" = "spending") {
   const context = await requirePermission(artifactId, permission);
@@ -131,7 +132,10 @@ export async function tripForArtifact(artifactId: string, costMinor: bigint, acc
   const result = evaluateTripScenario(withInternalFunding(baseline.input, funding), scenario);
   const selected = result.liquidity.status === "available" ? result.liquidity.accounts.find(item => item.accountId === result.accountId) : null;
   const withTrip = result.tripLiquidity.status === "available" ? result.tripLiquidity.accounts.find(item => item.accountId === result.accountId) : null;
+  const calculationEvidence = JSON.parse(JSON.stringify({ source: baseline.calculationEvidence,
+    input: withInternalFunding(baseline.input, funding), scenario, result }, (_key, value) => typeof value === "bigint" ? value.toString() : value));
   return { ...result, tripResult: result,
+    calculationEvidence, sourceVersion: evidenceFingerprint(calculationEvidence),
     baseline: selected ? { status: "available" as const, ...selected, amountMinor: BigInt(selected.spendableMinor), limitingDate: selected.spendingLimitingDate } : { status: "unavailable" as const },
     withTrip: withTrip ? { status: "available" as const, ...withTrip, amountMinor: BigInt(withTrip.spendableMinor), limitingDate: withTrip.spendingLimitingDate } : null,
     tripDate: scenario.startsOn, sourceCoverage: baseline.sourceCoverage, resultBasis: baseline.resultBasis,

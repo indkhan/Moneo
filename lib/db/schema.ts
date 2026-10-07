@@ -782,3 +782,18 @@ export const pendingHoldResolutions = pgTable("pending_hold_resolutions", {
   check("pending_hold_resolutions_operation_check", sql`${table.operation} in ('settle','cancel')`),
   check("pending_hold_resolutions_released_minor_check", sql`${table.releasedMinor}>0`),
   check("pending_hold_resolutions_note_check", sql`length(btrim(${table.note})) between 1 and 500`)]);
+
+export const financialEvidenceReceipts = pgTable("financial_evidence_receipts", {
+  id: uuid("id").primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  scopes: text("scopes").array().notNull(),
+  receipt: jsonb("receipt").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+  index("financial_evidence_receipts_workspace_created").on(table.workspaceId, table.createdAt),
+  check("financial_evidence_receipts_scopes_check", sql`cardinality(${table.scopes}) between 0 and 4 and ${table.scopes} <@ array['accounts','transactions','planning','imports']::text[]`),
+  check("financial_evidence_receipts_payload_check", sql`(jsonb_typeof(${table.receipt}) = 'object' and octet_length(${table.receipt}::text) <= 16777216
+    and ${table.receipt}->>'id' = ${table.id}::text and ${table.receipt}->>'workspaceId' = ${table.workspaceId}::text
+    and jsonb_typeof(${table.receipt}->'query') = 'object' and jsonb_typeof(${table.receipt}->'metrics') = 'array'
+    and jsonb_typeof(${table.receipt}->'sources') = 'array' and ${table.receipt}->'scopes' = to_jsonb(${table.scopes})) is true`),
+]);
