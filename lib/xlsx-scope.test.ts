@@ -43,7 +43,7 @@ it("quarantines unsafe numeric money cells while retaining valid neighbours and 
   const book = new ExcelJS.Workbook(); const sheet = book.addWorksheet("Numbers");
   sheet.addRows([["Date","Description","Amount"],["2026-09-01","Unsafe Excel integer",9007199254740992],["2026-09-02","Exact source string","90071992547409.92"],["2026-09-03","Supported numeric",12.34]]);
   const rows = await parseExcel(await book.xlsx.writeBuffer() as ArrayBuffer,{version: "xlsx-scope-v1",tables: [{sheetId: sheet.id,headerRow: 1,endRow: 4}]});
-  const mapping = {accountName: "Synthetic",currencyCode: "EUR",dateColumn: "Date",descriptionColumn: "Description",amountColumn: "Amount",dateFormat: "iso" as const,amountSign: "signed" as const,numericConvention: "decimal-dot" as const};
+  const mapping = {accountName: "Synthetic",currencyCode: "EUR",dateColumn: "Date",descriptionColumn: "Description",amountColumn: "Amount",dateFormat: "iso" as const,amountSign: "signed" as const,numericConvention: "decimal-dot" as const,workbookScope:{version:"xlsx-scope-v1" as const,tables:[{sheetId:sheet.id,headerRow:1,endRow:4}]}};
   const result = inspectRows(rows,mapping);
   expect(result.unresolvedRows).toHaveLength(1); expect(result.unresolvedRows[0].message).toMatch(/unsafe|precision/i);
   expect(result.mapped.map(row => row.amountMinor)).toEqual([9007199254740992n,1234n]);
@@ -102,7 +102,7 @@ it("parses native numeric and cached formula money independently of the reviewed
   const book=new ExcelJS.Workbook();const sheet=book.addWorksheet("Typed money");
   sheet.addRows([["Date","Description","Amount","Balance","Fee"],["2026-09-01","Numeric",123.456,200.123,1.234],["2026-09-02","Text","123,456","200,123","1,234"],["2026-09-03","Formula",{formula:"100+23.456",result:123.456},null,null]]);
   const rows=await parseExcel(await book.xlsx.writeBuffer() as ArrayBuffer,{version:"xlsx-scope-v1",tables:[{sheetId:sheet.id,headerRow:1,endRow:4}]});
-  const mapping={accountName:"Synthetic",currencyCode:"KWD",dateColumn:"Date",descriptionColumn:"Description",amountColumn:"Amount",balanceColumn:"Balance",dateFormat:"iso" as const,amountSign:"signed" as const,numericConvention:"decimal-comma" as const};
+  const mapping={accountName:"Synthetic",currencyCode:"KWD",dateColumn:"Date",descriptionColumn:"Description",amountColumn:"Amount",balanceColumn:"Balance",dateFormat:"iso" as const,amountSign:"signed" as const,numericConvention:"decimal-comma" as const,workbookScope:{version:"xlsx-scope-v1" as const,tables:[{sheetId:sheet.id,headerRow:1,endRow:4}]}};
   const result=inspectRows(rows,mapping);expect(result.unresolvedRows).toHaveLength(0);
   expect(result.mapped.map(row=>row.amountMinor)).toEqual([123456n,123456n,123456n]);
   expect(result.mapped[0]).toMatchObject({balanceMinor:200123n,feeMinor:1234n});
@@ -114,8 +114,15 @@ it("quarantines an inferred numeric Fee using the same safety guard as explicitl
   const book=new ExcelJS.Workbook();const sheet=book.addWorksheet("Fees");
   sheet.addRows([["Date","Description","Amount","Fee"],["2026-09-01","Unsafe fee","1.00",12345678901234.56]]);
   const rows=await parseExcel(await book.xlsx.writeBuffer() as ArrayBuffer,{version:"xlsx-scope-v1",tables:[{sheetId:sheet.id,headerRow:1,endRow:2}]});
-  const result=inspectRows(rows,{accountName:"Synthetic",currencyCode:"EUR",dateColumn:"Date",descriptionColumn:"Description",amountColumn:"Amount",dateFormat:"iso",amountSign:"signed",numericConvention:"decimal-dot"});
+  const result=inspectRows(rows,{accountName:"Synthetic",currencyCode:"EUR",dateColumn:"Date",descriptionColumn:"Description",amountColumn:"Amount",dateFormat:"iso",amountSign:"signed",numericConvention:"decimal-dot",workbookScope:{version:"xlsx-scope-v1",tables:[{sheetId:sheet.id,headerRow:1,endRow:2}]}});
   expect(result.mapped).toHaveLength(0);expect(result.unresolvedRows[0].message).toMatch(/Unsafe XLSX numeric precision in Fee/);
+});
+
+it("preserves a legacy auxiliary column with the new provenance name without interpreting it",async()=>{
+  const book=new ExcelJS.Workbook();book.addWorksheet("Legacy").addRows([["Date","Description","Amount","__moneo_csv_xlsx_source"],["2026-09-01","Original","1.00","Original note"]]);
+  const rows=await parseLegacyExcel(await book.xlsx.writeBuffer() as ArrayBuffer);
+  const mapped=mapRows(rows,{accountName:"Synthetic",currencyCode:"EUR",dateColumn:"Date",descriptionColumn:"Description",amountColumn:"Amount",dateFormat:"iso",amountSign:"signed",numericConvention:"decimal-dot"});
+  expect(mapped[0].amountMinor).toBe(100n);expect(mapped[0].sourceRow.__moneo_csv_xlsx_source).toBe("Original note");
 });
 
 it("keeps legacy auxiliary reserved headers while rejecting them for new scoped imports",async()=>{

@@ -453,7 +453,7 @@ export function inspectRows(rows: SourceRow[], input: unknown) {
       const typeColumn = mapping.typeColumn ?? header("type");
       const feeColumn = mapping.feeColumn ?? header("fee");
       const decision = decisions.get(index + 2);
-      const evidence = rows[index].__moneo_csv_xlsx_source ? JSON.parse(rows[index].__moneo_csv_xlsx_source) as {cells: Record<string,{value: unknown}>} : undefined;
+      const evidence = mapping.workbookScope && rows[index].__moneo_csv_xlsx_source ? JSON.parse(rows[index].__moneo_csv_xlsx_source) as {cells: Record<string,{value: unknown}>} : undefined;
       const numericCell = (column: string) => {
         if (decision?.action === "correct" && Object.hasOwn(decision.values, column)) return undefined;
         const original = evidence?.cells[column]?.value;
