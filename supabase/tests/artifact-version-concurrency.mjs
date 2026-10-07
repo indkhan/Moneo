@@ -175,12 +175,34 @@ try {
     assert.deepEqual((await tx.unsafe(`select permissions from ${schema}.artifacts where id=$1`, [artifact]))[0].permissions, []);
     console.log("PASS authenticated trusted v1 restore creates version27, preserves immutable source/manifest/state, rejects stale and generated targets; direct mutation denied");
     console.log("PASS wrong-artifact target denied, revoked declared scope denied, legacy builtin restored without expanding permissions");
+    const rejectedBefore = await snapshot(tx);
+    for (const raw of [null, [], "invalid", { kind: "custom_comparison", runtime: "quickjs-calculator-v1", sdk: ["balances"] }]) {
+      const [attempt] = await save(tx, initial, "Rejected manifest", "failed", artifact, actor, 'input => ({summary:"Synthetic rejected"})', raw);
+      assert.equal(attempt.status, "failed"); assert.deepEqual(attempt.manifest, raw);
+      assert.equal(attempt.source, 'input => ({summary:"Synthetic rejected"})');
+      const after = await snapshot(tx);
+      assert.deepEqual(after[0].artifact, rejectedBefore[0].artifact);
+      assert.deepEqual(after[0].state, rejectedBefore[0].state);
+      const restoreRejected = await tx.savepoint(point => point.unsafe(`select ${schema}.restore_trusted_artifact_version($1,$2,$3)`, [artifact, attempt.id, legacy.id])).then(() => "success", error => error.code);
+      assert.equal(restoreRejected, "P0002");
+      const activateRejected = await tx.savepoint(point => save(point, legacy.id, "Invalid activation", "validated", artifact, actor, attempt.source, raw)).then(() => "success", error => error.code);
+      assert.equal(activateRejected, typeof raw === "object" && raw !== null && !Array.isArray(raw) ? "42501" : "22023");
+    }
+    const oversize = await tx.savepoint(point => save(point, initial, "Oversize", "failed", artifact, actor, 'input => ({})', "x".repeat(65537))).then(() => "success", error => error.code);
+    assert.equal(oversize, "22023");
+    console.log("PASS rejected raw manifests retained exactly, failed restore/activation denied, active/state preserved, oversized raw payload rejected");
     throw rollback;
   }); } catch (error) { if (error !== rollback) throw error; }
   assert.equal((await db.unsafe(`select count(*)::int n from ${schema}.artifact_versions where artifact_id=$1`, [artifact]))[0].n, 1, "Rollback fixture must leave original version only");
   {
     const denied = await db.begin(async tx => { await authenticate(tx, foreign); await save(tx, initial, "Synthetic", "validated", artifact, foreign); }).then(() => "success", error => error.code);
     assert.equal(denied, "P0002");
+    const failedDenied = await db.begin(async tx => { await authenticate(tx, foreign); await save(tx, initial, "Synthetic", "failed", artifact, foreign, 'input => ({})', null); }).then(() => "success", error => error.code);
+    assert.equal(failedDenied, "P0002");
+    await db.begin(async tx => {
+      await authenticate(tx, foreign);
+      assert.equal((await tx.unsafe(`select * from ${schema}.artifact_versions where artifact_id=$1`, [artifact])).length, 0, "Foreign owner cannot inspect attempts through RLS");
+    });
     const foreignRestore = await db.begin(async tx => { await authenticate(tx, foreign); await tx.unsafe(`select ${schema}.restore_trusted_artifact_version($1,$2,$3)`, [artifact, initial, initial]); }).then(() => "success", error => error.code);
     assert.equal(foreignRestore, "P0002");
     // First transaction activates but holds its row lock; a stale second connection must wait and recheck.
@@ -202,6 +224,13 @@ try {
     await holder; assert.equal(await waiter, "PT409");
     assert.equal((await db.unsafe(`select count(*)::int n from ${schema}.artifact_versions where artifact_id=$1`, [artifact]))[0].n, 2);
     console.log("PASS actual concurrent service activation/authenticated trusted-restore RPCs: restore waits, then rejects unseen winner; no losing version inserted");
+    const beforeFailedRace = await snapshot(db);
+    const attempts = await Promise.all([null, []].map(raw => db.begin(async tx => { await authenticate(tx); return save(tx, initial, "Rejected race", "failed", artifact, actor, 'input => ({})', raw); })));
+    assert.deepEqual(attempts.map(rows => rows[0].version).sort(), [3, 4]);
+    const afterFailedRace = await snapshot(db);
+    assert.deepEqual(afterFailedRace[0].artifact, beforeFailedRace[0].artifact);
+    assert.deepEqual(afterFailedRace[0].state, beforeFailedRace[0].state);
+    console.log("PASS concurrent rejected attempts use distinct ordered versions without changing active version/state; foreign save/read denied");
   }
   assert.deepEqual(await db`select version from supabase_migrations.schema_migrations order by version`, ledger);
   assert.deepEqual(await db`select nspacl::text from pg_namespace where nspname='public'`, publicAcl);

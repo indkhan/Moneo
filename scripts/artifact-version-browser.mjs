@@ -136,6 +136,14 @@ try {
   await expect.poll(() => requests.at(-1).expectedActiveVersionId).toBe("v30");
   await expect.poll(() => page.evaluate(() => window.pushedUrl)).toBe("/ai/library/synthetic");
   console.log("PASS Activity recovery retains original draft base and supports explicit replacement");
+  await update(props(50, "Active", [{...row(49, "Rejected null"), status: "failed", manifest: null, error: "Invalid manifest"}]));
+  const failedRow = editor.getByRole("listitem").filter({hasText:"v49"});
+  await failedRow.getByText("Manifest", {exact:true}).click();
+  await expect(failedRow.locator("pre").last()).toHaveText("null");
+  await expect(failedRow.getByRole("button", {name:/Restore/})).toHaveCount(0);
+  await failedRow.getByRole("button", {name:"Retry this version (load into editor)",exact:true}).click();
+  await expect(editor.getByRole("textbox", {name:"Manifest (JSON)",exact:true})).toHaveValue("null");
+  console.log("PASS raw null failed manifest review/retry preserves exact JSON and offers no restore");
 } finally {
   await browser?.close(); await server.close();
 }
