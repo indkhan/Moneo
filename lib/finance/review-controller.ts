@@ -2,14 +2,16 @@ import {investigationIdentity, type investigate, type InvestigationSpec} from ".
 import type {ReviewRequest} from "./review-request";
 
 type Result = ReturnType<typeof investigate>;
-type Summary = Pick<Result, "queryId" | "evidenceId" | "evidence" | "groups"> & {
+type GroupSummary = Omit<Result["groups"][number], "dimensions"> & {label: string};
+type Summary = Pick<Result, "queryId" | "evidenceId" | "evidence"> & {
+  groups: GroupSummary[];
   includedRows: number; partial: boolean; groupsOmitted: number;
   records: Pick<Result["records"]["items"][number], "id" | "parentId" | "date" | "amountMinor" | "currency" | "reportingAmountMinor">[];
   supportTotal: number;
 };
 export type ReviewProgress = {
   version: 1; request: ReviewRequest; startedAt: number; supportRecords: number;
-  queries: {query: InvestigationSpec; status: "reading" | "completed" | "unavailable"; receiptId?: string; result?: Summary}[];
+  queries: {query: Pick<InvestigationSpec, "page">; status: "reading" | "completed" | "unavailable"; receiptId?: string; result?: Summary}[];
   limitations: string[];
 };
 type Dependencies = {
@@ -20,8 +22,8 @@ type Dependencies = {
 const magnitude = (value: string) => {const n = BigInt(value); return n < 0n ? -n : n;};
 
 /** Materiality ordering is local to a currency; round-robin prevents a currency being starved. */
-function materialGroups(groups: Result["groups"]) {
-  const currencies = new Map<string, Result["groups"]>();
+function materialGroups<T extends {currency: string; deltaMinor: string | null; key: string}>(groups: T[]) {
+  const currencies = new Map<string, T[]>();
   for (const group of groups) {
     if (group.deltaMinor === null || BigInt(group.deltaMinor) === 0n) continue;
     const bucket = currencies.get(group.currency) ?? [];
@@ -31,7 +33,7 @@ function materialGroups(groups: Result["groups"]) {
     const x = magnitude(a.deltaMinor!), y = magnitude(b.deltaMinor!);
     return x > y ? -1 : x < y ? 1 : a.key.localeCompare(b.key);
   }));
-  const result: Result["groups"] = [];
+  const result: T[] = [];
   for (let index = 0; buckets.some(bucket => index < bucket.length); index++) for (const bucket of buckets) if (bucket[index]) result.push(bucket[index]);
   return result;
 }
@@ -55,7 +57,7 @@ export async function runReviewInvestigation(request: ReviewRequest, dependencie
     const group = baseline ? materialGroups(baseline.groups).find(candidate => !attempted.has(candidate.key) && candidate.key.length <= 2000) : undefined;
     if (baseline && !group) break;
     const query: InvestigationSpec = {...request.query, page: {size: Math.min(10, request.budget.maxSupportRecords - progress.supportRecords), period: "both", ...(group ? {groupKey: group.key} : {})}};
-    const attempt: ReviewProgress["queries"][number] = {query, status: "reading"};
+    const attempt: ReviewProgress["queries"][number] = {query: {page: query.page}, status: "reading"};
     progress.queries.push(attempt);
     await dependencies.checkpoint?.(progress); // Persist spent budget before starting network work.
     try {
@@ -65,13 +67,15 @@ export async function runReviewInvestigation(request: ReviewRequest, dependencie
       if (result.records.items.length > query.page.size) throw new Error("Evidence reader exceeded its supporting-record budget");
       const ranked = materialGroups(result.groups);
       // Keep the largest changes, including declines, before filling remaining unchanged groups.
-      const groups = [...ranked, ...result.groups.filter(group => !ranked.some(candidate => candidate.key === group.key))].slice(0, 20);
+      const selected = group ? result.groups.filter(candidate => candidate.key === group.key)
+        : [...ranked, ...result.groups.filter(group => !ranked.some(candidate => candidate.key === group.key))].slice(0, 20);
+      const groups = selected.map(({dimensions, ...values}) => ({...values, label: JSON.stringify(dimensions).slice(0, 200)}));
       attempt.result = {queryId: result.queryId, evidenceId: result.evidenceId, evidence: result.evidence, groups,
         groupsOmitted: result.groups.length - groups.length, includedRows: result.coverage.includedRows, partial: result.coverage.partial,
         supportTotal: result.records.total, records: result.records.items.map(({id, parentId, date, amountMinor, currency, reportingAmountMinor}) => ({id, parentId, date, amountMinor, currency, reportingAmountMinor}))};
       attempt.receiptId = receiptId; attempt.status = "completed";
       progress.supportRecords += result.records.items.length;
-      if (attempt.result.groupsOmitted) note("Provider context contains the 20 material group measures per query; additional groups remain in the complete retained evidence.");
+      if (attempt.result.groupsOmitted) note("Provider context contains bounded material group measures; additional groups and complete names remain in the retained evidence.");
       if (result.records.total > result.records.items.length) note("Supporting retrieval is bounded; complete calculations and source records remain in the retained evidence.");
       if (baseline && baseline.evidenceId !== result.evidenceId) note("Evidence changed between reads; each retained receipt describes its own dated snapshot, not a single atomic snapshot.");
     } catch (error) {

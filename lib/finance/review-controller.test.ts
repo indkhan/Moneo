@@ -15,6 +15,19 @@ const read = vi.fn(async (query: InvestigationSpec, signal: AbortSignal) => {
 });
 
 describe("bounded read-only investigation controller", () => {
+  it("retains bounded progress for many long group labels without repeating the full query or every group on each drilldown", async () => {
+    const longRows = Array.from({length: 20}, (_, index) => {
+      const tags = Array.from({length: 18}, (_, tag) => `${index}-${tag}`.padEnd(95, "x"));
+      return [{...row(`current-${index}`, "m", "-3", "2026-09-03"), tags}, {...row(`previous-${index}`, "m", "-1", "2026-08-03"), tags}];
+    }).flat();
+    const specification = resolveReviewRequest({...request({maxQueries: 12, maxSupportRecords: 200}), query: {...request().query, groupBy: ["tag"]}}, "2026-10-07");
+    const progress = await runReviewInvestigation(specification, {read: async query => ({result: investigate(query, longRows, context), receiptId: "retained"}), checkpoint: async value => {
+      expect(Buffer.byteLength(JSON.stringify(value))).toBeLessThan(262144);
+    }});
+    expect(progress.queries).toHaveLength(12);
+    expect(progress.queries[1].result?.groups).toHaveLength(1);
+    expect(progress.queries[0].query).toEqual({page: {size: 10, period: "both"}});
+  });
   it("drills into the largest exact decline and gives each currency a turn without comparing their units", async () => {
     read.mockClear();
     const progress = await runReviewInvestigation(request({maxQueries: 3}), {read});
