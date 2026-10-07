@@ -131,19 +131,25 @@ export function parseCsv(text: string): SourceRow[] {
   });
 }
 
-function cellText(cell: ExcelJS.Cell): string {
-  const value = cell.value;
+function cellText(cell: ExcelJS.Cell, preserveTime = false): string {
+  const raw = cell.value;
+  const value = raw && typeof raw === "object" && "result" in raw ? raw.result : raw;
   if (value == null) return "";
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) {
+    const iso = value.toISOString();
+    const format = (cell.numFmt ?? "").replace(/"[^"]*"|\\.|\[[^\]]*\]/g, "");
+    const hasTime = /h|s|AM\/PM/i.test(format) || value.getUTCHours() !== 0 || value.getUTCMinutes() !== 0 || value.getUTCSeconds() !== 0 || value.getUTCMilliseconds() !== 0;
+    return preserveTime && hasTime ? iso.replace(/Z$/, "").replace(/\.000$/, "") : iso.slice(0, 10);
+  }
   if (typeof value === "object" && "result" in value) return String(value.result ?? "");
   if (typeof value === "object") return cell.text;
   return String(value);
 }
 
 
-function workbookRows(workbook: ExcelJS.Workbook, input?: WorkbookScope): SourceRow[] {
+function workbookRows(workbook: ExcelJS.Workbook, input?: WorkbookScope, legacy = false): SourceRow[] {
   if (!workbook.worksheets.length) throw new Error("Workbook has no sheets");
-  if (!input && workbook.worksheets.length !== 1) throw new Error("Select the included worksheets and table scope before importing");
+  if (!input && !legacy && workbook.worksheets.length !== 1) throw new Error("Select the included worksheets and table scope before importing");
   const scope = input ? workbookScopeSchema.parse(input) : { version: "xlsx-scope-v1", tables: [{ sheetId: workbook.worksheets[0].id, headerRow: 1, endRow: workbook.worksheets[0].rowCount }] };
   const selected = scope.tables.map(table => {
     const sheet = workbook.getWorksheet(table.sheetId);
@@ -165,9 +171,18 @@ function workbookRows(workbook: ExcelJS.Workbook, input?: WorkbookScope): Source
       const row = table.sheet.getRow(rowNumber);
       if (!row.hasValues) continue;
       const values: SourceRow = Object.fromEntries(headers.map((name, index) => {
-        const value = row.getCell(index + 1).value;
-        return [name, input && value instanceof Date ? value.toISOString().replace(/Z$/, "").replace(/\.000$/, "") : cellText(row.getCell(index + 1))];
+        return [name, cellText(row.getCell(index + 1), !!input)];
       }));
+      if (input && row.cellCount > headers.length) {
+        const extra = Array.from({length: row.cellCount - headers.length}, (_, index) => {
+          const cell = row.getCell(headers.length + index + 1);
+          return {columnNumber: headers.length + index + 1, type: cell.type, value: cell.value, numberFormat: cell.numFmt};
+        });
+        if (extra.some(cell => cell.value !== null && cell.value !== "")) {
+          values[csvIssueColumn] = "TooManyFields";
+          values[csvExtraColumn] = JSON.stringify(extra);
+        }
+      }
       if (input) values.__moneo_csv_xlsx_source = JSON.stringify({ version: "xlsx-scope-v1", sheetId: table.sheet.id, sheetName: table.sheet.name, sheetState: table.sheet.state, headerRow: table.headerRow, rowNumber,
         cells: Object.fromEntries(headers.map((name, index) => { const cell = row.getCell(index + 1); return [name, { type: cell.type, value: cell.value, numberFormat: cell.numFmt }]; })) });
       rows.push(values);
@@ -181,8 +196,16 @@ export async function inspectExcel(file: ArrayBuffer, scope?: WorkbookScope) {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(file);
   const inventory = workbook.worksheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name, state: sheet.state, rowCount: sheet.rowCount, columnCount: sheet.columnCount,
-    preview: Array.from({length: Math.min(sheet.rowCount, 20)}, (_, index) => ({rowNumber: index + 1, values: Array.from({length: Math.min(sheet.columnCount, 50)}, (_, column) => cellText(sheet.getRow(index + 1).getCell(column + 1))) })) }));
+    preview: Array.from({length: Math.min(sheet.rowCount, 20)}, (_, index) => ({rowNumber: index + 1, values: Array.from({length: Math.min(sheet.columnCount, 50)}, (_, column) => cellText(sheet.getRow(index + 1).getCell(column + 1), true)) })) }));
   return { inventory, rows: scope ? workbookRows(workbook, scope) : null };
+}
+
+// Replay only an already confirmed pre-scope import using its original contract.
+// New confirmation always requires explicit scope and cannot request this mode.
+export async function parseLegacyExcel(file: ArrayBuffer): Promise<SourceRow[]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(file);
+  return workbookRows(workbook, undefined, true);
 }
 
 export async function parseExcel(file: ArrayBuffer, scope?: WorkbookScope): Promise<SourceRow[]> {
@@ -428,13 +451,13 @@ export function inspectRows(rows: SourceRow[], input: unknown) {
     try {
       if (rows[index][csvIssueColumn]) {
         const decision = decisions.get(index + 2);
-        if (decision?.action !== "correct") throw new Error(`CSV field mismatch (${rows[index][csvIssueColumn]}): explicitly review mapped cells or exclude this observation`);
+        if (decision?.action !== "correct") throw new Error(`Source field mismatch (${rows[index][csvIssueColumn]}): explicitly review mapped cells or exclude this observation`);
         const columns = Object.entries(mapping).filter(([key, value]) => key.endsWith("Column") && typeof value === "string").map(([, value]) => value as string);
         for (const name of ["type", "fee"]) {
           const column = Object.keys(rows[index]).find(key => key.trim().toLowerCase() === name);
           if (column) columns.push(column);
         }
-        if (columns.some(column => !Object.hasOwn(decision.values, column))) throw new Error("CSV field mismatch: review all mapped cells before accepting the corrected interpretation");
+        if (columns.some(column => !Object.hasOwn(decision.values, column))) throw new Error("Source field mismatch: review all mapped cells before accepting the corrected interpretation");
       }
       if (rows[index].__moneo_csv_xlsx_source) {
         const evidence = JSON.parse(rows[index].__moneo_csv_xlsx_source) as {cells: Record<string,{value: unknown}>};

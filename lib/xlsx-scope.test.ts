@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import ExcelJS from "exceljs";
-import { inspectExcel, inspectRows, mapRows, parseExcel } from "./csv";
+import { inspectExcel, inspectRows, mapRows, parseExcel, parseLegacyExcel } from "./csv";
 
 async function workbookFixture() {
   const book = new ExcelJS.Workbook();
@@ -59,4 +59,41 @@ it("inventories hidden/empty sheets, non-first headers and explicit omitted work
   expect(inspected.inventory.map(sheet => sheet.name)).toEqual(["Summary","Checking","Savings","Hidden"]);
   expect(inspected.inventory[3].state).toBe("hidden"); expect(inspected.rows![0].Description).toBe("Synthetic checking");
   expect((await inspectExcel(bytes as ArrayBuffer)).rows).toBeNull();
+});
+
+it("keeps date-only native cells distinct from explicitly formatted midnight timestamps",async () => {
+  const book=new ExcelJS.Workbook();const sheet=book.addWorksheet("Dates");
+  sheet.addRows([["Date","Description","Amount"],[new Date("2026-09-01T00:00:00Z"),"Date only","1.00"],[new Date("2026-09-02T00:00:00Z"),"Explicit midnight","2.00"]]);
+  sheet.getRow(2).getCell(1).numFmt="yyyy-mm-dd";sheet.getRow(3).getCell(1).numFmt="yyyy-mm-dd hh:mm:ss";
+  const rows=await parseExcel(await book.xlsx.writeBuffer() as ArrayBuffer,{version:"xlsx-scope-v1",tables:[{sheetId:sheet.id,headerRow:1,endRow:3}]});
+  expect(rows[0].Date).toBe("2026-09-01");expect(rows[1].Date).toBe("2026-09-02T00:00:00");
+  const mapped=mapRows(rows,{accountName:"Synthetic",currencyCode:"EUR",dateColumn:"Date",descriptionColumn:"Description",amountColumn:"Amount",dateFormat:"iso",amountSign:"signed",numericConvention:"decimal-dot",timestampTimezone:"Europe/Berlin",timestampTimezoneConfirmed:true});
+  expect(mapped[0].postedAt).toBeUndefined();expect(mapped[1].postedAt).toBe("2026-09-01T22:00:00.000Z");
+});
+
+it("replays the frozen legacy first-sheet date-only contract", async () => {
+  const book = new ExcelJS.Workbook();
+  book.addWorksheet("Original").addRows([["Date","Description","Amount"],[new Date("2026-09-01T14:25:30Z"),"Legacy row","1.00"]]);
+  book.addWorksheet("Previously omitted").addRows([["Date","Description","Amount"],["2026-09-02","Omitted row","999.00"]]);
+  expect(await parseLegacyExcel(await book.xlsx.writeBuffer() as ArrayBuffer)).toEqual([{Date:"2026-09-01",Description:"Legacy row",Amount:"1.00"}]);
+});
+
+it("supports nonoverlapping vertical tables and rejects overlapping or empty selections", async () => {
+  const book = new ExcelJS.Workbook(); const sheet = book.addWorksheet("Tables");
+  sheet.addRows([["Date","Description","Amount"],["2026-09-01","First","1.00"],[],["Date","Description","Amount"],["2026-09-02","Second","2.00"]]);
+  const empty = book.addWorksheet("Empty"); const bytes = await book.xlsx.writeBuffer() as ArrayBuffer;
+  const tables = [{sheetId:sheet.id,headerRow:1,endRow:2},{sheetId:sheet.id,headerRow:4,endRow:5}];
+  expect((await parseExcel(bytes,{version:"xlsx-scope-v1",tables})).map(row=>row.Description)).toEqual(["First","Second"]);
+  await expect(parseExcel(bytes,{version:"xlsx-scope-v1",tables:[{...tables[0],endRow:4},tables[1]]})).rejects.toThrow(/overlap/);
+  await expect(parseExcel(bytes,{version:"xlsx-scope-v1",tables:[{sheetId:empty.id,headerRow:1,endRow:2}]})).rejects.toThrow(/empty/);
+});
+
+it("quarantines and preserves nonempty XLSX cells beyond the reviewed headers", async () => {
+  const book = new ExcelJS.Workbook(); const sheet = book.addWorksheet("Extra cells");
+  sheet.addRows([["Date","Description","Amount"],["2026-09-01","Valid","1.00"],["2026-09-02","Extra","2.00","Unmapped source"]]);
+  const rows = await parseExcel(await book.xlsx.writeBuffer() as ArrayBuffer,{version:"xlsx-scope-v1",tables:[{sheetId:sheet.id,headerRow:1,endRow:3}]});
+  const inspected = inspectRows(rows,{accountName:"Synthetic",currencyCode:"EUR",dateColumn:"Date",descriptionColumn:"Description",amountColumn:"Amount",dateFormat:"iso",amountSign:"signed",numericConvention:"decimal-dot"});
+  expect(inspected.mapped.map(row=>row.amountMinor)).toEqual([100n]);
+  expect(inspected.unresolvedRows).toHaveLength(1);
+  expect(inspected.unresolvedRows[0].sourceRow.__moneo_csv_extra_cells).toContain("Unmapped source");
 });

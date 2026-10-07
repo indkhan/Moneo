@@ -1,3 +1,4 @@
+import ExcelJS from "exceljs";
 import { afterEach, expect, it, vi } from "vitest";
 import { POST } from "./route";
 import { generateObject } from "ai";
@@ -53,5 +54,16 @@ it.each([
   expect(response.status).toBe(200);
   expect(result.mapping).toMatchObject({ ...expected, currencyColumn: "Currency", amountColumn: "Amount", amountSign: "signed" });
   expect(result.preview).toMatchObject({ totalRows: 1, examples: [{ amountMinor: "-1250", postedOn: "2026-09-01" }] });
+  expect(generateObject).not.toHaveBeenCalled();
+});
+
+it("inventories workbook scope without sending omitted sheets to a provider", async () => {
+  const book = new ExcelJS.Workbook(); book.addWorksheet("Summary").addRows([["Summary"],["No postings"]]);
+  book.addWorksheet("Checking").addRows([["Date","Description","Amount"],["2026-09-01","Synthetic checking","-12.34"]]);
+  const bytes = await book.xlsx.writeBuffer(); const form = new FormData();
+  form.set("file",new File([Uint8Array.from(bytes as unknown as number[])],"synthetic.xlsx"));
+  const response = await POST(new Request("http://localhost/api/imports/inspect",{method:"POST",body:form}));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({needsWorkbookSelection:true,headers:[],mapping:null,preview:null,workbook:{inventory:[{name:"Summary"},{name:"Checking"}]}});
   expect(generateObject).not.toHaveBeenCalled();
 });
