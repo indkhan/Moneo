@@ -125,20 +125,21 @@ export async function buildCalculatorSnapshot(
   }
   if (kind === "trip_planner") {
     const data = await tripForArtifact(artifactId, opts?.costMinor ?? 90000n, opts?.accountId, opts?.funding, opts?.tripScenario);
+    const baselineAmount = data.baselineAvailableMinor ?? (data.baseline.status === "available" ? data.baseline.amountMinor.toString() : null);
+    const costText = data.costMinor ?? (opts?.costMinor ?? 90000n).toString();
     return {
       snapshot: {
         currency: data.currency,
         sourceCoverage: data.sourceCoverage,
-        baselineAvailableMinor:
-          data.baselineAvailableMinor ?? (data.baseline.status === "available" ? data.baseline.amountMinor.toString() : null),
-        unavailable: data.unavailable ?? (data.baseline.status === "available" ? null : "Forecast unavailable"),
+        baselineAvailableMinor: baselineAmount,
+        unavailable: data.unavailable ?? (baselineAmount === null ? "Forecast unavailable" : null),
         withTripAvailableMinor: data.withTripAvailableMinor ?? (data.withTrip?.status === "available" ? data.withTrip.amountMinor.toString() : null),
-        evaluatedCostMinor: data.costMinor ?? (opts?.costMinor ?? 90000n).toString(),
+        evaluatedCostMinor: costText,
         tripDate: data.tripDate,
         ...(data.scenario ? { tripResult: data.tripResult, tripAccounts: data.accounts, horizon: data.horizon, limitingDate: data.limitingDate, afterTripMinor: data.afterTripMinor } : {}),
         ...(data.liquidity ? { accountId: data.accountId, liquidity: data.liquidity, tripLiquidity: data.tripLiquidity } : {}),
       },
-      stateParams: { costMinor: Number(opts?.costMinor ?? 90000n) },
+      stateParams: { costMinor: BigInt(costText) <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(costText) : costText },
     };
   }
   const data = await goalsForArtifact(artifactId);

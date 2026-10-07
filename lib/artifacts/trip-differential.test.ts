@@ -13,6 +13,17 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
 } } }) }));
 afterEach(() => vi.useRealTimers());
 
+it("retains a complete multiple-account dated budget in the artifact instead of requiring a single selected account", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
+  fixture.input = { startDate: "2026-10-01", horizonDays: 29, currencyCode: "EUR", accounts: [{ id: "a", currencyCode: "EUR", balanceMinor: 10000n }, { id: "b", currencyCode: "EUR", balanceMinor: 10000n }], events: [{ accountId: "a", date: "2026-10-03", expectedMinor: 100000n }] };
+  const base = defaultTripScenario(fixture.input.startDate, "EUR", "a", 20000n);
+  const scenario = { ...base, payments: [...base.payments, { ...base.payments[0], accountId: "b", amountMinor: "20000" }] };
+  const built = await buildCalculatorSnapshot("synthetic", "trip_planner", { costMinor: 40000n, tripScenario: scenario });
+  expect(built.snapshot.unavailable).toBeNull();
+  const result = await evaluateIsolated(FALLBACK_CALCULATORS.trip_planner.source, { snapshot: built.snapshot, params: { costMinor: 40000 } });
+  expect(result).toMatchObject({ numbers: { minimumHeadroomMinor: "-10000", limitingDate: "2026-10-08" } });
+});
+
 it.each(["minimum before trip", "minimum after trip", "salary after trip", "negative funds", "hold", "available balance includes hold", "reservation", "missing balance"])("artifact, native metric and shared engine agree: %s", async kind => {
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
   const input: ForecastInput = { startDate: "2026-10-01", horizonDays: 29, currencyCode: "EUR",

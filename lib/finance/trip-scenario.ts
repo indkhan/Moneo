@@ -93,6 +93,7 @@ export function evaluateTripScenario(input: ForecastInput, raw: unknown) {
     assumptions: ["Hypothetical costs and external contributions; no account, goal, transaction or reservation is changed.",
       "Confirmed obligations, outstanding holds, reservations and buffers use the shared forecast engine.",
       "Headroom is the conservative minimum over the entire dated horizon; end-of-trip headroom is a separate dated metric.",
+      ...(payingIds.length > 1 ? ["For multiple paying accounts, minimum headroom is the lowest protected headroom of any paying account; review each account's dates and shortages below."] : []),
       ...(scenario.payments.some(item => item.kind === "contribution") ? ["Contributions are assumed external receipts on their dates, not transfers between your accounts."] : [])] };
 }
 export type TripScenarioResult = ReturnType<typeof evaluateTripScenario>;
