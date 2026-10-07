@@ -71,7 +71,7 @@ export function evaluateTripScenario(input: ForecastInput, raw: unknown) {
   const datedAccount = tripDay && account && protectedMinor !== null ? tripDay.conservativeByAccount[account.id] - protectedMinor : null;
   const datedAggregate = tripDay ? tripDay.conservativeMinor - aggregateProtection : null;
   const afterTripMinor = datedAccount !== null && datedAggregate !== null ? (datedAccount < datedAggregate ? datedAccount : datedAggregate).toString() : null;
-  return { scenario, horizon, currency: input.currencyCode, accountId: payingIds.length === 1 ? payingIds[0] : null,
+  return { scenario, horizon, currency: input.currencyCode, accountId: payingIds.length === 1 && input.accounts.some(item => item.id === payingIds[0]) ? payingIds[0] : null,
     costMinor: missing.length ? null : costMinor.toString(), contributionMinor: missing.length ? null : contributionMinor.toString(),
     netCostMinor: missing.length ? null : (costMinor - contributionMinor).toString(),
     baselineAvailableMinor: before?.spendableMinor.toString() ?? null, withTripAvailableMinor: after?.spendableMinor.toString() ?? null,

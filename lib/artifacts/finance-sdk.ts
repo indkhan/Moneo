@@ -1,5 +1,6 @@
 import { requireWorkspace } from "@/lib/auth";
-import { accountLiquidity, serializeAccountLiquidity, withInternalFunding, summarizeCashflow, type CashflowTransaction } from "@/lib/finance/calculations";
+import { withInternalFunding, summarizeCashflow, type CashflowTransaction } from "@/lib/finance/calculations";
+import { defaultTripScenario, evaluateTripScenario, tripHorizon, tripScenarioSchema } from "@/lib/finance/trip-scenario";
 import { evaluatePlan } from "@/lib/finance/model";
 import { getBalances } from "@/lib/finance/tools";
 import { calendarDate } from "@/lib/finance/calendar";
@@ -111,35 +112,30 @@ export async function spendingForArtifact(artifactId: string, query: string, per
   return { summary, byAccount, reporting, conversionCoverage: reporting?.conversionCoverage, resultBasis: reporting?.resultBasis, sourceCoverage, transactions: transactions.filter(row => row.status === "posted" && row.kind !== "transfer" && !row.review_reasons?.length), currency: workspace.display_currency, from, to, timezone: workspace.timezone ?? "Europe/Berlin" };
 }
 
-export async function tripForArtifact(artifactId: string, costMinor: bigint, accountId?: string, funding: Parameters<typeof withInternalFunding>[1] = []) {
-  if (typeof costMinor !== "bigint" || costMinor < 0n) throw new Error("Invalid trip cost");
+export async function tripForArtifact(artifactId: string, costMinor: bigint, accountId?: string, funding: Parameters<typeof withInternalFunding>[1] = [], rawScenario?: unknown) {
+  if (typeof costMinor !== "bigint" || costMinor < 0n || costMinor > 999999999999999999n) throw new Error("Invalid trip cost");
   const { workspace, settings } = await requirePermission(artifactId, "forecast");
-  const baseline = await evaluatePlan(30, undefined, settings?.ai_data_scopes.includes("imports") ?? false);
+  const today = calendarDate(new Date(), workspace.timezone);
+  const requested = rawScenario === undefined ? defaultTripScenario(today, workspace.display_currency, accountId ?? "unselected", costMinor) : tripScenarioSchema.parse(rawScenario);
+  const horizon = tripHorizon(today, requested);
+  const baseline = await evaluatePlan(horizon.days, undefined, settings?.ai_data_scopes.includes("imports") ?? false);
   if (settings?.ai_data_scopes.includes("imports")) {
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     requireAiScope(current.settings, "accounts", "transactions", "planning", "imports");
   }
-  const today = baseline.input.startDate ?? calendarDate(new Date(), workspace.timezone);
-  const tripDate = new Date(Date.parse(`${today}T00:00:00Z`) + 7 * 86400000).toISOString().slice(0, 10);
   const selectedId = accountId ?? baseline.preferences?.spending_account_id ?? (baseline.input.accounts.length === 1 ? baseline.input.accounts[0].id : undefined);
-  const account = baseline.input.accounts.find(item => item.id === selectedId);
-  if (accountId && !account) throw new Error("Unknown account");
-  const input = withInternalFunding(baseline.input, funding);
-  const liquidity = accountLiquidity(input);
-  const selected = account && liquidity.status === "available" ? liquidity.accounts.find(item => item.accountId === account.id) : null;
-  const tripLiquidity = account ? accountLiquidity({ ...input, scenarioEvents: [
-    ...(input.scenarioEvents ?? []),
-    { date: tripDate, accountId: account.id, expectedMinor: -costMinor,
-      conservativeMinor: -costMinor, optimisticMinor: -costMinor },
-  ] }) : null;
-  const withTrip = tripLiquidity?.status === "available" ? tripLiquidity.accounts.find(item => item.accountId === account!.id) : null;
-  return { baseline: selected ? { status: "available" as const, ...selected, amountMinor: selected.spendableMinor, limitingDate: selected.spendingLimitingDate } : { status: "unavailable" as const },
-    withTrip: withTrip ? { status: "available" as const, ...withTrip, amountMinor: withTrip.spendableMinor, limitingDate: withTrip.spendingLimitingDate } : null,
-    tripDate, sourceCoverage: baseline.sourceCoverage, resultBasis: baseline.resultBasis, currency: workspace.display_currency, accountId: account?.id ?? null,
-    liquidity: serializeAccountLiquidity(liquidity),
-    tripLiquidity: tripLiquidity ? serializeAccountLiquidity(tripLiquidity) : null,
-    unavailable: !account ? "Choose a paying account; aggregate cash requires explicit funding" : !selected ? "Forecast unavailable" : null };
+  if (accountId && !baseline.input.accounts.some(item => item.id === accountId)) throw new Error("Unknown account");
+  const scenario = rawScenario === undefined ? { ...requested, payments: requested.payments.map(item => ({ ...item, accountId: selectedId ?? "unselected" })) } : requested;
+  const result = evaluateTripScenario(withInternalFunding(baseline.input, funding), scenario);
+  const selected = result.liquidity.status === "available" ? result.liquidity.accounts.find(item => item.accountId === result.accountId) : null;
+  const withTrip = result.tripLiquidity.status === "available" ? result.tripLiquidity.accounts.find(item => item.accountId === result.accountId) : null;
+  return { ...result, tripResult: result,
+    baseline: selected ? { status: "available" as const, ...selected, amountMinor: BigInt(selected.spendableMinor), limitingDate: selected.spendingLimitingDate } : { status: "unavailable" as const },
+    withTrip: withTrip ? { status: "available" as const, ...withTrip, amountMinor: BigInt(withTrip.spendableMinor), limitingDate: withTrip.spendingLimitingDate } : null,
+    tripDate: scenario.startsOn, sourceCoverage: baseline.sourceCoverage, resultBasis: baseline.resultBasis,
+    accounts: baseline.input.accounts.map(item => ({ id: item.id, currencyCode: item.currencyCode })),
+    unavailable: !selectedId && rawScenario === undefined ? "Choose a paying account; aggregate cash requires explicit funding" : result.unavailable };
 }
 
 export async function goalsForArtifact(artifactId: string) {

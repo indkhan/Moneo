@@ -3,6 +3,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { spendingForArtifact, tripForArtifact } from "./finance-sdk";
 import { evaluatePlan } from "@/lib/finance/model";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
+import { accountLiquidity } from "@/lib/finance/calculations";
 
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/finance/model", () => ({ evaluatePlan: vi.fn() }));
@@ -83,4 +84,20 @@ describe("artifact spending coverage", () => {
     expect(september).toMatchObject({ from: "2026-09-01", to: "2026-09-30" });
     await expect(spendingForArtifact("a", "Shop", "spending", "2026-99")).rejects.toThrow();
   });
+});
+
+it("evaluates an explicit dated trip with a derived horizon and the shared engine", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
+  const permission = { select: () => permission, eq: () => permission, single: async () => ({ data: { permissions: ["forecast"], active_version_id: "v" }, error: null }) };
+  vi.mocked(requireWorkspace).mockResolvedValue({ workspace: { id: "w", display_currency: "EUR", timezone: "Europe/Berlin" }, supabase: { from: () => permission } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  vi.mocked(evaluatePlan).mockImplementation(async days => ({ input: { startDate: "2026-10-01", horizonDays: days, currencyCode: "EUR",
+    accounts: [{ id: "checking", currencyCode: "EUR", balanceMinor: 10000n }], events: [{ accountId: "checking", date: "2026-10-03", expectedMinor: 100000n }] } }) as Awaited<ReturnType<typeof evaluatePlan>>);
+  const scenario = { version: 1, destination: "Synthetic", startsOn: "2026-11-01", endsOn: "2026-11-03", postTripDays: 7,
+    payments: [{ name: "Flight", kind: "cost", date: "2026-11-01", accountId: "checking", currencyCode: "EUR", amountMinor: "20000" }] };
+  const result = await tripForArtifact("a", 20000n, "checking", [], scenario);
+  expect(evaluatePlan).toHaveBeenLastCalledWith(41, undefined, false);
+  expect(result).toMatchObject({ horizon: { from: "2026-10-01", to: "2026-11-10", days: 41 }, withTripAvailableMinor: "10000", afterTripMinor: "90000", limitingDate: "2026-10-01" });
+  const expected = accountLiquidity({ startDate: "2026-10-01", horizonDays: 41, currencyCode: "EUR", accounts: [{ id: "checking", currencyCode: "EUR", balanceMinor: 10000n }], events: [{ accountId: "checking", date: "2026-10-03", expectedMinor: 100000n }], scenarioEvents: [{ accountId: "checking", date: "2026-11-01", expectedMinor: -20000n }] });
+  if (expected.status === "available") expect(result.withTripAvailableMinor).toBe(expected.accounts[0].spendableMinor.toString());
+  vi.useRealTimers();
 });
