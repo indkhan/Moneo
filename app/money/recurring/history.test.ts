@@ -58,7 +58,7 @@ it("recognizes an existing confirmed schedule through owned evidence after run k
 });
 
 it("does not label an intentionally disabled user schedule as used in forecast", async () => {
-  stored = stored.map(row => ({...row, assumption: {source: "user",enabled: false,removed_at: null}}));
+  stored = stored.map(row => ({...row, assumption: {source: "user",confirmed: true,enabled: false,removed_at: null}}));
   const text = renderedText(await RecurringPage());
   expect(text).toContain("intentional Plan schedule");
   expect(text).not.toContain("used in forecast");
