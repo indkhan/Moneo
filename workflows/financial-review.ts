@@ -14,8 +14,8 @@ function service() {
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
-function reviewScopes(settings: WorkspaceSettings, planning = false) {
-  try { requireAiScope(settings, "accounts", "transactions", ...(planning ? ["planning" as const] : [])); }
+function reviewScopes(settings: WorkspaceSettings, planning = false, imports = false) {
+  try { requireAiScope(settings, "accounts", "transactions", ...(planning ? ["planning" as const] : []), ...(imports ? ["imports" as const] : [])); }
   catch (error) { throw new FatalError(String(error)); }
 }
 
@@ -112,7 +112,7 @@ async function writeReview(jobId: string, workspaceId: string, evidence: Awaited
     if (!await enterStage(db, jobId, workspaceId, runId, "writing_review")) return null;
     const settings = await loadWorkspaceSettings(db, workspaceId);
     if (!await summaryStillEnabled(db, jobId, workspaceId, settings, scheduled)) return null;
-    reviewScopes(settings, !("unavailable" in evidence.planning));
+    reviewScopes(settings, !("unavailable" in evidence.planning), evidence.sourceCoverage?.importStatuses != null);
     const result = await generateText({ model: await modelForSettings(settings, { effort: "minimal", exclude: true }), maxOutputTokens: 4000, maxRetries: 0, abortSignal: AbortSignal.timeout(90_000),
       system: "Write a personal-finance review using only supplied dated evidence. Cover period cashflow, category and merchant changes, budget pressure, confirmed obligations, goals, wealth/debt and forecast when available. Cite exact currency, period and supplied internal source links for numerical claims. Distinguish recorded savings from virtual reservations, booked balances from available funds, historical valuations from current net worth, and assumptions from forecasts. Call unavailable and partial evidence out explicitly. Group changes show evidence, not causes; never invent explanations or financial data. Offer conditional, reviewable next steps rather than certainty.",
       prompt: JSON.stringify(evidence) });
@@ -130,7 +130,7 @@ async function saveReview(jobId: string, workspaceId: string, evidence: Awaited<
     if (!await enterStage(db, jobId, workspaceId, runId, "saving_review")) return;
     const settings = await loadWorkspaceSettings(db, workspaceId);
     if (!await summaryStillEnabled(db, jobId, workspaceId, settings, scheduled)) return;
-    reviewScopes(settings, !("unavailable" in evidence.planning));
+    reviewScopes(settings, !("unavailable" in evidence.planning), evidence.sourceCoverage?.importStatuses != null);
     const saved = await db.rpc("finish_financial_review", { p_job_id: jobId, p_workspace_id: workspaceId,
       p_title: `Financial review ${evidence.period.to}`, p_body: body, p_evidence: evidence, p_scheduled: scheduled });
     if (saved.error) throw saved.error;

@@ -1,3 +1,4 @@
+import { buildSourceCoverage } from "@/lib/finance/source-coverage";
 import { beforeEach, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import Home from "./page";
@@ -14,8 +15,8 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => {
   } }, workspace: { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" } };
 } }));
 vi.mock("@/lib/finance/balances", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/finance/balances")>(), loadBalanceEvidence: async () => { await fixture.balanceGate; return { accounts: [{ id: "cash", name: "Empty cash", currency_code: "EUR" }], snapshots: [], ledger: [], asOf: "2026-10-01T12:00:00Z" }; } }));
-vi.mock("@/lib/finance/model", () => ({ evaluatePlanForWorkspace: async () => ({ available: { status: "unavailable", missingInputs: ["balance:cash"] }, liquidity: { status: "unavailable", missingInputs: ["balance:cash"] } }) }));
-vi.mock("@/lib/finance/tools", () => ({ cashflow: async () => ({ unavailable: "No transactions" }) }));
+vi.mock("@/lib/finance/model", () => ({ evaluatePlanForWorkspace: async () => ({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), available: { status: "unavailable", missingInputs: ["balance:cash"] }, liquidity: { status: "unavailable", missingInputs: ["balance:cash"] } }) }));
+vi.mock("@/lib/finance/tools", () => ({ cashflow: async () => ({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), unavailable: "No transactions" }) }));
 vi.mock("next/link", () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
 
 it("shows a missing balance without inventing an epoch date or provenance", async () => {

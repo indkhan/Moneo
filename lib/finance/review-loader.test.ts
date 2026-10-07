@@ -17,6 +17,7 @@ it("omits all planning reads when its scope is disabled and gathers exact compar
   const evidence = await loadFinancialReviewEvidence({ from } as unknown as SupabaseClient, { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" }, settingsSchema.parse({ ai_data_scopes: ["accounts", "transactions"] }));
   expect(reads).toEqual(["effective_transactions", "categories", "merchants"]);
   expect(evidence.cashflow.EUR.spendingMinor).toBe("9007199254740993");
+  expect(evidence).toMatchObject({ sourceCoverage: { unresolvedSourceRows: null, scope: { from: "2026-07-05", to: "2026-10-02" } } });
   expect(evidence.planning).toEqual({ unavailable: "AI access to planning is disabled in Settings" });
   expect(evidence.investigation.categories[0].sourceLinks).toEqual(["/money/transactions?transaction=t"]);
 });

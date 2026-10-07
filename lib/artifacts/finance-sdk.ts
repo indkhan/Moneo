@@ -5,9 +5,11 @@ import { getBalances } from "@/lib/finance/tools";
 import { calendarDate } from "@/lib/finance/calendar";
 import { requireAiScope } from "@/lib/settings";
 import { z } from "zod";
+import { buildSourceCoverage, loadSourceCoverage } from "@/lib/finance/source-coverage";
 
 async function requirePermission(artifactId: string, permission: string) {
-  const { supabase, workspace, settings } = await requireWorkspace();
+  const context = await requireWorkspace();
+  const { supabase, workspace, settings } = context;
   if (permission === "spending" || permission === "cashflow") requireAiScope(settings, "transactions");
   else if (permission === "balances") requireAiScope(settings, "accounts");
   else if (permission === "forecast") requireAiScope(settings, "accounts", "transactions", "planning");
@@ -16,16 +18,23 @@ async function requirePermission(artifactId: string, permission: string) {
     .select("permissions, active_version_id").eq("id", artifactId).eq("workspace_id", workspace.id).single();
   if (error || !data?.active_version_id || !Array.isArray(data.permissions) || !data.permissions.includes(permission))
     throw new Error("Artifact permission denied");
-  return { supabase, workspace };
+  return context;
 }
 
 export async function balancesForArtifact(artifactId: string) {
-  const { workspace } = await requirePermission(artifactId, "balances");
-  return { currency: workspace.display_currency, balances: await getBalances() };
+  const context = await requirePermission(artifactId, "balances");
+  const balances = await getBalances(context, context.settings?.ai_data_scopes.includes("imports") ?? false);
+  if (context.settings?.ai_data_scopes.includes("imports")) {
+    const current = await requireWorkspace();
+    if (current.workspace.id !== context.workspace.id) throw new Error("Workspace changed");
+    requireAiScope(current.settings, "accounts", "imports");
+  }
+  return { currency: context.workspace.display_currency, balances,
+    sourceCoverage: buildSourceCoverage({ from: "0001-01-01", to: calendarDate(new Date(), context.workspace.timezone), ledgerBasis: "balance_activity" }, []) };
 }
 
 export async function spendingForArtifact(artifactId: string, query: string, permission: "spending" | "cashflow" = "spending", month?: string) {
-  const { supabase, workspace } = await requirePermission(artifactId, permission);
+  const { supabase, workspace, settings } = await requirePermission(artifactId, permission);
   const today = calendarDate(new Date(), workspace.timezone);
   const from = z.iso.date().parse(`${month ?? today.slice(0, 7)}-01`);
   if (from > today) throw new Error("Choose a current or past month");
@@ -66,13 +75,28 @@ export async function spendingForArtifact(artifactId: string, query: string, per
   }
   const summary = summarize(transactions);
   const byAccount = [...accounts].map(([id, rows]) => ({ id, ...summarize(rows) }));
-  return { summary, byAccount, transactions: transactions.filter(row => !row.review_reasons?.length), currency: workspace.display_currency, from, to, timezone: workspace.timezone ?? "Europe/Berlin" };
+  const canReadImports = settings?.ai_data_scopes.includes("imports") ?? false;
+  const coverage = await loadSourceCoverage(supabase, workspace.id, { from, to, currencyCode: workspace.display_currency }, transactions, canReadImports);
+  if (canReadImports) {
+    const current = await requireWorkspace();
+    if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
+    requireAiScope(current.settings, "transactions", "imports");
+  }
+  const sourceCoverage = { ...coverage, lifecycleExclusionsKnown: false, scope: { ...coverage.scope,
+    descriptionFilter: query ? "applied; source relevance unknown" : "none",
+    effectiveRowFilter: "posted non-transfer rows; other lifecycle exclusions were not queried" } };
+  return { summary, byAccount, sourceCoverage, transactions: transactions.filter(row => !row.review_reasons?.length), currency: workspace.display_currency, from, to, timezone: workspace.timezone ?? "Europe/Berlin" };
 }
 
 export async function tripForArtifact(artifactId: string, costMinor: bigint, accountId?: string, funding: Parameters<typeof withInternalFunding>[1] = []) {
   if (typeof costMinor !== "bigint" || costMinor < 0n) throw new Error("Invalid trip cost");
-  const { workspace } = await requirePermission(artifactId, "forecast");
-  const baseline = await evaluatePlan(30);
+  const { workspace, settings } = await requirePermission(artifactId, "forecast");
+  const baseline = await evaluatePlan(30, undefined, settings?.ai_data_scopes.includes("imports") ?? false);
+  if (settings?.ai_data_scopes.includes("imports")) {
+    const current = await requireWorkspace();
+    if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
+    requireAiScope(current.settings, "accounts", "transactions", "planning", "imports");
+  }
   const today = baseline.input.startDate ?? calendarDate(new Date(), workspace.timezone);
   const tripDate = new Date(Date.parse(`${today}T00:00:00Z`) + 7 * 86400000).toISOString().slice(0, 10);
   const selectedId = accountId ?? baseline.preferences?.spending_account_id ?? (baseline.input.accounts.length === 1 ? baseline.input.accounts[0].id : undefined);
@@ -89,21 +113,26 @@ export async function tripForArtifact(artifactId: string, costMinor: bigint, acc
   const withTrip = tripLiquidity?.status === "available" ? tripLiquidity.accounts.find(item => item.accountId === account!.id) : null;
   return { baseline: selected ? { status: "available" as const, ...selected, amountMinor: selected.spendableMinor, limitingDate: selected.spendingLimitingDate } : { status: "unavailable" as const },
     withTrip: withTrip ? { status: "available" as const, ...withTrip, amountMinor: withTrip.spendableMinor, limitingDate: withTrip.spendingLimitingDate } : null,
-    tripDate, currency: workspace.display_currency, accountId: account?.id ?? null,
+    tripDate, sourceCoverage: baseline.sourceCoverage, resultBasis: baseline.resultBasis, currency: workspace.display_currency, accountId: account?.id ?? null,
     liquidity: serializeAccountLiquidity(liquidity),
     tripLiquidity: tripLiquidity ? serializeAccountLiquidity(tripLiquidity) : null,
     unavailable: !account ? "Choose a paying account; aggregate cash requires explicit funding" : !selected ? "Forecast unavailable" : null };
 }
 
 export async function goalsForArtifact(artifactId: string) {
-  const { supabase, workspace } = await requirePermission(artifactId, "goals");
+  const context = await requirePermission(artifactId, "goals");
+  const { supabase, workspace } = context;
   const [{ data: goals, error: goalsError }, { data: allocations, error: allocationsError }, balances] = await Promise.all([
     supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date, status, recorded_saved_minor::text, saved_as_of, planned_monthly_minor::text, contribution_starts_on")
       .eq("workspace_id", workspace.id).order("created_at", { ascending: false }),
     supabase.from("goal_allocations").select("goal_id, account_id, amount_minor::text")
       .eq("workspace_id", workspace.id),
-    getBalances(),
+    getBalances(context, false),
   ]);
   if (goalsError || allocationsError) throw goalsError ?? allocationsError;
-  return { goals: goals ?? [], allocations: allocations ?? [], balances, currency: workspace.display_currency, timezone: workspace.timezone };
+  const today = calendarDate(new Date(), workspace.timezone);
+  const from = (goals ?? []).flatMap(goal => goal.saved_as_of && goal.saved_as_of <= today ? [goal.saved_as_of] : []).sort()[0] ?? today;
+  return { goals: goals ?? [], allocations: allocations ?? [], balances, currency: workspace.display_currency, timezone: workspace.timezone,
+    sourceCoverage: buildSourceCoverage({ from, to: today, recordBasis: "manual_goals" }, []),
+    resultBasis: "dated recorded savings and virtual reservations; source completeness not evaluated" };
 }

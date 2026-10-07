@@ -4,6 +4,7 @@ import { INSIGHT_TYPES } from "@/lib/settings";
 import { formatMoney } from "./format";
 import { buildReviewInvestigation, type ReviewTransaction } from "./review";
 import { minorDigits } from "./fx";
+import { buildSourceCoverage, sourceCoverageNeedsReview, type SourceCoverage } from "./source-coverage";
 
 export const insightPreferencesSchema = z.object({ important_only: z.boolean().default(true),
   minimum_change_minor: z.string().regex(/^\d{1,19}$/).refine(value => BigInt(value) <= 9223372036854775807n).default("2000"), currency_code: z.string().refine(value => { try { minorDigits(value); return true; } catch { return false; } }).default("EUR"),
@@ -13,11 +14,13 @@ export function defaultInsightPreferences(currency: string): InsightPreferences 
   return { ...DEFAULT_INSIGHT_PREFERENCES, currency_code: currency, minimum_change_minor: (20n * 10n ** BigInt(minorDigits(currency))).toString() };
 }
 export type InsightPreferences = z.infer<typeof insightPreferencesSchema>;
-export type Insight = { key: string; type: typeof INSIGHT_TYPES[number]; priority: "important" | "context"; title: string; detail: string; href: string; asOf: string };
+export type Insight = { key: string; type: typeof INSIGHT_TYPES[number]; priority: "important" | "context"; title: string; detail: string; href: string; asOf: string; sourceCoverage: SourceCoverage };
 export type InsightInput = {
   today: string; currency: string; locale?: string; transactions: (ReviewTransaction & { account_id?: string })[]; categories: { id: string; name: string }[];
   canonicalTransactions?: (ReviewTransaction & { account_id?: string })[];
-  budgets: { id: string; name: string; currency: string; spentMinor: string; allowanceMinor: string; partial: boolean }[];
+  sourceCoverage?: SourceCoverage;
+  forecastSourceCoverage?: SourceCoverage;
+  budgets: { id: string; name: string; currency: string; spentMinor: string; allowanceMinor: string; partial: boolean; sourceCoverage?: SourceCoverage }[];
   recurring: { id: string; label: string; evidence_invalidated: boolean; evidence?: unknown }[];
   obligations: { id: string; name: string; date: string; amountMinor: string; currency: string }[];
   goals: { id: string; name: string; targetMinor: string; savedMinor: string | null; savedAsOf: string | null }[];
@@ -27,12 +30,16 @@ export type InsightInput = {
 
 export function buildInsights(input: InsightInput, preferences: InsightPreferences, muted: readonly string[] = [], dismissedKeys: readonly string[] = []): Insight[] {
   const results: Insight[] = [];
+  const coverage = input.sourceCoverage ?? buildSourceCoverage({ from: "0001-01-01", to: input.today }, input.transactions);
   const dismissed = new Set(dismissedKeys);
   function add(type: Insight["type"], entity: string, evidence: unknown, title: string, detail: string, href: string, priority: Insight["priority"] = "important") {
     if (muted.includes(type) || preferences.important_only && priority === "context") return;
     const key = createHash("sha256").update(JSON.stringify([type, entity, evidence])).digest("hex");
     if (dismissed.has(key)) return;
-    results.push({ key, type, title, detail, href, priority, asOf: input.today });
+    const sourceCoverage = type === "budget_pressure" ? input.budgets.find(budget => budget.id === entity)?.sourceCoverage ?? coverage
+      : ["cash_shortfall", "upcoming_obligations"].includes(type) ? input.forecastSourceCoverage ?? coverage
+      : type === "goal_progress" || type === "asset_debt" ? buildSourceCoverage({ from: input.today, to: input.today, recordBasis: type === "goal_progress" ? "manual_goals" : "manual_wealth" }, []) : coverage;
+    results.push({ key, type, title, detail, href, priority, asOf: input.today, sourceCoverage });
   }
   const money = (amount: bigint | string, currency: string) => formatMoney(amount, currency, input.locale);
   const from = `${input.today.slice(0, 7)}-01`;
@@ -47,7 +54,7 @@ export function buildInsights(input: InsightInput, preferences: InsightPreferenc
   }
   for (const budget of input.budgets) {
     const spent = BigInt(budget.spentMinor), allowance = BigInt(budget.allowanceMinor);
-    if (budget.partial || (allowance > 0n ? spent * 5n < allowance * 4n : allowance - spent >= 0n)) continue;
+    if (budget.partial || budget.sourceCoverage && sourceCoverageNeedsReview(budget.sourceCoverage) || (allowance > 0n ? spent * 5n < allowance * 4n : allowance - spent >= 0n)) continue;
     add("budget_pressure", budget.id, [input.today.slice(0, 7), budget.currency, budget.spentMinor, budget.allowanceMinor], `${budget.name} budget pressure`,
       `${money(spent, budget.currency)} spent against ${money(allowance, budget.currency)} allowance in ${input.today.slice(0, 7)}, including supported rollover.`, "/plan/spending");
   }

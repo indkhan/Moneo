@@ -1,5 +1,17 @@
 import { expect, it } from "vitest";
 import { calculatorExportText, calculatorPngLines } from "./export";
+import { buildSourceCoverage } from "@/lib/finance/source-coverage";
+
+it("exports the same scoped source limitations and exact accepted-record amounts", () => {
+  const sourceCoverage = buildSourceCoverage({ from: "2026-09-01", to: "2026-09-30", currencyCode: "EUR", accountId: "synthetic" }, [], [{ id: "i", status: "failed", total_rows: 2 }], [{ import_id: "i", status: "review", posted_on: "2026-09-02", currency_code: "EUR", account_id: "synthetic" }]);
+  const text = calculatorExportText("Spending", "v1", { amountMinor: "9007199254740993" }, {}, { sourceCoverage });
+  expect(text).toContain('"amountMinor": "9007199254740993"');
+  expect(text).toContain("unresolvedSourceRows: 1");
+  expect(text).toContain("unobservedWorkspaceSourceRows: 1");
+  expect(text).toContain("statementIntervals: Unknown");
+  expect(text).toContain("totalsAreBounds: false");
+  expect(text).toContain("selected_account");
+});
 
 it("exports exact result text with dated partial evidence and treats markup as literal text", () => {
   const text = calculatorExportText("Comparison", "v3", { summary: "<script>literal</script>", numbers: { amount: "9007199254740993" } }, { months: 3 },

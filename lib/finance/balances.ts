@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { calendarDate } from "./calendar";
+import { buildSourceCoverage, type loadSourceCoverageMetadata } from "./source-coverage";
 
 export type BalanceAccount = { id: string; name: string; currency_code: string; type?: string; archived_at?: string | null };
 export type BalanceSnapshot = { id?: string; account_id: string; amount_minor: string | number; currency_code: string; as_of: string; provenance: string;
@@ -32,9 +33,9 @@ function exactMinor(value: string | number): bigint {
   return BigInt(value);
 }
 
-export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapshots: BalanceSnapshot[], ledger: BalanceTransaction[], asOf = new Date().toISOString(), timeZone = "Europe/Berlin") {
+export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapshots: BalanceSnapshot[], ledger: BalanceTransaction[], asOf = new Date().toISOString(), timeZone = "Europe/Berlin", sourceMetadata?: Awaited<ReturnType<typeof loadSourceCoverageMetadata>>) {
   const today = calendarDate(asOf, timeZone);
-  return accounts.map(account => {
+  const resolved = accounts.map(account => {
     const candidates = snapshots.filter(snapshot => snapshot.account_id === account.id && !snapshot.undone_at && Number.isFinite(Date.parse(snapshot.as_of)) && Date.parse(snapshot.as_of) <= Date.parse(asOf))
       .sort((a, b) => Date.parse(b.as_of) - Date.parse(a.as_of));
     const snapshot = candidates[0];
@@ -98,6 +99,10 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
     }
     return { ...account, balance };
   });
+  return resolved.map(account => ({ ...account, sourceCoverage: buildSourceCoverage({
+    from: account.balance.as_of ? calendarDate(account.balance.as_of, timeZone) : "0001-01-01", to: today,
+    accountId: account.id, currencyCode: account.currency_code, ledgerBasis: "balance_activity",
+  }, ledger.map(row => ({ ...row, kind: row.kind ?? "ordinary" })), sourceMetadata?.imports, sourceMetadata?.sources) }));
 }
 
 // Every reader gets complete, workspace-scoped evidence instead of a silently truncated first page.

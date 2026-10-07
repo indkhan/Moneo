@@ -2,12 +2,25 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { requireWorkspace } from "@/lib/auth";
 import { spendingForArtifact, tripForArtifact } from "./finance-sdk";
 import { evaluatePlan } from "@/lib/finance/model";
+import { DEFAULT_SETTINGS } from "@/lib/settings";
 
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/finance/model", () => ({ evaluatePlan: vi.fn() }));
 
 describe("artifact spending coverage", () => {
   afterEach(() => vi.useRealTimers());
+
+  it("attaches source-only overlap evidence and retains an unknown scope for filtered artifacts", async () => {
+    const from = (table: string) => {
+      const query = { select: () => query, eq: () => query, neq: () => query, gte: () => query, lte: () => query, order: () => query, ilike: () => query,
+        single: async () => ({ data: { permissions: ["spending"], active_version_id: "v" }, error: null }),
+        range: async () => ({ data: table === "imports" ? [{ id: "i", status: "completed", total_rows: 1 }] : table === "source_transactions" ? [{ import_id: "i", status: "review", posted_on: "2026-10-01", currency_code: "EUR" }] : [], error: null }) };
+      return query;
+    };
+    vi.mocked(requireWorkspace).mockResolvedValue({ settings: DEFAULT_SETTINGS, workspace: { id: "w", display_currency: "EUR", timezone: "Europe/Berlin" }, supabase: { from } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+    expect(await spendingForArtifact("a", "Shop", "spending", "2026-10")).toMatchObject({ sourceCoverage: { unresolvedSourceRows: 1,
+      scope: { descriptionFilter: "applied; source relevance unknown" }, totalsAreBounds: false } });
+  });
 
   it("dates the default trip seven calendar days ahead in the workspace timezone", async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-30T22:30:00Z"));

@@ -15,6 +15,8 @@ import { CalculatorPanel } from "../calculator-panel";
 import { GenerateCalculatorForm } from "../generate-calculator-form";
 import { VersionEditor } from "../version-editor";
 import { RenameArtifactForm } from "../rename-form";
+import { SourceCoverageDetails } from "@/app/source-coverage";
+import type { SourceCoverage } from "@/lib/finance/source-coverage";
 
 function money(minor: bigint | string | number, currency: string) {
   return formatMoney(minor, currency);
@@ -50,6 +52,8 @@ export default async function ArtifactPage({ params, searchParams }: {
   const manifestParsed = calculatorManifestSchema.safeParse(version?.manifest);
   const isCalculator = manifestParsed.success;
   let snapshot: unknown = { kind };
+  let sourceCoverage: SourceCoverage | undefined;
+  let sourceCoverageByOperation: Record<string, SourceCoverage> | undefined;
   let initialParams: Record<string, number | string> = {};
   if (isCalculator && version) {
     initialParams = normalizeCalculatorParams(manifestParsed.data, stateValue, "restore");
@@ -61,6 +65,8 @@ export default async function ArtifactPage({ params, searchParams }: {
         sdk: manifestParsed.data.sdk,
       });
       snapshot = built.snapshot;
+      sourceCoverage = built.snapshot.sourceCoverage;
+      sourceCoverageByOperation = built.snapshot.sourceCoverageByOperation;
     } catch {
       snapshot = { unavailable: "Snapshot unavailable" };
     }
@@ -81,6 +87,8 @@ export default async function ArtifactPage({ params, searchParams }: {
     {artifact.kind === "spending_explorer" && <SpendingExplorer id={id} query={q.slice(0, 100)} />}
     {artifact.kind === "trip_planner" && <TripPlanner id={id} costMinor={costMinor} stateVersion={state?.version ?? 0} />}
     {artifact.kind === "goal_tracker" && <GoalTracker id={id} scenarioGoalId={goalId} extra={extra} />}
+    {sourceCoverage && <SourceCoverageDetails coverage={sourceCoverage} />}
+    {Object.entries(sourceCoverageByOperation ?? {}).map(([operation, coverage]) => <div key={operation}><p className="text-xs">{operation} evidence</p><SourceCoverageDetails coverage={coverage} /></div>)}
     {version && isCalculator && (
       <CalculatorPanel
         stateVersion={state?.version ?? 0}
@@ -128,6 +136,7 @@ async function SpendingExplorer({ id, query }: { id: string; query: string }) {
     {"unavailable" in data.summary ? <p className="mt-3">{data.summary.unavailable}</p>
       : <p className="mt-3 text-2xl">Spending {money(data.summary.spendingMinor, data.currency)}</p>}
     <p className="mt-1 text-sm text-muted-foreground">{data.from} to {data.to} ({data.timezone}). Posted transactions matching the filter, including refunds; transfers excluded. Mixed currencies require dated conversion evidence.</p>
+    <SourceCoverageDetails coverage={data.sourceCoverage} />
     {!("unavailable" in data.summary) && data.summary.partial && <p role="status" className="mt-2 text-sm text-amber-700">Partial: {data.summary.excludedReviewRows} transactions need classification review and are excluded from these totals.</p>}
     {!("unavailable" in data.summary) && <SpendingChart rows={data.transactions} from={data.from} to={data.to} currency={data.currency} />}
     <form method="get" className="mt-5 flex gap-2">
@@ -151,6 +160,7 @@ async function TripPlanner({ id, costMinor, stateVersion }: { id: string; costMi
     <h2 className="text-xl font-semibold tracking-tight text-foreground">Trip cost</h2>
     <TripStateForm artifactId={id} costMinor={costMinor.toString()} stateVersion={stateVersion} currency={data.currency} />
     <p className="mt-3 text-sm text-muted-foreground">Hypothetical one-time cost on {data.tripDate}; no goal or account is changed.</p>
+    {data.sourceCoverage && <SourceCoverageDetails coverage={data.sourceCoverage} />}
     {data.unavailable && <p className="mt-4">{data.unavailable}</p>}
     <div className="mt-5 grid gap-3 sm:grid-cols-2">
       <div className="rounded-xl border border-border bg-card p-5 shadow-sm"><h3>Chosen-account headroom</h3><p className="mt-2 text-xl">{data.baseline.status === "available" ? money(data.baseline.amountMinor, data.currency) : "Unavailable"}</p></div>
@@ -173,6 +183,7 @@ async function GoalTracker({ id, scenarioGoalId, extra }: { id: string; scenario
   try { if (extra) extraMinor = parseManualAmount(extra, extraCurrency); } catch { /* Ignore invalid what-if input. */ }
   return <section className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
     <h2 className="text-xl font-semibold tracking-tight text-foreground">Goals and reservations</h2>
+    <SourceCoverageDetails coverage={data.sourceCoverage} />
     {!data.goals.length && <p className="mt-3">No goals yet. <Link href="/plan" className="underline">Create a goal</Link>.</p>}
     <div className="mt-4 space-y-3">{data.goals.map(goal => {
       const goalAllocations = data.allocations.filter(item => item.goal_id === goal.id);

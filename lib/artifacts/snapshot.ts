@@ -9,8 +9,9 @@ import { SNAPSHOT_LIMITS, evidenceCoverage, type SnapshotCoverage } from "./cove
 import { dailySpending } from "@/lib/finance/calculations";
 import { calendarDate } from "@/lib/finance/calendar";
 import { ALLOWED_SDK_BY_KIND, type ArtifactKind } from "./spec";
+import type { SourceCoverage } from "@/lib/finance/source-coverage";
 
-export type CalculatorSnapshot = { coverage?: SnapshotCoverage } & (
+export type CalculatorSnapshot = { coverage?: SnapshotCoverage; sourceCoverage?: SourceCoverage; sourceCoverageByOperation?: Record<string, SourceCoverage> } & (
   | { currency: string; balances?: Awaited<ReturnType<typeof balancesForArtifact>>["balances"];
       spending?: CalculatorSnapshot; cashflow?: CalculatorSnapshot; goals?: unknown; forecast?: CalculatorSnapshot;
       partial?: boolean; excludedReviewRows?: number; unavailable?: string }
@@ -53,16 +54,18 @@ export async function buildCalculatorSnapshot(
     const operations = [...new Set(opts?.sdk ?? [])];
     if (operations.some(operation => !ALLOWED_SDK_BY_KIND[kind].includes(operation))) throw new Error("Unauthorized custom snapshot operation");
     const snapshot: { currency: string; balances?: Awaited<ReturnType<typeof balancesForArtifact>>["balances"]; spending?: CalculatorSnapshot; cashflow?: CalculatorSnapshot;
-      goals?: unknown; forecast?: CalculatorSnapshot; coverage?: SnapshotCoverage; partial?: boolean; excludedReviewRows?: number; unavailable?: string } = { currency: "" };
+      goals?: unknown; forecast?: CalculatorSnapshot; coverage?: SnapshotCoverage; sourceCoverage?: SourceCoverage; sourceCoverageByOperation?: Record<string, SourceCoverage>; partial?: boolean; excludedReviewRows?: number; unavailable?: string } = { currency: "" };
     const unavailable: string[] = [];
     for (const operation of operations) {
       try {
         if (operation === "balances") {
           const data = await balancesForArtifact(artifactId); snapshot.currency = data.currency; snapshot.balances = data.balances.slice(0, SNAPSHOT_LIMITS.balances);
+          if (data.sourceCoverage) snapshot.sourceCoverageByOperation = { ...snapshot.sourceCoverageByOperation, balances: data.sourceCoverage };
           snapshot.coverage = { ...snapshot.coverage, balances: evidenceCoverage(data.balances.length, "balances") };
         } else {
           const legacyKind = operation === "goals" ? "goal_tracker" : operation === "forecast" ? "trip_planner" : "spending_explorer";
           const data = (await buildCalculatorSnapshot(artifactId, legacyKind, { ...opts, ...(operation === "cashflow" ? { spendingOperation: "cashflow" } : {}) })).snapshot;
+          if (data.sourceCoverage) snapshot.sourceCoverageByOperation = { ...snapshot.sourceCoverageByOperation, [operation]: data.sourceCoverage };
           snapshot.currency ||= data.currency;
           if (operation === "goals") {
             snapshot.goals = "goals" in data ? data.goals : [];
@@ -71,6 +74,7 @@ export async function buildCalculatorSnapshot(
           else if (operation === "forecast") snapshot.forecast = data;
           else {
             snapshot[operation as "spending" | "cashflow"] = data;
+            if (data.sourceCoverage) snapshot.sourceCoverage = data.sourceCoverage;
             if ("partial" in data && data.partial) { snapshot.partial = true; snapshot.excludedReviewRows = data.excludedReviewRows; }
           }
           if (data.unavailable) unavailable.push(`${operation}: ${data.unavailable}`);
@@ -84,13 +88,14 @@ export async function buildCalculatorSnapshot(
     const data = await spendingForArtifact(artifactId, opts?.query ?? "", opts?.spendingOperation ?? "spending", opts?.month);
     if ("unavailable" in data.summary) {
       return {
-        snapshot: { currency: data.currency, unavailable: data.summary.unavailable },
+        snapshot: { currency: data.currency, unavailable: data.summary.unavailable, sourceCoverage: data.sourceCoverage },
         stateParams: {},
       };
     }
     return {
       snapshot: {
         currency: data.currency,
+        sourceCoverage: data.sourceCoverage,
         from: data.from,
         to: data.to,
         incomeMinor: data.summary.incomeMinor,
@@ -109,6 +114,7 @@ export async function buildCalculatorSnapshot(
     return {
       snapshot: {
         currency: data.currency,
+        sourceCoverage: data.sourceCoverage,
         baselineAvailableMinor:
           data.baseline.status === "available" ? data.baseline.amountMinor.toString() : null,
         unavailable: data.unavailable ?? (data.baseline.status === "available" ? null : "Forecast unavailable"),
@@ -124,10 +130,10 @@ export async function buildCalculatorSnapshot(
   const balances = new Map(data.balances.map((b) => [b.id, b.currency_code]));
   const currencies = new Set(data.goals.map(goal => goal.currency_code));
   if (currencies.size > 1) {
-    return { snapshot: { currency: data.currency, goals: [], unavailable: "Goals use different currencies; choose a single currency before comparing saving pace" }, stateParams: {} };
+    return { snapshot: { currency: data.currency, goals: [], sourceCoverage: data.sourceCoverage, unavailable: "Goals use different currencies; choose a single currency before comparing saving pace" }, stateParams: {} };
   }
   if (data.goals.some(goal => data.allocations.some(allocation => allocation.goal_id === goal.id && balances.get(allocation.account_id) !== goal.currency_code))) {
-    return { snapshot: { currency: data.currency, goals: [], unavailable: "Goal allocations require currency conversion" }, stateParams: {} };
+    return { snapshot: { currency: data.currency, goals: [], sourceCoverage: data.sourceCoverage, unavailable: "Goal allocations require currency conversion" }, stateParams: {} };
   }
   const goals = (data.goals ?? []).slice(0, SNAPSHOT_LIMITS.goals).map((g) => {
     const allocs = (data.allocations ?? []).filter((a) => a.goal_id === g.id);
@@ -150,7 +156,7 @@ export async function buildCalculatorSnapshot(
     };
   });
   if (!goals.length) {
-    return { snapshot: { currency: data.currency, goals: [], unavailable: "No goals yet" }, stateParams: {} };
+    return { snapshot: { currency: data.currency, goals: [], unavailable: "No goals yet", sourceCoverage: data.sourceCoverage }, stateParams: {} };
   }
-  return { snapshot: { currency: goals[0].currency, goals, coverage: { goals: evidenceCoverage(data.goals.length, "goals") } }, stateParams: {} };
+  return { snapshot: { currency: goals[0].currency, goals, sourceCoverage: data.sourceCoverage, coverage: { goals: evidenceCoverage(data.goals.length, "goals") } }, stateParams: {} };
 }

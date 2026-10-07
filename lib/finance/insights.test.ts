@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { buildInsights, defaultInsightPreferences, DEFAULT_INSIGHT_PREFERENCES, type InsightInput } from "./insights";
+import { buildSourceCoverage } from "./source-coverage";
 
 const base: InsightInput = { today: "2026-10-02", currency: "EUR", transactions: [], categories: [], budgets: [], recurring: [], obligations: [], goals: [], wealth: [], missingInputs: [], available: null };
 describe("deterministic evidence-backed insights", () => {
+  it("carries source scope on every insight and suppresses unresolved-source budget conclusions", () => {
+    const sourceCoverage = buildSourceCoverage({ from: "2026-09-01", to: base.today, currencyCode: "EUR" }, [], [{ id: "i", status: "completed", total_rows: 1 }], [{ import_id: "i", status: "review", posted_on: base.today, currency_code: "EUR", account_id: "a" }]);
+    const input = { ...base, sourceCoverage, budgets: [{ id: "b", name: "Food", currency: "EUR", spentMinor: "900", allowanceMinor: "1000", partial: false, sourceCoverage }], missingInputs: ["Unresolved overlap"] };
+    const insights = buildInsights(input, DEFAULT_INSIGHT_PREFERENCES);
+    expect(insights.some(item => item.type === "budget_pressure")).toBe(false);
+    expect(insights).toHaveLength(1);
+    expect(insights[0]).toMatchObject({ sourceCoverage: { unresolvedSourceRows: 1, financialCompleteness: "unknown", totalsAreBounds: false } });
+  });
   it("keeps an unsaved comparison threshold at twenty major units in its explicit currency", () => {
     expect(defaultInsightPreferences("EUR").minimum_change_minor).toBe("2000");
     expect(defaultInsightPreferences("JPY").minimum_change_minor).toBe("20");

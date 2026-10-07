@@ -10,7 +10,7 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
         { amount_minor: "-9007199254740000", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [] },
         { amount_minor: "-993", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [] },
         { amount_minor: "500", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: ["source_transfer"] },
-      ] : [{ amount_minor: "-9007199254740993", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [] }], error: null }),
+      ] : table === "imports" ? [{ id: "i", status: "completed", total_rows: 1 }] : table === "source_transactions" ? [{ import_id: "i", status: "review", posted_on: "2026-10-01", currency_code: "EUR" }] : [], error: null }),
       limit: async () => ({ data: [{ id: "parent", amount_minor: "-9007199254740993" }], error: null }) };
     return query;
   },
@@ -23,7 +23,17 @@ it("keeps non-AI finance reads usable with no AI scopes and exact canonical/effe
       limitation: "Excluded classifications are unknown; these partial totals are not upper or lower bounds." },
   });
   expect(await searchTransactions({ query: "receipt" })).toEqual([{ id: "parent", amount_minor: "-9007199254740993" }]);
-  expect(fixture.tables).toEqual(["effective_transactions", "transactions"]);
+  expect(fixture.tables).toEqual(["effective_transactions", "imports", "source_transactions", "transactions"]);
+});
+
+it("attaches unresolved source coverage without changing included exact money or reading revoked imports", async () => {
+  expect(await cashflow({ from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR" })).toMatchObject({
+    spendingMinor: "9007199254740993", sourceCoverage: { unresolvedSourceRows: 1, includedRows: 2, totalsAreBounds: false },
+  });
+  fixture.tables.length = 0;
+  const result = await cashflow({ from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR" }, undefined, false);
+  expect(result).toMatchObject({ sourceCoverage: { observedSourceRows: null, financialCompleteness: "unknown" } });
+  expect(fixture.tables).toEqual(["effective_transactions"]);
 });
 
 it("keeps ordinary account and goal lists usable after AI permission revocation", async () => {

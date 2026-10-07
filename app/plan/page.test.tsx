@@ -1,3 +1,4 @@
+import { buildSourceCoverage } from "@/lib/finance/source-coverage";
 import React, { isValidElement, cloneElement, type ReactNode, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -28,7 +29,7 @@ const input: ForecastInput = { startDate: "2026-10-07", horizonDays: 3, currency
   events: [{ date: "2026-10-08", accountId: "checking", expectedMinor: -50000n, name: "Tomorrow bill", source: "confirmed" }],
 };
 beforeEach(() => {
-  vi.mocked(evaluatePlan).mockImplementation(async () => ({ input, forecast: forecastDaily(input), available: availableToSpend(input), liquidity: accountLiquidity(input), preferences: { spending_account_id: null }, preferencesVersion: 0 }) as Awaited<ReturnType<typeof evaluatePlan>>);
+  vi.mocked(evaluatePlan).mockImplementation(async () => ({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), input, forecast: forecastDaily(input), available: availableToSpend(input), liquidity: accountLiquidity(input), preferences: { spending_account_id: null }, preferencesVersion: 0 }) as Awaited<ReturnType<typeof evaluatePlan>>);
 });
 async function resolveTree(node: ReactNode): Promise<ReactNode> {
   if (Array.isArray(node)) return Promise.all(React.Children.toArray(node).map(resolveTree));
@@ -65,7 +66,7 @@ it.each([["2026-10-08", false], ["2026-10-09", true]])("renders only timely expl
 });
 it("does not turn incomplete balance evidence into an available forecast", async () => {
   const unknown = { ...input, missingInputs: ["balance:checking:boundary evidence unavailable"] };
-  vi.mocked(evaluatePlan).mockResolvedValue({ input: unknown, forecast: forecastDaily(unknown), available: availableToSpend(unknown), liquidity: accountLiquidity(unknown), preferences: {}, preferencesVersion: 0 } as Awaited<ReturnType<typeof evaluatePlan>>);
+  vi.mocked(evaluatePlan).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), input: unknown, forecast: forecastDaily(unknown), available: availableToSpend(unknown), liquidity: accountLiquidity(unknown), preferences: {}, preferencesVersion: 0 } as Awaited<ReturnType<typeof evaluatePlan>>);
   const html = await render({ account: "checking" });
   expect(html).toContain("Forecast unavailable"); expect(html).toContain("boundary evidence unavailable");
   expect(html).not.toContain("Aggregate headroom"); expect(html).not.toContain("Chosen-account headroom");
@@ -78,7 +79,7 @@ it("does not select pooled spending or discard unknown account and invalid fundi
 });
 it("renders account-specific protections and keeps horizon/scenario/account/funding controls", async () => {
   const protectedInput = { ...input, accounts: [{ ...input.accounts[0], minimumMinor: 2000n }, { ...input.accounts[1], reservedMinor: 30000n }] };
-  vi.mocked(evaluatePlan).mockResolvedValue({ input: protectedInput, forecast: forecastDaily(protectedInput), available: availableToSpend(protectedInput), liquidity: accountLiquidity(protectedInput), preferences: {}, preferencesVersion: 0 } as Awaited<ReturnType<typeof evaluatePlan>>);
+  vi.mocked(evaluatePlan).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), input: protectedInput, forecast: forecastDaily(protectedInput), available: availableToSpend(protectedInput), liquidity: accountLiquidity(protectedInput), preferences: {}, preferencesVersion: 0 } as Awaited<ReturnType<typeof evaluatePlan>>);
   const html = await render({ account: "checking", horizon: "3", scenario: "00000000-0000-4000-8000-000000000001" });
   expect(html).toContain("Checking funding shortfall: EUR 420.00");
   expect(html).toContain("Minimum balance: EUR 20.00"); expect(html).toContain("Goal reservations: EUR 300.00");
@@ -89,7 +90,7 @@ it("chosen-account spending respects a separately owned workspace buffer", async
   input.workspaceBufferMinor = 10000n;
   try {
     // Re-evaluate mocked loader after changing the input.
-    vi.mocked(evaluatePlan).mockResolvedValue({ input, forecast: forecastDaily(input), available: availableToSpend(input), liquidity: accountLiquidity(input), preferences: { spending_account_id: null }, preferencesVersion: 0 } as Awaited<ReturnType<typeof evaluatePlan>>);
+    vi.mocked(evaluatePlan).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), input, forecast: forecastDaily(input), available: availableToSpend(input), liquidity: accountLiquidity(input), preferences: { spending_account_id: null }, preferencesVersion: 0 } as Awaited<ReturnType<typeof evaluatePlan>>);
     const html = await render({ account: "savings", horizon: "3" });
     expect(html).toContain("Workspace buffer: EUR 100.00");
     expect(html).toContain("EUR 500.00");

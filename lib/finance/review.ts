@@ -3,10 +3,11 @@ import { resolveBalances, type BalanceTransaction, type BalanceSnapshot } from "
 import { goalContributionProjection } from "./goals";
 import { budgetProgress, type MonthlyLimit } from "./spending-plans";
 import { wealthEvidence, type WealthValue } from "./wealth";
+import { buildSourceCoverage, type SourceCoverage, type loadSourceCoverageMetadata } from "./source-coverage";
 
 type Account = { id: string; name: string; currency_code: string };
 type Transaction = { amount_minor: string; currency_code: string; status: string; kind: string; review_reasons?: string[] };
-export type ReviewTransaction = Transaction & { id: string; parent_transaction_id?: string; posted_on: string; category_id: string | null; merchant_id: string | null; refund_of_id?: string | null; refund_category_id?: string | null };
+export type ReviewTransaction = Transaction & { id: string; account_id?: string; parent_transaction_id?: string; posted_on: string; category_id: string | null; merchant_id: string | null; refund_of_id?: string | null; refund_category_id?: string | null };
 
 export function reviewNetWorth(accountTotals: Record<string, string | null>, wealth: WealthValue[], today: string) {
   const dated = wealthEvidence(wealth, today);
@@ -24,6 +25,7 @@ export function buildPlanningReview(input: {
   allocations: { goal_id: string; amount_minor: string }[];
   budgets: { id: string; category_id: string; currency_code: string; limit_minor: string; enabled: boolean; rollover?: boolean; rollover_from?: string }[];
   budgetHistory?: (MonthlyLimit & { plan_id: string })[];
+  budgetCoverage?: Record<string, SourceCoverage>;
   transactions: ReviewTransaction[];
   categories: { id: string; name: string }[];
 }) {
@@ -32,6 +34,7 @@ export function buildPlanningReview(input: {
       const saved = goal.recorded_saved_minor !== null && goal.saved_as_of !== null && goal.saved_as_of <= input.today ? BigInt(goal.recorded_saved_minor) : null;
       const projection = goalContributionProjection({ targetMinor: BigInt(goal.target_minor), savedMinor: saved, monthlyMinor: BigInt(goal.planned_monthly_minor), startsOn: goal.contribution_starts_on }, input.today);
       return { id: goal.id, name: goal.name, currency: goal.currency_code, targetMinor: goal.target_minor,
+        sourceCoverage: buildSourceCoverage({ from: goal.saved_as_of && goal.saved_as_of <= input.today ? goal.saved_as_of : input.today, to: input.today, currencyCode: goal.currency_code, recordBasis: "manual_goals" }, []),
         recordedSavedMinor: saved?.toString() ?? null, savedAsOf: goal.saved_as_of,
         reservedMinor: input.allocations.filter(allocation => allocation.goal_id === goal.id).reduce((sum, allocation) => sum + BigInt(allocation.amount_minor), 0n).toString(),
         remainingMinor: projection.remainingMinor?.toString() ?? null, plannedMonthlyMinor: goal.planned_monthly_minor,
@@ -41,13 +44,14 @@ export function buildPlanningReview(input: {
     budgets: input.budgets.filter(budget => budget.enabled).map(budget => {
       const rows = input.transactions.map(row => ({ amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code, status: row.status, kind: row.kind, reviewReasons: row.review_reasons, postedOn: row.posted_on, categoryId: row.category_id, ...(row.refund_of_id ? { refundOfCategoryId: row.refund_category_id ?? null } : {}) }));
       const month = input.today.slice(0, 7);
-      const progress = budgetProgress(rows, budget.category_id, budget.currency_code, month, BigInt(budget.limit_minor), budget.rollover ? { startsMonth: budget.rollover_from?.slice(0, 7) ?? null, history: (input.budgetHistory ?? []).filter(item => item.plan_id === budget.id) } : undefined);
+      const progress = budgetProgress(rows, budget.category_id, budget.currency_code, month, BigInt(budget.limit_minor), budget.rollover ? { startsMonth: budget.rollover_from?.slice(0, 7) ?? null, history: (input.budgetHistory ?? []).filter(item => item.plan_id === budget.id) } : undefined, input.budgetCoverage?.[budget.id]);
       return { id: budget.id, category: input.categories.find(category => category.id === budget.category_id)?.name ?? "Unknown", currency: budget.currency_code,
         month, limitMinor: budget.limit_minor, spentMinor: progress.spentMinor.toString(), remainingMinor: progress.remainingMinor?.toString() ?? null, overLimit: progress.overLimit,
         carriedMinor: progress.carriedMinor?.toString() ?? null, allowanceMinor: progress.allowanceMinor?.toString() ?? null,
-        limitation: progress.limitation, partial: progress.partial, link: "/plan/spending" };
+        limitation: progress.limitation, partial: progress.partial, link: "/plan/spending",
+        ...(progress.sourceCoverage ? { sourceCoverage: progress.sourceCoverage, remainderBasis: "accepted_records" } : {}) };
     }),
-    limits: ["Recorded savings are dated manual evidence; reservations are separate virtual earmarks", "Contribution dates assume the stated monthly plan and do not prove affordability", "Monthly budgets count reviewed booked spending and refunds; incomplete imports may understate pressure"],
+    limits: ["Recorded savings are dated manual evidence; reservations are separate virtual earmarks", "Contribution dates assume the stated monthly plan and do not prove affordability", "Monthly budget remainders describe accepted records, not reconciled spendable funds; unresolved sources can change totals in either direction"],
   };
 }
 
@@ -79,15 +83,15 @@ export function buildReviewInvestigation(rows: ReviewTransaction[], period: { fr
 }
 
 export function buildReviewEvidence(accounts: Account[], snapshots: BalanceSnapshot[], transactions: Transaction[], from: string, to: string,
-  balanceEvidence: { asOf: string; ledger: BalanceTransaction[]; timeZone?: string } = { asOf: new Date().toISOString(), ledger: [] }) {
-  const accountEvidence = resolveBalances(accounts, snapshots, balanceEvidence.ledger, balanceEvidence.asOf, balanceEvidence.timeZone).map(account => {
+  balanceEvidence: { asOf: string; ledger: BalanceTransaction[]; timeZone?: string; sourceMetadata?: Awaited<ReturnType<typeof loadSourceCoverageMetadata>> } = { asOf: new Date().toISOString(), ledger: [] }) {
+  const accountEvidence = resolveBalances(accounts, snapshots, balanceEvidence.ledger, balanceEvidence.asOf, balanceEvidence.timeZone, balanceEvidence.sourceMetadata).map(account => {
     const balance = account.balance;
     return { id: account.id, name: account.name, currencyCode: account.currency_code,
       balanceMinor: balance.amount_minor, snapshotBalanceMinor: balance.snapshot_amount_minor,
       snapshotCurrencyCode: balance.snapshot_currency_code,
       estimatedBalanceMinor: balance.estimated_amount_minor, balanceStatus: balance.status,
       balanceWarnings: balance.warnings, evaluatedAt: balance.evaluated_at,
-      asOf: balance.as_of, provenance: balance.provenance };
+      asOf: balance.as_of, provenance: balance.provenance, sourceCoverage: account.sourceCoverage };
   });
   const currencies = [...new Set([...accounts.map(account => account.currency_code), ...transactions.map(transaction => transaction.currency_code)])];
   const cashflow: Record<string, { incomeMinor: string; spendingMinor: string; netMinor: string; excludedReviewRows?: number; partial?: boolean }> = {};
