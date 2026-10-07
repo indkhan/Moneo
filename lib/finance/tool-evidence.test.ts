@@ -1,8 +1,29 @@
 import { expect, it } from "vitest";
 import { toolResultReceipt, providerFinancialAnswer } from "./tool-evidence";
-import { buildPlanningReview, reviewNetWorth } from "./review";
+import { buildPlanningReview, buildReviewEvidence, reviewNetWorth } from "./review";
+import { resolveBalances } from "./balances";
 import { wealthEvidence } from "./wealth";
 const context = { workspaceId: "00000000-0000-4000-8000-000000000001", fetchedAt: "2026-10-01T00:00:00Z", timezone: "UTC" };
+it.each(["manual", "manual reviewed"])("discloses %s provenance when publishing only a derived booked balance", provenance => {
+  const accounts = [{ id: "cash", name: "Cash", currency_code: "EUR" }];
+  const snapshots = [{ account_id: "cash", amount_minor: "500", currency_code: "EUR", as_of: context.fetchedAt, provenance }];
+  const review = buildReviewEvidence(accounts, snapshots, [], "2026-07-04", "2026-10-01", { asOf: context.fetchedAt, ledger: [], timeZone: "UTC" });
+  const direct = resolveBalances(accounts, snapshots, [], context.fetchedAt, "UTC");
+  for (const [name, result, ids] of [
+    ["accounts_getBalances", direct, ["0.balance.amount_minor", "0.balance.snapshot_amount_minor"]],
+    ["reviews_investigate", { ...review, accountBalanceTotals: review.netWorth }, ["accounts.0.balanceMinor", "accounts.0.snapshotBalanceMinor", "netWorth.EUR", "accountBalanceTotals.EUR"]],
+  ] as const) {
+    const receipt = toolResultReceipt(name, {}, result, context, ["accounts"]);
+    for (const id of ids) {
+      const metric = receipt.metrics.find(metric => metric.id === id)!;
+      expect(metric).toMatchObject({ valueMinor: "500", period: { from: "2026-10-01", to: "2026-10-01" }, qualifiers: expect.arrayContaining(["manual_evidence", "dated_snapshot"]) });
+      const answer = providerFinancialAnswer(JSON.stringify({ claims: [{ operation: "metric", operands: [{ receiptId: receipt.id, metricId: id }], valueMinor: metric.valueMinor, currency: metric.currency, periods: [metric.period], qualifiers: metric.qualifiers }], interpretation: [] }), [receipt], context.workspaceId);
+      expect(answer.accepted).toHaveLength(1);
+      expect(answer.body).toContain("Manual evidence");
+      expect(answer.body).toContain("Dated snapshot");
+    }
+  }
+});
 it("requires aggregate net worth to disclose its own currency's included manual valuation", () => {
   const wealth = [{ id: "manual", name: "Asset", amount_minor: "1000", currency_code: "EUR", as_of: "2026-10-01", linked_account_id: null }];
   const result = { netWorth: reviewNetWorth({ EUR: "500", USD: "200" }, wealth, "2026-10-01"), accountBalanceTotals: { EUR: "500" }, planning: { wealth: wealthEvidence(wealth, "2026-10-01") } };
