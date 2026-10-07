@@ -14,7 +14,7 @@ it.skipIf(process.env.RUN_INVESTIGATION_REQUEST_DB_TESTS !== "1")("elects only o
   let created = false, journalWritten = false, contender: Promise<boolean> | undefined;
   let history: {version: string}[] | undefined;
   try {
-    history = await db`select version from supabase_migrations.schema_migrations order by version`;
+    history = await db<{version: string}[]>`select version from supabase_migrations.schema_migrations order by version`;
     writeFileSync(journal, JSON.stringify({schema, marker, job, workspace, purpose: "owned private synthesis race", status: "prepared"}));
     journalWritten = true;
     const specification = resolveReviewRequest({version: 1, question: "Synthetic reservation race", budget: {maxQueries: 1}}, "2026-10-07");
