@@ -1,6 +1,22 @@
 import { expect, it } from "vitest";
 import { toolResultReceipt, providerFinancialAnswer } from "./tool-evidence";
+import { buildPlanningReview } from "./review";
 const context = { workspaceId: "00000000-0000-4000-8000-000000000001", fetchedAt: "2026-10-01T00:00:00Z", timezone: "UTC" };
+it("discloses the real goal remainder's manual savings date and target assumption", () => {
+  const planning = buildPlanningReview({ today: "2026-10-01", goals: [{ id: "goal", name: "Goal", currency_code: "EUR", target_minor: "10000", recorded_saved_minor: "2500", saved_as_of: "2026-01-01", planned_monthly_minor: "0", contribution_starts_on: null, target_date: null, status: "active" }], allocations: [], budgets: [], transactions: [], categories: [] });
+  const receipt = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-07-01", to: "2026-09-30" }, planning }, context, ["planning"]);
+  const remaining = receipt.metrics.find(metric => metric.id.endsWith("remainingMinor"))!;
+  expect(remaining).toMatchObject({ valueMinor: "7500", period: { from: "2026-01-01", to: "2026-01-01" }, qualifiers: expect.arrayContaining(["manual_evidence", "dated_snapshot", "assumption"]) });
+  expect(remaining.calculation).toContain("savedAsOf");
+  const target = receipt.metrics.find(metric => metric.id.endsWith("targetMinor"))!;
+  expect(target.qualifiers).toContain("assumption");
+  expect(target.qualifiers).not.toContain("manual_evidence");
+  expect(target.period).toEqual({ from: "2026-07-01", to: "2026-09-30" });
+  const body = providerFinancialAnswer("Current savings prove your goal", [receipt], context.workspaceId).body;
+  expect(body).toContain("2026-01-01");
+  expect(body).toContain("Dated snapshot");
+  expect(body).not.toContain("Current savings prove");
+});
 it("retains every query input/result and derives only exact typed monetary facts", () => {
   const result = { from: "2026-09-01", to: "2026-09-30", currencyCode: "EUR", spendingMinor: "9007199254740993", sourceCoverage: { financialCompleteness: "unknown" }, evidence: { partial: true, excludedReviewRows: 2 } };
   const receipt = toolResultReceipt("analytics_cashflow", { from: result.from, to: result.to, currencyCode: "EUR" }, result, context, ["transactions"]);

@@ -66,6 +66,8 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
       } else
       if (Object.hasOwn(labels, key) && currency && (child === null || typeof child === "string" && /^-?(?:0|[1-9]\d{0,79})$/.test(child))) {
         const snapshot = key === "snapshot_amount_minor" || key === "snapshotBalanceMinor";
+        const goalRemainder = key === "remainingMinor" && (Object.hasOwn(row, "savedAsOf") || Object.hasOwn(row, "saved_as_of"));
+        const savedEvidence = ["recorded_saved_minor", "recordedSavedMinor"].includes(key) || goalRemainder;
         const snapshotCurrency = row.snapshotCurrencyCode ?? row.snapshot_currency_code;
         const metricCurrency = snapshot ? typeof snapshotCurrency === "string" ? snapshotCurrency : null : currency;
         if (!metricCurrency) continue;
@@ -73,10 +75,11 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
         const component = typeof row.parent_transaction_id === "string" || typeof row.parentId === "string";
         const posting = ["amount_minor", "amountMinor"].includes(key) && ["transactions_search", "finance_detail"].includes(name);
         if (posting && !component) qualification.push("source_posting");
-        if (snapshot || ["recorded_saved_minor", "recordedSavedMinor"].includes(key) || path.includes("wealth")) qualification.push("manual_evidence", "dated_snapshot");
+        if (snapshot || savedEvidence || path.includes("wealth")) qualification.push("manual_evidence", "dated_snapshot");
+        if (goalRemainder) qualification.push("assumption");
         if (key === "reservedMinor") qualification.push("virtual_reservation");
         if (["target_minor", "targetMinor", "limitMinor", "allowanceMinor"].includes(key) || key.startsWith("planned")) qualification.push("assumption");
-        const manualDate = ["recorded_saved_minor", "recordedSavedMinor"].includes(key) ? datedValue(row.savedAsOf ?? row.saved_as_of) : snapshot ? datedValue(row.asOf ?? row.as_of) : null;
+        const manualDate = savedEvidence ? datedValue(row.savedAsOf ?? row.saved_as_of) : snapshot ? datedValue(row.asOf ?? row.as_of) : null;
         const postingId = typeof row.id === "string" ? row.id : null;
         const parentId = component ? (row.parent_transaction_id ?? row.parentId) as string : postingId;
         const retainedRows = object(object(result).calculationEvidence).rows;
@@ -84,7 +87,7 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
         const aggregation = posting && postingId && parentId ? { kind: "signed-original", ids: [postingId], parents: [parentId], canonicalParents: component ? [] : [parentId] }
           : aggregateRows && aggregateRows.every(item => typeof item.id === "string") ? { kind: `${key.replace("Minor", "")}-${object(object(result).reporting).policy ? "base" : "original"}`, ids: aggregateRows.map(item => item.id as string), parents: [...new Set(aggregateRows.map(item => String(item.parent_transaction_id ?? item.id)))], canonicalParents: [] } : undefined;
         metrics.push({ id: [...path, key].join(".") || key, label: key === "amountMinor" && path.includes("forecast") && path.includes("available") ? "Conditional aggregate headroom" : posting && component ? "Effective allocation component" : path.includes("wealth") && ["amountMinor", "amount_minor"].includes(key) ? "Dated manual wealth value" : key === "amount_minor" && path.includes("balance") ? "Booked balance" : labels[key], valueMinor: child as string | null, currency: metricCurrency, period: manualDate ? { from: manualDate, to: manualDate } : period, ...(aggregation ? { aggregation } : {}),
-          qualifiers: [...new Set(qualification)], sourceIds: [sourceId], calculation: `${name}: exact deterministic field ${[...path, key].join(".")}.${datedValue(row.limitingDate) ? ` Limiting date: ${datedValue(row.limitingDate)}.` : ""} Full query inputs, calculation output and supporting record evidence are retained below.` });
+          qualifiers: [...new Set(qualification)], sourceIds: [sourceId], calculation: `${name}: exact deterministic field ${[...path, key].join(".")}.${goalRemainder ? ` Goal target minus dated manual recorded savings (savedAsOf: ${manualDate ?? "unavailable"}); the target is an assumption and this remainder does not verify current savings or affordability.` : ""}${datedValue(row.limitingDate) ? ` Limiting date: ${datedValue(row.limitingDate)}.` : ""} Full query inputs, calculation output and supporting record evidence are retained below.` });
       } else if (key !== "calculationEvidence" && key !== "queryInvestigation" && key !== "investigation") walk(child, [...path, key], { currency: /^[A-Z]{3}$/.test(key) ? key : currency, period, qualifiers });
     }
   }
