@@ -36,16 +36,24 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     const file={name:filename,mimeType:"text/csv",buffer:Buffer.from(csv)};
     await page.goto("/import");
     await expect(page.getByLabel("Financial statement files")).toBeEnabled();
+    // The scoped-out (scopes {}) inspect completes auth/workspace/settings then
+    // scope-denial; its duration varies past the default 5s on cold servers while
+    // "Working…" stays visible. Await the exact POST (as for confirm below and the
+    // theme Save sync) instead of racing it, then assert boundedly.
+    const fallbackInspect=page.waitForResponse(response=>response.url().endsWith("/api/imports/inspect")&&response.request().method()==="POST");
     await page.getByLabel("Financial statement files").setInputFiles(file);
-    await expect(page.getByText("Automatic interpretation unavailable. Choose the columns below.",{exact:true})).toBeVisible();
+    expect((await fallbackInspect).ok()).toBe(true);
+    await expect(page.getByText("Automatic interpretation unavailable. Choose the columns below.",{exact:true})).toBeVisible({timeout:20_000});
     await page.getByLabel("Account name",{exact:true}).fill(accountName);
     await page.getByRole("combobox",{name:"Date",exact:true}).selectOption("date");
     await page.getByRole("combobox",{name:"Description",exact:true}).selectOption("description");
     await page.getByRole("combobox",{name:"Amount",exact:true}).selectOption("amount");
     await page.getByRole("combobox",{name:"External ID",exact:true}).selectOption("id");
     await page.getByRole("combobox",{name:"Source numeric convention"}).selectOption("decimal-dot");
+    const previewInspect=page.waitForResponse(response=>response.url().endsWith("/api/imports/inspect")&&response.request().method()==="POST");
     await page.getByRole("button",{name:"Preview correction",exact:true}).click();
-    await expect(page.getByText("75 rows",{exact:true})).toBeVisible();
+    expect((await previewInspect).ok()).toBe(true);
+    await expect(page.getByText("75 rows",{exact:true})).toBeVisible({timeout:20_000});
     const confirmResponse=page.waitForResponse(response=>response.url().endsWith("/api/imports/confirm")&&response.request().method()==="POST");
     await page.getByRole("button",{name:"Continue",exact:true}).click();
     const response=await confirmResponse;expect(response.ok()).toBe(true);
@@ -80,7 +88,7 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     expect(await db`select id,row_number,original_row from public.source_transactions where import_id=${importId} order by row_number limit ${initial.length}`).toEqual(initial);
     const oldAfterResume=await admin.rpc("ingest_import_row",{p_import_id:importId,p_workspace_id:workspace,p_run_version:stoppedVersion-1,p_account_id:account,p_row:{transactionId:randomUUID()}});
     expect(oldAfterResume.error?.code).toBe("57014");
-    const multipart={file:{name:filename,mimeType:"text/csv",buffer:Buffer.from(csv)},mapping:JSON.stringify({accountName,currencyCode:"EUR",dateColumn:"date",descriptionColumn:"description",amountColumn:"amount",externalIdColumn:"id",dateFormat:"iso",amountSign:"signed"})};
+    const multipart={file:{name:filename,mimeType:"text/csv",buffer:Buffer.from(csv)},mapping:JSON.stringify({accountName,currencyCode:"EUR",dateColumn:"date",descriptionColumn:"description",amountColumn:"amount",externalIdColumn:"id",dateFormat:"iso",amountSign:"signed",numericConvention:"decimal-dot"})};
     const repeated=await context.request.post("/api/imports/confirm",{multipart});
     expect(repeated.ok()).toBe(true);expect((await repeated.json()).importId).toBe(importId);
     expect((await db`select count(*)::int as count from public.imports where workspace_id=${workspace}`)[0].count).toBe(1);
