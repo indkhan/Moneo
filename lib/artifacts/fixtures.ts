@@ -3,6 +3,7 @@ import { SNAPSHOT_LIMITS, evidenceCoverage } from "./coverage";
 import type { ArtifactKind } from "./spec";
 import type { CalculatorInput } from "./validate";
 import { buildSourceCoverage } from "@/lib/finance/source-coverage";
+import { investigate, type InvestigationSpec } from "@/lib/finance/investigation";
 
 function spending(currency = "EUR", amount = "80000", partial = false, from = "2026-09-01", days = 30) {
   const to = `${from.slice(0, 8)}${String(days).padStart(2, "0")}`;
@@ -26,10 +27,15 @@ function balances(status: "current" | "missing" | "stale" | "ambiguous" = "curre
 
 // The quickjs-calculator-v1 contract exposes only requested custom operations.
 // The host can omit any failed operation while retaining other valid evidence.
-export function snapshotFixtures(kind: ArtifactKind, sdk: string[]): CalculatorInput[] {
+export function snapshotFixtures(kind: ArtifactKind, sdk: string[], investigation?: InvestigationSpec): CalculatorInput[] {
+  const investigationFixture = investigation ? investigate({ ...investigation, accounts: undefined, categories: undefined, merchants: undefined }, [{
+    id: "synthetic", parentId: "synthetic", accountId: "synthetic-account", categoryId: null, merchantId: null,
+    date: investigation.period.from, amountMinor: "-9007199254740993", currency: "EUR", status: "posted", kind: "ordinary", tags: [], event: null, reviewReasons: [], version: 1, description: "Synthetic evidence",
+  }], { workspaceId: "fixture", capturedAt: "2026-10-01T00:00:00Z" }) : undefined;
   if (kind.startsWith("custom_")) {
     const operations = [...new Set(sdk)];
     const normal: Record<string, unknown> = { currency: operations.length ? "EUR" : "" };
+    if (investigationFixture) normal.investigation = investigationFixture;
     const sources = Object.fromEntries(operations.map(operation => [operation, buildSourceCoverage({ from: "2026-09-01", to: "2026-09-30",
       ...(operation === "goals" ? { recordBasis: "manual_goals" as const } : operation === "balances" || operation === "forecast" ? { ledgerBasis: "balance_activity" as const } : { currencyCode: "EUR" }) }, [])]));
     for (const operation of operations) normal[operation] = operation === "balances" ? balances() : operation === "goals" ? [goal()] : operation === "forecast" ? { currency: "EUR", sourceCoverage: sources.forecast, baselineAvailableMinor: "150000", evaluatedCostMinor: "90000", withTripAvailableMinor: "60000", unavailable: null, tripDate: "2026-10-03" } : spending();
@@ -42,6 +48,7 @@ export function snapshotFixtures(kind: ArtifactKind, sdk: string[]): CalculatorI
     const fixtures: CalculatorInput[] = [{ snapshot: normal, params: {} }];
     const add = (snapshot: Record<string, unknown>) => fixtures.push({ snapshot, params: {} });
     const empty = structuredClone(normal);
+    if (investigation) empty.investigation = investigate(investigation, [], { workspaceId: "fixture", capturedAt: "2026-10-01T00:00:00Z" });
     for (const op of operations) empty[op] = op === "balances" || op === "goals" ? [] : op === "forecast" ? { currency: "EUR", baselineAvailableMinor: null, unavailable: "No dated balance", tripDate: "2026-10-03" } : { ...spending("EUR", "0"), incomeMinor: "0", netMinor: "0", byAccount: [] };
     if (empty.coverage) empty.coverage = { ...(sdk.includes("balances") ? { balances: evidenceCoverage(0, "balances") } : {}), ...(sdk.includes("goals") ? { goals: evidenceCoverage(0, "goals") } : {}) };
     if (sdk.includes("goals") || sdk.includes("forecast")) empty.unavailable = "Requested evidence unavailable";
@@ -100,7 +107,7 @@ export function snapshotFixtures(kind: ArtifactKind, sdk: string[]): CalculatorI
     { snapshot: { ...spending("EUR", "0"), incomeMinor: "0", netMinor: "0", byAccount: [] }, params: {} },
     { snapshot: { currency: "EUR", unavailable: "Some transactions require currency conversion" }, params: {} },
     { snapshot: spending("USD", "9007199254740993", true), params: {} },
-  ];
+  ].map(fixture => investigationFixture ? { ...fixture, snapshot: { ...fixture.snapshot, investigation: investigationFixture } } : fixture);
   if (kind === "trip_planner") return [
     { snapshot: { currency: "EUR", baselineAvailableMinor: "150000", evaluatedCostMinor: "90000", withTripAvailableMinor: "60000", unavailable: null, tripDate: "2026-10-03" }, params: { costMinor: 90000 } },
     { snapshot: { currency: "EUR", baselineAvailableMinor: "0", evaluatedCostMinor: "0", withTripAvailableMinor: "0", unavailable: null, tripDate: "2026-10-03" }, params: { costMinor: 0 } },
