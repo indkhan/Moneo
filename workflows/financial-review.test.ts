@@ -15,7 +15,7 @@ vi.mock("@/lib/finance/balances", async importOriginal => ({ ...await importOrig
 vi.mock("@/lib/ai/provider", () => ({ modelForSettings: vi.fn(async () => ({})) }));
 vi.mock("ai", async original => ({ ...await original<typeof import("ai")>(), generateText: vi.fn(async () => ({ text: "Evidence review" })) }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ rpc: async (name: string, value: Record<string, unknown>) => { fixture.writes.push({ table: name, value }); return { data: name === "register_financial_review_run" ? true : fixture.finishStatus, error: null }; }, from: (table: string) => {
-  const query = { select: () => query, eq: () => query, in: () => query, gte: () => query, lte: () => query, order: () => query,
+  const query = { select: () => query, eq: () => query, in: () => query, abortSignal: () => query, gte: () => query, lte: () => query, order: () => query,
     single: async () => ({ data: { status: "running", cancel_requested: false, workflow_run_id: "run" }, error: null }),
     maybeSingle: async () => ({ data: table === "background_jobs" ? {id: "job"} : fixture.scheduled ? { cadence: "weekly" } : null, error: null }),
     range: async () => ({ data: [], error: null }),

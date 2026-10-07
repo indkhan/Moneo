@@ -10,7 +10,11 @@ begin
   insert into public.background_jobs(workspace_id,kind) values(workspace,'financial_review') returning id into planning_job;
   perform set_config('request.jwt.claim.sub',actor::text,true);
   execute 'set local role authenticated';
-  if public.cancel_financial_review(canceled_job)<>'canceled' then raise exception 'Review cancellation not immediately effective'; end if;
+  if public.cancel_financial_review(canceled_job)<>'cancel_requested' then raise exception 'Review cancellation request not persisted'; end if;
+  if not exists(select 1 from public.background_jobs where id=canceled_job and status='queued' and stage='cancel_requested' and cancel_requested) then
+    raise exception 'Cancellation request falsely acknowledged active work';
+  end if;
+  if public.cancel_financial_review(canceled_job)<>'cancel_requested' then raise exception 'Cancellation request replay changed acknowledgment'; end if;
   begin
     perform public.finish_financial_review(job,workspace,'Private review','Synthetic body','{}',false);
     raise exception 'Authenticated caller finished privileged review' using errcode='ZX001';

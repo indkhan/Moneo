@@ -8,7 +8,7 @@ export async function GET() {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); }
   catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
-  const result = await context.supabase.from("background_jobs").select("id, status, stage, error, created_at, updated_at")
+  const result = await context.supabase.from("background_jobs").select("id, status, stage, cancel_requested, error, created_at, updated_at")
     .eq("workspace_id", context.workspace.id).eq("kind", "financial_review").order("created_at", { ascending: false }).limit(20);
   return result.error ? Response.json({ error: result.error.message }, { status: 500 }) : Response.json(result.data);
 }

@@ -1,11 +1,12 @@
 do $$
-declare actor uuid:=gen_random_uuid(); workspace uuid; job uuid; canceled_job uuid; failed_job uuid; run text:='wrun_synthetic_'||gen_random_uuid();
+declare actor uuid:=gen_random_uuid(); workspace uuid; job uuid; canceled_job uuid; failed_job uuid; uncertain_job uuid; run text:='wrun_synthetic_'||gen_random_uuid();
 begin
   insert into auth.users(id,email) values(actor,'qa-'||actor||'@example.invalid');
   select id into strict workspace from public.workspaces where owner_id=actor;
   insert into public.background_jobs(workspace_id,kind) values(workspace,'financial_review') returning id into job;
   insert into public.background_jobs(workspace_id,kind) values(workspace,'financial_review') returning id into canceled_job;
   insert into public.background_jobs(workspace_id,kind) values(workspace,'financial_review') returning id into failed_job;
+  insert into public.background_jobs(workspace_id,kind,status,cancel_requested) values(workspace,'financial_review','running',true) returning id into uncertain_job;
   perform set_config('request.jwt.claim.sub',actor::text,true);
   execute 'set local role authenticated';
   begin
@@ -36,8 +37,10 @@ begin
   if public.finish_financial_review(canceled_job,workspace,'Late','Late body','{}',false)<>'canceled' then raise exception 'Canceled review published'; end if;
   if public.fail_financial_review(failed_job,workspace,run||'_failed','gathering_evidence','Exhausted')<>'failed' then raise exception 'Unacknowledged run not finalized'; end if;
   if public.fail_financial_review(failed_job,workspace,run||'_failed','gathering_evidence','Exhausted')<>'failed' then raise exception 'Failure replay failed'; end if;
+  if public.fail_financial_review(uncertain_job,workspace,run||'_uncertain','cancellation_unconfirmed','Runtime ended with a running step')<>'canceled' then raise exception 'Unconfirmed cancellation did not converge'; end if;
   if public.finish_financial_review(failed_job,workspace,'Late','Late body','{}',false)<>'failed' then raise exception 'Failed job published'; end if;
   execute 'reset role';
+  if not exists(select 1 from public.background_jobs where id=uncertain_job and stage='cancellation_unconfirmed' and cancel_requested) then raise exception 'Runtime cancellation falsely acknowledged request termination'; end if;
   if (select count(*) from public.saved_analyses where job_id=job)<>1 or not exists(select 1 from public.saved_analyses where job_id=job and body='Synthetic body') then raise exception 'Saved analysis duplicated or replaced'; end if;
   if exists(select 1 from public.saved_analyses where job_id in(canceled_job,failed_job)) then raise exception 'Terminal job published'; end if;
   if not exists(select 1 from public.background_jobs where id=job and workflow_run_id=run and dispatched_at is not null) then raise exception 'Run receipt missing'; end if;

@@ -23,8 +23,9 @@ export async function loadFinancialReviewEvidence(_db: SupabaseClient, workspace
  if (!response.ok) throw new Error('Synthetic evidence failure');
  return response.json();
 }`);
-write("lib/ai/provider.ts", `import { MockLanguageModelV3 } from 'ai/test'; import { APICallError } from 'ai';
+write("lib/ai/provider.ts", `import { MockLanguageModelV3 } from 'ai/test'; import { APICallError } from 'ai'; import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 export async function modelForSettings(settings: {openrouter_model: string | null}) {
+ if (settings.openrouter_model?.startsWith('stop-test:')) return createOpenRouter({apiKey: 'synthetic', baseURL: 'http://127.0.0.1:3041/provider/' + settings.openrouter_model.slice(10)}).chat('synthetic');
  return new MockLanguageModelV3({doGenerate: async () => {
   const response = await fetch('http://127.0.0.1:3041/provider/' + settings.openrouter_model);
   if (!response.ok) throw new APICallError({message: 'Synthetic provider failure', url: 'http://127.0.0.1:3041/provider', requestBodyValues: {}, statusCode: response.status});
@@ -80,8 +81,13 @@ const server = createServer(async (request, response) => {
     return send(item ?? null);
   }
   if (url.pathname.startsWith("/evidence/") || url.pathname.startsWith("/provider/")) {
-    const item = byWorkspace(url.pathname.split("/").at(-1)), stage = url.pathname.split("/")[1];
+    const item = byWorkspace(url.pathname.split("/")[2]), stage = url.pathname.split("/")[1];
     item.attempts[stage]++;
+    if (stage === "provider" && item.mode === "provider-stop") {
+      response.on("close", () => { item.provider_aborted = true; item.provider_aborted_at = Date.now(); });
+      // Keep the real OpenRouter/AI SDK transport open until application abort.
+      return;
+    }
     if (stage === "provider" && item.mode === "provider-permanent") return send({error: "Synthetic permanent provider failure"}, 401);
     if (item.mode === stage + "-once" && item.attempts[stage] === 1 || item.mode === stage + "-exhausted" || stage === "evidence" && item.mode.startsWith("failure-write")) return send({error: "Synthetic failure"}, 503);
     if (stage === "provider" && item.mode === "slow-provider") await new Promise(resolve => setTimeout(resolve, 500));
@@ -143,7 +149,7 @@ const server = createServer(async (request, response) => {
     const item = byWorkspace(url.searchParams.get("workspace_id")?.slice(3));
     item.settings_attempts = (item.settings_attempts ?? 0) + 1;
     if (item.mode === "import-settings-once" && item.settings_attempts === 1) return send({code: "XX000", message: "Synthetic settings transport failure"}, 503);
-    return send({ai_data_scopes: item.mode === "permanent" ? [] : ["accounts", "transactions"], timezone: "UTC", openrouter_model: item.workspace_id, summary_cadence: item.scheduled ? "weekly" : "none"});
+    return send({ai_data_scopes: item.mode === "permanent" ? [] : ["accounts", "transactions"], timezone: "UTC", openrouter_model: (item.mode === "provider-stop" ? "stop-test:" : "") + item.workspace_id, summary_cadence: item.scheduled ? "weekly" : "none"});
   }
   if (url.pathname === "/rest/v1/workspaces") return send({id: url.searchParams.get("id")?.slice(3), display_currency: "EUR"});
   if (url.pathname === "/rest/v1/imports") return send({ id: byWorkspace(url.searchParams.get("workspace_id")?.slice(3)).import });

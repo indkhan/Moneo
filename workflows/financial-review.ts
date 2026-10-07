@@ -2,7 +2,9 @@
 
 import { APICallError, generateText } from "ai";
 import { createClient } from "@supabase/supabase-js";
+import { setTimeout as delay } from "node:timers/promises";
 import { FatalError, RetryableError, getStepMetadata, getWorkflowMetadata } from "workflow";
+import { getRun } from "workflow/api";
 import { modelForSettings } from "@/lib/ai/provider";
 import { loadWorkspaceSettings, requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
@@ -30,12 +32,16 @@ function retryFailure(error: unknown): never {
 async function enterStage(db: ReturnType<typeof service>, jobId: string, workspaceId: string, runId: string, stage: string) {
   const job = await db.from("background_jobs").select("status, cancel_requested, workflow_run_id").eq("id", jobId).eq("workspace_id", workspaceId).single();
   if (job.error) throw job.error;
-  if (["completed", "canceled", "failed"].includes(job.data.status) || job.data.workflow_run_id !== runId) return false;
+  if (["completed", "canceled", "failed"].includes(job.data.status) || job.data.workflow_run_id !== runId && !(job.data.workflow_run_id === null && job.data.cancel_requested)) return false;
   const value = job.data.cancel_requested ? { status: "canceled", stage: "canceled" } : { status: "running", stage };
-  const changed = await db.from("background_jobs").update({ ...value, error: null, updated_at: new Date().toISOString() })
-    .eq("id", jobId).eq("workspace_id", workspaceId).eq("workflow_run_id", runId).in("status", ["queued", "running"])
-    .eq("cancel_requested", job.data.cancel_requested).select("id").maybeSingle();
+  const update = db.from("background_jobs").update({ ...value, error: null, updated_at: new Date().toISOString() })
+    .eq("id", jobId).eq("workspace_id", workspaceId).in("status", ["queued", "running"])
+    .eq("cancel_requested", job.data.cancel_requested);
+  const changed = await (job.data.workflow_run_id === null ? update.is("workflow_run_id", null) : update.eq("workflow_run_id", runId)).select("id").maybeSingle();
   if (changed.error) throw changed.error;
+  // The current step has no active provider work at these stage boundaries.
+  // Persist its acknowledgment before fencing future runtime steps.
+  if (changed.data && job.data.cancel_requested) await getRun(runId).cancel();
   return Boolean(changed.data) && !job.data.cancel_requested;
 }
 
@@ -45,6 +51,7 @@ async function registerRun(jobId: string, workspaceId: string, runId: string) {
     const receipt = await service().rpc("register_financial_review_run", { p_job_id: jobId, p_workspace_id: workspaceId, p_run_id: runId });
     if (receipt.error) throw receipt.error;
     if (typeof receipt.data !== "boolean") throw new FatalError("Invalid financial review run receipt");
+    if (!receipt.data) await enterStage(service(), jobId, workspaceId, runId, "starting");
     return receipt.data;
   } catch (error) { retryFailure(error); }
 }
@@ -107,19 +114,49 @@ async function gatherEvidence(jobId: string, workspaceId: string, scheduled: boo
 
 async function writeReview(jobId: string, workspaceId: string, evidence: Awaited<ReturnType<typeof loadFinancialReviewEvidence>>, scheduled: boolean, runId: string) {
   "use step";
+  const stopped = new AbortController();
+  const finished = new AbortController();
+  let monitoring: Promise<void> | undefined;
+  let monitoringError: unknown;
   try {
     const db = service();
     if (!await enterStage(db, jobId, workspaceId, runId, "writing_review")) return null;
     const settings = await loadWorkspaceSettings(db, workspaceId);
     if (!await summaryStillEnabled(db, jobId, workspaceId, settings, scheduled)) return null;
     reviewScopes(settings, !("unavailable" in evidence.planning), evidence.sourceCoverage?.importStatuses != null);
-    const result = await generateText({ model: await modelForSettings(settings, { effort: "minimal", exclude: true }), maxOutputTokens: 4000, maxRetries: 0, abortSignal: AbortSignal.timeout(90_000),
+    const model = await modelForSettings(settings, { effort: "minimal", exclude: true });
+    // Recheck after asynchronous preparation, before submitting financial context.
+    if (!await enterStage(db, jobId, workspaceId, runId, "writing_review")) return null;
+    monitoring = (async () => {
+      while (!finished.signal.aborted) {
+        await delay(500, undefined, { signal: finished.signal });
+        const job = await db.from("background_jobs").select("status, cancel_requested, workflow_run_id")
+          .eq("id", jobId).eq("workspace_id", workspaceId).abortSignal(AbortSignal.any([finished.signal, AbortSignal.timeout(2000)])).single();
+        if (finished.signal.aborted) return;
+        if (job.error) throw job.error;
+        if (job.data.cancel_requested || job.data.workflow_run_id !== runId || !["queued", "running"].includes(job.data.status)) {
+          stopped.abort(new Error("Financial review stopped"));
+          return;
+        }
+      }
+    })().catch(error => {
+      if (!finished.signal.aborted) { monitoringError = error; stopped.abort(error); }
+    });
+    const result = await generateText({ model, maxOutputTokens: 4000, maxRetries: 0, abortSignal: AbortSignal.any([stopped.signal, AbortSignal.timeout(90_000)]),
       system: "Write a personal-finance review using only supplied dated evidence. Cover period cashflow, category and merchant changes, budget pressure, confirmed obligations, goals, wealth/debt and forecast when available. Cite exact currency, period and supplied internal source links for numerical claims. Distinguish recorded savings from virtual reservations, booked balances from available funds, historical valuations from current net worth, and assumptions from forecasts. Call unavailable and partial evidence out explicitly. Group changes show evidence, not causes; never invent explanations or financial data. Offer conditional, reviewable next steps rather than certainty.",
       prompt: JSON.stringify(evidence) });
+    if (monitoringError) throw monitoringError;
+    if (!await enterStage(db, jobId, workspaceId, runId, "writing_review")) return null;
     if (!result.text.trim()) throw new Error("AI returned an empty review");
     return result.text.trim() + (result.finishReason === "length" ? "\n\nIncomplete review: the provider reached its output limit. The saved evidence remains available; further findings may be missing." : "");
   } catch (error) {
+    // Awaiting generateText above ensures its application transport has settled
+    // before a cancellation can become acknowledged in the application row.
+    if (stopped.signal.aborted && !monitoringError && !await enterStage(service(), jobId, workspaceId, runId, "writing_review")) return null;
     retryFailure(error);
+  } finally {
+    finished.abort();
+    await monitoring;
   }
 }
 

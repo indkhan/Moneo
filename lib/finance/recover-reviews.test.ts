@@ -3,9 +3,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { start } from "workflow/api";
 import { dispatchFinancialReview, recoverFinancialReviews } from "./start-review";
 
-const state = vi.hoisted(() => ({ job: { id: "job", workspace_id: "workspace", status: "queued", workflow_run_id: null as string | null, created_at: new Date().toISOString(), dispatched_at: new Date().toISOString() as string | null, updated_at: "2026-01-01T00:00:00Z", cancel_requested: false }, runtime: "running", exists: true, scheduled: false, unavailable: false, cancelFails: false, cancelAcknowledged: true }));
+const state = vi.hoisted(() => ({ job: { id: "job", workspace_id: "workspace", status: "queued", stage: "queued", workflow_run_id: null as string | null, created_at: new Date().toISOString(), dispatched_at: new Date().toISOString() as string | null, updated_at: "2026-01-01T00:00:00Z", cancel_requested: false }, runtime: "running", exists: true, scheduled: false, unavailable: false, cancelFails: false, cancelAcknowledged: true, activeStep: false, canceledAt: new Date() }));
+vi.mock("workflow/runtime", () => ({ getWorld: () => ({ steps: { list: async () => ({ data: state.activeStep ? [{ status: "running" }] : [], hasMore: false }) } }) }));
 const cancel = vi.hoisted(() => vi.fn());
-vi.mock("workflow/api", () => ({ start: vi.fn(async () => ({ runId: "run" })), getRun: () => ({ cancel, get exists() { return state.unavailable ? Promise.reject(new Error("runtime unavailable")) : Promise.resolve(state.exists); }, get status() { return Promise.resolve(state.runtime); } }) }));
+vi.mock("workflow/api", () => ({ start: vi.fn(async () => ({ runId: "run" })), getRun: () => ({ cancel, get exists() { return state.unavailable ? Promise.reject(new Error("runtime unavailable")) : Promise.resolve(state.exists); }, get status() { return Promise.resolve(state.runtime); }, get completedAt() { return Promise.resolve(state.canceledAt); } }) }));
 vi.mock("@/workflows/financial-review", () => ({ financialReview: vi.fn() }));
 const rpc = vi.fn();
 const updates: Record<string, unknown>[] = [];
@@ -21,12 +22,15 @@ function from(table: string) {
 const db = { from, rpc } as unknown as SupabaseClient;
 beforeEach(() => {
   vi.clearAllMocks(); updates.length = 0;
-  Object.assign(state, { runtime: "running", exists: true, scheduled: false, unavailable: false, cancelFails: false, cancelAcknowledged: true });
-  Object.assign(state.job, { status: "queued", workflow_run_id: null, created_at: new Date().toISOString(), dispatched_at: new Date().toISOString(), updated_at: "2026-01-01T00:00:00Z", cancel_requested: false });
+  Object.assign(state, { runtime: "running", exists: true, scheduled: false, unavailable: false, cancelFails: false, cancelAcknowledged: true, activeStep: false, canceledAt: new Date() });
+  Object.assign(state.job, { status: "queued", stage: "queued", workflow_run_id: null, created_at: new Date().toISOString(), dispatched_at: new Date().toISOString(), updated_at: "2026-01-01T00:00:00Z", cancel_requested: false });
   cancel.mockImplementation(async () => { if (state.cancelFails) throw new Error("cancel unavailable"); if (state.cancelAcknowledged) state.runtime = "cancelled"; });
   rpc.mockImplementation(async (name: string, args: Record<string, unknown>) => {
     if (name === "register_financial_review_run") { state.job.workflow_run_id ??= args.p_run_id as string; return { data: true, error: null }; }
-    if (!["completed", "canceled", "failed"].includes(state.job.status)) state.job.status = state.job.cancel_requested ? "canceled" : "failed";
+    if (!["completed", "canceled", "failed"].includes(state.job.status)) {
+      state.job.status = state.job.cancel_requested ? "canceled" : "failed";
+      state.job.stage = state.job.cancel_requested && args.p_stage !== "cancellation_unconfirmed" ? "canceled" : args.p_stage as string;
+    }
     return { data: state.job.status, error: null };
   });
 });
@@ -83,7 +87,7 @@ it("preserves publication that wins the runtime cancellation race", async () => 
 it("acknowledges cancellation of an orphan without creating provider work", async () => {
   state.job.cancel_requested = true;
   await recoverFinancialReviews(db);
-  expect(state.job.status).toBe("canceled"); expect(start).not.toHaveBeenCalled();
+  expect(state.job.status).toBe("canceled"); expect(state.job.stage).toBe("canceled"); expect(start).not.toHaveBeenCalled();
 });
 it("fails an unacknowledged claim past its business deadline without inventing a runtime identity", async () => {
   state.job.created_at = "2026-01-01T00:00:00Z";
@@ -122,4 +126,25 @@ it("rotates 25 broken runtime candidates so the next scan reaches a healthy orph
   expect(await recoverFinancialReviews(boundary)).toMatchObject({ scanned: 25, errors: 25, remaining: 1 });
   expect(await recoverFinancialReviews(boundary)).toMatchObject({ recovered: 1, errors: 24 });
   expect(jobs[25].workflow_run_id).toBe("run"); expect(start).toHaveBeenCalledTimes(1);
+});
+
+it("does not acknowledge runtime cancellation while its active provider step is still settling", async () => {
+  state.job.workflow_run_id = "run"; state.job.status = "running"; state.job.cancel_requested = true;
+  state.runtime = "cancelled";
+  state.activeStep = true;
+  await recoverFinancialReviews(db);
+  expect(state.job.status).toBe("running"); expect(rpc).not.toHaveBeenCalled();
+});
+
+
+it("reconciles a canceled runtime after its provider step has settled", async () => {
+  state.job.workflow_run_id = "run"; state.job.status = "running"; state.job.cancel_requested = true; state.runtime = "cancelled";
+  await recoverFinancialReviews(db);
+  expect(state.job.status).toBe("canceled");
+});
+it("converges a crashed canceled runtime without claiming request termination", async () => {
+  state.job.workflow_run_id = "run"; state.job.status = "running"; state.job.cancel_requested = true;
+  state.runtime = "cancelled"; state.activeStep = true; state.canceledAt = new Date(Date.now() - 120_001);
+  await recoverFinancialReviews(db);
+  expect(state.job.status).toBe("canceled"); expect(state.job.stage).toBe("cancellation_unconfirmed"); expect(start).not.toHaveBeenCalled();
 });

@@ -42,7 +42,7 @@ export async function reviewRuntimeRaces(db, schema) {
     assert.equal(await waiter, expected);
   }
   await race(async tx => { assert.equal(await register(tx, election, "wrun_synthetic_winner"), true); }, tx => register(tx, election, "wrun_synthetic_loser"), false);
-  await race(async tx => { assert.equal(await cancel(tx, cancelFirst), "canceled"); }, tx => finish(tx, cancelFirst), "canceled");
+  await race(async tx => { assert.equal(await cancel(tx, cancelFirst), "cancel_requested"); }, tx => finish(tx, cancelFirst), "canceled");
   await race(async tx => { assert.equal(await finish(tx, finishFirst), "completed"); }, tx => cancel(tx, finishFirst), "completed");
   await race(async tx => { assert.equal(await expireOrphan(tx, deadlineFirst), 1); }, tx => register(tx, deadlineFirst, "wrun_synthetic_expired"), false);
   assert.equal(await finish(db, deadlineFirst), "failed", "Expired unacknowledged delivery cannot publish late");
