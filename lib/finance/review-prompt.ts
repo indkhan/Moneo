@@ -11,7 +11,7 @@ export function buildReviewPrompt(request: ReviewRequest, receipts: EvidenceRece
   }));
   const context = {question: request.question, focus: request.focus, query: request.query, output: request.output,
     limitations: [...limitations, "Synthesis input is bounded; complete calculation inputs, omitted measures and supporting records remain in retained receipts. Unseen findings must not be inferred."],
-    evidenceReceipts: [] as {id: string; fetchedAt: string; metrics: Omit<EvidenceReceipt["metrics"][number], "sourceIds" | "calculation">[]}[]};
+    evidenceReceipts: [] as {id: string; fetchedAt: string; metrics: Omit<EvidenceReceipt["metrics"][number], "sourceIds" | "calculation" | "aggregation">[]}[]};
   const fits = () => Buffer.byteLength(system, "utf8") + Buffer.byteLength(JSON.stringify(context), "utf8") <= MAX_INPUT_BYTES;
   if (!fits()) return null;
   const total = queries.reduce((count, receipt) => count + receipt.metrics.length, 0);
@@ -23,8 +23,8 @@ export function buildReviewPrompt(request: ReviewRequest, receipts: EvidenceRece
       if (!metric) continue;
       let target = context.evidenceReceipts.find(item => item.id === receipt.id);
       if (!target) {target = {id: receipt.id, fetchedAt: receipt.fetchedAt, metrics: []}; context.evidenceReceipts.push(target);}
-      const {sourceIds, calculation, ...measure} = metric;
-      void sourceIds; void calculation;
+      const {sourceIds, calculation, aggregation, ...measure} = metric;
+      void sourceIds; void calculation; void aggregation;
       target.metrics.push(measure);
       if (fits()) included++;
       else {

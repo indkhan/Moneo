@@ -37,3 +37,10 @@ it("prioritizes the controller's material findings and emits each retained query
   expect(context.evidenceReceipts[0].metrics[0].id).toBe("199");
   expect(new Set(context.evidenceReceipts[0].metrics.map((metric: {id: string}) => metric.id)).size).toBe(context.evidenceReceipts[0].metrics.length);
 });
+it("keeps large contribution identities in the validator receipt rather than consuming model input", () => {
+  const aggregate = {...receipt, metrics: [{...receipt.metrics[0], aggregation: {kind: "spending", ids: Array.from({length: 2000}, (_, index) => `${index}`.padEnd(90, "x")), parents: [], canonicalParents: []}}]};
+  const result = buildReviewPrompt(request, [aggregate], [], "strict");
+  expect(result?.includedMetrics).toBe(1);
+  expect(JSON.parse(result!.prompt).evidenceReceipts[0].metrics[0]).not.toHaveProperty("aggregation");
+  expect(aggregate.metrics[0].aggregation.ids).toHaveLength(2000);
+});
