@@ -3,9 +3,11 @@ import { setManualBalance, undoManualBalance } from "./actions";
 import { balanceReviewRows, type BalanceAccount, type BalanceSnapshot, type BalanceTransaction } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
+import { buildSourceCoverage, type SourceCoverage } from "@/lib/finance/source-coverage";
+import { SourceCoverageDetails } from "./source-coverage";
 
 export function ManualBalanceForm({ account, snapshots, ledger, asOf, timeZone, locale }: {
-  account: BalanceAccount; snapshots: BalanceSnapshot[]; ledger: BalanceTransaction[]; asOf: string; timeZone: string; locale: string;
+  account: BalanceAccount & { sourceCoverage?: SourceCoverage }; snapshots: BalanceSnapshot[]; ledger: BalanceTransaction[]; asOf: string; timeZone: string; locale: string;
 }) {
   const history = snapshots.filter(row => row.account_id === account.id).sort((a, b) =>
     Date.parse(b.created_at ?? b.as_of) - Date.parse(a.created_at ?? a.as_of) ||
@@ -15,6 +17,7 @@ export function ManualBalanceForm({ account, snapshots, ledger, asOf, timeZone, 
   const descriptions = new Map(ledger.map(row => [row.id, row.description]));
   const today = calendarDate(asOf, timeZone);
   return <>
+    <SourceCoverageDetails coverage={account.sourceCoverage ?? buildSourceCoverage({ from: "0001-01-01", to: today, accountId: account.id, currencyCode: account.currency_code, ledgerBasis: "balance_activity" }, ledger.map(row => ({ ...row, kind: row.kind ?? "ordinary" })))} />
     <form action={setManualBalance} className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4 text-xs">
       <input type="hidden" name="accountId" value={account.id} />
       <input type="hidden" name="requestId" value={randomUUID()} />

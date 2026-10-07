@@ -1,5 +1,6 @@
 import { minorDigits } from "./fx";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { buildSourceCoverage, type SourceCoverage } from "./source-coverage";
 
 export function decimalRatio(value: string) {
   const match = /^(\d{1,24})(?:\.(\d{1,18}))?$/.exec(value.trim());
@@ -64,12 +65,14 @@ export function wealthEvidence(rows: WealthValue[], today: string) {
     minorDigits(row.currency_code);
     included.push({ id: row.id, name: row.name, amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code, asOf: row.as_of, provenance: "manual valuation" });
   }
-  return { included, excludedLinked, missingInputs };
+  return { included, excludedLinked, missingInputs,
+    sourceCoverage: buildSourceCoverage({ from: today, to: today, recordBasis: "manual_wealth" }, []),
+    manualRecords: { accepted: rows.length, included: included.length, excludedLinked: excludedLinked.length, excludedDated: rows.length - included.length - excludedLinked.length } };
 }
 
 export type WealthItem = WealthValue & { kind: "holding" | "asset" | "debt"; quantity_text: string | null; unit_price_text: string | null; cost_basis_minor: string | null;
   payment_account_id: string | null; annual_rate_text: string | null; monthly_payment_minor: string | null; next_payment_on: string | null;
-  payment_assumption_id: string | null; payment_transaction_id: string | null; version: number; removed_at: string | null };
+  payment_assumption_id: string | null; payment_transaction_id: string | null; version: number; removed_at: string | null; sourceCoverage?: SourceCoverage };
 
 export async function loadWealthItems(client: SupabaseClient, workspaceId: string, includeRemoved = false): Promise<WealthItem[]> {
   const rows: WealthItem[] = [];
@@ -80,7 +83,8 @@ export async function loadWealthItems(client: SupabaseClient, workspaceId: strin
     const result = await query.range(offset, offset + 499);
     if (result.error) throw result.error;
     rows.push(...result.data as WealthItem[]);
-    if (!result.data || result.data.length < 500) return rows;
+    if (!result.data || result.data.length < 500) return rows.map(row => ({ ...row,
+      sourceCoverage: buildSourceCoverage({ from: row.as_of, to: row.as_of, currencyCode: row.currency_code, recordBasis: "manual_wealth" }, []) }));
   }
 }
 

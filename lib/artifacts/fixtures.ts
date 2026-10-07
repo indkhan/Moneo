@@ -2,9 +2,11 @@ import { resolveBalances } from "@/lib/finance/balances";
 import { SNAPSHOT_LIMITS, evidenceCoverage } from "./coverage";
 import type { ArtifactKind } from "./spec";
 import type { CalculatorInput } from "./validate";
+import { buildSourceCoverage } from "@/lib/finance/source-coverage";
 
 function spending(currency = "EUR", amount = "80000", partial = false, from = "2026-09-01", days = 30) {
-  return { currency, from, to: `${from.slice(0, 8)}${String(days).padStart(2, "0")}`, spendingMinor: amount, incomeMinor: "120000", netMinor: (120000n - BigInt(amount)).toString(),
+  const to = `${from.slice(0, 8)}${String(days).padStart(2, "0")}`;
+  return { currency, from, to, sourceCoverage: buildSourceCoverage({ from, to, currencyCode: currency }, []), spendingMinor: amount, incomeMinor: "120000", netMinor: (120000n - BigInt(amount)).toString(),
     daily: Array.from({ length: days }, (_, index) => ({ date: `${from.slice(0, 8)}${String(index + 1).padStart(2, "0")}`, spendingMinor: index ? "0" : amount })),
     partial, excludedReviewRows: partial ? 2 : 0,
     byAccount: [{ id: "a", incomeMinor: "120000", spendingMinor: amount, netMinor: (120000n - BigInt(amount)).toString(), partial, excludedReviewRows: partial ? 2 : 0 }] };
@@ -28,7 +30,11 @@ export function snapshotFixtures(kind: ArtifactKind, sdk: string[]): CalculatorI
   if (kind.startsWith("custom_")) {
     const operations = [...new Set(sdk)];
     const normal: Record<string, unknown> = { currency: operations.length ? "EUR" : "" };
-    for (const operation of operations) normal[operation] = operation === "balances" ? balances() : operation === "goals" ? [goal()] : operation === "forecast" ? { currency: "EUR", baselineAvailableMinor: "150000", evaluatedCostMinor: "90000", withTripAvailableMinor: "60000", unavailable: null, tripDate: "2026-10-03" } : spending();
+    const sources = Object.fromEntries(operations.map(operation => [operation, buildSourceCoverage({ from: "2026-09-01", to: "2026-09-30",
+      ...(operation === "goals" ? { recordBasis: "manual_goals" as const } : operation === "balances" || operation === "forecast" ? { ledgerBasis: "balance_activity" as const } : { currencyCode: "EUR" }) }, [])]));
+    for (const operation of operations) normal[operation] = operation === "balances" ? balances() : operation === "goals" ? [goal()] : operation === "forecast" ? { currency: "EUR", sourceCoverage: sources.forecast, baselineAvailableMinor: "150000", evaluatedCostMinor: "90000", withTripAvailableMinor: "60000", unavailable: null, tripDate: "2026-10-03" } : spending();
+    if (operations.length) normal.sourceCoverageByOperation = sources;
+    if (sdk.includes("spending") || sdk.includes("cashflow")) normal.sourceCoverage = sources.spending ?? sources.cashflow;
     if (sdk.includes("balances") || sdk.includes("goals")) normal.coverage = {
       ...(sdk.includes("balances") ? { balances: evidenceCoverage(1, "balances") } : {}),
       ...(sdk.includes("goals") ? { goals: evidenceCoverage(1, "goals") } : {}),

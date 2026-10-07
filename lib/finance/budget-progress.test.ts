@@ -1,8 +1,23 @@
 import { expect, it } from "vitest";
 import { budgetProgress, type SpendingPlanTransaction } from "./spending-plans";
 import { buildPlanningReview } from "./review";
+import { buildSourceCoverage } from "./source-coverage";
 const known: SpendingPlanTransaction = { amountMinor: -1000n, currencyCode: "EUR", status: "posted", kind: "ordinary", categoryId: "food", postedOn: "2026-10-01" };
 const unknown = { ...known, amountMinor: -20000n, reviewReasons: ["source_type"] };
+
+it("keeps accepted spending exact and gates a remainder for unresolved source overlap, including undo", () => {
+  const scope = { from: "2026-10-01", to: "2026-10-31", currencyCode: "EUR" };
+  for (const status of ["review", "matched", "review"]) {
+    const sourceCoverage = buildSourceCoverage(scope, [], [{ id: "i", status: "completed", total_rows: 1 }],
+      [{ import_id: "i", status, posted_on: "2026-10-01", currency_code: "EUR", account_id: "a" }]);
+    expect(budgetProgress([known], "food", "EUR", "2026-10", 10000n, undefined, sourceCoverage)).toMatchObject({
+      spentMinor: 1000n, remainingMinor: status === "matched" ? 9000n : null, overLimit: status === "matched" ? false : null });
+    expect(buildPlanningReview({ today: "2026-10-07", goals: [], allocations: [], categories: [],
+      budgets: [{ id: "b", category_id: "food", currency_code: "EUR", limit_minor: "10000", enabled: true }],
+      budgetCoverage: { b: sourceCoverage }, transactions: [{ id: "t", amount_minor: "-1000", currency_code: "EUR", status: "posted", kind: "ordinary", posted_on: "2026-10-01", category_id: "food", merchant_id: null }] }).budgets[0]).toMatchObject({
+      sourceCoverage, remainingMinor: status === "matched" ? "9000" : null, remainderBasis: "accepted_records" });
+  }
+});
 function progress(rows: SpendingPlanTransaction[], rollover = false) {
   return budgetProgress(rows, "food", "EUR", "2026-10", 10000n, rollover ? { startsMonth: "2026-09", history: [{ effective_month: "2026-09-01", limit_minor: "10000", enabled: true, version: 1 }] } : undefined);
 }

@@ -61,11 +61,13 @@ export async function POST(request: Request) {
   const canStartReview = canInvestigate && isExplicitReviewRequest(message);
   const canCreateArtifact = /(?:^|[.!?]\s+)(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:create|build|make)\b[^.!?]*\b(?:chart|artifact|tool|dashboard|tracker|planner)\b/i.test(message);
   // These checks govern new tool results, not evidence already sent to the provider.
-  async function aiEvidence<T>(scopes: AiDataScope[], read: (latest: typeof context) => Promise<T>, includePlanning = false): Promise<T> {
+  async function aiEvidence<T>(scopes: AiDataScope[], read: (latest: typeof context) => Promise<T>, includePlanning = false, includeImports = false): Promise<T> {
     const latest = await requireWorkspace();
     if (latest.workspace.id !== workspace.id) throw new Error("Workspace changed");
     requireAiScope(latest.settings, ...scopes);
-    const usedScopes = includePlanning && latest.settings.ai_data_scopes.includes("planning") ? [...scopes, "planning" as const] : scopes;
+    const usedScopes = [...scopes,
+      ...(includePlanning && latest.settings.ai_data_scopes.includes("planning") ? ["planning" as const] : []),
+      ...(includeImports && latest.settings.ai_data_scopes.includes("imports") ? ["imports" as const] : [])];
     const result = await read(latest);
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
@@ -109,18 +111,18 @@ export async function POST(request: Request) {
         ...(settings.ai_data_scopes.includes("transactions") ? { transactions_previewCategory: tool({ description: "Read-only impact preview for exact selected transaction UUIDs and an existing category UUID. Returns a link where the user reviews current entries and explicitly confirms an audited bulk change. Never changes any transaction.", inputSchema: categoryPreviewSchema, execute: ({ transactionIds, categoryId }) => aiEvidence(["transactions"], latest =>
           loadCategoryPreview(latest.supabase, workspace.id, transactionIds, categoryId)) }) } : {}),
         ...(canInvestigate ? { reviews_investigate: tool({ description: "Investigate dated exact spending changes, account evidence, classification limitations and permitted planning evidence, with source links. Read-only.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], latest =>
-          loadFinancialReviewEvidence(latest.supabase, latest.workspace, latest.settings), true) }) } : {}),
+          loadFinancialReviewEvidence(latest.supabase, latest.workspace, latest.settings), true, true) }) } : {}),
         ...(canStartReview ? { reviews_start: tool({ description: "Start the deep financial review explicitly requested in this exact user message. Creates one durable, cancelable job; repeated calls reuse it. No financial data changes.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], async latest => {
           if (request.signal.aborted) throw new Error("Request canceled");
           if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) throw new Error("Financial review service is not configured");
           return { ...await startFinancialReview(latest.supabase, workspace.id, requestId, requestId), href: "/ai" };
         }) }) } : {}),
         ...(settings.ai_data_scopes.includes("accounts") ? { accounts_list: tool({ description: "List the user's accounts", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => listAccounts(latest)) }),
-        accounts_getBalances: tool({ description: "Get dated balances and provenance", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => getBalances(latest)) }) } : {}),
-        ...(settings.ai_data_scopes.includes("transactions") ? { analytics_cashflow: tool({ description: "Exact posted income and spending for a period", inputSchema: z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().length(3) }), execute: input => aiEvidence(["transactions"], latest => cashflow(input, latest)) }),
+        accounts_getBalances: tool({ description: "Get dated balances, provenance and source coverage", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => getBalances(latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }) } : {}),
+        ...(settings.ai_data_scopes.includes("transactions") ? { analytics_cashflow: tool({ description: "Exact included posted income/spending with source coverage; unknown completeness never establishes bounds", inputSchema: z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().length(3) }), execute: input => aiEvidence(["transactions"], latest => cashflow(input, latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }),
         transactions_search: tool({ description: "Search up to 20 transactions", inputSchema: z.object({ query: z.string().min(1).max(100) }), execute: input => aiEvidence(["transactions"], latest => searchTransactions(input, latest)) }) } : {}),
         ...(settings.ai_data_scopes.includes("planning") ? { goals_list: tool({ description: "List the user's goals", inputSchema: z.object({}), execute: () => aiEvidence(["planning"], latest => listGoals(latest)) }) } : {}),
-        ...(settings.ai_data_scopes.includes("planning") && settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions") ? { forecast_evaluate: tool({ description: "Deterministic account headroom and dated funding shortfalls. Choose accountId for available to spend; aggregate cash requires explicit funding. Cases are assumptions, not probabilities", inputSchema: forecastInput, execute: input => aiEvidence(["accounts", "transactions", "planning"], latest => evaluateForecast(input, latest)) }) } : {}),
+        ...(settings.ai_data_scopes.includes("planning") && settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions") ? { forecast_evaluate: tool({ description: "Deterministic account headroom and dated funding shortfalls with source coverage. Choose accountId for available to spend; aggregate cash requires explicit funding. Cases are assumptions, not probabilities", inputSchema: forecastInput, execute: input => aiEvidence(["accounts", "transactions", "planning"], latest => evaluateForecast(input, latest), false, true) }) } : {}),
         ...(canChangeCategory ? {
           transactions_setCategory: tool({
             description: "Change only the category of a specific transaction, only when the current user explicitly asked for this change. Search first if its ID is unknown. The correction is audited and can be undone from the returned transaction link.",

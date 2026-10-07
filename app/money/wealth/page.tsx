@@ -6,6 +6,7 @@ import { debtPayments, loadWealthItems, wealthEvidence, type WealthItem } from "
 import { formatMoney as formatCurrency } from "@/lib/finance/format";
 import { WealthForm } from "./form";
 import { removeWealthItem, undoWealthEvent } from "./actions";
+import { SourceCoverageDetails } from "@/app/source-coverage";
 
 export default async function WealthPage() {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -32,6 +33,7 @@ export default async function WealthPage() {
     <section aria-label="Wealth records" className="space-y-4">{active.map(item => {
       const payments = (() => { try { return item.kind === "debt" && item.next_payment_on && BigInt(item.monthly_payment_minor ?? "0") > 0n ? debtPayments({ principalMinor: BigInt(item.amount_minor), annualRate: item.annual_rate_text!, monthlyPaymentMinor: BigInt(item.monthly_payment_minor!), nextPaymentOn: item.next_payment_on }, today, 365) : []; } catch { return null; } })();
       return <article key={item.id} className="rounded border p-4"><h2 className="font-semibold">{item.name}</h2><p>{formatMoney(item.amount_minor, item.currency_code)} · {item.kind} · as of {item.as_of}</p><p className="mt-1 text-xs text-muted-foreground">{item.linked_account_id ? "Already included in linked account balance; excluded from additional net worth." : item.as_of === today ? "Standalone current manual valuation." : "Historical manual valuation; current net worth excludes it."}</p>
+        {item.sourceCoverage && <SourceCoverageDetails coverage={item.sourceCoverage} />}
         {item.kind === "holding" && <p className="mt-2 text-sm">{item.quantity_text} units at {item.currency_code} {item.unit_price_text} each.</p>}
         {item.cost_basis_minor !== null && <p className="mt-1 text-sm">Cost basis {formatMoney(item.cost_basis_minor, item.currency_code)}; valuation gain/loss {formatMoney(BigInt(item.amount_minor) - BigInt(item.cost_basis_minor), item.currency_code)}. This is unrealized value change, without guessed cash dividends or trading history.</p>}
         {item.kind === "debt" && <><p className="mt-2 text-sm">Outstanding principal {formatMoney(item.amount_minor, item.currency_code)}; nominal annual rate {item.annual_rate_text}%; monthly repayment {formatMoney(item.monthly_payment_minor ?? "0", item.currency_code)}.</p>{payments === null ? <p className="text-xs text-amber-700 dark:text-amber-300">Update the next repayment date and outstanding principal before projecting payments.</p> : <ul className="mt-2 text-xs">{payments.slice(0, 3).map(payment => <li key={payment.date}>{payment.date}: {formatMoney(payment.paymentMinor, item.currency_code)} payment, {formatMoney(payment.interestMinor, item.currency_code)} assumed interest, {formatMoney(payment.remainingMinor, item.currency_code)} remaining principal</li>)}</ul>}</>}

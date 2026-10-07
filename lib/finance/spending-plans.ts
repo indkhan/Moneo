@@ -6,6 +6,7 @@
 // older), retaining the refund's posting currency; standalone refunds use
 // their own category. Transfers, pending,
 // income, other currencies and other months are excluded.
+import { sourceCoverageNeedsReview, type SourceCoverage } from "./source-coverage";
 
 export type SpendingPlanTransaction = {
   amountMinor: bigint;
@@ -69,15 +70,17 @@ function classificationNeedsReview(transactions: SpendingPlanTransaction[], cate
   });
 }
 
-export function budgetProgress(transactions: SpendingPlanTransaction[], categoryId: string, currency: string, month: string, limit: bigint | null, rollover?: { startsMonth: string | null; history: MonthlyLimit[] }) {
+export function budgetProgress(transactions: SpendingPlanTransaction[], categoryId: string, currency: string, month: string, limit: bigint | null, rollover?: { startsMonth: string | null; history: MonthlyLimit[] }, sourceCoverage?: SourceCoverage) {
   const spentMinor = spendingForCategory(transactions, categoryId, currency, month);
   const rolloverResult = rollover && limit !== null ? rollover.startsMonth ? rolloverBudget(transactions, categoryId, currency, rollover.startsMonth, month, limit, rollover.history) : { status: "unavailable" as const, missingInput: "Rollover start month is missing" } : null;
   const classificationPartial = classificationNeedsReview(transactions, categoryId, currency, month);
-  const limitation = limit === null ? "Historical target unavailable" : rolloverResult?.status === "unavailable" ? rolloverResult.missingInput : classificationPartial ? "Current-month financial classification needs review" : null;
+  const sourcePartial = sourceCoverage && sourceCoverageNeedsReview(sourceCoverage);
+  const limitation = limit === null ? "Historical target unavailable" : rolloverResult?.status === "unavailable" ? rolloverResult.missingInput : classificationPartial ? "Current-month financial classification needs review" : sourcePartial ? "Source observations or import coverage need review" : null;
   const carriedMinor = rollover ? rolloverResult?.status === "available" ? rolloverResult.carriedMinor : null : 0n;
   const allowanceMinor = rollover ? rolloverResult?.status === "available" ? rolloverResult.allowanceMinor : null : limit;
   const remainingMinor = limitation === null && allowanceMinor !== null ? allowanceMinor - spentMinor : null;
-  return { spentMinor, carriedMinor, allowanceMinor, remainingMinor, overLimit: remainingMinor === null ? null : remainingMinor < 0n, partial: limitation !== null, limitation, rolloverResult };
+  return { spentMinor, carriedMinor, allowanceMinor, remainingMinor, overLimit: remainingMinor === null ? null : remainingMinor < 0n, partial: limitation !== null, limitation, rolloverResult,
+    ...(sourceCoverage ? { sourceCoverage, remainderBasis: "accepted_records" as const } : {}) };
 }
 
 export type MonthlyLimit = { effective_month: string; limit_minor: string; enabled: boolean; version: number };

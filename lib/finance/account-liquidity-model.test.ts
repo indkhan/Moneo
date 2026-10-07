@@ -5,6 +5,8 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 
 it("keeps goal allocation identity and uses only FX rates available on each event date", async () => {
   const tables: Record<string, unknown[]> = {
+    imports: [{ id: "i", status: "completed", total_rows: 1 }],
+    source_transactions: [{ import_id: "i", status: "review", posted_on: "2026-10-09", currency_code: "USD", account_id: "checking" }],
     goal_allocations: [{ account_id: "savings", amount_minor: "10000" }],
     financial_assumptions: [{ id: "bill", name: "Bill", source: "user", account_id: "checking", amount_minor: "-50000", currency_code: "USD", cadence: "once", starts_on: "2026-10-08", ends_on: null, enabled: true }],
     fx_rates: [
@@ -25,6 +27,7 @@ it("keeps goal allocation identity and uses only FX rates available on each even
       { account_id: "savings", amount_minor: "9007199254740993", currency_code: "EUR", as_of: "2026-10-07T12:00:00Z", provenance: "manual" } ], ledger: [],
   }), wealth: Promise.resolve([]) };
   const result = await evaluatePlanForWorkspace(supabase, { id: "synthetic", display_currency: "EUR", timezone: "Europe/Berlin" }, 3, undefined, evidence);
+  expect(result.sourceCoverage).toMatchObject({ unresolvedSourceRows: 1, scope: { from: "2026-10-07", to: "2026-10-10" }, totalsAreBounds: false });
   expect(result.input.events[0].expectedMinor).toBe(-100000n);
   expect(result.liquidity).toMatchObject({ currencyCode: "EUR", accounts: [
     { accountId: "checking", amountMinor: -90000n, protectedMinor: 0n, limitingDate: "2026-10-08" },

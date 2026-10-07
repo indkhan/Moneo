@@ -97,6 +97,8 @@ it.each(scopeTools)("denies newly revoked %s evidence governed by %s", async (na
 });
 
 const readTools = [
+  ["accounts_getBalances", "imports", getBalances], ["analytics_cashflow", "imports", cashflow],
+  ["forecast_evaluate", "imports", evaluateForecast], ["reviews_investigate", "imports", loadFinancialReviewEvidence],
   ["accounts_list", "accounts", listAccounts], ["accounts_getBalances", "accounts", getBalances],
   ["analytics_cashflow", "transactions", cashflow], ["transactions_search", "transactions", searchTransactions],
   ["goals_list", "planning", listGoals], ["forecast_evaluate", "planning", evaluateForecast],

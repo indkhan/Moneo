@@ -7,6 +7,7 @@ import { buildDebtForecast, loadWealthItems } from "./wealth";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { defaultForecastPreferences, forecastCases, forecastPreferencesSchema } from "./preferences";
 import { reconcileOccurrence, settlementPosting, type OccurrenceSettlement } from "./recurring-occurrences";
+import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
 
 type Scheduled = { account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; enabled?: boolean };
 
@@ -50,13 +51,13 @@ export function expandSchedule(item: Scheduled, start: string, days: number, unc
   return events;
 }
 
-export async function evaluatePlan(horizonDays = 30, scenarioId?: string) {
+export async function evaluatePlan(horizonDays = 30, scenarioId?: string, canReadImports = true) {
   const { supabase, workspace } = await requireWorkspace();
-  return evaluatePlanForWorkspace(supabase, workspace, horizonDays, scenarioId);
+  return evaluatePlanForWorkspace(supabase, workspace, horizonDays, scenarioId, { canReadImports });
 }
 
 export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspace: { id: string; display_currency: string; timezone: string }, horizonDays = 30, scenarioId?: string,
-  evidence?: { balanceEvidence: ReturnType<typeof loadBalanceEvidence>; wealth: ReturnType<typeof loadWealthItems> }) {
+  evidence?: { balanceEvidence?: ReturnType<typeof loadBalanceEvidence>; wealth?: ReturnType<typeof loadWealthItems>; canReadImports?: boolean; sourceMetadata?: ReturnType<typeof loadSourceCoverageMetadata> }) {
   if (!Number.isInteger(horizonDays) || horizonDays < 1 || horizonDays > 365) throw new Error("Invalid forecast horizon");
   async function allRows<T>(query: { range(from: number, to: number): PromiseLike<{ data: T[] | null; error: unknown }> }) {
     const rows: T[] = [];
@@ -67,8 +68,9 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
       if (!page.data || page.data.length < 500) return rows;
     }
   }
+  const sourceMetadataPromise = evidence?.sourceMetadata ?? loadSourceCoverageMetadata(supabase, workspace.id, evidence?.canReadImports ?? true);
   const [balanceEvidence, wealth, preferencesResult,
-    allocations, assumptions, rates, recurringSeries, settlements] = await Promise.all([
+    allocations, assumptions, rates, recurringSeries, settlements, sourceMetadata] = await Promise.all([
       evidence?.balanceEvidence ?? loadBalanceEvidence(supabase, workspace.id),
       evidence?.wealth ?? loadWealthItems(supabase, workspace.id),
       supabase.from("forecast_preferences").select("currency_code, safety_buffer_minor::text, daily_spending_minor::text, uncertainty_bps, spending_account_id, spending_starts_on, version").eq("workspace_id", workspace.id).maybeSingle(),
@@ -82,6 +84,7 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
       allRows<OccurrenceSettlement>(supabase.from("recurring_occurrence_settlements")
         .select("id, assumption_id, scheduled_on, transaction_id, completes_occurrence, receipt, undone_at, version")
         .eq("workspace_id", workspace.id).order("id")),
+      sourceMetadataPromise,
     ]);
   if (preferencesResult.error) throw preferencesResult.error;
   const preferences = preferencesResult.data ? forecastPreferencesSchema.parse(preferencesResult.data) : defaultForecastPreferences(workspace.display_currency);
@@ -95,7 +98,7 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
   };
   const reserved = new Map<string, bigint>();
   for (const allocation of allocations ?? []) reserved.set(allocation.account_id, (reserved.get(allocation.account_id) ?? 0n) + BigInt(allocation.amount_minor));
-  const spendable = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone)
+  const spendable = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone, sourceMetadata)
     .filter(account => !account.archived_at && ["checking", "savings", "cash", "wallet"].includes(account.type ?? ""));
   const startDate = calendarDate(balanceEvidence.asOf, workspace.timezone);
   const accountIds = new Set(spendable.map(account => account.id));
@@ -200,5 +203,10 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
   };
   const forecast = forecastDaily(input);
   const available = availableToSpend(input);
-  return { forecast, available, liquidity: accountLiquidity(input), input, preferences, preferencesVersion };
+  const boundary = spendable.some(account => !account.balance.as_of) ? undefined : spendable.flatMap(account => account.balance.as_of ? [calendarDate(account.balance.as_of, workspace.timezone)] : []).sort()[0];
+  const coverageEnd = new Date(Date.parse(`${startDate}T00:00:00Z`) + horizonDays * 86400000).toISOString().slice(0, 10);
+  const sourceCoverage = buildSourceCoverage({ from: boundary ?? "0001-01-01", to: coverageEnd, accountIds: [...accountIds], ledgerBasis: "balance_activity" },
+    balanceEvidence.ledger.filter(row => accountIds.has(row.account_id)).map(row => ({ ...row, kind: row.kind ?? "ordinary" })), sourceMetadata?.imports, sourceMetadata?.sources);
+  return { forecast, available, liquidity: accountLiquidity(input), input, preferences, preferencesVersion, sourceCoverage,
+    resultBasis: "accepted balance evidence and confirmed assumptions; source completeness unknown" };
 }

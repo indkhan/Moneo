@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { monthPrefix, nextMonthStart, budgetProgress, type MonthlyLimit, type SpendingPlanTransaction } from "@/lib/finance/spending-plans";
+import { buildSourceCoverage, loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
+import { SourceCoverageDetails } from "@/app/source-coverage";
 import { z } from "zod";
 import { formatMoney } from "@/lib/finance/format";
 import { saveSpendingPlan, setRollover, toggleSpendingPlan } from "./actions";
@@ -35,12 +37,14 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
     if (history.data.length < 500) break;
   }
   const rows: SpendingPlanTransaction[] = [];
+  const coverageRows: Parameters<typeof buildSourceCoverage>[1] = [];
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await supabase.from("effective_transactions")
-      .select("amount_minor::text, currency_code, status, kind, category_id, posted_on, refund_of_id, review_reasons")
+      .select("account_id, amount_minor::text, currency_code, status, kind, category_id, posted_on, refund_of_id, review_reasons")
       .eq("workspace_id", workspace.id).gte("posted_on", historyFrom).lt("posted_on", next)
       .order("id").range(offset, offset + 999);
     if (error) throw error;
+    coverageRows.push(...(data ?? []));
     rows.push(...(data ?? []).map(item => ({
       amountMinor: BigInt(item.amount_minor),
       currencyCode: item.currency_code,
@@ -73,13 +77,16 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
     }
   }
 
+  const sourceMetadata = await loadSourceCoverageMetadata(supabase, workspace.id, true);
+  const to = new Date(Date.parse(`${next}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
   const names = new Map((categories ?? []).map(item => [item.id, item.name]));
   const progress = (plans ?? []).map(plan => {
     const history = limitHistory.filter(item => item.plan_id === plan.id).sort((a, b) => a.effective_month.localeCompare(b.effective_month) || a.version - b.version);
     const known = history.at(-1);
     const limit = month === currentMonth ? BigInt(plan.limit_minor) : known ? BigInt(known.limit_minor) : null;
-    const result = budgetProgress(rows, plan.category_id, plan.currency_code, month, limit, plan.rollover ? { startsMonth: plan.rollover_from.slice(0, 7), history } : undefined);
-    return { ...plan, periodEnabled: month === currentMonth ? plan.enabled : known?.enabled ?? null, spent: result.spentMinor, limit, rolloverResult: result.rolloverResult, remaining: result.remainingMinor, partial: result.partial, limitation: result.limitation };
+    const sourceCoverage = buildSourceCoverage({ from: plan.rollover ? plan.rollover_from : from, to, currencyCode: plan.currency_code }, coverageRows, sourceMetadata?.imports, sourceMetadata?.sources);
+    const result = budgetProgress(rows, plan.category_id, plan.currency_code, month, limit, plan.rollover ? { startsMonth: plan.rollover_from.slice(0, 7), history } : undefined, sourceCoverage);
+    return { ...plan, sourceCoverage, periodEnabled: month === currentMonth ? plan.enabled : known?.enabled ?? null, spent: result.spentMinor, limit, rolloverResult: result.rolloverResult, remaining: result.remainingMinor, partial: result.partial, limitation: result.limitation };
 
   });
 
@@ -104,11 +111,12 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
             <p className="font-mono text-sm text-muted-foreground">{formatMoney(plan.spent, plan.currency_code, workspace.locale)} of {plan.limit === null ? "Unknown historical target" : formatMoney(plan.limit, plan.currency_code, workspace.locale)}</p>
           </div>
           <p className="mt-2 font-mono text-sm font-medium">{plan.periodEnabled !== false
-            ? (plan.partial ? plan.limitation : plan.remaining === null ? "Historical target unavailable" : plan.remaining >= 0n ? `${formatMoney(plan.remaining, plan.currency_code, workspace.locale)} left` : `${formatMoney(-plan.remaining, plan.currency_code, workspace.locale)} over plan`)
+            ? (plan.partial ? plan.limitation : plan.remaining === null ? "Historical target unavailable" : plan.remaining >= 0n ? `${formatMoney(plan.remaining, plan.currency_code, workspace.locale)} left in accepted records` : `${formatMoney(-plan.remaining, plan.currency_code, workspace.locale)} over plan in accepted records`)
             : "Disabled: not counted as an active target."}</p>
           {plan.partial && <p className="mt-2 text-xs text-muted-foreground">Classified spending shown; remaining budget is unknown. {plan.limitation?.includes("classification") && <Link href="/import" className="text-brand underline">Review classifications</Link>}</p>}
+          <SourceCoverageDetails coverage={plan.sourceCoverage} />
           {plan.periodEnabled === true && plan.limit !== null && !plan.partial && <progress className="mt-3 h-1.5 w-full accent-brand" max={Number(plan.limit)} value={Math.max(0, Number(plan.spent))} aria-label={`${names.get(plan.category_id) ?? "Category"} plan used`} />}
-          {plan.rolloverResult?.status === "available" && <p className="mt-2 text-xs text-muted-foreground">Carry from earlier months: {formatMoney(plan.rolloverResult.carriedMinor, plan.currency_code, workspace.locale)}. Effective allowance: {formatMoney(plan.rolloverResult.allowanceMinor, plan.currency_code, workspace.locale)}.</p>}
+          {plan.rolloverResult?.status === "available" && <p className="mt-2 text-xs text-muted-foreground">Accepted-record carry from earlier months: {formatMoney(plan.rolloverResult.carriedMinor, plan.currency_code, workspace.locale)}. Accepted-record allowance: {formatMoney(plan.rolloverResult.allowanceMinor, plan.currency_code, workspace.locale)}.</p>}
           <form action={setRollover} className="mt-3 flex flex-wrap items-end gap-3 text-sm"><input type="hidden" name="planId" value={plan.id} /><input type="hidden" name="version" value={plan.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><label className="flex gap-2"><input type="checkbox" name="rollover" defaultChecked={plan.rollover} />Carry remaining budget into the next month</label><label className="grid gap-1 text-xs">Rollover starts<input type="month" name="rolloverFrom" required defaultValue={plan.rollover_from.slice(0, 7)} className="rounded border border-border bg-card px-3 py-2" /></label><button className="text-brand underline">Save rollover rule</button><p className="w-full text-xs text-muted-foreground">Positive and negative remainders carry; disabled months reset carry. Each month uses its recorded target. Missing history or uncertain classifications make carry unavailable. Budgets never add a second forecast expense.</p></form>
           <div className="mt-3 flex flex-wrap gap-2">
             <form action={saveSpendingPlan} className="flex flex-wrap gap-2">

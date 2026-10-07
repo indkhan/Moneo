@@ -14,6 +14,8 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { cashflow } from "@/lib/finance/tools";
+import { SourceCoverageDetails } from "./source-coverage";
+import { buildSourceCoverage, loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { ArrowRight, Landmark, Plus, Wallet } from "lucide-react";
 
@@ -33,11 +35,12 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const today = calendarDate(new Date(), workspace.timezone);
   const balanceEvidencePromise = loadBalanceEvidence(supabase, workspace.id);
   const wealthPromise = loadWealthItems(supabase, workspace.id);
-  const [balanceEvidence, ledgerCount, projection, spending, wealthItems, rates, pinnedItems, layout, goals, allocations] = await Promise.all([
+  const sourceMetadataPromise = loadSourceCoverageMetadata(supabase, workspace.id, true);
+  const [balanceEvidence, ledgerCount, projection, spending, wealthItems, rates, pinnedItems, layout, goals, allocations, sourceMetadata] = await Promise.all([
     balanceEvidencePromise,
     supabase.from("transactions").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id),
-    evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise }),
-    cashflow({ from: `${today.slice(0, 7)}-01`, to: today, currencyCode: workspace.display_currency }),
+    evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
+    cashflow({ from: `${today.slice(0, 7)}-01`, to: today, currencyCode: workspace.display_currency }, context),
     wealthPromise,
     supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
       .eq("workspace_id", workspace.id).order("rate_date", { ascending: false }).order("created_at", { ascending: false }),
@@ -45,10 +48,13 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle(),
     supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date").eq("workspace_id", workspace.id).eq("status", "active").order("priority").limit(10),
     supabase.from("goal_allocations").select("goal_id, account_id, amount_minor::text").eq("workspace_id", workspace.id),
+    sourceMetadataPromise,
   ]);
   for (const error of [ledgerCount.error, rates.error, pinnedItems.error, layout.error, goals.error, allocations.error]) if (error) throw error;
   const transactionCount = ledgerCount.count;
-  const accounts = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone);
+  const accounts = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone, sourceMetadata);
+  const netWorthCoverage = buildSourceCoverage({ from: "0001-01-01", to: today, ledgerBasis: "balance_activity" },
+    balanceEvidence.ledger.map(row => ({ ...row, kind: row.kind ?? "ordinary" })), sourceMetadata?.imports, sourceMetadata?.sources);
   const latest = new Map(accounts.map(account => [account.id, account.balance]));
   const fxRates = rates.data;
   const displayCurrency: string = workspace.display_currency;
@@ -106,15 +112,18 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const widgets: Record<string, ReactNode> = {
     overview: <section aria-label="Overview" className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(250px,1fr)]">
         <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+          <SourceCoverageDetails coverage={netWorthCoverage} />
+          <SourceCoverageDetails coverage={valuations.sourceCoverage} />
           <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Net worth</p><p className="mt-1 text-xs text-muted-foreground">Verified current balances and dated valuations in {displayCurrency}</p></div><Link href="/plan/currency" className="text-xs font-medium text-brand hover:underline">Manage currency</Link></div>
           {!accounts?.length && !wealthItems.length ? <p className="mt-7 text-sm text-muted-foreground">Add an account to see your net worth.</p> : convertedCount > 0 ? <><p className="mt-5 font-mono text-4xl font-semibold tracking-tight">{money(netWorthMinor, displayCurrency)}{missingInputs.length > 0 && <span className="ml-2 align-middle text-xs font-normal text-amber-700">Partial</span>}</p><p className="mt-2 text-xs text-muted-foreground">{missingInputs.length > 0 ? "Excludes missing, stale, ambiguous balances, historical valuations, and missing exchange rates." : "Negative debts included; assets and investments never increase spendable cash."}</p>{missingInputs.length > 0 && <details className="mt-4 text-xs text-muted-foreground"><summary className="cursor-pointer text-brand">See missing inputs</summary><p className="mt-2">{missingInputs.join(", ")}</p><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>}</> : <><p className="mt-6 text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p><p className="mt-2 text-xs text-muted-foreground">{missingInputs.join(", ")}</p></>}
         </div>
         <Link href="/money/transactions" className="group flex flex-col justify-between rounded-xl border border-border bg-card p-6 shadow-sm hover:border-blue-300"><div className="flex items-center justify-between"><span className="font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Transactions</span><ArrowRight size={16} className="text-brand transition-transform group-hover:translate-x-1" /></div><div><p className="font-mono text-4xl font-semibold">{transactionCount ?? 0}</p><p className="mt-2 text-xs text-muted-foreground">Accepted ledger entries</p></div></Link>
       </section>,
     planning: <section aria-label="Spending and planning" className="grid gap-4 md:grid-cols-2">
-        <HomeLiquidity liquidity={projection.liquidity} accountId={accountId} names={new Map(accounts.map(account => [account.id, account.name]))} locale={workspace.locale} />
+        <div><HomeLiquidity liquidity={projection.liquidity} accountId={accountId} names={new Map(accounts.map(account => [account.id, account.name]))} locale={workspace.locale} /><SourceCoverageDetails coverage={projection.sourceCoverage} /></div>
         <div className="rounded-xl border border-border bg-card p-6 shadow-sm"><h2 className="text-base font-semibold">Spending this month</h2>
           {"unavailable" in spending ? <p className="mt-3 text-sm text-muted-foreground">{spending.unavailable}</p> : <><p className="mt-3 font-mono text-2xl font-semibold">{money(spending.spendingMinor, displayCurrency)}</p><p className="mt-2 text-xs text-muted-foreground">{spending.from} to {spending.to}; posted spending net of refunds. Pending and transfers excluded.{spending.evidence.partial ? ` Partial: ${spending.evidence.excludedReviewRows} transactions need classification review.` : ""}</p></>}
+          <SourceCoverageDetails coverage={spending.sourceCoverage} />
           <Link href="/plan/spending" className="mt-3 inline-block text-xs font-medium text-brand">Review monthly spending plans</Link></div>
       </section>,
     accounts: <section className="space-y-4"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><span className="rounded-lg bg-blue-50 p-2 text-brand"><Landmark size={18} /></span><div><h2 className="text-base font-semibold">Accounts</h2><p className="text-xs text-muted-foreground">Balances you can verify and update</p></div></div><span className="font-mono text-xs text-muted-foreground">{accounts?.length ?? 0} total</span></div>

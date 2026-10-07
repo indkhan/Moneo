@@ -3,7 +3,7 @@ import { accountLiquidity, availableToSpend, forecastDaily, withInternalFunding,
 import { requireWorkspace } from "@/lib/auth";
 import { evaluatePlan, evaluatePlanForWorkspace } from "./model";
 import { loadBalanceEvidence, resolveBalances } from "./balances";
-import { loadSourceCoverage } from "./source-coverage";
+import { loadSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
 
 type FinanceContext = Awaited<ReturnType<typeof requireWorkspace>>;
 
@@ -26,10 +26,10 @@ export async function listAccounts(context?: FinanceContext) {
   return data;
 }
 
-export async function getBalances(context?: FinanceContext) {
+export async function getBalances(context?: FinanceContext, canReadImports = true) {
   const { supabase, workspace } = context ?? await requireWorkspace();
-  const evidence = await loadBalanceEvidence(supabase, workspace.id);
-  return resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone);
+  const [evidence, sourceMetadata] = await Promise.all([loadBalanceEvidence(supabase, workspace.id), loadSourceCoverageMetadata(supabase, workspace.id, canReadImports)]);
+  return resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone, sourceMetadata);
 }
 
 export async function cashflow(input: unknown, context?: FinanceContext, canReadImports = true) {
@@ -85,20 +85,20 @@ export async function listGoals(context?: FinanceContext) {
 
 export async function evaluateForecast(input: unknown, context?: FinanceContext) {
   const args = forecastInput.parse(input);
-  const plan = context ? await evaluatePlanForWorkspace(context.supabase, context.workspace, args.horizonDays, args.scenarioId) : await evaluatePlan(args.horizonDays, args.scenarioId);
+  const plan = context ? await evaluatePlanForWorkspace(context.supabase, context.workspace, args.horizonDays, args.scenarioId, { canReadImports: context.settings.ai_data_scopes.includes("imports") }) : await evaluatePlan(args.horizonDays, args.scenarioId);
   const assumptions = withInternalFunding(plan.input, (args.funding ?? []).map(funding => ({ ...funding, amountMinor: BigInt(funding.amountMinor) })));
   const forecast = forecastDaily(assumptions), available = availableToSpend(assumptions);
   if (forecast.status === "unavailable" || available.status === "unavailable")
-    return { status: "unavailable", missingInputs: [...new Set([
+    return { status: "unavailable", sourceCoverage: plan.sourceCoverage, missingInputs: [...new Set([
       ...(forecast.status === "unavailable" ? forecast.missingInputs : []),
       ...(available.status === "unavailable" ? available.missingInputs : []),
     ])] };
   const last = forecast.days.at(-1)!;
   const liquidity = accountLiquidity(assumptions);
-  if (liquidity.status === "unavailable") return liquidity;
+  if (liquidity.status === "unavailable") return { ...liquidity, sourceCoverage: plan.sourceCoverage };
   const account = args.accountId ? liquidity.accounts.find(account => account.accountId === args.accountId) : undefined;
   if (args.accountId && !account) throw new Error("Unknown account");
-  return { status: "available", currencyCode: assumptions.currencyCode, horizonDays: args.horizonDays,
+  return { status: "available", sourceCoverage: plan.sourceCoverage, resultBasis: plan.resultBasis, currencyCode: assumptions.currencyCode, horizonDays: args.horizonDays,
     expectedMinor: last.expectedMinor.toString(), conservativeMinor: last.conservativeMinor.toString(),
     optimisticMinor: last.optimisticMinor.toString(), availableToSpendMinor: account?.spendableMinor.toString() ?? null,
     accountId: account?.accountId ?? null, limitingDate: account?.spendingLimitingDate ?? null,

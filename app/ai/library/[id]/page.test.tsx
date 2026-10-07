@@ -1,3 +1,4 @@
+import { buildSourceCoverage } from "@/lib/finance/source-coverage";
 import { beforeEach, expect, it, vi } from "vitest";
 import ArtifactPage from "./page";
 import { requireWorkspace } from "@/lib/auth";
@@ -77,7 +78,7 @@ it("trusted builtin trip renders chosen-account and dated scenario evidence with
   const input = { startDate: "2026-10-07", horizonDays: 30, currencyCode: "EUR", accounts: [{ id: "checking", currencyCode: "EUR", balanceMinor: 10000n }, { id: "savings", currencyCode: "EUR", balanceMinor: 100000n }], events: [{ date: "2026-10-08", accountId: "checking", expectedMinor: -50000n, name: "Tomorrow bill" }] };
   const liquidity = accountLiquidity(input), tripLiquidity = accountLiquidity({ ...input, scenarioEvents: [{ date: "2026-10-14", accountId: "checking", expectedMinor: -10000n, name: "Trip" }] });
   if (liquidity.status !== "available" || tripLiquidity.status !== "available") throw new Error("Expected available");
-  vi.mocked(tripForArtifact).mockResolvedValue({ currency: "EUR", tripDate: "2026-10-14", accountId: "checking", liquidity: serializeAccountLiquidity(liquidity), tripLiquidity: serializeAccountLiquidity(tripLiquidity), baseline: { status: "available", ...liquidity.accounts[0] }, withTrip: { status: "available", ...tripLiquidity.accounts[0] }, unavailable: null });
+  vi.mocked(tripForArtifact).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-02" }, []), resultBasis: "synthetic accepted evidence", currency: "EUR", tripDate: "2026-10-14", accountId: "checking", liquidity: serializeAccountLiquidity(liquidity), tripLiquidity: serializeAccountLiquidity(tripLiquidity), baseline: { status: "available", ...liquidity.accounts[0] }, withTrip: { status: "available", ...tripLiquidity.accounts[0] }, unavailable: null });
   const html = await native("trip_planner");
   expect(html).toContain("Chosen-account headroom"); expect(html).toContain("Aggregate headroom: EUR 600.00");
   expect(html).toContain("checking funding shortfall: EUR 400.00"); expect(html).toContain("2026-10-08"); expect(html).toContain("Tomorrow bill");
@@ -85,7 +86,7 @@ it("trusted builtin trip renders chosen-account and dated scenario evidence with
   expect(html).toContain("No automatic funding"); expect(html).not.toContain("Available to spend now"); expect(html).not.toContain("Generated calculator");
 });
 it("trusted goal illustration does not establish paying-account affordability", async () => {
-  vi.mocked(goalsForArtifact).mockResolvedValue({ currency: "EUR", timezone: "UTC", balances: [], allocations: [], goals: [] });
+  vi.mocked(goalsForArtifact).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-02" }, []), resultBasis: "synthetic accepted evidence", currency: "EUR", timezone: "UTC", balances: [], allocations: [], goals: [] });
   const html = await native("goal_tracker");
   expect(html).toContain("Illustrative saving pace is not an affordability result"); expect(html).toContain("dated account headroom and protections");
 });

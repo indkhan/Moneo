@@ -13,6 +13,8 @@ import { GoalPlanEditor, GoalPlanHistory } from "./goal-plan";
 import { ForecastPreferenceEditor } from "./preferences";
 import { ScenarioEditor, ScenarioHistory } from "./scenarios";
 import { ModelSources } from "./model-sources";
+import { SourceCoverageDetails } from "@/app/source-coverage";
+import { buildSourceCoverage } from "@/lib/finance/source-coverage";
 import { AccountHeadroom, planLiquidity, type LiquidityParams } from "./account-headroom";
 
 const field = "min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-brand focus:ring-2 focus:ring-brand/15";
@@ -71,6 +73,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const monthlyContributions = (goals ?? []).filter(goal => goal.status === "active" && goal.currency_code === currency).reduce((sum, goal) => sum + BigInt(goal.planned_monthly_minor), 0n);
 
   return <main className="mx-auto max-w-7xl space-y-7 px-4 py-8 text-foreground sm:px-6 lg:px-10">
+    <SourceCoverageDetails coverage={baseline.sourceCoverage} />
     {!requestedHorizon.success && <p role="alert">Choose a whole forecast horizon from 1 to 365 days. Showing 30 days.</p>}
     <header className="flex flex-wrap items-end justify-between gap-4">
       <div><p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-brand">Financial planning</p><h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Financial horizon &amp; runway</h1><p className="mt-2 text-sm text-muted-foreground">Explore your forecast, cash reservations, and changes to your plan.</p></div>
@@ -90,7 +93,8 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
         const comparable = earmarks.every(item => accounts?.find(account => account.id === item.account_id)?.currency_code === goal.currency_code);
         const reserved = earmarks.reduce((sum, item) => sum + BigInt(item.amount_minor), 0n);
         const plan = goalContributionProjection({ targetMinor: BigInt(goal.target_minor), savedMinor: goal.recorded_saved_minor === null ? null : BigInt(goal.recorded_saved_minor), monthlyMinor: BigInt(goal.planned_monthly_minor), startsOn: goal.contribution_starts_on }, today);
-        return <article key={goal.id} className="rounded-lg border border-border bg-muted/35 p-4"><h3 className="font-medium">{goal.name}</h3><p>{formatMoney(goal.target_minor, goal.currency_code, workspace.locale)} target {goal.target_date ? `by ${goal.target_date}` : ""}</p>
+          return <article key={goal.id} className="rounded-lg border border-border bg-muted/35 p-4"><h3 className="font-medium">{goal.name}</h3><p>{formatMoney(goal.target_minor, goal.currency_code, workspace.locale)} target {goal.target_date ? `by ${goal.target_date}` : ""}</p>
+            <SourceCoverageDetails coverage={buildSourceCoverage({ from: goal.saved_as_of && goal.saved_as_of <= today ? goal.saved_as_of : today, to: today, currencyCode: goal.currency_code, recordBasis: "manual_goals" }, [])} />
           <p className="mt-2 text-sm">Recorded savings: {goal.recorded_saved_minor === null ? "Unknown" : `${formatMoney(goal.recorded_saved_minor, goal.currency_code, workspace.locale)} as of ${goal.saved_as_of} (manual evidence)`}</p>
           <p className="text-sm text-muted-foreground">Virtual cash reservations: {comparable ? formatMoney(reserved, goal.currency_code, workspace.locale) : "Currency evidence required"}. Separate from recorded savings.</p>
           <p className="mt-2 text-sm text-muted-foreground">Priority {goal.priority} ? {goal.status} ? Planned {formatMoney(goal.planned_monthly_minor, goal.currency_code, workspace.locale)} monthly{goal.contribution_starts_on ? ` from ${goal.contribution_starts_on}` : ""}.</p>
