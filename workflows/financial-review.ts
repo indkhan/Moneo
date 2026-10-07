@@ -217,7 +217,12 @@ async function writeReview(jobId: string, workspaceId: string, evidence: NonNull
       const input = buildReviewPrompt(evidence.reviewInvestigation.request, receipts, progress.limitations,
         `Answer the retained question within its exact dated query and focus using supplied evidence. ${FINANCIAL_ANSWER_INSTRUCTIONS}`, priorityIds);
       const result = await synthesizeReview(progress, input, {signal: stopped.signal,
-        checkpoint: value => checkpointReview(db, jobId, workspaceId, runId, value), generate: options => generateText({model, ...options})});
+        reserve: async value => {
+          const reserved = await db.rpc("reserve_financial_investigation_synthesis", {p_job_id: jobId, p_workspace_id: workspaceId, p_run_id: runId, p_progress: value});
+          if (reserved.error) throw reserved.error;
+          if (typeof reserved.data !== "boolean") throw new FatalError("Invalid synthesis reservation receipt");
+          return reserved.data;
+        }, generate: options => generateText({model, ...options})});
       if (monitoringError) throw monitoringError;
       if (!await enterStage(db, jobId, workspaceId, runId, "writing_review")) return null;
       return providerFinancialAnswer(result.text ?? "{}", receipts, workspaceId).body +
@@ -248,6 +253,11 @@ async function saveReview(jobId: string, workspaceId: string, evidence: NonNulla
     const settings = await loadWorkspaceSettings(db, workspaceId);
     if (!await summaryStillEnabled(db, jobId, workspaceId, settings, scheduled)) return;
     reviewScopes(settings, !("unavailable" in evidence.planning), evidence.sourceCoverage?.importStatuses != null);
+    for (const id of evidence.verification.receiptIds) {
+      const receipt = await loadEvidenceReceipt(db, workspaceId, id);
+      if (!receipt) throw new FatalError("Retained review evidence is unavailable");
+      requireAiScope(settings, ...receipt.scopes);
+    }
     let publicationEvidence = evidence;
     if (evidence.reviewInvestigation) {
       const current = await db.from("background_jobs").select("review_progress").eq("id", jobId).eq("workspace_id", workspaceId).single();
@@ -255,7 +265,8 @@ async function saveReview(jobId: string, workspaceId: string, evidence: NonNulla
       if (!current.data.review_progress) throw new FatalError("Retained investigation progress is unavailable");
       publicationEvidence = {...evidence, reviewInvestigation: {...evidence.reviewInvestigation, progress: current.data.review_progress}};
     }
-    const saved = await db.rpc("finish_financial_review", { p_job_id: jobId, p_workspace_id: workspaceId,
+    const saved = await db.rpc(evidence.reviewInvestigation ? "finish_financial_investigation" : "finish_financial_review", { p_job_id: jobId, p_workspace_id: workspaceId,
+      ...(evidence.reviewInvestigation ? {p_run_id: runId} : {}),
       p_title: `Financial review ${evidence.period.to}`, p_body: body, p_evidence: publicationEvidence, p_scheduled: scheduled });
     if (saved.error) throw saved.error;
     if (!["completed", "canceled"].includes(saved.data)) throw new FatalError("Financial review publication was not completed or canceled");
