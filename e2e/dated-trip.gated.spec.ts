@@ -213,6 +213,55 @@ test("dated native budgets and unsaved calculator inputs agree without financial
     await page.reload();
     await expect(panel).toContainText("Conservative minimum headroom over the dated trip horizon: 8000 minor units");
 
+    // A foreign currency on the generated scalar cannot reinterpret its amount as workspace EUR.
+    const beforeForeignCurrency = await readState();
+    const foreignCurrencyReason = "Trip cost currency USD differs from forecast currency EUR";
+    const currencyVersionId = (await (await page.request.get(`/api/artifacts/${artifact}/versions`)).json()).activeVersionId;
+    const foreignCurrencyVersion = await page.request.post(`/api/artifacts/${artifact}/versions`, { data: { source: fallback.source, expectedActiveVersionId: currencyVersionId,
+      manifest: { ...fallback.manifest, params: { costMinor: { type: "number", default: 20000, currency: "USD", label: "Trip cost", min: 0, max: 10000000 } } } } });
+    expect(foreignCurrencyVersion.ok(), await foreignCurrencyVersion.text()).toBe(true);
+    for (const savedScenario of [true, false]) {
+      if (!savedScenario) {
+        await assertOwner();
+        await db`update public.artifact_state set state='{}'::jsonb,version=version+1 where artifact_id=${artifact} and workspace_id=${workspace!}`;
+      }
+      const unchangedCurrencyState = await readState();
+      await page.reload();
+      await expect(panel).toContainText(foreignCurrencyReason);
+      await expect(panel.getByLabel("Trip cost", { exact: false })).toHaveValue(savedScenario ? "2000" : "20000");
+      await expect(panel).toContainText("100 minor units = USD 1.00");
+      await expect(panel.getByRole("button", { name: "Save inputs", exact: true })).toBeDisabled();
+      await expect(print).toBeDisabled();
+      await expect(panel).not.toContainText("Conservative minimum headroom over the dated trip horizon:");
+      await panel.getByLabel("Trip cost", { exact: false }).fill("30000");
+      const preview = await page.request.post("/api/artifacts/trip", { data: { artifactId: artifact, params: { costMinor: 30000 } } });
+      expect(preview.status()).toBe(400);
+      expect((await preview.json()).error).toContain(foreignCurrencyReason);
+      expect(await readState()).toEqual(unchangedCurrencyState);
+      await page.screenshot({ path: testInfo.outputPath(`foreign-scalar-currency-${savedScenario ? "restore" : "initial"}.png`), fullPage: true });
+    }
+    // Native original-currency payments remain available for explicit manual conversion.
+    const originalCurrencyScenario = defaultTripScenario(today, "USD", checking, 20000n);
+    await assertOwner();
+    await db`update public.artifact_state set state=${db.json({ tripScenario: originalCurrencyScenario })},version=version+1 where artifact_id=${artifact} and workspace_id=${workspace!}`;
+    await page.reload();
+    await expect(results).toContainText("rate:USD->EUR");
+    await expect(panel).toContainText(foreignCurrencyReason);
+    const beforeNativeRate = await readState();
+    await native.getByLabel("Rate", { exact: true }).fill("0.9");
+    await expect(results.getByRole("heading", { name: "End-of-trip headroom" }).locator("..")).toContainText("EUR 920.00");
+    expect(await readState()).toEqual(beforeNativeRate);
+    await native.getByRole("button", { name: "Save scenario", exact: true }).click();
+    await expect(native).toContainText("Inputs saved.");
+    await page.reload();
+    await expect(native.getByLabel("Currency", { exact: true })).toHaveValue("USD");
+    await expect(native.getByLabel("Rate", { exact: true })).toHaveValue("0.9");
+    await expect(results.getByRole("heading", { name: "End-of-trip headroom" }).locator("..")).toContainText("EUR 920.00");
+    await expect(panel).toContainText(foreignCurrencyReason);
+    await expect(print).toBeDisabled();
+    await page.screenshot({ path: testInfo.outputPath("foreign-scalar-native-manual-fx.png"), fullPage: true });
+    await assertOwner();
+    await db`update public.artifact_state set state=${db.json(beforeForeignCurrency.state)},version=version+1 where artifact_id=${artifact} and workspace_id=${workspace!}`;
     // A cost-only generated version must also use the saved native date and paying account.
     let activeVersionId = (await (await page.request.get(`/api/artifacts/${artifact}/versions`)).json()).activeVersionId;
     const costOnly = await page.request.post(`/api/artifacts/${artifact}/versions`, { data: { source: fallback.source, expectedActiveVersionId: activeVersionId, manifest: fallback.manifest } });
