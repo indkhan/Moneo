@@ -116,7 +116,13 @@ export function providerFinancialAnswer(text: string, receipts: EvidenceReceipt[
     result.body += "\n\nUnsupported sections were removed before publication. These supported measures are shown instead." + (all.length > 20 ? " Only the first twenty measures are displayed; the retained calculations contain the remaining evidence." : "");
   }
   const retainedLimits = receipts.filter(receipt => receipt.workspaceId === workspaceId).flatMap(receipt => (receipt.limitations ?? []).map(limit => ({ action: "limitation", receiptId: receipt.id, limitationId: limit.id })));
-  if (retainedLimits.length) result.body += `\n\n${publishFinancialClaims({ claims: [], interpretation: retainedLimits.slice(0, 20) }, receipts, workspaceId).body}${retainedLimits.length > 20 ? "\n\nOnly the first twenty retained limitations are shown; open the evidence trail for all blocking inputs and qualifications." : ""}`;
+  if (retainedLimits.length) {
+    const existingLines = new Set(result.body.split("\n"));
+    const additional = publishFinancialClaims({ claims: [], interpretation: retainedLimits.slice(0, 20) }, receipts, workspaceId).body
+      .split("\n").filter(line => !line || !existingLines.has(line)).join("\n").trim();
+    if (additional) result.body += `\n\n${additional}`;
+    if (retainedLimits.length > 20) result.body += "\n\nOnly the first twenty retained limitations are shown; open the evidence trail for all blocking inputs and qualifications.";
+  }
   const status = receipts.filter(receipt => receipt.workspaceId === workspaceId).flatMap(receipt => {
     const value = object(receipt.query.result);
     const input = object(receipt.query.input);
@@ -139,7 +145,11 @@ export function providerFinancialAnswer(text: string, receipts: EvidenceReceipt[
     });
     return [];
   });
-  if (status.length) result.body = status.join("\n\n") + (result.accepted.length || result.removed || result.clarified ? `\n\n${result.body}` : "");
+  if ((status.length || retainedLimits.length) && !result.clarified) {
+    const defaultPrompt = publishFinancialClaims({ claims: [], interpretation: [] }, [], workspaceId).body;
+    result.body = result.body.split("\n\n").filter(section => section !== defaultPrompt).join("\n\n");
+  }
+  if (status.length) result.body = [status.join("\n\n"), result.body].filter(Boolean).join("\n\n");
   if (receipts.length) result.body += `\n\nEvidence trail\n\n${receipts.filter(receipt => receipt.workspaceId === workspaceId).map(receipt => `- [Retained query and supporting records](/ai/evidence/${receipt.id})`).join("\n")}`;
   return result;
 }
