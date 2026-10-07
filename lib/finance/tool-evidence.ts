@@ -60,8 +60,13 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
     for (const [key, child] of Object.entries(row)) {
       if ((key === "netWorth" || key === "accountBalanceTotals") && child && typeof child === "object") {
         for (const [code, amount] of Object.entries(child)) if (/^[A-Z]{3}$/.test(code) && (amount === null || typeof amount === "string" && /^-?(?:0|[1-9]\d{0,79})$/.test(amount))) {
+          const accounts = Array.isArray(row.accounts) ? row.accounts.map(object) : [];
+          const wealth = object(object(row.planning).wealth);
+          const includedWealth = Array.isArray(wealth.included) ? wealth.included.map(object) : [];
+          const manual = accounts.some(account => account.currencyCode === code && account.balanceMinor !== null && typeof account.provenance === "string" && /^manual\b/.test(account.provenance))
+            || key === "netWorth" && includedWealth.some(item => item.currencyCode === code);
           metrics.push({ id: [...path, key, code].join("."), label: key === "netWorth" ? "Net worth" : "Booked account balance total", valueMinor: amount, currency: code,
-            period: { from: period.to, to: period.to }, qualifiers: [...new Set([...qualifiers, "dated_snapshot" as const])], sourceIds: [sourceId], calculation: `${name}: deterministic ${key} for ${code}; full dated account/wealth evidence is retained.` });
+            period: { from: period.to, to: period.to }, qualifiers: [...new Set([...qualifiers, "dated_snapshot" as const, ...(manual ? ["manual_evidence" as const] : [])])], sourceIds: [sourceId], calculation: `${name}: deterministic ${key} for ${code}; full dated account/wealth evidence is retained.` });
         }
       } else
       if (Object.hasOwn(labels, key) && currency && (child === null || typeof child === "string" && /^-?(?:0|[1-9]\d{0,79})$/.test(child))) {

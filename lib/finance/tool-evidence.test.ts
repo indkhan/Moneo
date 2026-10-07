@@ -1,7 +1,25 @@
 import { expect, it } from "vitest";
 import { toolResultReceipt, providerFinancialAnswer } from "./tool-evidence";
-import { buildPlanningReview } from "./review";
+import { buildPlanningReview, reviewNetWorth } from "./review";
+import { wealthEvidence } from "./wealth";
 const context = { workspaceId: "00000000-0000-4000-8000-000000000001", fetchedAt: "2026-10-01T00:00:00Z", timezone: "UTC" };
+it("requires aggregate net worth to disclose its own currency's included manual valuation", () => {
+  const wealth = [{ id: "manual", name: "Asset", amount_minor: "1000", currency_code: "EUR", as_of: "2026-10-01", linked_account_id: null }];
+  const result = { netWorth: reviewNetWorth({ EUR: "500", USD: "200" }, wealth, "2026-10-01"), accountBalanceTotals: { EUR: "500" }, planning: { wealth: wealthEvidence(wealth, "2026-10-01") } };
+  const receipt = toolResultReceipt("reviews_investigate", {}, result, context, ["accounts", "planning"]);
+  const metric = receipt.metrics.find(metric => metric.id === "netWorth.EUR")!;
+  expect(metric.qualifiers).toContain("manual_evidence");
+  const standalone = (qualifiers: typeof metric.qualifiers) => providerFinancialAnswer(JSON.stringify({ claims: [{ operation: "metric", operands: [{ receiptId: receipt.id, metricId: metric.id }], valueMinor: "1500", currency: "EUR", periods: [metric.period], sourceIds: metric.sourceIds, qualifiers }], interpretation: [] }), [receipt], context.workspaceId);
+  expect(standalone(metric.qualifiers).accepted).toHaveLength(1);
+  expect(standalone(metric.qualifiers).body).toContain("Manual evidence");
+  expect(standalone(metric.qualifiers.filter(qualifier => qualifier !== "manual_evidence")).body).toContain("Unsupported sections were removed");
+  expect(receipt.metrics.find(metric => metric.id === "netWorth.USD")?.qualifiers).not.toContain("manual_evidence");
+  expect(receipt.metrics.find(metric => metric.id === "accountBalanceTotals.EUR")?.qualifiers).not.toContain("manual_evidence");
+});
+it("propagates manual booked-balance provenance into account and net-worth aggregates", () => {
+  const receipt = toolResultReceipt("reviews_investigate", {}, { netWorth: { EUR: "500" }, accountBalanceTotals: { EUR: "500" }, accounts: [{ currencyCode: "EUR", balanceMinor: "500", provenance: "manual", asOf: "2026-10-01" }] }, context, ["accounts"]);
+  for (const id of ["netWorth.EUR", "accountBalanceTotals.EUR"]) expect(receipt.metrics.find(metric => metric.id === id)?.qualifiers).toContain("manual_evidence");
+});
 it("discloses the real goal remainder's manual savings date and target assumption", () => {
   const planning = buildPlanningReview({ today: "2026-10-01", goals: [{ id: "goal", name: "Goal", currency_code: "EUR", target_minor: "10000", recorded_saved_minor: "2500", saved_as_of: "2026-01-01", planned_monthly_minor: "0", contribution_starts_on: null, target_date: null, status: "active" }], allocations: [], budgets: [], transactions: [], categories: [] });
   const receipt = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-07-01", to: "2026-09-30" }, planning }, context, ["planning"]);
