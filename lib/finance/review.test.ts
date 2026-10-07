@@ -8,7 +8,7 @@ it("uses recorded rollover history and preserves unknown carry when targets or c
     budgetHistory: [{ plan_id: "b", effective_month: "2026-01-01", limit_minor: "1000", enabled: true, version: 1 }] };
   expect(buildPlanningReview(input).budgets[0]).toMatchObject({ carriedMinor: "1800", allowanceMinor: "2800", remainingMinor: "2800", partial: false });
   expect(buildPlanningReview({ ...input, budgetHistory: [] }).budgets[0]).toMatchObject({ remainingMinor: null, partial: true, overLimit: null });
-  expect(buildPlanningReview({ ...input, transactions: [{ ...input.transactions[0], review_reasons: ["source_transfer"] }] }).budgets[0]).toMatchObject({ remainingMinor: null, partial: true });
+  expect(buildPlanningReview({ ...input, transactions: [{ ...input.transactions[0], review_reasons: ["source_transfer"] }] }).budgets[0]).toMatchObject({ remainingMinor: null, partial: true, classificationPartial: true });
 });
 
 it("builds exact scoped evidence, excluding pending and transfers and retaining unknown balances", () => {

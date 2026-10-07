@@ -2,9 +2,29 @@ import { expect, it, vi } from "vitest";
 import { loadFinancialReviewEvidence } from "./review-loader";
 import { settingsSchema } from "@/lib/settings";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { compareReviewEvidence } from "./review-freshness";
 
 vi.mock("./balances", async original => ({ ...await original<typeof import("./balances")>(), loadBalanceEvidence: async () => ({ accounts: [], snapshots: [], ledger: [], asOf: "2026-10-02T12:00:00Z" }) }));
 vi.mock("./model", () => ({ evaluatePlanForWorkspace: vi.fn(async () => ({ available: { status: "unavailable", missingInputs: ["balance"] }, forecast: [], input: { events: [] } })) }));
+
+it.each(["goal_allocations", "financial_assumptions"])("retains %s revisions independently of available forecast evidence", async table => {
+  let version = 1;
+  const from = (name: string) => {
+    let columns = "";
+    const query = { select: (selected: string) => { columns = selected; return query; }, eq: () => query, is: () => query, gte: () => query, lte: () => query, order: () => query,
+      range: async () => ({ data: name === table ? [Object.fromEntries(Object.entries({ id: "record", goal_id: "goal", account_id: "cash", name: "Disabled assumption", amount_minor: "100", currency_code: "EUR", cadence: "once", starts_on: "2026-10-02", ends_on: null, confirmed: false, enabled: false, removed_at: null, version }).filter(([key]) => columns.split(",").map(column => column.trim().split("::")[0]).includes(key)))] : [], error: null }) };
+    return query;
+  };
+  const db = { from } as unknown as SupabaseClient;
+  const workspace = { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" };
+  const settings = settingsSchema.parse({ ai_data_scopes: ["accounts", "transactions", "planning"] });
+  const first = await loadFinancialReviewEvidence(db, workspace, settings);
+  const saved = Object.fromEntries(Object.entries(first).filter(([key]) => key !== "calculationEvidence"));
+  version = 2;
+  const current = await loadFinancialReviewEvidence(db, workspace, settings);
+  expect(first.planning).toEqual(current.planning);
+  expect(compareReviewEvidence(saved, current).status).toBe("stale");
+});
 
 it("omits all planning reads when its scope is disabled and gathers exact comparison sources", async () => {
   const reads: string[] = [];
@@ -21,6 +41,7 @@ it("omits all planning reads when its scope is disabled and gathers exact compar
   expect(evidence.planning).toEqual({ unavailable: "AI access to planning is disabled in Settings" });
   expect(evidence.investigation.records.items[0].link).toBe("/money/transactions?transaction=t");
   expect(evidence.investigation.groups[0].currentMinor).toBe("9007199254740993");
+  expect(evidence).toMatchObject({ calculationEvidence: { transactions: [expect.objectContaining({ id: "t", amount_minor: "-9007199254740993" })], balances: { snapshots: [], ledger: [] } } });
 });
 it("loads older rollover evidence without extending the current cashflow summary", async () => {
   const lowerBounds: string[] = [];

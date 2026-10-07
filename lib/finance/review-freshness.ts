@@ -9,7 +9,7 @@ function fingerprint(value: unknown): string {
   function normalize(item: unknown): unknown {
     if (Array.isArray(item)) return item.map(normalize);
     if (item && typeof item === "object") return Object.fromEntries(Object.entries(item)
-      .filter(([key]) => key !== "evaluatedAt" && key !== "evaluated_at")
+      .filter(([key]) => !["evaluatedAt", "evaluated_at", "capturedAt", "verification", "calculationEvidence"].includes(key))
       .sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => [key, normalize(child)]));
     return item;
   }

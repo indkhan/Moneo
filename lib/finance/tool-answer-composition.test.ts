@@ -1,0 +1,69 @@
+import { expect, it } from "vitest";
+import { providerFinancialAnswer, toolResultReceipt } from "./tool-evidence";
+
+const context = { workspaceId: "00000000-0000-4000-8000-000000000001", fetchedAt: "2026-10-01T12:00:00Z", timezone: "UTC" };
+const transactionId = "00000000-0000-4000-8000-000000000002";
+const categoryId = "00000000-0000-4000-8000-000000000003";
+const blocked = toolResultReceipt("forecast_evaluate", {}, { status: "unavailable", missingInputs: ["fx:opening balance"] }, context, ["accounts", "transactions", "planning"]);
+const statuses = [
+  [toolResultReceipt("artifacts_create", {}, { id: transactionId }, context, []), "Created the requested tool"],
+  [toolResultReceipt("reviews_start", {}, { status: "started" }, context, ["accounts", "transactions"]), "The requested review was started"],
+  [toolResultReceipt("transactions_setCategory", { transactionId, category: "Food" }, { status: "updated", category: "Food", transactionUrl: `/money/transactions?transaction=${transactionId}` }, context, ["transactions"]), "Updated the selected transaction category"],
+  [toolResultReceipt("transactions_previewCategory", { transactionIds: [transactionId], categoryId }, { rows: [{ id: transactionId }], category: { id: categoryId } }, context, ["transactions"]), "Preview only"],
+  [toolResultReceipt("imports_status", {}, { imports: [{ id: transactionId, status: "completed" }] }, context, ["imports"]), "Recorded processing status: completed"],
+] as const;
+const limitation = { action: "limitation", receiptId: blocked.id, limitationId: blocked.limitations![0].id };
+const variants = [
+  ["empty", { claims: [], interpretation: [] }, null],
+  ["limitation only", { claims: [], interpretation: [limitation] }, null],
+  ["greeting", { claims: [], interpretation: [], clarification: { topic: "welcome" } }, "Hello."],
+  ["scope", { claims: [], interpretation: [limitation], clarification: { topic: "period" } }, "What start and end dates"],
+] as const;
+
+it.each(statuses)("renders a useful standalone %s status without a generic investigation prompt", (receipt, status) => {
+  const result = providerFinancialAnswer(JSON.stringify({ claims: [], interpretation: [] }), [receipt], context.workspaceId);
+  expect(result.body).toContain(status);
+  expect(result.body).not.toContain("Tell me the financial question, dates and any account or category scope.");
+});
+
+for (const [receipt, status] of statuses) it.each(variants)(`keeps owned blockers beside ${status} with %s provider output`, (_name, answer, clarification) => {
+  const result = providerFinancialAnswer(JSON.stringify(answer), [blocked, receipt], context.workspaceId);
+  expect(result.accepted).toHaveLength(0);
+  expect(result.removed).toBe(0);
+  expect(result.body).toContain(status);
+  expect(result.body.match(/fx:opening balance/g)).toHaveLength(1);
+  expect(result.body).toContain("Consider reviewing the assumptions");
+  expect(result.body).toContain(`/ai/evidence/${blocked.id}`);
+  expect(result.body).toContain(`/ai/evidence/${receipt.id}`);
+  expect(result.body).not.toContain("Tell me the financial question, dates and any account or category scope.");
+  if (clarification) expect(result.body).toContain(clarification);
+});
+
+it.each(variants)("renders useful standalone blockers once without an unrelated generic prompt for %s", (_name, answer, clarification) => {
+  const result = providerFinancialAnswer(JSON.stringify(answer), [blocked], context.workspaceId);
+  expect(result.body.match(/fx:opening balance/g)).toHaveLength(1);
+  expect(result.body).toContain("Consider reviewing the assumptions");
+  expect(result.body).not.toContain("Tell me the financial question, dates and any account or category scope.");
+  if (clarification) expect(result.body).toContain(clarification);
+});
+
+it("retains withholding notices and rejects forged blockers alongside successful actions", () => {
+  const foreign = toolResultReceipt("forecast_evaluate", {}, { missingInputs: ["foreign secret"] }, { ...context, workspaceId: categoryId }, ["planning"]);
+  const result = providerFinancialAnswer("EUR999999 [source](/invented)", [blocked, foreign, statuses[0][0]], context.workspaceId);
+  expect(result.body.match(/fx:opening balance/g)).toHaveLength(1);
+  expect(result.body).toContain("Created the requested tool");
+  expect(result.body).toContain("Unsupported sections were removed");
+  expect(result.body).not.toContain("999999");
+  expect(result.body).not.toContain("/invented");
+  expect(result.body).not.toContain("foreign secret");
+  expect(result.body).not.toContain(`/ai/evidence/${foreign.id}`);
+});
+
+it("adds only missing blockers when one of several retained limitations is explicitly selected", () => {
+  const second = toolResultReceipt("forecast_evaluate", {}, { missingInputs: ["Current booked balance unavailable"] }, context, ["accounts", "planning"]);
+  const result = providerFinancialAnswer(JSON.stringify({ claims: [], interpretation: [limitation] }), [blocked, second, statuses[0][0]], context.workspaceId);
+  expect(result.body.match(/fx:opening balance/g)).toHaveLength(1);
+  expect(result.body.match(/Current booked balance unavailable/g)).toHaveLength(1);
+  expect(result.body.match(/Interpretation — conditional next steps/g)).toHaveLength(1);
+  expect(result.body).toContain("Created the requested tool");
+});

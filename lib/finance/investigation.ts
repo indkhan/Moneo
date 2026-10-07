@@ -113,7 +113,7 @@ function allocatedReporting(rows: InvestigationRow[], spec: InvestigationSpec, r
 }
 
 /** All effective records are loaded before totals; pagination applies solely to support. No financial writes. */
-export function investigate(input: unknown, rows: InvestigationRow[], context: InvestigationContext) {
+export function investigate(input: unknown, rows: InvestigationRow[], context: InvestigationContext, options: { retainSupport?: boolean } = {}) {
   const spec = investigationSchema.parse(input);
   const { page, ...meaning } = spec;
   const reporting = allocatedReporting(rows, spec, context.rates ?? []);
@@ -166,15 +166,19 @@ export function investigate(input: unknown, rows: InvestigationRow[], context: I
   }
   const nextOffset = offset + page.size;
   const record = ({ row, current, comparison, key }: typeof selected[number]) => ({ ...row, current, comparison, groupKey: key, reportingAmountMinor: reporting ? reporting.allocated.get(row.id) ?? null : null, link: `/money/transactions?transaction=${encodeURIComponent(row.parentId)}` });
+  const selectedIds = new Set(selected.map(item => item.row.id));
+  const selectedParents = new Set(selected.map(item => item.row.parentId));
   return {
     version: 1 as const, queryId, evidenceId, evidence: { mode: "live" as const, capturedAt: context.capturedAt, datedSnapshot: false },
     interpretedFilters: meaning, metric: spec.metric, currencyPolicy: spec.currencyPolicy,
     reporting: reporting ? { currency: spec.currencyPolicy.mode === "base" ? spec.currencyPolicy.currency : null,
       policy: reporting.report.policy, allocationPolicy: reporting.report.allocationPolicy,
-      postings: reporting.report.postings.filter(p => p.sourcePostings.some(s => selected.some(r => r.row.id === s.id))),
+      postings: reporting.report.postings.filter(p => p.sourcePostings.some(s => selectedIds.has(s.id))),
+      exclusions: reporting.report.exclusions.filter(exclusion => selectedParents.has(exclusion.id) || selectedIds.has(exclusion.id)),
       basis: "Canonical conversion before entity filters; groups contain only the selected allocated components." } : null,
     groups: sorted.map(g => ({ key: g.key, dimensions: g.dimensions, currency: g.currency, currentMinor: g.missingCurrent ? null : g.current.toString(), comparisonMinor: spec.comparison && !g.missingComparison ? g.comparison.toString() : null, deltaMinor: spec.comparison && !g.missingCurrent && !g.missingComparison ? (g.current - g.comparison).toString() : null, availableCurrentMinor: g.current.toString(), availableComparisonMinor: g.comparison.toString(), currentCount: g.currentCount, comparisonCount: g.comparisonCount, supportCount: g.supportCount })),
     coverage: { ...excluded, effectiveRowsObserved: rows.length, includedRows: selected.length, unresolvedIncluded, missingConversionRows, partial: excluded.classificationExcluded > 0 || unresolvedIncluded > 0 || missingConversionRows > 0, sourceCoverage: context.sourceCoverage ?? { status: "unknown", statementCompleteness: "unknown" }, limitation: "Accepted/effective ledger scope only. Classification exclusions, unresolved amounts and missing conversions are not upper or lower bounds. Statement completeness is determined separately by source coverage." },
     records: { total: supporting.length, items: supporting.slice(offset, nextOffset).map(record), nextCursor: nextOffset < supporting.length ? Buffer.from(JSON.stringify({ evidenceId, offset: nextOffset, scope: investigationIdentity({ groupKey: page.groupKey ?? null, period: page.period }) })).toString("base64url") : null },
+    ...(options.retainSupport ? { retainedRecords: selected.map(record) } : {}),
   };
 }

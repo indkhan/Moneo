@@ -25,6 +25,13 @@ it("cannot claim freshness or read financial evidence when current scopes are re
   expect(fixture.load).not.toHaveBeenCalled();
 });
 
+it("compares verified snapshots without capture metadata while detecting source revisions", () => {
+  const saved = { ...evidence, verification: { version: 1, receiptIds: ["original"] }, queryInvestigation: { sourceRevision: "v1", evidence: { capturedAt: "2026-10-02T10:00:00Z" } } };
+  const current = { ...evidence, calculationEvidence: { retained: true }, queryInvestigation: { sourceRevision: "v1", evidence: { capturedAt: "2026-10-02T11:00:00Z" } } };
+  expect(compareReviewEvidence(saved, current).status).toBe("current");
+  expect(compareReviewEvidence(saved, { ...current, queryInvestigation: { ...current.queryInvestigation, sourceRevision: "v2" } }).status).toBe("stale");
+});
+
 it("preserves a historical review with unknown freshness when settings cannot be loaded", async () => {
   const result = await reviewFreshness({ from: () => { throw new Error("database unavailable"); } } as unknown as SupabaseClient, { id: "w", display_currency: "EUR", timezone: "Europe/Berlin" }, evidence);
   expect(result.status).toBe("unknown");
