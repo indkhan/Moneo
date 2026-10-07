@@ -208,5 +208,6 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
   const sourceCoverage = buildSourceCoverage({ from: boundary ?? "0001-01-01", to: coverageEnd, accountIds: [...accountIds], ledgerBasis: "balance_activity" },
     balanceEvidence.ledger.filter(row => accountIds.has(row.account_id)).map(row => ({ ...row, kind: row.kind ?? "ordinary" })), sourceMetadata?.imports, sourceMetadata?.sources);
   return { forecast, available, liquidity: accountLiquidity(input), input, preferences, preferencesVersion, sourceCoverage,
+    accountLabels: spendable.map(account => ({ id: account.id, name: account.name })),
     resultBasis: "accepted balance evidence and confirmed assumptions; source completeness unknown" };
 }

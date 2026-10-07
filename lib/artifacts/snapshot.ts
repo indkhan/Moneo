@@ -133,7 +133,7 @@ export async function buildCalculatorSnapshot(
           data.baselineAvailableMinor ?? (data.baseline.status === "available" ? data.baseline.amountMinor.toString() : null),
         unavailable: data.unavailable ?? (data.baseline.status === "available" ? null : "Forecast unavailable"),
         withTripAvailableMinor: data.withTripAvailableMinor ?? (data.withTrip?.status === "available" ? data.withTrip.amountMinor.toString() : null),
-        evaluatedCostMinor: (opts?.costMinor ?? 90000n).toString(),
+        evaluatedCostMinor: data.costMinor ?? (opts?.costMinor ?? 90000n).toString(),
         tripDate: data.tripDate,
         ...(data.scenario ? { tripResult: data.tripResult, tripAccounts: data.accounts, horizon: data.horizon, limitingDate: data.limitingDate, afterTripMinor: data.afterTripMinor } : {}),
         ...(data.liquidity ? { accountId: data.accountId, liquidity: data.liquidity, tripLiquidity: data.tripLiquidity } : {}),

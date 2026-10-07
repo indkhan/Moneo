@@ -40,6 +40,17 @@ export function defaultTripScenario(today: string, currencyCode: string, account
     payments: [{ name: "Trip", kind: "cost", date, accountId, currencyCode, amountMinor: costMinor.toString() }] });
 }
 
+export function tripCostMinor(scenario: TripScenario, currencyCode: string): bigint | null {
+  let total = 0n;
+  for (const item of scenario.payments.filter(item => item.kind === "cost")) {
+    const converted = convertFx({ amountMinor: BigInt(item.amountMinor), from: item.currencyCode, to: currencyCode,
+      rate: item.fx?.rate, date: item.fx?.date ?? item.date, source: item.fx?.source ?? "Same currency trip assumption" });
+    if (converted.status === "unavailable") return null;
+    total += converted.converted.amountMinor;
+  }
+  return total;
+}
+
 export function evaluateTripScenario(input: ForecastInput, raw: unknown) {
   const scenario = tripScenarioSchema.parse(raw), horizon = tripHorizon(input.startDate, scenario);
   if (input.horizonDays < horizon.days) throw new Error("Forecast evidence does not cover the trip horizon");

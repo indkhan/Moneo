@@ -113,7 +113,7 @@ export async function spendingForArtifact(artifactId: string, query: string, per
 }
 
 export async function tripForArtifact(artifactId: string, costMinor: bigint, accountId?: string, funding: Parameters<typeof withInternalFunding>[1] = [], rawScenario?: unknown) {
-  if (typeof costMinor !== "bigint" || costMinor < 0n || costMinor > 999999999999999999n) throw new Error("Invalid trip cost");
+  if (typeof costMinor !== "bigint" || costMinor < 0n || (rawScenario === undefined && costMinor > 999999999999999999n)) throw new Error("Invalid trip cost");
   const { workspace, settings } = await requirePermission(artifactId, "forecast");
   const today = calendarDate(new Date(), workspace.timezone);
   const requested = rawScenario === undefined ? defaultTripScenario(today, workspace.display_currency, accountId ?? "unselected", costMinor) : tripScenarioSchema.parse(rawScenario);
@@ -134,7 +134,7 @@ export async function tripForArtifact(artifactId: string, costMinor: bigint, acc
     baseline: selected ? { status: "available" as const, ...selected, amountMinor: BigInt(selected.spendableMinor), limitingDate: selected.spendingLimitingDate } : { status: "unavailable" as const },
     withTrip: withTrip ? { status: "available" as const, ...withTrip, amountMinor: BigInt(withTrip.spendableMinor), limitingDate: withTrip.spendingLimitingDate } : null,
     tripDate: scenario.startsOn, sourceCoverage: baseline.sourceCoverage, resultBasis: baseline.resultBasis,
-    accounts: baseline.input.accounts.map(item => ({ id: item.id, currencyCode: item.currencyCode })),
+    accounts: baseline.input.accounts.map(item => ({ id: item.id, currencyCode: item.currencyCode, name: baseline.accountLabels?.find(account => account.id === item.id)?.name ?? item.id })),
     unavailable: !selectedId && rawScenario === undefined ? "Choose a paying account; aggregate cash requires explicit funding" : result.unavailable };
 }
 

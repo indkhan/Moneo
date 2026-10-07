@@ -10,7 +10,7 @@ import type { SourceCoverage } from "@/lib/finance/source-coverage";
 
 export function DatedTripForm({ artifactId, stateVersion, initial, initialResult, accounts, sourceCoverage }: {
   artifactId: string; stateVersion: number; initial: TripScenario; initialResult: TripScenarioResult;
-  accounts: { id: string; currencyCode: string }[]; sourceCoverage?: SourceCoverage;
+  accounts: { id: string; currencyCode: string; name?: string }[]; sourceCoverage?: SourceCoverage;
 }) {
   const draft = useStateDraft(initial, stateVersion, saveDatedTripState);
   const scenario = draft.value;
@@ -61,7 +61,7 @@ export function DatedTripForm({ artifactId, stateVersion, initial, initialResult
             <label className="text-sm">Payment date<input type="date" value={item.date} onChange={event => editPayment(index, { date: event.target.value })} className={cls} /></label>
             <label className="text-sm">Amount in minor units<input inputMode="numeric" value={item.amountMinor} maxLength={18} onChange={event => editPayment(index, { amountMinor: event.target.value })} className={cls} /><span className="text-xs">100 minor units = {(() => { try { return formatMoney(100n, item.currencyCode); } catch { return "Choose a currency"; } })()}</span></label>
             <label className="text-sm">Currency<input value={item.currencyCode} maxLength={3} onChange={event => editPayment(index, { currencyCode: event.target.value.toUpperCase() })} className={cls} /></label>
-            <label className="text-sm">Paying / receiving account<select value={item.accountId} onChange={event => editPayment(index, { accountId: event.target.value })} className={cls}><option value="unselected">Choose an account</option>{accounts.map(account => <option key={account.id} value={account.id}>{account.id}</option>)}</select></label>
+            <label className="text-sm">Paying / receiving account<select value={item.accountId} onChange={event => editPayment(index, { accountId: event.target.value })} className={cls}><option value="unselected">Choose an account</option>{accounts.map(account => <option key={account.id} value={account.id}>{account.name ?? account.id}</option>)}</select></label>
           </div>
           {item.currencyCode !== initialResult.currency && <div className="mt-3 grid gap-3 sm:grid-cols-3">
             <p className="col-span-full text-sm">Explicit hypothetical conversion: 1 {item.currencyCode} buys this many {initialResult.currency}. A future rate is an assumption.</p>

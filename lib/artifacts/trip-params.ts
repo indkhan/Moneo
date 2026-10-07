@@ -1,16 +1,15 @@
-import { addTripDays, tripScenarioSchema, type TripScenario } from "@/lib/finance/trip-scenario";
+import { addTripDays, tripCostMinor, tripScenarioSchema, type TripScenario } from "@/lib/finance/trip-scenario";
 import { z } from "zod";
 
-export function tripScenarioForParams(scenario: TripScenario, params: Record<string, string | number>): TripScenario {
+export function tripScenarioForParams(scenario: TripScenario, params: Record<string, string | number>, currencyCode = scenario.payments[0].currencyCode): TripScenario {
   const hasCost = params.costMinor !== undefined;
   const cost = hasCost ? z.string().regex(/^\d{1,18}$/).parse(String(params.costMinor)) : undefined;
   const date = params.tripDate ? z.iso.date().parse(params.tripDate) : scenario.startsOn;
   const accountId = params.accountId ? z.string().min(1).max(100).parse(params.accountId) : undefined;
-  const simple = scenario.payments.length === 1 && scenario.payments[0].kind === "cost" && !scenario.payments[0].fx;
+  const simple = scenario.payments.length === 1 && scenario.payments[0].kind === "cost" && !scenario.payments[0].fx && scenario.payments[0].currencyCode === currencyCode;
   if (!simple) {
-    const currencies = new Set(scenario.payments.map(item => item.currencyCode));
-    const total = scenario.payments.filter(item => item.kind === "cost").reduce((sum, item) => sum + BigInt(item.amountMinor), 0n);
-    if ((hasCost && (currencies.size !== 1 || BigInt(cost!) !== total)) || date !== scenario.startsOn || accountId)
+    const total = tripCostMinor(scenario, currencyCode);
+    if ((hasCost && (total === null || BigInt(cost!) !== total)) || date !== scenario.startsOn || (accountId && scenario.payments.filter(item => item.kind === "cost").some(item => item.accountId !== accountId)))
       throw new Error("Edit the native dated budget for multiple payments, contributions or currency conversion; no single debit can replace it");
     return tripScenarioSchema.parse(scenario);
   }
