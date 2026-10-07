@@ -14,10 +14,13 @@ const scopesByTool: Record<string, AiDataScope[]> = {
   forecast_evaluate: ["accounts", "transactions", "planning"], finance_investigate: ["accounts", "transactions"], finance_entities: ["accounts", "transactions"], finance_detail: ["accounts", "transactions"], finance_scenario: ["accounts", "transactions"],
   reviews_investigate: ["accounts", "transactions"], reviews_start: ["accounts", "transactions"], imports_status: ["imports"], transactions_previewCategory: ["transactions"], transactions_setCategory: ["transactions"],
 };
-export async function captureToolEvidence(name: string, input: unknown, result: unknown, context: Awaited<ReturnType<typeof requireWorkspace>>, service: SupabaseClient): Promise<EvidenceReceipt[]> {
+export async function captureToolEvidence(name: string, input: unknown, result: unknown, context: Awaited<ReturnType<typeof requireWorkspace>>, service: SupabaseClient, actualReadScopes?: AiDataScope[]): Promise<EvidenceReceipt[]> {
   const scopes = [...(scopesByTool[name] ?? ["accounts", "transactions"])];
-  if (["accounts_getBalances", "analytics_cashflow", "forecast_evaluate", "finance_investigate", "finance_detail", "finance_scenario", "reviews_investigate"].includes(name) && context.settings.ai_data_scopes.includes("imports")) scopes.push("imports");
-  if (name === "reviews_investigate" && context.settings.ai_data_scopes.includes("planning")) scopes.push("planning");
+  if (actualReadScopes) scopes.push(...actualReadScopes);
+  else {
+    if (["accounts_getBalances", "analytics_cashflow", "forecast_evaluate", "finance_investigate", "finance_detail", "finance_scenario", "reviews_investigate"].includes(name) && context.settings.ai_data_scopes.includes("imports")) scopes.push("imports");
+    if (name === "reviews_investigate" && context.settings.ai_data_scopes.includes("planning")) scopes.push("planning");
+  }
   if (name === "finance_detail" && input && typeof input === "object" && "kind" in input && input.kind === "recurring") scopes.push("planning");
   const unique = [...new Set(scopes)];
   requireAiScope(context.settings, ...unique);

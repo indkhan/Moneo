@@ -23,6 +23,13 @@ it("does not persist or expose newly revoked scopes", async () => {
   await expect(captureToolEvidence("analytics_cashflow", {}, {}, { ...context, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: [] } }, { from: () => ({ insert }) } as unknown as SupabaseClient)).rejects.toThrow(/disabled/);
   expect(insert).not.toHaveBeenCalled();
 });
+it.each(["planning", "imports"] as const)("rejects revocation of actually read optional %s scope before receipt capture", async revoked => {
+  const insert = vi.fn(async () => ({ error: null }));
+  const latest = { ...context, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: DEFAULT_SETTINGS.ai_data_scopes.filter(scope => scope !== revoked) } };
+  const capture = captureToolEvidence as unknown as (...args: unknown[]) => Promise<unknown>;
+  await expect(capture("reviews_investigate", {}, { planning: { secret: "Synthetic optional result" }, sourceCoverage: { imports: "Synthetic read" } }, latest, { from: () => ({ insert }) }, ["accounts", "transactions", "planning", "imports"])).rejects.toThrow(new RegExp(revoked));
+  expect(insert).not.toHaveBeenCalled();
+});
 it("captures exact full investigation support rather than the first tool display page", async () => {
   const row: InvestigationRow = { id: "00000000-0000-4000-8000-000000000002", parentId: "00000000-0000-4000-8000-000000000002", accountId: "owned", categoryId: null, merchantId: null, date: "2026-09-01", amountMinor: "-10", currency: "EUR", status: "posted", kind: "ordinary", tags: [], event: null, reviewReasons: [], version: 1, description: "Synthetic" };
   const spec = investigationSchema.parse({ version: 1, period: { from: "2026-09-01", to: "2026-09-30" } });

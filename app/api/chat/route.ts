@@ -67,6 +67,7 @@ export async function POST(request: Request) {
   const canStartReview = canInvestigate && isExplicitReviewRequest(message);
   const canCreateArtifact = /(?:^|[.!?]\s+)(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:create|build|make)\b[^.!?]*\b(?:chart|artifact|tool|dashboard|tracker|planner)\b/i.test(message);
   // These checks govern new tool results, not evidence already sent to the provider.
+  const readScopes = new WeakMap<object, AiDataScope[]>();
   async function aiEvidence<T>(scopes: AiDataScope[], read: (latest: typeof context) => Promise<T>, includePlanning = false, includeImports = false): Promise<T> {
     const latest = await requireWorkspace();
     if (latest.workspace.id !== workspace.id) throw new Error("Workspace changed");
@@ -79,6 +80,7 @@ export async function POST(request: Request) {
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (request.signal.aborted) throw new Error("Request canceled");
     requireAiScope(current.settings, ...usedScopes);
+    if (result && typeof result === "object") readScopes.set(result, usedScopes);
     return result;
   }
   let createdArtifact: Promise<{ id: string; href: string }> | undefined;
@@ -92,7 +94,7 @@ export async function POST(request: Request) {
         if (latest.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
         if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Financial evidence service is not configured");
         const service = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-        const receipts = await captureToolEvidence(name, input, output, latest, service);
+        const receipts = await captureToolEvidence(name, input, output, latest, service, output && typeof output === "object" ? readScopes.get(output) : undefined);
         const current = await requireWorkspace();
         if (current.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
         requireAiScope(current.settings, ...receipts.flatMap(receipt => receipt.scopes));

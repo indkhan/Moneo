@@ -3,7 +3,7 @@ import { generateText } from "ai";
 import { investigationDetail } from "@/lib/finance/investigation-reader";
 import { POST } from "./route";
 import { requireWorkspace } from "@/lib/auth";
-import { DEFAULT_SETTINGS } from "@/lib/settings";
+import { DEFAULT_SETTINGS, requireAiScope, type AiDataScope } from "@/lib/settings";
 import { loadCategoryPreview } from "@/lib/finance/edit-preview";
 import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
 import { listAccounts, getBalances, cashflow, searchTransactions, listGoals, evaluateForecast } from "@/lib/finance/tools";
@@ -222,6 +222,22 @@ it("investigates remaining evidence when planning is already revoked before a ne
   const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, { execute: () => Promise<unknown> }>;
   await expect(tools.reviews_investigate.execute()).resolves.toEqual({ source: "exact evidence" });
   expect(loadFinancialReviewEvidence).toHaveBeenCalledWith(current.supabase, current.workspace, reduced.settings, undefined);
+});
+it.each(["planning", "imports"] as const)("carries actual %s reads across a revocation between post-read and capture", async revoked => {
+  await POST(request("Review my finances"));
+  const current = await requireWorkspace();
+  let checks = 0;
+  vi.mocked(loadFinancialReviewEvidence).mockImplementationOnce(async () => {
+    vi.mocked(requireWorkspace).mockImplementation(async () => ++checks === 1 ? current : { ...current, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: DEFAULT_SETTINGS.ai_data_scopes.filter(scope => scope !== revoked) } });
+    return { planning: { synthetic: "retained" } } as never;
+  });
+  vi.mocked(captureToolEvidence).mockImplementationOnce(async (...args) => {
+    const scopes = (args as unknown[])[5] as AiDataScope[];
+    requireAiScope(args[3].settings, ...scopes);
+    return [];
+  });
+  const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, { execute: () => Promise<unknown> }>;
+  await expect(tools.reviews_investigate.execute()).rejects.toThrow(new RegExp(`${revoked}.*disabled`));
 });
 
 it("preserves the separately authorized exact category command after data-scope revocation", async () => {
