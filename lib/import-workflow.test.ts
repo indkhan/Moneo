@@ -7,7 +7,7 @@ vi.mock("workflow/api", () => ({ start: vi.fn() }));
 vi.mock("@/workflows/financial-review", () => ({ financialReview: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ getModel: vi.fn(() => { throw new Error("not configured"); }) }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
-  rpc: async (name: string, args: Record<string, unknown>) => { fixture.effects.push(name); if (name === "finish_import_run") fixture.updates.push({ status: "failed", error: args.p_error }); return { data: "failed", error: null }; },
+  rpc: async (name: string, args: Record<string, unknown>) => { if (name === "read_import_stage") return { data: null, error: null }; fixture.effects.push(name); if (name === "finish_import_run") fixture.updates.push({ status: "failed", error: args.p_error }); return { data: "failed", error: null }; },
   storage: { from: () => ({ download: async () => ({ data: new Blob(["Date,Description,Amount\n2026-09-01,Coffee,-2.00"]), error: null }) }) },
   from: (table: string) => {
     const query = {

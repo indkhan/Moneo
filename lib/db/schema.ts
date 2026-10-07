@@ -146,6 +146,20 @@ export const importControlEvents = pgTable("import_control_events", {
   check("import_control_events_action_check", sql`${table.action} in ('cancel','resume')`),
   check("import_control_events_result_check", sql`jsonb_typeof(${table.result}) = 'object'`)]);
 
+export const importStaging = pgTable("import_staging", {
+  importId: uuid("import_id").primaryKey().references(() => imports.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  stageVersion: integer("stage_version").notNull(),
+  fileHash: text("file_hash").notNull(),
+  mapping: jsonb("mapping").notNull(),
+  routeAccounts: jsonb("route_accounts").notNull(),
+  rows: jsonb("rows").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+  check("import_staging_stage_version_check", sql`${table.stageVersion} = 1`),
+  check("import_staging_rows_check", sql`jsonb_typeof(${table.rows}) = 'array' and jsonb_array_length(${table.rows}) <= 10000 and octet_length(${table.rows}::text) <= 64000000`),
+]);
+
 export const sourceTransactions = pgTable("source_transactions", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),

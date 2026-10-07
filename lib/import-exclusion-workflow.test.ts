@@ -8,7 +8,11 @@ const correctionCsv = "Date,Description,Amount,State,Type,Fee\nbad,Refund,2,unsu
 vi.mock("workflow/api", () => ({ start: vi.fn() }));
 vi.mock("@/workflows/financial-review", () => ({ financialReview: vi.fn() }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
-  rpc: async (name: string, args: Record<string, unknown>) => { fixture.calls.push({ name, args }); return { data: name === "finish_import_run" ? "completed" : null, error: null }; },
+  rpc: async (name: string, args: Record<string, unknown>) => {
+    fixture.calls.push({ name, args });
+    if (name === "import_batch_candidates") return { data: fixture.correction ? [{ rowNumber: 2, status: "pending", candidates: [] }] : [], error: null };
+    return { data: name === "finish_import_run" ? "completed" : null, error: null };
+  },
   storage: { from: () => ({ download: async () => ({ data: new Blob([fixture.correction ? correctionCsv : csv()]), error: null }) }) },
   from: () => {
     const query = { select: () => query, eq: () => query,
@@ -30,8 +34,9 @@ it("processes each excluded original index exactly once across a workflow chunk 
   vi.stubEnv("OPENROUTER_API_KEY", "");
   fixture.exclusions = 251;
   await importFile("import", "workspace", 251);
-  const rows = fixture.calls.filter(call => call.name === "record_import_exclusion").map(call => (call.args.p_row as { rowNumber: number }).rowNumber);
+  const rows = fixture.calls.filter(call => call.name === "stage_import_rows").flatMap(call => (call.args.p_rows as { row: { rowNumber: number } }[]).map(item => item.row.rowNumber));
   expect(rows).toEqual(Array.from({ length: 251 }, (_, index) => index + 2));
+  expect(fixture.calls.filter(call => call.name === "ingest_import_batch").map(call => call.args.p_offset)).toEqual([0, 250]);
 });
 
 it("executes the complete reviewed corrected row while retaining original status and date evidence", async () => {
@@ -41,10 +46,10 @@ it("executes the complete reviewed corrected row while retaining original status
   fixture.correction = true;
   await importFile("import", "workspace", 1);
   await importFile("import", "workspace", 1);
-  const calls = fixture.calls.filter(call => call.name === "ingest_import_row");
+  const calls = fixture.calls.filter(call => call.name === "stage_import_rows");
   expect(calls).toHaveLength(2);
   expect(calls[0]).toEqual(calls[1]);
-  expect(calls[0].args.p_row).toMatchObject({ rowNumber: 2, postedOn: "2026-09-01", postedAt: "2026-09-01T12:00:00.000Z", status: "pending", kind: "refund", amountMinor: "200", currencyCode: "EUR",
+  expect((calls[0].args.p_rows as { row: unknown }[])[0].row).toMatchObject({ rowNumber: 2, postedOn: "2026-09-01", postedAt: "2026-09-01T12:00:00.000Z", status: "pending", kind: "refund", amountMinor: "200", currencyCode: "EUR",
     reviewReasons: ["fee_semantics"], feeEvidence: { treatment: "unknown", feeMinor: "100" }, originalRow: { Date: "bad", Description: "Refund", Amount: "2", State: "unsupported", Type: "Card refund", Fee: "1" } });
   expect(fixture.calls.find(call => call.name === "prepare_import_route")?.args.p_total_rows).toBe(1);
 });
@@ -55,11 +60,11 @@ it("persists excluded original observations with stable identities across retrie
   vi.stubEnv("OPENROUTER_API_KEY", "");
   await importFile("import", "workspace", 1);
   await importFile("import", "workspace", 1);
-  const calls = fixture.calls.filter(call => call.name === "record_import_exclusion");
+  const calls = fixture.calls.filter(call => call.name === "stage_import_rows");
   expect(calls).toHaveLength(2);
   expect(calls[0]).toEqual(calls[1]);
-  expect(calls[0].args.p_row).toMatchObject({ rowNumber: 2, originalRow: { Date: "", Description: "Statement footer", Amount: "1" }, reason: "Statement footer" });
-  expect(fixture.calls.some(call => call.name === "ingest_import_row")).toBe(false);
+  expect((calls[0].args.p_rows as { row: unknown }[])[0].row).toMatchObject({ rowNumber: 2, originalRow: { Date: "", Description: "Statement footer", Amount: "1" }, reason: "Statement footer" });
+  expect(fixture.calls.filter(call => call.name === "ingest_import_batch").every(call => (call.args.p_decisions as unknown[]).length === 0)).toBe(true);
 });
 
 it("does not persist exclusions after cancellation or run supersession", async () => {
@@ -69,5 +74,5 @@ it("does not persist exclusions after cancellation or run supersession", async (
   await importFile("import", "workspace", 1);
   fixture.status = "running"; fixture.version = 2;
   await importFile("import", "workspace", 1, 1);
-  expect(fixture.calls.filter(call => call.name === "record_import_exclusion")).toHaveLength(0);
+  expect(fixture.calls.filter(call => call.name === "stage_import_rows" || call.name === "ingest_import_batch")).toHaveLength(0);
 });
