@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { generateText } from "ai";
+import { investigationDetail } from "@/lib/finance/investigation-reader";
 import { POST } from "./route";
 import { requireWorkspace } from "@/lib/auth";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
@@ -7,6 +8,7 @@ import { loadCategoryPreview } from "@/lib/finance/edit-preview";
 import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
 import { listAccounts, getBalances, cashflow, searchTransactions, listGoals, evaluateForecast } from "@/lib/finance/tools";
 import { startFinancialReview } from "@/lib/finance/start-review";
+vi.mock("@/lib/finance/investigation-reader", async original => ({ ...await original<typeof import("@/lib/finance/investigation-reader")>(), investigationDetail: vi.fn(async () => ({ synthetic: "detail" })) }));
 vi.mock("ai", () => ({ generateText: vi.fn(async () => ({ text: "Evidence reviewed", totalUsage: {} })), tool: (value: unknown) => value, stepCountIs: (value: number) => value }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ SYSTEM_PROMPT: "", modelForSettings: vi.fn(async () => ({ modelId: "free" })) }));
@@ -198,3 +200,22 @@ it("preserves the separately authorized exact category command after data-scope 
   expect(current.supabase.rpc).toHaveBeenCalledWith("chat_set_category", { p_request_id: requestId, p_transaction_id: requestId, p_category: "Groceries" });
   await expect(tools.transactions_setCategory.execute({ transactionId: requestId, category: "Other" })).rejects.toThrow("Action must match");
 });
+
+it.each(["before", "during"])("requires planning for recurring detail when revoked %s the read", async when => {
+  await POST(request("Explain my transactions"));
+  const context = await requireWorkspace();
+  const revoked = { ...context, settings: { ...context.settings, ai_data_scopes: ["accounts", "transactions"] as typeof context.settings.ai_data_scopes } };
+  if (when === "before") vi.mocked(requireWorkspace).mockResolvedValue(revoked);
+  else vi.mocked(investigationDetail).mockImplementationOnce(async () => { vi.mocked(requireWorkspace).mockResolvedValue(revoked); return { series: {} } as unknown as Awaited<ReturnType<typeof investigationDetail>>; });
+  const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, { execute: (input: unknown) => Promise<unknown> }>;
+  await expect(tools.finance_detail.execute({ kind: "recurring", id: requestId })).rejects.toThrow(/disabled/);
+  if (when === "before") expect(investigationDetail).not.toHaveBeenCalled();
+});
+it("allows transaction detail with planning disabled", async () => {
+  await POST(request("Explain my transactions"));
+  const context = await requireWorkspace();
+  vi.mocked(requireWorkspace).mockResolvedValue({ ...context, settings: { ...context.settings, ai_data_scopes: ["accounts", "transactions"] } });
+  const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, { execute: (input: unknown) => Promise<unknown> }>;
+  await expect(tools.finance_detail.execute({ kind: "transaction", id: requestId })).resolves.toEqual({ synthetic: "detail" });
+});
+

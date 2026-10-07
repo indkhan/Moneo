@@ -21,8 +21,8 @@ export type ValidationResult =
   | { ok: true; manifest: CalculatorManifest; warnings: string[] }
   | { ok: false; errors: string[]; manifest?: CalculatorManifest };
 
-export function fixturesForKind(kind: ArtifactKind, sdk: string[] = []): CalculatorInput[] {
-  return snapshotFixtures(kind, sdk);
+export function fixturesForKind(kind: ArtifactKind, sdk: string[] = [], investigation?: CalculatorManifest["investigation"]): CalculatorInput[] {
+  return snapshotFixtures(kind, sdk, investigation);
 }
 
 export async function validateGeneratedCandidate(args: {
@@ -43,7 +43,7 @@ export async function validateGeneratedCandidate(args: {
 
   // Exercise exactly the manifest's host contract, including absent operations,
   // nullable evidence, partial inputs, currencies and bounded cardinalities.
-  const fixtures = fixturesForKind(args.kind, manifest.sdk);
+  const fixtures = fixturesForKind(args.kind, manifest.sdk, manifest.investigation);
   for (let i = 0; i < fixtures.length; i++) {
     const fixture = fixtures[i];
     const params = normalizeCalculatorParams(manifest, fixture.params, "restore");

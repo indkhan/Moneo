@@ -67,6 +67,7 @@ export default async function ArtifactPage({ params, searchParams }: {
         reportingView: kind === "spending_explorer" ? nativeReportingView : z.enum(["original", "base"]).optional().parse(initialParams.reportingView),
         costMinor: typeof initialParams.costMinor === "number" && Number.isSafeInteger(initialParams.costMinor) ? BigInt(initialParams.costMinor) : typeof initialParams.costMinor === "string" && /^-?\d+$/.test(initialParams.costMinor) ? BigInt(initialParams.costMinor) : costMinor,
         sdk: manifestParsed.data.sdk,
+        investigation: manifestParsed.data.investigation,
       });
       snapshot = built.snapshot;
       sourceCoverage = built.snapshot.sourceCoverage;

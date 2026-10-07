@@ -8,6 +8,19 @@ import { z } from "zod";
 import { buildSourceCoverage, loadSourceCoverage } from "@/lib/finance/source-coverage";
 import { expenditurePosting, reportExpenditure } from "@/lib/finance/expenditure";
 import { loadExpenditureRates } from "@/lib/finance/expenditure-rates";
+import { runInvestigation } from "@/lib/finance/investigation-reader";
+
+export async function investigationForArtifact(artifactId: string, input: unknown, permission: "spending" | "cashflow" = "spending") {
+  const context = await requirePermission(artifactId, permission);
+  requireAiScope(context.settings, "accounts", "transactions");
+  const result = await runInvestigation(input, context, { canReadImports: context.settings.ai_data_scopes.includes("imports") });
+  // Do not silently drop groups/provenance to fit the generated-code memory budget.
+  if (result.groups.length > 500 || (result.reporting?.postings.length ?? 0) > 500) throw new Error("Artifact investigation exceeds 500 groups or canonical postings; narrow its scope or open the complete Money investigation");
+  const latest = await requirePermission(artifactId, permission);
+  if (latest.workspace.id !== context.workspace.id) throw new Error("Workspace changed");
+  requireAiScope(latest.settings, "accounts", "transactions", ...(context.settings.ai_data_scopes.includes("imports") ? ["imports" as const] : []));
+  return result;
+}
 
 async function requirePermission(artifactId: string, permission: string) {
   const context = await requireWorkspace();
@@ -146,3 +159,4 @@ export async function goalsForArtifact(artifactId: string) {
     sourceCoverage: buildSourceCoverage({ from, to: today, recordBasis: "manual_goals" }, []),
     resultBasis: "dated recorded savings and virtual reservations; source completeness not evaluated" };
 }
+

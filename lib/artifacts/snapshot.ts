@@ -4,12 +4,13 @@
 // never queries the database; it receives one of these small JSON
 // snapshots as input.snapshot plus artifact-local params.
 
-import { balancesForArtifact, goalsForArtifact, spendingForArtifact, tripForArtifact } from "./finance-sdk";
+import { balancesForArtifact, goalsForArtifact, spendingForArtifact, tripForArtifact, investigationForArtifact } from "./finance-sdk";
 import { SNAPSHOT_LIMITS, evidenceCoverage, type SnapshotCoverage } from "./coverage";
 import { dailySpending } from "@/lib/finance/calculations";
 import { calendarDate } from "@/lib/finance/calendar";
 import { ALLOWED_SDK_BY_KIND, type ArtifactKind } from "./spec";
 import type { SourceCoverage } from "@/lib/finance/source-coverage";
+import type { InvestigationSpec } from "@/lib/finance/investigation";
 
 export type CalculatorSnapshot = { coverage?: SnapshotCoverage; sourceCoverage?: SourceCoverage; sourceCoverageByOperation?: Record<string, SourceCoverage>; reporting?: Awaited<ReturnType<typeof spendingForArtifact>>["reporting"]; conversionCoverage?: Awaited<ReturnType<typeof spendingForArtifact>>["conversionCoverage"]; resultBasis?: string } & (
   | { currency: string; balances?: Awaited<ReturnType<typeof balancesForArtifact>>["balances"];
@@ -48,7 +49,7 @@ export type CalculatorSnapshot = { coverage?: SnapshotCoverage; sourceCoverage?:
 export async function buildCalculatorSnapshot(
   artifactId: string,
   kind: ArtifactKind,
-  opts?: { query?: string; month?: string; reportingView?: "original" | "base"; costMinor?: bigint; accountId?: string; funding?: Parameters<typeof tripForArtifact>[3]; sdk?: string[]; spendingOperation?: "spending" | "cashflow" },
+  opts?: { query?: string; month?: string; reportingView?: "original" | "base"; investigation?: InvestigationSpec; costMinor?: bigint; accountId?: string; funding?: Parameters<typeof tripForArtifact>[3]; sdk?: string[]; spendingOperation?: "spending" | "cashflow" },
 ): Promise<{ snapshot: CalculatorSnapshot; stateParams: Record<string, number | string> }> {
   if (kind.startsWith("custom_")) {
     const operations = [...new Set(opts?.sdk ?? [])];
@@ -81,20 +82,26 @@ export async function buildCalculatorSnapshot(
         }
       } catch (error) { unavailable.push(`${operation}: ${error instanceof Error ? error.message : "Evidence unavailable"}`); }
     }
+    if (opts?.investigation) {
+      if (!operations.some(op => op === "spending" || op === "cashflow")) throw new Error("Investigation requires declared spending/cashflow operation");
+      Object.assign(snapshot, { investigation: await investigationForArtifact(artifactId, opts.investigation, operations.includes("spending") ? "spending" : "cashflow") });
+    }
     if (unavailable.length) snapshot.unavailable = unavailable.join("; ");
     return { snapshot, stateParams: {} };
   }
   if (kind === "spending_explorer") {
+    const investigation = opts?.investigation ? await investigationForArtifact(artifactId, opts.investigation, opts.spendingOperation ?? "spending") : undefined;
     const data = await spendingForArtifact(artifactId, opts?.query ?? "", opts?.spendingOperation ?? "spending", opts?.month, opts?.reportingView);
     if ("unavailable" in data.summary) {
       return {
-        snapshot: { currency: data.currency, unavailable: data.summary.unavailable, sourceCoverage: data.sourceCoverage, reporting: data.reporting, conversionCoverage: data.conversionCoverage, resultBasis: data.resultBasis },
+        snapshot: { currency: data.currency, unavailable: data.summary.unavailable, sourceCoverage: data.sourceCoverage, reporting: data.reporting, conversionCoverage: data.conversionCoverage, resultBasis: data.resultBasis, ...(investigation ? { investigation } : {}) },
         stateParams: {},
       };
     }
     return {
       snapshot: {
         currency: data.currency,
+        ...(investigation ? { investigation } : {}),
         sourceCoverage: data.sourceCoverage,
         reporting: data.reporting, conversionCoverage: data.conversionCoverage, resultBasis: data.resultBasis,
         from: data.from,

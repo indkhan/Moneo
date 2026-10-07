@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { minorDigits } from "@/lib/finance/fx";
+import { investigationSchema } from "@/lib/finance/investigation-schema";
 
 export const artifactKindSchema = z.enum([
   "spending_explorer",
@@ -80,10 +81,12 @@ export const calculatorManifestSchema = z
         calculatorParamSchema,
       )
       .default({}),
-    renderer: z.literal("trusted").default("trusted"),
+      renderer: z.literal("trusted").default("trusted"),
+      investigation: investigationSchema.optional(),
   })
   .strict()
-  .superRefine((manifest, context) => {
+    .superRefine((manifest, context) => {
+      if (manifest.investigation && !manifest.sdk.some(op => op === "spending" || op === "cashflow")) context.addIssue({ code: "custom", path: ["investigation"], message: "Investigation requires a declared spending or cashflow operation" });
     for (const [name, def] of Object.entries(manifest.params)) {
       if (def.min !== undefined && def.max !== undefined && def.min > def.max) {
         context.addIssue({ code: "custom", path: ["params", name], message: "min is greater than max" });
