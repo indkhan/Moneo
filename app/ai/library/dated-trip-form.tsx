@@ -15,15 +15,17 @@ export function DatedTripForm({ artifactId, stateVersion, initial, initialResult
   const draft = useStateDraft(initial, stateVersion, saveDatedTripState);
   const scenario = draft.value;
   const [preview, setPreview] = useState<{ inputs: TripScenario; result: TripScenarioResult; coverage?: SourceCoverage } | null>(null);
-  const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
+  const [failure, setFailure] = useState<{ inputs: TripScenario; message: string } | null>(null);
+  const [pendingInputs, setPendingInputs] = useState<TripScenario | null>(null);
+  const error = failure?.inputs === scenario ? failure.message : "";
+  const pending = pendingInputs === scenario;
   const parsed = tripScenarioSchema.safeParse(scenario);
   const active = preview?.inputs === scenario ? preview : scenario === initial ? { result: initialResult, coverage: sourceCoverage } : null;
   useEffect(() => {
     if (scenario === initial) return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
-      setPending(true); setError("");
+      setPendingInputs(scenario); setFailure(null);
       try {
         const valid = tripScenarioSchema.parse(scenario);
         const response = await fetch("/api/artifacts/trip", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -32,8 +34,8 @@ export function DatedTripForm({ artifactId, stateVersion, initial, initialResult
         if (!response.ok || !data.tripResult) throw new Error(data.error ?? "Trip preview unavailable");
         if (!controller.signal.aborted) setPreview({ inputs: scenario, result: data.tripResult, coverage: data.sourceCoverage });
       } catch (failure) {
-        if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Trip preview unavailable");
-      } finally { if (!controller.signal.aborted) setPending(false); }
+        if (!controller.signal.aborted) setFailure({ inputs: scenario, message: failure instanceof Error ? failure.message : "Trip preview unavailable" });
+      } finally { if (!controller.signal.aborted) setPendingInputs(null); }
     }, 300);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [artifactId, initial, scenario]);
