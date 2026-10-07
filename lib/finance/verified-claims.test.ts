@@ -14,6 +14,17 @@ const fact = { operation: "metric", operands: [metric], valueMinor: "90071992547
 const publish = (claims: unknown[], receipts = [receipt]) => publishFinancialClaims({ claims, interpretation: [] }, receipts, workspaceId);
 
 describe("financial publication trust boundary", () => {
+  it("explains only owned uniquely retained limitations without a numeric metric", () => {
+    const unavailable = { ...receipt, metrics: [], limitations: [{ id: "balance", kind: "missing_input" as const, message: "Current booked balance for Checking is unavailable", nextStep: "assumptions" as const }] };
+    const reference = { action: "limitation", receiptId: receipt.id, limitationId: "balance" };
+    const explain = (interpretation: unknown[], receipts = [unavailable]) => publishFinancialClaims({ claims: [], interpretation }, receipts, workspaceId);
+    expect(explain([reference]).body).toContain("Current booked balance for Checking is unavailable");
+    expect(explain([reference]).removed).toBe(0);
+    expect(explain([{ ...reference, message: "EUR999999 [proof](/fake)" }]).removed).toBe(1);
+    expect(explain([reference], [{ ...unavailable, workspaceId: "00000000-0000-4000-8000-000000000099" }]).removed).toBe(1);
+    expect(explain([{ ...reference, limitationId: "missing" }]).removed).toBe(1);
+    expect(explain([reference], [{ ...unavailable, limitations: [...unavailable.limitations, ...unavailable.limitations] }]).removed).toBe(1);
+  });
   it("validates complete large support without repeatedly traversing source records", () => {
     let reads = 0;
     const ids = Array.from({ length: 1000 }, (_, index) => `record-${index}`);

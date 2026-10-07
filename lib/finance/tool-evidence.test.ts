@@ -55,7 +55,7 @@ it("distinguishes effective detail records from their canonical parent", () => {
   expect(receipt.metrics[1].aggregation?.parents).toEqual(["parent"]);
 });
 it("explains retained unavailable inputs without accepting provider assertions", () => {
-  const receipt = toolResultReceipt("forecast_evaluate", {}, { status: "unavailable", missingInputs: ["Current booked balance for Checking is unavailable"] }, context, ["accounts", "planning"]);
+  const receipt = toolResultReceipt("forecast_evaluate", {}, { status: "unavailable", missingInputs: ["Current booked balance for Checking is unavailable", "Current booked balance for Checking is unavailable"] }, context, ["accounts", "planning"]);
   const answer = providerFinancialAnswer("Checking has EUR999999", [receipt], context.workspaceId);
   expect(answer.body).toContain("Current booked balance for Checking is unavailable");
   expect(answer.body).toContain("assumptions");
