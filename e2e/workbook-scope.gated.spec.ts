@@ -70,7 +70,7 @@ test("reviewed workbook scope imports only selected financial tables with exact 
     await expect.poll(async()=> (await db`select status from public.imports where id=${importId} and workspace_id=${workspace}`)[0].status,{timeout:90_000}).toBe("completed");
     const [stored]=await db`select mapping,total_rows,file_hash,storage_path from public.imports where id=${importId} and workspace_id=${workspace}`;
     expect(stored.total_rows).toBe(3);expect(stored.mapping.workbookScope).toEqual({version:"xlsx-scope-v1",tables:[{sheetId:checking.id,headerRow:3,endRow:4},{sheetId:checking.id,headerRow:6,endRow:7},{sheetId:savings.id,headerRow:1,endRow:2}]});
-    const originals=await db`select row_number,original_row,normalized_row from public.source_transactions where import_id=${importId} and workspace_id=${workspace} order by row_number`;
+    const originals=await db`select id,row_number,original_row,normalized_row from public.source_transactions where import_id=${importId} and workspace_id=${workspace} order by row_number`;
     expect(originals).toHaveLength(3);
     expect(originals[0].original_row.Date).toBe("2026-09-01T14:25:30.123");
     expect(JSON.parse(originals[0].original_row.__moneo_csv_xlsx_source)).toMatchObject({sheetName:"Checking",headerRow:3,rowNumber:4,cells:{Date:{value:"2026-09-01T14:25:30.123Z"}}});
@@ -78,8 +78,20 @@ test("reviewed workbook scope imports only selected financial tables with exact 
     expect(txs.map(t=>t.amount_minor)).toEqual(["-1234","300","2000"]);expect(txs[0].posted_at).toContain("12:25:30.123");
     const duplicate=await context.request.post("/api/imports/confirm",{multipart:{file,mapping:JSON.stringify(stored.mapping)}});expect(duplicate.ok()).toBe(true);expect((await duplicate.json()).importId).toBe(importId);
     const changed=await context.request.post("/api/imports/confirm",{multipart:{file,mapping:JSON.stringify({...stored.mapping,workbookScope:{version:"xlsx-scope-v1",tables:[{sheetId:savings.id,headerRow:1,endRow:2}]}})}});expect(changed.status()).toBe(409);
-    expect(await db`select row_number,original_row,normalized_row from public.source_transactions where import_id=${importId} and workspace_id=${workspace} order by row_number`).toEqual(originals);
+    expect(await db`select id,row_number,original_row,normalized_row from public.source_transactions where import_id=${importId} and workspace_id=${workspace} order by row_number`).toEqual(originals);
     const downloaded=await admin.storage.from("imports").download(stored.storage_path);expect(downloaded.error).toBeNull();expect(Buffer.from(await downloaded.data!.arrayBuffer())).toEqual(file.buffer);
+    // An owned fault fixture exercises real retry of the same frozen file/scope.
+    // Existing source rows must survive the replay unchanged, with no extra postings.
+    await db`update public.imports set status='failed',error='Synthetic retry fixture' where id=${importId} and workspace_id=${workspace}`;
+    await page.reload();
+    const history=page.getByRole("region",{name:"Import history"}).locator("article").filter({hasText:file.name});
+    await history.getByRole("button",{name:"Retry",exact:true}).click();
+    await expect(history.getByRole("status")).toHaveText("completed",{timeout:90_000});
+    expect(await db`select id,row_number,original_row,normalized_row from public.source_transactions where import_id=${importId} and workspace_id=${workspace} order by row_number`).toEqual(originals);
+    expect((await db`select count(*)::int as count from public.transactions where workspace_id=${workspace}`)[0].count).toBe(3);
+    expect((await db`select mapping from public.imports where id=${importId} and workspace_id=${workspace}`)[0].mapping).toEqual(stored.mapping);
+    await history.getByRole("link",{name:"Review rows and source coverage"}).click();
+    await expect(page.getByRole("heading",{name:"Source coverage",exact:true})).toBeVisible();
   } finally {
     await context.close().catch(()=>{});
     expect((await db`select owner_id from public.workspaces where id=${workspace}`)[0]?.owner_id).toBe(user);
