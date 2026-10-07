@@ -54,14 +54,16 @@ it("never reuses an uncontrolled rename value with a refreshed expected revision
 import React, { cloneElement, isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TripStateForm } from "../trip-state-form";
+import { DatedTripForm } from "../dated-trip-form";
+import { defaultTripScenario, evaluateTripScenario } from "@/lib/finance/trip-scenario";
 import { tripForArtifact, goalsForArtifact } from "@/lib/artifacts/finance-sdk";
-import { accountLiquidity, serializeAccountLiquidity } from "@/lib/finance/calculations";
+import { accountLiquidity } from "@/lib/finance/calculations";
 vi.mock("next/link", () => ({ default: "a" }));
 async function resolveNative(node: ReactNode): Promise<ReactNode> {
   if (Array.isArray(node)) return Promise.all(React.Children.toArray(node).map(resolveNative));
   if (!isValidElement(node)) return node;
   const element = node as ReactElement<{ children?: ReactNode }>;
-  if (element.type === TripStateForm) return element;
+  if (element.type === TripStateForm || element.type === DatedTripForm) return element;
   if (typeof element.type === "function") return resolveNative(await (element.type as (props: unknown) => ReactNode)(element.props));
   const children = await resolveNative(element.props.children);
   return cloneElement(element, {}, ...(Array.isArray(children) ? React.Children.toArray(children) : [children]));
@@ -78,7 +80,8 @@ it("trusted builtin trip renders chosen-account and dated scenario evidence with
   const input = { startDate: "2026-10-07", horizonDays: 30, currencyCode: "EUR", accounts: [{ id: "checking", currencyCode: "EUR", balanceMinor: 10000n }, { id: "savings", currencyCode: "EUR", balanceMinor: 100000n }], events: [{ date: "2026-10-08", accountId: "checking", expectedMinor: -50000n, name: "Tomorrow bill" }] };
   const liquidity = accountLiquidity(input), tripLiquidity = accountLiquidity({ ...input, scenarioEvents: [{ date: "2026-10-14", accountId: "checking", expectedMinor: -10000n, name: "Trip" }] });
   if (liquidity.status !== "available" || tripLiquidity.status !== "available") throw new Error("Expected available");
-  vi.mocked(tripForArtifact).mockResolvedValue({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-02" }, []), resultBasis: "synthetic accepted evidence", currency: "EUR", tripDate: "2026-10-14", accountId: "checking", liquidity: serializeAccountLiquidity(liquidity), tripLiquidity: serializeAccountLiquidity(tripLiquidity), baseline: { status: "available", ...liquidity.accounts[0] }, withTrip: { status: "available", ...tripLiquidity.accounts[0] }, unavailable: null });
+  const result = evaluateTripScenario(input, defaultTripScenario(input.startDate, "EUR", "checking", 10000n));
+  vi.mocked(tripForArtifact).mockResolvedValue({ ...result, tripResult: result, accounts: input.accounts.map(account => ({ id: account.id, currencyCode: account.currencyCode })), sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-02" }, []), resultBasis: "synthetic accepted evidence", tripDate: "2026-10-14", baseline: { status: "available", amountMinor: liquidity.accounts[0].spendableMinor, limitingDate: liquidity.accounts[0].spendingLimitingDate }, withTrip: null } as unknown as Awaited<ReturnType<typeof tripForArtifact>>);
   const html = await native("trip_planner");
   expect(html).toContain("Chosen-account headroom"); expect(html).toContain("Aggregate headroom: EUR 600.00");
   expect(html).toContain("checking funding shortfall: EUR 400.00"); expect(html).toContain("2026-10-08"); expect(html).toContain("Tomorrow bill");

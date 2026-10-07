@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { artifactKindSchema, calculatorManifestSchema, normalizeCalculatorParams } from "@/lib/artifacts/spec";
+import { tripHorizon, tripScenarioSchema } from "@/lib/finance/trip-scenario";
+import { calendarDate } from "@/lib/finance/calendar";
 
 const kind = artifactKindSchema;
 const stateRevision = z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(0).max(2147483646));
@@ -97,4 +99,30 @@ export async function saveTripState(form: FormData) {
   if (error) throw error;
   if (!saved) return { conflict: true } as const;
   return { saved: true, version: saved.version as number, value: String(cost) } as const;
+}
+
+export async function saveDatedTripState(form: FormData) {
+  const { supabase, workspace } = await requireWorkspace();
+  const artifactId = z.uuid().parse(form.get("artifactId"));
+  const expectedVersion = stateRevision.parse(form.get("expectedVersion"));
+  const scenario = tripScenarioSchema.parse(JSON.parse(z.string().max(16000).parse(form.get("scenario"))));
+  tripHorizon(calendarDate(new Date(), workspace.timezone), scenario);
+  const { data: artifact } = await supabase.from("artifacts").select("kind").eq("workspace_id", workspace.id).eq("id", artifactId).single();
+  if (artifact?.kind !== "trip_planner") throw new Error("Trip planner not found");
+  const { data: current, error: readError } = await supabase.from("artifact_state").select("state, version")
+    .eq("workspace_id", workspace.id).eq("artifact_id", artifactId).single();
+  if (readError || !current) throw readError ?? new Error("Artifact state unavailable");
+  if (current.version !== expectedVersion) return { conflict: true } as const;
+  const accountIds = [...new Set(scenario.payments.map(item => item.accountId))];
+  const { data: accounts, error: accountsError } = await supabase.from("accounts").select("id").eq("workspace_id", workspace.id).in("id", accountIds);
+  if (accountsError) throw accountsError;
+  if (accountIds.some(id => !accounts?.some(account => account.id === id))) throw new Error("Unknown paying or receiving account");
+  const cost = scenario.payments.filter(item => item.kind === "cost").reduce((sum, item) => sum + BigInt(item.amountMinor), 0n);
+  const { data: saved, error } = await supabase.from("artifact_state").update({
+    state: { ...((current.state as Record<string, unknown>) ?? {}), tripScenario: scenario,
+      costMinor: cost <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(cost) : cost.toString() }, version: expectedVersion + 1, updated_at: new Date().toISOString(),
+  }).eq("workspace_id", workspace.id).eq("artifact_id", artifactId).eq("version", expectedVersion).select("version").maybeSingle();
+  if (error) throw error;
+  if (!saved) return { conflict: true } as const;
+  return { saved: true, version: saved.version as number, value: scenario } as const;
 }

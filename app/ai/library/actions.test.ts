@@ -1,11 +1,13 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { saveCalculatorParams, saveTripState } from "./actions";
+import { saveCalculatorParams, saveTripState, saveDatedTripState } from "./actions";
+import { defaultTripScenario } from "@/lib/finance/trip-scenario";
 
 const fixture = vi.hoisted(() => ({ version: 2, update: vi.fn(), filters: [] as [string, unknown][] }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
-vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "owned" }, supabase: { from: (table: string) => {
+vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "owned", timezone: "Europe/Berlin" }, supabase: { from: (table: string) => {
   const query = { select: () => query, eq: (key: string, value: unknown) => { fixture.filters.push([key, value]); return query; },
     single: async () => ({ data: table === "artifacts" ? { kind: "trip_planner", active_version_id: "active" } : table === "artifact_versions" ? { manifest: { kind: "trip_planner", runtime: "quickjs-calculator-v1", sdk: [], params: { costMinor: { type: "number", default: 100, min: 0, max: 100000 } } } } : { state: { costMinor: 200 }, version: fixture.version }, error: null }),
+    in: async () => ({ data: [{ id: "a" }], error: null }),
     update: (value: unknown) => { fixture.update(value); return query; }, maybeSingle: async () => ({ data: { version: fixture.version + 1 }, error: null }) };
   return query;
 } } }) }));
@@ -14,6 +16,16 @@ function form(version: string) { const form = new FormData(); Object.entries({ a
 it.each([saveCalculatorParams, saveTripState])("rejects a draft based on revision A after revision B was saved", async save => {
   expect(await save(form("1"))).toEqual({ conflict: true });
   expect(fixture.update).not.toHaveBeenCalled();
+});
+
+it("saves the complete dated scenario against its submitted revision and preserves unrelated tool state", async () => {
+  const scenario = defaultTripScenario(new Date().toISOString().slice(0, 10), "EUR", "a", 300n);
+  const input = form("2"); input.set("scenario", JSON.stringify(scenario));
+  expect(await saveDatedTripState(input)).toEqual({ saved: true, version: 3, value: scenario });
+  expect(fixture.update).toHaveBeenCalledWith(expect.objectContaining({ state: { costMinor: 300, tripScenario: scenario }, version: 3 }));
+  fixture.update.mockClear();
+  input.set("expectedVersion", "1");
+  expect(await saveDatedTripState(input)).toEqual({ conflict: true }); expect(fixture.update).not.toHaveBeenCalled();
 });
 it.each([saveCalculatorParams, saveTripState])("saves against the submitted owned state revision", async save => {
   expect(await save(form("2"))).toEqual({ saved: true, version: 3, value: save === saveTripState ? "300" : { costMinor: 300 } });

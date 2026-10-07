@@ -1,0 +1,20 @@
+import { addTripDays, tripScenarioSchema, type TripScenario } from "@/lib/finance/trip-scenario";
+import { z } from "zod";
+
+export function tripScenarioForParams(scenario: TripScenario, params: Record<string, string | number>): TripScenario {
+  const hasCost = params.costMinor !== undefined;
+  const cost = hasCost ? z.string().regex(/^\d{1,18}$/).parse(String(params.costMinor)) : undefined;
+  const date = params.tripDate ? z.iso.date().parse(params.tripDate) : scenario.startsOn;
+  const accountId = params.accountId ? z.string().min(1).max(100).parse(params.accountId) : undefined;
+  const simple = scenario.payments.length === 1 && scenario.payments[0].kind === "cost" && !scenario.payments[0].fx;
+  if (!simple) {
+    const currencies = new Set(scenario.payments.map(item => item.currencyCode));
+    const total = scenario.payments.filter(item => item.kind === "cost").reduce((sum, item) => sum + BigInt(item.amountMinor), 0n);
+    if ((hasCost && (currencies.size !== 1 || BigInt(cost!) !== total)) || date !== scenario.startsOn || accountId)
+      throw new Error("Edit the native dated budget for multiple payments, contributions or currency conversion; no single debit can replace it");
+    return tripScenarioSchema.parse(scenario);
+  }
+  const shift = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${scenario.startsOn}T00:00:00Z`)) / 86400000);
+  return tripScenarioSchema.parse({ ...scenario, startsOn: date, endsOn: addTripDays(scenario.endsOn, shift),
+    payments: scenario.payments.map(item => ({ ...item, date: addTripDays(item.date, shift), accountId: accountId ?? item.accountId, amountMinor: cost ?? item.amountMinor })) });
+}
