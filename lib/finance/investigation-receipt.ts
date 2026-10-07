@@ -11,7 +11,7 @@ export function investigationReceipt(dataset: { spec: InvestigationSpec; rows: I
   if (result.coverage.classificationExcluded) qualifiers.push("partial_classification");
   if (result.coverage.unresolvedIncluded) qualifiers.push("unresolved_included");
   const limitations: NonNullable<EvidenceReceiptInput["limitations"]> = (result.reporting?.exclusions ?? [])
-    .filter(row => ["missing-rate", "ambiguous-rate", "invalid-rate"].includes(row.reason))
+    .filter(row => result.coverage.missingConversionRows > 0 && ["missing-rate", "ambiguous-rate", "invalid-rate"].includes(row.reason))
     .slice(0, 100).map(row => ({ id: evidenceFingerprint(row), kind: "unavailable", nextStep: "supporting_records",
       message: `Conversion unavailable (${row.reason}) for ${row.currencyCode} to ${result.reporting!.currency} on ${row.postedOn}. Supply one valid direct posting-date rate or choose original-currency analysis. Affected period/group totals are unavailable; converted subsets are not upper or lower bounds.` }));
   const caption = (text: string) => text.length > 200 ? `${text.slice(0, 197)}...` : text;

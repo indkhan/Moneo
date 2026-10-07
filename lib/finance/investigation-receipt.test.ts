@@ -44,3 +44,9 @@ it("explains a wholly unavailable conversion without manufacturing a numeric res
   expect(answer.body).toContain("choose original-currency analysis");
   expect(answer.body).not.toContain("999999");
 });
+it("does not report currency conversion as blocking an exact record count", () => {
+  const selected = investigationSchema.parse({ version: 1, period: spec.period, metric: "count", currencyPolicy: { mode: "base", currency: "EUR" } });
+  const receipt = investigationReceipt({ spec: selected, rows: [{ ...rows[1], currency: "USD" }], context: { workspaceId, capturedAt: "2026-10-01T00:00:00Z" }, sourceRevision: "v1" }, ["transactions"]);
+  expect(receipt.metrics[0]).toMatchObject({ valueMinor: "1", unit: "count" });
+  expect(receipt.limitations ?? []).toHaveLength(0);
+});
