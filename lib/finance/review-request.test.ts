@@ -33,4 +33,8 @@ describe("question-driven review requests",()=>{
     expect(monthly.query.comparison).toEqual({from:"2026-08-01",to:"2026-08-31"});
     expect(monthly.output).toBe("report");
   });
+  it("rejects malformed cadence anchors instead of labelling partial periods complete",()=>{
+    expect(()=>scheduledReviewRequest("weekly","2026-10-07")).toThrow(/Monday/);
+    expect(()=>scheduledReviewRequest("monthly","2026-10-15")).toThrow(/first day/);
+  });
 });

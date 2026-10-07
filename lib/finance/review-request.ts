@@ -34,6 +34,8 @@ export function resolveReviewRequest(input:unknown,today:string){
 /** A cadence receipt names the next period; investigate the preceding completed period. */
 export function scheduledReviewRequest(cadence:"weekly"|"monthly",periodStart:string):ReviewRequest{
   z.iso.date().parse(periodStart);
+  if(cadence==="weekly"&&new Date(`${periodStart}T00:00:00Z`).getUTCDay()!==1)throw new Error("Weekly review anchor must be Monday");
+  if(cadence==="monthly"&&!periodStart.endsWith("-01"))throw new Error("Monthly review anchor must be the first day");
   const period=cadence==="weekly"?{from:shifted(periodStart,-7),to:shifted(periodStart,-1)}:previousMonth(periodStart);
   const comparison=cadence==="weekly"?{from:shifted(period.from,-7),to:shifted(period.from,-1)}:previousMonth(period.from);
   return resolveReviewRequest({version:1,question:`Review the completed ${cadence} period ${period.from} through ${period.to}, compared with ${comparison.from} through ${comparison.to}.`,output:"report",query:{version:1,period,comparison,groupBy:["category","merchant"]}},periodStart);
