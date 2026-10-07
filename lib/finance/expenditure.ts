@@ -3,6 +3,9 @@ import { convertFx, minorDigits } from "./fx";
 
 export type ExpenditurePosting = { id: string; parentTransactionId?: string; amountMinor: bigint; currencyCode: string; postedOn: string; status: string; kind: string; reviewReasons?: string[]; version?: number; accountId?: string };
 export type ExpenditureRate = { id: string; fromCurrency: string; toCurrency: string; rateText: string; rateDate: string; source: string };
+export function expenditurePosting(row: { id: string; parent_transaction_id?: string; account_id: string; posted_on: string; amount_minor: string; currency_code: string; status: string; kind: string; review_reasons?: string[]; version?: number }): ExpenditurePosting {
+  return { id: row.id, parentTransactionId: row.parent_transaction_id, accountId: row.account_id, postedOn: row.posted_on, amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code, status: row.status, kind: row.kind, reviewReasons: row.review_reasons, version: row.version };
+}
 export const expenditureInput = z.object({ view: z.enum(["original", "base"]), currencyCode: z.string().regex(/^[A-Z]{3}$/).refine(code => { try { minorDigits(code); return true; } catch { return false; } }), from: z.iso.date(), to: z.iso.date(), accountIds: z.array(z.uuid()).max(100).optional() }).refine(value => value.from <= value.to, "From date is after to date");
 export type ExpenditureOptions = z.infer<typeof expenditureInput>;
 type Totals = { incomeMinor: bigint; spendingMinor: bigint };

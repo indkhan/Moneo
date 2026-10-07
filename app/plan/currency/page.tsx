@@ -34,7 +34,7 @@ export default async function CurrencyPage() {
         <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Currency</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
           Display currency is derived only. Original transactions, accounts and balances are never rewritten.
-          Conversions use the most recent rate on or before each balance date; missing rates stay unavailable, never zero.
+          Balance conversions use the most recent rate on or before each balance date. Expenditure base reports require a direct rate on the exact posting date and round each canonical posting half away from zero. Missing rates stay unavailable, never zero.
         </p>
       </header>
 

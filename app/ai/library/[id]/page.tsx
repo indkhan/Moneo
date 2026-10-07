@@ -17,6 +17,8 @@ import { VersionEditor } from "../version-editor";
 import { RenameArtifactForm } from "../rename-form";
 import { SourceCoverageDetails } from "@/app/source-coverage";
 import type { SourceCoverage } from "@/lib/finance/source-coverage";
+import { ExpenditureSummary } from "@/app/expenditure-summary";
+import { z } from "zod";
 
 function money(minor: bigint | string | number, currency: string) {
   return formatMoney(minor, currency);
@@ -26,10 +28,11 @@ const kinds: ArtifactKind[] = artifactKindSchema.options;
 
 export default async function ArtifactPage({ params, searchParams }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ q?: string; goalId?: string; extra?: string }>;
+  searchParams: Promise<{ q?: string; goalId?: string; extra?: string; spendingView?: string }>;
 }) {
   const { id } = await params;
-  const { q = "", goalId = "", extra = "" } = await searchParams;
+  const { q = "", goalId = "", extra = "", spendingView } = await searchParams;
+  const nativeReportingView = spendingView === "original" ? "original" : "base";
   const { supabase, workspace } = await requireWorkspace();
   const [{ data: artifact }, { data: state }, { data: pin }] = await Promise.all([
     supabase.from("artifacts").select("id, kind, name, active_version_id")
@@ -61,6 +64,7 @@ export default async function ArtifactPage({ params, searchParams }: {
       const built = await buildCalculatorSnapshot(id, kind, {
         query: q.slice(0, 100),
         month: typeof initialParams.month === "string" ? initialParams.month : undefined,
+        reportingView: kind === "spending_explorer" ? nativeReportingView : z.enum(["original", "base"]).optional().parse(initialParams.reportingView),
         costMinor: typeof initialParams.costMinor === "number" && Number.isSafeInteger(initialParams.costMinor) ? BigInt(initialParams.costMinor) : typeof initialParams.costMinor === "string" && /^-?\d+$/.test(initialParams.costMinor) ? BigInt(initialParams.costMinor) : costMinor,
         sdk: manifestParsed.data.sdk,
       });
@@ -84,7 +88,7 @@ export default async function ArtifactPage({ params, searchParams }: {
     </div>
     <p className="mt-2 text-sm text-muted-foreground">Live financial data · trusted {artifact.kind.replaceAll("_", " ")} v{version?.version ?? "?"}</p>
     <RenameArtifactForm artifactId={id} activeVersionId={artifact.active_version_id} name={artifact.name} action={renameArtifact} />
-    {artifact.kind === "spending_explorer" && <SpendingExplorer id={id} query={q.slice(0, 100)} />}
+    {artifact.kind === "spending_explorer" && <SpendingExplorer id={id} query={q.slice(0, 100)} view={nativeReportingView} locale={workspace.locale} />}
     {artifact.kind === "trip_planner" && <TripPlanner id={id} costMinor={costMinor} stateVersion={state?.version ?? 0} />}
     {artifact.kind === "goal_tracker" && <GoalTracker id={id} scenarioGoalId={goalId} extra={extra} />}
     {sourceCoverage && <SourceCoverageDetails coverage={sourceCoverage} />}
@@ -127,19 +131,20 @@ export default async function ArtifactPage({ params, searchParams }: {
   </main>;
 }
 
-async function SpendingExplorer({ id, query }: { id: string; query: string }) {
+async function SpendingExplorer({ id, query, view, locale }: { id: string; query: string; view: "base" | "original"; locale: string }) {
   let data: Awaited<ReturnType<typeof spendingForArtifact>>;
-  try { data = await spendingForArtifact(id, query); }
+  try { data = await spendingForArtifact(id, query, "spending", undefined, view); }
   catch { return <p role="status" className="mt-8 rounded border p-5">Spending evidence is unavailable. Check this tool&apos;s permissions and AI data access in Settings.</p>; }
   return <section className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
-    <h2 className="text-xl font-semibold tracking-tight text-foreground">This month</h2>
+    {data.reporting ? <ExpenditureSummary report={data.reporting} locale={locale} title="This month" viewHref={selected => `/ai/library/${id}?${new URLSearchParams({ q: query, spendingView: selected })}`} coverage={<SourceCoverageDetails coverage={data.sourceCoverage} />} /> : <><h2 className="text-xl font-semibold tracking-tight text-foreground">This month</h2>
     {"unavailable" in data.summary ? <p className="mt-3">{data.summary.unavailable}</p>
       : <p className="mt-3 text-2xl">Spending {money(data.summary.spendingMinor, data.currency)}</p>}
     <p className="mt-1 text-sm text-muted-foreground">{data.from} to {data.to} ({data.timezone}). Posted transactions matching the filter, including refunds; transfers excluded. Mixed currencies require dated conversion evidence.</p>
-    <SourceCoverageDetails coverage={data.sourceCoverage} />
+    <SourceCoverageDetails coverage={data.sourceCoverage} /></>}
     {!("unavailable" in data.summary) && data.summary.partial && <p role="status" className="mt-2 text-sm text-amber-700">Partial: {data.summary.excludedReviewRows} transactions need classification review and are excluded from these totals.</p>}
-    {!("unavailable" in data.summary) && <SpendingChart rows={data.transactions} from={data.from} to={data.to} currency={data.currency} />}
+    {!("unavailable" in data.summary) && <SpendingChart rows={data.reporting ? data.reporting.postings.filter(row => row.reportingAmountMinor !== null).map(row => ({ posted_on: row.postedOn, amount_minor: row.reportingAmountMinor!, kind: row.kind })) : data.transactions} from={data.from} to={data.to} currency={data.currency} />}
     <form method="get" className="mt-5 flex gap-2">
+      <input type="hidden" name="spendingView" value={view} />
       <input name="q" defaultValue={query} maxLength={100} aria-label="Filter transaction descriptions" className="flex-1 rounded-lg border border-border bg-card px-3 py-2" placeholder="Filter descriptions" />
       <button className="rounded-lg border border-border bg-card px-3 text-sm font-medium hover:bg-muted">Filter</button>
     </form>

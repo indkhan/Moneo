@@ -3,11 +3,11 @@ import type { ReactNode } from "react";
 import type { reportExpenditure } from "@/lib/finance/expenditure";
 import { formatMoney } from "@/lib/finance/format";
 
-export function ExpenditureSummary({ report, locale, accountId, coverage }: { report: ReturnType<typeof reportExpenditure>; locale: string; accountId?: string; coverage?: ReactNode }) {
+export function ExpenditureSummary({ report, locale, accountId, coverage, title = "Spending this month", viewHref }: { report: ReturnType<typeof reportExpenditure>; locale: string; accountId?: string; coverage?: ReactNode; title?: string; viewHref?: (view: "base" | "original") => string }) {
   const money = (amount: string, currency: string) => formatMoney(amount, currency, locale);
-  const href = (view: string) => `/?${new URLSearchParams({ spendingView: view, ...(accountId ? { account: accountId } : {}) })}`;
+  const href = (view: "base" | "original") => viewHref?.(view) ?? `/?${new URLSearchParams({ spendingView: view, ...(accountId ? { account: accountId } : {}) })}`;
   return <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
-    <h2 className="text-base font-semibold">Spending this month</h2>
+    <h2 className="text-base font-semibold">{title}</h2>
     <nav aria-label="Spending currency view" className="mt-2 flex flex-wrap gap-3 text-xs">
       <Link href={href("base")} aria-current={report.view === "base" ? "page" : undefined} className="text-brand underline">Base currency ({report.currencyCode})</Link>
       <Link href={href("original")} aria-current={report.view === "original" ? "page" : undefined} className="text-brand underline">Original currencies</Link>

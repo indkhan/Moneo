@@ -11,7 +11,7 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { ALLOWED_SDK_BY_KIND, type ArtifactKind } from "./spec";
 import type { SourceCoverage } from "@/lib/finance/source-coverage";
 
-export type CalculatorSnapshot = { coverage?: SnapshotCoverage; sourceCoverage?: SourceCoverage; sourceCoverageByOperation?: Record<string, SourceCoverage> } & (
+export type CalculatorSnapshot = { coverage?: SnapshotCoverage; sourceCoverage?: SourceCoverage; sourceCoverageByOperation?: Record<string, SourceCoverage>; reporting?: Awaited<ReturnType<typeof spendingForArtifact>>["reporting"]; conversionCoverage?: Awaited<ReturnType<typeof spendingForArtifact>>["conversionCoverage"]; resultBasis?: string } & (
   | { currency: string; balances?: Awaited<ReturnType<typeof balancesForArtifact>>["balances"];
       spending?: CalculatorSnapshot; cashflow?: CalculatorSnapshot; goals?: unknown; forecast?: CalculatorSnapshot;
       partial?: boolean; excludedReviewRows?: number; unavailable?: string }
@@ -48,7 +48,7 @@ export type CalculatorSnapshot = { coverage?: SnapshotCoverage; sourceCoverage?:
 export async function buildCalculatorSnapshot(
   artifactId: string,
   kind: ArtifactKind,
-  opts?: { query?: string; month?: string; costMinor?: bigint; accountId?: string; funding?: Parameters<typeof tripForArtifact>[3]; sdk?: string[]; spendingOperation?: "spending" | "cashflow" },
+  opts?: { query?: string; month?: string; reportingView?: "original" | "base"; costMinor?: bigint; accountId?: string; funding?: Parameters<typeof tripForArtifact>[3]; sdk?: string[]; spendingOperation?: "spending" | "cashflow" },
 ): Promise<{ snapshot: CalculatorSnapshot; stateParams: Record<string, number | string> }> {
   if (kind.startsWith("custom_")) {
     const operations = [...new Set(opts?.sdk ?? [])];
@@ -85,10 +85,10 @@ export async function buildCalculatorSnapshot(
     return { snapshot, stateParams: {} };
   }
   if (kind === "spending_explorer") {
-    const data = await spendingForArtifact(artifactId, opts?.query ?? "", opts?.spendingOperation ?? "spending", opts?.month);
+    const data = await spendingForArtifact(artifactId, opts?.query ?? "", opts?.spendingOperation ?? "spending", opts?.month, opts?.reportingView);
     if ("unavailable" in data.summary) {
       return {
-        snapshot: { currency: data.currency, unavailable: data.summary.unavailable, sourceCoverage: data.sourceCoverage },
+        snapshot: { currency: data.currency, unavailable: data.summary.unavailable, sourceCoverage: data.sourceCoverage, reporting: data.reporting, conversionCoverage: data.conversionCoverage, resultBasis: data.resultBasis },
         stateParams: {},
       };
     }
@@ -96,6 +96,7 @@ export async function buildCalculatorSnapshot(
       snapshot: {
         currency: data.currency,
         sourceCoverage: data.sourceCoverage,
+        reporting: data.reporting, conversionCoverage: data.conversionCoverage, resultBasis: data.resultBasis,
         from: data.from,
         to: data.to,
         incomeMinor: data.summary.incomeMinor,
@@ -104,7 +105,7 @@ export async function buildCalculatorSnapshot(
         partial: data.summary.partial,
         excludedReviewRows: data.summary.excludedReviewRows,
         byAccount: data.byAccount,
-        daily: dailySpending(data.transactions.map(row => ({ date: row.posted_on, amountMinor: BigInt(row.amount_minor), kind: row.kind })), data.from, data.to),
+        daily: dailySpending(data.reporting ? data.reporting.postings.filter(row => row.reportingAmountMinor !== null).map(row => ({ date: row.postedOn, amountMinor: BigInt(row.reportingAmountMinor!), kind: row.kind })) : data.transactions.map(row => ({ date: row.posted_on, amountMinor: BigInt(row.amount_minor), kind: row.kind })), data.from, data.to),
       },
       stateParams: {},
     };
