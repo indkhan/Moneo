@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { requireWorkspace } from "@/lib/auth";
-import { spendingForArtifact, tripForArtifact } from "./finance-sdk";
+import { spendingForArtifact, tripForArtifact, tripEditorForArtifact } from "./finance-sdk";
 import { evaluatePlan } from "@/lib/finance/model";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
+import { accountLiquidity } from "@/lib/finance/calculations";
 
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/finance/model", () => ({ evaluatePlan: vi.fn() }));
@@ -83,4 +84,48 @@ describe("artifact spending coverage", () => {
     expect(september).toMatchObject({ from: "2026-09-01", to: "2026-09-30" });
     await expect(spendingForArtifact("a", "Shop", "spending", "2026-99")).rejects.toThrow();
   });
+});
+
+it("evaluates an explicit dated trip with a derived horizon and the shared engine", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
+  const permission = { select: () => permission, eq: () => permission, single: async () => ({ data: { permissions: ["forecast"], active_version_id: "v" }, error: null }) };
+  vi.mocked(requireWorkspace).mockResolvedValue({ workspace: { id: "w", display_currency: "EUR", timezone: "Europe/Berlin" }, supabase: { from: () => permission } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  vi.mocked(evaluatePlan).mockImplementation(async days => ({ input: { startDate: "2026-10-01", horizonDays: days, currencyCode: "EUR",
+    accounts: [{ id: "checking", currencyCode: "EUR", balanceMinor: 10000n }], events: [{ accountId: "checking", date: "2026-10-03", expectedMinor: 100000n }] } }) as Awaited<ReturnType<typeof evaluatePlan>>);
+  const scenario = { version: 1, destination: "Synthetic", startsOn: "2026-11-01", endsOn: "2026-11-03", postTripDays: 7,
+    payments: [{ name: "Flight", kind: "cost", date: "2026-11-01", accountId: "checking", currencyCode: "EUR", amountMinor: "20000" }] };
+  const result = await tripForArtifact("a", 20000n, "checking", [], scenario);
+  expect(evaluatePlan).toHaveBeenLastCalledWith(41, undefined, false);
+  expect(result).toMatchObject({ horizon: { from: "2026-10-01", to: "2026-11-10", days: 41 }, withTripAvailableMinor: "10000", afterTripMinor: "90000", limitingDate: "2026-10-01" });
+  const expected = accountLiquidity({ startDate: "2026-10-01", horizonDays: 41, currencyCode: "EUR", accounts: [{ id: "checking", currencyCode: "EUR", balanceMinor: 10000n }], events: [{ accountId: "checking", date: "2026-10-03", expectedMinor: 100000n }], scenarioEvents: [{ accountId: "checking", date: "2026-11-01", expectedMinor: -20000n }] });
+  if (expected.status === "available") expect(result.withTripAvailableMinor).toBe(expected.accounts[0].spendableMinor.toString());
+  vi.useRealTimers();
+});
+
+it("rechecks artifact permission and finance scopes before returning an asynchronous trip preview", async () => {
+  const query = { select: () => query, eq: () => query, single: async () => ({ data: { permissions: ["forecast"], active_version_id: "v" }, error: null }) };
+  const context = { workspace: { id: "w", display_currency: "EUR", timezone: "Europe/Berlin" }, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: ["accounts", "transactions", "planning"] }, supabase: { from: () => query } };
+  vi.mocked(requireWorkspace).mockResolvedValueOnce(context as unknown as Awaited<ReturnType<typeof requireWorkspace>>)
+    .mockResolvedValueOnce({ ...context, settings: { ...context.settings, ai_data_scopes: [] } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  vi.mocked(evaluatePlan).mockResolvedValue({ input: { startDate: new Date().toISOString().slice(0, 10), horizonDays: 29, currencyCode: "EUR", accounts: [{ id: "a", currencyCode: "EUR", balanceMinor: 10000n }], events: [] } } as unknown as Awaited<ReturnType<typeof evaluatePlan>>);
+  await expect(tripForArtifact("synthetic", 20000n)).rejects.toThrow("disabled");
+});
+
+it.each(["allowed", "revoked", "valid dates"])("expired-trip editor rechecks owned forecast access: %s", async mode => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-07T12:00:00Z"));
+  const query = { select: () => query, eq: () => query, single: async () => ({ data: { permissions: ["forecast"], active_version_id: "v" }, error: null }) };
+  const context = { workspace: { id: "w", display_currency: "EUR", timezone: "UTC" }, settings: DEFAULT_SETTINGS, supabase: { from: () => query } };
+  vi.mocked(requireWorkspace).mockReset().mockResolvedValue(context as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  if (mode === "revoked") vi.mocked(requireWorkspace).mockResolvedValueOnce(context as unknown as Awaited<ReturnType<typeof requireWorkspace>>)
+    .mockResolvedValueOnce({ ...context, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: [] } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  vi.mocked(evaluatePlan).mockClear().mockResolvedValue({ input: { startDate: "2026-10-07", horizonDays: 1, currencyCode: "EUR", accounts: [{ id: "checking", currencyCode: "EUR", balanceMinor: 10000n }], events: [] } } as unknown as Awaited<ReturnType<typeof evaluatePlan>>);
+  const date = mode === "valid dates" ? "2026-10-08" : "2026-10-06";
+  const scenario = { version: 1, destination: "", startsOn: date, endsOn: date, postTripDays: 21, payments: [{ name: "Trip", kind: "cost", date, accountId: "checking", currencyCode: "EUR", amountMinor: "20000" }] };
+  try {
+    if (mode === "allowed") {
+      expect(await tripEditorForArtifact("synthetic", scenario)).toMatchObject({ scenario, currency: "EUR", error: "Trip or payment date is in the past; choose future hypothetical dates", accounts: [{ id: "checking", currencyCode: "EUR" }] });
+      expect(evaluatePlan).toHaveBeenCalledWith(1, undefined, true);
+    } else await expect(tripEditorForArtifact("synthetic", scenario)).rejects.toThrow(mode === "revoked" ? "disabled" : "Trip dates are valid");
+    if (mode === "valid dates") expect(evaluatePlan).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
 });

@@ -49,3 +49,10 @@ it.each([false, true])("native evidence respects workspace buffer independent of
   const html = renderToStaticMarkup(<ForecastEvidence evidence={{ accountId: "funded", liquidity }} />);
   expect(html).toContain("funded: EUR 900.00"); expect(html).toContain("Account liquidity EUR 1000.00"); expect(html).not.toContain("funding shortfall:");
 });
+
+it("foreign scalar currency labels the original amount and disables generated Save", () => {
+  const manifest = calculatorManifestSchema.parse({ kind: "trip_planner", runtime: "quickjs-calculator-v1", sdk: ["forecast"], params: { costMinor: { type: "number", default: 20000, currency: "USD" } } });
+  const html = renderToStaticMarkup(<CalculatorPanel source="input => ({summary:'Affordable'})" snapshot={{ currency: "EUR" }} initialParams={{ costMinor: 20000 }} manifest={manifest} currency="EUR" versionLabel="v1" artifactId="synthetic" />);
+  expect(html).toContain("minor units, USD");
+  expect(html).toMatch(/disabled=""[^>]*>Save inputs/);
+});
