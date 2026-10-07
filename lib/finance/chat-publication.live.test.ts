@@ -11,9 +11,10 @@ it.skipIf(process.env.RUN_VERIFIED_EVIDENCE_DB_TESTS !== "1")("atomically limits
   const db = postgres(connection.toString(), { ssl: "require", max: 1, connect_timeout: 10, onnotice: () => {},
     connection: { application_name: "moneo-chat-publication-test", lock_timeout: 10000, statement_timeout: 20000, idle_in_transaction_session_timeout: 30000 } });
   const actor = randomUUID(), foreign = randomUUID(), conversation = randomUUID(), request = randomUUID();
-  const history = await db`select version,name,statements from supabase_migrations.schema_migrations order by version`;
   const rollback = new Error("Successful rollback");
   try {
+    const history = await db`select version,name,statements from supabase_migrations.schema_migrations order by version`;
+    try {
     try { await db.begin(async tx => {
       if (process.env.VERIFIED_CHAT_BASELINE_RED !== "1") {
         const applied = history.find(row => row.version === "202610060014");
@@ -72,10 +73,9 @@ it.skipIf(process.env.RUN_VERIFIED_EVIDENCE_DB_TESTS !== "1")("atomically limits
       throw rollback;
     }); } catch (error) { if (error !== rollback) throw error; }
   } finally {
-    try {
       expect(await db`select id from auth.users where id in (${actor},${foreign})`).toHaveLength(0);
       expect(await db`select id from public.financial_evidence_receipts where workspace_id in(select id from public.workspaces where owner_id in(${actor},${foreign}))`).toHaveLength(0);
       expect(await db`select version,name,statements from supabase_migrations.schema_migrations order by version`).toEqual(history);
-    } finally { await db.end(); }
-  }
+    }
+  } finally { await db.end(); }
 }, 30000);
