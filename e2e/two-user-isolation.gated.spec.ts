@@ -63,7 +63,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     for (const path of [`/api/imports/${imported}`, `/api/artifacts/${artifact}/versions`, `/api/analysis/${job}`]) expect((await foreign.request.get(path)).status()).toBe(404);
     expect((await foreign.request.post(`/api/imports/${imported}/review`, { data: { sourceId: source, action: "reject" } })).status()).toBe(404);
     expect((await foreign.request.delete(`/api/analysis/${job}`)).status()).toBe(404);
-    expect((await db`select status from public.background_jobs where id=${job}`)[0].status).toBe("queued");
+    expect((await db`select status,cancel_requested from public.background_jobs where id=${job}`)[0]).toMatchObject({ status: "queued", cancel_requested: false });
     expect((await db`select status from public.source_transactions where id=${source}`)[0].status).toBe("review");
     expect((await sessions[0].storage.from("imports").download(storagePath)).error).toBeNull();
     expect((await sessions[1].storage.from("imports").download(storagePath)).error).not.toBeNull();
@@ -110,8 +110,11 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     await expect(page).toHaveURL(new RegExp(`view=${savedView}$`));
     expect(new URL(page.url()).searchParams.has("q")).toBe(false);
     await expect.poll(async () => (await db`select filters from public.transaction_views where id=${savedView}`)[0].filters.q).toBe(secret);
-    expect((await owner.request.delete(`/api/analysis/${job}`)).status()).toBe(200);
-    expect((await db`select status from public.background_jobs where id=${job}`)[0].status).toBe("canceled");
+    const stopped = await owner.request.delete(`/api/analysis/${job}`);
+    expect(stopped.status()).toBe(200);
+    expect(await stopped.json()).toEqual({ status: "cancel_requested" });
+    // This fixture has no worker: a persisted request does not acknowledge termination.
+    expect((await db`select status,stage,cancel_requested from public.background_jobs where id=${job}`)[0]).toMatchObject({ status: "queued", stage: "cancel_requested", cancel_requested: true });
     await page.goto("/");
     const inbox = page.locator("section").filter({ has: page.getByRole("heading", { name: "Important insights", exact: true }) });
     const dismissForm = inbox.locator("form").filter({ has: page.locator('input[name="type"][value="data_quality"]') }).first();
