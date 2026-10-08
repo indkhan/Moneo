@@ -30,6 +30,12 @@ begin
     perform public.apply_organization_review(stale_id,false);
     raise exception 'Dismissed review applied';
   exception when sqlstate '22023' then null; end;
+  -- The existing individual Transactions Undo must not split an approved batch/rule.
+  begin
+    perform public.undo_transaction_metadata((select id from public.correction_events where after->>'batch_id'=applied->>'batchId'),1);
+    raise exception 'Individual metadata Undo bypassed organization batch/rule';
+  exception when sqlstate '22023' then null; end;
+  if exists(select 1 from public.transactions where id=transaction_id and version<>1) or not exists(select 1 from public.organization_rules where workspace_id=workspace and enabled) then raise exception 'Rejected individual Undo partially wrote'; end if;
   perform public.undo_transaction_batch((applied->>'batchId')::uuid,jsonb_build_array(jsonb_build_object('id',transaction_id,'version',1)));
   if not exists(select 1 from public.transactions where id=transaction_id and merchant_id is null and category_id is null and version=2) then raise exception 'Durable review batch Undo lost metadata'; end if;
   if exists(select 1 from public.organization_rules where workspace_id=workspace and enabled) then raise exception 'Atomic organization Undo retained its new active rule'; end if;

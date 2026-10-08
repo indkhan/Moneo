@@ -78,6 +78,9 @@ begin
   select * into event from public.correction_events where id=p_event_id and public.owns_workspace(workspace_id);
   if not found or event.after->>'operation' is distinct from 'metadata' then raise exception 'Metadata correction not found' using errcode = 'P0002'; end if;
   select * into transaction from public.transactions where id=event.transaction_id and workspace_id=event.workspace_id for update;
+  if exists(select 1 from public.organization_reviews r join public.transaction_batches b on b.id=r.batch_id
+    where r.workspace_id=event.workspace_id and r.batch_id::text=event.after->>'batch_id' and not b.undone)
+    then raise exception 'Undo this organization through its complete batch review' using errcode='22023'; end if;
   if event.undone then return; end if;
   if transaction.version is distinct from p_expected_version or transaction.category_id is distinct from (event.after->>'category_id')::uuid
     or (event.after ? 'merchant_id' and transaction.merchant_id is distinct from (event.after->>'merchant_id')::uuid)
@@ -294,12 +297,14 @@ begin
     select to_jsonb(r) into current_rule from public.organization_rules r where id=review.saved_rule_id and workspace_id=batch.workspace_id for update;
     if current_rule is distinct from review.saved_rule_after then raise exception 'Approved rule changed; undo its latest edit first' using errcode='40001'; end if;
   end if;
+  -- Only this locked atomic operation can permit individual event restoration.
+  -- Failures below roll this marker, every metadata write and the rule back together.
+  update public.transaction_batches set undone=true where id=batch.id;
   for target in select value from jsonb_array_elements(p_rows) order by value->>'id' loop
     select * into event from public.correction_events where transaction_id=(target->>'id')::uuid and workspace_id=batch.workspace_id and after->>'batch_id'=batch.id::text;
     if not found then raise exception 'Batch correction missing' using errcode = 'P0002'; end if;
     perform public.undo_transaction_metadata(event.id,(target->>'version')::integer);
   end loop;
-  update public.transaction_batches set undone=true where id=batch.id;
   if review.saved_rule_id is not null then
     if review.saved_rule_before is null then
       update public.organization_rules set enabled=false,version=version+1,updated_at=now() where id=review.saved_rule_id;

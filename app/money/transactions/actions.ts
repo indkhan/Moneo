@@ -47,6 +47,13 @@ export async function undoCorrection(form: FormData) {
     .eq("workspace_id", workspace.id).eq("id", eventId).maybeSingle();
   if (lookupError || !event) throw new Error("Correction not found");
   const operation = (event.after as { operation?: string }).operation;
+  const batchId = (event.after as { batch_id?: string }).batch_id;
+  if (operation === 'metadata' && batchId) {
+    const {data: review,error: reviewError} = await supabase.from('organization_reviews').select('id')
+      .eq('workspace_id',workspace.id).eq('batch_id',z.uuid().parse(batchId)).maybeSingle();
+    if (reviewError) throw new Error(reviewError.message);
+    if (review) redirect('/money/organization?review='+review.id);
+  }
   const procedure = operation === "metadata" ? "undo_transaction_metadata" : operation === "classification_review" ? "undo_transaction_classification" : "undo_transaction_correction";
   const { error } = operation === "verified_link"
     ? await supabase.rpc("undo_transaction_link", { p_link_id:z.uuid().parse((event.after as { link_id?:string }).link_id), p_rows:versionedRows.max(2).parse(JSON.parse(z.string().max(500).parse(form.get("rows")))) })
