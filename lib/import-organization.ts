@@ -63,7 +63,7 @@ export function organizationProposals(rows: OrganizationRow[], history: Organiza
     const categoryId = evidence.length >= 3 && categories.size === 1 ? evidence[0].categoryId : null;
     proposals.push({transactionId: row.id, version: row.version, descriptionKey,
       merchantId: row.merchantId ?? rule?.merchantId ?? merchantId, categoryId: row.categoryId ?? rule?.categoryId ?? categoryId,
-      merchantName: row.merchantId || rule?.merchantId || merchantId || descriptionKey.length < 3 ? null : descriptionKey.slice(0, 100),
+      merchantName: row.merchantId || rule?.merchantId || merchantId || descriptionKey.length < 3 || row.reviewReasons.length || row.kind === 'transfer' ? null : descriptionKey.slice(0, 100),
       basis: rule ? 'approved-rule' : merchantId && categoryId ? 'consistent-history' : 'review-required',
       financialReviewRequired: row.reviewReasons.length > 0 || row.kind === 'transfer',
       evidence: evidence.map(value => ({id: value.id, version: value.version})), ...(rule ? {rule: {id: rule.id, version: rule.version}} : {})});
