@@ -62,7 +62,7 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
    {review.batch_id&&!batch.data?.undone&&currentRows.data.length===snapshots.length&&<UndoReviewForm reviewId={review.id} rows={versionedRows.parse(currentRows.data)} />}
   </section>}
   <section aria-label="Organization suggestions" className="space-y-3"><h2 className="text-xl font-semibold">Suggestions needing your review</h2><p className="text-sm text-muted-foreground">Up to 50 entries per page, ordered by posting date and ID. Suggestions compare up to 2,000 recent posted entries and 200 rules; older history is outside this coverage. Retained corrections and explicit source organization take precedence.</p>
-   {[...groups.values()].sort((a,b)=>Number(b.proposal.financialReviewRequired)-Number(a.proposal.financialReviewRequired)).map((group,index)=><OrganizationGroup key={index} {...group} merchants={merchants.data} categories={categories.data} requestId={crypto.randomUUID()} locale={workspace.locale} />)}
+   {[...groups.values()].sort((a,b)=>Number(b.proposal.financialReviewRequired)-Number(a.proposal.financialReviewRequired)).map(group=><OrganizationGroup key={group.rows.map(row=>row.id+':'+row.version).join(',')} {...group} merchants={merchants.data} categories={categories.data} requestId={crypto.randomUUID()} locale={workspace.locale} />)}
    {!groups.size&&<p className="text-sm">No uncorrected suggestions on this page. Continue to older entries or use the manual ledger.</p>}
    {next&&<Link className="inline-block text-sm underline" href={'/money/organization?'+next}>Older entries needing organization</Link>}
   </section>

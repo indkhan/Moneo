@@ -1,5 +1,6 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 import {renderToStaticMarkup} from 'react-dom/server';
+import {Children,isValidElement,type ReactNode} from 'react';
 import {requireWorkspace} from '@/lib/auth';
 import {loadOrganizationSuggestions} from '@/lib/import-organization-loader';
 import Page from './page';
@@ -32,4 +33,16 @@ it('paginates older unorganized history with a validated date/id cursor and reta
  expect(html).toContain('Older entries needing organization');expect(html).toContain('import='+id(40));
  expect(calls).toContainEqual(['transactions','transaction_sources.source_transactions.import_id',id(40)]);
  expect(calls.some(call=>JSON.stringify(call).includes('posted_on.lt.2026-09-02'))).toBe(true);
+});
+it('gives changed group evidence a fresh draft identity',async()=>{
+ vi.mocked(requireWorkspace).mockResolvedValue({supabase:client(),workspace:{id:id(10),locale:'en-US',timezone:'UTC'}} as never);
+ function draftKey(node:ReactNode):string|null|undefined{
+  if(!isValidElement<{children?:ReactNode;requestId?:string}>(node))return;
+  if(node.props.requestId)return node.key;
+  for(const child of Children.toArray(node.props.children)){const key=draftKey(child);if(key!==undefined)return key;}
+ }
+ const first=draftKey(await Page({searchParams:Promise.resolve({})}));
+ vi.mocked(loadOrganizationSuggestions).mockResolvedValue({rows:[{...snapshots[0],version:1}],proposals:[{transactionId:id(1),version:1,descriptionKey:'northstar market',merchantName:'Northstar Market',merchantId:null,categoryId:null,basis:'review-required',financialReviewRequired:false,evidence:[]}],historyLimit:2000,historyCount:1} as never);
+ const changed=draftKey(await Page({searchParams:Promise.resolve({})}));
+ expect(first).toBeDefined();expect(changed).not.toBe(first);
 });
