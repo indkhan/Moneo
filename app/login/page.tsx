@@ -1,19 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [pending, setPending] = useState(false);
+  const submitting = useRef(false);
 
   async function signIn(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const { error } = await createClient().auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-    });
-    setMessage(error?.message ?? "Check your email for the sign-in link.");
+    if (submitting.current) return;
+    submitting.current = true;
+    setPending(true);
+    setMessage("");
+    try {
+      const { error } = await createClient().auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      });
+      setMessage(error?.message ?? "Check your email for the sign-in link.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not send the sign-in link. Try again.");
+    } finally {
+      submitting.current = false;
+      setPending(false);
+    }
   }
 
   return (
@@ -26,7 +39,7 @@ export default function LoginPage() {
         <form onSubmit={signIn} className="mt-8 space-y-3">
           <label className="block text-sm font-medium" htmlFor="email">Email</label>
           <input id="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-lg border border-border bg-card px-3 py-2.5 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" />
-          <button className="w-full rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90">Send sign-in link</button>
+          <button disabled={pending} className="w-full rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">{pending ? "Sending…" : "Send sign-in link"}</button>
         </form>
         <p role="status" className="mt-4 text-sm text-muted-foreground">{message}</p>
       </div>
