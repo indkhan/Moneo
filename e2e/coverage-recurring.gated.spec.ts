@@ -70,16 +70,18 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
         for (const [name, accountId, decimal, minor] of [[label,account,"2000.00","200000"],[creditLabel,counterpart,"0.00","0"]]) {
           const card=page.locator("article").filter({has:page.getByRole("heading",{name,exact:true})});
           const form=card.locator("form").filter({has:page.getByLabel(`${name} balance`,{exact:true})});
-          const previousId=await form.locator('input[name="expectedSnapshotId"]').inputValue();
+          const requestId=await form.locator('input[name="requestId"]').inputValue();
+          const coveredTransactions=JSON.parse(await form.locator('input[name="coveredTransactions"]').inputValue());
           await form.getByLabel(`${name} balance`,{exact:true}).fill(decimal);
           await form.locator("summary").click();
           await form.getByRole("checkbox",{name:/I checked today's booked balance/}).check();
           await form.getByRole("button",{name:"Save",exact:true}).click();
           await expect(async () => {
-            const [saved]=await db`select id,amount_minor::text,boundary_kind,actor_id from public.balance_snapshots where workspace_id=${workspace!} and account_id=${accountId} order by created_at desc,id desc limit 1`;
-            expect(saved.id).not.toBe(previousId);
-            expect(saved).toMatchObject({amount_minor:minor,boundary_kind:"reviewed_activity",actor_id:user});
+            const [saved]=await db`select id,amount_minor::text,boundary_kind,actor_id,covered_transactions from public.balance_snapshots where workspace_id=${workspace!} and account_id=${accountId} order by created_at desc,id desc limit 1`;
+            expect(saved).toMatchObject({id:requestId,amount_minor:minor,boundary_kind:"reviewed_activity",actor_id:user,covered_transactions:coveredTransactions});
           }).toPass({timeout:30_000});
+          // Wait for the action's refreshed forms before editing the next account.
+          await expect(form.locator('input[name="expectedSnapshotId"]')).toHaveValue(requestId);
         }
         record("booked_balances_reviewed",{amountsMinor:["200000","0"]});
       };
