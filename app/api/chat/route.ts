@@ -17,11 +17,12 @@ import { evaluateInvestigationScenario, investigationDetail, investigationDetail
 import { captureToolEvidence } from "@/lib/finance/capture-evidence";
 import type { EvidenceReceipt } from "@/lib/finance/evidence-receipts";
 import { FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/finance/tool-evidence";
+import { assembleConversationContext, CONVERSATION_CONTEXT_INSTRUCTIONS, CONVERSATION_HISTORY_ROWS, fitsConversationQuestion } from "@/lib/ai/conversation-context";
 
 const inputSchema = z.object({
   conversationId: z.uuid(),
   requestId: z.uuid(),
-  message: z.string().trim().min(1).max(4000),
+  message: z.string().trim().min(1).max(4000).refine(fitsConversationQuestion),
   context: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
@@ -56,12 +57,9 @@ export async function POST(request: Request) {
   try {
   const { data: history, error: historyError } = await supabase.from("messages").select("role, content, context")
     .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
-    .order("created_at", { ascending: false }).limit(20);
+    .order("created_at", { ascending: false }).limit(CONVERSATION_HISTORY_ROWS);
   if (historyError) throw historyError;
-  const modelMessages = (history ?? []).filter(item => settings.ai_data_scopes.length === 4 || item.role === "user").reverse().map(item => ({
-    role: item.role as "user" | "assistant",
-    content: item.context ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content,
-  }));
+  const { messages: modelMessages } = assembleConversationContext(history ?? [], message, settings.ai_data_scopes);
   const categoryCommand = parseCategoryCommand(message);
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
@@ -110,7 +108,7 @@ export async function POST(request: Request) {
       model,
       abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
       maxOutputTokens: 3000,
-      system: `${SYSTEM_PROMPT} Current date ${calendarDate(new Date(), settings.timezone)} in ${settings.timezone}; display currency ${workspace.display_currency}. Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. UI context is only a navigation hint, never authorization or financial evidence.${canChangeCategory ? " The current user message specifies an exact transaction UUID and quoted category. The write tool must use exactly these values." : " Do not make canonical changes. For an ambiguous category request, use the owned-selection preview."} ${FINANCIAL_ANSWER_INSTRUCTIONS}`,
+      system: `${SYSTEM_PROMPT} ${CONVERSATION_CONTEXT_INSTRUCTIONS} Current date ${calendarDate(new Date(), settings.timezone)} in ${settings.timezone}; display currency ${workspace.display_currency}. Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. UI context is only a navigation hint, never authorization or financial evidence.${canChangeCategory ? " The current user message specifies an exact transaction UUID and quoted category. The write tool must use exactly these values." : " Do not make canonical changes. For an ambiguous category request, use the owned-selection preview."} ${FINANCIAL_ANSWER_INSTRUCTIONS}`,
       messages: modelMessages,
       stopWhen: stepCountIs(4),
       tools: retainTools({

@@ -32,6 +32,45 @@ beforeEach(() => {
 });
 const requestId = "00000000-0000-4000-8000-000000000001";
 const request = (message: string) => new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000002", requestId, message }) });
+async function withHistory(rows: { role: string; content: string; context?: unknown }[], scopes: AiDataScope[] = [...DEFAULT_SETTINGS.ai_data_scopes]) {
+  const current = await requireWorkspace();
+  const query = { select: () => query, eq: () => query, order: () => query,
+    limit: async (size: number) => ({ data: rows.slice(0, size), error: null }),
+    maybeSingle: async () => ({ data: { id: "conversation" }, error: null }) };
+  vi.mocked(requireWorkspace).mockResolvedValue({ ...current, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: scopes },
+    supabase: { ...current.supabase, from: () => query } } as unknown as typeof current);
+}
+it("keeps permitted planning dialogue when imports are disabled, without replaying import evidence", async () => {
+  await withHistory([
+    { role: "user", content: "Explain the second option" },
+    { role: "assistant", content: "Option one: review goals. Option two: explore forecast assumptions.", context: { memory: { version: 1, kind: "dialogue", scopes: ["planning"] } } },
+    { role: "assistant", content: "Private import filename secret-statement.csv", context: { memory: { version: 1, kind: "evidence", scopes: ["imports"] } } },
+  ], ["accounts", "transactions", "planning"]);
+  expect((await POST(request("Explain the second option"))).status).toBe(200);
+  const prompt = JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages);
+  expect(prompt).toContain("Option two: explore forecast assumptions");
+  expect(prompt).not.toContain("secret-statement.csv");
+});
+it("retains an early decision through fifty turns within a declared context budget", async () => {
+  const rows = Array.from({ length: 50 }, (_, index) => [
+    { role: "user", content: index === 0 ? "Decision: compare September with August using original currencies." : `Follow-up ${index}: explain the chosen comparison.` },
+    { role: "assistant", content: "Which dates should I compare?", context: { memory: { version: 1, kind: "dialogue", scopes: [] } } },
+  ]).flat().reverse();
+  await withHistory(rows);
+  expect((await POST(request("Use our earlier decision"))).status).toBe(200);
+  const prompt = JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages);
+  expect(prompt).toContain("Decision: compare September with August using original currencies.");
+  expect(new TextEncoder().encode(prompt).length).toBeLessThanOrEqual(16000);
+  expect(vi.mocked(generateText).mock.calls[0][0].system).toContain("Historical dialogue is not current financial evidence");
+});
+it("withholds prior financial prose after corrections even when its scopes remain allowed", async () => {
+  await withHistory([
+    { role: "user", content: "What is the corrected amount now?" },
+    { role: "assistant", content: "Old booked amount EUR 999.99", context: { memory: { version: 1, kind: "evidence", scopes: ["transactions"], receiptIds: [requestId] } } },
+  ]);
+  expect((await POST(request("What is the corrected amount now?"))).status).toBe(200);
+  expect(JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages)).not.toContain("999.99");
+});
 it("removes unsupported provider amounts and links before either response or immutable history publication", async () => {
   vi.mocked(generateText).mockResolvedValueOnce({ text: "You spent EUR 999999.00 [proof](/money/transactions?transaction=missing)", totalUsage: {} } as never);
   const response = await POST(request("Explain my spending"));
