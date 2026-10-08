@@ -46,3 +46,13 @@ Previous undone imports remain available as source history. The main-import help
 These checks cover the supplied statements and the exercised user flows. They do not establish that every possible bug is gone, or that the changed code is deployed to production. Local development includes compilation overhead. No automated timing threshold claims a production page-speed improvement.
 
 Private statement files, account details, authenticated cookies and detailed QA evidence stay out of Git. Local screenshots, print artifacts and logs are in the ignored `.qa` directory.
+
+## Recheck on 8 October 2026
+
+Three parallel checks revisited all 17 findings against the current code. The financial/import and runtime fixes remain implemented. One editor stability gap remained: `VersionEditor` supplied a new source callback on each render, causing CodeMirror to reconfigure while typing. Commit `dff62e4` stabilizes that callback; its regression failed before the fix and passed afterward.
+
+Commit `4fd732e` adds bank/Revolut inspection regressions proving supported statements bypass the model even when import AI permissions are disabled. The focused finance/import suite passed 86 tests; a rollback-only database regression confirmed active-file deduplication, same-byte reimport after undo, and retained import/source history.
+
+Commit `4077d66` updates supported dependency versions: Next.js and its ESLint config to 16.3.8, sharp to 0.35.5, http-cache-semantics to 4.3.0, and source-map-js to 1.2.2. The focused runtime/CSV/XLSX suite passed 64 tests. Final full validation passed 1,101 unit tests, ESLint, and the production build. The authenticated `manifest-input.gated.spec.ts` browser regression passed with its disposable user, covering restore, execution and saved inputs. Ten gated unit tests skipped; this is not full release acceptance.
+
+`npm audit` still reports seven package entries from two underlying advisories: unpatched `braces` stack exhaustion in the ESLint development dependency chain (five high entries), and `uuid` buffer bounds handling in v3/v5/v6 (two moderate entries via ExcelJS). The installed ExcelJS uses UUID v4 without a supplied buffer, so no affected application call was identified. These advisories remain open; destructive downgrade suggestions were not applied. Deployment and the full authenticated browser suite remain separate acceptance gates.
