@@ -146,7 +146,7 @@ create or replace function public.propagate_recurring_evidence() returns trigger
 declare series public.recurring_series%rowtype; assumption public.financial_assumptions%rowtype; baseline jsonb; current_evidence jsonb; new_version integer;
 begin
   if public.recurring_evidence_snapshot(old)=public.recurring_evidence_snapshot(new) then return new; end if;
-  for series in select s.* from public.recurring_series s where s.workspace_id=new.workspace_id and s.status='confirmed'
+  for series in select s.* from public.recurring_series s where s.workspace_id=new.workspace_id and s.status in ('confirmed','dismissed')
     and exists(select 1 from public.recurring_series_transactions e where e.series_id=s.id and e.transaction_id=new.id) order by s.id for update loop
     select * into assumption from public.financial_assumptions where id=series.assumption_id and workspace_id=series.workspace_id for update;
     if not series.evidence_invalidated then

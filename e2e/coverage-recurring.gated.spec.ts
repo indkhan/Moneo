@@ -113,6 +113,25 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       const [toggled]=await db`select source,recurring_evidence_eligible,starts_on::text,schedule_anchor_on::text from public.financial_assumptions where id=${generated.id} and workspace_id=${workspace!}`;
       expect(toggled).toMatchObject({source:"user",recurring_evidence_eligible:true,starts_on:latest,schedule_anchor_on:anchor});
       record("early_payment_toggle_verified",{scheduledOn:latest,postedOn:postedLatest});
+      // Dismiss candidate discovery while retaining this intentional schedule's paid proof.
+      await page.goto("/money/recurring");
+      await candidate.getByRole("button",{name:"Not recurring",exact:true}).click();
+      await expect(candidate).toContainText("Dismissed");
+      await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
+      await page.goto(`/money/transactions?transaction=${ids[2]}&linkSearch=${encodeURIComponent(creditLabel)}`);
+      await choices.selectOption((await choices.locator("option").filter({hasText:creditLabel}).getAttribute("value"))!);
+      await transfer.getByRole("checkbox").check(); await transfer.getByRole("button",{name:"Confirm verified transfer",exact:true}).click();
+      await expect(detail.getByText("Transfer pair:",{exact:false})).toBeVisible();
+      const [invalidated]=await db`select status,evidence_invalidated from public.recurring_series where assumption_id=${generated.id} and workspace_id=${workspace!}`;
+      expect(invalidated).toMatchObject({status:"dismissed",evidence_invalidated:true});
+      await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(`EUR ${(2000-futureCount*20).toFixed(2)}`);
+      await page.goto(`/money/transactions?transaction=${ids[2]}`);
+      await detail.getByRole("button",{name:"Undo verified link",exact:true}).click();
+      await expect(detail.getByRole("heading",{name:"Verified transfer",exact:true})).toBeVisible();
+      const [restored]=await db`select status,evidence_invalidated from public.recurring_series where assumption_id=${generated.id} and workspace_id=${workspace!}`;
+      expect(restored).toMatchObject({status:"dismissed",evidence_invalidated:false});
+      await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
+      record("dismissed_fulfillment_correction_undo_verified");
       expect(await db`select id,posted_on::text,description,amount_minor::text,currency_code,merchant_id from public.transactions where workspace_id=${workspace!} order by id`).toEqual(original);
       expect(aiRequests).toBe(0); expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       record("lifecycle_verified", {aiRequests, futureCount});

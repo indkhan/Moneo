@@ -45,9 +45,14 @@ begin
  execute 'set local role authenticated';
  perform public.edit_assumption(series.assumption_id,11,'{"enabled":false}',gen_random_uuid());
  perform public.edit_assumption(series.assumption_id,12,'{"enabled":true}',gen_random_uuid());
+ series:=public.review_recurring_series_versions('dismissed',account,'Early paid monthly','monthly','EUR',versions,ids[1]);
  execute 'reset role';
+ if series.status<>'dismissed' or not exists(select 1 from public.financial_assumptions where id=series.assumption_id and source='user' and enabled and recurring_evidence_eligible) then raise exception 'Decline erased intentional schedule or retained fulfillment'; end if;
  update public.transactions set description='Corrected source',version=version+1 where id=ids[3];
  if not exists(select 1 from public.recurring_series where id=series.id and evidence_invalidated) then raise exception 'Changed source retained automatic fulfillment proof'; end if;
  if not exists(select 1 from public.financial_assumptions where id=series.assumption_id and source='user' and enabled) then raise exception 'Changed evidence erased intentional schedule'; end if;
+ update public.transactions set description='Stable monthly invoice 3',version=version+1 where id=ids[3];
+ if not exists(select 1 from public.recurring_series where id=series.id and status='dismissed' and not evidence_invalidated and evidence_baseline is null) then raise exception 'Undo of dismissed source did not restore retained proof'; end if;
+ if not exists(select 1 from public.financial_assumptions where id=series.assumption_id and source='user' and enabled and recurring_evidence_eligible and amount_minor=-9007199254740993) then raise exception 'Dismissed source Undo changed intentional schedule'; end if;
 end;
 $$;

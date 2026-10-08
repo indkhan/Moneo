@@ -85,7 +85,7 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
       allRows(supabase.from("fx_rates").select("id, from_currency, to_currency, rate_text, rate_date, source, created_at")
         .eq("workspace_id", workspace.id).eq("to_currency", workspace.display_currency).order("id")),
       allRows(supabase.from("recurring_series").select("id, assumption_id, recurring_series_transactions(transaction_id)")
-        .eq("workspace_id", workspace.id).eq("status", "confirmed").eq("evidence_invalidated", false).order("id")),
+        .eq("workspace_id", workspace.id).in("status", ["confirmed", "dismissed"]).eq("evidence_invalidated", false).order("id")),
       allRows<OccurrenceSettlement>(supabase.from("recurring_occurrence_settlements")
         .select("id, assumption_id, scheduled_on, transaction_id, completes_occurrence, receipt, undone_at, version")
         .eq("workspace_id", workspace.id).order("id")),
@@ -124,7 +124,8 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
     }
     return planned.flatMap(event => {
       const explicit = settlements.filter(link => link.assumption_id === item.id && link.scheduled_on === event.date);
-      // Retiring an explicit association does not retire the independently confirmed anchor evidence.
+      // Candidate dismissal and association Undo retain independent fulfillment proof
+      // for an eligible user schedule; source corrections still invalidate it.
       if (!explicit.some(link => !link.undone_at) && (item.source === "recurring_confirmed" || item.recurring_evidence_eligible === true) && recurringSeries.some(series =>
         series.assumption_id === item.id && series.recurring_series_transactions.some((link: { transaction_id: string }) =>
           balanceEvidence.ledger.some(row => row.id === link.transaction_id && row.account_id === item.account_id &&
