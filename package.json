@@ -52,6 +52,9 @@
       "devalue": "5.9.3",
       "nanoid": "5.1.16"
     },
+    "exceljs": {
+      "uuid": "11.1.1"
+    },
     "undici": "7.30.0"
   },
   "devDependencies": {
