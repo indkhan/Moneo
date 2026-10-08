@@ -19,17 +19,21 @@ const memorySchema = z.object({
   scopes: z.array(z.enum(AI_DATA_SCOPES)).max(4),
   receiptIds: z.array(z.uuid()).max(1000).optional(),
 }).strict();
-type Row = { role: string; content: string; context?: unknown };
+type Row = { id?: string; request_id?: string | null; role: string; content: string; context?: unknown };
 type Message = { role: "user" | "assistant"; content: string };
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
 export const fitsConversationQuestion = (question: string) => bytes([{ role: "user", content: question }]) <= CONVERSATION_CONTEXT_BYTES;
 
-export function assembleConversationContext(newestFirst: Row[], question: string, scopes: AiDataScope[]) {
+export function assembleConversationContext(newestFirst: Row[], question: string, scopes: AiDataScope[], options: { includeHistory?: boolean; pinnedMessageIds?: string[]; currentRequestId?: string } = {}) {
   if (!fitsConversationQuestion(question)) throw new Error("Question exceeds conversation context budget");
-  const rows = newestFirst.slice(0, CONVERSATION_HISTORY_ROWS).reverse();
-  const current = rows.findLastIndex(row => row.role === "user" && row.content === question);
+  const pins = options.pinnedMessageIds ?? [];
+  const window = newestFirst.slice(0, CONVERSATION_HISTORY_ROWS);
+  const rows = [...window, ...newestFirst.slice(CONVERSATION_HISTORY_ROWS).filter(row => row.id && pins.includes(row.id)).slice(0, 8)].reverse();
+  const claimed = options.currentRequestId ? rows.findIndex(row => row.role === "user" && row.request_id === options.currentRequestId) : -1;
+  const current = options.currentRequestId ? claimed : rows.findLastIndex(row => row.role === "user" && row.content === question);
   const candidates = rows.flatMap((row, index) => {
     if (index === current) return [];
+    if (options.includeHistory === false && !(row.id && pins.includes(row.id))) return [];
     if (row.role === "user") return [{ index, message: { role: "user", content: row.content } as Message, scopes: [] as AiDataScope[] }];
     const context = row.context && typeof row.context === "object" ? row.context as Record<string, unknown> : {};
     const memory = memorySchema.safeParse(context.memory);
@@ -42,7 +46,8 @@ export function assembleConversationContext(newestFirst: Row[], question: string
   const selected: typeof candidates = [];
   const final: Message = { role: "user", content: question };
   // Keep explicit decisions first, then recent dialogue, then remaining history.
-  const priority = [...candidates.filter(row => row.message.role === "user" && /\b(?:decision|remember|chosen|agreed|prefer)\b/i.test(row.message.content)),
+  const priority = [...candidates.filter(row => rows[row.index].id && pins.includes(rows[row.index].id!)),
+    ...candidates.filter(row => row.message.role === "user" && /\b(?:decision|remember|chosen|agreed|prefer)\b/i.test(row.message.content)),
     ...candidates.slice(-20).reverse(), ...candidates];
   const seen = new Set<number>();
   for (const row of priority) {
@@ -50,8 +55,13 @@ export function assembleConversationContext(newestFirst: Row[], question: string
     seen.add(row.index);
     if (bytes([...selected.map(item => item.message), row.message, final]) <= CONVERSATION_CONTEXT_BYTES) selected.push(row);
   }
+  if (pins.some(id => !selected.some(row => rows[row.index].id === id)))
+    throw new Error("Pinned requests exceed the history budget. Remove a pin or shorten the current question.");
   const messages = [...selected.sort((a, b) => a.index - b.index).map(row => row.message), final];
   return { messages, snapshot: { version: 1, historyRows: rows.length, includedRows: selected.length,
     omittedRows: rows.length - selected.length - (current >= 0 ? 1 : 0), bytes: bytes(messages), budgetBytes: CONVERSATION_CONTEXT_BYTES,
-    scopes: [...new Set(selected.flatMap(row => row.scopes))] } };
+    scopes: [...new Set(selected.flatMap(row => row.scopes))],
+    messageIds: selected.flatMap(row => rows[row.index].id ? [rows[row.index].id!] : []),
+    pinnedMessageIds: selected.flatMap(row => rows[row.index].id && pins.includes(rows[row.index].id!) ? [rows[row.index].id!] : []),
+    includeHistory: options.includeHistory !== false } };
 }

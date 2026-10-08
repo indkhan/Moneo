@@ -18,6 +18,7 @@ import { captureToolEvidence } from "@/lib/finance/capture-evidence";
 import type { EvidenceReceipt } from "@/lib/finance/evidence-receipts";
 import { FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/finance/tool-evidence";
 import { assembleConversationContext, chatContextSchema, CONVERSATION_CONTEXT_INSTRUCTIONS, CONVERSATION_HISTORY_ROWS, fitsConversationQuestion } from "@/lib/ai/conversation-context";
+import { preparePromptBudget } from "@/lib/ai/prompt-budget";
 
 const inputSchema = z.object({
   conversationId: z.uuid(),
@@ -55,11 +56,21 @@ export async function POST(request: Request) {
     return Response.json({ status: "canceled" }, { status: 409 });
   }
   try {
-  const { data: history, error: historyError } = await supabase.from("messages").select("role, content, context")
+  const { data: history, error: historyError } = await supabase.from("messages").select("id, request_id, role, content, context")
     .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
-    .order("created_at", { ascending: false }).limit(CONVERSATION_HISTORY_ROWS);
+    .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(CONVERSATION_HISTORY_ROWS);
   if (historyError) throw historyError;
-  const { messages: modelMessages, snapshot: assembledContext } = assembleConversationContext(history ?? [], message, settings.ai_data_scopes);
+  const pinnedIds = capturedContext?.pinnedMessageIds ?? [];
+  let pinnedRows: NonNullable<typeof history> = [];
+  if (pinnedIds.length) {
+    const pinned = await supabase.from("messages").select("id, request_id, role, content, context")
+      .eq("workspace_id", workspace.id).eq("conversation_id", conversationId).eq("role", "user").in("id", pinnedIds).limit(8);
+    if (pinned.error || pinned.data?.length !== pinnedIds.length || pinned.data.some(row => row.role !== "user" || !pinnedIds.includes(row.id)))
+      throw new Error("Pinned request is unavailable in this conversation. Remove it or choose a visible request.");
+    pinnedRows = pinned.data;
+  }
+  const rows = [...(history ?? []), ...pinnedRows.filter(row => !history?.some(existing => existing.id === row.id))];
+  const { messages: modelMessages, snapshot: assembledContext } = assembleConversationContext(rows, message, settings.ai_data_scopes, { ...capturedContext, currentRequestId: requestId });
   const categoryCommand = parseCategoryCommand(message);
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
@@ -122,7 +133,7 @@ export async function POST(request: Request) {
     if (promptOwner.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
     requireAiScope(promptOwner.settings, ...assembledContext.scopes, ...evidenceReceipts.flatMap(receipt => receipt.scopes));
     const model = await modelForSettings(settings);
-    const result = await generateText({
+    const generationOptions = {
       model,
       abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
       maxOutputTokens: 3000,
@@ -193,7 +204,16 @@ export async function POST(request: Request) {
           }),
         } : {}),
       }),
-    });
+    };
+    const promptBudget = await preparePromptBudget(generationOptions.system, generationOptions.tools);
+    promptBudget.check(modelMessages, 0);
+    const result = await generateText({ ...generationOptions, prepareStep: async ({ messages, stepNumber }) => {
+      const owner = await requireWorkspace();
+      if (owner.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
+      requireAiScope(owner.settings, ...assembledContext.scopes, ...evidenceReceipts.flatMap(receipt => receipt.scopes));
+      promptBudget.check(messages, stepNumber);
+      return {};
+    } });
     const publication = providerFinancialAnswer(result.text, evidenceReceipts, workspace.id);
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
@@ -207,7 +227,7 @@ export async function POST(request: Request) {
     const finished = await publicationService.rpc("finish_contextual_chat_request", { p_request_id: requestId, p_actor_id: current.user.id, p_workspace_id: workspace.id, p_content: answer,
       p_receipt_ids: receiptIds, p_scopes: publicationScopes, p_usage: reportedUsage(model.modelId, result.totalUsage),
       p_prompt_context: { memory: { version: 1, kind: receiptIds.length ? "evidence" : "dialogue", scopes: publicationScopes, receiptIds },
-        assembly: assembledContext, messages: modelMessages, submission: capturedContext ?? {} } });
+        assembly: { ...assembledContext, ...promptBudget.snapshot() }, messages: modelMessages, submission: capturedContext ?? {} } });
     if (finished.error) throw finished.error;
     if (finished.data !== "completed") return Response.json({ status: finished.data, error: `Request is ${finished.data}` }, { status: 409 });
     const toolsUsed = [...new Set((result.steps ?? []).flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [toolResult.toolName] : [])))];
