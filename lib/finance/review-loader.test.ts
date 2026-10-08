@@ -59,3 +59,25 @@ it("loads older rollover evidence without extending the current cashflow summary
   expect(evidence.cashflow).toEqual({});
   expect((evidence.planning as { budgets: unknown[] }).budgets[0]).toMatchObject({ carriedMinor: "8800", remainingMinor: "9800", spentMinor: "0" });
 });
+
+it("includes the confirmed calendar anchor and source basis in planning evidence", async () => {
+  let assumptionColumns = "";
+  const from = (table: string) => {
+    const query = {select: (columns: string) => {if (table === "financial_assumptions") assumptionColumns=columns; return query;},eq: () => query,is: () => query,gte: () => query,lte: () => query,order: () => query,
+      range: async () => ({data: [],error: null})}; return query;
+  };
+  await loadFinancialReviewEvidence({from} as unknown as SupabaseClient,{id: "workspace",display_currency: "EUR",timezone: "Europe/Berlin"},settingsSchema.parse({}));
+  expect(assumptionColumns).toContain("schedule_anchor_on");
+  expect(assumptionColumns).toContain("source");
+});
+
+it("retains account/version provenance alongside the confirmed calendar anchor in loaded obligations", async () => {
+  const record = {id: "assumption", name: "Monthly", account_id: "cash", amount_minor: "-10000", currency_code: "EUR", cadence: "monthly", starts_on: "2026-03-31", schedule_anchor_on: "2026-01-31", source: "user", ends_on: null, confirmed: true, enabled: true, removed_at: null, version: 7};
+  const from = (table: string) => {
+    let columns = "";
+    const query = {select: (value: string) => {columns=value; return query;},eq: () => query,is: () => query,gte: () => query,lte: () => query,order: () => query,
+      range: async () => ({data: table === "financial_assumptions" ? [Object.fromEntries(columns.split(",").map(column => {const key=column.trim().split("::")[0]; return [key,record[key as keyof typeof record]];}))] : [],error: null})}; return query;
+  };
+  const evidence=await loadFinancialReviewEvidence({from} as unknown as SupabaseClient,{id: "workspace",display_currency: "EUR",timezone: "Europe/Berlin"},settingsSchema.parse({ai_data_scopes:["accounts","transactions","planning"]}));
+  expect((evidence.planning as {obligations: unknown[]}).obligations).toMatchObject([{account_id: "cash",version: 7,schedule_anchor_on: "2026-01-31",source: "user"}]);
+});

@@ -10,7 +10,7 @@ it("funds forecast from reviewed cash with later postings, pending holds and res
     ledger: [morning, { ...morning, id: "later", amount_minor: "-250", posted_at: "2026-10-06T13:00:00Z" }, { ...morning, id: "pending", amount_minor: "-1000", status: "pending" }], asOf: "2026-10-06T14:00:00Z" };
   const from = (table: string) => {
     const data = table === "goal_allocations" ? [{ account_id: account.id, amount_minor: "100" }] : [];
-    const query = { select: () => query, eq: () => query, is: () => query, order: () => query, maybeSingle: async () => ({ data: null, error: null }),
+    const query = { select: () => query, in: () => query, eq: () => query, is: () => query, order: () => query, maybeSingle: async () => ({ data: null, error: null }),
       range: async () => ({ data, error: null }), then: (resolve: (result: unknown) => unknown) => Promise.resolve({ data, error: null }).then(resolve) };
     return query;
   };
@@ -27,7 +27,7 @@ it.each(["0", "500", "2000"])("deducts only the pending remainder after a %s min
   const ledger = [{ id: "hold", account_id: account.id, amount_minor: "-2000", currency_code: "EUR", posted_on: "2026-10-05", status: "pending", pending_released_minor: released },
     { id: "settlement", account_id: account.id, amount_minor: "-2000", currency_code: "EUR", posted_on: "2026-10-06", status: "posted" }];
   const from = () => {
-    const query = { select: () => query, eq: () => query, is: () => query, order: () => query, maybeSingle: async () => ({ data: null, error: null }),
+    const query = { select: () => query, in: () => query, eq: () => query, is: () => query, order: () => query, maybeSingle: async () => ({ data: null, error: null }),
       range: async () => ({ data: [], error: null }), then: (resolve: (result: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(resolve) };
     return query;
   };

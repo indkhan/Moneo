@@ -14,12 +14,13 @@ vi.mock("./goal-plan", () => ({ GoalPlanEditor: () => null, GoalPlanHistory: () 
 vi.mock("./preferences", () => ({ ForecastPreferenceEditor: () => null }));
 vi.mock("./scenarios", () => ({ ScenarioEditor: () => null, ScenarioHistory: () => null }));
 vi.mock("./model-sources", () => ({ ModelSources: () => null }));
+let storedAssumptions: Record<string,unknown>[] = [];
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => {
   const accounts = [{ id: "checking", name: "Checking", currency_code: "EUR" }, { id: "savings", name: "Savings", currency_code: "EUR" }];
   return { workspace: { id: "synthetic", display_currency: "EUR", timezone: "Europe/Berlin", locale: "en" },
     supabase: { from: (table: string) => {
       const q = { select: () => q, eq: () => q, is: () => q, order: () => q, limit: () => q,
-        then: (resolve: (result: unknown) => unknown) => resolve({ data: table === "accounts" ? accounts : table === "scenarios" ? [{ id: "00000000-0000-4000-8000-000000000001", name: "Test scenario" }] : [], error: null }) };
+        then: (resolve: (result: unknown) => unknown) => resolve({ data: table === "financial_assumptions" ? storedAssumptions : table === "accounts" ? accounts : table === "scenarios" ? [{ id: "00000000-0000-4000-8000-000000000001", name: "Test scenario" }] : [], error: null }) };
       return q;
     } },
   };
@@ -29,6 +30,7 @@ const input: ForecastInput = { startDate: "2026-10-07", horizonDays: 3, currency
   events: [{ date: "2026-10-08", accountId: "checking", expectedMinor: -50000n, name: "Tomorrow bill", source: "confirmed" }],
 };
 beforeEach(() => {
+  storedAssumptions=[];
   vi.mocked(evaluatePlan).mockImplementation(async () => ({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), input, forecast: forecastDaily(input), available: availableToSpend(input), liquidity: accountLiquidity(input), preferences: { spending_account_id: null }, preferencesVersion: 0 }) as Awaited<ReturnType<typeof evaluatePlan>>);
 });
 async function resolveTree(node: ReactNode): Promise<ReactNode> {
@@ -97,4 +99,11 @@ it("chosen-account spending respects a separately owned workspace buffer", async
     expect(html).toContain("Checking funding shortfall: EUR 400.00");
     expect(html).toContain("limited by both account liquidity and aggregate headroom");
   } finally { input.workspaceBufferMinor = 0n; }
+});
+
+it("shows the retained calendar anchor after an enabled toggle makes a schedule intentional", async () => {
+  storedAssumptions=[{id:"schedule",account_id:"checking",name:"Quarterly schedule",amount_minor:"-9007199254740993",currency_code:"EUR",cadence:"quarterly",starts_on:"2026-04-30",schedule_anchor_on:"2025-10-31",ends_on:null,source:"user",confidence:null,confirmed:true,enabled:true,version:3}];
+  const html=await render();
+  expect(html).toContain("Calendar anchor: 2025-10-31");
+  expect(html).toContain('value="2026-04-30"');
 });

@@ -6,23 +6,27 @@ import { calendarDate } from "./calendar";
 import { buildDebtForecast, loadWealthItems } from "./wealth";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { defaultForecastPreferences, forecastCases, forecastPreferencesSchema } from "./preferences";
+import { recurringDateTolerance } from "./recurring";
 import { reconcileOccurrence, settlementPosting, type OccurrenceSettlement } from "./recurring-occurrences";
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
 import { evidenceFingerprint } from "./evidence-receipts";
 
-type Scheduled = { account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; enabled?: boolean };
+type Scheduled = { account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; enabled?: boolean; source?: string; schedule_anchor_on?: string | null };
 
 export function expandSchedule(item: Scheduled, start: string, days: number, uncertaintyBps = 1000): ForecastEvent[] {
   if (item.enabled === false || !item.account_id) return [];
-  const first = new Date(`${item.starts_on}T00:00:00Z`);
+  // edit_assumption retains this anchor for non-schedule edits and replaces it
+  // with the intentional start date when date/cadence actually changes.
+  const anchor = item.schedule_anchor_on ?? item.starts_on;
+  const first = new Date(`${anchor}T00:00:00Z`);
   const horizon = new Date(`${start}T00:00:00Z`);
   const end = new Date(horizon.getTime() + days * 86400000);
   const events: ForecastEvent[] = [];
   const elapsedDays = Math.max(0, Math.floor((horizon.getTime() - first.getTime()) / 86400000));
   let firstIndex = 0;
   if (item.cadence === "daily") firstIndex = elapsedDays;
-  else if (item.cadence === "weekly") firstIndex = Math.floor(elapsedDays / 7);
-  else if (item.cadence === "monthly") firstIndex = Math.max(0, (horizon.getUTCFullYear() - first.getUTCFullYear()) * 12 + horizon.getUTCMonth() - first.getUTCMonth() - 1);
+  else if (item.cadence === "weekly" || item.cadence === "biweekly") firstIndex = Math.floor(elapsedDays / (item.cadence === "weekly" ? 7 : 14));
+  else if (item.cadence === "monthly" || item.cadence === "quarterly") firstIndex = Math.max(0, Math.floor(((horizon.getUTCFullYear() - first.getUTCFullYear()) * 12 + horizon.getUTCMonth() - first.getUTCMonth()) / (item.cadence === "monthly" ? 1 : 3)) - 1);
   else if (item.cadence === "yearly") firstIndex = Math.max(0, horizon.getUTCFullYear() - first.getUTCFullYear() - 1);
   const startMonth = first.getUTCMonth();
   const startDate = first.getUTCDate();
@@ -30,10 +34,10 @@ export function expandSchedule(item: Scheduled, start: string, days: number, unc
     const date = new Date(first);
     if (item.cadence === "once" && n > 0) break;
     if (item.cadence === "daily") date.setUTCDate(first.getUTCDate() + n);
-    else if (item.cadence === "weekly") date.setUTCDate(first.getUTCDate() + 7 * n);
-    else if (item.cadence === "monthly") {
+    else if (item.cadence === "weekly" || item.cadence === "biweekly") date.setUTCDate(first.getUTCDate() + (item.cadence === "weekly" ? 7 : 14) * n);
+    else if (item.cadence === "monthly" || item.cadence === "quarterly") {
       date.setUTCDate(1);
-      date.setUTCMonth(first.getUTCMonth() + n);
+      date.setUTCMonth(first.getUTCMonth() + (item.cadence === "monthly" ? 1 : 3) * n);
       const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
       date.setUTCDate(Math.min(startDate, lastDay));
     } else if (item.cadence === "yearly") {
@@ -44,7 +48,7 @@ export function expandSchedule(item: Scheduled, start: string, days: number, unc
       date.setUTCDate(Math.min(startDate, lastDay));
     } else if (item.cadence !== "once") throw new Error(`Unknown cadence: ${item.cadence}`);
     if (date >= end || (item.ends_on && date.toISOString().slice(0, 10) > item.ends_on)) break;
-    if (date < horizon) continue;
+    if (date < horizon || date.toISOString().slice(0, 10) < item.starts_on) continue;
     const amount = BigInt(item.amount_minor);
     events.push({ date: date.toISOString().slice(0, 10), accountId: item.account_id,
       ...forecastCases(amount, uncertaintyBps) });
@@ -76,12 +80,12 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
       evidence?.wealth ?? loadWealthItems(supabase, workspace.id),
       supabase.from("forecast_preferences").select("currency_code, safety_buffer_minor::text, daily_spending_minor::text, uncertainty_bps, spending_account_id, spending_starts_on, version").eq("workspace_id", workspace.id).maybeSingle(),
       allRows(supabase.from("goal_allocations").select("id, goal_id, account_id, amount_minor::text, version").eq("workspace_id", workspace.id).order("id")),
-      allRows(supabase.from("financial_assumptions").select("id, name, source, account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, enabled, confirmed, version")
+      allRows(supabase.from("financial_assumptions").select("id, name, source, account_id, amount_minor::text, currency_code, cadence, starts_on, schedule_anchor_on, recurring_evidence_eligible, ends_on, enabled, confirmed, version")
         .eq("workspace_id", workspace.id).eq("enabled", true).eq("confirmed", true).is("removed_at", null).order("id")),
       allRows(supabase.from("fx_rates").select("id, from_currency, to_currency, rate_text, rate_date, source, created_at")
         .eq("workspace_id", workspace.id).eq("to_currency", workspace.display_currency).order("id")),
       allRows(supabase.from("recurring_series").select("id, assumption_id, recurring_series_transactions(transaction_id)")
-        .eq("workspace_id", workspace.id).eq("status", "confirmed").eq("evidence_invalidated", false).order("id")),
+        .eq("workspace_id", workspace.id).in("status", ["confirmed", "dismissed"]).eq("evidence_invalidated", false).order("id")),
       allRows<OccurrenceSettlement>(supabase.from("recurring_occurrence_settlements")
         .select("id, assumption_id, scheduled_on, transaction_id, completes_occurrence, receipt, undone_at, version")
         .eq("workspace_id", workspace.id).order("id")),
@@ -120,11 +124,13 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
     }
     return planned.flatMap(event => {
       const explicit = settlements.filter(link => link.assumption_id === item.id && link.scheduled_on === event.date);
-      // Retiring an explicit association does not retire the independently confirmed anchor evidence.
-      if (!explicit.some(link => !link.undone_at) && item.source === "recurring_confirmed" && event.date === item.starts_on && recurringSeries.some(series =>
+      // Candidate dismissal and association Undo retain independent fulfillment proof
+      // for an eligible user schedule; source corrections still invalidate it.
+      if (!explicit.some(link => !link.undone_at) && (item.source === "recurring_confirmed" || item.recurring_evidence_eligible === true) && recurringSeries.some(series =>
         series.assumption_id === item.id && series.recurring_series_transactions.some((link: { transaction_id: string }) =>
           balanceEvidence.ledger.some(row => row.id === link.transaction_id && row.account_id === item.account_id &&
-            row.currency_code === item.currency_code && row.status === "posted" && row.posted_on === event.date &&
+            row.currency_code === item.currency_code && row.status === "posted" && row.kind === "ordinary" && !row.review_reasons?.length && row.posted_on <= startDate &&
+            Math.abs(Date.parse(`${row.posted_on}T00:00:00Z`) - Date.parse(`${event.date}T00:00:00Z`)) <= recurringDateTolerance(item.cadence) * 86400000 &&
             (!row.posted_at || Date.parse(row.posted_at) <= Date.parse(balanceEvidence.asOf)))))) return [];
       for (const link of explicit) if (!link.undone_at && !settlementPosting(item, link, balanceEvidence.ledger))
         missingInputs.push(`occurrence:${item.name}:${event.date}:${link.id}:evidence changed; undo or review the association`);
