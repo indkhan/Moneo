@@ -6,71 +6,40 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { reviewedLocalTimestamp } from "@/lib/finance/calendar";
 
+import { recurringCadences } from "@/lib/finance/cadences";
+
 const uuid = z.uuid();
 const currency = z.string().regex(/^[A-Z]{3}$/);
-const cadence = z.enum(["weekly", "monthly"]);
-const minor = z.string().regex(/^-?\d+$/);
-const ids = z.array(uuid).min(3).max(1000);
+// Compact expected versions keep 1000-source forms well below Next's default
+// 1MB body limit. Owned full receipts are read and validated under RPC locks.
+const receipt = z.object({id: uuid, version: z.number().int().min(0).max(2147483647)}).strict();
+const receiptPayload = z.string().max(128000).refine(value => Buffer.byteLength(value,"utf8") <= 128000,"Evidence payload too large");
 
-function parseSeries(form: FormData) {
-  const transactionIds = String(form.get("transactionIds") ?? "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
-  return {
-    accountId: uuid.parse(form.get("accountId")),
-    label: z.string().trim().min(1).max(200).parse(form.get("label")),
-    cadence: cadence.parse(form.get("cadence")),
-    currencyCode: currency.parse(form.get("currencyCode")),
-    amountMinMinor: minor.parse(form.get("amountMinMinor")),
-    amountMaxMinor: minor.parse(form.get("amountMaxMinor")),
-    occurrences: z.coerce.number().int().min(3).max(1000).parse(form.get("occurrences")),
-    confidence: z.coerce.number().int().min(0).max(100).parse(form.get("confidence")),
-    transactionIds: ids.parse(transactionIds),
-  };
-}
-
-export async function confirmSeries(form: FormData) {
+async function decideSeries(form: FormData, decision: "confirmed" | "dismissed") {
   const { supabase } = await requireWorkspace();
-  const series = parseSeries(form);
-  if (BigInt(series.amountMinMinor) > BigInt(series.amountMaxMinor)) throw new Error("Invalid amount range");
-  if (series.occurrences !== series.transactionIds.length) throw new Error("Occurrences must match evidence count");
-  const { error } = await supabase.rpc("confirm_recurring_series", {
-    p_account_id: series.accountId,
-    p_label: series.label,
-    p_cadence: series.cadence,
-    p_currency_code: series.currencyCode,
-    p_amount_min_minor: series.amountMinMinor,
-    p_amount_max_minor: series.amountMaxMinor,
-    p_occurrences: series.occurrences,
-    p_confidence: series.confidence,
-    p_transaction_ids: series.transactionIds,
+  const raw = receiptPayload.parse(form.get("sourceEvidence"));
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { throw new Error("Invalid source evidence"); }
+  const evidence = z.array(receipt).min(3).max(1000).parse(parsed);
+  const anchor = uuid.parse(form.get("runAnchorId"));
+  if (new Set(evidence.map(row => row.id)).size !== evidence.length || !evidence.some(row => row.id === anchor)) throw new Error("Duplicate sources or missing anchor");
+  const limited = z.enum(["true", "false"]).parse(form.get("evidenceLimited")) === "true";
+  if (limited && evidence.length !== 1000) throw new Error("Invalid limited evidence");
+  const { error } = await supabase.rpc("review_recurring_series_versions", {
+    p_decision: decision,
+    p_account_id: uuid.parse(form.get("accountId")),
+    p_label: z.string().trim().min(1).max(200).parse(form.get("label")),
+    p_cadence: z.enum(recurringCadences).parse(form.get("cadence")),
+    p_currency_code: currency.parse(form.get("currencyCode")),
+    p_evidence: evidence, p_run_anchor_id: anchor, p_evidence_limited: limited,
   });
   if (error) throw new Error(error.message);
-  revalidatePath("/money/recurring");
+  revalidatePath("/", "layout");
   redirect("/money/recurring");
 }
 
-export async function declineSeries(form: FormData) {
-  const { supabase } = await requireWorkspace();
-  const series = parseSeries(form);
-  if (BigInt(series.amountMinMinor) > BigInt(series.amountMaxMinor)) throw new Error("Invalid amount range");
-  if (series.occurrences !== series.transactionIds.length) throw new Error("Occurrences must match evidence count");
-  const { error } = await supabase.rpc("decline_recurring_series", {
-    p_account_id: series.accountId,
-    p_label: series.label,
-    p_cadence: series.cadence,
-    p_currency_code: series.currencyCode,
-    p_amount_min_minor: series.amountMinMinor,
-    p_amount_max_minor: series.amountMaxMinor,
-    p_occurrences: series.occurrences,
-    p_confidence: series.confidence,
-    p_transaction_ids: series.transactionIds,
-  });
-  if (error) throw new Error(error.message);
-  revalidatePath("/money/recurring");
-  redirect("/money/recurring");
-}
+export async function confirmSeries(form: FormData) { await decideSeries(form, "confirmed"); }
+export async function declineSeries(form: FormData) { await decideSeries(form, "dismissed"); }
 
 const versionedId = z.string().transform(value => {
   const [id, version] = value.split(":");

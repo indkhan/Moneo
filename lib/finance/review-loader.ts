@@ -55,7 +55,7 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
     rows<Parameters<typeof buildPlanningReview>[0]["goals"][number]>("goals", "id, name, currency_code, target_minor::text, recorded_saved_minor::text, saved_as_of, planned_monthly_minor::text, contribution_starts_on, target_date, status, version"),
     rows<{ goal_id: string; amount_minor: string }>("goal_allocations", "id, goal_id, account_id, amount_minor::text, version"),
     rows<NonNullable<Parameters<typeof buildPlanningReview>[0]["budgetHistory"]>[number]>("spending_plan_limits", "id, plan_id, limit_minor::text, enabled, version, effective_month"),
-    rows<{ id: string; name: string; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; confirmed: boolean; enabled: boolean; removed_at: string | null }>("financial_assumptions", "id, name, account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, confirmed, enabled, removed_at, version"),
+    rows<{ id: string; name: string; account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; schedule_anchor_on: string | null; source: string; ends_on: string | null; confirmed: boolean; enabled: boolean; removed_at: string | null; version: number }>("financial_assumptions", "id, name, account_id, amount_minor::text, currency_code, cadence, starts_on, schedule_anchor_on, source, ends_on, confirmed, enabled, removed_at, version"),
     loadWealthItems(db, workspace.id), evaluatePlanForWorkspace(db, { ...workspace, timezone: settings.timezone }, 90, undefined,
       { canReadImports: settings.ai_data_scopes.includes("imports"), sourceMetadata: Promise.resolve(sourceMetadata) }),
   ]);

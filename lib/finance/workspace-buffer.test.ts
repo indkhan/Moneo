@@ -8,7 +8,7 @@ it.each([false, true])("loads workspace buffer without inventing account ownersh
   const accounts = [{ id: "empty", name: "Empty", type: "checking", currency_code: "EUR" }, { id: "funded", name: "Funded", type: "savings", currency_code: "EUR" }];
   if (reverse) accounts.reverse();
   const db = { from: (table: string) => {
-    const query = { select: () => query, eq: () => query, is: () => query, order: () => query, range: async () => ({ data: [], error: null }),
+    const query = { select: () => query, in: () => query, eq: () => query, is: () => query, order: () => query, range: async () => ({ data: [], error: null }),
       maybeSingle: async () => ({ data: table === "forecast_preferences" ? { currency_code: "EUR", safety_buffer_minor: "10000", daily_spending_minor: "0", uncertainty_bps: 0, spending_account_id: null, spending_starts_on: null } : null, error: null }) };
     return query;
   } } as unknown as SupabaseClient;

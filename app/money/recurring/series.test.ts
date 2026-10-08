@@ -19,3 +19,9 @@ describe("recurring review helpers", () => {
     expect(confidenceToPercent(0.7)).toBe(70);
   });
 });
+
+it("keeps separate runs of the same merchant and cadence distinct", () => {
+  const first = {accountId: "cash", currencyCode: "EUR", cadence: "monthly", label: "Rent", runAnchorId: "first"};
+  const second = {...first, runAnchorId: "second"};
+  expect(seriesKey(first)).not.toBe(seriesKey(second));
+});

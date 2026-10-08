@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { scheduleCadences } from "@/lib/finance/cadences";
 import { revalidatePath } from "next/cache";
 import { requireWorkspace } from "@/lib/auth";
 import { parseManualAmount } from "@/app/money/transactions/input";
@@ -9,7 +10,7 @@ import { calendarDate } from "@/lib/finance/calendar";
 
 const date = z.iso.date();
 const assumptionId = z.uuid();
-const assumptionCadence = z.enum(["once", "daily", "weekly", "monthly", "yearly"]);
+const assumptionCadence = z.enum(scheduleCadences);
 
 export async function updateGoalPlan(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
@@ -104,7 +105,7 @@ export async function addAssumption(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
   const accountId = z.uuid().parse(form.get("accountId"));
   const name = z.string().trim().min(1).max(120).parse(form.get("name"));
-  const cadence = z.enum(["once", "daily", "weekly", "monthly", "yearly"]).parse(form.get("cadence"));
+  const cadence = z.enum(scheduleCadences).parse(form.get("cadence"));
   const start = date.parse(form.get("startsOn"));
   const { data: account, error: accountError } = await supabase.from("accounts").select("currency_code")
     .eq("workspace_id", workspace.id).eq("id", accountId).is("archived_at", null).single();
@@ -172,7 +173,7 @@ export async function addScenarioEvent(form: FormData) {
   const scenarioId = z.uuid().parse(form.get("scenarioId"));
   const accountId = z.uuid().parse(form.get("accountId"));
   const name = z.string().trim().min(1).max(120).parse(form.get("name"));
-  const cadence = z.enum(["once", "daily", "weekly", "monthly", "yearly"]).parse(form.get("cadence"));
+  const cadence = z.enum(scheduleCadences).parse(form.get("cadence"));
   const start = date.parse(form.get("startsOn"));
   const { data: account } = await supabase.from("accounts").select("currency_code")
     .eq("workspace_id", workspace.id).eq("id", accountId).is("archived_at", null).maybeSingle();

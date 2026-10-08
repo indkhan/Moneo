@@ -16,7 +16,7 @@ it("keeps goal allocation identity and uses only FX rates available on each even
     ],
   };
   const supabase = { from: (table: string) => {
-    const query = { select: () => query, eq: () => query, is: () => query, order: () => query,
+    const query = { select: () => query, in: () => query, eq: () => query, is: () => query, order: () => query,
       range: async () => ({ data: tables[table] ?? [], error: null }),
       maybeSingle: async () => ({ data: table === "forecast_preferences" ? { currency_code: "EUR", safety_buffer_minor: "0", daily_spending_minor: "0", uncertainty_bps: 0, spending_account_id: null, spending_starts_on: null } : null, error: null }),
     }; return query;
