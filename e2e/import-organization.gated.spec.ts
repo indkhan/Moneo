@@ -14,10 +14,11 @@ test('noisy imported spending retains exact sources through reviewed organizatio
  const db=postgres(connection.toString(),{ssl:'require',max:1,connect_timeout:10,onnotice:()=>{},connection:{application_name:'mne013-browser-'+run,lock_timeout:10000,statement_timeout:120000,idle_in_transaction_session_timeout:150000}});
  const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{auth:{persistSession:false,autoRefreshToken:false}});
  let user:string|undefined,workspace:string|undefined,context:BrowserContext|undefined;
- const ledger=[...await db`select version,name,statements from supabase_migrations.schema_migrations order by version`];
+ const ledger:{version:string;name:string;statements:string[]}[]=[];
  mkdirSync('.qa',{recursive:true});
  const record=(extra:Record<string,unknown>)=>writeFileSync(journal,JSON.stringify({run,project,user,workspace,qaTest:'mne013-organization',...extra},null,2));
  try{
+  ledger.push(...await db<typeof ledger>`select version,name,statements from supabase_migrations.schema_migrations order by version`);
   const deployed=ledger.find(row=>row.version==='202610080018');expect(deployed,'018 must be deployed').toBeTruthy();
   expect(createHash('sha256').update(deployed!.statements.join('\n')).digest('hex')).toBe('06404e13f93b1f7128ff84ead1819cbb8a98d3b719ccb619ed331c8fe32046e5');
   const email=`qa-${run}@example.invalid`,password=randomBytes(24).toString('hex');
@@ -76,6 +77,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   const impact=()=>page.getByRole('region',{name:'Organization impact preview'});
   await expect(impact()).toContainText('Merchant: unassigned → Cedar Cooperative');await expect(impact()).toContainText('Category: uncategorized → QA Groceries');
   await expect(impact()).toContainText('90071992547409.93');expect(await fingerprint()).toBe(before);
+  await page.screenshot({path:testInfo.outputPath('native-organization-exact-preview.png'),fullPage:true});
   await impact().getByRole('checkbox',{name:'I reviewed these exact entries',exact:false}).check();
   await impact().getByRole('checkbox',{name:'Save an approved rule',exact:false}).check();
   await impact().getByRole('button',{name:'Approve organization',exact:true}).click();await expect(impact().getByRole('heading',{name:'Applied organization',exact:true})).toBeVisible();
@@ -111,7 +113,10 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   const detail=page.getByRole('complementary',{name:'Transaction details'});
   await detail.getByLabel('Category',{exact:true}).fill('QA Groceries');await detail.getByLabel('Note',{exact:true}).fill('Retained owner correction');
   await detail.getByRole('button',{name:'Save correction',exact:true}).click();await expect(detail.getByLabel('Note',{exact:true})).toHaveValue('Retained owner correction');
+  await expect.poll(async()=>{const [row]=await db`select category_id,note,version from public.transactions where id=${moss.id} and workspace_id=${workspace!}`;return row;}).toMatchObject({category_id:category,note:'Retained owner correction',version:1});
   await page.getByRole('link',{name:'Organize spending',exact:true}).click();
+  await expect(page).toHaveURL(/\/money\/organization$/);
+  await expect(page.getByRole('heading',{name:'Organize imported spending',exact:true})).toBeVisible();
   await expect(page.locator('article').filter({has:page.getByRole('heading',{name:'moss travel',exact:true})})).toHaveCount(0);
   expect([...await db`select id,original_row from public.source_transactions where workspace_id=${workspace!} and id=any(${originalSources.map(row=>row.id)}) order by id`]).toEqual(originalSources);
   await page.screenshot({path:testInfo.outputPath('native-organization-rules-correction.png'),fullPage:true});
@@ -135,7 +140,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
     expect((await db`select id from public.workspaces where id=${workspace}`).length).toBe(0);
    }
    if(user){expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();expect((await db`select id from auth.users where id=${user}`).length).toBe(0);}
-   expect([...await db`select version,name,statements from supabase_migrations.schema_migrations order by version`]).toEqual(ledger);
+   if(ledger.length)expect([...await db`select version,name,statements from supabase_migrations.schema_migrations order by version`]).toEqual(ledger);
    record({status:'cleaned',exactCleanupZero:true,migrationLedgerUnchanged:true,workspaceTables:tables.length});
   }finally{await db.end();}
  }
