@@ -41,7 +41,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
           (case when ${months}>0 then ${anchor}::date+make_interval(months=>${months}*n) else ${anchor}::date+${stepDays}*n end)::date>=${today}::date and
           (case when ${months}>0 then ${anchor}::date+make_interval(months=>${months}*n) else ${anchor}::date+${stepDays}*n end)::date<${today}::date+365) as future_count`;
       await db.begin(async tx => {
-        await tx`insert into public.workspace_settings(workspace_id,timezone,locale) values(${workspace!},'UTC','en-US')`;
+        await tx`insert into public.workspace_settings(workspace_id,timezone,locale,summary_cadence) values(${workspace!},'UTC','en-US','none')`;
         await tx`insert into public.accounts(id,workspace_id,name,currency_code,type) values(${account},${workspace!},${label},'EUR','checking'),(${counterpart},${workspace!},${creditLabel},'EUR','checking')`;
         await tx`insert into public.merchants(id,workspace_id,name,normalized_name) values(${merchant},${workspace!},${label},${label.toLowerCase()})`;
         for (const [index, id] of ids.entries()) {
@@ -65,6 +65,24 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       const page = await context.newPage(); page.setDefaultTimeout(30_000);
       let aiRequests = 0;
       await page.route(/\/api\/(chat|analysis|ai)(\/|\?|$)/, async route => {aiRequests++; await route.abort();});
+      const reviewBookedBalances = async () => {
+        await page.goto("/");
+        for (const [name, accountId, decimal, minor] of [[label,account,"2000.00","200000"],[creditLabel,counterpart,"0.00","0"]]) {
+          const card=page.locator("article").filter({has:page.getByRole("heading",{name,exact:true})});
+          const form=card.locator("form").filter({has:page.getByLabel(`${name} balance`,{exact:true})});
+          const previousId=await form.locator('input[name="expectedSnapshotId"]').inputValue();
+          await form.getByLabel(`${name} balance`,{exact:true}).fill(decimal);
+          await form.locator("summary").click();
+          await form.getByRole("checkbox",{name:/I checked today's booked balance/}).check();
+          await form.getByRole("button",{name:"Save",exact:true}).click();
+          await expect(async () => {
+            const [saved]=await db`select id,amount_minor::text,boundary_kind,actor_id from public.balance_snapshots where workspace_id=${workspace!} and account_id=${accountId} order by created_at desc,id desc limit 1`;
+            expect(saved.id).not.toBe(previousId);
+            expect(saved).toMatchObject({amount_minor:minor,boundary_kind:"reviewed_activity",actor_id:user});
+          }).toPass({timeout:30_000});
+        }
+        record("booked_balances_reviewed",{amountsMinor:["200000","0"]});
+      };
       const candidate = page.locator("article").filter({hasText: `${label} invoice`});
       const forecast = page.locator("section").filter({has: page.getByRole("heading", {name: "Liquid balance horizon",exact: true})});
       expect(latest > today).toBe(true); expect(postedLatest).toBe(today); expect(futureCount).toBeGreaterThan(0);
@@ -98,10 +116,13 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       await transfer.getByRole("checkbox").check(); await transfer.getByRole("button", {name: "Confirm verified transfer",exact: true}).click();
       await expect(detail.getByText("Transfer pair:", {exact: false})).toBeVisible();
       await page.goto("/money/recurring"); await expect(page.getByRole("heading", {name: "Confirmed source evidence changed",exact: true})).toBeVisible();
+      await page.goto("/plan?horizon=365"); await expect(forecast).toContainText("Forecast unavailable");
+      await reviewBookedBalances();
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText("EUR 2000.00");
       await page.goto(`/money/transactions?transaction=${ids[2]}`); await detail.getByRole("button", {name: "Undo verified link",exact: true}).click();
       await expect(detail.getByRole("heading", {name: "Verified transfer",exact: true})).toBeVisible();
       await page.goto("/money/recurring"); await expect(candidate).toContainText("Confirmed");
+      await reviewBookedBalances();
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
       // Paid today for a future slot: provenance-only Plan toggles must not pay it twice.
       const schedule=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} invoice 0`,exact:true})});
@@ -109,6 +130,8 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       await expect(forecast).toContainText("EUR 2000.00");
       const disabledSchedule=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} invoice 0 (disabled)`,exact:true})});
       await disabledSchedule.getByRole("button",{name:"Enable",exact:true}).click();
+      await expect(page).toHaveURL(/\/plan$/);
+      await page.goto("/plan?horizon=365");
       await expect(forecast).toContainText(expected);
       const [toggled]=await db`select source,recurring_evidence_eligible,starts_on::text,schedule_anchor_on::text from public.financial_assumptions where id=${generated.id} and workspace_id=${workspace!}`;
       expect(toggled).toMatchObject({source:"user",recurring_evidence_eligible:true,starts_on:latest,schedule_anchor_on:anchor});
@@ -124,12 +147,15 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       await expect(detail.getByText("Transfer pair:",{exact:false})).toBeVisible();
       const [invalidated]=await db`select status,evidence_invalidated from public.recurring_series where assumption_id=${generated.id} and workspace_id=${workspace!}`;
       expect(invalidated).toMatchObject({status:"dismissed",evidence_invalidated:true});
+      await page.goto("/plan?horizon=365"); await expect(forecast).toContainText("Forecast unavailable");
+      await reviewBookedBalances();
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(`EUR ${(2000-futureCount*20).toFixed(2)}`);
       await page.goto(`/money/transactions?transaction=${ids[2]}`);
       await detail.getByRole("button",{name:"Undo verified link",exact:true}).click();
       await expect(detail.getByRole("heading",{name:"Verified transfer",exact:true})).toBeVisible();
       const [restored]=await db`select status,evidence_invalidated from public.recurring_series where assumption_id=${generated.id} and workspace_id=${workspace!}`;
       expect(restored).toMatchObject({status:"dismissed",evidence_invalidated:false});
+      await reviewBookedBalances();
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
       record("dismissed_fulfillment_correction_undo_verified");
       expect(await db`select id,posted_on::text,description,amount_minor::text,currency_code,merchant_id from public.transactions where workspace_id=${workspace!} order by id`).toEqual(original);
@@ -146,7 +172,8 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
         }
         if (workspace && user) await db.begin(async tx => {
           expect((await tx`select id from public.workspaces where id=${workspace!} and owner_id=${user!}`).length).toBe(1);
-          for (const table of ["transaction_link_fees", "transaction_links", "correction_events", "recurring_occurrence_settlements", "recurring_series_transactions", "recurring_series", "planning_events", "financial_assumptions", "transactions", "forecast_preference_events", "forecast_preferences", "workspace_settings", "balance_snapshots", "merchants", "accounts"]) {
+          for (const table of ["transaction_link_fees", "transaction_links", "correction_events", "recurring_occurrence_settlements", "recurring_series_transactions", "recurring_series", "financial_assumptions", "balance_snapshots", "transactions", "forecast_preference_events", "forecast_preferences", "workspace_settings", "merchants", "accounts", "planning_events"]) {
+            if(table==="transactions") await tx`update public.transactions set transfer_id=null,refund_of_id=null where workspace_id=${workspace!}`;
             await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
             expect((await tx`select count(*)::int as count from ${tx("public." + table)} where workspace_id=${workspace!}`)[0].count).toBe(0);
           }

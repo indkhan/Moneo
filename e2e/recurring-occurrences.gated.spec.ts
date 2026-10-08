@@ -29,7 +29,7 @@ test("explicit partial/full occurrence association changes the forecast once and
     const account = randomUUID(), assumption = randomUUID(), transaction = randomUUID();
     const now = new Date().toISOString(), today = now.slice(0, 10), label = `Occurrence rent QA ${randomUUID().slice(0, 8)}`;
     await db.begin(async tx => {
-      await tx`insert into public.workspace_settings(workspace_id,timezone,locale) values(${workspace!},'UTC','en-US')`;
+      await tx`insert into public.workspace_settings(workspace_id,timezone,locale,summary_cadence) values(${workspace!},'UTC','en-US','none')`;
       await tx`insert into public.accounts(id,workspace_id,name,currency_code,type) values(${account},${workspace!},'Occurrence cash QA','EUR','checking')`;
       await tx`insert into public.transactions(id,workspace_id,account_id,posted_on,posted_at,description,amount_minor,currency_code,status,kind) values(${transaction},${workspace!},${account},${today},${now},${label},-4000,'EUR','posted','ordinary')`;
       const covered = [{ id: transaction, version: 0, amount_minor: "-4000", currency_code: "EUR", posted_on: today, posted_at: now }];
@@ -110,7 +110,8 @@ test("explicit partial/full occurrence association changes the forecast once and
       }
       if (workspace && user) await db.begin(async tx => {
         expect((await tx`select id from public.workspaces where id=${workspace!} and owner_id=${user!}`).length).toBe(1);
-        for (const table of ["recurring_occurrence_settlements", "recurring_series_transactions", "recurring_series", "planning_events", "financial_assumptions", "transactions", "forecast_preference_events", "forecast_preferences", "workspace_settings", "balance_snapshots", "accounts"]) {
+        for (const table of ["recurring_occurrence_settlements", "recurring_series_transactions", "recurring_series", "financial_assumptions", "balance_snapshots", "transactions", "forecast_preference_events", "forecast_preferences", "workspace_settings", "accounts", "planning_events"]) {
+          if(table==="transactions") await tx`update public.transactions set transfer_id=null,refund_of_id=null where workspace_id=${workspace!}`;
           await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
           expect((await tx`select count(*)::int as count from ${tx("public." + table)} where workspace_id=${workspace!}`)[0].count).toBe(0);
         }

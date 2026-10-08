@@ -94,7 +94,7 @@ test("source correction invalidates the inferred forecast obligation and undo re
           expect((await tx`select count(*)::int as count from ${tx("public."+table)} where workspace_id=${workspace!}`)[0].count).toBe(0);
         }
         await tx`update public.transactions set transfer_id=null,refund_of_id=null where workspace_id=${workspace!}`;
-        for(const table of ["planning_events","financial_assumptions","manual_transaction_entries","transactions","forecast_preference_events","forecast_preferences","balance_snapshots","accounts"]) {
+        for(const table of ["financial_assumptions","manual_transaction_entries","balance_snapshots","transactions","forecast_preference_events","forecast_preferences","accounts","planning_events"]) {
           await tx`delete from ${tx("public."+table)} where workspace_id=${workspace!}`;
           expect((await tx`select count(*)::int as count from ${tx("public."+table)} where workspace_id=${workspace!}`)[0].count).toBe(0);
         }
