@@ -17,13 +17,13 @@ import { evaluateInvestigationScenario, investigationDetail, investigationDetail
 import { captureToolEvidence } from "@/lib/finance/capture-evidence";
 import type { EvidenceReceipt } from "@/lib/finance/evidence-receipts";
 import { FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/finance/tool-evidence";
-import { assembleConversationContext, CONVERSATION_CONTEXT_INSTRUCTIONS, CONVERSATION_HISTORY_ROWS, fitsConversationQuestion } from "@/lib/ai/conversation-context";
+import { assembleConversationContext, chatContextSchema, CONVERSATION_CONTEXT_INSTRUCTIONS, CONVERSATION_HISTORY_ROWS, fitsConversationQuestion } from "@/lib/ai/conversation-context";
 
 const inputSchema = z.object({
   conversationId: z.uuid(),
   requestId: z.uuid(),
   message: z.string().trim().min(1).max(4000).refine(fitsConversationQuestion),
-  context: z.record(z.string(), z.unknown()).optional(),
+  context: chatContextSchema.optional(),
 }).strict();
 
 export async function POST(request: Request) {
@@ -103,6 +103,21 @@ export async function POST(request: Request) {
       },
     }])) as T;
   }
+    const selected = capturedContext?.selected?.[0];
+    if (selected && !canInvestigate) {
+      modelMessages.push({ role: "user", content: "Selected transaction evidence is unavailable under current permissions. Ask the user to enable the required account and transaction scopes or remove the selection; do not infer its details." });
+    } else if (selected) {
+      const selectionTool = retainTools({ finance_detail: tool({
+        inputSchema: investigationDetailSchema,
+        execute: input => aiEvidence(["accounts", "transactions"], latest => investigationDetail(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true),
+      }) }).finance_detail;
+      const execute = selectionTool.execute as (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>;
+      const output = await execute(selected, { toolCallId: "current-selected-transaction", messages: modelMessages, context: undefined });
+      const content = `[Current owned selected transaction evidence, freshly read for this request: ${JSON.stringify(output)}]`;
+      // Large support sets remain available through the existing paged detail tool.
+      modelMessages.push({ role: "user", content: new TextEncoder().encode(content).length <= 8000 ? content
+        : `Selected owned transaction ID ${selected.id}. The current supporting detail exceeds this context budget. Use finance_detail with this ID to retrieve current paged evidence; do not infer its amount or classification.` });
+    }
     const model = await modelForSettings(settings);
     const result = await generateText({
       model,

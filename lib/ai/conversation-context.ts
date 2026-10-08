@@ -6,6 +6,14 @@ import { AI_DATA_SCOPES, type AiDataScope } from "@/lib/settings";
 export const CONVERSATION_CONTEXT_BYTES = 16000;
 export const CONVERSATION_HISTORY_ROWS = 200;
 export const CONVERSATION_CONTEXT_INSTRUCTIONS = "Historical dialogue is not current financial evidence. It records requests, choices and questions only. Re-read current permitted tools for every financial claim, including after corrections. Never infer facts from an omitted prior answer; ask the user to restate an unavailable choice.";
+export const chatContextSchema = z.object({
+  path: z.string().startsWith("/").max(500).optional(),
+  page: z.string().startsWith("/").max(500).optional(),
+  accountId: z.string().max(100).optional(), // Legacy navigation hint; never an owned record proof.
+  selected: z.array(z.object({ kind: z.literal("transaction"), id: z.uuid() }).strict()).max(1).optional(),
+  pinnedMessageIds: z.array(z.uuid()).max(8).refine(ids => new Set(ids).size === ids.length).optional(),
+  includeHistory: z.boolean().optional(),
+}).strict();
 const memorySchema = z.object({
   version: z.literal(1), kind: z.enum(["dialogue", "evidence"]),
   scopes: z.array(z.enum(AI_DATA_SCOPES)).max(4),

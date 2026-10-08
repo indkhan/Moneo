@@ -26,6 +26,7 @@ vi.mock("@/lib/finance/tools", async importOriginal => ({
 }));
 beforeEach(() => {
   vi.clearAllMocks(); process.env.OPENROUTER_API_KEY = "test"; process.env.SUPABASE_SERVICE_ROLE_KEY = "test"; process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
+  vi.mocked(investigationDetail).mockReset().mockResolvedValue({ synthetic: "detail" } as never);
   const query = { select: () => query, eq: () => query, order: () => query, limit: async () => ({ data: [], error: null }), maybeSingle: async () => ({ data: { id: "conversation" }, error: null }) };
   const rpc = vi.fn(async (name: string) => ({ error: null, data: name === "start_chat_request" ? { started: true } : "completed" }));
   vi.mocked(requireWorkspace).mockResolvedValue({ supabase: { from: () => query, rpc }, user: { id: "00000000-0000-4000-8000-000000000099" }, workspace: { id: "workspace", display_currency: "EUR" }, settings: DEFAULT_SETTINGS } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
@@ -70,6 +71,36 @@ it("withholds prior financial prose after corrections even when its scopes remai
   ]);
   expect((await POST(request("What is the corrected amount now?"))).status).toBe(200);
   expect(JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages)).not.toContain("999.99");
+});
+it("rejects malformed selection IDs before claiming a request or calling a provider", async () => {
+  const response = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({
+    conversationId: requestId, requestId, message: "Explain this transaction", context: { selected: [{ kind: "transaction", id: "invented" }] },
+  }) }));
+  expect(response.status).toBe(400);
+  expect(generateText).not.toHaveBeenCalled();
+  expect((await requireWorkspace()).supabase.rpc).not.toHaveBeenCalled();
+});
+it("resolves a stable selected transaction using current owned evidence before asking the provider", async () => {
+  const selectedId = "00000000-0000-4000-8000-000000000088";
+  vi.mocked(investigationDetail).mockResolvedValueOnce({ kind: "transaction", transaction: { id: selectedId, version: 2, amount_minor: "1250", currency_code: "EUR" } } as never);
+  const response = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({
+    conversationId: requestId, requestId, message: "Explain this transaction", context: { selected: [{ kind: "transaction", id: selectedId }] },
+  }) }));
+  expect(response.status).toBe(200);
+  expect(investigationDetail).toHaveBeenCalledWith({ kind: "transaction", id: selectedId }, expect.anything(), { canReadImports: true });
+  const prompt = JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages);
+  expect(prompt).toContain(selectedId);
+  expect(prompt).toContain("1250");
+  expect(vi.mocked(generateText).mock.calls[0][0].messages?.at(-1)).toMatchObject({ content: expect.stringContaining('"version":2') });
+});
+it("does not resolve selected records under revoked transaction scope", async () => {
+  await withHistory([], ["planning"]);
+  const response = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({
+    conversationId: requestId, requestId, message: "Explain this transaction", context: { selected: [{ kind: "transaction", id: requestId }] },
+  }) }));
+  expect(response.status).toBe(200);
+  expect(investigationDetail).not.toHaveBeenCalled();
+  expect(JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages)).toContain("Selected transaction evidence is unavailable under current permissions");
 });
 it("removes unsupported provider amounts and links before either response or immutable history publication", async () => {
   vi.mocked(generateText).mockResolvedValueOnce({ text: "You spent EUR 999999.00 [proof](/money/transactions?transaction=missing)", totalUsage: {} } as never);
