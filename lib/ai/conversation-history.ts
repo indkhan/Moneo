@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
 const cursorSchema = z.object({ created_at: z.iso.datetime({ offset: true }), id: z.uuid() });
-export type HistoryMessage = { id: string; role: string; content: string; created_at: string };
+export type HistoryMessage = { id: string; role: string; content: string; context?: unknown; created_at: string };
 export type HistoryThread = { id: string; title: string; created_at: string };
 function before(value?: string) {
   if (!value) return null;
@@ -26,7 +26,7 @@ export async function loadConversationHistory(supabase: SupabaseClient, workspac
   }
   let messages: HistoryMessage[] = [], messagesCursor: string | null = null;
   if (selected) {
-    let mq = supabase.from("messages").select("id,role,content,created_at").eq("workspace_id", workspace).eq("conversation_id", selected.id).order("created_at", { ascending: false }).order("id", { ascending: false });
+    let mq = supabase.from("messages").select("id,role,content,context,created_at").eq("workspace_id", workspace).eq("conversation_id", selected.id).order("created_at", { ascending: false }).order("id", { ascending: false });
     if (mc) mq = mq.or(`created_at.lt.${mc.created_at},and(created_at.eq.${mc.created_at},id.lt.${mc.id})`);
     const { data, error } = await mq.limit(101);
     if (error) throw new Error("Could not load messages. Try again.");

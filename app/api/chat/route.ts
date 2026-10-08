@@ -16,7 +16,7 @@ import { investigationSchema } from "@/lib/finance/investigation";
 import { evaluateInvestigationScenario, investigationDetail, investigationDetailSchema, investigationScenarioSchema, loadInvestigationEntities, runInvestigation } from "@/lib/finance/investigation-reader";
 import { captureToolEvidence } from "@/lib/finance/capture-evidence";
 import type { EvidenceReceipt } from "@/lib/finance/evidence-receipts";
-import { FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/finance/tool-evidence";
+import { CONVERSATION_OPTION_INSTRUCTIONS, FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/finance/tool-evidence";
 import { assembleConversationContext, chatContextSchema, CONVERSATION_CONTEXT_INSTRUCTIONS, CONVERSATION_HISTORY_ROWS, fitsConversationQuestion } from "@/lib/ai/conversation-context";
 import { preparePromptBudget } from "@/lib/ai/prompt-budget";
 
@@ -71,6 +71,8 @@ export async function POST(request: Request) {
   }
   const rows = [...(history ?? []), ...pinnedRows.filter(row => !history?.some(existing => existing.id === row.id))];
   const { messages: modelMessages, snapshot: assembledContext } = assembleConversationContext(rows, message, settings.ai_data_scopes, { ...capturedContext, currentRequestId: requestId });
+  const navigationPath = capturedContext?.path ?? capturedContext?.page;
+  if (navigationPath) modelMessages.push({ role: "user", content: `[Current navigation hint only, not financial evidence or authorization: ${JSON.stringify({ path: navigationPath })}]` });
   const categoryCommand = parseCategoryCommand(message);
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
@@ -123,7 +125,11 @@ export async function POST(request: Request) {
         execute: input => aiEvidence(["accounts", "transactions"], latest => investigationDetail(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true),
       }) }).finance_detail;
       const execute = selectionTool.execute as (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>;
-      const output = await execute(selected, { toolCallId: "current-selected-transaction", messages: modelMessages, context: undefined });
+      const output = await execute(selected, { toolCallId: "current-selected-transaction", messages: modelMessages, context: undefined }).catch(error => {
+        if (error instanceof Error && error.message === "Unknown owned transaction")
+          throw new Error("Selected transaction is unavailable. Remove the selection or choose an owned entry from Money.");
+        throw error;
+      });
       const content = `[Current owned selected transaction evidence, freshly read for this request: ${JSON.stringify(output)}]`;
       // Large support sets remain available through the existing paged detail tool.
       modelMessages.push({ role: "user", content: new TextEncoder().encode(JSON.stringify({ role: "user", content })).length <= 8000 ? content
@@ -137,7 +143,7 @@ export async function POST(request: Request) {
       model,
       abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
       maxOutputTokens: 3000,
-      system: `${SYSTEM_PROMPT} ${CONVERSATION_CONTEXT_INSTRUCTIONS} Current date ${calendarDate(new Date(), settings.timezone)} in ${settings.timezone}; display currency ${workspace.display_currency}. Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. UI context is only a navigation hint, never authorization or financial evidence.${canChangeCategory ? " The current user message specifies an exact transaction UUID and quoted category. The write tool must use exactly these values." : " Do not make canonical changes. For an ambiguous category request, use the owned-selection preview."} ${FINANCIAL_ANSWER_INSTRUCTIONS}`,
+      system: `${SYSTEM_PROMPT} ${CONVERSATION_CONTEXT_INSTRUCTIONS} Current date ${calendarDate(new Date(), settings.timezone)} in ${settings.timezone}; display currency ${workspace.display_currency}. Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. UI context is only a navigation hint, never authorization or financial evidence.${canChangeCategory ? " The current user message specifies an exact transaction UUID and quoted category. The write tool must use exactly these values." : " Do not make canonical changes. For an ambiguous category request, use the owned-selection preview."} ${FINANCIAL_ANSWER_INSTRUCTIONS}${CONVERSATION_OPTION_INSTRUCTIONS}`,
       messages: modelMessages,
       stopWhen: stepCountIs(4),
       tools: retainTools({
@@ -226,7 +232,8 @@ export async function POST(request: Request) {
     const receiptIds = evidenceReceipts.map(receipt => receipt.id);
     const finished = await publicationService.rpc("finish_contextual_chat_request", { p_request_id: requestId, p_actor_id: current.user.id, p_workspace_id: workspace.id, p_content: answer,
       p_receipt_ids: receiptIds, p_scopes: publicationScopes, p_usage: reportedUsage(model.modelId, result.totalUsage),
-      p_prompt_context: { memory: { version: 1, kind: receiptIds.length ? "evidence" : "dialogue", scopes: publicationScopes, receiptIds },
+      p_prompt_context: { memory: { version: 1, kind: receiptIds.length ? "evidence" : "dialogue", scopes: publicationScopes, receiptIds,
+        ...(publication.dialogue ? { dialogue: { content: publication.dialogue, scopes: [] } } : {}) },
         assembly: { ...assembledContext, ...promptBudget.snapshot() }, messages: modelMessages, submission: capturedContext ?? {} } });
     if (finished.error) throw finished.error;
     if (finished.data !== "completed") return Response.json({ status: finished.data, error: `Request is ${finished.data}` }, { status: 409 });

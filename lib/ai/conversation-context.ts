@@ -18,6 +18,7 @@ const memorySchema = z.object({
   version: z.literal(1), kind: z.enum(["dialogue", "evidence"]),
   scopes: z.array(z.enum(AI_DATA_SCOPES)).max(4),
   receiptIds: z.array(z.uuid()).max(1000).optional(),
+  dialogue: z.object({ content: z.string().min(1).max(2000), scopes: z.array(z.enum(AI_DATA_SCOPES)).max(4) }).strict().optional(),
 }).strict();
 type Row = { id?: string; request_id?: string | null; role: string; content: string; context?: unknown };
 type Message = { role: "user" | "assistant"; content: string };
@@ -39,8 +40,12 @@ export function assembleConversationContext(newestFirst: Row[], question: string
     const memory = memorySchema.safeParse(context.memory);
     // Assistant context is written only by trusted publication. Untagged legacy
     // answers and evidence prose have no safe conversational replay authority.
-    if (row.role !== "assistant" || !memory.success || memory.data.kind !== "dialogue"
-      || memory.data.receiptIds?.length || memory.data.scopes.some(scope => !scopes.includes(scope))) return [];
+    if (row.role !== "assistant" || !memory.success) return [];
+    if (memory.data.dialogue) {
+      if (memory.data.dialogue.scopes.some(scope => !scopes.includes(scope))) return [];
+      return [{ index, message: { role: "assistant", content: memory.data.dialogue.content } as Message, scopes: memory.data.dialogue.scopes }];
+    }
+    if (memory.data.kind !== "dialogue" || memory.data.receiptIds?.length || memory.data.scopes.some(scope => !scopes.includes(scope))) return [];
     return [{ index, message: { role: "assistant", content: row.content } as Message, scopes: memory.data.scopes }];
   });
   const selected: typeof candidates = [];

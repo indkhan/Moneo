@@ -104,6 +104,15 @@ it("does not resolve selected records under revoked transaction scope", async ()
   expect(investigationDetail).not.toHaveBeenCalled();
   expect(JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages)).toContain("Selected transaction evidence is unavailable under current permissions");
 });
+it("asks the user to remove a missing or foreign selected transaction", async () => {
+  vi.mocked(investigationDetail).mockRejectedValueOnce(new Error("Unknown owned transaction"));
+  const response = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({
+    conversationId: requestId, requestId, message: "Explain this transaction", context: { selected: [{ kind: "transaction", id: requestId }] },
+  }) }));
+  expect(response.status).toBe(502);
+  expect((await response.json()).error).toContain("Remove the selection or choose an owned entry");
+  expect(generateText).not.toHaveBeenCalled();
+});
 it("persists the exact prompt snapshot and trusted dialogue provenance at successful publication", async () => {
   expect((await POST(request("Hello"))).status).toBe(200);
   const publication = serviceRpc.mock.calls.find(call => call[0] === "finish_contextual_chat_request")?.[1];
@@ -142,6 +151,37 @@ it("bounds the complete prompt, including later tool results, and records the bu
   expect(serviceRpc.mock.calls.find(call => call[0] === "finish_contextual_chat_request")?.[1]).toMatchObject({
     p_prompt_context: { assembly: { promptBudgetBytes: 65536, promptSteps: [{ step: 0, bytes: expect.any(Number) }] } },
   });
+});
+it("preserves application-written planning choices separately from revoked evidence in the same answer", async () => {
+  const current = await requireWorkspace();
+  current.workspace.id = "00000000-0000-4000-8000-000000000010";
+  const receipt = toolResultReceipt("analytics_cashflow", {}, { currencyCode: "EUR", from: "2026-09-01", to: "2026-09-30", spendingMinor: "25" },
+    { workspaceId: current.workspace.id, fetchedAt: "2026-10-01T00:00:00Z", timezone: "UTC" }, ["transactions", "imports"]);
+  vi.mocked(captureToolEvidence).mockResolvedValueOnce([receipt]);
+  vi.mocked(generateText).mockImplementationOnce(async options => {
+    const tools = options.tools as unknown as Record<string, { execute: (input: unknown, options: unknown) => Promise<unknown> }>;
+    await tools.analytics_cashflow.execute({ from: "2026-09-01", to: "2026-09-30", currencyCode: "EUR" }, {});
+    const metric = receipt.metrics[0];
+    return { text: JSON.stringify({ claims: [{ operation: "metric", operands: [{ receiptId: receipt.id, metricId: metric.id }], valueMinor: "25", currency: "EUR", periods: [metric.period], qualifiers: metric.qualifiers }],
+      interpretation: [], dialogue: { options: ["compare_periods", "forecast_assumptions"] } }), totalUsage: {} } as never;
+  });
+  const first = await (await POST(request("Show September spending and suggest two next steps"))).json();
+  expect(first.answer).toContain("Option 2: Explore a conditional forecast");
+  expect(first.answer).toContain("EUR 0.25");
+  const snapshot = serviceRpc.mock.calls.find(call => call[0] === "finish_contextual_chat_request")![1].p_prompt_context;
+  await withHistory([{ role: "assistant", content: first.answer, context: snapshot }], ["accounts", "transactions", "planning"]);
+  vi.mocked(generateText).mockClear();
+  expect((await POST(request("Explain the second option"))).status).toBe(200);
+  const prompt = JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages);
+  expect(prompt).toContain("Option 2: Explore a conditional forecast");
+  expect(prompt).not.toContain("EUR 0.25");
+  expect(prompt).not.toContain(receipt.id);
+});
+it("does not accept arbitrary financial prose inside planning choices", async () => {
+  vi.mocked(generateText).mockResolvedValueOnce({ text: JSON.stringify({ claims: [], interpretation: [], dialogue: { options: ["forecast_assumptions"], text: "You can afford EUR 999999.00" } }), totalUsage: {} } as never);
+  const answer = await (await POST(request("Suggest a next step"))).json();
+  expect(answer.answer).not.toContain("999999");
+  expect(answer.answer).not.toContain("Option 1:");
 });
 it("removes unsupported provider amounts and links before either response or immutable history publication", async () => {
   vi.mocked(generateText).mockResolvedValueOnce({ text: "You spent EUR 999999.00 [proof](/money/transactions?transaction=missing)", totalUsage: {} } as never);

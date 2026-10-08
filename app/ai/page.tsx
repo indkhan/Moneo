@@ -7,6 +7,8 @@ import { requireWorkspace } from "@/lib/auth";
 import { ChatForm } from "./chat-form";
 import { AnalysisPanel } from "./analysis-panel";
 import { AiMessage } from "@/components/ai-message";
+import { PinChatRequest } from "@/components/chat-context";
+import { ChatContextSnapshot } from "@/components/chat-context-snapshot";
 
 export default async function AiPage({ searchParams }: { searchParams: Promise<{ conversation?: string; threadsBefore?: string; messagesBefore?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -39,8 +41,8 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<{
       <h2 className="mt-6 text-sm font-medium text-muted-foreground">{selected?.title ?? "New conversation"}</h2>
       {!messages?.length && <div className="mt-7 rounded-lg border border-dashed border-border p-5"><h3 className="font-semibold">Start with a question.</h3><p className="mt-2 text-sm text-muted-foreground">Ask what changed in your spending, find a transaction, or create a spending chart. Financial facts come from your permitted data; missing facts stay unknown.</p></div>}
       {messagesCursor && <Link className="mt-4 block text-sm underline" href={href({ messagesBefore: messagesCursor, ...(params.threadsBefore ? { threadsBefore: params.threadsBefore } : {}) })}>Older messages</Link>}{params.messagesBefore && <Link className="mt-3 block text-sm underline" href={href({})}>Latest messages</Link>}
-      <div className="mt-6 space-y-7" aria-live="polite">{messages?.map(item => <article key={item.id} className={item.role === "user" ? "ai-user-message" : "min-w-0"}><div className="mb-3 flex items-center gap-2 text-xs"><span className={`flex size-6 items-center justify-center rounded-md font-semibold ${item.role === "user" ? "bg-accent text-foreground" : "bg-primary text-primary-foreground"}`}>{item.role === "user" ? "Y" : "M"}</span><span className="font-semibold">{item.role === "user" ? "You" : "Moneo"}</span><time className="font-mono text-[10px] text-muted-foreground" dateTime={item.created_at}>{new Date(item.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}</time></div>{item.role === "user" ? <p className="whitespace-pre-wrap break-words text-sm">{item.content}</p> : <AiMessage content={item.content} />}</article>)}</div>
-      <ChatForm key={selected?.id ?? "new"} conversationId={selected?.id ?? crypto.randomUUID()} selectionKey={selectionKey} />
+      <div className="mt-6 space-y-7" aria-live="polite">{messages?.map(item => <article key={item.id} className={item.role === "user" ? "ai-user-message" : "min-w-0"}><div className="mb-3 flex items-center gap-2 text-xs"><span className={`flex size-6 items-center justify-center rounded-md font-semibold ${item.role === "user" ? "bg-accent text-foreground" : "bg-primary text-primary-foreground"}`}>{item.role === "user" ? "Y" : "M"}</span><span className="font-semibold">{item.role === "user" ? "You" : "Moneo"}</span><time className="font-mono text-[10px] text-muted-foreground" dateTime={item.created_at}>{new Date(item.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}</time></div>{item.role === "user" ? <><p className="whitespace-pre-wrap break-words text-sm">{item.content}</p><PinChatRequest selectionKey={selectionKey} conversationId={selected?.id ?? "new"} messageId={item.id} /></> : <><AiMessage content={item.content} /><ChatContextSnapshot context={item.context} /></>}</article>)}</div>
+      <ChatForm key={selected?.id ?? "new"} conversationId={selected?.id ?? crypto.randomUUID()} contextConversationId={selected?.id ?? "new"} selectionKey={selectionKey} />
       <AnalysisPanel locale={workspace.locale} timezone={workspace.timezone} />
     </section>
   </main>;
