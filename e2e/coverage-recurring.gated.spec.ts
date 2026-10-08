@@ -15,7 +15,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, connection = new URL(process.env.SUPABASE_DB_URL!);
     const project = new URL(url).hostname.split(".")[0];
     expect(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`)).toBe(true);
-    const db = postgres(connection.toString(), {ssl: "require", max: 1});
+    const db = postgres(connection.toString(), {ssl: "require", max: 1, connect_timeout: 10, connection: {application_name: "MNE014-browser-coverage", lock_timeout: 10_000, statement_timeout: 120_000, idle_in_transaction_session_timeout: 150_000}});
     const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, {auth: {persistSession: false, autoRefreshToken: false}});
     const context = await browser.newContext({baseURL: "http://localhost:3000"});
     let user: string | undefined, workspace: string | undefined;
@@ -24,7 +24,9 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
     const journal = `.qa/mne014-browser-${runId}.jsonl`;
     const record = (phase: string, fields: Record<string, unknown> = {}) => appendFileSync(journal, JSON.stringify({task: "MNE014", runId, project, cadence, user, workspace, phase, ...fields}) + "\n");
     record("prepared");
+    let migrationLedger: unknown;
     try {
+      migrationLedger = await db`select version,name,statements from supabase_migrations.schema_migrations order by version`;
       expect((await db`select 1 from information_schema.columns where table_schema='public' and table_name='financial_assumptions' and column_name in ('schedule_anchor_on','recurring_evidence_eligible')`).length, "Root must deploy reviewed 017 before this browser gate").toBe(2);
       const email = `mne014-${runId}@example.invalid`, password = randomBytes(24).toString("hex");
       const created = await admin.auth.admin.createUser({email, password, email_confirm: true, user_metadata: {qa_test: "MNE014", run_id: runId}});
@@ -117,6 +119,12 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
     } finally {
       await context.close().catch(() => {});
       try {
+        if (user) {
+          const owned = await admin.auth.admin.getUserById(user);
+          expect(owned.error).toBeNull();
+          expect(owned.data.user?.user_metadata).toMatchObject({qa_test: "MNE014", run_id: runId});
+          expect((await db`select count(*)::int as count from storage.objects where owner_id=${user}`)[0].count).toBe(0);
+        }
         if (workspace && user) await db.begin(async tx => {
           expect((await tx`select id from public.workspaces where id=${workspace!} and owner_id=${user!}`).length).toBe(1);
           for (const table of ["transaction_link_fees", "transaction_links", "correction_events", "recurring_occurrence_settlements", "recurring_series_transactions", "recurring_series", "planning_events", "financial_assumptions", "transactions", "forecast_preference_events", "forecast_preferences", "workspace_settings", "balance_snapshots", "merchants", "accounts"]) {
@@ -127,7 +135,8 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
           expect((await tx`select count(*)::int as count from public.workspaces where id=${workspace!}`)[0].count).toBe(0);
         });
         if (user) {expect((await admin.auth.admin.deleteUser(user)).error).toBeNull(); expect((await db`select count(*)::int as count from auth.users where id=${user}`)[0].count).toBe(0);}
-        record("cleanup", {remainingOwnedRecords: 0});
+        if (migrationLedger) expect(await db`select version,name,statements from supabase_migrations.schema_migrations order by version`).toEqual(migrationLedger);
+        record("cleanup", {remainingOwnedRecords: 0, exactCleanupZero: true, migrationLedgerUnchanged: true});
       } finally {await db.end();}
     }
   });

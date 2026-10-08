@@ -11,18 +11,21 @@ test("explicit partial/full occurrence association changes the forecast once and
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, connection = new URL(process.env.SUPABASE_DB_URL!);
   const project = new URL(url).hostname.split(".")[0];
   expect(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`)).toBe(true);
-  const db = postgres(connection.toString(), { ssl: "require", max: 1 });
+  const db = postgres(connection.toString(), { ssl: "require", max: 1, connect_timeout: 10, connection: {application_name: "MNE014-browser-occurrences", lock_timeout: 10_000, statement_timeout: 120_000, idle_in_transaction_session_timeout: 150_000} });
   const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
   let user: string | undefined, workspace: string | undefined;
   const context = await browser.newContext({ baseURL: "http://localhost:3000" });
-  const recovery = `.qa/occurrences-${randomUUID()}.json`;
+  const runId = randomUUID();
+  const recovery = `.qa/occurrences-${runId}.json`;
+  let migrationLedger: unknown;
   try {
+    migrationLedger = await db`select version,name,statements from supabase_migrations.schema_migrations order by version`;
     expect((await db`select to_regclass('public.recurring_occurrence_settlements') as relation`)[0].relation, "Apply reviewed migration 202610060003 before this acceptance journey").not.toBeNull();
     const email = `qa-${randomUUID()}@example.invalid`, password = randomBytes(24).toString("hex");
-    const created = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { qa_test: "recurring-occurrences" } });
+    const created = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { qa_test: "recurring-occurrences", run_id: runId } });
     expect(created.error).toBeNull(); user = created.data.user!.id;
     [{ id: workspace }] = await db`select id from public.workspaces where owner_id=${user}`;
-    mkdirSync(".qa", { recursive: true }); writeFileSync(recovery, JSON.stringify({ project, user, workspace }));
+    mkdirSync(".qa", { recursive: true }); writeFileSync(recovery, JSON.stringify({ project, runId, user, workspace }));
     const account = randomUUID(), assumption = randomUUID(), transaction = randomUUID();
     const now = new Date().toISOString(), today = now.slice(0, 10), label = `Occurrence rent QA ${randomUUID().slice(0, 8)}`;
     await db.begin(async tx => {
@@ -98,11 +101,28 @@ test("explicit partial/full occurrence association changes the forecast once and
 
   } finally {
     await context.close().catch(() => {});
-    if (workspace) await db.begin(async tx => {
-      for (const table of ["recurring_occurrence_settlements", "recurring_series_transactions", "recurring_series", "planning_events", "financial_assumptions", "transactions", "forecast_preference_events", "forecast_preferences", "workspace_settings", "balance_snapshots", "accounts"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
-      await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
-    });
-    if (user) { expect((await admin.auth.admin.deleteUser(user)).error).toBeNull(); unlinkSync(recovery); }
-    await db.end();
+    try {
+      if (user) {
+        const owned = await admin.auth.admin.getUserById(user);
+        expect(owned.error).toBeNull();
+        expect(owned.data.user?.user_metadata).toMatchObject({qa_test: "recurring-occurrences", run_id: runId});
+        expect((await db`select count(*)::int as count from storage.objects where owner_id=${user}`)[0].count).toBe(0);
+      }
+      if (workspace && user) await db.begin(async tx => {
+        expect((await tx`select id from public.workspaces where id=${workspace!} and owner_id=${user!}`).length).toBe(1);
+        for (const table of ["recurring_occurrence_settlements", "recurring_series_transactions", "recurring_series", "planning_events", "financial_assumptions", "transactions", "forecast_preference_events", "forecast_preferences", "workspace_settings", "balance_snapshots", "accounts"]) {
+          await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
+          expect((await tx`select count(*)::int as count from ${tx("public." + table)} where workspace_id=${workspace!}`)[0].count).toBe(0);
+        }
+        await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
+        expect((await tx`select count(*)::int as count from public.workspaces where id=${workspace!}`)[0].count).toBe(0);
+      });
+      if (user) {
+        expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();
+        expect((await db`select count(*)::int as count from auth.users where id=${user}`)[0].count).toBe(0);
+        unlinkSync(recovery);
+      }
+      if (migrationLedger) expect(await db`select version,name,statements from supabase_migrations.schema_migrations order by version`).toEqual(migrationLedger);
+    } finally {await db.end();}
   }
 });
