@@ -26,7 +26,8 @@ test("budget rollover rules persist and undo while historical missing targets st
   await expect(plan).toBeVisible({ timeout: 30_000 });
   await plan.getByRole("checkbox", { name: "Carry remaining budget into the next month", exact: true }).check();
   await plan.getByRole("button", { name: "Save rollover rule", exact: true }).click();
-  await expect(plan).toContainText("Carry from earlier months: EUR 0.00", { timeout: 30_000 });
+  await expect(plan).toContainText("Accepted-record carry from earlier months: EUR 0.00. Accepted-record allowance: EUR 100.00.", { timeout: 30_000 });
+  await expect(plan).toContainText("Source coverage · financial completeness unknown");
   await page.reload();
   await expect(plan.getByRole("checkbox")).toBeChecked();
   await page.getByText("Spending plan history and undo", { exact: true }).click();
