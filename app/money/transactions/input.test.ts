@@ -18,6 +18,14 @@ describe("manual and bulk transaction inputs", () => {
     expect(() => bulkInput({ ...base, rows: [] })).toThrow();
     expect(() => bulkInput({ ...base, mode: "amount", value: "100" })).toThrow();
   });
+  it("accepts reviewed merchant assignments and clearing through the existing bounded metadata contract", () => {
+    const base = { rows: [{ id: "00000000-0000-4000-8000-000000000001", version: 3 }], requestId: "00000000-0000-4000-8000-000000000002", confirmed: "true", mode: "merchant", value: "00000000-0000-4000-8000-000000000003" };
+    expect(bulkInput(base)).toEqual({ rows: base.rows, requestId: base.requestId, patch: { merchant_id: base.value } });
+    expect(bulkInput({ ...base, value: "" }).patch).toEqual({ merchant_id: null });
+    expect(() => bulkInput({ ...base, value: "Invented merchant" })).toThrow();
+    expect(() => bulkInput({ ...base, confirmed: "false" })).toThrow();
+    expect(() => bulkInput({ ...base, rows: [base.rows[0], base.rows[0]] })).toThrow();
+  });
   it("requires exact same-direction allocations without changing the parent currency or total", () => {
     const rows = [{ amount: "-90071992547400.00", categoryId: null, note: "Food" }, { amount: "-9.93", categoryId: null, note: "Other" }];
     expect(splitInput(rows, "EUR", -9007199254740993n)).toEqual([

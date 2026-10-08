@@ -14,9 +14,9 @@ export const versionedRows = z.array(z.object({ id: z.uuid(), version: z.number(
   .refine(rows => new Set(rows.map(row => row.id)).size === rows.length, "Select each transaction once");
 
 export function bulkInput(value: unknown) {
-  const input = z.object({ rows: versionedRows, requestId: z.uuid(), confirmed: z.literal("true"), mode: z.enum(["category", "tags", "event"]), value: z.string().max(1000) }).parse(value);
+  const input = z.object({ rows: versionedRows, requestId: z.uuid(), confirmed: z.literal("true"), mode: z.enum(["category", "merchant", "tags", "event"]), value: z.string().max(1000) }).parse(value);
   let patch: Record<string, unknown>;
-  if (input.mode === "category") patch = { category_id: input.value ? z.uuid().parse(input.value) : null };
+  if (input.mode === "category" || input.mode === "merchant") patch = { [input.mode === "merchant" ? "merchant_id" : "category_id"]: input.value ? z.uuid().parse(input.value) : null };
   else if (input.mode === "event") patch = { event_name: z.string().trim().max(120).parse(input.value) || null };
   else patch = { tags: z.array(z.string().min(1).max(40)).max(20).parse([...new Set(input.value.split(",").map(tag => tag.trim().toLowerCase()).filter(Boolean))].sort()) };
   return { rows: input.rows, requestId: input.requestId, patch };
