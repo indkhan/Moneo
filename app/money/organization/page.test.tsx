@@ -8,7 +8,7 @@ vi.mock('@/lib/import-organization-loader',()=>({loadOrganizationSuggestions:vi.
 vi.mock('./review-form',()=>({OrganizationGroup:({proposal}:{proposal:{descriptionKey:string}})=><article>{proposal.descriptionKey}</article>,ApprovalForm:()=> <p>Explicit approval required</p>}));
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const calls:unknown[][]=[];
-const snapshots=[{id:id(1),version:0,description:'Northstar purchase',posted_on:'2026-09-01',amount_minor:'-9007199254740993',currency_code:'EUR'}];
+const snapshots=[{id:id(1),version:0,description:'Northstar purchase',posted_on:'2026-09-01',amount_minor:'-9007199254740993',currency_code:'EUR',merchant_id:null,category_id:null}];
 function client({review=false,count=1}={}) {
  const from=(table:string)=>{
   let single=false;
@@ -23,6 +23,7 @@ it('renders persisted exact preview, explicit approval, coverage limits and manu
  const html=renderToStaticMarkup(await Page({searchParams:Promise.resolve({review:id(30)})}));
  expect(html).toContain('Northstar purchase');expect(html).toContain('90071992547409.93');expect(html).toContain('Groceries');
  expect(html).toContain('Explicit approval required');expect(html).toContain('2,000 recent posted entries');expect(html).toContain('Manual correction in Transactions');
+ expect(html).toContain('Merchant: unassigned → Northstar Market');expect(html).toContain('Category: uncategorized → Groceries');
  for(const table of ['transactions','organization_reviews','organization_rules'])expect(calls).toContainEqual([table,'workspace_id',id(10)]);
 });
 it('paginates older unorganized history with a validated date/id cursor and retained import scope',async()=>{

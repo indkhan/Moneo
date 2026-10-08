@@ -7,7 +7,7 @@ import {versionedRows} from '../transactions/input';
 import {dismissReview,toggleRule} from './actions';
 import {OrganizationGroup,ApprovalForm,UndoReviewForm} from './review-form';
 
-const snapshotSchema=z.object({id:z.uuid(),version:z.number().int().nonnegative(),description:z.string(),posted_on:z.iso.date(),amount_minor:z.string().regex(/^-?\d+$/),currency_code:z.string().regex(/^[A-Z]{3}$/)}).passthrough();
+const snapshotSchema=z.object({id:z.uuid(),version:z.number().int().nonnegative(),description:z.string(),posted_on:z.iso.date(),amount_minor:z.string().regex(/^-?\d+$/),currency_code:z.string().regex(/^[A-Z]{3}$/),merchant_id:z.uuid().nullable(),category_id:z.uuid().nullable()}).passthrough();
 export default async function OrganizationPage({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}) {
  const {supabase,workspace}=await requireWorkspace();const params=await searchParams;
  const reviewId=params.review===undefined?null:z.uuid().parse(params.review);
@@ -50,7 +50,13 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
   {review&&<section aria-label="Organization impact preview" className="rounded-xl border border-border bg-card p-5">
    <h2 className="text-xl font-semibold">{batch.data?.undone?'Undone organization':review.status==='applied'?'Applied organization':review.status==='dismissed'?'Dismissed review':'Review exact changes'}</h2>
    <p className="mt-2 text-sm">{snapshots.length} affected entries. Merchant: {review.merchant_name??(Object.hasOwn(review.patch,'merchant_id')?(merchants.data.find(row=>row.id===review.patch.merchant_id)?.name??'clear'):'keep current')}. Category: {Object.hasOwn(review.patch,'category_id')?(categories.data.find(row=>row.id===review.patch.category_id)?.name??'uncategorized'):'keep current'}.</p>
-   <ul className="mt-3 space-y-2 text-sm">{snapshots.map(row=><li key={row.id}>{row.posted_on} · <Link className="underline" href={'/money/transactions?transaction='+row.id}>{row.description}</Link> · {formatMoney(row.amount_minor,row.currency_code,workspace.locale)} · before version {row.version}</li>)}</ul>
+   <ul className="mt-3 space-y-2 text-sm">{snapshots.map(row=>{
+    const beforeMerchant=merchants.data.find(target=>target.id===row.merchant_id)?.name??(row.merchant_id?row.merchant_id:'unassigned');
+    const beforeCategory=categories.data.find(target=>target.id===row.category_id)?.name??(row.category_id?row.category_id:'uncategorized');
+    const afterMerchant=review.merchant_name??(Object.hasOwn(review.patch,'merchant_id')?(merchants.data.find(target=>target.id===review.patch.merchant_id)?.name??(review.patch.merchant_id||'unassigned')):beforeMerchant);
+    const afterCategory=Object.hasOwn(review.patch,'category_id')?(categories.data.find(target=>target.id===review.patch.category_id)?.name??(review.patch.category_id||'uncategorized')):beforeCategory;
+    return <li key={row.id}>{row.posted_on} · <Link className="underline" href={'/money/transactions?transaction='+row.id}>{row.description}</Link> · {formatMoney(row.amount_minor,row.currency_code,workspace.locale)} · before version {row.version}<p>{`Merchant: ${beforeMerchant} → ${afterMerchant}`}</p><p>{`Category: ${beforeCategory} → ${afterCategory}`}</p></li>;
+   })}</ul>
    <p className="mt-3 text-sm">Selected totals: {Object.entries(totals).map(([currency,minor])=>formatMoney(minor,currency,workspace.locale)).join('; ')}. Amounts, currency, source evidence and financial links remain unchanged.</p>
    {review.status==='pending'&&<><ApprovalForm reviewId={review.id} canSaveRule={Boolean(review.rule_key)} /><form action={dismissReview} className="mt-3"><input type="hidden" name="reviewId" value={review.id} /><button className="text-sm underline">Dismiss this review</button></form></>}
    {review.batch_id&&!batch.data?.undone&&currentRows.data.length===snapshots.length&&<UndoReviewForm reviewId={review.id} rows={versionedRows.parse(currentRows.data)} />}
