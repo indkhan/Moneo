@@ -2,6 +2,15 @@ import { expect, it } from "vitest";
 import { mapRows } from "@/lib/csv";
 import { importRowPayload } from "@/lib/import-row";
 
+it("truncates imported merchant names at Unicode character boundaries", () => {
+  const merchant = "x".repeat(99) + "🛒" + "extra";
+  const original = { Date: "2026-10-09", Description: "Synthetic purchase", Amount: "-1.00", Merchant: merchant };
+  const [mapped] = mapRows([original], { accountName: "Checking", currencyCode: "EUR", dateColumn: "Date", descriptionColumn: "Description", amountColumn: "Amount", merchantColumn: "Merchant", dateFormat: "iso", amountSign: "signed", numericConvention: "decimal-dot" });
+  const row = importRowPayload("workspace", "import", mapped);
+  expect(row.merchantName).toBe("x".repeat(99) + "🛒");
+  expect(row.originalRow).toEqual(original);
+});
+
 it("serializes corrected normalized rows with original balance boundary and adjacent fee evidence", () => {
   const original = [{ Date: "2026-09-01T07:00:00Z", Description: "Opening", Amount: "1", Balance: "100", Fee: "0", Type: "Card payment" },
     { Date: "bad", Description: "amzn refund", Amount: "2", Balance: "102", Fee: "0,50", Type: "Card refund" }];

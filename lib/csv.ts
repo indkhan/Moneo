@@ -387,7 +387,7 @@ function canonicalizeFragment(lower: string): string | null {
 }
 
 export function normalizeMerchantDisplay(value: string): string {
-  return value.trim().replace(/\s+/g, " ").slice(0, 100);
+  return Array.from(value.trim().replace(/\s+/g, " ")).slice(0, 100).join("");
 }
 
 // Resolve the canonical merchant display name for one row.
@@ -397,7 +397,7 @@ export function normalizeMerchantDisplay(value: string): string {
 export function resolveMerchantName(explicit: string | undefined, description: string): string | null {
   const cleaned = explicit?.trim().replace(/\s+/g, " ");
   if (cleaned) {
-    const display = cleaned.slice(0, 100);
+    const display = normalizeMerchantDisplay(cleaned);
     const lower = display.toLowerCase();
     if (MERCHANT_CANONICALS[lower]) return MERCHANT_CANONICALS[lower];
     return canonicalizeFragment(lower) ?? display;

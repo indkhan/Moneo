@@ -11,7 +11,7 @@ export function stableId(value: string): string {
 export function importRowPayload(workspaceId: string, importId: string, row: MappedRow) {
   const sourceId = stableId(`${importId}:row:${row.rowNumber}`);
   const feeEvidence = row.feeEvidence ? { ...row.feeEvidence, ...(row.feeMinor !== undefined ? { feeMinor: row.feeMinor.toString() } : {}), ...(row.feeEvidence.deltaMinor !== undefined ? { deltaMinor: row.feeEvidence.deltaMinor.toString() } : {}) } : null;
-  const merchantName = resolveMerchantName(row.merchant, row.description)?.trim().replace(/\s+/g, " ").slice(0, 100) ?? null;
+  const merchantName = resolveMerchantName(row.merchant, row.description);
   const categoryName = normalizeCategoryName(row.category);
   return { sourceId, accountName: row.accountName, balanceId: stableId(`${importId}:balance:${row.rowNumber}`), rowNumber: row.rowNumber, calendarTimezone: row.calendarTimezone ?? null, sourceType: row.sourceType ?? null, feeMinor: row.feeMinor?.toString() ?? null, originalRow: row.sourceRow,
     externalId: row.externalId ?? null, reviewReasons: row.reviewReasons, feeEvidence,
