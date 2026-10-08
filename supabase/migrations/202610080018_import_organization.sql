@@ -94,3 +94,51 @@ $$;
 
 revoke all on function public.bulk_edit_transactions(jsonb,jsonb,uuid),public.undo_transaction_metadata(uuid,integer) from public;
 grant execute on function public.bulk_edit_transactions(jsonb,jsonb,uuid),public.undo_transaction_metadata(uuid,integer) to authenticated;
+
+create table public.organization_rules (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  description_key text not null check(char_length(description_key) between 3 and 1000),
+  merchant_id uuid references public.merchants(id),
+  category_id uuid references public.categories(id),
+  approved_by uuid not null references auth.users(id),
+  enabled boolean not null default true,
+  version integer not null default 1 check(version>0),
+  updated_at timestamptz not null default now(),
+  unique(workspace_id,description_key),
+  check(merchant_id is not null or category_id is not null)
+);
+alter table public.organization_rules enable row level security;
+create policy organization_rules_owned on public.organization_rules for select using(public.owns_workspace(workspace_id));
+revoke all on public.organization_rules from anon,authenticated;
+grant select on public.organization_rules to authenticated,service_role;
+
+create function public.save_organization_rule(p_workspace uuid,p_key text,p_merchant uuid,p_category uuid,p_enabled boolean,p_expected_version integer)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare existing public.organization_rules%rowtype;
+begin
+  if auth.uid() is null then raise exception 'Authentication required' using errcode='28000'; end if;
+  if not public.owns_workspace(p_workspace) then raise exception 'Workspace not found' using errcode='P0002'; end if;
+  if p_key is null or p_key<>btrim(p_key) or char_length(p_key) not between 3 and 1000
+    or p_enabled is null or p_expected_version is null or p_expected_version<0 or (p_merchant is null and p_category is null)
+    then raise exception 'Choose an approved description and organization target' using errcode='22023'; end if;
+  if (p_merchant is not null and not exists(select 1 from public.merchants where id=p_merchant and workspace_id=p_workspace))
+    or (p_category is not null and not exists(select 1 from public.categories where id=p_category and workspace_id=p_workspace))
+    then raise exception 'Organization target not found' using errcode='P0002'; end if;
+  -- Serialize creation and updates of the same owned description rule.
+  perform pg_advisory_xact_lock(hashtextextended(p_workspace::text||':organization-rule:'||p_key,0));
+  select * into existing from public.organization_rules where workspace_id=p_workspace and description_key=p_key for update;
+  if found then
+    if existing.version<>p_expected_version then raise exception 'Rule changed; reload its current version' using errcode='40001'; end if;
+    update public.organization_rules set merchant_id=p_merchant,category_id=p_category,enabled=p_enabled,
+      approved_by=auth.uid(),version=version+1,updated_at=now() where id=existing.id returning * into existing;
+  else
+    if p_expected_version<>0 then raise exception 'Rule changed; reload its current version' using errcode='40001'; end if;
+    insert into public.organization_rules(workspace_id,description_key,merchant_id,category_id,approved_by,enabled)
+      values(p_workspace,p_key,p_merchant,p_category,auth.uid(),p_enabled) returning * into existing;
+  end if;
+  return jsonb_build_object('id',existing.id,'version',existing.version);
+end;
+$$;
+revoke all on function public.save_organization_rule(uuid,text,uuid,uuid,boolean,integer) from public;
+grant execute on function public.save_organization_rule(uuid,text,uuid,uuid,boolean,integer) to authenticated;

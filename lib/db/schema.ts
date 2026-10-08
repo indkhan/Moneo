@@ -198,6 +198,23 @@ export const merchants = pgTable("merchants", {
   check("merchants_normalized_name_check", sql`char_length(${table.normalizedName}) between 1 and 100`),
 ]);
 
+export const organizationRules = pgTable("organization_rules", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, {onDelete:"cascade"}),
+  descriptionKey: text("description_key").notNull(),
+  merchantId: uuid("merchant_id").references(() => merchants.id),
+  categoryId: uuid("category_id").references(() => categories.id),
+  approvedBy: uuid("approved_by").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  version: integer("version").notNull().default(1),
+  updatedAt: timestamp("updated_at", {withTimezone:true}).defaultNow().notNull(),
+}, table => [
+  unique("organization_rules_workspace_id_description_key_key").on(table.workspaceId,table.descriptionKey),
+  check("organization_rules_description_key_check", sql`char_length(${table.descriptionKey}) between 3 and 1000`),
+  check("organization_rules_version_check", sql`${table.version}>0`),
+  check("organization_rules_check", sql`${table.merchantId} is not null or ${table.categoryId} is not null`),
+]);
+
 export const transactions = pgTable("transactions", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
