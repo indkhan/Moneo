@@ -1,0 +1,227 @@
+[
+  {
+    "name": "unfamiliar grocery with reference noise",
+    "description": "POS PURCHASE HARBOR PANTRY REF:88329",
+    "history": [
+      "HARBOR PANTRY REF:991",
+      "CARD PURCHASE HARBOR PANTRY INVOICE:872",
+      "POS PURCHASE HARBOR PANTRY RECEIPT:123"
+    ],
+    "targets": [
+      [
+        20,
+        21
+      ],
+      [
+        20,
+        21
+      ],
+      [
+        20,
+        21
+      ]
+    ],
+    "expectedMerchant": 20,
+    "expectedCategory": 21,
+    "expectedBasis": "consistent-history",
+    "expectedMerchantName": null
+  },
+  {
+    "name": "Unicode merchant and terminal noise",
+    "description": "CARD PAYMENT CAFÉ ÉTOILE TERMINAL:938",
+    "history": [
+      "CAFÉ ÉTOILE REF:22",
+      "CARD PURCHASE CAFÉ ÉTOILE REF:23",
+      "CAFÉ ÉTOILE RECEIPT:24"
+    ],
+    "targets": [
+      [
+        22,
+        23
+      ],
+      [
+        22,
+        23
+      ],
+      [
+        22,
+        23
+      ]
+    ],
+    "expectedMerchant": 22,
+    "expectedCategory": 23,
+    "expectedBasis": "consistent-history",
+    "expectedMerchantName": null
+  },
+  {
+    "name": "merchant words resemble bookkeeping markers",
+    "description": "ORDERLY BOOKS REF:82",
+    "history": [
+      "Orderly Books REF:83",
+      "CARD PURCHASE ORDERLY BOOKS REF:84",
+      "Orderly Books REF:85"
+    ],
+    "targets": [
+      [
+        24,
+        25
+      ],
+      [
+        24,
+        25
+      ],
+      [
+        24,
+        25
+      ]
+    ],
+    "expectedMerchant": 24,
+    "expectedCategory": 25,
+    "expectedBasis": "consistent-history",
+    "expectedMerchantName": null
+  },
+  {
+    "name": "conflicting categories abstain",
+    "description": "MAPLE SHOP REF:17",
+    "history": [
+      "MAPLE SHOP REF:18",
+      "MAPLE SHOP REF:19",
+      "MAPLE SHOP REF:20"
+    ],
+    "targets": [
+      [
+        26,
+        27
+      ],
+      [
+        26,
+        28
+      ],
+      [
+        26,
+        27
+      ]
+    ],
+    "expectedMerchant": 26,
+    "expectedCategory": null,
+    "expectedBasis": "review-required",
+    "expectedMerchantName": null
+  },
+  {
+    "name": "two observations are insufficient",
+    "description": "RIVER SERVICES ORDER:721",
+    "history": [
+      "RIVER SERVICES ORDER:722",
+      "RIVER SERVICES ORDER:723"
+    ],
+    "targets": [
+      [
+        28,
+        29
+      ],
+      [
+        28,
+        29
+      ]
+    ],
+    "expectedMerchant": null,
+    "expectedCategory": null,
+    "expectedBasis": "review-required",
+    "expectedMerchantName": "river services",
+    "providerSuggestion": {
+      "merchantName": "River Services",
+      "category": 29,
+      "evidenceQuote": "RIVER SERVICES"
+    },
+    "expectedProviderMerchantName": "River Services",
+    "expectedProviderCategory": 29
+  },
+  {
+    "name": "unknown counterparty remains manual",
+    "description": "CEDAR COOPERATIVE REF:56",
+    "history": [],
+    "targets": [],
+    "expectedMerchant": null,
+    "expectedCategory": null,
+    "expectedBasis": "review-required",
+    "expectedMerchantName": "cedar cooperative",
+    "providerSuggestion": {
+      "merchantName": "Cedar Cooperative",
+      "category": 35,
+      "evidenceQuote": "CEDAR COOPERATIVE"
+    },
+    "expectedProviderMerchantName": "Cedar Cooperative",
+    "expectedProviderCategory": 35
+  },
+  {
+    "name": "approved correction outranks consistent history",
+    "description": "MEADOW SUPPLIES REF:71",
+    "history": [
+      "MEADOW SUPPLIES REF:72",
+      "MEADOW SUPPLIES REF:73",
+      "MEADOW SUPPLIES REF:74"
+    ],
+    "targets": [
+      [
+        30,
+        31
+      ],
+      [
+        30,
+        31
+      ],
+      [
+        30,
+        31
+      ]
+    ],
+    "rule": {
+      "merchant": 32,
+      "category": 33
+    },
+    "expectedMerchant": 32,
+    "expectedCategory": 33,
+    "expectedBasis": "approved-rule",
+    "expectedMerchantName": null
+  },
+  {
+    "name": "financial uncertainty stays flagged",
+    "description": "OWN ACCOUNT PAYMENT REF:67",
+    "history": [],
+    "targets": [],
+    "reviewReasons": [
+      "kind:unrecognized"
+    ],
+    "expectedMerchant": null,
+    "expectedCategory": null,
+    "expectedBasis": "review-required",
+    "expectedFinancialReview": true,
+    "expectedMerchantName": null
+  },
+  {
+    "name": "explicit user correction suppresses new proposals",
+    "description": "MOSS TRAVEL REF:121",
+    "history": [
+      "MOSS TRAVEL REF:122",
+      "MOSS TRAVEL REF:123",
+      "MOSS TRAVEL REF:124"
+    ],
+    "targets": [
+      [
+        34,
+        35
+      ],
+      [
+        34,
+        35
+      ],
+      [
+        34,
+        35
+      ]
+    ],
+    "userCorrected": true,
+    "expectedSuppressed": true,
+    "expectedMerchantName": null
+  }
+]

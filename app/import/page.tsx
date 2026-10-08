@@ -310,6 +310,7 @@ export default function ImportPage() {
         <p className="text-sm">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows} for review · {item.rejected_rows} rejected · {item.total_rows} total</p>
         {item.error && <p className="text-sm text-red-700 dark:text-red-300">{item.error}</p>}
         <Link className="text-sm underline" href={`/import/${item.id}/review`}>Review rows and source coverage{item.classification_review_rows ? ` · ${item.classification_review_rows} financial classifications` : ""}</Link>
+        <Link className="text-sm underline" href={`/money/organization?import=${item.id}`}>Organize imported spending</Link>
         {["queued", "running"].includes(item.status) && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void control(item, "cancel")}>Stop import</button>}
         {["failed", "canceled"].includes(item.status) && <button className="ml-3 text-sm underline" type="button" disabled={busy} onClick={() => void control(item, "resume")}>{item.status === "canceled" ? "Resume import" : "Retry"}</button>}
         {item.status === "canceled" && <p className="mt-2 text-xs text-muted-foreground">Stopped. Already imported rows and their sources remain saved; resume continues the same file without duplicating them.</p>}

@@ -198,6 +198,23 @@ export const merchants = pgTable("merchants", {
   check("merchants_normalized_name_check", sql`char_length(${table.normalizedName}) between 1 and 100`),
 ]);
 
+export const organizationRules = pgTable("organization_rules", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, {onDelete:"cascade"}),
+  descriptionKey: text("description_key").notNull(),
+  merchantId: uuid("merchant_id").references(() => merchants.id),
+  categoryId: uuid("category_id").references(() => categories.id),
+  approvedBy: uuid("approved_by").notNull().references(() => authUsers.id),
+  enabled: boolean("enabled").notNull().default(true),
+  version: integer("version").notNull().default(1),
+  updatedAt: timestamp("updated_at", {withTimezone:true}).defaultNow().notNull(),
+}, table => [
+  unique("organization_rules_workspace_id_description_key_key").on(table.workspaceId,table.descriptionKey),
+  check("organization_rules_description_key_check", sql`char_length(${table.descriptionKey}) between 3 and 1000`),
+  check("organization_rules_version_check", sql`${table.version}>0`),
+  check("organization_rules_check", sql`${table.merchantId} is not null or ${table.categoryId} is not null`),
+]);
+
 export const transactions = pgTable("transactions", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
@@ -237,6 +254,31 @@ export const transactionSources = pgTable("transaction_sources", {
   transactionId: uuid("transaction_id").notNull().references(() => transactions.id),
   sourceTransactionId: uuid("source_transaction_id").notNull().unique().references(() => sourceTransactions.id),
 }, table => [index("transaction_sources_transaction_idx").on(table.transactionId)]);
+
+export const organizationReviews = pgTable("organization_reviews", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id,{onDelete:"cascade"}),
+  actorId: uuid("actor_id").notNull().references(() => authUsers.id),
+  requestId: uuid("request_id").notNull(),
+  selection: jsonb("selection").notNull(), snapshots: jsonb("snapshots").notNull(), patch: jsonb("patch").notNull(),
+  merchantName: text("merchant_name"), ruleKey: text("rule_key"), ruleVersion: integer("rule_version").notNull().default(0),
+  evidence: jsonb("evidence").notNull(), status: text("status").notNull().default("pending"),
+  batchId: uuid("batch_id").references(() => transactionBatches.id),
+  savedRuleId: uuid("saved_rule_id").references(() => organizationRules.id),
+  savedRuleBefore: jsonb("saved_rule_before"), savedRuleAfter: jsonb("saved_rule_after"),
+  createdAt: timestamp("created_at",{withTimezone:true}).defaultNow().notNull(),
+}, table => [
+  unique("organization_reviews_workspace_id_request_id_key").on(table.workspaceId,table.requestId),
+  check("organization_reviews_merchant_name_check",sql`char_length(${table.merchantName}) between 1 and 100`),
+  check("organization_reviews_rule_key_check",sql`char_length(${table.ruleKey}) between 3 and 1000`),
+  check("organization_reviews_rule_version_check",sql`${table.ruleVersion}>=0`),
+  check("organization_reviews_status_check",sql`${table.status} in ('pending','applied','dismissed')`),
+  check("organization_reviews_selection_check",sql`jsonb_typeof(${table.selection})='array' and jsonb_array_length(${table.selection}) between 1 and 50`),
+  check("organization_reviews_snapshots_check",sql`jsonb_typeof(${table.snapshots})='array' and jsonb_array_length(${table.snapshots})=jsonb_array_length(${table.selection})`),
+  check("organization_reviews_patch_check",sql`jsonb_typeof(${table.patch})='object' and ${table.patch}-array['merchant_id','category_id']='{}'::jsonb`),
+  check("organization_reviews_evidence_check",sql`jsonb_typeof(${table.evidence})='array' and jsonb_array_length(${table.evidence})<=2000`),
+  check("organization_reviews_check",sql`(${table.status}='applied')=(${table.batchId} is not null)`),
+]);
 
 export const correctionEvents = pgTable("correction_events", {
   id: uuid("id").defaultRandom().primaryKey(),
