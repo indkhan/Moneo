@@ -30,14 +30,14 @@ export function assembleConversationContext(newestFirst: Row[], question: string
   const current = rows.findLastIndex(row => row.role === "user" && row.content === question);
   const candidates = rows.flatMap((row, index) => {
     if (index === current) return [];
-    if (row.role === "user") return [{ index, message: { role: "user", content: row.content } as Message }];
+    if (row.role === "user") return [{ index, message: { role: "user", content: row.content } as Message, scopes: [] as AiDataScope[] }];
     const context = row.context && typeof row.context === "object" ? row.context as Record<string, unknown> : {};
     const memory = memorySchema.safeParse(context.memory);
     // Assistant context is written only by trusted publication. Untagged legacy
     // answers and evidence prose have no safe conversational replay authority.
     if (row.role !== "assistant" || !memory.success || memory.data.kind !== "dialogue"
       || memory.data.receiptIds?.length || memory.data.scopes.some(scope => !scopes.includes(scope))) return [];
-    return [{ index, message: { role: "assistant", content: row.content } as Message }];
+    return [{ index, message: { role: "assistant", content: row.content } as Message, scopes: memory.data.scopes }];
   });
   const selected: typeof candidates = [];
   const final: Message = { role: "user", content: question };
@@ -52,5 +52,6 @@ export function assembleConversationContext(newestFirst: Row[], question: string
   }
   const messages = [...selected.sort((a, b) => a.index - b.index).map(row => row.message), final];
   return { messages, snapshot: { version: 1, historyRows: rows.length, includedRows: selected.length,
-    omittedRows: rows.length - selected.length - (current >= 0 ? 1 : 0), bytes: bytes(messages), budgetBytes: CONVERSATION_CONTEXT_BYTES } };
+    omittedRows: rows.length - selected.length - (current >= 0 ? 1 : 0), bytes: bytes(messages), budgetBytes: CONVERSATION_CONTEXT_BYTES,
+    scopes: [...new Set(selected.flatMap(row => row.scopes))] } };
 }

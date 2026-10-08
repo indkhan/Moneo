@@ -102,6 +102,15 @@ it("does not resolve selected records under revoked transaction scope", async ()
   expect(investigationDetail).not.toHaveBeenCalled();
   expect(JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages)).toContain("Selected transaction evidence is unavailable under current permissions");
 });
+it("persists the exact prompt snapshot and trusted dialogue provenance at successful publication", async () => {
+  expect((await POST(request("Hello"))).status).toBe(200);
+  const publication = serviceRpc.mock.calls.find(call => call[0] === "finish_contextual_chat_request")?.[1];
+  expect(publication).toMatchObject({ p_prompt_context: {
+    memory: { version: 1, kind: "dialogue", scopes: [], receiptIds: [] },
+    assembly: { budgetBytes: 16000 },
+    messages: vi.mocked(generateText).mock.calls[0][0].messages,
+  } });
+});
 it("removes unsupported provider amounts and links before either response or immutable history publication", async () => {
   vi.mocked(generateText).mockResolvedValueOnce({ text: "You spent EUR 999999.00 [proof](/money/transactions?transaction=missing)", totalUsage: {} } as never);
   const response = await POST(request("Explain my spending"));
@@ -110,7 +119,7 @@ it("removes unsupported provider amounts and links before either response or imm
   expect(body.answer).toContain("Unsupported sections were removed");
   expect(body.answer).not.toContain("999999");
   expect(body.answer).not.toContain("transaction=missing");
-  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_verified_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
+  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_contextual_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
 });
 it("publishes supported tool claims with application amounts and calculation links", async () => {
   const context = await requireWorkspace();
@@ -129,7 +138,7 @@ it("publishes supported tool claims with application amounts and calculation lin
   expect(body.answer).toContain("EUR 0.25");
   expect(body.answer).toContain(`/ai/evidence/${receipt.id}?metric=spendingMinor`);
   expect(body.answer).not.toContain("Unsupported sections");
-  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_verified_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
+  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_contextual_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
 });
 it("offers scoped investigation and question-bound review start within four model steps", async () => {
   expect((await POST(request("Start a deep financial review"))).status).toBe(200);
@@ -309,7 +318,7 @@ it("publishes successful validated answers through service-only owned publicatio
   const context = await requireWorkspace();
   const response = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000001", requestId: "00000000-0000-4000-8000-000000000002", message: "Hello" }) }));
   expect(response.status).toBe(200);
-  expect(serviceRpc).toHaveBeenCalledWith("finish_verified_chat_request", expect.objectContaining({ p_request_id: "00000000-0000-4000-8000-000000000002", p_receipt_ids: [], p_scopes: [] }));
+  expect(serviceRpc).toHaveBeenCalledWith("finish_contextual_chat_request", expect.objectContaining({ p_request_id: "00000000-0000-4000-8000-000000000002", p_receipt_ids: [], p_scopes: [] }));
   expect(vi.mocked(context.supabase.rpc).mock.calls.some(call => call[0] === "finish_chat_request" && call[1]?.p_status === "completed")).toBe(false);
 });
 it("publishes a useful typed clarification when no financial measure is needed", async () => {
@@ -319,7 +328,7 @@ it("publishes a useful typed clarification when no financial measure is needed",
   expect(body.answer).toContain("What start and end dates");
   expect(body.answer).not.toContain("No supported financial measures");
   expect(body.answer).not.toContain("Unsupported sections");
-  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_verified_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
+  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_contextual_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
 });
 it.each(["planning", "imports"] as const)("carries actual %s reads across a revocation between post-read and capture", async revoked => {
   await POST(request("Review my finances"));

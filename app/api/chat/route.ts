@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
     .order("created_at", { ascending: false }).limit(CONVERSATION_HISTORY_ROWS);
   if (historyError) throw historyError;
-  const { messages: modelMessages } = assembleConversationContext(history ?? [], message, settings.ai_data_scopes);
+  const { messages: modelMessages, snapshot: assembledContext } = assembleConversationContext(history ?? [], message, settings.ai_data_scopes);
   const categoryCommand = parseCategoryCommand(message);
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
@@ -115,9 +115,12 @@ export async function POST(request: Request) {
       const output = await execute(selected, { toolCallId: "current-selected-transaction", messages: modelMessages, context: undefined });
       const content = `[Current owned selected transaction evidence, freshly read for this request: ${JSON.stringify(output)}]`;
       // Large support sets remain available through the existing paged detail tool.
-      modelMessages.push({ role: "user", content: new TextEncoder().encode(content).length <= 8000 ? content
+      modelMessages.push({ role: "user", content: new TextEncoder().encode(JSON.stringify({ role: "user", content })).length <= 8000 ? content
         : `Selected owned transaction ID ${selected.id}. The current supporting detail exceeds this context budget. Use finance_detail with this ID to retrieve current paged evidence; do not infer its amount or classification.` });
     }
+    const promptOwner = await requireWorkspace();
+    if (promptOwner.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
+    requireAiScope(promptOwner.settings, ...assembledContext.scopes, ...evidenceReceipts.flatMap(receipt => receipt.scopes));
     const model = await modelForSettings(settings);
     const result = await generateText({
       model,
@@ -195,12 +198,16 @@ export async function POST(request: Request) {
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (request.signal.aborted) throw new Error("Request canceled");
-    requireAiScope(current.settings, ...evidenceReceipts.flatMap(receipt => receipt.scopes));
+    requireAiScope(current.settings, ...assembledContext.scopes, ...evidenceReceipts.flatMap(receipt => receipt.scopes));
     const answer = publication.body;
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Verified chat publication service is not configured");
     const publicationService = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-    const finished = await publicationService.rpc("finish_verified_chat_request", { p_request_id: requestId, p_actor_id: current.user.id, p_workspace_id: workspace.id, p_content: answer,
-      p_receipt_ids: evidenceReceipts.map(receipt => receipt.id), p_scopes: [...new Set(evidenceReceipts.flatMap(receipt => receipt.scopes))], p_usage: reportedUsage(model.modelId, result.totalUsage) });
+    const publicationScopes = [...new Set([...assembledContext.scopes, ...evidenceReceipts.flatMap(receipt => receipt.scopes)])];
+    const receiptIds = evidenceReceipts.map(receipt => receipt.id);
+    const finished = await publicationService.rpc("finish_contextual_chat_request", { p_request_id: requestId, p_actor_id: current.user.id, p_workspace_id: workspace.id, p_content: answer,
+      p_receipt_ids: receiptIds, p_scopes: publicationScopes, p_usage: reportedUsage(model.modelId, result.totalUsage),
+      p_prompt_context: { memory: { version: 1, kind: receiptIds.length ? "evidence" : "dialogue", scopes: publicationScopes, receiptIds },
+        assembly: assembledContext, messages: modelMessages, submission: capturedContext ?? {} } });
     if (finished.error) throw finished.error;
     if (finished.data !== "completed") return Response.json({ status: finished.data, error: `Request is ${finished.data}` }, { status: 409 });
     const toolsUsed = [...new Set((result.steps ?? []).flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [toolResult.toolName] : [])))];
