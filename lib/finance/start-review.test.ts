@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { start } from "workflow/api";
 import { startFinancialReview } from "./start-review";
+import {resolveReviewRequest} from "./review-request";
 const state = vi.hoisted(() => ({ status: "queued", workflow_run_id: null as string | null, runtimeStatus: "running", registerError: false, started: true }));
 vi.mock("workflow/api", () => ({ start: vi.fn(async () => ({runId: "run"})), getRun: () => ({ get exists() { return Promise.resolve(true); }, get status() { return Promise.resolve(state.runtimeStatus); } }) }));
 vi.mock("@/workflows/financial-review", () => ({ financialReview: vi.fn() }));
@@ -23,6 +24,11 @@ beforeEach(() => {
   });
 });
 const db = service as unknown as SupabaseClient;
+it("claims the frozen question scope before dispatching and preserves chat identity", async () => {
+  const specification = resolveReviewRequest({version: 1, question: "Review September subscriptions"}, "2026-10-07");
+  await startFinancialReview(db, "workspace", "request", "chat", specification);
+  expect(service.rpc).toHaveBeenCalledWith("start_financial_investigation", {p_request_id: "request", p_chat_request_id: "chat", p_specification: specification});
+});
 it("acknowledges an actual runtime identity and reuses it on repeated requests", async () => {
   expect(await startFinancialReview(db, "workspace", "request", "chat")).toEqual({jobId: "job", status: "queued"});
   expect(state.workflow_run_id).toBe("run");

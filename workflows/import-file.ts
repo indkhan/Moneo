@@ -1,12 +1,12 @@
 "use workflow";
 
 import { createHash } from "node:crypto";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { decideImportMatch } from "@/lib/import-match";
-import { inspectRows, mappingSchema, parseCsv, parseExcel, parseLegacyExcel, type MappedRow } from "@/lib/csv";
+import { createClient } from "@supabase/supabase-js";
+import { inspectRows, mappingSchema, parseCsv, parseExcel, parseLegacyExcel } from "@/lib/csv";
 import { modelForSettings } from "@/lib/ai/provider";
 import { loadWorkspaceSettings, requireAiScope } from "@/lib/settings";
-import { importRowPayload, stableId } from "@/lib/import-row";
+import { stableId } from "@/lib/import-row";
+import { batchDecisions, candidateRowsSchema, stageImportRows } from "@/lib/import-batch";
 import { dispatchFinancialReview } from "@/lib/finance/start-review";
 
 function checked<T>(result: { data: T | null; error: { message: string } | null }): T | null {
@@ -17,12 +17,9 @@ function checked<T>(result: { data: T | null; error: { message: string } | null 
 export async function importFile(importId: string, workspaceId: string, rowCount: number, runVersion = 1) {
   "use workflow";
   try {
-    let newRows = 0, matchedRows = 0, reviewRows = 0;
-    for (let offset = 0; offset < rowCount; offset += 250) {
-      const counts = await processImport(importId, workspaceId, offset, Math.min(offset + 250, rowCount), { newRows, matchedRows, reviewRows }, runVersion);
-      newRows = counts.newRows;
-      matchedRows = counts.matchedRows;
-      reviewRows = counts.reviewRows;
+    const stagedRows = rowCount === 0 ? 0 : await prepareImport(importId, workspaceId, rowCount, runVersion);
+    for (let offset = 0; offset < stagedRows; offset += 250) {
+      await processImportBatch(importId, workspaceId, offset, runVersion);
     }
     if (!await finishImport(importId, workspaceId, runVersion)) return;
   } catch (error) {
@@ -32,15 +29,20 @@ export async function importFile(importId: string, workspaceId: string, rowCount
   await maybeStartFirstReview(importId, workspaceId);
 }
 
-async function processImport(importId: string, workspaceId: string, from: number, to: number, prior: { newRows: number; matchedRows: number; reviewRows: number }, runVersion: number) {
+async function prepareImport(importId: string, workspaceId: string, rowCount: number, runVersion: number) {
   "use step";
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("Supabase import service is not configured");
   const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
   const imported = checked(await db.from("imports").select("*").eq("id", importId).eq("workspace_id", workspaceId).single()) as { status: string; run_version: number; source_id?: string | null; route_accounts?: Record<string, string>; storage_path: string; file_hash: string; mapping: unknown };
-  if (imported.status === "completed") return prior;
+  if (imported.status === "completed") return 0;
   if (!["queued", "running"].includes(imported.status) || imported.run_version !== runVersion) throw new Error("Import worker canceled or superseded");
+  const stagedCount = checked(await db.rpc("read_import_stage", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion }));
+  if (stagedCount !== null) {
+    if (stagedCount !== rowCount) throw new Error("Normalized import coverage differs from reviewed rows");
+    return rowCount;
+  }
   if (!imported.storage_path.startsWith(`${workspaceId}/`)) throw new Error("Import file is outside the workspace");
   const blob = checked(await db.storage.from("imports").download(imported.storage_path));
     if (!blob) throw new Error("Stored import file is missing");
@@ -53,6 +55,7 @@ async function processImport(importId: string, workspaceId: string, from: number
     const { mapped, unresolvedRows, excludedRows } = inspectRows(rows, imported.mapping);
     if (unresolvedRows.length) throw new Error(unresolvedRows[0].message);
     const accountIds = new Map<string, string>();
+    let preparedSourceId = imported.source_id ?? null;
     const frozenAccounts = new Map(Object.entries(imported.route_accounts ?? {}).map(([route, accountId]) => [JSON.stringify(JSON.parse(route)), accountId]));
     const legacyPrepared = frozenAccounts.size === 0 && !!imported.source_id;
     if (legacyPrepared) {
@@ -90,21 +93,29 @@ async function processImport(importId: string, workspaceId: string, from: number
       const accountId = frozenAccountId ?? existingAccount[0]?.id ?? stableId(`${workspaceId}:account:${row.accountName}:${row.currencyCode}`);
       accountIds.set(routeKey, accountId);
       const sourceId = stableId(`${workspaceId}:source:${accountId}`);
+      preparedSourceId ??= sourceId;
       checked(await db.rpc("prepare_import_route", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion,
         p_account_id: accountId, p_source_id: sourceId, p_account_name: row.accountName, p_currency_code: row.currencyCode, p_total_rows: rows.length }));
     }
 
-    for (const row of excludedRows.filter(row => row.rowNumber >= from + 2 && row.rowNumber < to + 2)) {
-      checked(await db.rpc("record_import_exclusion", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion,
-        p_row: { sourceId: stableId(`${importId}:row:${row.rowNumber}`), rowNumber: row.rowNumber, originalRow: row.sourceRow, reason: row.reason } }));
-    }
-    const chunk = mapped.filter(row => row.rowNumber >= from + 2 && row.rowNumber < to + 2);
-    for (const [index, row] of chunk.entries()) {
-      await importRow(db, workspaceId, importId, accountIds.get(JSON.stringify([row.accountName, row.currencyCode]))!, row, runVersion,
-        (index + 1) % 25 === 0 || index + 1 === chunk.length);
-    }
-    const counts = checked(await db.from("imports").select("new_rows, matched_rows, review_rows").eq("id", importId).eq("workspace_id", workspaceId).single()) as { new_rows: number; matched_rows: number; review_rows: number };
-    return { newRows: counts.new_rows, matchedRows: counts.matched_rows, reviewRows: counts.review_rows };
+    const stagedRows = stageImportRows(workspaceId, importId, mapped, excludedRows, accountIds, rowCount);
+    checked(await db.rpc("stage_import_rows", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_file_hash: imported.file_hash,
+      p_mapping: imported.mapping, p_routes: imported.route_accounts ?? {}, p_source_id: preparedSourceId, p_rows: stagedRows }));
+    return rowCount;
+}
+
+async function processImportBatch(importId: string, workspaceId: string, offset: number, runVersion: number) {
+  "use step";
+  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+  // Retry stale candidate evidence inside the same durable step. Every attempt
+  // rereads candidates and every batch transaction fences canceled/old workers.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const candidates = checked(await db.rpc("import_batch_candidates", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_offset: offset }));
+    const decisions = batchDecisions(candidateRowsSchema.parse(candidates));
+    const result = await db.rpc("ingest_import_batch", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_offset: offset, p_decisions: decisions });
+    if (!result.error) return;
+    if (result.error.code !== "40001" || attempt === 2) throw new Error(result.error.message);
+  }
 }
 
 async function finishImport(importId: string, workspaceId: string, runVersion: number) {
@@ -135,54 +146,4 @@ async function maybeStartFirstReview(importId: string, workspaceId: string) {
   const inserted = await db.from("background_jobs").upsert({ id: jobId, workspace_id: workspaceId, kind: "financial_review" }, { onConflict: "id", ignoreDuplicates: true }).select("id").maybeSingle();
   if (inserted.error) throw inserted.error;
   await dispatchFinancialReview(db, jobId, workspaceId, false);
-}
-
-type Db = SupabaseClient;
-
-async function importRow(db: Db, workspaceId: string, importId: string, accountId: string, row: MappedRow, runVersion: number, reportProgress: boolean): Promise<void> {
-  const sourceId = stableId(`${importId}:row:${row.rowNumber}`);
-  const source = checked(await db.from("source_transactions").select("status").eq("workspace_id", workspaceId).eq("import_id", importId).eq("id", sourceId).maybeSingle()) as { status: string } | null;
-  const linkResult = await db.from("transaction_sources").select("transaction_id").eq("source_transaction_id", sourceId).maybeSingle();
-  if (linkResult.error) throw linkResult.error;
-  const linked = linkResult.data as { transaction_id: string } | null;
-  const write = async (action: string, transactionId: string | null, expectedTransactionVersion?: number) => {
-    checked(await db.rpc("ingest_import_row", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_account_id: accountId,
-      p_row: { ...importRowPayload(workspaceId, importId, row), transactionId, action, expectedTransactionVersion, reportProgress } }));
-  };
-  if (linked) { await write(source?.status === "matched" ? "matched" : "new", linked.transaction_id); return; }
-  if (source?.status === "review" || source?.status === "rejected") { await write("review", null); return; }
-
-  const potential = checked(await db.from("transactions").select("id, status").eq("workspace_id", workspaceId).eq("account_id", accountId).eq("posted_on", row.postedOn).eq("amount_minor", row.amountMinor.toString()).eq("currency_code", row.currencyCode).eq("description", row.description))!;
-  const candidates: { id: string; externalId?: string; status?: string }[] = [];
-  function addCandidate(candidate: { id: string; externalId?: string; status?: string }) {
-    if (!candidates.some(item => item.id === candidate.id && item.externalId === candidate.externalId && (item.status ?? "posted") === (candidate.status ?? "posted"))) candidates.push(candidate);
-  }
-  for (const transaction of potential) {
-    const sources = checked(await db.from("transaction_sources").select("source_transactions!inner(import_id, external_id)").eq("transaction_id", transaction.id))!;
-    if (!sources.length) { addCandidate({ id: transaction.id, status: (transaction as { status?: string }).status }); continue; }
-    for (const link of sources) {
-      const source = link.source_transactions as unknown as { import_id: string; external_id: string | null };
-      if (source.import_id !== importId) addCandidate({ id: transaction.id, externalId: source.external_id ?? undefined, status: (transaction as { status?: string }).status });
-    }
-  }
-  if (row.externalId) {
-    const priorSources = checked(await db.from("source_transactions").select("id").eq("workspace_id", workspaceId).eq("external_id", row.externalId).neq("import_id", importId))!;
-    for (const priorSource of priorSources) {
-      const priorLink = checked(await db.from("transaction_sources").select("transaction_id").eq("source_transaction_id", priorSource.id))!;
-      for (const link of priorLink) {
-        const transaction = checked(await db.from("transactions").select("account_id, currency_code, posted_on, amount_minor::text, description, status").eq("id", link.transaction_id).single()) as { account_id: string; currency_code: string; posted_on: string; amount_minor: string; description: string; status: string };
-        if (transaction.account_id === accountId && transaction.currency_code === row.currencyCode) {
-          const sameRecord = transaction.posted_on === row.postedOn && BigInt(transaction.amount_minor) === row.amountMinor && transaction.description === row.description;
-          addCandidate({ id: link.transaction_id, externalId: sameRecord ? row.externalId : undefined, status: transaction.status });
-        }
-      }
-    }
-  }
-  const decision = decideImportMatch(row.externalId, candidates, row.status);
-  if (decision.action === "review") {
-    await write("review", null); return;
-  }
-  const transactionId = decision.action === "matched" ? decision.transactionId : stableId(`${importId}:transaction:${row.rowNumber}`);
-  const canonical = decision.action === "matched" ? checked(await db.from("transactions").select("version").eq("workspace_id", workspaceId).eq("id", transactionId).single()) as { version: number } : null;
-  await write(decision.action, transactionId, canonical?.version);
 }

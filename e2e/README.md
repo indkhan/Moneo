@@ -1,5 +1,11 @@
 # Browser acceptance
 
+## Bounded investigation acceptance
+
+`npx playwright test --config e2e/review-investigation.config.ts` runs the installed Next/Workflow runtime with the unchanged analysis form/routes, dispatcher, bounded controller, deterministic reader, receipt persistence, synthesis and freshness code. Its local synthetic HTTP database/model boundaries use no Supabase auth, public DDL, financial account or paid provider. The synthetic owner cookie exists only in the ignored harness app; it does not alter production authentication.
+
+The gate checks chosen question/focus/dates/planning through UI dispatch and reload, material decline drill-down, retained checkpoint-response loss and durable retry, support exhaustion, unavailable follow-ups, an actual read deadline with zero synthesis transport calls, source fingerprint change with unchanged historical output, and Stop settling the actual synthesis fetch before suppressing publication. Exact fixture IDs are deleted in `finally`; Next runs in `.qa/mne019-runtime`, and the harness stops its Windows Next process tree on shutdown. Run only with the shared heavy/browser slot released, ports3040/3041 free, and Playwright Chromium installed. These prepared tests require execution; syntax/lint checks are not runtime acceptance. Real SQL ownership/reservation races, Supabase authentication and deployed acceptance remain separate gates.
+
 ## Financial-review recovery acceptance
 
 `npx playwright test --config e2e/review-runtime.config.ts` compiles the actual financial-review workflow, dispatcher, recovery route and instrumentation with the installed Next/Workflow runtime. Its synthetic HTTP database/provider boundaries use no bank records or provider account. The interruption case kills the actual Next process tree during provider work, restarts against the same persisted local Workflow world, and requires the same run identity and one publication. `node supabase/tests/run-review-runtime.mjs` separately exercises actual Postgres functions/roles and lock races in an exactly removed disposable schema; it does not apply public migrations.

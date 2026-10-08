@@ -9,8 +9,8 @@ test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY
 
 test("durable import Stop, Resume, byte deduplication, undo and reimport preserve exact sources", async ({ browser, baseURL }) => {
   test.setTimeout(240_000);
-  const url=process.env.NEXT_PUBLIC_SUPABASE_URL!, connection=new URL(process.env.SUPABASE_DB_URL!);
-  const project=new URL(url).hostname.split(".")[0];
+  const url=process.env.E2E_IMPORT_PROXY_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!, connection=new URL(process.env.SUPABASE_DB_URL!);
+  const project=new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).hostname.split(".")[0];
   expect(connection.hostname===`db.${project}.supabase.co` || connection.username.endsWith(`.${project}`)).toBe(true);
   const db=postgres(connection.toString(),{ssl:"require",max:1});
   const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{auth:{persistSession:false,autoRefreshToken:false}});
@@ -19,8 +19,8 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
   expect(created.error).toBeNull();
   const user=created.data.user!.id;
   const [{id:workspace}]=await db`select id from public.workspaces where owner_id=${user}`;
-  const recovery=`.qa/import-control-${user}.json`;
-  mkdirSync(".qa",{recursive:true});writeFileSync(recovery,JSON.stringify({project,user,workspace}));
+  const recovery=process.env.E2E_IMPORT_BATCH_JOURNAL ?? `.qa/import-control-${user}.json`;
+  mkdirSync(".qa",{recursive:true});writeFileSync(recovery,JSON.stringify({project,user,workspace,qaTest:"import-control"}));
   const context=await browser.newContext({baseURL});
   try {
     const ready=await db`select to_regprocedure('public.control_import(uuid,text,uuid)') is not null as ready`;
@@ -31,8 +31,8 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     expect((await auth.auth.signInWithPassword({email,password})).error).toBeNull();
     await context.addCookies([...cookies].map(([name,value])=>({name,value,domain:"localhost",path:"/",sameSite:"Lax" as const})));
     const page=await context.newPage();page.setDefaultTimeout(30_000);
-    const filename="controlled-75.csv", accountName="Controlled cash";
-    const csv=["date,description,amount,id",...Array.from({length:75},(_,i)=>`2026-09-01,Synthetic expense ${String(i+1).padStart(3,"0")},-1.01,controlled-${i+1}`),""].join("\n");
+    const filename="controlled-1000.csv", accountName="Controlled cash";
+    const csv=["date,description,amount,id",...Array.from({length:1000},(_,i)=>`2026-09-01,Synthetic expense ${String(i+1).padStart(3,"0")},-1.01,controlled-${i+1}`),""].join("\n");
     const file={name:filename,mimeType:"text/csv",buffer:Buffer.from(csv)};
     await page.goto("/import");
     await expect(page.getByLabel("Financial statement files")).toBeEnabled();
@@ -53,7 +53,7 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     const previewInspect=page.waitForResponse(response=>response.url().endsWith("/api/imports/inspect")&&response.request().method()==="POST");
     await page.getByRole("button",{name:"Preview correction",exact:true}).click();
     expect((await previewInspect).ok()).toBe(true);
-    await expect(page.getByText("75 rows",{exact:true})).toBeVisible({timeout:20_000});
+    await expect(page.getByText("1000 rows",{exact:true})).toBeVisible({timeout:20_000});
     const confirmResponse=page.waitForResponse(response=>response.url().endsWith("/api/imports/confirm")&&response.request().method()==="POST");
     await page.getByRole("button",{name:"Continue",exact:true}).click();
     const response=await confirmResponse;expect(response.ok()).toBe(true);
@@ -63,11 +63,13 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
       const [row]=await db`select (select count(*)::int from public.source_transactions where import_id=${importId}) as sources,(select count(*)::int from public.transactions where workspace_id=${workspace}) as transactions`;
       return row as {sources:number;transactions:number};
     };
-    await expect.poll(async()=>{const row=await counts();return row.sources>0&&row.sources<75;},{timeout:60_000,intervals:[100]}).toBe(true);
+    await expect.poll(async()=>{const row=await counts();return row.sources>0&&row.sources<1000;},{timeout:60_000,intervals:[100]}).toBe(true);
     const initial=[...(await db`select id,row_number,original_row from public.source_transactions where import_id=${importId} order by row_number`)];
+    const stopResponse=page.waitForResponse(response=>response.url().endsWith(`/api/imports/${importId}/control`)&&response.request().method()==="POST");
     await history.getByRole("button",{name:"Stop import",exact:true}).click();
+    expect((await stopResponse).ok()).toBe(true);
     await expect(history.getByRole("status")).toHaveText("canceled");
-    const stopped=await counts();expect(stopped.sources).toBeGreaterThan(0);expect(stopped.sources).toBeLessThan(75);expect(stopped.transactions).toBe(stopped.sources);
+    const stopped=await counts();expect(stopped.sources).toBeGreaterThan(0);expect(stopped.sources).toBeLessThan(1000);expect(stopped.transactions).toBe(stopped.sources);
     const [{run_version:stoppedVersion,source_id:source,storage_path:storagePath}]=await db`select run_version,source_id,storage_path from public.imports where id=${importId} and workspace_id=${workspace}`;
     const [{account_id:account}]=await db`select account_id from public.data_sources where id=${source} and workspace_id=${workspace}`;
     const stale=await admin.rpc("ingest_import_row",{p_import_id:importId,p_workspace_id:workspace,p_run_version:stoppedVersion-1,p_account_id:account,p_row:{transactionId:randomUUID()}});
@@ -78,12 +80,12 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     expect(retained.slice(0,initial.length)).toEqual(initial);
     await history.getByRole("button",{name:"Resume import",exact:true}).click();
     await expect(history.getByRole("status")).toHaveText("completed",{timeout:90_000});
-    expect(await counts()).toEqual({sources:75,transactions:75});
-    await expect(history).toContainText("75 new");await expect(history).toContainText("75 total");
+    expect(await counts()).toEqual({sources:1000,transactions:1000});
+    await expect(history).toContainText("1000 new");await expect(history).toContainText("1000 total");
     const [exact]=await db`select count(*)::int as count,count(distinct id)::int as unique_ids,sum(amount_minor)::text as total from public.transactions where workspace_id=${workspace}`;
-    expect(exact).toEqual({count:75,unique_ids:75,total:"-7575"});
+    expect(exact).toEqual({count:1000,unique_ids:1000,total:"-101000"});
     const [sourceRows]=await db`select count(distinct row_number)::int as unique_rows,count(*)::int as count from public.source_transactions where import_id=${importId}`;
-    expect(sourceRows).toEqual({unique_rows:75,count:75});
+    expect(sourceRows).toEqual({unique_rows:1000,count:1000});
     expect((await db`select count(*)::int as count from public.saved_analyses where workspace_id=${workspace}`)[0].count).toBe(0);
     expect(await db`select id,row_number,original_row from public.source_transactions where import_id=${importId} order by row_number limit ${initial.length}`).toEqual(initial);
     const oldAfterResume=await admin.rpc("ingest_import_row",{p_import_id:importId,p_workspace_id:workspace,p_run_version:stoppedVersion-1,p_account_id:account,p_row:{transactionId:randomUUID()}});
@@ -92,16 +94,20 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     const repeated=await context.request.post("/api/imports/confirm",{multipart});
     expect(repeated.ok()).toBe(true);expect((await repeated.json()).importId).toBe(importId);
     expect((await db`select count(*)::int as count from public.imports where workspace_id=${workspace}`)[0].count).toBe(1);
+    const undoPreview=page.waitForResponse(response=>response.url().endsWith(`/api/imports/${importId}/undo`)&&response.request().method()==="GET");
     await history.getByRole("button",{name:"Undo import",exact:true}).click();
-    await expect(history).toContainText("remove 75 transactions and 0 balance snapshots");
-    await history.getByRole("button",{name:"Confirm undo 75 transactions",exact:true}).click();
+    expect((await undoPreview).ok()).toBe(true);
+    await expect(history).toContainText("remove 1000 transactions and 0 balance snapshots");
+    const undoResponse=page.waitForResponse(response=>response.url().endsWith(`/api/imports/${importId}/undo`)&&response.request().method()==="POST");
+    await history.getByRole("button",{name:"Confirm undo 1000 transactions",exact:true}).click();
+    expect((await undoResponse).ok()).toBe(true);
     await expect(history).toHaveCount(0);
     expect((await db`select status from public.imports where id=${importId}`)[0].status).toBe("undone");
     await expect.poll(async()=> (await counts()).transactions).toBe(0);
-    expect((await counts()).sources).toBe(75);
+    expect((await counts()).sources).toBe(1000);
     expect((await db`select count(*)::int as count from public.transaction_sources l join public.source_transactions s on s.id=l.source_transaction_id where s.workspace_id=${workspace}`)[0].count).toBe(0);
     const [originals]=await db`select count(*)::int as count from public.source_transactions where import_id=${importId} and original_row->>'amount'='-1.01'`;
-    expect(originals.count).toBe(75);
+    expect(originals.count).toBe(1000);
     expect(storagePath.startsWith(`${workspace}/`)).toBe(true);
     const originalFile=await admin.storage.from("imports").download(storagePath);expect(originalFile.error).toBeNull();
     expect(await originalFile.data!.text()).toBe(csv);
@@ -113,10 +119,10 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     await page.reload();
     await expect(history.getByRole("status")).toHaveText("completed");
     const [reimported]=await db`select count(*)::int as count,count(distinct id)::int as unique_ids,sum(amount_minor)::text as total from public.transactions where workspace_id=${workspace}`;
-    expect(reimported).toEqual({count:75,unique_ids:75,total:"-7575"});
+    expect(reimported).toEqual({count:1000,unique_ids:1000,total:"-101000"});
     expect(await db`select id,row_number,original_row,status from public.source_transactions where import_id=${importId} order by row_number`).toEqual(undoneSources);
-    expect((await db`select count(*)::int as count from public.source_transactions where import_id=${fresh.importId}`)[0].count).toBe(75);
-    expect((await db`select count(*)::int as count from public.transaction_sources l join public.source_transactions s on s.id=l.source_transaction_id where s.workspace_id=${workspace}`)[0].count).toBe(75);
+    expect((await db`select count(*)::int as count from public.source_transactions where import_id=${fresh.importId}`)[0].count).toBe(1000);
+    expect((await db`select count(*)::int as count from public.transaction_sources l join public.source_transactions s on s.id=l.source_transaction_id where s.workspace_id=${workspace}`)[0].count).toBe(1000);
     const freshDuplicate=await context.request.post("/api/imports/confirm",{multipart});
     expect(freshDuplicate.ok()).toBe(true);expect((await freshDuplicate.json()).importId).toBe(fresh.importId);
     expect((await db`select count(*)::int as count from public.imports where workspace_id=${workspace}`)[0].count).toBe(2);
@@ -137,10 +143,15 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     const paths=(stored.data??[]).map(file=>{expect(file.name).toMatch(/^[a-f0-9]{64}\.csv$/);return `${workspace}/${file.name}`;});
     if(paths.length){const removed=await admin.storage.from("imports").remove(paths);expect(removed.error).toBeNull();}
     await db.begin(async tx=>{
+      expect(await tx`select id from public.workspaces where id=${workspace} and owner_id=${user}`).toHaveLength(1);
       await tx`delete from public.transaction_sources where source_transaction_id in(select id from public.source_transactions where workspace_id=${workspace})`;
       for(const table of ["saved_analyses","background_jobs","import_control_events","balance_snapshots","transactions","source_transactions","imports","data_sources","accounts","merchants","categories"])await tx`delete from ${tx("public."+table)} where workspace_id=${workspace}`;
       await tx`delete from public.workspaces where id=${workspace} and owner_id=${user}`;
     });
-    expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();unlinkSync(recovery);await db.end();
+    expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();
+    expect(await db`select id from public.workspaces where id=${workspace} or owner_id=${user}`).toHaveLength(0);
+    expect(await db`select id from auth.users where id=${user}`).toHaveLength(0);
+    expect((await admin.storage.from("imports").list(workspace,{limit:1000})).data).toEqual([]);
+    unlinkSync(recovery);await db.end();
   }
 });
