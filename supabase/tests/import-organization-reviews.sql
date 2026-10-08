@@ -43,4 +43,33 @@ begin
     raise exception 'Changed approval rule silently overwritten';
   exception when sqlstate '40001' then null; end;
   if exists(select 1 from public.merchants where workspace_id=workspace and normalized_name='alternative merchant') or exists(select 1 from public.transactions where id=transaction_id and version<>2) then raise exception 'Rejected rule approval partially wrote'; end if;
+  -- Replacing an existing disabled rule then undoing must restore its prior target and intent.
+  review_id:=(public.create_organization_review(selection,jsonb_build_object('category_id',category),'Replacement Merchant','northstar market','[]',gen_random_uuid())->>'id')::uuid;
+  applied:=public.apply_organization_review(review_id,true);
+  perform public.undo_transaction_batch((applied->>'batchId')::uuid,jsonb_build_array(jsonb_build_object('id',transaction_id,'version',3)));
+  if not exists(select 1 from public.organization_rules where workspace_id=workspace and description_key='northstar market' and not enabled and merchant_id is null and category_id=category and version=5) then raise exception 'Undo lost the existing approved rule state'; end if;
+  -- A later rule edit fences the whole batch Undo before any metadata is restored.
+  selection:=jsonb_build_array(jsonb_build_object('id',transaction_id,'version',4));
+  review_id:=(public.create_organization_review(selection,jsonb_build_object('category_id',category),'Newest Merchant','northstar market','[]',gen_random_uuid())->>'id')::uuid;
+  applied:=public.apply_organization_review(review_id,true);
+  perform public.save_organization_rule(workspace,'northstar market',null,category,false,6);
+  begin
+    perform public.undo_transaction_batch((applied->>'batchId')::uuid,jsonb_build_array(jsonb_build_object('id',transaction_id,'version',5)));
+    raise exception 'Batch Undo overwrote a later rule edit';
+  exception when sqlstate '40001' then null; end;
+  if exists(select 1 from public.transactions where id=transaction_id and version<>5) or exists(select 1 from public.transaction_batches where id=(applied->>'batchId')::uuid and undone) then raise exception 'Fenced rule Undo partially restored metadata'; end if;
+  set local role authenticated;
+  begin
+    update public.organization_reviews set patch='{}' where id=review_id;
+    raise exception 'Direct review writes bypassed frozen history';
+  exception when insufficient_privilege then null; end;
+  reset role;
+  perform set_config('request.jwt.claim.sub',gen_random_uuid()::text,true);
+  begin
+    perform public.apply_organization_review(review_id,true);
+    raise exception 'Foreign review approval accepted';
+  exception when sqlstate 'P0002' then null; end;
+  set local role authenticated;
+  if exists(select 1 from public.organization_reviews where workspace_id=workspace) then raise exception 'Review history leaked across owners'; end if;
+  reset role;
 end $$;
