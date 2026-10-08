@@ -4,8 +4,10 @@ import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import {prepareInvestigationRuntime, handleInvestigationRuntime} from "./review-investigation-runtime.mjs";
 
-const root = resolve(".qa/mne020-runtime");
+const investigationRuntime = process.env.MNE019_RUNTIME === "1";
+const root = resolve(investigationRuntime ? ".qa/mne019-runtime" : ".qa/mne020-runtime");
 const runtimeData = resolve(root, `runtime-data-${randomUUID()}`);
 function write(path, value) { mkdirSync(resolve(root, path, ".."), { recursive: true }); writeFileSync(resolve(root, path), value); }
 for (const path of ["workflows/financial-review.ts", "workflows/import-file.ts", "lib/finance/start-review.ts", "lib/settings.ts", "app/api/cron/reviews/route.ts", "app/api/cron/summaries/route.ts", "lib/summary-schedule.ts", "lib/import-match.ts", "lib/import-row.ts", "lib/csv.ts", "lib/finance/calendar.ts", "lib/finance/fx.ts", "instrumentation.ts"]) {
@@ -55,6 +57,7 @@ export async function GET(request: Request) {
  catch { return Response.json({error: 'Runtime unavailable'}, {status: 503}); }
 }`);
 
+if (investigationRuntime) prepareInvestigationRuntime(root, write);
 const fixtures = new Map();
 const byWorkspace = id => [...fixtures.values()].find(item => item.workspace_id === id);
 const server = createServer(async (request, response) => {
@@ -62,6 +65,7 @@ const server = createServer(async (request, response) => {
   const body = raw ? JSON.parse(raw) : null;
   const url = new URL(request.url, "http://127.0.0.1:3041");
   const send = (value, code = 200) => { response.writeHead(code, { "Content-Type": "application/json" }); response.end(JSON.stringify(value)); };
+  if (investigationRuntime && await handleInvestigationRuntime({request, response, body, url, fixtures, send})) return;
   if (url.pathname === "/runtime/kill" && request.method === "POST") {
     const interrupted = child; child = null;
     if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(interrupted.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
@@ -193,5 +197,10 @@ current.on("exit", code => { if (child === current) { server.close(); process.ex
 return current;
 }
 let child = launch();
-const stop = () => { child?.kill(); server.close(); };
+const stop = () => {
+  if (child && process.platform === "win32") {
+    try { execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], {windowsHide: true, stdio: "ignore"}); } catch { /* Already exited. */ }
+  } else child?.kill();
+  server.close();
+};
 process.on("SIGTERM", stop); process.on("SIGINT", stop);

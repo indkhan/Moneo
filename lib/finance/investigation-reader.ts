@@ -21,7 +21,7 @@ async function allRows<T>(query: { range(from: number, to: number): PromiseLike<
 }
 export async function loadInvestigationEntities(context?: Context): Promise<InvestigationEntities> {
   const { supabase, workspace } = context ?? await requireWorkspace();
-  const [accounts, categories, merchants] = await Promise.all(["accounts", "categories", "merchants"].map(table => allRows<{ id: string; name: string }>(supabase.from(table).select("id, name").eq("workspace_id", workspace.id).order("id"))));
+  const [accounts, categories, merchants] = await Promise.all(["accounts", "categories", "merchants"].map(table => allRows<{ id: string; name: string }>(supabase.from(table).select(table === "accounts" ? "id, name, version" : "id, name").eq("workspace_id", workspace.id).order("id"))));
   const labels = await allRows<{ tags: string[]; event_name: string | null }>(supabase.from("transactions").select("tags, event_name").eq("workspace_id", workspace.id).order("id"));
   return { accounts, categories, merchants, labels: { tags: [...new Set(labels.flatMap(r => r.tags ?? []))].sort(), events: [...new Set(labels.flatMap(r => r.event_name ? [r.event_name] : []))].sort() } };
 }
@@ -72,7 +72,8 @@ async function loadRows(context: Context, spec: InvestigationSpec, includeAll = 
 /** Internal dataset is retained in full for evidence receipts; outward supporting access is paginated. */
 export async function loadInvestigationDataset(input: unknown, context?: Context, options: { canReadImports?: boolean; includeAll?: boolean } = {}) {
   const ctx = context ?? await requireWorkspace();
-  const spec = resolveInvestigation(input, await loadInvestigationEntities(ctx));
+  const entities = await loadInvestigationEntities(ctx);
+  const spec = resolveInvestigation(input, entities);
   const canReadImports = options.canReadImports ?? true;
   const [rows, metadata, rates] = await Promise.all([loadRows(ctx, spec, options.includeAll ?? false, canReadImports), loadSourceCoverageMetadata(ctx.supabase, ctx.workspace.id, canReadImports),
     spec.currencyPolicy.mode === "base" ? allRows<{ id: string; from_currency: string; to_currency: string; rate_text: string; rate_date: string; source: string }>(ctx.supabase.from("fx_rates").select("id, from_currency, to_currency, rate_text, rate_date, source").eq("workspace_id", ctx.workspace.id).order("id")) : []]);
@@ -82,9 +83,9 @@ export async function loadInvestigationDataset(input: unknown, context?: Context
   const sourceCoverage = { current: buildSourceCoverage({ ...spec.period, ...scope }, effective, metadata?.imports, metadata?.sources),
     comparison: spec.comparison ? buildSourceCoverage({ ...spec.comparison, ...scope }, effective, metadata?.imports, metadata?.sources) : null,
     attribution: "Period/account source coverage spans all categories; query filters and eligibility are reported separately." };
-  return { spec, rows, context: { workspaceId: ctx.workspace.id, capturedAt: new Date().toISOString(), sourceCoverage,
+  return { spec, rows, context: { workspaceId: ctx.workspace.id, capturedAt: new Date().toISOString(), sourceCoverage, entities,
     rates: rates.map(r => ({ id: r.id, fromCurrency: r.from_currency, toCurrency: r.to_currency, rateText: r.rate_text, rateDate: r.rate_date, source: r.source })) },
-    sourceRevision: investigationIdentity({ rows, metadata, rates }) };
+    sourceRevision: investigationIdentity({ rows, metadata, rates, entities }) };
 }
 export async function runInvestigation(input: unknown, context?: Context, options: { canReadImports?: boolean } = {}) {
   const data = await loadInvestigationDataset(input, context, options);

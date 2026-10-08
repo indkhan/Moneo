@@ -8,6 +8,7 @@ import { loadWealthItems, wealthEvidence } from "./wealth";
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
 import { investigationSchema } from "./investigation";
 import { runInvestigation } from "./investigation-reader";
+import { toolSourceVersion } from "./tool-evidence";
 
 export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace: { id: string; display_currency: string; timezone: string }, settings: WorkspaceSettings, query?: unknown) {
   requireAiScope(settings, "accounts", "transactions");
@@ -28,7 +29,7 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
     }
     return result;
   }
-  const budgets = settings.ai_data_scopes.includes("planning") ? await rows<Parameters<typeof buildPlanningReview>[0]["budgets"][number]>("spending_plans", "id, category_id, currency_code, limit_minor::text, enabled, rollover, rollover_from") : [];
+  const budgets = settings.ai_data_scopes.includes("planning") ? await rows<Parameters<typeof buildPlanningReview>[0]["budgets"][number]>("spending_plans", "id, category_id, currency_code, limit_minor::text, enabled, rollover, rollover_from, version") : [];
   const historyStart = budgets.filter(budget => budget.enabled && budget.rollover && budget.rollover_from &&
     Date.parse(`${to.slice(0, 7)}-01T00:00:00Z`) - Date.parse(`${budget.rollover_from}T00:00:00Z`) <= 3660 * 86400000)
     .map(budget => budget.rollover_from!).sort()[0];
@@ -48,12 +49,13 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
   const defaultQuery = investigationSchema.parse({ version: 1, period: { from, to }, comparison: { from: comparisonFrom, to: new Date(Date.parse(`${from}T00:00:00Z`) - 86400000).toISOString().slice(0, 10) }, groupBy: ["category", "merchant"] });
   const queryInvestigation = await runInvestigation(query ?? defaultQuery, { supabase: db, workspace }, { canReadImports: settings.ai_data_scopes.includes("imports") });
   const investigation = { ...queryInvestigation, entities: { accounts: balances.accounts.map(a => ({ id: a.id, name: a.name })), categories, merchants } };
-  if (!settings.ai_data_scopes.includes("planning")) return { ...base, investigation, queryInvestigation, planning: { unavailable: "AI access to planning is disabled in Settings" } };
+  const calculationEvidence = { balances: { accounts: balances.accounts, snapshots: balances.snapshots, ledger: balances.ledger }, transactions, categories, merchants, budgets, sourceMetadata };
+  if (!settings.ai_data_scopes.includes("planning")) return { ...base, investigation, queryInvestigation, calculationEvidence, sourceVersion: toolSourceVersion(calculationEvidence), planning: { unavailable: "AI access to planning is disabled in Settings" } };
   const [goals, allocations, budgetHistory, assumptions, wealth, plan] = await Promise.all([
-    rows<Parameters<typeof buildPlanningReview>[0]["goals"][number]>("goals", "id, name, currency_code, target_minor::text, recorded_saved_minor::text, saved_as_of, planned_monthly_minor::text, contribution_starts_on, target_date, status"),
-    rows<{ goal_id: string; amount_minor: string }>("goal_allocations", "id, goal_id, amount_minor::text"),
+    rows<Parameters<typeof buildPlanningReview>[0]["goals"][number]>("goals", "id, name, currency_code, target_minor::text, recorded_saved_minor::text, saved_as_of, planned_monthly_minor::text, contribution_starts_on, target_date, status, version"),
+    rows<{ goal_id: string; amount_minor: string }>("goal_allocations", "id, goal_id, account_id, amount_minor::text, version"),
     rows<NonNullable<Parameters<typeof buildPlanningReview>[0]["budgetHistory"]>[number]>("spending_plan_limits", "id, plan_id, limit_minor::text, enabled, version, effective_month"),
-    rows<{ id: string; name: string; amount_minor: string; currency_code: string; cadence: string; starts_on: string; schedule_anchor_on: string | null; source: string; ends_on: string | null; confirmed: boolean; enabled: boolean; removed_at: string | null }>("financial_assumptions", "id, name, amount_minor::text, currency_code, cadence, starts_on, schedule_anchor_on, source, ends_on, confirmed, enabled, removed_at"),
+    rows<{ id: string; name: string; account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; schedule_anchor_on: string | null; source: string; ends_on: string | null; confirmed: boolean; enabled: boolean; removed_at: string | null; version: number }>("financial_assumptions", "id, name, account_id, amount_minor::text, currency_code, cadence, starts_on, schedule_anchor_on, source, ends_on, confirmed, enabled, removed_at, version"),
     loadWealthItems(db, workspace.id), evaluatePlanForWorkspace(db, { ...workspace, timezone: settings.timezone }, 90, undefined,
       { canReadImports: settings.ai_data_scopes.includes("imports"), sourceMetadata: Promise.resolve(sourceMetadata) }),
   ]);
@@ -62,7 +64,10 @@ export async function loadFinancialReviewEvidence(db: SupabaseClient, workspace:
   const planning = { ...buildPlanningReview({ today: to, goals, allocations, budgets, budgetHistory, budgetCoverage, transactions, categories }),
     obligations: assumptions.filter(row => row.confirmed && row.enabled && !row.removed_at).map(row => ({ ...row, link: "/plan" })),
     wealth: { included: datedWealth.included, excludedLinked: datedWealth.excludedLinked, missingInputs: datedWealth.missingInputs, sourceCoverage: datedWealth.sourceCoverage, manualRecords: datedWealth.manualRecords, link: "/money/wealth" },
-    forecast: { evaluatedOn: to, horizonDays: 90, currency: workspace.display_currency, sourceCoverage: plan.sourceCoverage, resultBasis: plan.resultBasis, available: plan.available, daily: plan.forecast, obligations: plan.input.events, link: "/plan" } };
+    forecast: { evaluatedOn: to, horizonDays: 90, currency: workspace.display_currency, sourceVersion: plan.sourceVersion, sourceCoverage: plan.sourceCoverage, resultBasis: plan.resultBasis, available: plan.available, daily: plan.forecast, obligations: plan.input.events, link: "/plan" } };
   // Workflow transport, persistence and prompts receive exact decimal strings, never JSON numbers for money.
-  return { ...base, accountBalanceTotals: base.netWorth, netWorth: reviewNetWorth(base.netWorth, wealth, to), investigation, queryInvestigation, planning: JSON.parse(JSON.stringify(planning, (_key, value) => typeof value === "bigint" ? value.toString() : value)) as Record<string, unknown> };
+  const fullCalculationEvidence = JSON.parse(JSON.stringify({ ...calculationEvidence, goals, allocations, budgetHistory, assumptions, wealth, planInput: plan.input, forecastSource: plan.calculationEvidence }, (_key, value) => typeof value === "bigint" ? value.toString() : value));
+  return { ...base, accountBalanceTotals: base.netWorth, netWorth: reviewNetWorth(base.netWorth, wealth, to), investigation, queryInvestigation,
+    calculationEvidence: fullCalculationEvidence, sourceVersion: toolSourceVersion(fullCalculationEvidence),
+    planning: JSON.parse(JSON.stringify(planning, (_key, value) => typeof value === "bigint" ? value.toString() : value)) as Record<string, unknown> };
 }

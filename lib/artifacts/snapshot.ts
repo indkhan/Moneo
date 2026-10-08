@@ -8,9 +8,10 @@ import { balancesForArtifact, goalsForArtifact, spendingForArtifact, tripForArti
 import { SNAPSHOT_LIMITS, evidenceCoverage, type SnapshotCoverage } from "./coverage";
 import { dailySpending } from "@/lib/finance/calculations";
 import { calendarDate } from "@/lib/finance/calendar";
-import { ALLOWED_SDK_BY_KIND, type ArtifactKind } from "./spec";
+import { ALLOWED_SDK_BY_KIND, type ArtifactKind, type CalculatorManifest } from "./spec";
 import type { SourceCoverage } from "@/lib/finance/source-coverage";
 import type { InvestigationSpec } from "@/lib/finance/investigation";
+import type { TripScenario, TripScenarioResult } from "@/lib/finance/trip-scenario";
 
 export type CalculatorSnapshot = { coverage?: SnapshotCoverage; sourceCoverage?: SourceCoverage; sourceCoverageByOperation?: Record<string, SourceCoverage>; reporting?: Awaited<ReturnType<typeof spendingForArtifact>>["reporting"]; conversionCoverage?: Awaited<ReturnType<typeof spendingForArtifact>>["conversionCoverage"]; resultBasis?: string } & (
   | { currency: string; balances?: Awaited<ReturnType<typeof balancesForArtifact>>["balances"];
@@ -39,6 +40,13 @@ export type CalculatorSnapshot = { coverage?: SnapshotCoverage; sourceCoverage?:
       accountId?: string | null;
       liquidity?: Awaited<ReturnType<typeof tripForArtifact>>["liquidity"];
       tripLiquidity?: Awaited<ReturnType<typeof tripForArtifact>>["tripLiquidity"];
+      tripResult?: TripScenarioResult;
+      sourceVersion?: string;
+      calculationEvidence?: Awaited<ReturnType<typeof tripForArtifact>>["calculationEvidence"];
+      tripAccounts?: Awaited<ReturnType<typeof tripForArtifact>>["accounts"];
+      horizon?: TripScenarioResult["horizon"];
+      limitingDate?: string | null;
+      afterTripMinor?: string | null;
     }
   | {
       currency: string;
@@ -49,7 +57,7 @@ export type CalculatorSnapshot = { coverage?: SnapshotCoverage; sourceCoverage?:
 export async function buildCalculatorSnapshot(
   artifactId: string,
   kind: ArtifactKind,
-  opts?: { query?: string; month?: string; reportingView?: "original" | "base"; investigation?: InvestigationSpec; costMinor?: bigint; accountId?: string; funding?: Parameters<typeof tripForArtifact>[3]; sdk?: string[]; spendingOperation?: "spending" | "cashflow" },
+  opts?: { manifest?: CalculatorManifest; query?: string; month?: string; reportingView?: "original" | "base"; investigation?: InvestigationSpec; costMinor?: bigint; accountId?: string; tripScenario?: TripScenario; tripParams?: Record<string, string | number>; funding?: Parameters<typeof tripForArtifact>[3]; sdk?: string[]; spendingOperation?: "spending" | "cashflow" },
 ): Promise<{ snapshot: CalculatorSnapshot; stateParams: Record<string, number | string> }> {
   if (kind.startsWith("custom_")) {
     const operations = [...new Set(opts?.sdk ?? [])];
@@ -118,20 +126,23 @@ export async function buildCalculatorSnapshot(
     };
   }
   if (kind === "trip_planner") {
-    const data = await tripForArtifact(artifactId, opts?.costMinor ?? 90000n, opts?.accountId, opts?.funding);
+    const data = await tripForArtifact(artifactId, opts?.costMinor ?? 90000n, opts?.accountId, opts?.funding, opts?.tripScenario, opts?.tripParams, opts?.manifest?.params.costMinor?.currency);
+    const baselineAmount = data.baselineAvailableMinor ?? (data.baseline.status === "available" ? data.baseline.amountMinor.toString() : null);
+    const costText = data.costMinor ?? (opts?.costMinor ?? 90000n).toString();
     return {
       snapshot: {
         currency: data.currency,
         sourceCoverage: data.sourceCoverage,
-        baselineAvailableMinor:
-          data.baseline.status === "available" ? data.baseline.amountMinor.toString() : null,
-        unavailable: data.unavailable ?? (data.baseline.status === "available" ? null : "Forecast unavailable"),
-        withTripAvailableMinor: data.withTrip?.status === "available" ? data.withTrip.amountMinor.toString() : null,
-        evaluatedCostMinor: (opts?.costMinor ?? 90000n).toString(),
+        baselineAvailableMinor: baselineAmount,
+        ...(data.sourceVersion ? { sourceVersion: data.sourceVersion, calculationEvidence: data.calculationEvidence } : {}),
+        unavailable: data.unavailable ?? (baselineAmount === null ? "Forecast unavailable" : null),
+        withTripAvailableMinor: data.withTripAvailableMinor ?? (data.withTrip?.status === "available" ? data.withTrip.amountMinor.toString() : null),
+        evaluatedCostMinor: costText,
         tripDate: data.tripDate,
+        ...(data.scenario ? { tripResult: data.tripResult, tripAccounts: data.accounts, horizon: data.horizon, limitingDate: data.limitingDate, afterTripMinor: data.afterTripMinor } : {}),
         ...(data.liquidity ? { accountId: data.accountId, liquidity: data.liquidity, tripLiquidity: data.tripLiquidity } : {}),
       },
-      stateParams: { costMinor: Number(opts?.costMinor ?? 90000n) },
+      stateParams: { costMinor: BigInt(costText) <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(costText) : costText },
     };
   }
   const data = await goalsForArtifact(artifactId);

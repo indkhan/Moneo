@@ -10,7 +10,3 @@ export function parseCategoryCommand(message: string): { transactionId: string; 
   if (!match || !match[2].trim()) return null;
   return { transactionId: match[1].toLowerCase(), category: match[2].trim() };
 }
-
-export function isExplicitReviewRequest(message: string) {
-  return /^(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:(?:start|run|create)\s+(?:a\s+)?(?:deep\s+)?financial\s+review|review\s+my\s+finances)[.!?]?$/i.test(message.trim());
-}

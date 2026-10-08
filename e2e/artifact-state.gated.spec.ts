@@ -25,6 +25,11 @@ test("two tabs preserve edited calculator and trip state revisions across refres
     expect(created.error).toBeNull(); user = created.data.user!.id;
     [{ id: workspace }] = await db`select id from public.workspaces where owner_id=${user}`;
     writeFileSync(journal, JSON.stringify({ project, user, workspace, status: "created" }));
+    const account = randomUUID(), now = new Date().toISOString();
+    await db`insert into public.workspace_settings(workspace_id,timezone,locale,ai_data_scopes,summary_cadence) values(${workspace!},'UTC','en-GB',ARRAY['accounts','transactions','planning']::text[],'none') on conflict(workspace_id) do update set timezone='UTC',locale='en-GB',ai_data_scopes=ARRAY['accounts','transactions','planning']::text[],summary_cadence='none'`;
+    await db`insert into public.accounts(id,workspace_id,name,currency_code,type) values(${account},${workspace!},'Synthetic state cash','EUR','checking')`;
+    await db`insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance,boundary_kind,covered_transactions,actor_id) values(${workspace!},${account},100000,'EUR',${now},'synthetic state opening','reviewed_activity','[]'::jsonb,${user!})`;
+    await db`insert into public.forecast_preferences(workspace_id,currency_code,spending_account_id,uncertainty_bps) values(${workspace!},'EUR',${account},0)`;
     const cookies = new Map<string, string>();
     const auth = createServerClient(url, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { cookies: {
       getAll: () => [...cookies].map(([name,value]) => ({name,value})), setAll: values => { for (const value of values) cookies.set(value.name,value.value); },
@@ -53,9 +58,9 @@ test("two tabs preserve edited calculator and trip state revisions across refres
       await tab.goto(path);
       const before = (await db`select permissions,active_version_id from public.artifacts where id=${id}`)[0];
       const history = await db`select id,source,manifest from public.artifact_versions where artifact_id=${id} order by version`;
-      const region = (target: typeof page) => kind === "custom_comparison" ? target.getByRole("region", { name: "Generated calculator output" }) : target.locator("section").filter({ has: target.getByRole("heading", { name: "Trip cost", exact: true }) });
-      const input = (target: typeof page) => region(target).getByLabel(kind === "custom_comparison" ? "size" : /Cost in minor units/);
-      const save = (target: typeof page) => region(target).getByRole("button", { name: kind === "custom_comparison" ? "Save inputs" : "Save and recalculate", exact: true });
+      const region = (target: typeof page) => kind === "custom_comparison" ? target.getByRole("region", { name: "Generated calculator output" }) : target.locator("section").filter({ has: target.getByRole("heading", { name: "Dated trip planner", exact: true }) });
+      const input = (target: typeof page) => region(target).getByLabel(kind === "custom_comparison" ? "size" : /Amount in minor units/);
+      const save = (target: typeof page) => region(target).getByRole("button", { name: kind === "custom_comparison" ? "Save inputs" : "Save scenario", exact: true });
       const read = async () => (await db`select state,version from public.artifact_state where artifact_id=${id}`)[0];
       const initial = await read();
       await input(page).fill("300"); await input(tab).fill("200"); await save(tab).click();
@@ -119,6 +124,7 @@ test("two tabs preserve edited calculator and trip state revisions across refres
       await tx`delete from public.artifact_state where workspace_id=${workspace!}`;
       await tx`delete from public.artifact_versions where workspace_id=${workspace!}`;
       await tx`delete from public.artifacts where workspace_id=${workspace!}`;
+      for (const table of ["forecast_preference_events", "forecast_preferences", "balance_snapshots", "accounts", "workspace_settings"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
       await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
     });
     if (user) { expect((await admin.auth.admin.deleteUser(user)).error).toBeNull(); expect((await db`select id from auth.users where id=${user}`).length).toBe(0); }

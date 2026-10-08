@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { calendarDate } from "./calendar";
 import { buildSourceCoverage, type loadSourceCoverageMetadata } from "./source-coverage";
 
-export type BalanceAccount = { id: string; name: string; currency_code: string; type?: string; archived_at?: string | null };
+export type BalanceAccount = { id: string; name: string; currency_code: string; type?: string; archived_at?: string | null; version?: number };
 export type BalanceSnapshot = { id?: string; account_id: string; amount_minor: string | number; currency_code: string; as_of: string; provenance: string;
   boundary_kind?: string; source_transaction_id?: string | null; covered_transactions?: CoveredTransaction[] | null;
   actor_id?: string | null; undone_at?: string | null; version?: number; created_at?: string };
@@ -43,7 +43,7 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
       estimated_amount_minor: null as string | null, currency_code: account.currency_code,
       snapshot_currency_code: snapshot?.currency_code ?? null, as_of: snapshot?.as_of ?? null,
       evaluated_at: asOf, provenance: snapshot?.provenance ?? null, status: "missing" as "current" | "stale" | "ambiguous" | "missing",
-      warnings: [] as string[], reconciled_rows: 0 };
+      warnings: [] as string[], reconciled_rows: 0, snapshot_valid: false };
     if (!snapshot) { balance.warnings.push("No dated balance at or before the evaluation time"); return { ...account, balance }; }
     try {
       const amount = exactMinor(snapshot.amount_minor);
@@ -52,6 +52,7 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
       const ties = candidates.filter(item => Date.parse(item.as_of) === Date.parse(snapshot.as_of));
       if (ties.some(item => item.currency_code !== snapshot.currency_code || exactMinor(item.amount_minor) !== amount || boundaryEvidence(item) !== boundaryEvidence(snapshot)))
         throw new Error("Conflicting snapshots have no evidenced financial order");
+      balance.snapshot_valid = true;
       const boundaryDate = calendarDate(snapshot.as_of, timeZone);
       const covered = new Set<string>();
       if (snapshot.boundary_kind === "reviewed_activity") {
@@ -119,7 +120,7 @@ export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: strin
     }
   }
   const [accounts, snapshots, ledger, fees, resolutions] = await Promise.all([
-    rows<BalanceAccount>("accounts", "id, name, type, currency_code, archived_at"),
+    rows<BalanceAccount>("accounts", "id, name, type, currency_code, archived_at, version"),
     rows<BalanceSnapshot>("balance_snapshots", "id, account_id, amount_minor::text, currency_code, as_of, provenance, boundary_kind, source_transaction_id, covered_transactions, actor_id, undone_at, version, created_at"),
     rows<BalanceTransaction & { transaction_sources?: { source_transaction_id: string }[] }>("transactions", "id, account_id, amount_minor::text, currency_code, posted_on, posted_at, status, version, description, kind, review_reasons, transaction_sources(source_transaction_id)"),
     rows<{ transaction_id: string; fee_minor: string; treatment: string; transaction_links: { undone_at: string | null } }>("transaction_link_fees", "id, transaction_id, fee_minor::text, treatment, transaction_links!inner(undone_at)"),

@@ -146,6 +146,20 @@ export const importControlEvents = pgTable("import_control_events", {
   check("import_control_events_action_check", sql`${table.action} in ('cancel','resume')`),
   check("import_control_events_result_check", sql`jsonb_typeof(${table.result}) = 'object'`)]);
 
+export const importStaging = pgTable("import_staging", {
+  importId: uuid("import_id").primaryKey().references(() => imports.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  stageVersion: integer("stage_version").notNull(),
+  fileHash: text("file_hash").notNull(),
+  mapping: jsonb("mapping").notNull(),
+  routeAccounts: jsonb("route_accounts").notNull(),
+  rows: jsonb("rows").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+  check("import_staging_stage_version_check", sql`${table.stageVersion} = 1`),
+  check("import_staging_rows_check", sql`jsonb_typeof(${table.rows}) = 'array' and jsonb_array_length(${table.rows}) <= 10000 and octet_length(${table.rows}::text) <= 64000000`),
+]);
+
 export const sourceTransactions = pgTable("source_transactions", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
@@ -158,6 +172,7 @@ export const sourceTransactions = pgTable("source_transactions", {
   reviewReasons: text("review_reasons").array().notNull().default(sql`'{}'::text[]`),
   status: text("status").notNull().default("new"),
 }, (table) => [
+  index("source_transactions_import_external_idx").using("hash", table.externalId),
   check("source_transactions_normalized_row_check", sql`${table.normalizedRow} is null or jsonb_typeof(${table.normalizedRow}) = 'object'`),
   unique("source_transactions_import_row_unique").on(table.importId, table.rowNumber),
   check("source_transactions_fee_evidence_check", sql`${table.feeEvidence} is null or (jsonb_typeof(${table.feeEvidence}) = 'object' and ${table.feeEvidence} ? 'treatment' and ${table.feeEvidence}->>'treatment' is not null and ${table.feeEvidence}->>'treatment' in ('included','additional','unknown'))`),
@@ -205,6 +220,7 @@ export const transactions = pgTable("transactions", {
   version: integer("version").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  index("transactions_import_description_idx").using("hash", table.description),
   index("transactions_merchant_id_idx").on(table.merchantId).where(sql`${table.merchantId} is not null`),
   index("transactions_account_posted_at_idx").on(table.workspaceId, table.accountId, table.postedAt).where(sql`${table.postedAt} is not null`),
   index("transactions_transfer_id_idx").on(table.transferId).where(sql`${table.transferId} is not null`),
@@ -220,7 +236,7 @@ export const transactions = pgTable("transactions", {
 export const transactionSources = pgTable("transaction_sources", {
   transactionId: uuid("transaction_id").notNull().references(() => transactions.id),
   sourceTransactionId: uuid("source_transaction_id").notNull().unique().references(() => sourceTransactions.id),
-});
+}, table => [index("transaction_sources_transaction_idx").on(table.transactionId)]);
 
 export const correctionEvents = pgTable("correction_events", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -418,6 +434,8 @@ export const backgroundJobs = pgTable("background_jobs", {
   kind: text("kind").notNull(),
   requestId: uuid("request_id"),
   chatRequestId: uuid("chat_request_id").references((): AnyPgColumn => chatRequests.id, { onDelete: "set null" }),
+  reviewRequest: jsonb("review_request"),
+  reviewProgress: jsonb("review_progress"),
   workflowRunId: text("workflow_run_id"),
   dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
   status: text("status").notNull().default("queued"),
@@ -431,6 +449,8 @@ export const backgroundJobs = pgTable("background_jobs", {
   check("background_jobs_status_check", sql`${table.status} in ('queued', 'running', 'completed', 'failed', 'canceled')`),
   unique("background_jobs_workspace_request_key").on(table.workspaceId, table.requestId),
   unique("background_jobs_workflow_run_key").on(table.workflowRunId),
+  check("background_jobs_review_request_check", sql`${table.reviewRequest} is null or (jsonb_typeof(${table.reviewRequest}) = 'object' and octet_length(${table.reviewRequest}::text) <= 65536)`),
+  check("background_jobs_review_progress_check", sql`${table.reviewProgress} is null or (jsonb_typeof(${table.reviewProgress}) = 'object' and octet_length(${table.reviewProgress}::text) <= 262144)`),
 ]);
 
 export const savedAnalyses = pgTable("saved_analyses", {
@@ -786,3 +806,18 @@ export const pendingHoldResolutions = pgTable("pending_hold_resolutions", {
   check("pending_hold_resolutions_operation_check", sql`${table.operation} in ('settle','cancel')`),
   check("pending_hold_resolutions_released_minor_check", sql`${table.releasedMinor}>0`),
   check("pending_hold_resolutions_note_check", sql`length(btrim(${table.note})) between 1 and 500`)]);
+
+export const financialEvidenceReceipts = pgTable("financial_evidence_receipts", {
+  id: uuid("id").primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  scopes: text("scopes").array().notNull(),
+  receipt: jsonb("receipt").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+  index("financial_evidence_receipts_workspace_created").on(table.workspaceId, table.createdAt),
+  check("financial_evidence_receipts_scopes_check", sql`cardinality(${table.scopes}) between 0 and 4 and ${table.scopes} <@ array['accounts','transactions','planning','imports']::text[]`),
+  check("financial_evidence_receipts_payload_check", sql`(jsonb_typeof(${table.receipt}) = 'object' and octet_length(${table.receipt}::text) <= 16777216
+    and ${table.receipt}->>'id' = ${table.id}::text and ${table.receipt}->>'workspaceId' = ${table.workspaceId}::text
+    and jsonb_typeof(${table.receipt}->'query') = 'object' and jsonb_typeof(${table.receipt}->'metrics') = 'array'
+    and jsonb_typeof(${table.receipt}->'sources') = 'array' and ${table.receipt}->'scopes' = to_jsonb(${table.scopes})) is true`),
+]);

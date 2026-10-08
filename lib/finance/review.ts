@@ -48,7 +48,7 @@ export function buildPlanningReview(input: {
       return { id: budget.id, category: input.categories.find(category => category.id === budget.category_id)?.name ?? "Unknown", currency: budget.currency_code,
         month, limitMinor: budget.limit_minor, spentMinor: progress.spentMinor.toString(), remainingMinor: progress.remainingMinor?.toString() ?? null, overLimit: progress.overLimit,
         carriedMinor: progress.carriedMinor?.toString() ?? null, allowanceMinor: progress.allowanceMinor?.toString() ?? null,
-        limitation: progress.limitation, partial: progress.partial, link: "/plan/spending",
+        limitation: progress.limitation, partial: progress.partial, classificationPartial: progress.classificationPartial, sourcePartial: progress.sourcePartial, link: "/plan/spending",
         ...(progress.sourceCoverage ? { sourceCoverage: progress.sourceCoverage, remainderBasis: "accepted_records" } : {}) };
     }),
     limits: ["Recorded savings are dated manual evidence; reservations are separate virtual earmarks", "Contribution dates assume the stated monthly plan and do not prove affordability", "Monthly budget remainders describe accepted records, not reconciled spendable funds; unresolved sources can change totals in either direction"],

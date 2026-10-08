@@ -3,16 +3,21 @@ import { generateText } from "ai";
 import { investigationDetail } from "@/lib/finance/investigation-reader";
 import { POST } from "./route";
 import { requireWorkspace } from "@/lib/auth";
-import { DEFAULT_SETTINGS } from "@/lib/settings";
+import { DEFAULT_SETTINGS, requireAiScope, type AiDataScope } from "@/lib/settings";
 import { loadCategoryPreview } from "@/lib/finance/edit-preview";
 import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
 import { listAccounts, getBalances, cashflow, searchTransactions, listGoals, evaluateForecast } from "@/lib/finance/tools";
 import { startFinancialReview } from "@/lib/finance/start-review";
+import { captureToolEvidence } from "@/lib/finance/capture-evidence";
+import { toolResultReceipt } from "@/lib/finance/tool-evidence";
+const { serviceRpc } = vi.hoisted(() => ({ serviceRpc: vi.fn(async (name: string, args: Record<string, unknown>) => { void name; void args; return { error: null, data: "completed" }; }) }));
+vi.mock("@supabase/supabase-js", () => ({ createClient: vi.fn(() => ({ rpc: serviceRpc })) }));
 vi.mock("@/lib/finance/investigation-reader", async original => ({ ...await original<typeof import("@/lib/finance/investigation-reader")>(), investigationDetail: vi.fn(async () => ({ synthetic: "detail" })) }));
 vi.mock("ai", () => ({ generateText: vi.fn(async () => ({ text: "Evidence reviewed", totalUsage: {} })), tool: (value: unknown) => value, stepCountIs: (value: number) => value }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ SYSTEM_PROMPT: "", modelForSettings: vi.fn(async () => ({ modelId: "free" })) }));
 vi.mock("@/lib/finance/start-review", () => ({ startFinancialReview: vi.fn(async () => ({ jobId: "job", status: "queued" })) }));
+vi.mock("@/lib/finance/capture-evidence", () => ({ captureToolEvidence: vi.fn(async () => []) }));
 vi.mock("@/lib/finance/review-loader", () => ({ loadFinancialReviewEvidence: vi.fn(async () => ({ source: "exact evidence" })) }));
 vi.mock("@/lib/finance/edit-preview", async original => ({ ...await original<typeof import("@/lib/finance/edit-preview")>(), loadCategoryPreview: vi.fn(async () => ({ href: "/ai/actions/preview?ids=selected&category=owned", warning: "Preview only" })) }));
 vi.mock("@/lib/finance/tools", async importOriginal => ({
@@ -23,22 +28,62 @@ beforeEach(() => {
   vi.clearAllMocks(); process.env.OPENROUTER_API_KEY = "test"; process.env.SUPABASE_SERVICE_ROLE_KEY = "test"; process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
   const query = { select: () => query, eq: () => query, order: () => query, limit: async () => ({ data: [], error: null }), maybeSingle: async () => ({ data: { id: "conversation" }, error: null }) };
   const rpc = vi.fn(async (name: string) => ({ error: null, data: name === "start_chat_request" ? { started: true } : "completed" }));
-  vi.mocked(requireWorkspace).mockResolvedValue({ supabase: { from: () => query, rpc }, workspace: { id: "workspace", display_currency: "EUR" }, settings: DEFAULT_SETTINGS } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  vi.mocked(requireWorkspace).mockResolvedValue({ supabase: { from: () => query, rpc }, user: { id: "00000000-0000-4000-8000-000000000099" }, workspace: { id: "workspace", display_currency: "EUR" }, settings: DEFAULT_SETTINGS } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
 });
 const requestId = "00000000-0000-4000-8000-000000000001";
 const request = (message: string) => new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000002", requestId, message }) });
-it("offers scoped investigation and exact-intent review start within four model steps", async () => {
+it("removes unsupported provider amounts and links before either response or immutable history publication", async () => {
+  vi.mocked(generateText).mockResolvedValueOnce({ text: "You spent EUR 999999.00 [proof](/money/transactions?transaction=missing)", totalUsage: {} } as never);
+  const response = await POST(request("Explain my spending"));
+  const body = await response.json();
+  expect(response.status).toBe(200);
+  expect(body.answer).toContain("Unsupported sections were removed");
+  expect(body.answer).not.toContain("999999");
+  expect(body.answer).not.toContain("transaction=missing");
+  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_verified_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
+});
+it("publishes supported tool claims with application amounts and calculation links", async () => {
+  const context = await requireWorkspace();
+  context.workspace.id = "00000000-0000-4000-8000-000000000010";
+  const receipt = toolResultReceipt("analytics_cashflow", {}, { currencyCode: "EUR", from: "2026-09-01", to: "2026-09-30", spendingMinor: "25" }, { workspaceId: context.workspace.id, fetchedAt: "2026-10-01T00:00:00Z", timezone: "UTC" }, ["transactions"]);
+  vi.mocked(captureToolEvidence).mockResolvedValueOnce([receipt]);
+  vi.mocked(generateText).mockImplementationOnce(async options => {
+    const tools = options.tools as unknown as Record<string, { execute: (input: unknown, options: unknown) => Promise<unknown> }>;
+    const output = await tools.analytics_cashflow.execute({ from: "2026-09-01", to: "2026-09-30", currencyCode: "EUR" }, {});
+    expect(output).toMatchObject({ evidenceReceipts: [{ id: receipt.id, metrics: receipt.metrics }] });
+    const metric = receipt.metrics[0];
+    return { text: JSON.stringify({ claims: [{ operation: "metric", operands: [{ receiptId: receipt.id, metricId: metric.id }], valueMinor: "25", currency: "EUR", periods: [metric.period], qualifiers: metric.qualifiers }], interpretation: [] }), totalUsage: {} } as never;
+  });
+  const response = await POST(request("Show September spending")), body = await response.json();
+  expect(response.status).toBe(200);
+  expect(body.answer).toContain("EUR 0.25");
+  expect(body.answer).toContain(`/ai/evidence/${receipt.id}?metric=spendingMinor`);
+  expect(body.answer).not.toContain("Unsupported sections");
+  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_verified_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
+});
+it("offers scoped investigation and question-bound review start within four model steps", async () => {
   expect((await POST(request("Start a deep financial review"))).status).toBe(200);
   const options = vi.mocked(generateText).mock.calls[0][0];
   expect(options.stopWhen).toBe(4);
   const tools = options.tools as unknown as Record<string, { execute: () => Promise<unknown> }>;
   expect(await tools.reviews_investigate.execute()).toEqual({ source: "exact evidence" });
   expect(await tools.reviews_start.execute()).toMatchObject({ jobId: "job", status: "queued", href: "/ai" });
-  expect(startFinancialReview).toHaveBeenCalledWith(expect.anything(), "workspace", requestId, requestId);
+  expect(startFinancialReview).toHaveBeenCalledWith(expect.anything(), "workspace", requestId, requestId, expect.objectContaining({question: "Start a deep financial review"}));
 });
-it("questions do not expose the review-start tool", async () => {
-  await POST(request("Should I start a deep financial review?"));
-  expect(vi.mocked(generateText).mock.calls[0][0].tools).not.toHaveProperty("reviews_start");
+it.each(["Run a deep financial review for September", "Review my finances and focus on subscriptions", "Investigate the decline in grocery spending"])("accepts ordinary investigation phrasing and retains exact question, chosen dates and focus: %s", async message => {
+  await POST(request(message));
+  const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, {execute: (input: unknown) => Promise<unknown>}>;
+  expect(tools).toHaveProperty("reviews_start");
+  const query = {version: 1, period: {from: "2026-09-01", to: "2026-09-30"}, comparison: {from: "2026-08-01", to: "2026-08-31"}, groupBy: ["merchant"]};
+  await tools.reviews_start.execute({query, focus: "Subscriptions", output: "answer"});
+  expect(startFinancialReview).toHaveBeenLastCalledWith(expect.anything(), "workspace", requestId, requestId, expect.objectContaining({question: message, query: expect.objectContaining(query), focus: "Subscriptions", output: "answer"}));
+});
+it("binds review navigation hints and read policy to actual submission rather than model replacements", async () => {
+  const visible = {page: "/money/investigations", accountId: "selected-owned"};
+  await POST(new Request("http://localhost/api/chat", {method: "POST", body: JSON.stringify({conversationId: "00000000-0000-4000-8000-000000000002", requestId, message: "Explain the selected spending change", context: visible})}));
+  const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, {execute: (input: unknown) => Promise<unknown>}>;
+  await tools.reviews_start.execute({context: {page: "forged"}, allowedScopes: ["imports"]});
+  expect(startFinancialReview).toHaveBeenLastCalledWith(expect.anything(), "workspace", requestId, requestId, expect.objectContaining({context: visible, allowedScopes: DEFAULT_SETTINGS.ai_data_scopes}));
 });
 it("creates a trusted chart only for an explicit artifact request and reuses it within the request", async () => {
   await POST(request("Can you create a monthly spending chart?"));
@@ -118,7 +163,7 @@ it.each(readTools)("withholds %s when %s is revoked during its paused read", asy
   let received: unknown;
   vi.mocked(generateText).mockImplementationOnce(async options => {
     const tools = options.tools as unknown as Record<string, { execute: (input: unknown) => Promise<unknown> }>;
-    const result = tools[name].execute({ query: "synthetic", from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR", horizonDays: 30, transactionIds: [requestId], categoryId: requestId });
+    const result = tools[name].execute(name === "reviews_start" ? {} : { query: "synthetic", from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR", horizonDays: 30, transactionIds: [requestId], categoryId: requestId });
     await started;
     vi.mocked(requireWorkspace).mockResolvedValue({ ...current, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: DEFAULT_SETTINGS.ai_data_scopes.filter(value => value !== scope) } });
     release({ synthetic: "withheld evidence" } as never);
@@ -188,7 +233,39 @@ it("investigates remaining evidence when planning is already revoked before a ne
   vi.mocked(requireWorkspace).mockResolvedValue(reduced as unknown as typeof current);
   const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, { execute: () => Promise<unknown> }>;
   await expect(tools.reviews_investigate.execute()).resolves.toEqual({ source: "exact evidence" });
-  expect(loadFinancialReviewEvidence).toHaveBeenCalledWith(current.supabase, current.workspace, reduced.settings);
+  expect(loadFinancialReviewEvidence).toHaveBeenCalledWith(current.supabase, current.workspace, reduced.settings, undefined);
+});
+it("publishes successful validated answers through service-only owned publication", async () => {
+  const context = await requireWorkspace();
+  const response = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000001", requestId: "00000000-0000-4000-8000-000000000002", message: "Hello" }) }));
+  expect(response.status).toBe(200);
+  expect(serviceRpc).toHaveBeenCalledWith("finish_verified_chat_request", expect.objectContaining({ p_request_id: "00000000-0000-4000-8000-000000000002", p_receipt_ids: [], p_scopes: [] }));
+  expect(vi.mocked(context.supabase.rpc).mock.calls.some(call => call[0] === "finish_chat_request" && call[1]?.p_status === "completed")).toBe(false);
+});
+it("publishes a useful typed clarification when no financial measure is needed", async () => {
+  vi.mocked(generateText).mockResolvedValueOnce({ text: JSON.stringify({ claims: [], interpretation: [], clarification: { topic: "period" } }), totalUsage: {} } as never);
+  const response = await POST(request("Please compare my spending")), body = await response.json();
+  expect(response.status).toBe(200);
+  expect(body.answer).toContain("What start and end dates");
+  expect(body.answer).not.toContain("No supported financial measures");
+  expect(body.answer).not.toContain("Unsupported sections");
+  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_verified_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
+});
+it.each(["planning", "imports"] as const)("carries actual %s reads across a revocation between post-read and capture", async revoked => {
+  await POST(request("Review my finances"));
+  const current = await requireWorkspace();
+  let checks = 0;
+  vi.mocked(loadFinancialReviewEvidence).mockImplementationOnce(async () => {
+    vi.mocked(requireWorkspace).mockImplementation(async () => ++checks === 1 ? current : { ...current, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: DEFAULT_SETTINGS.ai_data_scopes.filter(scope => scope !== revoked) } });
+    return { planning: { synthetic: "retained" } } as never;
+  });
+  vi.mocked(captureToolEvidence).mockImplementationOnce(async (...args) => {
+    const scopes = (args as unknown[])[5] as AiDataScope[];
+    requireAiScope(args[3].settings, ...scopes);
+    return [];
+  });
+  const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, { execute: () => Promise<unknown> }>;
+  await expect(tools.reviews_investigate.execute()).rejects.toThrow(new RegExp(`${revoked}.*disabled`));
 });
 
 it("preserves the separately authorized exact category command after data-scope revocation", async () => {
