@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { accountLiquidity, availableToSpend, forecastDaily, serializeAccountLiquidity } from "./calculations";
 import { evaluateForecast } from "./tools";
 import { tripForArtifact } from "../artifacts/finance-sdk";
@@ -18,6 +18,11 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => {
   const query = { select: () => query, eq: () => query, single: async () => ({ data: { permissions: ["forecast"], active_version_id: "v" } }) };
   return { workspace: { display_currency: "EUR", timezone: "Europe/Berlin" }, supabase: { from: () => query } };
 } }));
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-10-07T12:00:00Z"));
+});
+afterEach(() => vi.useRealTimers());
 it.each([false, true])("receipts use each real forecast metric's own limiting date (local cap=%s)", async localCap => {
   const original = fixture.input;
   try {
