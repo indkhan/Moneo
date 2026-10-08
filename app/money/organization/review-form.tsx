@@ -1,5 +1,5 @@
 'use client';
-import {useActionState,useState} from 'react';
+import {useActionState,useRef,useState} from 'react';
 import {createReview,applyReview,undoReview} from './actions';
 import {formatMoney} from '@/lib/finance/format';
 import type {OrganizationProposal} from '@/lib/import-organization';
@@ -15,12 +15,15 @@ export function OrganizationGroup({rows,proposal,merchants,categories,requestId,
  const [assistance,setAssistance]=useState('');
  const [providerBusy,setProviderBusy]=useState(false);
  const [providerProposals,setProviderProposals]=useState<OrganizationProposal[]>([]);
+ const draftRevision=useRef(0);
  async function requestSuggestions(){
+  const requestedRevision=draftRevision.current;
   setProviderBusy(true);setAssistance('');setProviderProposals([]);
   try{
    const response=await fetch('/api/money/organization/suggestions',{method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(25000),
     body:JSON.stringify({rows:rows.filter(row=>selected.includes(row.id)).map(({id,version})=>({id,version})),useProvider:true})});
    const body=await response.json() as {proposals?:OrganizationProposal[];providerStatus?:string;notice?:string};
+   if(draftRevision.current!==requestedRevision){setAssistance('Your draft changed while suggestions were requested. Keep your current choices or request fresh suggestions.');return;}
    if(!response.ok||body.providerStatus!=='available'){setAssistance(body.notice??'Optional suggestions unavailable. Keep using the manual choices below.');return;}
    const candidates=(body.proposals??[]).filter(candidate=>selected.includes(candidate.transactionId)&&candidate.basis==='provider-suggestion');setProviderProposals(candidates);
    if(!candidates.length){setAssistance('No attributable AI suggestions were returned. Keep using the source/history suggestions and manual choices.');return;}
@@ -40,17 +43,17 @@ export function OrganizationGroup({rows,proposal,merchants,categories,requestId,
   <form action={action} className="mt-3 space-y-3">
    <input type="hidden" name="rows" value={JSON.stringify(rows.filter(row=>selected.includes(row.id)).map(({id,version})=>({id,version})))} />
    <input type="hidden" name="requestId" value={requestId} />
-   <ul className="space-y-1">{rows.map(row=><li key={row.id}><label className="flex gap-2 text-sm"><input type="checkbox" checked={selected.includes(row.id)} onChange={event=>setSelected(event.target.checked?[...selected,row.id]:selected.filter(id=>id!==row.id))} /><span>{row.posted_on} · {row.description} · {formatMoney(row.amount_minor,row.currency_code,locale)}</span></label></li>)}</ul>
+   <ul className="space-y-1">{rows.map(row=><li key={row.id}><label className="flex gap-2 text-sm"><input type="checkbox" checked={selected.includes(row.id)} onChange={event=>{draftRevision.current++;setSelected(event.target.checked?[...selected,row.id]:selected.filter(id=>id!==row.id));}} /><span>{row.posted_on} · {row.description} · {formatMoney(row.amount_minor,row.currency_code,locale)}</span></label></li>)}</ul>
    <div className="flex flex-wrap gap-3">
-    <label className="grid gap-1 text-sm">Merchant<select name="merchant" value={merchant} onChange={event=>setMerchant(event.target.value)} className="rounded border bg-card p-2"><option value="keep">Keep current merchants</option><option value="">Clear merchant</option><option value="new">Review a merchant name</option>{merchants.map(target=><option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
-    {merchant==='new'&&<label className="grid gap-1 text-sm">Merchant name<input name="merchantName" required maxLength={100} value={merchantName} onChange={event=>setMerchantName(event.target.value)} className="rounded border bg-card p-2" /></label>}
-    <label className="grid gap-1 text-sm">Category<select name="category" value={category} onChange={event=>setCategory(event.target.value)} className="rounded border bg-card p-2"><option value="keep">Keep current categories</option><option value="">Uncategorized</option>{categories.map(target=><option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
+    <label className="grid gap-1 text-sm">Merchant<select name="merchant" value={merchant} onChange={event=>{draftRevision.current++;setMerchant(event.target.value);}} className="rounded border bg-card p-2"><option value="keep">Keep current merchants</option><option value="">Clear merchant</option><option value="new">Review a merchant name</option>{merchants.map(target=><option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
+    {merchant==='new'&&<label className="grid gap-1 text-sm">Merchant name<input name="merchantName" required maxLength={100} value={merchantName} onChange={event=>{draftRevision.current++;setMerchantName(event.target.value);}} className="rounded border bg-card p-2" /></label>}
+    <label className="grid gap-1 text-sm">Category<select name="category" value={category} onChange={event=>{draftRevision.current++;setCategory(event.target.value);}} className="rounded border bg-card p-2"><option value="keep">Keep current categories</option><option value="">Uncategorized</option>{categories.map(target=><option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
    </div>
    <button type="button" disabled={providerBusy||pending||!selected.length} onClick={requestSuggestions} className="text-sm underline disabled:opacity-40">{providerBusy?'Requesting optional suggestions…':'Request optional AI suggestions'}</button>
    {assistance&&<p role="status" className="text-sm">{assistance}</p>}
    {providerProposals.length>0&&<ul className="space-y-1 text-xs">{providerProposals.map(candidate=><li key={candidate.transactionId}>{rows.find(row=>row.id===candidate.transactionId)?.description}: {candidate.merchantName??merchants.find(target=>target.id===candidate.merchantId)?.name??'keep merchant'} · {categories.find(target=>target.id===candidate.categoryId)?.name??'keep category'}{candidate.evidenceQuote&&<> · Source quote: “{candidate.evidenceQuote}”</>}</li>)}</ul>}
    {state.error&&<p role="alert" className="text-sm text-red-700 dark:text-red-300">{state.error}</p>}
-   <button disabled={pending||!selected.length} className="rounded bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Preparing review…':`Preview ${selected.length} entries`}</button>
+   <button disabled={pending||providerBusy||!selected.length} className="rounded bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Preparing review…':`Preview ${selected.length} entries`}</button>
   </form>
  </article>;
 }
