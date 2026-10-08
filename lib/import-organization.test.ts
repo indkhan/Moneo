@@ -41,6 +41,17 @@ it('preserves meaningful merchant words instead of treating them as transaction 
 it('offers a reviewable description-derived merchant label for unfamiliar rows without inventing categories', () => {
   expect(organizationProposals([row(4)], [], [])[0]).toMatchObject({merchantName: 'northstar market', categoryId: null, basis: 'review-required'});
 });
+it('keeps supplementary Unicode letters intact in description-derived merchant labels', () => {
+  const description = 'x'.repeat(99) + '\u{10428}' + 'extra';
+  expect(organizationProposals([row(4, description)], [], [])[0].merchantName).toBe('x'.repeat(99) + '\u{10428}');
+});
+it('uses Unicode character limits for merchant suggestions while retaining the 100-character maximum', () => {
+  const source = row(4);
+  const proposals = organizationProposals([source], [], []);
+  const suggestion = {transactionId: source.id, merchantName: 'x'.repeat(99) + '\u{10428}', categoryId: null, evidenceQuote: 'NORTHSTAR MARKET'};
+  expect(mergeOrganizationSuggestions([source], proposals, [suggestion], [])[0].merchantName).toBe(suggestion.merchantName);
+  expect(() => mergeOrganizationSuggestions([source], proposals, [{...suggestion, merchantName: suggestion.merchantName + 'x'}], [])).toThrow();
+});
 it('accepts only selected rows, owned categories and literal source evidence from provider suggestions', () => {
   const proposals = organizationProposals([row(4)], [], []);
   const candidate = {transactionId: id(4), merchantName: 'Northstar Market', categoryId: id(21), evidenceQuote: 'NORTHSTAR MARKET'};

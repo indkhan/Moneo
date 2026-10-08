@@ -18,6 +18,14 @@ it('creates exact durable review from current server proposals rather than clien
  await expect(createReview({},data)).rejects.toThrow('REDIRECT /money/organization?review='+id(30));
  expect(rpc).toHaveBeenCalledWith('create_organization_review',{p_rows:selection,p_patch:{category_id:id(20)},p_merchant_name:'Northstar Market',p_rule_key:'northstar market',p_evidence:[{id:id(11),version:1}],p_request_id:id(40)});
 });
+it('accepts a 100-character Unicode merchant proposal and rejects 101 characters before writing',async()=>{
+ const merchantName='x'.repeat(99)+'\u{10428}';
+ const data=form({rows:JSON.stringify(selection),merchant:'new',merchantName,category:'keep',requestId:id(40)});
+ await expect(createReview({},data)).rejects.toThrow('REDIRECT');
+ expect(rpc).toHaveBeenCalledWith('create_organization_review',expect.objectContaining({p_merchant_name:merchantName}));
+ rpc.mockClear();data.set('merchantName',merchantName+'x');
+ expect(await createReview({},data)).toHaveProperty('error');expect(rpc).not.toHaveBeenCalled();
+});
 it('keeps a usable error state and refuses corrected, stale or malformed selections before writing',async()=>{
  const data=form({rows:JSON.stringify(selection),merchant:'new',merchantName:'Northstar Market',category:'keep',requestId:id(40)});
  vi.mocked(loadOrganizationSuggestions).mockResolvedValueOnce({proposals:[]} as never);
