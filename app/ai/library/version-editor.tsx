@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -41,10 +41,11 @@ export function VersionEditor({
   // Reverted edits are clean and follow incoming active props too.
   if (local && !dirty) setLocal(null);
   const baseVersionId = dirty ? local!.baseVersionId : activeVersionId;
-  function edit(values: Partial<{ source: string; manifestText: string }>) {
+  const edit = useCallback((values: Partial<{ source: string; manifestText: string }>) => {
     setLocal(previous => ({ ...(previous ?? { source: currentSource, manifestText: currentManifestText,
       baseVersionId: activeVersionId, baseSource: currentSource, baseManifest: currentManifestText }), ...values }));
-  }
+  }, [currentSource, currentManifestText, activeVersionId]);
+  const editSource = useCallback((source: string) => edit({ source }), [edit]);
   const [serverConflict, setServerConflict] = useState(false);
   const conflict = serverConflict || baseVersionId !== activeVersionId;
   const [historyPage, setHistoryPage] = useState({ head: versions[0]?.id, older: [] as VersionRow[], cursor: undefined as number | null | undefined });
@@ -122,7 +123,7 @@ export function VersionEditor({
         Source (pure function of input.snapshot + input.params)
       </label>
       <div id="version-source" className="mt-2">
-        <CodeEditor value={source} onChange={source => edit({ source })} />
+        <CodeEditor value={source} onChange={editSource} />
       </div>
       <label className="mt-3 block text-sm font-medium" htmlFor="version-manifest">
         Manifest (JSON)
