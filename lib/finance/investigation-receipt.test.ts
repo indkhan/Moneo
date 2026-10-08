@@ -5,6 +5,16 @@ import { providerFinancialAnswer } from "./tool-evidence";
 const workspaceId = "00000000-0000-4000-8000-000000000001";
 const spec = investigationSchema.parse({ version: 1, period: { from: "2026-09-01", to: "2026-09-30" }, comparison: { from: "2026-08-01", to: "2026-08-31" }, page: { size: 1 }, groupBy: ["category"] });
 const rows: InvestigationRow[] = Array.from({ length: 3 }, (_, index) => ({ id: `00000000-0000-4000-8000-00000000000${index + 2}`, parentId: `00000000-0000-4000-8000-00000000000${index + 2}`, accountId: "owned", categoryId: null, merchantId: null, date: index ? "2026-09-02" : "2026-08-02", amountMinor: "-10", currency: "EUR", status: "posted", kind: "ordinary", tags: [], event: null, reviewReasons: [], version: 1, description: "Synthetic" }));
+it('retains owned group names in model-free exact findings and full evidence', () => {
+  const selected = investigationSchema.parse({...spec, groupBy: ['merchant']});
+  const entities = {accounts: [], categories: [], merchants: [{id: 'merchant', name: 'Large decline'}]};
+  const receipt = investigationReceipt({spec: selected, rows: rows.map(row => ({...row, merchantId: 'merchant'})), context: {workspaceId, capturedAt: '2026-10-01T00:00:00Z', entities}, sourceRevision: 'v1'}, ['transactions']);
+  const body = providerFinancialAnswer('{}', [receipt], workspaceId).body;
+  expect(body).toContain('Large decline');
+  expect(receipt.query.entities).toEqual(entities);
+  expect(receipt.metrics.find(metric => metric.id.endsWith('delta'))?.valueMinor).toBe('10');
+  expect(receipt.sources).toHaveLength(3);
+});
 it("retains full exact selected support beyond display pages and both named periods", () => {
   const receipt = investigationReceipt({ spec, rows, context: { workspaceId, capturedAt: "2026-10-01T00:00:00Z", sourceCoverage: { status: "unknown" } }, sourceRevision: "v1" }, ["accounts", "transactions"]);
   expect(receipt.sources).toHaveLength(3);

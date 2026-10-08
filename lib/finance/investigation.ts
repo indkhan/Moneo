@@ -79,7 +79,7 @@ export function investigationGroup(row: InvestigationRow, dimensions: Investigat
       d === "tag" ? [...new Set(row.tags)].sort() : d === "event" ? row.event : d === "date" ? row.date : d === "month" ? row.date.slice(0, 7) : row[d],
   ]));
 }
-export type InvestigationContext = { workspaceId: string; capturedAt: string; sourceCoverage?: unknown; rates?: ExpenditureRate[] };
+export type InvestigationContext = { workspaceId: string; capturedAt: string; sourceCoverage?: unknown; rates?: ExpenditureRate[]; entities?: InvestigationEntities };
 
 function allocatedReporting(rows: InvestigationRow[], spec: InvestigationSpec, rates: ExpenditureRate[]) {
   if (spec.currencyPolicy.mode !== "base") return null;

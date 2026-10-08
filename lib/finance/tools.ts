@@ -6,20 +6,13 @@ import { loadBalanceEvidence, resolveBalances } from "./balances";
 import { loadSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
 import { expenditurePosting, reportExpenditure } from "./expenditure";
 import { loadExpenditureRates } from "./expenditure-rates";
+import {forecastInput} from "./forecast-schema";
+export {forecastInput} from "./forecast-schema";
 
 type FinanceContext = Awaited<ReturnType<typeof requireWorkspace>>;
 
 const periodInput = z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().regex(/^[A-Z]{3}$/), view: z.enum(["original", "base"]).optional(), accountIds: z.array(z.uuid()).max(100).optional() });
 const searchInput = z.object({ query: z.string().min(1).max(100) });
-export const forecastInput = z.object({
-  horizonDays: z.number().int().min(1).max(365).default(30), scenarioId: z.uuid().optional(),
-  accountId: z.string().min(1).max(100).optional(),
-  funding: z.array(z.object({ date: z.iso.date(), currencyCode: z.string().regex(/^[A-Z]{3}$/),
-    fromAccountId: z.string().min(1).max(100), toAccountId: z.string().min(1).max(100),
-    amountMinor: z.string().regex(/^[1-9]\d{0,18}$/).refine(value => /^[1-9]\d{0,18}$/.test(value) && BigInt(value) <= 9223372036854775807n),
-  })).max(100).optional(),
-});
-
 export async function listAccounts(context?: FinanceContext) {
   const { supabase, workspace } = context ?? await requireWorkspace();
   const { data, error } = await supabase.from("accounts").select("id, name, type, currency_code, version")
