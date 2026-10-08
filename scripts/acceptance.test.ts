@@ -37,4 +37,8 @@ describe("required acceptance reports", () => {
     const runner = readFileSync("scripts/acceptance.mjs", "utf8");
     for (const gate of [...gates].sort()) expect(runner, gate).toContain(`${gate}: "1"`);
   });
+  it("serializes required unit files so shared database DDL cannot overlap other live fixtures", () => {
+    const runner = readFileSync("scripts/acceptance.mjs", "utf8");
+    expect(runner).toMatch(/run\("units",[^\n]*"--no-file-parallelism"/);
+  });
 });
