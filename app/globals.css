@@ -29,6 +29,8 @@ body {
 }
 
 fieldset { min-width: 0; }
+main { overflow-wrap: anywhere; }
+main select { min-width: 0; max-width: 100%; }
 
 html[data-theme="dark"] {
   color-scheme: dark;
