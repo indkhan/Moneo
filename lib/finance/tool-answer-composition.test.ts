@@ -89,3 +89,38 @@ it("does not infer an empty account inventory from foreign, unscoped or malforme
   const result = providerFinancialAnswer(JSON.stringify({ claims: [], interpretation: [] }), receipts, context.workspaceId);
   expect(result.body).not.toContain("No account records");
 });
+
+const accounts = [
+  { id: transactionId, name: "Checking QA", type: "checking", currency_code: "EUR", version: 1 },
+  { id: categoryId, name: "Savings QA", type: "savings", currency_code: "EUR" },
+];
+it.each([JSON.stringify({ claims: [], interpretation: [] }), "Checking QA and Savings QA have zero balances."])("publishes only recorded account names from a nonempty inventory with %s provider output", text => {
+  const receipt = toolResultReceipt("accounts_list", {}, accounts, context, ["accounts"]);
+  const result = providerFinancialAnswer(text, [receipt], context.workspaceId);
+  expect(result.body).toContain("Recorded accounts in this workspace:");
+  expect(result.body).toContain("- Checking QA");
+  expect(result.body).toContain("- Savings QA");
+  expect(result.body).toContain(`/ai/evidence/${receipt.id}`);
+  expect(result.body).not.toContain("Tell me the financial question");
+  expect(result.body).not.toContain("zero balances");
+  expect(result.accepted).toHaveLength(0);
+});
+it("escapes recorded account names without publishing links or injected sections", () => {
+  const receipt = toolResultReceipt("accounts_list", {}, [{ ...accounts[0], name: "[Visit](https://example.invalid)\n# EUR999" }], context, ["accounts"]);
+  const result = providerFinancialAnswer(JSON.stringify({ claims: [], interpretation: [] }), [receipt], context.workspaceId);
+  expect(result.body).toContain("- \\[Visit\\]\\(https://example.invalid\\) \\# EUR999");
+  expect(result.body).not.toContain("[Visit](https://example.invalid)");
+  expect(result.accepted).toHaveLength(0);
+});
+it("rejects foreign, unscoped and malformed nonempty account inventories", () => {
+  const receipts = [
+    toolResultReceipt("accounts_list", {}, accounts, { ...context, workspaceId: categoryId }, ["accounts"]),
+    toolResultReceipt("accounts_list", {}, accounts, context, []),
+    ...[{ ...accounts[0], id: "bad" }, { ...accounts[0], name: "" }, { ...accounts[0], type: "fake" }, { ...accounts[0], currency_code: "bad" }, { ...accounts[0], version: 0 }]
+      .map(row => toolResultReceipt("accounts_list", {}, [accounts[1], row], context, ["accounts"])),
+  ];
+  const result = providerFinancialAnswer(JSON.stringify({ claims: [], interpretation: [] }), receipts, context.workspaceId);
+  expect(result.body).not.toContain("Recorded accounts");
+  expect(result.body).not.toContain("Checking QA");
+  expect(result.body).not.toContain("Savings QA");
+});

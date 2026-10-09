@@ -61,7 +61,7 @@ function sameSet(a: string[], b: string[]) {
   const first = new Set(a), second = new Set(b);
   return a.length === first.size && b.length === second.size && a.length === b.length && a.every(value => second.has(value));
 }
-function escapeMarkdown(value: string) { return value.replace(/[\\`*_{}\[\]()<>#!|]/g, "\\$&").replace(/[\r\n]/g, " "); }
+export function escapeMarkdown(value: string) { return value.replace(/[\\`*_{}\[\]()<>#!|]/g, "\\$&").replace(/[\r\n]/g, " "); }
 export function financialMetricHref(receiptId: string, metricId: string) {
   return `/ai/evidence/${encodeURIComponent(receiptId)}?metric=${encodeURIComponent(metricId)}`;
 }

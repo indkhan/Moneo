@@ -1,6 +1,6 @@
 import { createEvidenceReceipt, evidenceFingerprint, type EvidenceReceipt, type EvidenceReceiptInput } from "./evidence-receipts";
 import type { AiDataScope } from "@/lib/settings";
-import { publishFinancialClaims } from "./verified-claims";
+import { escapeMarkdown, publishFinancialClaims } from "./verified-claims";
 import { calendarDate } from "./calendar";
 import { z } from "zod";
 export const TOOL_CALCULATION_VERSION = "finance-tools-v1-exact-evidence";
@@ -106,6 +106,11 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
 }
 const BASE_FINANCIAL_ANSWER_INSTRUCTIONS = `Return only a JSON object with claims and interpretation arrays. Each measured claim is {operation:"metric"|"difference"|"sum",operands:[{receiptId,metricId}],valueMinor:exact integer string,currency:exact currency,unit:"money"|"count",periods:ordered operand periods,qualifiers:the complete union of required qualification codes}. Copy the unit from evidence metrics (default money); record counts are not currency amounts. Difference is first minus second; sum requires identical periods. Source IDs and internal hrefs are never invented: the application renders the actual calculation and supporting records from receipt references. Copy metric and receipt IDs from evidenceReceipts. Do not restate numerical facts or qualitative financial assertions as unrestricted prose. Interpretation is a separate array of {action:"review"|"consider"|"ask",reference:{receiptId,metricId},topic:"classification"|"supporting_records"|"budget"|"timing"|"recurring"|"goals"|"assumptions"}; select conditional next steps related to measured facts. The application labels interpretation distinctly. Unsupported sections are visibly removed; bounded repair budget is zero. Missing evidence stays unknown.`;
 export const FINANCIAL_ANSWER_INSTRUCTIONS = BASE_FINANCIAL_ANSWER_INSTRUCTIONS + ` For evidence-specific explanatory prose, compose interpretation entries {action:"explain",observation:{kind:"comparison",first:{receiptId,metricId},second:{receiptId,metricId},relationship:"higher"|"lower"|"unchanged"},hypotheses:["timing"|"one_off_activity"|"recurring_activity"|"classification"|"missing_data"|"currency_conversion"|"refund_timing"|"changed_allocation"|"internal_funding"|"planned_assumptions"],uncertainty:"unproven",nextSteps:[the supported topic codes]}. Both references must also appear in accepted measured claims, currencies and units must match, and the relationship must agree with exact values. Alternatively use observation:{kind:"limits",reference:{receiptId,metricId}} to explain recorded qualifications. Compose up to four hypotheses/checks per entry and multiple distinct comparisons. The application writes evidence-specific prose using the actual names, dates, exact differences and working links. Hypotheses remain explicitly unproven; do not assert causes, motivations or unrecorded activity. No free-text fields are accepted. For greetings, help or missing scope, keep claims and interpretation empty and add clarification:{topic:"welcome"|"help"|"question"|"period"|"comparison_period"|"account"|"category"|"merchant"|"currency"|"classification"|"goal"|"assumptions"}. These application-written questions introduce no unverified financial assertions. Use an explicit clarification when more context is needed instead of inventing a period, entity or amount.`;
+const accountInventorySchema = z.array(z.object({
+  id: z.uuid(), name: z.string().min(1).max(120),
+  type: z.enum(["checking", "savings", "cash", "credit", "investment", "wallet", "other"]),
+  currency_code: z.string().regex(/^[A-Z]{3}$/), version: z.number().int().positive().optional(),
+}));
 export function providerFinancialAnswer(text: string, receipts: EvidenceReceipt[], workspaceId: string) {
   let parsed: unknown;
   try { parsed = JSON.parse(text); } catch { parsed = null; }
@@ -126,8 +131,12 @@ export function providerFinancialAnswer(text: string, receipts: EvidenceReceipt[
   const status = receipts.filter(receipt => receipt.workspaceId === workspaceId).flatMap(receipt => {
     const value = object(receipt.query.result);
     const input = object(receipt.query.input);
-    if (receipt.query.toolName === "accounts_list" && receipt.scopes.includes("accounts") && Array.isArray(receipt.query.result) && receipt.query.result.length === 0)
-      return ["No account records were returned for this workspace."];
+    if (receipt.query.toolName === "accounts_list" && receipt.scopes.includes("accounts")) {
+      const inventory = accountInventorySchema.safeParse(receipt.query.result);
+      if (inventory.success) return [inventory.data.length
+        ? `Recorded accounts in this workspace:\n\n${inventory.data.map(account => `- ${escapeMarkdown(account.name)}`).join("\n")}`
+        : "No account records were returned for this workspace."];
+    }
     if (receipt.query.toolName === "transactions_setCategory" && z.uuid().safeParse(input.transactionId).success && value.status === "updated" && value.category === input.category && value.transactionUrl === `/money/transactions?transaction=${input.transactionId}`)
       return [`Updated the selected transaction category. [Open transaction and Undo](/money/transactions?transaction=${input.transactionId}).`];
     if (receipt.query.toolName === "transactions_previewCategory") {
