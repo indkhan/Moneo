@@ -8,10 +8,10 @@ test.skip(!hasSupabaseEnv() || !state, gatedSkipReason());
 test("rejected preferences retain every edited field so the timezone can be corrected and saved", async ({ page }) => {
   await page.goto("/settings");
   const form = page.locator("form").filter({ has: page.getByRole("button", { name: "Save preferences", exact: true }) });
-  const timezone = form.getByLabel("Timezone", { exact: true });
-  const locale = form.getByLabel("Date and number locale", { exact: true });
-  const theme = form.getByLabel("Appearance", { exact: true });
-  const cadence = form.getByLabel("In-app summary preference", { exact: true });
+  const timezone = form.getByRole("combobox", { name: "Timezone", exact: true });
+  const locale = form.getByRole("textbox", { name: "Date and number locale", exact: true });
+  const theme = form.getByRole("combobox", { name: "Appearance", exact: true });
+  const cadence = form.getByRole("combobox", { name: "In-app summary preference", exact: true });
   const time = form.getByLabel("Preferred local time", { exact: true });
   const imports = form.locator('input[name="ai_data_scopes"][value="imports"]');
   const original = { timezone: await timezone.inputValue(), locale: await locale.inputValue(), theme: await theme.inputValue(), cadence: await cadence.inputValue(), time: await time.inputValue(), imports: await imports.isChecked() };
