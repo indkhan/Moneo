@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
 
+export function assertProductionBuild(fast, current) {
+  assert(fast?.tier === "fast" && fast.passed === true && fast.worktreeDirty === false && current.worktreeDirty === false &&
+    fast.revision === current.revision && Boolean(current.buildId) && fast.buildId === current.buildId,
+  "Run acceptance:fast on the current clean revision before acceptance:required; its production build is missing, stale or replaced");
+}
+
 export function assertRequiredResults(runner, report) {
   if (runner === "vitest") {
     assert(report.success === true && report.numTotalTests > 0 && report.numFailedTests === 0 && report.numPendingTests === 0,

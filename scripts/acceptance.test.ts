@@ -1,9 +1,26 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { assertRequiredResults } from "./acceptance-results.mjs";
+import { assertRequiredResults, assertProductionBuild } from "./acceptance-results.mjs";
 
 const IGNORED_DIRS = new Set([".git", ".next", ".qa", "coverage", "node_modules", "playwright-report", "test-results"]);
+
+describe("required production build provenance", () => {
+  const current = { revision: "current", worktreeDirty: false, buildId: "built-current" };
+  const fast = { tier: "fast", passed: true, ...current };
+  it("accepts the successful clean fast build for the current revision", () => {
+    expect(() => assertProductionBuild(fast, current)).not.toThrow();
+  });
+  it("rejects missing, failed, stale, dirty or replaced build evidence", () => {
+    for (const report of [undefined, { ...fast, passed: false }, { ...fast, revision: "older" },
+      { ...fast, worktreeDirty: true }, { ...fast, buildId: undefined }, { ...fast, buildId: "replaced" }]) {
+      expect(() => assertProductionBuild(report, current)).toThrow(/Run acceptance:fast/);
+    }
+    for (const state of [{ ...current, worktreeDirty: true }, { ...current, buildId: undefined }]) {
+      expect(() => assertProductionBuild(fast, state)).toThrow(/Run acceptance:fast/);
+    }
+  });
+});
 
 function liveDbGates(directory: string): Set<string> {
   const gates = new Set<string>();

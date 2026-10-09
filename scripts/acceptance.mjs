@@ -2,7 +2,7 @@
 import { spawnSync, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, openSync, closeSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { assertRequiredResults } from "./acceptance-results.mjs";
+import { assertProductionBuild, assertRequiredResults } from "./acceptance-results.mjs";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const tier = process.argv[2];
@@ -29,7 +29,14 @@ try {
     const npm = process.env.npm_execpath;
     if (!npm) throw new Error("Run through npm run acceptance:fast");
     for (const name of ["test", "lint", "build"]) run(name, npm, ["run", name]);
+    result.buildId = readFileSync(".next/BUILD_ID", "utf8").trim();
   } else {
+    const latestFast = readdirSync(".qa").filter(name => /^acceptance-fast-\d+$/.test(name)).sort().at(-1);
+    let fast;
+    try { if (latestFast) fast = JSON.parse(readFileSync(`.qa/${latestFast}/result.json`, "utf8")); } catch { /* Missing/incomplete evidence is rejected below. */ }
+    const buildId = existsSync(".next/BUILD_ID") ? readFileSync(".next/BUILD_ID", "utf8").trim() : undefined;
+    assertProductionBuild(fast, { revision, worktreeDirty, buildId });
+    result.buildId = buildId;
     const missing = ["SUPABASE_DB_URL", "SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"].filter(name => !process.env[name]);
     const state = process.env.E2E_STORAGE_STATE || "e2e/.auth.json";
     if (!existsSync(state)) missing.push("E2E_STORAGE_STATE (or e2e/.auth.json)");
@@ -44,8 +51,8 @@ try {
     result.units = { total: unitReport.numTotalTests, failed: unitReport.numFailedTests, skipped: unitReport.numPendingTests };
     assertRequiredResults("vitest", unitReport);
     const specs = readdirSync("e2e").filter(file => file.endsWith(".spec.ts") && file !== "core-journey.gated.spec.ts").map(file => `e2e/${file}`);
-    // A fresh local server inherits an empty provider key; never reuse a keyed server.
-    run("browser", "node_modules/@playwright/test/cli.js", ["test", ...specs, "--workers=1", "--reporter=json", `--output=${directory}/browser-artifacts`], { PLAYWRIGHT_JSON_OUTPUT_FILE: browser, OPENROUTER_API_KEY: "", CI: "1" });
+    // Run the verified production build without HMR or a live provider key.
+    run("browser", "node_modules/@playwright/test/cli.js", ["test", ...specs, "--workers=1", "--reporter=json", `--output=${directory}/browser-artifacts`], { PLAYWRIGHT_JSON_OUTPUT_FILE: browser, OPENROUTER_API_KEY: "", E2E_PRODUCTION_BUILD: "1", CI: "1" });
     const browserReport = JSON.parse(readFileSync(browser, "utf8"));
     result.browser = browserReport.stats;
     assertRequiredResults("playwright", browserReport);
