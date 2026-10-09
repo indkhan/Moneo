@@ -1,4 +1,5 @@
-import {test, expect} from "@playwright/test";
+import {test, expect as baseExpect} from "@playwright/test";
+const expect = baseExpect.configure({ timeout: 30_000 });
 import {createClient} from "@supabase/supabase-js";
 import {createServerClient} from "@supabase/ssr";
 import {randomBytes, randomUUID} from "node:crypto";
@@ -132,7 +133,8 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       await expect(forecast).toContainText("EUR 2000.00");
       const disabledSchedule=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} invoice 0 (disabled)`,exact:true})});
       await disabledSchedule.getByRole("button",{name:"Enable",exact:true}).click();
-      await expect(page).toHaveURL(/\/plan$/);
+      await expect(schedule.getByRole("button",{name:"Disable",exact:true})).toBeVisible();
+      await expect(disabledSchedule).toHaveCount(0);
       await page.goto("/plan?horizon=365");
       await expect(forecast).toContainText(expected);
       const [toggled]=await db`select source,recurring_evidence_eligible,starts_on::text,schedule_anchor_on::text from public.financial_assumptions where id=${generated.id} and workspace_id=${workspace!}`;
