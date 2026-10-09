@@ -13,7 +13,7 @@ import { toolResultReceipt } from "@/lib/finance/tool-evidence";
 const { serviceRpc } = vi.hoisted(() => ({ serviceRpc: vi.fn(async (name: string, args: Record<string, unknown>) => { void name; void args; return { error: null, data: "completed" }; }) }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: vi.fn(() => ({ rpc: serviceRpc })) }));
 vi.mock("@/lib/finance/investigation-reader", async original => ({ ...await original<typeof import("@/lib/finance/investigation-reader")>(), investigationDetail: vi.fn(async () => ({ synthetic: "detail" })) }));
-vi.mock("ai", () => ({ generateText: vi.fn(async () => ({ text: "Evidence reviewed", totalUsage: {} })), tool: (value: unknown) => value, stepCountIs: (value: number) => value }));
+vi.mock("ai", async original => ({ ...await original<typeof import("ai")>(), generateText: vi.fn(async () => ({ text: "Evidence reviewed", totalUsage: {} })), tool: (value: unknown) => value, stepCountIs: (value: number) => value }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ SYSTEM_PROMPT: "", modelForSettings: vi.fn(async () => ({ modelId: "free" })) }));
 vi.mock("@/lib/finance/start-review", () => ({ startFinancialReview: vi.fn(async () => ({ jobId: "job", status: "queued" })) }));
@@ -26,12 +26,163 @@ vi.mock("@/lib/finance/tools", async importOriginal => ({
 }));
 beforeEach(() => {
   vi.clearAllMocks(); process.env.OPENROUTER_API_KEY = "test"; process.env.SUPABASE_SERVICE_ROLE_KEY = "test"; process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
-  const query = { select: () => query, eq: () => query, order: () => query, limit: async () => ({ data: [], error: null }), maybeSingle: async () => ({ data: { id: "conversation" }, error: null }) };
+  vi.mocked(investigationDetail).mockReset().mockResolvedValue({ synthetic: "detail" } as never);
+  const query = { select: () => query, eq: () => query, order: () => query, in: () => query, limit: async () => ({ data: [], error: null }), maybeSingle: async () => ({ data: { id: "conversation" }, error: null }) };
   const rpc = vi.fn(async (name: string) => ({ error: null, data: name === "start_chat_request" ? { started: true } : "completed" }));
   vi.mocked(requireWorkspace).mockResolvedValue({ supabase: { from: () => query, rpc }, user: { id: "00000000-0000-4000-8000-000000000099" }, workspace: { id: "workspace", display_currency: "EUR" }, settings: DEFAULT_SETTINGS } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
 });
 const requestId = "00000000-0000-4000-8000-000000000001";
 const request = (message: string) => new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000002", requestId, message }) });
+async function withHistory(rows: { id?: string; role: string; content: string; context?: unknown }[], scopes: AiDataScope[] = [...DEFAULT_SETTINGS.ai_data_scopes]) {
+  const current = await requireWorkspace();
+  let pinned: string[] | undefined;
+  const query = { select: () => query, eq: () => query, order: () => query,
+    in: (_field: string, ids: string[]) => { pinned = ids; return query; },
+    limit: async (size: number) => ({ data: (pinned ? rows.filter(row => row.id && pinned?.includes(row.id)) : rows).slice(0, size), error: null }),
+    maybeSingle: async () => ({ data: { id: "conversation" }, error: null }) };
+  vi.mocked(requireWorkspace).mockResolvedValue({ ...current, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: scopes },
+    supabase: { ...current.supabase, from: () => query } } as unknown as typeof current);
+}
+it("keeps permitted planning dialogue when imports are disabled, without replaying import evidence", async () => {
+  await withHistory([
+    { role: "user", content: "Explain the second option" },
+    { role: "assistant", content: "Option one: review goals. Option two: explore forecast assumptions.", context: { memory: { version: 1, kind: "dialogue", scopes: ["planning"] } } },
+    { role: "assistant", content: "Private import filename secret-statement.csv", context: { memory: { version: 1, kind: "evidence", scopes: ["imports"] } } },
+  ], ["accounts", "transactions", "planning"]);
+  expect((await POST(request("Explain the second option"))).status).toBe(200);
+  const prompt = JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages);
+  expect(prompt).toContain("Option two: explore forecast assumptions");
+  expect(prompt).not.toContain("secret-statement.csv");
+});
+it("retains an early decision through fifty turns within a declared context budget", async () => {
+  const rows = Array.from({ length: 50 }, (_, index) => [
+    { role: "user", content: index === 0 ? "Decision: compare September with August using original currencies." : `Follow-up ${index}: explain the chosen comparison.` },
+    { role: "assistant", content: "Which dates should I compare?", context: { memory: { version: 1, kind: "dialogue", scopes: [] } } },
+  ]).flat().reverse();
+  await withHistory(rows);
+  expect((await POST(request("Use our earlier decision"))).status).toBe(200);
+  const prompt = JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages);
+  expect(prompt).toContain("Decision: compare September with August using original currencies.");
+  expect(new TextEncoder().encode(prompt).length).toBeLessThanOrEqual(16000);
+  expect(vi.mocked(generateText).mock.calls[0][0].system).toContain("Historical dialogue is not current financial evidence");
+});
+it("withholds prior financial prose after corrections even when its scopes remain allowed", async () => {
+  await withHistory([
+    { role: "user", content: "What is the corrected amount now?" },
+    { role: "assistant", content: "Old booked amount EUR 999.99", context: { memory: { version: 1, kind: "evidence", scopes: ["transactions"], receiptIds: [requestId] } } },
+  ]);
+  expect((await POST(request("What is the corrected amount now?"))).status).toBe(200);
+  expect(JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages)).not.toContain("999.99");
+});
+it("rejects malformed selection IDs before claiming a request or calling a provider", async () => {
+  const response = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({
+    conversationId: requestId, requestId, message: "Explain this transaction", context: { selected: [{ kind: "transaction", id: "invented" }] },
+  }) }));
+  expect(response.status).toBe(400);
+  expect(generateText).not.toHaveBeenCalled();
+  expect((await requireWorkspace()).supabase.rpc).not.toHaveBeenCalled();
+});
+it("resolves a stable selected transaction using current owned evidence before asking the provider", async () => {
+  const selectedId = "00000000-0000-4000-8000-000000000088";
+  vi.mocked(investigationDetail).mockResolvedValueOnce({ kind: "transaction", transaction: { id: selectedId, version: 2, amount_minor: "1250", currency_code: "EUR" } } as never);
+  const response = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({
+    conversationId: requestId, requestId, message: "Explain this transaction", context: { selected: [{ kind: "transaction", id: selectedId }] },
+  }) }));
+  expect(response.status).toBe(200);
+  expect(investigationDetail).toHaveBeenCalledWith({ kind: "transaction", id: selectedId }, expect.anything(), { canReadImports: true });
+  const prompt = JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages);
+  expect(prompt).toContain(selectedId);
+  expect(prompt).toContain("1250");
+  expect(vi.mocked(generateText).mock.calls[0][0].messages?.at(-1)).toMatchObject({ content: expect.stringContaining('"version":2') });
+});
+it("does not resolve selected records under revoked transaction scope", async () => {
+  await withHistory([], ["planning"]);
+  const response = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({
+    conversationId: requestId, requestId, message: "Explain this transaction", context: { selected: [{ kind: "transaction", id: requestId }] },
+  }) }));
+  expect(response.status).toBe(200);
+  expect(investigationDetail).not.toHaveBeenCalled();
+  expect(JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages)).toContain("Selected transaction evidence is unavailable under current permissions");
+});
+it("asks the user to remove a missing or foreign selected transaction", async () => {
+  vi.mocked(investigationDetail).mockRejectedValueOnce(new Error("Unknown owned transaction"));
+  const response = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({
+    conversationId: requestId, requestId, message: "Explain this transaction", context: { selected: [{ kind: "transaction", id: requestId }] },
+  }) }));
+  expect(response.status).toBe(502);
+  expect((await response.json()).error).toContain("Remove the selection or choose an owned entry");
+  expect(generateText).not.toHaveBeenCalled();
+});
+it("persists the exact prompt snapshot and trusted dialogue provenance at successful publication", async () => {
+  expect((await POST(request("Hello"))).status).toBe(200);
+  const publication = serviceRpc.mock.calls.find(call => call[0] === "finish_contextual_chat_request")?.[1];
+  expect(publication).toMatchObject({ p_prompt_context: {
+    memory: { version: 1, kind: "dialogue", scopes: [], receiptIds: [] },
+    assembly: { budgetBytes: 16000 },
+    messages: vi.mocked(generateText).mock.calls[0][0].messages,
+  } });
+});
+it("retrieves a pinned owned request beyond the ordinary history window with automatic history removed", async () => {
+  const pinned = "00000000-0000-4000-8000-000000000009";
+  await withHistory([...Array.from({ length: 200 }, () => ({ role: "user", content: "Unrelated recent question" })),
+    { id: pinned, role: "user", content: "Older chosen comparison: September versus August." }]);
+  const response = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({
+    conversationId: requestId, requestId, message: "Use the pinned comparison", context: { includeHistory: false, pinnedMessageIds: [pinned] },
+  }) }));
+  expect(response.status).toBe(200);
+  const prompt = JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages);
+  expect(prompt).toContain("Older chosen comparison: September versus August.");
+  expect(prompt).not.toContain("Unrelated recent question");
+});
+it("asks the user to remove an unavailable pin without sending it to the provider", async () => {
+  const response = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({
+    conversationId: requestId, requestId, message: "Use the pinned comparison", context: { pinnedMessageIds: [requestId] },
+  }) }));
+  expect(response.status).toBe(502);
+  expect((await response.json()).error).toContain("Remove it or choose a visible request");
+  expect(generateText).not.toHaveBeenCalled();
+});
+it("bounds the complete prompt, including later tool results, and records the budget", async () => {
+  expect((await POST(request("Inspect permitted evidence"))).status).toBe(200);
+  const options = vi.mocked(generateText).mock.calls[0][0];
+  expect(options.prepareStep).toBeTypeOf("function");
+  const prepare = options.prepareStep as unknown as (input: { stepNumber: number; messages: unknown[] }) => Promise<unknown>;
+  await expect(prepare({ stepNumber: 1, messages: [{ role: "tool", content: "x".repeat(70000) }] })).rejects.toThrow("prompt budget");
+  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_contextual_chat_request")?.[1]).toMatchObject({
+    p_prompt_context: { assembly: { promptBudgetBytes: 65536, promptSteps: [{ step: 0, bytes: expect.any(Number) }] } },
+  });
+});
+it("preserves application-written planning choices separately from revoked evidence in the same answer", async () => {
+  const current = await requireWorkspace();
+  current.workspace.id = "00000000-0000-4000-8000-000000000010";
+  const receipt = toolResultReceipt("analytics_cashflow", {}, { currencyCode: "EUR", from: "2026-09-01", to: "2026-09-30", spendingMinor: "25" },
+    { workspaceId: current.workspace.id, fetchedAt: "2026-10-01T00:00:00Z", timezone: "UTC" }, ["transactions", "imports"]);
+  vi.mocked(captureToolEvidence).mockResolvedValueOnce([receipt]);
+  vi.mocked(generateText).mockImplementationOnce(async options => {
+    const tools = options.tools as unknown as Record<string, { execute: (input: unknown, options: unknown) => Promise<unknown> }>;
+    await tools.analytics_cashflow.execute({ from: "2026-09-01", to: "2026-09-30", currencyCode: "EUR" }, {});
+    const metric = receipt.metrics[0];
+    return { text: JSON.stringify({ claims: [{ operation: "metric", operands: [{ receiptId: receipt.id, metricId: metric.id }], valueMinor: "25", currency: "EUR", periods: [metric.period], qualifiers: metric.qualifiers }],
+      interpretation: [], dialogue: { options: ["compare_periods", "forecast_assumptions"] } }), totalUsage: {} } as never;
+  });
+  const first = await (await POST(request("Show September spending and suggest two next steps"))).json();
+  expect(first.answer).toContain("Option 2: Explore a conditional forecast");
+  expect(first.answer).toContain("EUR 0.25");
+  const snapshot = serviceRpc.mock.calls.find(call => call[0] === "finish_contextual_chat_request")![1].p_prompt_context;
+  await withHistory([{ role: "assistant", content: first.answer, context: snapshot }], ["accounts", "transactions", "planning"]);
+  vi.mocked(generateText).mockClear();
+  expect((await POST(request("Explain the second option"))).status).toBe(200);
+  const prompt = JSON.stringify(vi.mocked(generateText).mock.calls[0][0].messages);
+  expect(prompt).toContain("Option 2: Explore a conditional forecast");
+  expect(prompt).not.toContain("EUR 0.25");
+  expect(prompt).not.toContain(receipt.id);
+});
+it("does not accept arbitrary financial prose inside planning choices", async () => {
+  vi.mocked(generateText).mockResolvedValueOnce({ text: JSON.stringify({ claims: [], interpretation: [], dialogue: { options: ["forecast_assumptions"], text: "You can afford EUR 999999.00" } }), totalUsage: {} } as never);
+  const answer = await (await POST(request("Suggest a next step"))).json();
+  expect(answer.answer).not.toContain("999999");
+  expect(answer.answer).not.toContain("Option 1:");
+});
 it("removes unsupported provider amounts and links before either response or immutable history publication", async () => {
   vi.mocked(generateText).mockResolvedValueOnce({ text: "You spent EUR 999999.00 [proof](/money/transactions?transaction=missing)", totalUsage: {} } as never);
   const response = await POST(request("Explain my spending"));
@@ -40,7 +191,7 @@ it("removes unsupported provider amounts and links before either response or imm
   expect(body.answer).toContain("Unsupported sections were removed");
   expect(body.answer).not.toContain("999999");
   expect(body.answer).not.toContain("transaction=missing");
-  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_verified_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
+  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_contextual_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
 });
 it("publishes supported tool claims with application amounts and calculation links", async () => {
   const context = await requireWorkspace();
@@ -59,7 +210,7 @@ it("publishes supported tool claims with application amounts and calculation lin
   expect(body.answer).toContain("EUR 0.25");
   expect(body.answer).toContain(`/ai/evidence/${receipt.id}?metric=spendingMinor`);
   expect(body.answer).not.toContain("Unsupported sections");
-  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_verified_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
+  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_contextual_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
 });
 it("offers scoped investigation and question-bound review start within four model steps", async () => {
   expect((await POST(request("Start a deep financial review"))).status).toBe(200);
@@ -239,7 +390,7 @@ it("publishes successful validated answers through service-only owned publicatio
   const context = await requireWorkspace();
   const response = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000001", requestId: "00000000-0000-4000-8000-000000000002", message: "Hello" }) }));
   expect(response.status).toBe(200);
-  expect(serviceRpc).toHaveBeenCalledWith("finish_verified_chat_request", expect.objectContaining({ p_request_id: "00000000-0000-4000-8000-000000000002", p_receipt_ids: [], p_scopes: [] }));
+  expect(serviceRpc).toHaveBeenCalledWith("finish_contextual_chat_request", expect.objectContaining({ p_request_id: "00000000-0000-4000-8000-000000000002", p_receipt_ids: [], p_scopes: [] }));
   expect(vi.mocked(context.supabase.rpc).mock.calls.some(call => call[0] === "finish_chat_request" && call[1]?.p_status === "completed")).toBe(false);
 });
 it("publishes a useful typed clarification when no financial measure is needed", async () => {
@@ -249,7 +400,7 @@ it("publishes a useful typed clarification when no financial measure is needed",
   expect(body.answer).toContain("What start and end dates");
   expect(body.answer).not.toContain("No supported financial measures");
   expect(body.answer).not.toContain("Unsupported sections");
-  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_verified_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
+  expect(serviceRpc.mock.calls.find(call => call[0] === "finish_contextual_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
 });
 it.each(["planning", "imports"] as const)("carries actual %s reads across a revocation between post-read and capture", async revoked => {
   await POST(request("Review my finances"));

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AttachTransactionToChat } from "@/components/chat-context";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { TransactionTable } from "./table";
@@ -310,6 +311,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       {selected.status === "pending" && selected.kind === "ordinary" && BigInt(selected.amount_minor) < 0n && <PendingHoldPanel transaction={selected} />}
       <Link href={`/money/transactions?${current}`} className="text-sm underline">Close</Link>
       <h2 className="mt-6 text-xl font-semibold">{selected.description}</h2>
+      <AttachTransactionToChat workspaceId={workspace.id} transactionId={selected.id} />
       <p className="mt-2">{selected.posted_on} · {selected.amount_minor} minor units {selected.currency_code}</p>
       <p className="mt-2 text-sm">Tags: {(selected.tags ?? []).join(", ") || "None"} · Group: {selected.event_name || "None"}</p>
       {splitSet.data ? <section aria-label="Split allocations" className="mt-4 rounded border p-3"><h3 className="font-medium">Split allocations</h3><p className="mt-1 text-xs text-muted-foreground">The original amount, source and category are retained. Balances count the original once; spending uses these allocations. Undo splits before changing category or linking transfers/refunds.</p><ul className="mt-2 text-sm">{splitRows.data?.map(row => <li key={row.id}>{formatMoney(row.amount_minor, selected.currency_code)} · {categories?.find(category => category.id === row.category_id)?.name ?? "Uncategorized"} · {row.note}</li>)}</ul><form action={undoTransactionSplits} className="mt-3"><input type="hidden" name="setId" value={splitSet.data.id} /><input type="hidden" name="id" value={selected.id} /><input type="hidden" name="version" value={selected.version} /><input type="hidden" name="query" value={current.toString()} /><button className="text-sm underline">Undo splits</button></form></section> : selected.kind === "ordinary" && selected.status === "posted" && !selected.review_reasons?.length && !selected.transfer_id && !selected.refund_of_id && !inboundRefunds?.length && !inboundTransfer?.length && <SplitEditor locale={workspace.locale} id={selected.id} version={selected.version} amountMinor={selected.amount_minor} currency={selected.currency_code} categories={categories ?? []} query={current.toString()} requestId={crypto.randomUUID()} />}

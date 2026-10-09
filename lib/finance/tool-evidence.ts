@@ -106,10 +106,21 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
 }
 const BASE_FINANCIAL_ANSWER_INSTRUCTIONS = `Return only a JSON object with claims and interpretation arrays. Each measured claim is {operation:"metric"|"difference"|"sum",operands:[{receiptId,metricId}],valueMinor:exact integer string,currency:exact currency,unit:"money"|"count",periods:ordered operand periods,qualifiers:the complete union of required qualification codes}. Copy the unit from evidence metrics (default money); record counts are not currency amounts. Difference is first minus second; sum requires identical periods. Source IDs and internal hrefs are never invented: the application renders the actual calculation and supporting records from receipt references. Copy metric and receipt IDs from evidenceReceipts. Do not restate numerical facts or qualitative financial assertions as unrestricted prose. Interpretation is a separate array of {action:"review"|"consider"|"ask",reference:{receiptId,metricId},topic:"classification"|"supporting_records"|"budget"|"timing"|"recurring"|"goals"|"assumptions"}; select conditional next steps related to measured facts. The application labels interpretation distinctly. Unsupported sections are visibly removed; bounded repair budget is zero. Missing evidence stays unknown.`;
 export const FINANCIAL_ANSWER_INSTRUCTIONS = BASE_FINANCIAL_ANSWER_INSTRUCTIONS + ` For evidence-specific explanatory prose, compose interpretation entries {action:"explain",observation:{kind:"comparison",first:{receiptId,metricId},second:{receiptId,metricId},relationship:"higher"|"lower"|"unchanged"},hypotheses:["timing"|"one_off_activity"|"recurring_activity"|"classification"|"missing_data"|"currency_conversion"|"refund_timing"|"changed_allocation"|"internal_funding"|"planned_assumptions"],uncertainty:"unproven",nextSteps:[the supported topic codes]}. Both references must also appear in accepted measured claims, currencies and units must match, and the relationship must agree with exact values. Alternatively use observation:{kind:"limits",reference:{receiptId,metricId}} to explain recorded qualifications. Compose up to four hypotheses/checks per entry and multiple distinct comparisons. The application writes evidence-specific prose using the actual names, dates, exact differences and working links. Hypotheses remain explicitly unproven; do not assert causes, motivations or unrecorded activity. No free-text fields are accepted. For greetings, help or missing scope, keep claims and interpretation empty and add clarification:{topic:"welcome"|"help"|"question"|"period"|"comparison_period"|"account"|"category"|"merchant"|"currency"|"classification"|"goal"|"assumptions"}. These application-written questions introduce no unverified financial assertions. Use an explicit clarification when more context is needed instead of inventing a period, entity or amount.`;
+export const CONVERSATION_OPTION_INSTRUCTIONS = ` You may also add dialogue:{options:["compare_periods"|"review_classification"|"forecast_assumptions"|"review_goals"]} to offer up to three distinct next-task choices in the chosen order. The application writes these numbered choices; they state no financial facts. Do not add prose, names, amounts or other fields. A follow-up may refer to an option by its number; retain that task choice and retrieve new permitted evidence.`;
+const dialogueSchema = z.object({ options: z.array(z.enum(["compare_periods", "review_classification", "forecast_assumptions", "review_goals"])).min(1).max(3).refine(options => new Set(options).size === options.length) }).strict();
+const conversationOptions = {
+  compare_periods: "Compare two explicitly chosen date ranges using current permitted records.",
+  review_classification: "Review financial classifications and supporting records before drawing conclusions.",
+  forecast_assumptions: "Explore a conditional forecast with explicit dates, account and assumptions.",
+  review_goals: "Review a chosen goal and its dated recorded savings; do not assume current affordability.",
+};
 export function providerFinancialAnswer(text: string, receipts: EvidenceReceipt[], workspaceId: string) {
   let parsed: unknown;
   try { parsed = JSON.parse(text); } catch { parsed = null; }
-  let result = publishFinancialClaims(parsed, receipts, workspaceId);
+  const { dialogue: rawDialogue, ...financial } = object(parsed);
+  const choices = dialogueSchema.safeParse(rawDialogue);
+  const dialogue = choices.success ? choices.data.options.map((option, index) => `Option ${index + 1}: ${conversationOptions[option]}`).join("\n") : null;
+  let result = publishFinancialClaims(financial, receipts, workspaceId);
   if (!result.accepted.length && !result.clarified && receipts.some(receipt => receipt.metrics.some(metric => metric.valueMinor !== null))) {
     const all = receipts.flatMap(receipt => receipt.metrics.filter(metric => metric.valueMinor !== null).map(metric => ({ operation: "metric", operands: [{ receiptId: receipt.id, metricId: metric.id }], valueMinor: metric.valueMinor, currency: metric.currency, unit: metric.unit ?? "money", periods: [metric.period], qualifiers: metric.qualifiers })));
     result = publishFinancialClaims({ claims: all.slice(0, 20), interpretation: [] }, receipts, workspaceId);
@@ -151,5 +162,7 @@ export function providerFinancialAnswer(text: string, receipts: EvidenceReceipt[
   }
   if (status.length) result.body = [status.join("\n\n"), result.body].filter(Boolean).join("\n\n");
   if (receipts.length) result.body += `\n\nEvidence trail\n\n${receipts.filter(receipt => receipt.workspaceId === workspaceId).map(receipt => `- [Retained query and supporting records](/ai/evidence/${receipt.id})`).join("\n")}`;
-  return result;
+  if (dialogue) result.body += `\n\nPossible next tasks\n\n${dialogue}`;
+  else if (rawDialogue !== undefined) result.body += "\n\nUnsupported dialogue choices were removed.";
+  return { ...result, dialogue };
 }

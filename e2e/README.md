@@ -1,5 +1,11 @@
 # Browser acceptance
 
+## Conversation context acceptance
+
+After building and deploying reviewed migration `202610080019`, run `npx playwright test --config e2e/conversation-context.config.ts` with configured Supabase/auth and port3025 free. This creates its own disposable authenticated owner and exercises the production chat route, owned selected-entry reader, receipt publication, persisted context snapshots and native controls in both chat surfaces. Fifty-turn history, pins beyond the automatic history window, revoked import access, current canonical versions and a saved native correction are checked with exact original-record retention and final cleanup across all workspace tables/auth/storage; the migration ledger must remain unchanged.
+
+The dedicated server loads a test-only fetch interceptor that returns fixed OpenRouter catalogue/answer responses and denies all other traffic to that host. Supabase authentication/database calls remain real. This proves prompt construction, ownership, publication and UI behavior, not provider quality. The synthetic amount/version revision proves fresh reader recomputation; the native correction separately edits a note. Inputs, fixture recovery journals, logs and browser artifacts remain ignored under `.qa`.
+
 ## Bounded investigation acceptance
 
 `npx playwright test --config e2e/review-investigation.config.ts` runs the installed Next/Workflow runtime with the unchanged analysis form/routes, dispatcher, bounded controller, deterministic reader, receipt persistence, synthesis and freshness code. Its local synthetic HTTP database/model boundaries use no Supabase auth, public DDL, financial account or paid provider. The synthetic owner cookie exists only in the ignored harness app; it does not alter production authentication.

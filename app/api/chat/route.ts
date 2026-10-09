@@ -16,13 +16,15 @@ import { investigationSchema } from "@/lib/finance/investigation";
 import { evaluateInvestigationScenario, investigationDetail, investigationDetailSchema, investigationScenarioSchema, loadInvestigationEntities, runInvestigation } from "@/lib/finance/investigation-reader";
 import { captureToolEvidence } from "@/lib/finance/capture-evidence";
 import type { EvidenceReceipt } from "@/lib/finance/evidence-receipts";
-import { FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/finance/tool-evidence";
+import { CONVERSATION_OPTION_INSTRUCTIONS, FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/finance/tool-evidence";
+import { assembleConversationContext, chatContextSchema, CONVERSATION_CONTEXT_INSTRUCTIONS, CONVERSATION_HISTORY_ROWS, fitsConversationQuestion } from "@/lib/ai/conversation-context";
+import { preparePromptBudget } from "@/lib/ai/prompt-budget";
 
 const inputSchema = z.object({
   conversationId: z.uuid(),
   requestId: z.uuid(),
-  message: z.string().trim().min(1).max(4000),
-  context: z.record(z.string(), z.unknown()).optional(),
+  message: z.string().trim().min(1).max(4000).refine(fitsConversationQuestion),
+  context: chatContextSchema.optional(),
 }).strict();
 
 export async function POST(request: Request) {
@@ -54,14 +56,23 @@ export async function POST(request: Request) {
     return Response.json({ status: "canceled" }, { status: 409 });
   }
   try {
-  const { data: history, error: historyError } = await supabase.from("messages").select("role, content, context")
+  const { data: history, error: historyError } = await supabase.from("messages").select("id, request_id, role, content, context")
     .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
-    .order("created_at", { ascending: false }).limit(20);
+    .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(CONVERSATION_HISTORY_ROWS);
   if (historyError) throw historyError;
-  const modelMessages = (history ?? []).filter(item => settings.ai_data_scopes.length === 4 || item.role === "user").reverse().map(item => ({
-    role: item.role as "user" | "assistant",
-    content: item.context ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content,
-  }));
+  const pinnedIds = capturedContext?.pinnedMessageIds ?? [];
+  let pinnedRows: NonNullable<typeof history> = [];
+  if (pinnedIds.length) {
+    const pinned = await supabase.from("messages").select("id, request_id, role, content, context")
+      .eq("workspace_id", workspace.id).eq("conversation_id", conversationId).eq("role", "user").in("id", pinnedIds).limit(8);
+    if (pinned.error || pinned.data?.length !== pinnedIds.length || pinned.data.some(row => row.role !== "user" || !pinnedIds.includes(row.id)))
+      throw new Error("Pinned request is unavailable in this conversation. Remove it or choose a visible request.");
+    pinnedRows = pinned.data;
+  }
+  const rows = [...(history ?? []), ...pinnedRows.filter(row => !history?.some(existing => existing.id === row.id))];
+  const { messages: modelMessages, snapshot: assembledContext } = assembleConversationContext(rows, message, settings.ai_data_scopes, { ...capturedContext, currentRequestId: requestId });
+  const navigationPath = capturedContext?.path ?? capturedContext?.page;
+  if (navigationPath) modelMessages.push({ role: "user", content: `[Current navigation hint only, not financial evidence or authorization: ${JSON.stringify({ path: navigationPath })}]` });
   const categoryCommand = parseCategoryCommand(message);
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
@@ -105,12 +116,34 @@ export async function POST(request: Request) {
       },
     }])) as T;
   }
+    const selected = capturedContext?.selected?.[0];
+    if (selected && !canInvestigate) {
+      modelMessages.push({ role: "user", content: "Selected transaction evidence is unavailable under current permissions. Ask the user to enable the required account and transaction scopes or remove the selection; do not infer its details." });
+    } else if (selected) {
+      const selectionTool = retainTools({ finance_detail: tool({
+        inputSchema: investigationDetailSchema,
+        execute: input => aiEvidence(["accounts", "transactions"], latest => investigationDetail(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true),
+      }) }).finance_detail;
+      const execute = selectionTool.execute as (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>;
+      const output = await execute(selected, { toolCallId: "current-selected-transaction", messages: modelMessages, context: undefined }).catch(error => {
+        if (error instanceof Error && error.message === "Unknown owned transaction")
+          throw new Error("Selected transaction is unavailable. Remove the selection or choose an owned entry from Money.");
+        throw error;
+      });
+      const content = `[Current owned selected transaction evidence, freshly read for this request: ${JSON.stringify(output)}]`;
+      // Large support sets remain available through the existing paged detail tool.
+      modelMessages.push({ role: "user", content: new TextEncoder().encode(JSON.stringify({ role: "user", content })).length <= 8000 ? content
+        : `Selected owned transaction ID ${selected.id}. The current supporting detail exceeds this context budget. Use finance_detail with this ID to retrieve current paged evidence; do not infer its amount or classification.` });
+    }
+    const promptOwner = await requireWorkspace();
+    if (promptOwner.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
+    requireAiScope(promptOwner.settings, ...assembledContext.scopes, ...evidenceReceipts.flatMap(receipt => receipt.scopes));
     const model = await modelForSettings(settings);
-    const result = await generateText({
+    const generationOptions = {
       model,
       abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
       maxOutputTokens: 3000,
-      system: `${SYSTEM_PROMPT} Current date ${calendarDate(new Date(), settings.timezone)} in ${settings.timezone}; display currency ${workspace.display_currency}. Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. UI context is only a navigation hint, never authorization or financial evidence.${canChangeCategory ? " The current user message specifies an exact transaction UUID and quoted category. The write tool must use exactly these values." : " Do not make canonical changes. For an ambiguous category request, use the owned-selection preview."} ${FINANCIAL_ANSWER_INSTRUCTIONS}`,
+      system: `${SYSTEM_PROMPT} ${CONVERSATION_CONTEXT_INSTRUCTIONS} Current date ${calendarDate(new Date(), settings.timezone)} in ${settings.timezone}; display currency ${workspace.display_currency}. Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. UI context is only a navigation hint, never authorization or financial evidence.${canChangeCategory ? " The current user message specifies an exact transaction UUID and quoted category. The write tool must use exactly these values." : " Do not make canonical changes. For an ambiguous category request, use the owned-selection preview."} ${FINANCIAL_ANSWER_INSTRUCTIONS}${CONVERSATION_OPTION_INSTRUCTIONS}`,
       messages: modelMessages,
       stopWhen: stepCountIs(4),
       tools: retainTools({
@@ -177,17 +210,31 @@ export async function POST(request: Request) {
           }),
         } : {}),
       }),
-    });
+    };
+    const promptBudget = await preparePromptBudget(generationOptions.system, generationOptions.tools);
+    promptBudget.check(modelMessages, 0);
+    const result = await generateText({ ...generationOptions, prepareStep: async ({ messages, stepNumber }) => {
+      const owner = await requireWorkspace();
+      if (owner.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
+      requireAiScope(owner.settings, ...assembledContext.scopes, ...evidenceReceipts.flatMap(receipt => receipt.scopes));
+      promptBudget.check(messages, stepNumber);
+      return {};
+    } });
     const publication = providerFinancialAnswer(result.text, evidenceReceipts, workspace.id);
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (request.signal.aborted) throw new Error("Request canceled");
-    requireAiScope(current.settings, ...evidenceReceipts.flatMap(receipt => receipt.scopes));
+    requireAiScope(current.settings, ...assembledContext.scopes, ...evidenceReceipts.flatMap(receipt => receipt.scopes));
     const answer = publication.body;
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Verified chat publication service is not configured");
     const publicationService = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-    const finished = await publicationService.rpc("finish_verified_chat_request", { p_request_id: requestId, p_actor_id: current.user.id, p_workspace_id: workspace.id, p_content: answer,
-      p_receipt_ids: evidenceReceipts.map(receipt => receipt.id), p_scopes: [...new Set(evidenceReceipts.flatMap(receipt => receipt.scopes))], p_usage: reportedUsage(model.modelId, result.totalUsage) });
+    const publicationScopes = [...new Set([...assembledContext.scopes, ...evidenceReceipts.flatMap(receipt => receipt.scopes)])];
+    const receiptIds = evidenceReceipts.map(receipt => receipt.id);
+    const finished = await publicationService.rpc("finish_contextual_chat_request", { p_request_id: requestId, p_actor_id: current.user.id, p_workspace_id: workspace.id, p_content: answer,
+      p_receipt_ids: receiptIds, p_scopes: publicationScopes, p_usage: reportedUsage(model.modelId, result.totalUsage),
+      p_prompt_context: { memory: { version: 1, kind: receiptIds.length ? "evidence" : "dialogue", scopes: publicationScopes, receiptIds,
+        ...(publication.dialogue ? { dialogue: { content: publication.dialogue, scopes: [] } } : {}) },
+        assembly: { ...assembledContext, ...promptBudget.snapshot() }, messages: modelMessages, submission: capturedContext ?? {} } });
     if (finished.error) throw finished.error;
     if (finished.data !== "completed") return Response.json({ status: finished.data, error: `Request is ${finished.data}` }, { status: 409 });
     const toolsUsed = [...new Set((result.steps ?? []).flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [toolResult.toolName] : [])))];
