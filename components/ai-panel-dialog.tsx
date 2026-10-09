@@ -63,7 +63,7 @@ export function AiPanelDialog({ open, onClose }: { open: boolean; onClose: () =>
     const context = { path: window.location.pathname + window.location.search };
     const selectionGeneration = generation.current;
     const result = await send({ conversationId: id, message: question, context });
-    if (result && selectionGeneration === generation.current) { selectConversation(selectionKey, id); setExchanges(current => [...current, { question, answer: result.answer, tools: result.toolsUsed ?? [] }]); setQuestion(""); if (pathname === "/ai") { router.push(`/ai?conversation=${id}`); router.refresh(); } }
+    if (result && selectionGeneration === generation.current) { selectConversation(selectionKey, id); setExchanges(current => [...current, { question, answer: result.answer, tools: result.toolsUsed ?? [] }]); setQuestion(current => current === question ? "" : current); if (pathname === "/ai") { router.push(`/ai?conversation=${id}`); router.refresh(); } }
   }
 
   return <dialog ref={dialog} id="moneo-ai-panel" aria-label="AI assistant" onCancel={onClose} className="ai-evidence fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-none w-full max-w-md overflow-y-auto overscroll-contain border-l border-border bg-card p-5 text-foreground shadow-xl backdrop:bg-black/40">
