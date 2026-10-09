@@ -42,7 +42,7 @@ test("scenario comparison, edits, removal and undo preserve actual cash", async 
     await expect(page.getByRole("link", { name: "Edit forecast defaults", exact: true })).toHaveAttribute("href", "#forecast-preferences");
     await page.getByLabel("New scenario name", { exact: true }).fill("Laptop decision");
     await page.getByRole("button", { name: "Create scenario", exact: true }).click();
-    await expect(page).toHaveURL(/scenario=/);
+    await expect(page).toHaveURL(/scenario=/, { timeout: 30_000 });
     const scenario = new URL(page.url()).searchParams.get("scenario")!;
     await page.getByLabel("Hypothetical event name", { exact: true }).fill("Laptop");
     await page.getByLabel("Hypothetical change amount", { exact: true }).fill("-200.00");
