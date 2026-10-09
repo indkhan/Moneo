@@ -1,13 +1,17 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
+
+const subscribeToCallback = () => () => {};
+const callbackError = () => new URLSearchParams(window.location.search).get("error") === "sign-in";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const submitting = useRef(false);
+  const failedCallback = useSyncExternalStore(subscribeToCallback, callbackError, () => false);
 
   async function signIn(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -41,7 +45,7 @@ export default function LoginPage() {
           <input id="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-lg border border-border bg-card px-3 py-2.5 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" />
           <button disabled={pending} className="w-full rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">{pending ? "Sending…" : "Send sign-in link"}</button>
         </form>
-        <p role="status" className="mt-4 text-sm text-muted-foreground">{message}</p>
+        <p role="status" className="mt-4 text-sm text-muted-foreground">{message ?? (failedCallback ? "The sign-in link could not be verified. Request a new link and try again." : "")}</p>
       </div>
     </main>
   );

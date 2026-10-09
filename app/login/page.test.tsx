@@ -16,6 +16,7 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
     if (!(index in host.slots)) host.slots[index] = { current: initial };
     return host.slots[index];
   },
+  useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
 }));
 beforeEach(() => {
   host.index = 0; host.slots = []; vi.clearAllMocks();
@@ -30,6 +31,16 @@ function formSubmit(node: ReactNode): ((event: { preventDefault: () => void }) =
 }
 function render() { host.index = 0; return LoginPage(); }
 const event = { preventDefault: vi.fn() };
+
+it("explains a failed callback and clears that message when retrying", async () => {
+  vi.stubGlobal("window", { location: { origin: "http://localhost:3000", search: "?error=sign-in" } });
+  render();
+  expect(renderToStaticMarkup(render())).toContain("The sign-in link could not be verified. Request a new link and try again.");
+  host.signInWithOtp.mockResolvedValue({ error: null });
+  await formSubmit(render())!(event);
+  expect(renderToStaticMarkup(render())).toContain("Check your email for the sign-in link.");
+  expect(renderToStaticMarkup(render())).not.toContain("could not be verified");
+});
 
 it("reports client configuration failures and permits a retry", async () => {
   host.createClient.mockImplementationOnce(() => { throw new Error("Supabase configuration is missing"); });
