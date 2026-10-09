@@ -80,3 +80,27 @@ The complete unit suite passed 1,120 tests across 193 files with all four live d
 Sign-in email delivery and initial import model suggestions were intercepted; paid model/provider execution was not exercised. The explicit corrected import, durable worker and persisted source/amount were real. The exact disposable workspace, user, imported storage objects and saved authentication were removed and verified absent after the journey. Detailed evidence remains ignored under `.qa/journey-*`.
 
 After the build, the production server started successfully and all four startup smoke cases passed again against it. The local application was left running on port 3000 with its normal environment configuration.
+
+## Thorough user-flow follow-through on 9 October 2026
+
+Repeated journeys through disposable workspaces found and fixed nine additional application bugs:
+
+| User-visible problem | Fix |
+| --- | --- |
+| Valid Unicode source categories could disappear during import. | Count Unicode characters consistently with the database limit and preserve the original source. |
+| Failed sign-in callbacks returned to Login without an explanation. | Explain the failed link and retain the retry path. |
+| Unresolved transfers disappeared from financial uncertainty. | Retain classification exclusions and mark totals partial before excluding confirmed transfer principal. |
+| Typing the next question while an answer arrived could erase that draft. | Preserve changed drafts through both the assistant panel and first saved-conversation navigation. |
+| Rejected Settings submissions reset the user's edits. | Retain the editable draft while showing validation errors. |
+| Verified empty account inventories became generic clarification questions. | Render the recorded absence from an owned, accounts-scoped receipt. |
+| Settings rejected working reasoning models because its probe exhausted 64 output tokens. | Allow a bounded 512-token probe while retaining the timeout, free-price restrictions and empty-response rejection. |
+| Long account names and native select options widened mobile screens. | Allow cards to shrink, wrap long text and bound select widths. An explicit long-name fixture exercises eight routes at 360 px, dark appearance and keyboard dismissal. |
+| Verified nonempty account inventories also became generic questions. | Render validated, escaped account names from the retained owned receipt with evidence links; infer no balances. |
+
+The publication checks retain rejection of malformed, foreign and unpermitted evidence, and of unsupported provider prose. Installed Zod 4 already counts Unicode characters correctly; separate inventory regressions cover the 120/121-character boundary without duplicating validation code. Financial calculations, money precision, original sources, history and sandbox boundaries remain intact.
+
+The public production alias is `https://moneo-mu.vercel.app`. Live disposable-workspace checks exercised account creation, an exact EUR 12.34 manual posting, correction and undo, explicit booked-balance review, goal reservation and undo, and an actual EUR 23.45 file import through the durable worker with its Unicode merchant retained. The production API key also completed a verified-free model probe and an actual account-reader call. Free-provider rate limits remain observable external failures; no paid calls were enabled. Sign-in email delivery is intercepted in browser regressions, so these checks do not establish SMTP delivery.
+
+Release acceptance now uses a fresh production server. A traced development hot reload returned stale page data while a correct recurring-payment action completed; production acceptance avoids that HMR race. The required gate checks that the latest successful, clean fast run matches both the current Git revision and production build ID, disables the provider key for deterministic browser cases, and rejects skips or flaky results. Configurable browser targets also use matching authentication-cookie hostnames.
+
+Full reports, traces, screenshots, synthetic authentication and cleanup journals remain ignored under `.qa`. Disposable identities and storage objects are checked by exact ownership before cleanup. Required acceptance must start with a fresh workspace; reusing an earlier failed run can contaminate later currency and period assumptions. The standalone live-provider journey remains separate from the deterministic release gate.
