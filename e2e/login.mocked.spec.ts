@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { hasSupabaseEnv } from "./fixtures";
 
+test("failed sign-in callback explains how to retry", async ({ page }) => {
+  await page.goto("/auth/callback");
+  await expect(page).toHaveURL(/\/login\?error=sign-in$/);
+  await expect(page.getByRole("status")).toContainText("The sign-in link could not be verified. Request a new link and try again.");
+  await expect(page.getByRole("button", { name: "Send sign-in link", exact: true })).toBeEnabled();
+});
+
 test("sign-in shows pending feedback and allows retry after a rejected request without sending email", async ({ page }) => {
   test.skip(!hasSupabaseEnv(), "Configured Supabase client is needed for the mocked OTP request");
   let requests = 0;
