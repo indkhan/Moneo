@@ -131,3 +131,15 @@ it("still live-checks a newly selected model and rejects an empty reply without 
   expect(generateText).toHaveBeenCalledOnce();
   expect(rpc).not.toHaveBeenCalled();
 });
+
+it("leaves output headroom for a usable reasoning model before saving its selection", async () => {
+  const rpc = vi.fn(async () => ({ error: null }));
+  vi.mocked(requireWorkspace).mockResolvedValue(workspaceWith(null, rpc));
+  vi.mocked(listFreeModels).mockResolvedValue([{ id: "new-free", name: "New" }]);
+  vi.mocked(modelForSettings).mockResolvedValue({} as unknown as Awaited<ReturnType<typeof modelForSettings>>);
+  // The provider counts reasoning and visible output against the same limit.
+  vi.mocked(generateText).mockImplementation(async options => ({ text: (options.maxOutputTokens ?? 0) > 100 ? "OK" : "" }) as Awaited<ReturnType<typeof generateText>>);
+  const data = form(); data.set("openrouter_model", "new-free");
+  expect(await saveSettings({}, data)).toEqual({ saved: true });
+  expect(rpc).toHaveBeenCalledOnce();
+});

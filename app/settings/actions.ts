@@ -25,7 +25,7 @@ export async function saveSettings(_previous: { error?: string; saved?: boolean 
       if (!(await listFreeModels()).some(model => model.id === settings.openrouter_model))
         throw new Error("Choose a currently verified free model with the required capabilities");
       const check = await generateText({ model: await modelForSettings(settings), prompt: "Reply with the single word OK.",
-        maxOutputTokens: 64, maxRetries: 0, abortSignal: AbortSignal.timeout(15000) });
+        maxOutputTokens: 512, maxRetries: 0, abortSignal: AbortSignal.timeout(15000) });
       if (!check.text.trim()) throw new Error("The selected free model returned no usable response; choose another model");
     }
     const result = await supabase.rpc("save_workspace_preferences", { p_workspace_id: workspace.id, p_display_currency: currency, p_preferences: settings });
