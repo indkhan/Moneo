@@ -70,7 +70,7 @@ export async function spendingForArtifact(artifactId: string, query: string, per
       .eq("workspace_id", workspace.id)
       .gte("posted_on", from).lte("posted_on", to)
       .order("posted_on", { ascending: false }).order("id");
-    if (!view) rows = rows.eq("status", "posted").neq("kind", "transfer");
+    if (!view) rows = rows.eq("status", "posted");
     if (query) rows = rows.ilike("description", `%${query.replace(/[%_]/g, "\\$&")}%`);
     const { data, error } = await rows.range(offset, offset + 999);
     if (error) throw error;
@@ -110,7 +110,7 @@ export async function spendingForArtifact(artifactId: string, query: string, per
   }
   const sourceCoverage = { ...coverage, lifecycleExclusionsKnown: !!view, scope: { ...coverage.scope,
     descriptionFilter: query ? "applied; source relevance unknown" : "none",
-    effectiveRowFilter: view ? "all lifecycle rows in period; exclusions disclosed by canonical reporting" : "posted non-transfer rows; other lifecycle exclusions were not queried" } };
+    effectiveRowFilter: view ? "all lifecycle rows in period; exclusions disclosed by canonical reporting" : "posted rows in period; transfer and classification exclusions disclosed by cashflow" } };
   return { summary, byAccount, reporting, conversionCoverage: reporting?.conversionCoverage, resultBasis: reporting?.resultBasis, sourceCoverage, transactions: transactions.filter(row => row.status === "posted" && row.kind !== "transfer" && !row.review_reasons?.length), currency: workspace.display_currency, from, to, timezone: workspace.timezone ?? "Europe/Berlin" };
 }
 

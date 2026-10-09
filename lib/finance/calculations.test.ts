@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest";
 import { availableToSpend, forecastDaily, netWorth, summarizeCashflow } from "./calculations";
 
 describe("exact financial calculations", () => {
+  it("treats an unresolved posted transfer as unknown cashflow before excluding confirmed transfers", () => {
+    expect(summarizeCashflow([
+      { amountMinor: -1000n, currencyCode: "EUR", status: "posted", kind: "ordinary" },
+      { amountMinor: -500n, currencyCode: "EUR", status: "posted", kind: "transfer", reviewReasons: ["classification-review"] },
+      { amountMinor: -600n, currencyCode: "EUR", status: "posted", kind: "transfer" },
+      { amountMinor: -700n, currencyCode: "EUR", status: "pending", kind: "transfer", reviewReasons: ["classification-review"] },
+    ], "EUR")).toEqual({ incomeMinor: 0n, spendingMinor: 1000n, netMinor: -1000n, excludedReviewRows: 1, partial: true });
+  });
   it("excludes unresolved classifications and labels cashflow partial", () => {
     expect(summarizeCashflow([
       { amountMinor: -1000n, currencyCode: "EUR", status: "posted", kind: "ordinary" },

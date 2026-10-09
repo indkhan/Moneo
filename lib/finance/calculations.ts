@@ -19,8 +19,9 @@ export function summarizeCashflow(transactions: CashflowTransaction[], currencyC
   let spendingMinor = 0n;
   let excludedReviewRows = 0;
   for (const transaction of transactions) {
-    if (transaction.status !== "posted" || transaction.kind === "transfer") continue;
+    if (transaction.status !== "posted") continue;
     if (transaction.reviewReasons?.length) { excludedReviewRows++; continue; }
+    if (transaction.kind === "transfer") continue;
     if (transaction.currencyCode !== currencyCode) return null;
     if (transaction.kind === "refund") spendingMinor -= transaction.amountMinor;
     else if (transaction.amountMinor > 0n) incomeMinor += transaction.amountMinor;

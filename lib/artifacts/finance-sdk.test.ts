@@ -11,6 +11,22 @@ vi.mock("@/lib/finance/model", () => ({ evaluatePlan: vi.fn() }));
 describe("artifact spending coverage", () => {
   afterEach(() => vi.useRealTimers());
 
+  it("keeps unresolved transfer evidence in legacy spending totals without displaying it as spending", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-09T12:00:00Z"));
+    let excludeTransfers = false;
+    const row = { id: "uncertain", account_id: "checking", posted_on: "2026-10-09", amount_minor: "-500", currency_code: "EUR", description: "Unresolved movement", status: "posted", kind: "transfer", review_reasons: ["classification-review"] };
+    const query = { select: () => query, eq: () => query, gte: () => query, lte: () => query, order: () => query,
+      neq: () => { excludeTransfers = true; return query; },
+      single: async () => ({ data: { permissions: ["spending"], active_version_id: "v" }, error: null }),
+      range: async () => ({ data: excludeTransfers ? [] : [row], error: null }) };
+    vi.mocked(requireWorkspace).mockResolvedValue({ settings: { ...DEFAULT_SETTINGS, ai_data_scopes: ["transactions"] }, workspace: { id: "w", display_currency: "EUR", timezone: "UTC" }, supabase: { from: () => query } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+    expect(await spendingForArtifact("artifact", "")).toMatchObject({
+      summary: { spendingMinor: "0", excludedReviewRows: 1, partial: true },
+      sourceCoverage: { exclusions: { classification: 1 }, scope: { effectiveRowFilter: "posted rows in period; transfer and classification exclusions disclosed by cashflow" } },
+      transactions: [],
+    });
+  });
+
   it("attaches source-only overlap evidence and retains an unknown scope for filtered artifacts", async () => {
     const from = (table: string) => {
       const query = { select: () => query, eq: () => query, neq: () => query, gte: () => query, lte: () => query, order: () => query, ilike: () => query,
@@ -76,7 +92,7 @@ describe("artifact spending coverage", () => {
       { id: "savings", incomeMinor: "0", spendingMinor: "-1000", netMinor: "1000", partial: false, excludedReviewRows: 0 },
     ]);
     expect(ranges).toEqual([[0, 999], [1000, 1999]]);
-    expect(filters).toContainEqual(["neq", "kind", "transfer"]);
+    expect(filters).not.toContainEqual(["neq", "kind", "transfer"]);
     expect(filters).toContainEqual(["ilike", "description", "%Shop%"]);
     expect(tables).toContain("effective_transactions");
     expect(tables).not.toContain("transactions");

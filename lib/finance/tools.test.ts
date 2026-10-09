@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { cashflow, searchTransactions, listAccounts, listGoals } from "./tools";
 
-const fixture = vi.hoisted(() => ({ tables: [] as string[] }));
+const fixture = vi.hoisted(() => ({ tables: [] as string[], unresolvedTransfer: false }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "w", display_currency: "EUR" }, settings: { ai_data_scopes: [] }, supabase: {
   from: (table: string) => {
     fixture.tables.push(table);
@@ -10,11 +10,22 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
         { amount_minor: "-9007199254740000", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [] },
         { amount_minor: "-993", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [] },
         { amount_minor: "500", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: ["source_transfer"] },
+        ...(fixture.unresolvedTransfer ? [{ amount_minor: "-500", currency_code: "EUR", status: "posted", kind: "transfer", review_reasons: ["classification-review"] }] : []),
       ] : table === "imports" ? [{ id: "i", status: "completed", total_rows: 1 }] : table === "source_transactions" ? [{ import_id: "i", status: "review", posted_on: "2026-10-01", currency_code: "EUR" }] : [], error: null }),
       limit: async () => ({ data: [{ id: "parent", amount_minor: "-9007199254740993" }], error: null }) };
     return query;
   },
 } }) }));
+
+it("retains unresolved transfer uncertainty in tool totals and source coverage", async () => {
+  fixture.unresolvedTransfer = true;
+  try {
+    expect(await cashflow({ from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR" }, undefined, false)).toMatchObject({
+      spendingMinor: "9007199254740993", evidence: { excludedReviewRows: 2, partial: true, includedTransactionCount: 2 },
+      sourceCoverage: { exclusions: { classification: 2, transfer: 0 } },
+    });
+  } finally { fixture.unresolvedTransfer = false; }
+});
 
 it("keeps non-AI finance reads usable with no AI scopes and exact canonical/effective semantics", async () => {
   fixture.tables.length = 0;
