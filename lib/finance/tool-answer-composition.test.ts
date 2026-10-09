@@ -11,6 +11,7 @@ const statuses = [
   [toolResultReceipt("transactions_setCategory", { transactionId, category: "Food" }, { status: "updated", category: "Food", transactionUrl: `/money/transactions?transaction=${transactionId}` }, context, ["transactions"]), "Updated the selected transaction category"],
   [toolResultReceipt("transactions_previewCategory", { transactionIds: [transactionId], categoryId }, { rows: [{ id: transactionId }], category: { id: categoryId } }, context, ["transactions"]), "Preview only"],
   [toolResultReceipt("imports_status", {}, { imports: [{ id: transactionId, status: "completed" }] }, context, ["imports"]), "Recorded processing status: completed"],
+  [toolResultReceipt("accounts_list", {}, [], context, ["accounts"]), "No account records were returned for this workspace"],
 ] as const;
 const limitation = { action: "limitation", receiptId: blocked.id, limitationId: blocked.limitations![0].id };
 const variants = [
@@ -66,4 +67,25 @@ it("adds only missing blockers when one of several retained limitations is expli
   expect(result.body.match(/Current booked balance unavailable/g)).toHaveLength(1);
   expect(result.body.match(/Interpretation — conditional next steps/g)).toHaveLength(1);
   expect(result.body).toContain("Created the requested tool");
+});
+
+it("publishes the verified empty account inventory when provider prose is unsupported", () => {
+  const receipt = toolResultReceipt("accounts_list", {}, [], context, ["accounts"]);
+  const result = providerFinancialAnswer("There are no accounts and your balance is zero.", [receipt], context.workspaceId);
+  expect(result.body).toContain("No account records were returned for this workspace.");
+  expect(result.body).toContain(`/ai/evidence/${receipt.id}`);
+  expect(result.body).toContain("Unsupported sections were removed");
+  expect(result.body).not.toContain("Tell me the financial question");
+  expect(result.body).not.toContain("balance is zero");
+  expect(result.accepted).toHaveLength(0);
+});
+
+it("does not infer an empty account inventory from foreign, unscoped or malformed results", () => {
+  const receipts = [
+    toolResultReceipt("accounts_list", {}, [], { ...context, workspaceId: categoryId }, ["accounts"]),
+    toolResultReceipt("accounts_list", {}, [], context, []),
+    ...[null, {}, { error: "unavailable" }, [{ id: transactionId }]].map(value => toolResultReceipt("accounts_list", {}, value, context, ["accounts"])),
+  ];
+  const result = providerFinancialAnswer(JSON.stringify({ claims: [], interpretation: [] }), receipts, context.workspaceId);
+  expect(result.body).not.toContain("No account records");
 });

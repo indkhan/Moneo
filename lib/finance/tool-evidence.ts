@@ -126,6 +126,8 @@ export function providerFinancialAnswer(text: string, receipts: EvidenceReceipt[
   const status = receipts.filter(receipt => receipt.workspaceId === workspaceId).flatMap(receipt => {
     const value = object(receipt.query.result);
     const input = object(receipt.query.input);
+    if (receipt.query.toolName === "accounts_list" && receipt.scopes.includes("accounts") && Array.isArray(receipt.query.result) && receipt.query.result.length === 0)
+      return ["No account records were returned for this workspace."];
     if (receipt.query.toolName === "transactions_setCategory" && z.uuid().safeParse(input.transactionId).success && value.status === "updated" && value.category === input.category && value.transactionUrl === `/money/transactions?transaction=${input.transactionId}`)
       return [`Updated the selected transaction category. [Open transaction and Undo](/money/transactions?transaction=${input.transactionId}).`];
     if (receipt.query.toolName === "transactions_previewCategory") {
