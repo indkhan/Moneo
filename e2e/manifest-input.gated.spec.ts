@@ -26,7 +26,7 @@ test("manifest inputs restore, execute and save under one typed contract", async
     const cookies = new Map<string, string>();
     const auth = createServerClient(url, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { cookies: { getAll: () => [...cookies].map(([name, value]) => ({ name, value })), setAll: values => values.forEach(({ name, value }) => cookies.set(name, value)) } });
     expect((await auth.auth.signInWithPassword({ email, password })).error).toBeNull();
-    await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: "localhost", path: "/", sameSite: "Lax" as const })));
+    await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: new URL(baseURL!).hostname, path: "/", sameSite: "Lax" as const })));
     const page = await context.newPage();
     await page.goto("/ai/library");
     const create = page.locator("form").filter({ has: page.getByLabel("Custom Report", { exact: true }) });

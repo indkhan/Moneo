@@ -8,7 +8,7 @@ import { loadBalanceEvidence, resolveBalances } from "../lib/finance/balances";
 
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires disposable real Supabase authentication");
 
-test("explicit booked-balance review covers timestamped and date-only activity, retains later postings and supports undo", async ({ browser }) => {
+test("explicit booked-balance review covers timestamped and date-only activity, retains later postings and supports undo", async ({ browser, baseURL }) => {
   test.setTimeout(120_000);
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, connection = new URL(process.env.SUPABASE_DB_URL!);
   const project = new URL(url).hostname.split(".")[0];
@@ -24,12 +24,12 @@ test("explicit booked-balance review covers timestamped and date-only activity, 
   const [workspace] = await db`select id from public.workspaces where owner_id=${user}`;
   const recovery = `.qa/reviewed-balance-${user}.json`;
   mkdirSync(".qa", { recursive: true }); writeFileSync(recovery, JSON.stringify({ project, user, workspace: workspace.id }));
-  const context = await browser.newContext({ baseURL: "http://localhost:3000" });
+  const context = await browser.newContext({ baseURL });
   try {
     const cookies = new Map<string, string>();
     const auth = createServerClient(url, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { cookies: { getAll: () => [...cookies].map(([name, value]) => ({ name, value })), setAll: values => values.forEach(({ name, value }) => cookies.set(name, value)) } });
     expect((await auth.auth.signInWithPassword({ email, password })).error).toBeNull();
-    await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: "localhost", path: "/", sameSite: "Lax" as const })));
+    await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: new URL(baseURL!).hostname, path: "/", sameSite: "Lax" as const })));
     const account = randomUUID();
     await db`insert into public.workspace_settings(workspace_id,locale,timezone) values(${workspace.id},'en-US','Europe/Berlin')`;
     await db`insert into public.accounts(id,workspace_id,name,currency_code,type) values(${account},${workspace.id},'Synthetic reviewed cash','EUR','checking')`;
