@@ -12,7 +12,8 @@ export function SettingsForm({ settings, currency, models, defaultModel, catalog
   settings: WorkspaceSettings; currency: string; models: { id: string; name: string }[]; defaultModel: string; catalogueError?: string;
 }) {
   const [state, action, pending] = useActionState(saveSettings, {});
-  return <form action={action} className="space-y-7">
+  // React also resets uncontrolled fields when an action returns a validation error.
+  return <form action={action} onReset={event => event.preventDefault()} className="space-y-7">
     <fieldset className="rounded-xl border border-border bg-card p-5"><legend className="px-2 text-lg font-semibold">Display and calendar</legend>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="grid gap-1 text-sm">Display currency<input className={input} name="display_currency" defaultValue={currency} pattern="[A-Z]{3}" maxLength={3} required /></label>
