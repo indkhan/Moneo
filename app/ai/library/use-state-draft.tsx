@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 // A refreshed server revision cannot silently become the base of an existing draft.
-export function useStateDraft<T>(initial: T, version: number, save: (form: FormData) => Promise<{ conflict: true } | { saved: true; version: number; value: T }>) {
+export function useStateDraft<T>(initial: T, version: number, save: (form: FormData) => Promise<{ error: string } | { conflict: true } | { saved: true; version: number; value: T }>) {
   const router = useRouter();
   const [local, setLocal] = useState<{ value: T; version: number } | null>(null);
   const [acknowledged, setAcknowledged] = useState<{ value: T; version: number } | null>(null);
@@ -27,6 +27,7 @@ export function useStateDraft<T>(initial: T, version: number, save: (form: FormD
     form.set("expectedVersion", String(expectedVersion));
     try {
       const result = await save(form);
+      if ("error" in result) { setMessage(result.error); return; }
       if ("conflict" in result) {
         setServerConflict(true);
         setMessage("Saved inputs changed. Your draft is preserved. Review the latest inputs before choosing how to continue.");

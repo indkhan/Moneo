@@ -138,7 +138,7 @@ export function CalculatorPanel({
     <section aria-label="Generated calculator output" className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
       {snapshot !== null && typeof snapshot === "object" && "partial" in snapshot && snapshot.partial === true && <p role="status" className="mb-4 text-sm text-amber-700">Partial financial data: transactions awaiting classification are excluded. Review them in Import before relying on these totals.</p>}
       {shownSnapshot !== null && typeof shownSnapshot === "object" && "unavailable" in shownSnapshot && typeof shownSnapshot.unavailable === "string" && shownSnapshot.unavailable && <p role="alert" className="mb-4 text-sm text-muted-foreground">{shownSnapshot.unavailable}</p>}
-      {tripChanged && completed?.dependencies !== dependencies && <p role="status" className="mb-4 text-sm">Recalculating the local dated trip inputs. Saved forecast evidence appears below until this preview completes.</p>}
+      {tripChanged && status !== "error" && status !== "stopped" && completed?.dependencies !== dependencies && <p role="status" className="mb-4 text-sm">Recalculating the local dated trip inputs. Saved forecast evidence appears below until this preview completes.</p>}
       <ForecastEvidence evidence={shownSnapshot !== null && typeof shownSnapshot === "object" && "forecast" in shownSnapshot ? (shownSnapshot.forecast ?? {}) as ForecastEvidenceInput : (shownSnapshot ?? {}) as ForecastEvidenceInput} locale={locale} />
       {coverageWarnings(shownSnapshot).map(warning => <p key={warning} role="status" className="mb-4 text-sm text-amber-700">{warning}</p>)}
       {inputWarnings.map(warning => <p key={warning} role="status" className="mb-4 text-sm text-amber-700">{warning}</p>)}

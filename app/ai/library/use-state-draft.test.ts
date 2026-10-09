@@ -11,6 +11,14 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: hooks.refresh }) }));
 beforeEach(() => { hooks.slots = []; hooks.index = 0; hooks.refresh.mockClear(); });
 const save = vi.fn<(form: FormData) => Promise<{ conflict: true }>>().mockResolvedValue({ conflict: true });
+it("shows transported validation feedback while preserving the rejected draft and revision", async () => {
+  const rejected = vi.fn(async () => ({ error: "Unknown paying or receiving account" }));
+  function RenderRejectedDraft(value = { accountId: "owned" }, version = 1) { hooks.index = 0; return useStateDraft(value, version, rejected); }
+  RenderRejectedDraft().edit({ accountId: "missing" });
+  await RenderRejectedDraft().action(new FormData());
+  expect(RenderRejectedDraft()).toMatchObject({ value: { accountId: "missing" }, expectedVersion: 1, busy: false, conflict: false, message: "Unknown paying or receiving account" });
+  expect(hooks.refresh).not.toHaveBeenCalled();
+});
 function RenderDraft(value = { costMinor: 100 }, version = 1) { hooks.index = 0; return useStateDraft(value, version, save); }
 it("uses the acknowledged save revision for edits made before refreshed props arrive", async () => {
   const acknowledged = vi.fn(async () => ({ saved: true, version: 2, value: { costMinor: 300 } } as const));

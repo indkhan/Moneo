@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { Children, isValidElement, type ReactNode } from "react";
 import { CalculatorPanel } from "./calculator-panel";
 import { calculatorManifestSchema } from "@/lib/artifacts/spec";
 
@@ -36,6 +37,51 @@ const bridge = vi.hoisted(() => ({ refresh: vi.fn(), run: vi.fn() }));
 vi.mock("@/lib/artifacts/trip-preview", () => ({ refreshTripSnapshot: bridge.refresh }));
 vi.mock("@/lib/artifacts/run", () => ({ runIsolatedArtifact: bridge.run }));
 afterEach(() => { vi.useRealTimers(); host.slots = []; host.effects = []; host.index = 0; vi.clearAllMocks(); });
+
+it("ends recalculating feedback when an edited trip preview fails", async () => {
+  vi.useFakeTimers();
+  const manifest = calculatorManifestSchema.parse({ kind: "trip_planner", runtime: "quickjs-calculator-v1", sdk: ["forecast"], params: { accountId: { type: "string", default: "owned" } } });
+  host.params = { accountId: "missing" };
+  bridge.refresh.mockRejectedValue(new Error("Unknown account"));
+  function render() {
+    host.index = 0;
+    const html = renderToStaticMarkup(<CalculatorPanel source="input => ({})" snapshot={{ currency: "EUR" }} initialParams={{ accountId: "owned" }} manifest={manifest} versionLabel="v1" artifactId="synthetic" />);
+    host.effects.splice(0).forEach(effect => effect()); return html;
+  }
+  expect(render()).toContain("Recalculating the local dated trip inputs");
+  await vi.advanceTimersByTimeAsync(300);
+  const html = render();
+  expect(html).toContain("Calculator failed: Unknown account");
+  expect(html).not.toContain("Recalculating the local dated trip inputs");
+  expect(bridge.run).not.toHaveBeenCalled();
+  expect(html).toMatch(/disabled=""[^>]*>Print \/ PDF/);
+});
+
+it("ends recalculating feedback when the user stops an edited trip preview", async () => {
+  vi.useFakeTimers();
+  const manifest = calculatorManifestSchema.parse({ kind: "trip_planner", runtime: "quickjs-calculator-v1", sdk: ["forecast"], params: { accountId: { type: "string", default: "owned" } } });
+  host.params = { accountId: "another-owned" };
+  bridge.refresh.mockReturnValue(new Promise(() => {}));
+  function render() {
+    host.index = 0;
+    const tree = CalculatorPanel({ source: "input => ({})", snapshot: { currency: "EUR" }, initialParams: { accountId: "owned" }, manifest, versionLabel: "v1", artifactId: "synthetic" });
+    const html = renderToStaticMarkup(tree);
+    host.effects.splice(0).forEach(effect => effect()); return { tree, html };
+  }
+  function stop(node: ReactNode): boolean {
+    if (!isValidElement<{ children?: ReactNode; onClick?: () => void }>(node)) return false;
+    if (node.type === "button" && node.props.children === "Stop") { node.props.onClick?.(); return true; }
+    return Children.toArray(node.props.children).some(stop);
+  }
+  render(); await vi.advanceTimersByTimeAsync(300);
+  expect(render().html).toContain("Recalculating the local dated trip inputs");
+  expect(stop(render().tree)).toBe(true);
+  const html = render().html;
+  expect(html).toContain("Stopped. Re-run to execute again.");
+  expect(html).not.toContain("Recalculating the local dated trip inputs");
+  expect(html).toMatch(/disabled=""[^>]*>Print \/ PDF/);
+  expect(bridge.run).not.toHaveBeenCalled();
+});
 
 it("clears the original unavailable alert only after the current owned account preview completes", async () => {
   vi.useFakeTimers();
