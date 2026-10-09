@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mapRows, normalizeCategoryName, parseCsv, resolveMerchantName } from "./csv";
+import { importRowPayload } from "./import-row";
 
 const base = {
   accountName: "Checking",
@@ -44,5 +45,13 @@ describe("import-time merchant and category capture", () => {
     expect(normalizeCategoryName("  ")).toBeNull();
     expect(normalizeCategoryName(undefined)).toBeNull();
     expect(normalizeCategoryName("x".repeat(101))).toBeNull();
+  });
+  it("retains source categories within the Unicode character limit", () => {
+    const category = "🛒".repeat(100);
+    expect(normalizeCategoryName(category)).toBe(category);
+    expect(normalizeCategoryName("🛒".repeat(101))).toBeNull();
+    const original = { Date: "2026-10-09", Description: "Synthetic purchase", Amount: "-1.00", Category: category };
+    const [mapped] = mapRows([original], { ...base, categoryColumn: "Category" });
+    expect(importRowPayload("workspace", "import", mapped)).toMatchObject({ categoryName: category, originalRow: original });
   });
 });

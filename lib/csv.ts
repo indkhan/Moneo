@@ -410,7 +410,7 @@ export function resolveMerchantName(explicit: string | undefined, description: s
 export function normalizeCategoryName(input: string | undefined): string | null {
   if (!input) return null;
   const trimmed = input.trim();
-  if (!trimmed || trimmed.length > 100) return null;
+  if (!trimmed || Array.from(trimmed).length > 100) return null;
   return trimmed;
 }
 
