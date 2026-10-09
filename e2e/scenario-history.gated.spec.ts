@@ -7,7 +7,7 @@ import postgres from "postgres";
 
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires real disposable Supabase authentication and database fixtures");
 
-test("scenario comparison, edits, removal and undo preserve actual cash", async ({ browser }) => {
+test("scenario comparison, edits, removal and undo preserve actual cash", async ({ browser, baseURL }) => {
   test.setTimeout(120_000);
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, connection = new URL(process.env.SUPABASE_DB_URL!);
   const project = new URL(url).hostname.split(".")[0];
@@ -21,15 +21,17 @@ test("scenario comparison, edits, removal and undo preserve actual cash", async 
   const [{ id: workspace }] = await db`select id from public.workspaces where owner_id=${user}`;
   const recovery = `.qa/scenario-${user}.json`;
   mkdirSync(".qa", { recursive: true }); writeFileSync(recovery, JSON.stringify({ project, user, workspace }));
-  const context = await browser.newContext({ baseURL: "http://localhost:3000" });
+  const context = await browser.newContext({ baseURL });
   try {
     const cookies = new Map<string, string>();
     const auth = createServerClient(url, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { cookies: { getAll: () => [...cookies].map(([name, value]) => ({ name, value })), setAll: values => values.forEach(({ name, value }) => cookies.set(name, value)) } });
     expect((await auth.auth.signInWithPassword({ email, password })).error).toBeNull();
-    await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: "localhost", path: "/", sameSite: "Lax" as const })));
+    await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: new URL(baseURL!).hostname, path: "/", sameSite: "Lax" as const })));
     const account = randomUUID();
     await db`insert into public.accounts(id,workspace_id,name,currency_code,type) values(${account},${workspace},'Scenario cash','EUR','checking')`;
-    await db`insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance) values(${workspace},${account},100000,'EUR',now(),'manual')`;
+    // Today's opening is dated before either clock; a fresh DB timestamp may be ahead of the app.
+    await db`insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance)
+      values(${workspace},${account},100000,'EUR',date_trunc('day',now() at time zone 'Europe/Berlin') at time zone 'Europe/Berlin','manual')`;
     await db`insert into public.forecast_preferences(workspace_id,currency_code,uncertainty_bps) values(${workspace},'EUR',0)`;
     const page = await context.newPage();
     page.setDefaultTimeout(30_000);

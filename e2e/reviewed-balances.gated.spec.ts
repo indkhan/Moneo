@@ -50,7 +50,12 @@ test("explicit booked-balance review covers timestamped and date-only activity, 
     await card.getByLabel("Synthetic reviewed cash balance", { exact: true }).fill("100.00");
     await card.getByRole("button", { name: "Save", exact: true }).click();
     await expect(async () => { await page.reload(); await expect(card).toContainText("current"); }).toPass({ timeout: 30_000 });
-    async function cash() { const e = await loadBalanceEvidence(admin, workspace.id); return resolveBalances(e.accounts, e.snapshots, e.ledger, e.asOf, "Europe/Berlin")[0].balance; }
+    async function cash() {
+      // SQL fixtures use the database clock; local Node time can lag behind a new posting.
+      const [{ as_of: asOf }] = await db`select clock_timestamp()::text as as_of`;
+      const e = await loadBalanceEvidence(admin, workspace.id, new Date(asOf).toISOString());
+      return resolveBalances(e.accounts, e.snapshots, e.ledger, e.asOf, "Europe/Berlin")[0].balance;
+    }
     expect(await cash()).toMatchObject({ amount_minor: "10000", reconciled_rows: 0 });
     await db`insert into public.transactions(workspace_id,account_id,posted_on,posted_at,description,amount_minor,currency_code)
       values(${workspace.id},${account},(clock_timestamp() at time zone 'Europe/Berlin')::date,clock_timestamp(),'Synthetic later posting',-250,'EUR')`;
