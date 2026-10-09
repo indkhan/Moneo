@@ -94,6 +94,14 @@ const accounts = [
   { id: transactionId, name: "Checking QA", type: "checking", currency_code: "EUR", version: 1 },
   { id: categoryId, name: "Savings QA", type: "savings", currency_code: "EUR" },
 ];
+it.each([120, 121])("validates account inventory names by Unicode code points at %s characters", length => {
+  const name = "😀".repeat(length);
+  const receipt = toolResultReceipt("accounts_list", {}, [{ ...accounts[0], name }], context, ["accounts"]);
+  const result = providerFinancialAnswer(JSON.stringify({ claims: [], interpretation: [] }), [receipt], context.workspaceId);
+  if (length === 120) expect(result.body).toContain(`- ${name}`);
+  else expect(result.body).not.toContain("Recorded accounts");
+  expect(result.accepted).toHaveLength(0);
+});
 it.each([JSON.stringify({ claims: [], interpretation: [] }), "Checking QA and Savings QA have zero balances."])("publishes only recorded account names from a nonempty inventory with %s provider output", text => {
   const receipt = toolResultReceipt("accounts_list", {}, accounts, context, ["accounts"]);
   const result = providerFinancialAnswer(text, [receipt], context.workspaceId);
