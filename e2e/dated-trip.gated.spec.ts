@@ -1,4 +1,4 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
+import { test, expect as baseExpect, type BrowserContext } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -6,6 +6,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import postgres from "postgres";
 import { FALLBACK_CALCULATORS } from "../lib/artifacts/templates";
 import { addTripDays, defaultTripScenario } from "../lib/finance/trip-scenario";
+
+// Live preview assertions need the same bounded wait as this journey's actions.
+const expect = baseExpect.configure({ timeout: 20_000 });
 
 test.skip(!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.SUPABASE_DB_URL || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires disposable synthetic Supabase authentication/database fixtures");
 
