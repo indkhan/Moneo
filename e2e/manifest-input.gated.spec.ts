@@ -76,13 +76,22 @@ test("manifest inputs restore, execute and save under one typed contract", async
     await output.getByLabel("Amount", { exact: true }).fill("0");
     await expect(output.locator("dd")).toHaveText(["0", "00007", "9007199254740995"]);
     // Bypass the control deliberately: Save must reject the same invalid value.
+    const [beforeRejected] = await db`select state, version from public.artifact_state where workspace_id=${workspaceId} and artifact_id=${artifact}`;
     await output.locator('input[name="params"]').evaluate(input => { (input as HTMLInputElement).value = JSON.stringify({ amount: 101, reference: "00007", exactMinor: "9007199254740995" }); });
     const [rejected] = await Promise.all([
       page.waitForResponse(response => response.request().method() === "POST" && response.url().includes(`/ai/library/${artifact}`)),
       output.getByRole("button", { name: "Save inputs", exact: true }).click(),
     ]);
-    expect(rejected.status()).toBe(500);
-    expect((await db`select state from public.artifact_state where workspace_id=${workspaceId} and artifact_id=${artifact}`)[0].state).toEqual({ amount: 100, reference: "00007", exactMinor: "9007199254740995" });
+    expect(rejected.status()).toBe(200);
+    expect(await rejected.text()).not.toContain("Minified React error");
+    await expect(output).toContainText(/Param amount/);
+    await expect(output).not.toContainText("Inputs saved.");
+    await expect(output.getByLabel("Amount", { exact: true })).toHaveValue("0");
+    await expect(output.getByLabel("Reference", { exact: true })).toHaveValue("00007");
+    await expect(output.getByLabel(/Exact cost/)).toHaveValue("9007199254740995");
+    await expect(output.locator('input[name="expectedVersion"]')).toHaveValue(String(beforeRejected.version));
+    await expect(output.getByRole("button", { name: "Save inputs", exact: true })).toBeEnabled();
+    expect((await db`select state, version from public.artifact_state where workspace_id=${workspaceId} and artifact_id=${artifact}`)[0]).toEqual(beforeRejected);
     await reloadArtifact();
     // Actual version activation rejects invalid defaults.
     await editor.getByLabel("Manifest (JSON)").fill(JSON.stringify({ ...manifest, params: { ...manifest.params, amount: { ...manifest.params.amount, default: 500 } } }));
