@@ -329,29 +329,36 @@ export default function ImportPage() {
     {busy && <p role="status">Working…{interpreting && <button type="button" className="ml-3 underline" onClick={cancelInspection}>Cancel interpretation</button>}</p>}
     {error && <p role="alert" className="text-red-700 dark:text-red-300">{error}</p>}
     {file && inspection && <section className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-sm">
-      <h2 className="text-xl font-semibold tracking-tight text-foreground">{file.name} ({index + 1} of {files.length})</h2>
+      <h2 className="truncate text-xl font-semibold tracking-tight text-foreground" title={`${file.name} (${index + 1} of ${files.length})`}>{file.name} <span className="font-normal text-muted-foreground">({index + 1} of {files.length})</span></h2>
       {inspection.workbook && <WorkbookScopeReview key={`${index}:${file.name}:${file.lastModified}:${file.size}`} inventory={inspection.workbook.inventory} initialScope={inspection.workbookScope} busy={busy}
         onEdit={() => { setMapping(null); setEditing(false); setRowsReviewed(false); setInspection(previous => previous ? {...previous,preview:null} : null); }}
         onPreview={scope => void inspect(file, undefined, scope)} />}
       {inspection.aiError && <p>Automatic interpretation unavailable. Choose the columns below.</p>}
       {inspection.previewError && <p role="alert">{inspection.previewError}</p>}
-      {mapping && <label className="grid gap-1 text-sm">Source numeric convention
+      {mapping && <label className="grid max-w-md gap-1 text-sm">Source numeric convention
         <select className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.numericConvention ?? ""} onChange={event => { setMapping({ ...mapping, numericConvention: event.target.value as ImportMapping["numericConvention"] || undefined }); setEditing(true); }}>
-          <option value="">Select the statement&apos;s number format</option>
-          <option value="decimal-dot">Decimal dot, comma grouping: 1,234.567</option>
-          <option value="decimal-comma">Decimal comma, dot grouping: 1.234,567</option>
+          <option value="">Select number format</option>
+          <option value="decimal-dot">1,234.56</option>
+          <option value="decimal-comma">1.234,56</option>
         </select>
-        <span className="text-muted-foreground">Check the original amounts, fees and balances, then preview this convention before continuing.</span>
       </label>}
-      {editing && <div className="overflow-x-auto rounded-lg border border-border"><table className="w-full text-left text-sm [&_th]:bg-muted [&_th]:px-3 [&_th]:py-2.5 [&_th]:text-xs [&_th]:font-semibold [&_td]:px-3 [&_td]:py-3"><thead><tr>{inspection.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>
-        {inspection.sample.slice(0, 3).map((row, i) => <tr className="border-t border-border" key={i}>{inspection.headers.map((header) => <td key={header}>{row[header]}</td>)}</tr>)}
+      {editing && <div className="overflow-x-auto rounded-lg border border-border bg-card"><table className="w-full text-left text-sm [&_td]:max-w-64 [&_td]:truncate [&_td]:px-3 [&_td]:py-2 [&_th]:bg-muted/60 [&_th]:px-3 [&_th]:py-2 [&_th]:text-xs [&_th]:font-medium [&_th]:text-muted-foreground"><thead><tr>{inspection.headers.map((header) => <th key={header} title={header}>{header}</th>)}</tr></thead><tbody>
+        {inspection.sample.slice(0, 3).map((row, i) => <tr className="border-t border-border" key={i}>{inspection.headers.map((header) => <td key={header} title={row[header]}>{row[header]}</td>)}</tr>)}
       </tbody></table></div>}
       {inspection.preview && <>
-        {inspection.preview.acceptedRows != null && <p>{inspection.preview.acceptedRows} accepted · {inspection.preview.correctedRows ?? 0} corrected · {inspection.preview.excludedRows?.length ?? 0} excluded · {inspection.preview.unresolvedRows?.length ?? 0} unresolved</p>}
-        {!!inspection.preview.unresolvedRows?.length && <div role="alert" className="space-y-2 rounded-lg border border-amber-300 p-3 text-sm">
-          <p>{inspection.preview.acceptedRows} of {inspection.preview.totalRows} source rows are valid. Resolve the remaining observations before importing; the original source stays unchanged.</p>
-          <ul>{inspection.preview.unresolvedRows.map(row => <li key={row.rowNumber}>{row.message}</li>)}</ul>
-        </div>}
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            <strong className="font-semibold">{inspection.preview.accountName}</strong>
+            <span className="text-muted-foreground">· {inspection.preview.currencyCode}</span>
+            <span className="text-muted-foreground">· {inspection.preview.totalRows} rows</span>
+            {inspection.preview.dateRange.from && <span className="text-muted-foreground">· {inspection.preview.dateRange.from} → {inspection.preview.dateRange.to}</span>}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {mapping?.amountSign === "outflow-positive" ? "Positive amounts = outgoing" : "Positive amounts = incoming"}
+            {inspection.preview.pendingRows != null && inspection.preview.pendingRows > 0 ? ` · ${inspection.preview.pendingRows} pending` : ""}
+            {!!inspection.preview.classificationReviewRows ? ` · ${inspection.preview.classificationReviewRows} need category review` : ""}
+          </p>
+        </div>
         {inspection.preview.unresolvedRows?.map(row => <SourceRowReview key={row.rowNumber} row={row} mapping={mapping!} onDecision={decision => {
           setMapping(current => current && ({ ...current, rowDecisions: [...(current.rowDecisions ?? []).filter(item => item.rowNumber !== decision.rowNumber), decision] }));
           setEditing(true); setRowsReviewed(false);
@@ -369,16 +376,22 @@ export default function ImportPage() {
           <label className="grid gap-1">Source timestamp timezone<input className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.timestampTimezone ?? ""} onChange={event => { setMapping({ ...mapping, timestampTimezone: event.target.value, timestampTimezoneConfirmed: false }); setEditing(true); }} /></label>
           <label className="flex gap-2"><input type="checkbox" checked={mapping.timestampTimezoneConfirmed ?? false} onChange={event => setMapping({ ...mapping, timestampTimezoneConfirmed: event.target.checked })} />I confirmed this timezone matches the statement&apos;s source clock.</label>
         </div>}
-        {!!inspection.preview.classificationReviewRows && <p className="text-sm text-amber-700 dark:text-amber-300">{inspection.preview.classificationReviewRows} rows need financial classification. Their booked amounts will be preserved; income and spending remain partial until reviewed.</p>}
-        {inspection.preview.accounts?.map(account => <p key={`${account.accountName}:${account.currencyCode}`}><strong>{account.accountName}</strong> · {account.currencyCode} · {account.rows} rows</p>)}
+        {!!inspection.preview.unresolvedRows?.length && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
+          <p className="font-medium">{inspection.preview.unresolvedRows.length} rows need attention</p>
+          <ul className="mt-1 list-disc pl-5 text-muted-foreground">{inspection.preview.unresolvedRows.slice(0, 5).map(row => <li key={row.rowNumber}>{row.message}</li>)}</ul>
+        </div>}
         {inspection.warnings?.map(warning => <p key={warning} className="text-sm text-amber-700 dark:text-amber-300">{warning}</p>)}
-        <p><strong>Account:</strong> {inspection.preview.accountName} · <strong>Currency:</strong> {inspection.preview.currencyCode}</p>
-        <p className="text-sm text-muted-foreground">Check the currency and incoming/outgoing amounts below. {mapping?.amountSign === "outflow-positive" ? "Positive source amounts are treated as outgoing; review this sign convention before continuing." : "Positive source amounts are treated as incoming."}</p>
-        <p><strong>{inspection.preview.totalRows} rows</strong> · {inspection.preview.dateRange.from ? `${inspection.preview.dateRange.from} to ${inspection.preview.dateRange.to}` : "No accepted posting dates"}{inspection.preview.pendingRows != null && inspection.preview.pendingRows > 0 ? ` · ${inspection.preview.pendingRows} pending (excluded from posted spending)` : ""}</p>
-        <p className="text-sm text-muted-foreground">Descriptions stay exactly as in the file. Merchants/categories below come only from explicit columns when present. Pending rows stay pending and never count as posted spending.</p>
-        <div className="overflow-x-auto rounded-lg border border-border"><table className="w-full text-left text-sm [&_th]:bg-muted [&_th]:px-3 [&_th]:py-2.5 [&_th]:text-xs [&_th]:font-semibold [&_td]:px-3 [&_td]:py-3"><thead><tr><th>Date</th><th>Description</th><th>Incoming / outgoing</th><th>Status</th><th>Merchant</th><th>Category</th></tr></thead><tbody>
-          {inspection.preview.examples.map((row, i) => <tr key={i} className="border-t"><td>{row.postedOn}</td><td>{row.description}</td><td>{formatMinor(row.amountMinor, row.currencyCode)}</td><td>{row.status ?? "posted"}</td><td>{row.merchant ?? "—"}</td><td>{row.category ?? "Uncategorized"}</td></tr>)}
+        <div className="overflow-x-auto rounded-lg border border-border bg-card"><table className="w-full table-fixed text-left text-sm [&_th]:bg-muted/60 [&_th]:px-3 [&_th]:py-2 [&_th]:text-xs [&_th]:font-medium [&_th]:text-muted-foreground [&_td]:px-3 [&_td]:py-2.5 [&_td]:align-top"><colgroup><col className="w-24" /><col /><col className="w-28" /><col className="w-20" /><col className="w-28" /><col className="w-28" /></colgroup><thead><tr><th>Date</th><th>Description</th><th className="text-right">Amount</th><th>Status</th><th>Merchant</th><th>Category</th></tr></thead><tbody>
+          {inspection.preview.examples.slice(0, 10).map((row, i) => <tr key={i} className="border-t border-border">
+            <td className="whitespace-nowrap tabular-nums text-muted-foreground">{row.postedOn}</td>
+            <td className="max-w-0"><span title={row.description} className="line-clamp-2 break-words">{row.description}</span></td>
+            <td className={`whitespace-nowrap text-right tabular-nums font-medium ${BigInt(row.amountMinor) < 0n ? "text-foreground" : "text-emerald-700 dark:text-emerald-400"}`}>{formatMinor(row.amountMinor, row.currencyCode)}</td>
+            <td><span className="inline-block rounded-full bg-muted px-2 py-0.5 text-xs">{row.status ?? "posted"}</span></td>
+            <td className="truncate" title={row.merchant ?? ""}>{row.merchant ?? "—"}</td>
+            <td className="truncate" title={row.category ?? ""}>{row.category ?? "Uncategorized"}</td>
+          </tr>)}
         </tbody></table></div>
+        {inspection.preview.examples.length > 10 && <p className="text-xs text-muted-foreground">Showing 10 of {inspection.preview.examples.length} sample rows.</p>}
       </>}
       {editing && mapping && <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1 text-sm">Account name<input className="rounded-lg border border-border bg-card px-3 py-2" value={mapping.accountName} onChange={(e) => setMapping({ ...mapping, accountName: e.target.value })} /></label>

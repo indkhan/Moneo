@@ -147,7 +147,6 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     // 2. AI-proposed interpretation is shown as an understandable preview,
     //    not raw column names.
     await expect(page.getByText("august.csv (1 of 1)")).toBeVisible();
-    await expect(page.getByText("Account:")).toBeVisible();
     await expect(page.getByText("Checking").first()).toBeVisible();
     await expect(
       page.getByText("2 rows", { exact: false }),
