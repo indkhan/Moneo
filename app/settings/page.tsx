@@ -6,6 +6,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { listFreeModels } from "@/lib/ai/provider";
 import { SettingsForm } from "./form";
 import { SummaryRuns } from "./summary-runs";
+import { ResetData } from "./reset";
 
 export default async function SettingsPage() {
   const { user, workspace, settings, supabase } = await requireWorkspace();
@@ -44,5 +45,6 @@ export default async function SettingsPage() {
     </section>
     <InsightSettings />
     <section className="rounded-xl border border-border bg-card p-6"><h2 className="text-base font-semibold">AI usage</h2><p className="mt-1 text-sm text-muted-foreground">Usage appears in Activity when the provider reports it. Missing figures are shown as unknown, not zero.</p></section>
+    <ResetData />
   </main>;
 }
