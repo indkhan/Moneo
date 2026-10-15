@@ -74,7 +74,7 @@ test("Evidence room handles rich replies, artifacts, cancellation and modal keyb
   await expect(dialog.locator("table")).toContainText("Dining");
   await expect(dialog.locator("code.language-sql")).toContainText("SELECT amount_minor");
   await expect(dialog.getByRole("link", { name: /Open saved tool/ })).toHaveAttribute("href", /\/ai\/library\//);
-  await dialog.getByText("Completed tools · 2", { exact: true }).click();
+  await dialog.getByText("Used 2 tools", { exact: true }).click();
   await expect(dialog.getByRole("listitem").filter({ hasText: "Search transactions" })).toBeVisible();
   // The rich reply and its tool activity are asserted; release the held
   // post-send reload now, while the dialog is still open, so the recorded Q&A

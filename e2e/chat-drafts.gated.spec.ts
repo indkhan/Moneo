@@ -44,7 +44,7 @@ for (const panel of [false, true]) {
       await expect(scope.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
       await expect(input).toHaveValue("Next question draft");
       if (!panel) {
-        await page.getByRole("link", { name: "New conversation", exact: true }).click();
+        await page.getByRole("link", { name: "New chat", exact: true }).click();
         await expect(input).toHaveValue("");
       }
     } finally {

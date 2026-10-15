@@ -7,6 +7,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { ChatForm } from "./chat-form";
 import { AnalysisPanel } from "./analysis-panel";
 import { AiMessage } from "@/components/ai-message";
+import { Menu, Plus, Sparkles } from "lucide-react";
 
 export default async function AiPage({ searchParams }: { searchParams: Promise<{ conversation?: string; threadsBefore?: string; messagesBefore?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -24,24 +25,38 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<{
   const { threads, selected, messages, threadsCursor, messagesCursor } = history;
   const href = (extra: Record<string, string>) => `/ai?${new URLSearchParams({ conversation: selected?.id ?? "new", ...extra })}`;
 
-  return <main className="ai-evidence mx-auto grid max-w-7xl grid-cols-1 gap-5 px-4 py-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:px-8">
+  const conversations = <>
+    <Link href="/ai?conversation=new" className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted"><Plus className="size-4" aria-hidden="true" />New chat</Link>
+    <nav aria-label="Conversations" className="mt-4 space-y-0.5">{threads?.map(thread => <Link key={thread.id} href={`/ai?conversation=${thread.id}`} aria-current={selected?.id === thread.id ? "page" : undefined} className={`block truncate rounded-lg px-3 py-2 text-sm ${selected?.id === thread.id ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>{thread.title}</Link>)}</nav>
+    {threadsCursor && <Link className="mt-2 block px-3 text-sm text-muted-foreground hover:text-foreground" href={href({ threadsBefore: threadsCursor })}>Older conversations</Link>}
+    {params.threadsBefore && <Link className="mt-2 block px-3 text-sm text-muted-foreground hover:text-foreground" href={href({})}>Latest conversations</Link>}
+    <div className="mt-6 space-y-0.5 border-t border-border pt-4 text-sm text-muted-foreground">
+      <Link href="/ai/library" className="block rounded-lg px-3 py-2 hover:bg-muted hover:text-foreground">Saved tools and analyses</Link>
+      <Link href="/ai/activity" className="block rounded-lg px-3 py-2 hover:bg-muted hover:text-foreground">Activity</Link>
+      <Link href="/notifications" className="block rounded-lg px-3 py-2 hover:bg-muted hover:text-foreground">Notifications</Link>
+    </div>
+  </>;
+  const scope = <p className="mt-2 text-center text-xs text-muted-foreground" aria-label="AI data access">Moneo can use: {settings.ai_data_scopes.map(scope => scope.replaceAll("_", " ")).join(", ") || "none"} · {workspace.display_currency} · {workspace.timezone}</p>;
+  const summary = "flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground [&::-webkit-details-marker]:hidden";
+
+  return <main className="flex min-h-[calc(100dvh-3.5rem)]">
     <ConversationSelection selectionKey={selectionKey} id={selected?.id ?? "new"} />
-    <aside className="min-w-0 rounded-xl border border-border bg-[#132030] p-4"><p className="text-sm font-semibold">Conversations</p>
-      <Link href="/ai?conversation=new" className="mt-5 block rounded-lg bg-brand px-3 py-2.5 text-center text-sm font-semibold text-white hover:opacity-90">New conversation</Link>
-      <nav aria-label="Conversations" className="mt-5 space-y-1">{threads?.map(thread => <Link key={thread.id} href={`/ai?conversation=${thread.id}`} aria-current={selected?.id === thread.id ? "page" : undefined} className={`block truncate rounded-lg px-3 py-2 text-sm ${selected?.id === thread.id ? "bg-muted font-medium text-brand" : "text-muted-foreground hover:bg-muted"}`}>{thread.title}</Link>)}</nav>{threadsCursor && <Link className="mt-3 block text-sm underline" href={href({ threadsBefore: threadsCursor })}>Older conversations</Link>}
-      {params.threadsBefore && <Link className="mt-3 block text-sm underline" href={href({})}>Latest conversations</Link>}
-      <Link href="/ai/library" className="mt-5 block text-sm underline">Saved tools and analyses</Link>
-      <Link href="/ai/activity" className="mt-2 block text-sm underline">Activity</Link>
-      <Link href="/notifications" className="mt-2 block text-sm underline">Notifications</Link>
-    </aside>
-    <section className="min-w-0 rounded-xl border border-border bg-card p-5 sm:p-8"><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Ask Moneo</h1><p className="mt-2 text-sm text-muted-foreground">Ask questions about your spending, accounts and plans.</p>
-      <div className="ai-scope mt-5" aria-label="AI data access"><span><strong>{workspace.display_currency}</strong> display currency</span><span>{workspace.timezone}</span><span>Data Moneo can use: {settings.ai_data_scopes.map(scope => scope.replaceAll("_", " ")).join(", ") || "none"}</span></div>
-      <h2 className="mt-6 text-sm font-medium text-muted-foreground">{selected?.title ?? "New conversation"}</h2>
-      {!messages?.length && <div className="mt-7 rounded-lg border border-dashed border-border p-5"><h3 className="font-semibold">Start with a question.</h3><p className="mt-2 text-sm text-muted-foreground">Ask what changed in your spending, find a transaction, or create a spending chart.</p></div>}
-      {messagesCursor && <Link className="mt-4 block text-sm underline" href={href({ messagesBefore: messagesCursor, ...(params.threadsBefore ? { threadsBefore: params.threadsBefore } : {}) })}>Older messages</Link>}{params.messagesBefore && <Link className="mt-3 block text-sm underline" href={href({})}>Latest messages</Link>}
-      <div className="mt-6 space-y-7" aria-live="polite">{messages?.map(item => <article key={item.id} className={item.role === "user" ? "ai-user-message" : "min-w-0"}><div className="mb-3 flex items-center gap-2 text-xs"><span className={`flex size-6 items-center justify-center rounded-md font-semibold ${item.role === "user" ? "bg-accent text-foreground" : "bg-primary text-primary-foreground"}`}>{item.role === "user" ? "Y" : "M"}</span><span className="font-semibold">{item.role === "user" ? "You" : "Moneo"}</span><time className="text-xs text-muted-foreground" dateTime={item.created_at}>{new Date(item.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}</time></div>{item.role === "user" ? <p className="whitespace-pre-wrap break-words text-sm">{item.content}</p> : <AiMessage content={item.content} />}</article>)}</div>
-      <ChatForm key={selected?.id ?? "new"} conversationId={selected?.id ?? crypto.randomUUID()} selectionKey={selectionKey} isNewConversation={!selected} />
-      <AnalysisPanel locale={workspace.locale} timezone={workspace.timezone} />
+    <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-64 shrink-0 overflow-y-auto border-r border-border bg-card/60 p-3 lg:block">{conversations}</aside>
+    <section className="flex min-w-0 flex-1 flex-col">
+      <div className="relative flex items-center gap-2 px-4 py-2.5">
+        <details className="lg:hidden"><summary className={summary} aria-label="Show conversations"><Menu className="size-4" aria-hidden="true" /></summary><div className="absolute inset-x-4 top-full z-20 max-h-[70dvh] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-lg">{conversations}</div></details>
+        <h1 className="min-w-0 flex-1 truncate text-sm font-medium">{selected?.title ?? "New chat"}</h1>
+        <details><summary className={summary}><Sparkles className="size-4" aria-hidden="true" />Run a deep review</summary><div className="absolute inset-x-4 top-full z-20 mx-auto max-h-[75dvh] max-w-3xl overflow-y-auto rounded-2xl border border-border bg-card shadow-lg"><AnalysisPanel locale={workspace.locale} timezone={workspace.timezone} /></div></details>
+      </div>
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4">
+        {messagesCursor && <Link className="mt-2 self-center text-sm text-muted-foreground hover:text-foreground" href={href({ messagesBefore: messagesCursor, ...(params.threadsBefore ? { threadsBefore: params.threadsBefore } : {}) })}>Older messages</Link>}{params.messagesBefore && <Link className="mt-2 self-center text-sm text-muted-foreground hover:text-foreground" href={href({})}>Latest messages</Link>}
+        {!!messages?.length && <div className="space-y-8 py-6" aria-live="polite">{messages.map(item => <article key={item.id} className={item.role === "user" ? "flex justify-end" : "flex min-w-0 gap-3"}>
+          <time className="sr-only" dateTime={item.created_at}>{new Date(item.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}</time>
+          {item.role === "user" ? <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-3xl bg-muted px-4 py-2.5 text-[15px]">{item.content}</p>
+            : <><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground" aria-hidden="true">M</span><div className="min-w-0 flex-1"><AiMessage content={item.content} /></div></>}
+        </article>)}</div>}
+        <ChatForm key={selected?.id ?? "new"} conversationId={selected?.id ?? crypto.randomUUID()} selectionKey={selectionKey} isNewConversation={!selected} empty={!messages?.length} scope={scope} />
+      </div>
     </section>
   </main>;
 }
