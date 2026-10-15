@@ -8,6 +8,6 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["**/*.test.{ts,tsx}"],
-    exclude: [...configDefaults.exclude, ".qa/**"],
+    exclude: [...configDefaults.exclude, ".qa/**", ".claude/**"],
   },
 });
