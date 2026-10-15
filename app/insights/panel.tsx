@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildInsights, insightPreferencesSchema, defaultInsightPreferences, type InsightInput } from "@/lib/finance/insights";
+import { describeMissingInputs } from "@/lib/finance/format";
 import { type ReviewTransaction } from "@/lib/finance/review";
 import { budgetProgress, type MonthlyLimit } from "@/lib/finance/spending-plans";
 import { type WorkspaceSettings } from "@/lib/settings";
@@ -16,9 +17,9 @@ type Recurring = { id: string; label: string; evidence_invalidated: boolean; evi
 type Wealth = { id: string; name: string; kind: string; amount_minor: string; currency_code: string; as_of: string; removed_at?: string | null };
 
 type InsightPanelProps = {
-  db: SupabaseClient; workspaceId: string; currency: string; today: string; settings: WorkspaceSettings; projection: Projection; missingInputs: string[]; wealth: Wealth[];
+  db: SupabaseClient; workspaceId: string; currency: string; today: string; settings: WorkspaceSettings; projection: Projection; missingInputs: string[]; names?: Map<string, string>; wealth: Wealth[];
 };
-async function loadInsights({ db, workspaceId, currency, today, settings, projection, missingInputs, wealth }: InsightPanelProps) {
+async function loadInsights({ db, workspaceId, currency, today, settings, projection, missingInputs, names, wealth }: InsightPanelProps) {
     async function rows<T>(table: string, columns: string, start?: string): Promise<T[]> {
       const collected: T[] = [];
       for (let offset = 0; offset <= 10000; offset += 500) {
@@ -63,7 +64,7 @@ async function loadInsights({ db, workspaceId, currency, today, settings, projec
       if (originals.error) throw originals.error;
       for (const row of transactions) if (row.refund_of_id) row.refund_category_id = originals.data.find(original => original.id === row.refund_of_id)?.category_id ?? row.refund_category_id;
     }
-    const warnings = [...missingInputs, ...(projection.input.missingInputs ?? [])];
+    const warnings = describeMissingInputs([...missingInputs, ...(projection.input.missingInputs ?? [])], names);
     if (transactions.some(row => row.status === "posted" && row.review_reasons?.length)) warnings.push("Some financial classifications need review; comparisons omit uncertain rows");
     const spendingRows = transactions.map(row => ({ amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code, status: row.status, kind: row.kind, reviewReasons: row.review_reasons, postedOn: row.posted_on, categoryId: row.category_id,
       ...(row.refund_of_id ? { refundOfCategoryId: row.refund_category_id ?? null } : {}) }));

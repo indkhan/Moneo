@@ -1,5 +1,5 @@
 import {calendarDate} from "@/lib/finance/calendar";
-import {formatMoney} from "@/lib/finance/format";
+import {describeMissingInputs, formatMoney} from "@/lib/finance/format";
 import type {resolveBalances} from "@/lib/finance/balances";
 import {wealthEvidence, type WealthValue} from "@/lib/finance/wealth";
 
@@ -24,7 +24,7 @@ export function DatedOverview({accounts, wealth, today, timeZone, locale}: {
     <ul className="mt-3 space-y-1">{observations.map(row => <li key={row.id}>{row.name}: {formatMoney(row.amount, row.currency, locale)} — {row.date} — {row.provenance}</li>)}</ul>
     {missing.map(account => <p key={account.id} className="mt-2 text-amber-700">{account.name}: {account.balance.warnings.join("; ") || "No dated balance"}</p>)}
     {uncertain.map(account => <p key={account.id} className="mt-2 text-amber-700">{account.name}: Original observation retained; later activity cannot be reconciled. {account.balance.warnings.join("; ")}</p>)}
-    {valuations.missingInputs.length > 0 && <p className="mt-2 text-amber-700">{valuations.missingInputs.join("; ")}</p>}
+    {valuations.missingInputs.length > 0 && <p className="mt-2 text-amber-700">{describeMissingInputs(valuations.missingInputs).join(". ")}</p>}
     {valuations.excludedLinked.length > 0 && <p className="mt-2 text-muted-foreground">{valuations.excludedLinked.length} account-linked valuations excluded to avoid counting them twice.</p>}
     <p className="mt-3 text-muted-foreground">Missing statement periods and later unrecorded changes remain unknown. Historical debt principal does not verify current repayment assumptions. Assets and investments do not increase spendable cash.</p>
   </details>;

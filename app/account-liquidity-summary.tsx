@@ -1,11 +1,11 @@
 import Link from "next/link";
 import type { accountLiquidity } from "@/lib/finance/calculations";
-import { formatMoney } from "@/lib/finance/format";
+import { describeMissingInputs, formatMoney } from "@/lib/finance/format";
 
 export function HomeLiquidity({ liquidity, accountId, names, locale }: {
   liquidity: ReturnType<typeof accountLiquidity>; accountId?: string; names: Map<string, string>; locale?: string;
 }) {
-  if (liquidity.status === "unavailable") return <div className="rounded-xl border border-border bg-card p-6 shadow-sm"><h2 className="text-base font-semibold">Aggregate headroom</h2><p className="mt-3 text-sm text-muted-foreground">Unavailable: {liquidity.missingInputs.join(", ")}</p><Link href="/plan" className="text-sm text-brand underline">Review forecast evidence</Link></div>;
+  if (liquidity.status === "unavailable") return <div className="rounded-xl border border-border bg-card p-6 shadow-sm"><h2 className="text-base font-semibold">Spending headroom</h2><p className="mt-3 text-sm text-muted-foreground">Not available yet.</p><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">{describeMissingInputs(liquidity.missingInputs, names).map(item => <li key={item}>{item}</li>)}</ul><Link href="/plan" className="mt-4 inline-block text-sm font-medium text-brand hover:underline">Open plan</Link></div>;
   const selected = liquidity.accounts.find(account => account.accountId === accountId);
   const money = (amount: bigint) => formatMoney(amount, liquidity.currencyCode, locale);
   return <div className="rounded-xl border border-border bg-card p-6 shadow-sm">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMoney, formatInputAmount } from "./format";
+import { describeMissingInputs, formatMoney, formatInputAmount } from "./format";
 
 describe("formatMoney", () => {
   it("uses locale separators without rounding exact accounting units or changing form serialization", () => {
@@ -89,5 +89,14 @@ describe("formatInputAmount", () => {
 
   it("formats safe numeric input amounts returned by PostgREST", () => {
     expect(formatInputAmount(350000, "EUR")).toBe("3500.00");
+  });
+});
+
+describe("describeMissingInputs", () => {
+  it("turns internal keys into deduplicated readable sentences", () => {
+    const id = "a7b68bd8-ecd9-4fec-af84-d04c7714ff49";
+    expect(describeMissingInputs([`balance:${id}:missing`, `balance:${id}`, `available-balance:${id}`], new Map([[id, "Checking"]]))).toEqual(["Checking needs a current balance"]);
+    expect(describeMissingInputs([`balance:${id}:stale`])).toEqual(["An account has an out-of-date balance"]);
+    expect(describeMissingInputs(["rate:USD->EUR for Wallet", "Unresolved overlap"])).toEqual(["Wallet needs a USD to EUR exchange rate", "Unresolved overlap"]);
   });
 });

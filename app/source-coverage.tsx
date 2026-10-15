@@ -1,7 +1,7 @@
 import type { SourceCoverage } from "@/lib/finance/source-coverage";
 export function SourceCoverageDetails({ coverage }: { coverage: SourceCoverage }) {
-  return <details className="mt-3 text-xs text-muted-foreground">
-    <summary className="cursor-pointer">Source coverage · financial completeness unknown</summary>
+  return <details className="mt-4 text-xs text-muted-foreground">
+    <summary className="cursor-pointer select-none hover:text-foreground">How this was calculated</summary>
     <div className="mt-2 space-y-1">
       <p>{coverage.scope.from === "0001-01-01" ? "Unknown opening boundary; all recorded history" : coverage.scope.from} to {coverage.scope.to}{coverage.scope.currencyCode ? ` · ${coverage.scope.currencyCode}` : " · currencies kept separate"}. {coverage.includedRows} included of {coverage.acceptedEffectiveRows} accepted effective rows.</p>
       <p>Row counts describe {coverage.rowCountScope}.</p>

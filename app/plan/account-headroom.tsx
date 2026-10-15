@@ -1,6 +1,6 @@
 import { accountLiquidity, forecastDaily, withInternalFunding, type ForecastInput } from "@/lib/finance/calculations";
 import { forecastInput } from "@/lib/finance/tools";
-import { formatMoney } from "@/lib/finance/format";
+import { describeMissingInputs, formatMoney } from "@/lib/finance/format";
 
 export type LiquidityParams = { horizon?: string; scenario?: string; account?: string; fundingFrom?: string; fundingDate?: string; fundingMinor?: string };
 const field = "min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-brand";
@@ -44,7 +44,7 @@ export function AccountHeadroom({ input, params, names, locale, result }: {
     <p className="text-sm text-muted-foreground">No automatic transfer from another account. Optional funding is hypothetical, paired on the selected date in {input.currencyCode}; actual balances and reservations are unchanged. Same-day funding assumes arrival by the end of the day.</p>
     {fundingError && <p role="alert" className="text-sm text-foreground font-medium">Funding was not applied: {fundingError}</p>}
     {invalidAccount && <p role="alert" className="text-sm text-foreground font-medium">Choose a current liquid account.</p>}
-    {liquidity.status === "unavailable" ? <p role="alert">Forecast unavailable: {liquidity.missingInputs.join(", ")}. Add dated balances and complete missing assumptions.</p> : <>
+    {liquidity.status === "unavailable" ? <div role="alert" className="text-sm"><p className="font-medium">Forecast unavailable</p><ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">{describeMissingInputs(liquidity.missingInputs, names).map(item => <li key={item}>{item}</li>)}</ul></div> : <>
       <div className="rounded-lg bg-muted/60 p-4"><h3 className="font-semibold">Aggregate headroom</h3><p className="font-mono text-2xl">{money(liquidity.aggregate.amountMinor)}</p><p className="text-sm text-muted-foreground">Combined conservative minimum after protections on {liquidity.aggregate.limitingDate}. This is not available to spend from a chosen account; other cash requires explicit funding.</p></div>
     <p className="text-sm text-muted-foreground">Workspace buffer: {money(liquidity.workspaceBufferMinor)}, protected once across all accounts. Chosen-account spending is limited by both account liquidity and aggregate headroom.</p>
     {liquidity.workspaceBufferPressureMinor > 0n && <p role="alert" className="text-sm">Workspace buffer pressure: {money(liquidity.workspaceBufferPressureMinor)} on {liquidity.aggregate.limitingDate}. This is separate from a paying-account funding shortfall.</p>}
