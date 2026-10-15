@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { buildSourceCoverage, loadSourceCoverage, sourceCoverageNeedsReview } from "./source-coverage";
+import { buildSourceCoverage, loadSourceCoverage, loadSourceCoverageMetadata, sourceCoverageNeedsReview } from "./source-coverage";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const scope = { from: "2026-10-01", to: "2026-10-31", currencyCode: "EUR" };
@@ -59,4 +59,17 @@ it("never reads denied source data and scopes/project-only metadata for permitte
   expect(calls).toContainEqual(["eq", "imports", "workspace_id", "w"]);
   expect(calls).toContainEqual(["eq", "source_transactions", "workspace_id", "w"]);
   expect(calls.filter(call => call[0] === "select").map(call => call[2]).join(" ")).not.toMatch(/original_row|mapping|description|amount|filename/);
+});
+
+it("loads metadata pages in parallel from the first count and still reads past a stale count", async () => {
+  const sources = Array.from({ length: 1201 }, (_, index) => ({ ...source("new"), id: index }));
+  const db = { from: (table: string) => {
+    const query = { select: () => query, eq: () => query, order: () => query,
+      // The count is stale (1000) while 1201 rows exist, as if rows were written mid-read.
+      range: async (from: number, to: number) => ({ data: (table === "imports" ? imports : sources).slice(from, to + 1), count: table === "imports" ? 1 : 1000, error: null }) };
+    return query;
+  } } as unknown as SupabaseClient;
+  const metadata = await loadSourceCoverageMetadata(db, "w", true);
+  expect(metadata?.imports).toEqual(imports);
+  expect(metadata?.sources).toEqual(sources);
 });
