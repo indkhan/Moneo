@@ -2,14 +2,14 @@ import { buildSourceCoverage } from "@/lib/finance/source-coverage";
 import { beforeEach, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import Home from "./page";
-vi.mock("./insights/panel", () => ({ ImportantInsights: () => null }));
+vi.mock("./insights/panel", () => ({ ImportantInsights: () => null, loadInsightEvidence: async () => ({}) }));
 const fixture = vi.hoisted(() => ({ started: [] as string[], errorTable: "", balanceGate: null as Promise<void> | null }));
 beforeEach(() => { fixture.started = []; fixture.errorTable = ""; fixture.balanceGate = null; });
 
 vi.mock("@/lib/env", () => ({ hasSupabase: () => true, getSupabaseConfig: () => ({ status: "configured", detail: "Supabase configuration is present." }) }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => {
   return { supabase: { from: (table: string) => {
-    const result = () => { fixture.started.push(table); return { data: table === "dashboard_items" && fixture.errorTable === "artifacts" ? [{ artifact_id: "tool" }] : [], count: 0, error: fixture.errorTable === table ? new Error(`${table} unavailable`) : null }; };
+    const result = () => { fixture.started.push(table); return { data: [], count: 0, error: fixture.errorTable === table ? new Error(`${table} unavailable`) : null }; };
     const query = { select: () => query, eq: () => query, in: () => query, is: () => query, range: async () => result(), order: () => query, limit: () => query, maybeSingle: async () => ({ ...result(), data: null }), then: (resolve: (value: unknown) => unknown) => Promise.resolve(result()).then(resolve) };
     return query;
   } }, workspace: { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" } };
@@ -38,7 +38,8 @@ it("starts independent dashboard queries while balance evidence is still loading
   expect(started).toEqual(expect.arrayContaining(["fx_rates", "dashboard_items", "dashboard_layouts", "goals", "goal_allocations"]));
 });
 
-it.each(["fx_rates", "dashboard_items", "artifacts"])("reports %s failures instead of silently showing incomplete dashboard data", async table => {
+// Pinned artifacts are embedded in the dashboard_items read, so its failure covers them too.
+it.each(["fx_rates", "dashboard_items"])("reports %s failures instead of silently showing incomplete dashboard data", async table => {
   fixture.errorTable = table;
   await expect(Home()).rejects.toThrow(`${table} unavailable`);
 });
