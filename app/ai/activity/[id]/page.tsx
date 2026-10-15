@@ -58,7 +58,7 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
         ← Activity
       </Link>
       <p className="mt-5 text-xs font-semibold uppercase tracking-widest text-brand">
-        Deep Analysis · {job.status} · stage {job.stage}
+        Deep Analysis · {job.status.replaceAll("_", " ")}
       </p>
       <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{analysis?.title ?? "Financial review"}</h1>
       <p className="mt-2 text-sm text-muted-foreground">

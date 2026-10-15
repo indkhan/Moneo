@@ -9,7 +9,7 @@ it("offers a required review question, optional focus and exact period/compariso
   expect(html).toContain('name="focus"');
   for (const name of ["from", "to", "comparisonFrom", "comparisonTo"]) expect(html).toContain(`name="${name}"`);
   expect(html).toContain('type="submit"');
-  expect(html).toContain("month to date");
+  expect(html).toContain("this month so far");
   expect(html).toContain('name="planning"');
   expect(html).toContain("Planning evidence (optional)");
   expect(html).toContain("7-day forecast");

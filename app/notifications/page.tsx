@@ -99,7 +99,7 @@ export default async function NotificationsPage() {
         : title
           ? `Deep Analysis completed: ${title}`
           : "Deep Analysis completed",
-      detail: failed ? truncate(row.error ?? "Analysis failed", 200) : `stage ${row.stage}`,
+      detail: failed ? truncate(row.error ?? "Analysis failed", 200) : "Completed",
       href: `/ai/activity/${row.id}`,
     });
   }
@@ -116,12 +116,13 @@ export default async function NotificationsPage() {
   const visible = notices.slice(0, 30);
 
   return (
-    <main className="mx-auto max-w-5xl px-5 py-8 lg:px-8">
-      <p className="text-xs font-semibold uppercase tracking-widest text-brand">Workspace / Notifications</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Notifications</h1>
+    <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
+      <header>
+      <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Notifications</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Updates from your imports, financial reviews, and saved tools.
+        Updates from your imports, reviews, and saved tools.
       </p>
+      </header>
       {errors.length > 0 && (
         <p role="alert" className="mt-4 rounded-xl border border-border bg-card p-4 shadow-sm text-sm text-red-700">
           Could not load part of these notifications: {truncate(errors[0]?.message ?? "Unavailable", 200)}
@@ -134,9 +135,9 @@ export default async function NotificationsPage() {
         </p>
       )}
       {visible.length > 0 && (
-        <ul className="mt-6 space-y-3">
+        <ul className="space-y-3">
           {visible.map((notice) => (
-            <li key={notice.key} className="rounded-xl border border-border bg-card p-5 shadow-sm">
+            <li key={notice.key} className="rounded-xl border border-border bg-card p-6">
               <p className="text-xs text-muted-foreground">{new Date(notice.at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}</p>
               <h2 className="mt-1 font-medium">{notice.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{notice.detail}</p>
