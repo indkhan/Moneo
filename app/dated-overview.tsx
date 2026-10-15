@@ -16,16 +16,16 @@ export function DatedOverview({accounts, wealth, today, timeZone, locale}: {
   for (const observation of observations) totals.set(observation.currency, (totals.get(observation.currency) ?? 0n) + observation.amount);
   const missing = accounts.filter(account => !account.archived_at && !account.balance.snapshot_valid);
   const uncertain = accounts.filter(account => !account.archived_at && account.balance.snapshot_valid && account.balance.status === "ambiguous");
-  return <details className="mt-5 border-t border-border pt-4 text-xs">
+  return <details className="mt-6 border-t border-border pt-4 text-sm">
     <summary className="cursor-pointer font-medium text-brand">Recorded net worth by currency</summary>
-    <p className="mt-2 text-muted-foreground">Latest recorded observations at or before {today}; not verified current funds. Different observation dates are shown below. No exchange rate or unrecorded activity is assumed.</p>
+    <p className="mt-3 text-muted-foreground">Latest recorded values up to {today}, not verified current funds. Different observation dates are listed below; no exchange rates are applied.</p>
     <ul className="mt-3 space-y-1">{[...totals].map(([currency, amount]) => <li key={currency} className="font-mono font-semibold">{formatMoney(amount, currency, locale)}{missing.length > 0 || valuations.missingInputs.length > 0 ? " (partial)" : ""}</li>)}</ul>
-    {!observations.length && <p className="mt-2">No usable dated observations.</p>}
-    <ul className="mt-3 space-y-1">{observations.map(row => <li key={row.id}>{row.name}: {formatMoney(row.amount, row.currency, locale)} â€” {row.date} â€” {row.provenance}</li>)}</ul>
-    {missing.map(account => <p key={account.id} className="mt-2 text-amber-700">{account.name}: {account.balance.warnings.join("; ") || "No dated balance"}</p>)}
-    {uncertain.map(account => <p key={account.id} className="mt-2 text-amber-700">{account.name}: Original observation retained; later activity cannot be reconciled. {account.balance.warnings.join("; ")}</p>)}
-    {valuations.missingInputs.length > 0 && <p className="mt-2 text-amber-700">{describeMissingInputs(valuations.missingInputs).join(". ")}</p>}
-    {valuations.excludedLinked.length > 0 && <p className="mt-2 text-muted-foreground">{valuations.excludedLinked.length} account-linked valuations excluded to avoid counting them twice.</p>}
-    <p className="mt-3 text-muted-foreground">Missing statement periods and later unrecorded changes remain unknown. Historical debt principal does not verify current repayment assumptions. Assets and investments do not increase spendable cash.</p>
+    {!observations.length && <p className="mt-3 text-muted-foreground">No usable dated observations.</p>}
+    <ul className="mt-3 divide-y divide-border">{observations.map(row => <li key={row.id} className="py-2">{row.name}: {formatMoney(row.amount, row.currency, locale)} — {row.date} — {row.provenance}</li>)}</ul>
+    {missing.map(account => <p key={account.id} className="mt-3 text-amber-700">{account.name}: {account.balance.warnings.join("; ") || "No dated balance"}</p>)}
+    {uncertain.map(account => <p key={account.id} className="mt-3 text-amber-700">{account.name}: Original observation retained; later activity cannot be reconciled. {account.balance.warnings.join("; ")}</p>)}
+    {valuations.missingInputs.length > 0 && <p className="mt-3 text-amber-700">{describeMissingInputs(valuations.missingInputs).join(". ")}</p>}
+    {valuations.excludedLinked.length > 0 && <p className="mt-3 text-muted-foreground">{valuations.excludedLinked.length} account-linked valuations excluded to avoid counting them twice.</p>}
+    <p className="mt-3 text-muted-foreground">Gaps in statements and later unrecorded changes are unknown. Assets and investments do not increase spendable cash.</p>
   </details>;
 }
