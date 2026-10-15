@@ -43,7 +43,7 @@ export function ChatForm({ conversationId, selectionKey, isNewConversation = fal
   const composer = <form onSubmit={submit} className="rounded-3xl border border-border bg-card p-2 shadow-sm focus-within:border-muted-foreground/40">
     <label htmlFor="question" className="sr-only">Ask about your finances</label>
     <textarea id="question" value={message} onChange={event => draft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={4000} rows={1} className="block max-h-60 min-h-12 w-full resize-none bg-transparent px-3 py-2.5 text-[15px] [field-sizing:content] focus:outline-none" placeholder="Ask anything about your money" />
-    <div className="flex items-center justify-between gap-3 pl-3"><span role={busy ? "status" : undefined} className="text-xs text-muted-foreground">{busy ? "Waiting for a response…" : ""}</span>
+    <div className="flex items-center justify-between gap-3 pl-3"><span role={busy ? "status" : undefined} className="text-xs text-muted-foreground">{busy ? "Waiting for a responseâ€¦" : ""}</span>
       {busy ? <button type="button" onClick={() => void cancel()} aria-label="Stop" className="flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90"><Square className="size-3.5 fill-current" aria-hidden="true" /></button>
         : <button disabled={!message.trim()} aria-label="Send" className="flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-30"><ArrowUp className="size-5" aria-hidden="true" /></button>}</div>
   </form>;
