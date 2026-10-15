@@ -33,7 +33,7 @@ test("reviews a corrected observation and explicit exclusion before confirmation
   await page.getByRole("button", { name: "Preview correction" }).click();
   await expect(page.getByText("2 accepted · 1 corrected · 1 excluded · 0 unresolved")).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
-  await page.getByLabel("I reviewed the corrections and exclusions against the original source.").check();
+  await page.getByLabel("I checked the corrections and exclusions against the original file.").check();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   expect(inspected).toBe(true);
   expect(confirmed).toBe(true);

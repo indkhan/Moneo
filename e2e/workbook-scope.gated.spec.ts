@@ -64,7 +64,7 @@ test("reviewed workbook scope imports only selected financial tables with exact 
     await page.getByRole("button",{name:"Preview correction",exact:true}).click();expect((await preview).ok()).toBe(true);
     await expect(page.getByText("3 rows",{exact:true})).toBeVisible();
     await expect(page.getByLabel("Source timestamp timezone",{exact:true})).toHaveValue("Europe/Berlin");
-    await page.getByRole("checkbox",{name:"I confirmed this timezone matches the statement's source clock."}).check();
+    await page.getByRole("checkbox",{name:"This timezone matches the statement."}).check();
     const confirm=page.waitForResponse(r=>r.url().endsWith("/api/imports/confirm")&&r.request().method()==="POST");
     await page.getByRole("button",{name:"Continue",exact:true}).click();const response=await confirm;expect(response.ok()).toBe(true);const {importId}=await response.json();
     await expect.poll(async()=> (await db`select status from public.imports where id=${importId} and workspace_id=${workspace}`)[0].status,{timeout:90_000}).toBe("completed");

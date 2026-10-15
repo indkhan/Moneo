@@ -35,20 +35,20 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-5 py-12">
-      <div className="w-full max-w-md rounded-xl border border-border bg-card p-8 shadow-sm">
-        <div className="mb-10 flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-lg bg-primary text-lg font-bold text-primary-foreground">M</span><span className="text-lg font-semibold tracking-tight">Moneo</span></div>
+      <div className="w-full max-w-md rounded-xl border border-border bg-card p-8">
+        <div className="mb-8 flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-lg bg-primary text-lg font-bold text-primary-foreground">M</span><span className="text-lg font-semibold tracking-tight">Moneo</span></div>
         <p className="text-xs font-semibold uppercase tracking-widest text-brand">Your workspace</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Sign in to Moneo</h1>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Sign in to Moneo</h1>
         <p className="mt-2 text-sm text-muted-foreground">Enter your email to receive a sign-in link.</p>
-        <form onSubmit={signIn} className="mt-8 space-y-3">
+        <form onSubmit={signIn} className="mt-6 space-y-3">
           <label className="block text-sm font-medium" htmlFor="email">Email</label>
-          <input id="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-lg border border-border bg-card px-3 py-2.5 outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" />
-          <button disabled={pending} className="w-full rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">{pending ? "Sending…" : "Send sign-in link"}</button>
+          <input id="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="min-h-10 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-blue-100" />
+          <button disabled={pending} className="min-h-10 w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">{pending ? "Sending…" : "Send sign-in link"}</button>
         </form>
-        <p role="status" className="mt-4 text-sm text-muted-foreground">{message ?? (failedCallback ? "The sign-in link could not be verified. Request a new link and try again." : "")}</p>
+        <p role="status" className="mt-4 min-h-5 text-sm text-muted-foreground">{message ?? (failedCallback ? "The sign-in link could not be verified. Request a new link and try again." : "")}</p>
         {process.env.NODE_ENV === "development" && <form method="post" action="/auth/dev" className="mt-6 border-t border-border pt-6">
           <input type="hidden" name="email" value={email} />
-          <button disabled={!email} className="w-full rounded-lg border border-border px-4 py-2.5 text-sm font-medium hover:bg-muted disabled:opacity-50">Sign in instantly (local dev)</button>
+          <button disabled={!email} className="min-h-10 w-full rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50">Sign in instantly (local dev)</button>
         </form>}
       </div>
     </main>
