@@ -52,7 +52,7 @@ test("source correction invalidates the inferred forecast obligation and undo re
   await expect(series).toContainText("Confirmed",{timeout:30_000});
   await page.goto("/plan");
   const assumption=page.locator("li").filter({has:page.getByRole("heading",{name:label,exact:true})});
-  await expect(assumption).toContainText("Source: recurring_confirmed");await expect(assumption).toContainText("active in forecast");
+  await expect(assumption).toContainText("Detected from your transactions");await expect(assumption).toContainText("Used in forecast");
   const forecast=page.locator("section").filter({has:page.getByRole("heading",{name:"Liquid balance horizon",exact:true})});
   await expect(forecast).toContainText("EUR 990.00");await expect(forecast).not.toContainText("Forecast unavailable");
   await page.goto(`${sourceUrls[2]}&linkSearch=${encodeURIComponent(credit)}`);
@@ -66,7 +66,7 @@ test("source correction invalidates the inferred forecast obligation and undo re
   await expect(page.getByRole("heading",{name:"Confirmed source evidence changed",exact:true})).toBeVisible();
   await page.goto("/plan");
   const disabled=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} (disabled)`,exact:true})});
-  await expect(disabled).toContainText("excluded from forecast");
+  await expect(disabled).toContainText("Not used in forecast");
   await expect(disabled).toContainText("Current value: -EUR 10.00");
   await expect(forecast).toContainText("EUR 1000.00");await expect(forecast).not.toContainText("EUR 990.00");
   await page.goto(sourceUrls[2]);await detail.getByRole("button",{name:"Undo verified link",exact:true}).click();
@@ -74,8 +74,8 @@ test("source correction invalidates the inferred forecast obligation and undo re
   await expect(detail.locator('pre[aria-label="Original source evidence"]')).toContainText('"amount_minor": "-1000"');
   await page.goto("/money/recurring");await expect(series).toContainText("Confirmed");
   await expect(page.getByRole("heading",{name:"Confirmed source evidence changed",exact:true})).not.toBeVisible();
-  await page.goto("/plan");await expect(assumption).toContainText("active in forecast");
-  await expect(assumption).toContainText("Source: recurring_confirmed");
+  await page.goto("/plan");await expect(assumption).toContainText("Used in forecast");
+  await expect(assumption).toContainText("Detected from your transactions");
   await expect(forecast).toContainText("EUR 990.00");
   expect((await db`select count(*)::int as count from public.transactions where workspace_id=${workspace!}`)[0].count).toBe(4);
   expect((await db`select sum(amount_minor)::text as amount from public.balance_snapshots where workspace_id=${workspace!}`)[0].amount).toBe("100000");
