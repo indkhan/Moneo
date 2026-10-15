@@ -3,7 +3,7 @@ import { accountLiquidity, availableToSpend, forecastDaily, withInternalFunding,
 import { requireWorkspace } from "@/lib/auth";
 import { evaluatePlan, evaluatePlanForWorkspace } from "./model";
 import { loadBalanceEvidence, resolveBalances } from "./balances";
-import { loadSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
+import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
 import { expenditurePosting, reportExpenditure } from "./expenditure";
 import { loadExpenditureRates } from "./expenditure-rates";
 import {forecastInput} from "./forecast-schema";
@@ -32,21 +32,25 @@ export async function cashflow(input: unknown, context?: FinanceContext, canRead
   const { from, to, currencyCode, view, accountIds } = periodInput.parse(input);
   if (from > to) throw new Error("From date is after to date");
   const { supabase, workspace } = context ?? await requireWorkspace();
-  const rows = [];
-  for (let offset = 0; ; offset += 1000) {
-    let query = supabase.from("effective_transactions")
-      .select("id, parent_transaction_id, account_id, posted_on, version, amount_minor::text, currency_code, status, kind, review_reasons")
-      .eq("workspace_id", workspace.id).gte("posted_on", from).lte("posted_on", to)
-      .order("id");
-    if (accountIds) query = query.in("account_id", accountIds);
-    const { data, error } = await query.range(offset, offset + 999);
-    if (error) throw error;
-    rows.push(...(data ?? []));
-    if (!data || data.length < 1000) break;
+  async function loadRows() {
+    const rows = [];
+    for (let offset = 0; ; offset += 1000) {
+      let query = supabase.from("effective_transactions")
+        .select("id, parent_transaction_id, account_id, posted_on, version, amount_minor::text, currency_code, status, kind, review_reasons")
+        .eq("workspace_id", workspace.id).gte("posted_on", from).lte("posted_on", to)
+        .order("id");
+      if (accountIds) query = query.in("account_id", accountIds);
+      const { data, error } = await query.range(offset, offset + 999);
+      if (error) throw error;
+      rows.push(...(data ?? []));
+      if (!data || data.length < 1000) return rows;
+    }
   }
-  const sourceCoverage = await loadSourceCoverage(supabase, workspace.id, { from, to, ...(view ? {} : { currencyCode }), ...(accountIds ? { accountIds } : {}) }, rows, canReadImports);
+  // Rows, source metadata and rates are independent reads, so they load together.
+  const [rows, sourceMetadata, rates] = await Promise.all([loadRows(), loadSourceCoverageMetadata(supabase, workspace.id, canReadImports),
+    view === "base" ? loadExpenditureRates(supabase, workspace.id, { from, to, currencyCode }) : []]);
+  const sourceCoverage = buildSourceCoverage({ from, to, ...(view ? {} : { currencyCode }), ...(accountIds ? { accountIds } : {}) }, rows, sourceMetadata?.imports, sourceMetadata?.sources);
   if (view) {
-    const rates = view === "base" ? await loadExpenditureRates(supabase, workspace.id, { from, to, currencyCode }) : [];
     const reporting = reportExpenditure(rows.map(expenditurePosting), rates, { from, to, currencyCode, view, accountIds });
     return { from, to, currencyCode, sourceCoverage, reporting, calculationEvidence: { rows, rates }, conversionCoverage: reporting.conversionCoverage, resultBasis: reporting.resultBasis,
       ...(reporting.totals ?? { unavailable: reporting.limitation ?? "Reporting evidence unavailable" }),
