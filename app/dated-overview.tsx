@@ -21,7 +21,7 @@ export function DatedOverview({accounts, wealth, today, timeZone, locale}: {
     <p className="mt-3 text-muted-foreground">Latest recorded values up to {today}, not verified current funds. Different observation dates are listed below; no exchange rates are applied.</p>
     <ul className="mt-3 space-y-1">{[...totals].map(([currency, amount]) => <li key={currency} className="font-mono font-semibold">{formatMoney(amount, currency, locale)}{missing.length > 0 || valuations.missingInputs.length > 0 ? " (partial)" : ""}</li>)}</ul>
     {!observations.length && <p className="mt-3 text-muted-foreground">No usable dated observations.</p>}
-    <ul className="mt-3 divide-y divide-border">{observations.map(row => <li key={row.id} className="py-2">{row.name}: {formatMoney(row.amount, row.currency, locale)} — {row.date} — {row.provenance}</li>)}</ul>
+    <ul className="mt-3 divide-y divide-border">{observations.map(row => <li key={row.id} className="py-2">{row.name}: {formatMoney(row.amount, row.currency, locale)} â€” {row.date} â€” {row.provenance}</li>)}</ul>
     {missing.map(account => <p key={account.id} className="mt-3 text-amber-700">{account.name}: {account.balance.warnings.join("; ") || "No dated balance"}</p>)}
     {uncertain.map(account => <p key={account.id} className="mt-3 text-amber-700">{account.name}: Original observation retained; later activity cannot be reconciled. {account.balance.warnings.join("; ")}</p>)}
     {valuations.missingInputs.length > 0 && <p className="mt-3 text-amber-700">{describeMissingInputs(valuations.missingInputs).join(". ")}</p>}
