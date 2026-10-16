@@ -1,0 +1,10 @@
+<pasted_content id="95bc">
+Connected banks
+Sync booked transactions and balances through Enable Banking. Each sync is an ordinary import you can review and undo.
+
+Bank sync is not configured on this deployment. See the README for Enable Banking setup.
+</pasted_content id="95bc">
+
+can you check all the bank migration not only that all migration is applied and if not appy them 
+
+the redirect url is set for the vercel only
