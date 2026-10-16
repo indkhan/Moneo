@@ -67,10 +67,12 @@ describe("bank statement mapping", () => {
     expect(inspectRows(parseCsv(stale.csv), stale.mapping).mapped[0].balanceMinor).toBeUndefined();
   });
 
-  it("prefers a booked balance in the account currency, never an available one", () => {
+  it("prefers a booked balance in the account currency, falling back to an available one", () => {
     const balance = (type: string, amount: string, currency = "EUR") => ({ balance_type: type, balance_amount: { currency, amount } });
     expect(preferredBalance([balance("ITBD", "5"), balance("CLBD", "4"), balance("CLBD", "9", "USD")], "EUR")?.balance_amount.amount).toBe("4");
-    expect(preferredBalance([balance("ITAV", "1"), balance("OTHR", "1")], "EUR")).toBeUndefined();
+    expect(preferredBalance([balance("ITAV", "1"), balance("CLBD", "2")], "EUR")?.balance_amount.amount).toBe("2");
+    expect(preferredBalance([balance("OTHR", "3"), balance("ITAV", "1")], "EUR")?.balance_amount.amount).toBe("1");
+    expect(preferredBalance([balance("OTHR", "1")], "EUR")).toBeUndefined();
     expect(preferredBalance([balance("CLBD", "1", "USD")], "EUR")).toBeUndefined();
   });
 });
