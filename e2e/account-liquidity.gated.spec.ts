@@ -61,7 +61,7 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     await expect(forecast).toContainText("Recurring bill QA"); await expect(forecast).toContainText(tomorrow);
     await forecast.getByRole("combobox", { name: "Fund from (optional)", exact: true }).selectOption(savings);
     await forecast.getByLabel("Funding date", { exact: true }).fill(tomorrow);
-    await forecast.getByLabel("Funding amount (in cents or smallest unit)", { exact: true }).fill("40000");
+    await forecast.getByLabel("Funding amount (EUR)", { exact: true }).fill("400.00");
     await forecast.getByRole("button", { name: "Evaluate account", exact: true }).click();
     await expect(forecast).not.toContainText("Checking QA funding shortfall"); await expect(forecast).toContainText("EUR 600.00");
     await expect(forecast).toContainText("Internal funding in"); await page.screenshot({ path: testInfo.outputPath("plan-timely.png"), fullPage: true });
