@@ -37,9 +37,10 @@ async function startAgentTeam(importId: string, workspaceId: string) {
   "use step";
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-  const imported = checked(await db.from("imports").select("new_rows").eq("id", importId).eq("workspace_id", workspaceId).single()) as { new_rows: number | null };
-  if (!imported.new_rows) return;
-  await startAgentRun(db, workspaceId, { importId }).catch(error => console.error("Agent team did not start", error));
+  try {
+    const imported = checked(await db.from("imports").select("new_rows").eq("id", importId).eq("workspace_id", workspaceId).single()) as { new_rows: number | null };
+    if (imported.new_rows) await startAgentRun(db, workspaceId, { importId });
+  } catch (error) { console.error("Agent team did not start", error); } // Owners can start it from /ai/agents.
 }
 
 async function prepareImport(importId: string, workspaceId: string, rowCount: number, runVersion: number) {
