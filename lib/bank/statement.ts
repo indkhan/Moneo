@@ -55,9 +55,10 @@ export function bankStatement(transactions: BankTransaction[], account: { accoun
   return { csv, rowCount: parsed.length, lastBookedOn: last.date, mapping: validateImportConfirmation(parsed, mapping) };
 }
 
-// Booked balances only: "available" types can include overdraft or credit lines.
+// Booked balances first. Some banks (Revolut) publish only an available balance, so fall back to it.
+// ponytail: an available balance can include an overdraft or credit line; exclude per bank if that bites.
 export function preferredBalance(balances: BankBalance[], currencyCode: string) {
-  const order = ["CLBD", "ITBD", "XPCD"];
+  const order = ["CLBD", "ITBD", "XPCD", "CLAV", "ITAV"];
   const usable = balances.filter(balance => balance.balance_amount.currency === currencyCode && order.includes(balance.balance_type));
   return usable.sort((a, b) => order.indexOf(a.balance_type) - order.indexOf(b.balance_type))[0];
 }
