@@ -95,9 +95,11 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     await expect(page.locator("article strong")).toHaveText(secret);
     await page.goto("/money/transactions");
     const views = page.getByRole("region", { name: "Saved views" });
+    await views.getByText(`Manage ${secret}`, { exact: true }).click();
     await views.getByLabel(`Rename saved view ${secret}`).fill(`${secret} renamed view`);
     await views.getByRole("button", { name: "Rename", exact: true }).click();
     await expect(views.getByRole("link", { name: `${secret} renamed view`, exact: true })).toBeVisible();
+    await views.getByText(`Manage ${secret} renamed view`, { exact: true }).click();
     await views.getByRole("button", { name: `Delete saved view ${secret} renamed view`, exact: true }).click();
     await expect(views.getByRole("link", { name: `${secret} renamed view`, exact: true })).toHaveCount(0);
     await page.goto("/money/accounts");
@@ -106,6 +108,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     await page.goto("/money/transactions");
     await expect(views.getByRole("link", { name: `${secret} renamed view`, exact: true })).toBeVisible();
     await page.goto(`/money/transactions?q=${encodeURIComponent(secret)}`);
+    await views.getByText(`Manage ${secret} renamed view`, { exact: true }).click();
     await views.getByRole("button", { name: `Update filters for saved view ${secret} renamed view`, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`view=${savedView}$`));
     expect(new URL(page.url()).searchParams.has("q")).toBe(false);

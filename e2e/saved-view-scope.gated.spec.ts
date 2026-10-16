@@ -58,7 +58,7 @@ test("saved transaction view preserves tag and event scope across save, reopen, 
     await expect(page.getByLabel("Filter by spending group")).toHaveValue("Berlin trip");
     // Reopening the opaque link reproduces the identical scope.
     await page.goto("/money/transactions");
-    await expect(page.getByText("4 shown", { exact: true })).toBeVisible();
+    await expect(page.getByText("4 transactions", { exact: true })).toBeVisible();
     await page.goto(viewUrl);
     await expectScopedView();
     // A persisted but invalid tag scope errors instead of broadening; a legacy row without scope keys loads cleanly.
@@ -74,16 +74,15 @@ test("saved transaction view preserves tag and event scope across save, reopen, 
     await expect(page.getByRole("button", { name: "Save view", exact: true })).toHaveCount(0);
     await page.getByRole("link", { name: "Back to normal filters" }).click();
     await page.waitForURL(new URL("/money/transactions", baseURL!).toString());
-    await expect(page.getByText("4 shown", { exact: true })).toBeVisible();
+    await expect(page.getByText("4 transactions", { exact: true })).toBeVisible();
     await page.goto(`/money/transactions?view=${legacyView}`);
     await expect(page.getByText("Saved view has an invalid tag filter", { exact: false })).toHaveCount(0);
-    await expect(page.getByText("4 shown", { exact: true })).toBeVisible();
+    await expect(page.getByText("4 transactions", { exact: true })).toBeVisible();
     // Edit a scoped transaction via bulk tags, undo the batch, and confirm the original tag/event scope survives.
     await page.goto(viewUrl);
     await expectScopedView();
-    await page.getByText("Bulk categories, tags and spending groups", { exact: true }).click();
-    const bulk = page.locator("details").filter({ has: page.getByText("Bulk categories, tags and spending groups", { exact: true }) });
-    await bulk.getByLabel(matchDesc, { exact: false }).check();
+    await page.getByLabel(`Select ${matchDesc}`, { exact: true }).check();
+    const bulk = page.getByRole("region", { name: "Bulk edit" });
     await bulk.getByRole("combobox", { name: "Change", exact: true }).selectOption("tags");
     await bulk.getByLabel("Tags, separated by commas").fill("holiday, qa-touched");
     await bulk.getByRole("button", { name: "Preview changes", exact: true }).click();
@@ -98,6 +97,7 @@ test("saved transaction view preserves tag and event scope across save, reopen, 
     await page.goto(viewUrl);
     await expectScopedView();
     // Rename then remove the saved view.
+    await page.getByText("Manage QA Holiday Berlin", { exact: true }).click();
     await page.getByLabel("Rename saved view QA Holiday Berlin").fill("QA Holiday Berlin Renamed");
     await page.locator("form", { has: page.getByLabel("Rename saved view QA Holiday Berlin") }).getByRole("button", { name: "Rename", exact: true }).click();
     await page.waitForURL(new URL("/money/transactions", baseURL!).toString());
@@ -107,6 +107,7 @@ test("saved transaction view preserves tag and event scope across save, reopen, 
     await expect(page).toHaveURL(viewUrl);
     await expect(page.locator("strong").filter({ hasText: /^QA Holiday Berlin Renamed$/ })).toBeVisible();
     await expectScopedView();
+    await page.getByText("Manage QA Holiday Berlin Renamed", { exact: true }).click();
     await page.getByRole("button", { name: "Delete saved view QA Holiday Berlin Renamed" }).click();
     await page.waitForURL(new URL("/money/transactions", baseURL!).toString());
     await expect(page.getByRole("link", { name: "QA Holiday Berlin Renamed" })).toHaveCount(0);
