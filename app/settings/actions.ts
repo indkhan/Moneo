@@ -9,6 +9,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { settingsSchema } from "@/lib/settings";
 import { listFreeModels, modelForSettings } from "@/lib/ai/provider";
 import { minorDigits } from "@/lib/finance/fx";
+import { revokeBankSessions } from "@/lib/bank/server";
 
 export async function saveSettings(_previous: { error?: string; saved?: boolean }, form: FormData): Promise<{ error?: string; saved?: boolean }> {
   try {
@@ -55,6 +56,7 @@ export async function resetAllData(_previous: { error?: string }, form: FormData
         if (!removed.data.length) break; // RLS-denied removes return nothing; never spin
       }
     }
+    await revokeBankSessions(workspace.id);
     const result = await supabase.rpc("reset_workspace");
     if (result.error) throw result.error;
   } catch {

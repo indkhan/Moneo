@@ -1,6 +1,7 @@
 {
   "crons": [
     { "path": "/api/cron/summaries", "schedule": "0 0 * * *" },
-    { "path": "/api/cron/reviews", "schedule": "0 1 * * *" }
+    { "path": "/api/cron/reviews", "schedule": "0 1 * * *" },
+    { "path": "/api/cron/bank-sync", "schedule": "0 4 * * *" }
   ]
 }
