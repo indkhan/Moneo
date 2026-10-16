@@ -28,6 +28,23 @@ The login page supplies the current website's `/auth/callback` as `emailRedirect
 
 After saving the settings, request a new sign-in email from the deployed website and open it in the same browser used to request it. Previously sent emails retain their original URLs.
 
+## Connect your bank (optional)
+
+Moneo can sync booked transactions and balances from EU banks (for example Revolut and Commerzbank) through [Enable Banking](https://enablebanking.com). Its restricted mode is free for personal use and covers the accounts you link yourself. Each sync is written as an ordinary import, so it shows in import history and can be reviewed and undone.
+
+1. Sign up at the [Enable Banking control panel](https://enablebanking.com/cp/) and create a new application in the **Production** environment. A new production app runs in restricted mode, which limits it to linked accounts.
+2. Set the redirect URL to `http://localhost:3000/api/bank/callback` (add `https://<your-app>/api/bank/callback` for a deployment).
+3. Let the control panel generate the key pair and keep the downloaded private key (`<application-id>.pem`), or upload your own public certificate and keep its private key.
+4. In the control panel, link your own accounts to the application (activate it by linking accounts). Only linked accounts can be synced.
+5. Set the environment variables in `.env`:
+   - `ENABLE_BANKING_APP_ID`: the application ID
+   - `ENABLE_BANKING_PRIVATE_KEY`: the PEM contents (one line with literal `\n` is fine)
+   - `BANK_TOKEN_ENCRYPTION_KEY`: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+   - `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_APP_URL` (the callback base) must also be set
+6. Apply the new migrations, restart `npm run dev`, then use **Import → Connected banks → Choose a bank → Connect bank**.
+
+Consent usually lasts up to 180 days, depending on the bank. A reconnect banner appears 7 days before it ends. A daily cron (`/api/cron/bank-sync`, authorized by `CRON_SECRET`) syncs in the background. PSD2 allows about 4 background fetches a day per bank. **Sync now** runs with you present, so it doesn't count toward that limit. Pending transactions are not synced.
+
 ## Checks
 
 | Command | Purpose |
