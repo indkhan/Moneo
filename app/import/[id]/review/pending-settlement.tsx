@@ -22,5 +22,5 @@ export async function PendingSettlement({ importId, sourceId, externalId, accoun
     choices.push(<PendingHoldEditor key={`${row.id}:${released}`} pending={row as PendingPosting} currency={currency}
       releasedMinor={released.toString()} importId={importId} sourceId={sourceId} />);
   }
-  return choices.length ? <div className="mt-4"><p className="text-sm">The same source reference has outstanding pending evidence. Select the correct hold explicitly; dates and amounts may differ. Accept as new keeps these holds active.</p>{choices}</div> : null;
+  return choices.length ? <div className="space-y-3"><p className="text-sm text-muted-foreground">This row matches pending payments. Pick the one it settles, even if the date or amount differs. Accepting as new leaves them pending.</p>{choices}</div> : null;
 }

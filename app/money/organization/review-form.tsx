@@ -35,25 +35,25 @@ export function OrganizationGroup({rows,proposal,merchants,categories,requestId,
   }catch{setAssistance('Optional suggestions unavailable. Keep using the manual choices below.');}
   finally{setProviderBusy(false);}
  }
- return <article className="rounded-xl border border-border bg-card p-4">
+ return <article className="rounded-xl border border-border bg-card p-6">
   <h2 className="font-semibold">{proposal.descriptionKey||'Unrecognized description'}</h2>
-  <p className="mt-1 text-sm text-muted-foreground">{proposal.basis==='approved-rule'?'Your approved rule':proposal.basis==='consistent-history'?`${proposal.evidence.length} consistent historical entries`:'Review required: description-derived merchant; choose a category.'} Suggestions require approval; evidence counts are not probabilities.</p>
+  <p className="mt-1 text-sm text-muted-foreground">{proposal.basis==='approved-rule'?'Your approved rule':proposal.basis==='consistent-history'?`${proposal.evidence.length} consistent historical entries`:'Merchant guessed from the description; please choose a category.'} Nothing changes until you approve.</p>
   {proposal.financialReviewRequired&&<p className="mt-2 text-sm font-medium">Financial interpretation needs separate review in Transactions. Organization changes only merchant/category metadata.</p>}
-  {proposal.evidence.length>0&&<details className="mt-2 text-xs"><summary>Source evidence ({proposal.evidence.length} entries)</summary><ul>{proposal.evidence.map(row=><li key={row.id}><a className="underline" href={'/money/transactions?transaction='+row.id}>Entry {row.id.slice(0,8)}</a> · reviewed version {row.version}</li>)}</ul></details>}
+  {proposal.evidence.length>0&&<details className="mt-2 text-sm"><summary className="cursor-pointer">Similar past entries ({proposal.evidence.length})</summary><ul>{proposal.evidence.map(row=><li key={row.id}><a className="underline" href={'/money/transactions?transaction='+row.id}>View entry</a></li>)}</ul></details>}
   <form action={action} className="mt-3 space-y-3">
    <input type="hidden" name="rows" value={JSON.stringify(rows.filter(row=>selected.includes(row.id)).map(({id,version})=>({id,version})))} />
    <input type="hidden" name="requestId" value={requestId} />
    <ul className="space-y-1">{rows.map(row=><li key={row.id}><label className="flex gap-2 text-sm"><input type="checkbox" checked={selected.includes(row.id)} onChange={event=>{draftRevision.current++;setSelected(event.target.checked?[...selected,row.id]:selected.filter(id=>id!==row.id));}} /><span>{row.posted_on} · {row.description} · {formatMoney(row.amount_minor,row.currency_code,locale)}</span></label></li>)}</ul>
    <div className="flex flex-wrap gap-3">
-    <label className="grid gap-1 text-sm">Merchant<select name="merchant" value={merchant} onChange={event=>{draftRevision.current++;setMerchant(event.target.value);}} className="rounded border bg-card p-2"><option value="keep">Keep current merchants</option><option value="">Clear merchant</option><option value="new">Review a merchant name</option>{merchants.map(target=><option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
-    {merchant==='new'&&<label className="grid gap-1 text-sm">Merchant name<input name="merchantName" required maxLength={100} value={merchantName} onChange={event=>{draftRevision.current++;setMerchantName(event.target.value);}} className="rounded border bg-card p-2" /></label>}
-    <label className="grid gap-1 text-sm">Category<select name="category" value={category} onChange={event=>{draftRevision.current++;setCategory(event.target.value);}} className="rounded border bg-card p-2"><option value="keep">Keep current categories</option><option value="">Uncategorized</option>{categories.map(target=><option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
+    <label className="grid gap-1 text-sm">Merchant<select name="merchant" value={merchant} onChange={event=>{draftRevision.current++;setMerchant(event.target.value);}} className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm"><option value="keep">Keep current merchants</option><option value="">Clear merchant</option><option value="new">Review a merchant name</option>{merchants.map(target=><option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
+    {merchant==='new'&&<label className="grid gap-1 text-sm">Merchant name<input name="merchantName" required maxLength={100} value={merchantName} onChange={event=>{draftRevision.current++;setMerchantName(event.target.value);}} className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm" /></label>}
+    <label className="grid gap-1 text-sm">Category<select name="category" value={category} onChange={event=>{draftRevision.current++;setCategory(event.target.value);}} className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm"><option value="keep">Keep current categories</option><option value="">Uncategorized</option>{categories.map(target=><option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
    </div>
    <button type="button" disabled={providerBusy||pending||!selected.length} onClick={requestSuggestions} className="text-sm underline disabled:opacity-40">{providerBusy?'Requesting optional suggestions…':'Request optional AI suggestions'}</button>
    {assistance&&<p role="status" className="text-sm">{assistance}</p>}
-   {providerProposals.length>0&&<ul className="space-y-1 text-xs">{providerProposals.map(candidate=><li key={candidate.transactionId}>{rows.find(row=>row.id===candidate.transactionId)?.description}: {candidate.merchantName??merchants.find(target=>target.id===candidate.merchantId)?.name??'keep merchant'} · {categories.find(target=>target.id===candidate.categoryId)?.name??'keep category'}{candidate.evidenceQuote&&<> · Source quote: “{candidate.evidenceQuote}”</>}</li>)}</ul>}
+   {providerProposals.length>0&&<ul className="space-y-1 text-sm">{providerProposals.map(candidate=><li key={candidate.transactionId}>{rows.find(row=>row.id===candidate.transactionId)?.description}: {candidate.merchantName??merchants.find(target=>target.id===candidate.merchantId)?.name??'keep merchant'} · {categories.find(target=>target.id===candidate.categoryId)?.name??'keep category'}{candidate.evidenceQuote&&<> · Source quote: “{candidate.evidenceQuote}”</>}</li>)}</ul>}
    {state.error&&<p role="alert" className="text-sm text-red-700 dark:text-red-300">{state.error}</p>}
-   <button disabled={pending||providerBusy||!selected.length} className="rounded bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Preparing review…':`Preview ${selected.length} entries`}</button>
+   <button disabled={pending||providerBusy||!selected.length} className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Preparing review…':`Preview ${selected.length} entries`}</button>
   </form>
  </article>;
 }
@@ -62,9 +62,9 @@ export function ApprovalForm({reviewId,canSaveRule}:{reviewId:string;canSaveRule
  return <form action={action} className="mt-4 space-y-3">
   <input type="hidden" name="reviewId" value={reviewId} />
   <label className="flex gap-2 text-sm"><input type="checkbox" name="confirmed" value="true" required />I reviewed these exact entries and approve the merchant/category changes.</label>
-  {canSaveRule&&<label className="flex gap-2 text-sm"><input type="checkbox" name="saveRule" value="true" />Save an approved rule for this description. Later suggestions will respect it; retained corrections take precedence.</label>}
+  {canSaveRule&&<label className="flex gap-2 text-sm"><input type="checkbox" name="saveRule" value="true" />Save a rule so future entries with this description are suggested the same way.</label>}
   {state.error&&<p role="alert" className="text-sm text-red-700 dark:text-red-300">{state.error}</p>}
-  <button disabled={pending} className="rounded bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Applying…':'Approve organization'}</button>
+  <button disabled={pending} className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Applying…':'Approve organization'}</button>
  </form>;
 }
 export function UndoReviewForm({reviewId,rows}:{reviewId:string;rows:{id:string;version:number}[]}) {

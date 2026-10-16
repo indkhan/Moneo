@@ -36,7 +36,7 @@ test("scenario comparison, edits, removal and undo preserve actual cash", async 
     const page = await context.newPage();
     page.setDefaultTimeout(30_000);
     await page.goto("/plan");
-    await page.getByText("Balance, valuation and FX sources", { exact: true }).click();
+    await page.getByText("Where the numbers come from", { exact: true }).click();
     await expect(page.locator("body")).toContainText("Scenario cash: EUR 1000.00");
     await expect(page.getByRole("navigation", { name: "Financial model evidence", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Edit forecast defaults", exact: true })).toHaveAttribute("href", "#forecast-preferences");

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type CoverageScope = { from: string; to: string; currencyCode?: string; accountId?: string; accountIds?: string[]; ledgerBasis?: "cashflow" | "balance_activity"; recordBasis?: "manual_wealth" | "manual_goals" };
@@ -84,16 +85,22 @@ export async function loadSourceCoverage(db: SupabaseClient, workspaceId: string
 
 // Internal shared read for readers with several periods/currencies. Consumers
 // receive the envelope, never these individual observations or import identities.
-export async function loadSourceCoverageMetadata(db: SupabaseClient, workspaceId: string, canReadImports: boolean) {
+// Memoized per request: Home, its cashflow and its insights all read the same metadata.
+export const loadSourceCoverageMetadata = cache(async (db: SupabaseClient, workspaceId: string, canReadImports: boolean) => {
   if (!canReadImports) return undefined;
   async function all<T>(table: string, columns: string): Promise<T[]> {
-    const result: T[] = [];
-    for (let offset = 0; ; offset += 500) {
-      const page = await db.from(table).select(columns).eq("workspace_id", workspaceId).order("id").range(offset, offset + 499);
-      if (page.error) throw page.error;
-      result.push(...page.data as T[]);
-      if (!page.data || page.data.length < 500) return result;
-    }
+    const page = async (offset: number, count?: "exact") => {
+      const result = await db.from(table).select(columns, count ? { count } : undefined).eq("workspace_id", workspaceId).order("id").range(offset, offset + 499);
+      if (result.error) throw result.error;
+      return { rows: (result.data ?? []) as T[], count: result.count };
+    };
+    // The first page's count lets the remaining pages load in parallel; the loop still
+    // reads on while pages come back full, so rows added meanwhile are not dropped.
+    const first = await page(0, "exact");
+    const rest = await Promise.all(Array.from({ length: Math.max(0, Math.ceil((first.count ?? 0) / 500) - 1) }, (_, index) => page((index + 1) * 500)));
+    const pages = [first.rows, ...rest.map(next => next.rows)];
+    while (pages.at(-1)!.length === 500) pages.push((await page(pages.length * 500)).rows);
+    return pages.flat();
   }
   const [imports, sources] = await Promise.all([
     all<ImportRow>("imports", "id, status, total_rows"),
@@ -101,4 +108,4 @@ export async function loadSourceCoverageMetadata(db: SupabaseClient, workspaceId
     all<SourceRow>("source_transactions", "import_id, status, review_reasons, posted_on:normalized_row->row->>postedOn, currency_code:normalized_row->row->>currencyCode, account_id:normalized_row->>accountId, resolved_account_id:normalized_row->resolution->>accountId"),
   ]);
   return { imports, sources };
-}
+});

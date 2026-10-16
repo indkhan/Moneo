@@ -32,6 +32,16 @@ function formSubmit(node: ReactNode): ((event: { preventDefault: () => void }) =
 function render() { host.index = 0; return LoginPage(); }
 const event = { preventDefault: vi.fn() };
 
+it("returns deployed sign-in emails to the current website instead of localhost", async () => {
+  vi.stubGlobal("window", { location: { origin: "https://moneo.example.com" } });
+  host.signInWithOtp.mockResolvedValue({ error: null });
+  await formSubmit(render())!(event);
+  expect(host.signInWithOtp).toHaveBeenCalledWith({
+    email: "",
+    options: { emailRedirectTo: "https://moneo.example.com/auth/callback" },
+  });
+});
+
 it("explains a failed callback and clears that message when retrying", async () => {
   vi.stubGlobal("window", { location: { origin: "http://localhost:3000", search: "?error=sign-in" } });
   render();

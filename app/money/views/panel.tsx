@@ -28,8 +28,8 @@ export function SavedViewsPanel({
   disableSave?: boolean;
 }) {
   return (
-    <section aria-label="Saved views" className="rounded-xl border border-border bg-card p-5 shadow-sm">
-      <h2 className="text-sm font-semibold">Saved views</h2>
+    <section aria-label="Saved views" className="rounded-xl border border-border bg-card p-6">
+      <h2 className="text-base font-semibold">Saved views</h2>
       {activeViewId ? (
         <p className="mt-2 text-sm">
           Open: <strong>{activeViewName ?? "Saved view"}</strong>{" "}
@@ -39,7 +39,7 @@ export function SavedViewsPanel({
         </p>
       ) : null}
       {views.length ? (
-        <ul className="mt-3 flex flex-wrap gap-2 text-xs">
+        <ul className="mt-3 flex flex-wrap gap-2 text-sm">
           {views.map((view) => (
             <li key={view.id} className="flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2">
               <Link className="font-medium text-brand hover:underline" href={`/money/transactions?view=${view.id}`}>
@@ -82,7 +82,7 @@ export function SavedViewsPanel({
             maxLength={80}
             placeholder="e.g. Restaurants over €20"
             aria-label="Saved view name"
-            className="ml-2 rounded-lg border border-border bg-card p-2 text-xs"
+            className="ml-2 min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm"
           />
         </label>
         {saveDefaults.q !== undefined ? <input type="hidden" name="q" value={saveDefaults.q} /> : null}
@@ -113,12 +113,11 @@ export function SavedViewsPanel({
           <input type="hidden" name="maxAmount" value={saveDefaults.maxAmount} />
         ) : null}
         {saveDefaults.sort !== undefined ? <input type="hidden" name="sort" value={saveDefaults.sort} /> : null}
-        <button className="rounded-lg border border-border px-4 py-2 text-xs font-medium hover:bg-muted">Save view</button>
+        <button className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">Save view</button>
       </form>
       ) : null}
-      <p className="mt-2 text-xs text-muted-foreground">
-        Saved-view links contain only an opaque id; search terms and account ids stay server-side.
-        {" "}<Link className="underline" href="/money/accounts">View edit history and undo</Link>
+      <p className="mt-4 text-sm text-muted-foreground">
+        <Link className="underline" href="/money/accounts">View edit history and undo</Link>
       </p>
     </section>
   );

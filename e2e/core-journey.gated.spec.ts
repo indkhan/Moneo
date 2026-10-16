@@ -190,6 +190,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
         }),
       );
       await page.goto("/ai");
+      await page.getByText("Run a deep review", { exact: true }).click();
       await expect(page.getByRole("heading", { name: "Deep Financial Analysis", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Run review" }).click();
       await expect(page.getByText("Mocked deterministic review")).toBeVisible();

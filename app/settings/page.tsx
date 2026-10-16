@@ -6,6 +6,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { listFreeModels } from "@/lib/ai/provider";
 import { SettingsForm } from "./form";
 import { SummaryRuns } from "./summary-runs";
+import { ResetData } from "./reset";
 
 export default async function SettingsPage() {
   const { user, workspace, settings, supabase } = await requireWorkspace();
@@ -30,18 +31,20 @@ export default async function SettingsPage() {
   });
   let models: { id: string; name: string }[] = [], catalogueError: string | undefined;
   try { models = await listFreeModels(); } catch (error) { catalogueError = error instanceof Error ? error.message : "Model availability could not be checked"; }
-  return <main className="mx-auto max-w-4xl space-y-6 px-4 py-8 sm:px-6">
-    <div><h1 className="text-3xl font-semibold tracking-tight">Settings</h1><p className="mt-2 break-words text-muted-foreground">Your private workspace · {user.email ?? "Signed in"}</p></div>
+  return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
+    <div><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Settings</h1><p className="mt-2 break-words text-sm text-muted-foreground">Your private workspace · {user.email ?? "Signed in"}</p></div>
     <SettingsForm settings={settings} currency={workspace.display_currency} models={models} catalogueError={catalogueError}
       defaultModel={process.env.OPENROUTER_MODEL ?? "qwen/qwen3.8-27b:free"} />
-    <details className="rounded-xl border border-border bg-card p-4"><summary className="cursor-pointer font-medium">Customize Home</summary><form action={saveDashboard} className="mt-4 space-y-3"><input type="hidden" name="version" value={layout.data?.version ?? 0} />{choices.map((key, index) => <div key={key} className="flex flex-wrap items-center gap-3"><label className="flex flex-1 items-center gap-2 text-sm"><input type="checkbox" name="enabled" value={key} defaultChecked={ordered.includes(key)} disabled={key.startsWith("tool:")} />{key.startsWith("tool:") && <input type="hidden" name="enabled" value={key} />}{Object.hasOwn(BUILTIN_WIDGETS, key) ? BUILTIN_WIDGETS[key as keyof typeof BUILTIN_WIDGETS] : pinnedById.get(key.slice(5))?.name}</label><label className="flex items-center gap-2 text-xs">Position<input type="number" name={`position:${key}`} min="1" max="50" defaultValue={ordered.includes(key) ? ordered.indexOf(key) + 1 : index + 1} className="w-16 rounded border border-border bg-background p-2" /></label></div>)}<button className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground">Save dashboard</button><p className="text-xs text-muted-foreground">Pin or unpin tools in the <Link href="/ai/library" className="underline">Library</Link>. Lower positions appear first.</p></form></details>
-    <section className="rounded-xl border border-border bg-card p-5"><h2 className="font-semibold">Scheduled summaries</h2>
-      <p className="mt-2 text-sm text-muted-foreground">Weekly summaries become due on Monday; monthly summaries on the first day, using your timezone and preferred time. A daily check dispatches due summaries, so delivery can be delayed by a day. Each review uses the latest financial evidence. Disable summaries above to stop future runs; stop an active run below.</p>
-      {!process.env.CRON_SECRET && <p className="mt-2 text-sm text-amber-700">Automatic scheduling needs to be configured on the deployment. Your preference is saved.</p>}
+    <details className="rounded-xl border border-border bg-card p-6"><summary className="cursor-pointer text-base font-semibold">Customize Home</summary><form action={saveDashboard} className="mt-4 space-y-4"><input type="hidden" name="version" value={layout.data?.version ?? 0} />{choices.map((key, index) => <div key={key} className="flex flex-wrap items-center gap-3 border-b border-border pb-3 last:border-0"><label className="flex flex-1 items-center gap-2 text-sm"><input type="checkbox" name="enabled" value={key} defaultChecked={ordered.includes(key)} disabled={key.startsWith("tool:")} />{key.startsWith("tool:") && <input type="hidden" name="enabled" value={key} />}{Object.hasOwn(BUILTIN_WIDGETS, key) ? BUILTIN_WIDGETS[key as keyof typeof BUILTIN_WIDGETS] : pinnedById.get(key.slice(5))?.name}</label><label className="flex items-center gap-2 text-sm">Position<input type="number" name={`position:${key}`} min="1" max="50" defaultValue={ordered.includes(key) ? ordered.indexOf(key) + 1 : index + 1} className="min-h-10 w-20 rounded-lg border border-border bg-card px-3 py-2 text-sm" /></label></div>)}<button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Save dashboard</button><p className="text-sm text-muted-foreground">Pin or unpin tools in the <Link href="/ai/library" className="underline">Library</Link>. Lower positions appear first.</p></form></details>
+    <section className="rounded-xl border border-border bg-card p-6"><h2 className="text-base font-semibold">Scheduled summaries</h2>
+      <p className="mt-1 text-sm text-muted-foreground">Recent summary runs. Change the schedule under Insights and summaries.</p>
+      <details className="mt-2 text-sm text-muted-foreground"><summary className="cursor-pointer">More details</summary><p className="mt-2">Weekly summaries are due on Monday and monthly ones on the first, in your timezone and at your preferred time. A daily check starts due summaries, so they can arrive a day late. Turn summaries off to stop future runs, or stop an active run below.</p></details>
+      {!process.env.CRON_SECRET && <p className="mt-3 text-sm text-amber-700">Automatic scheduling needs to be configured on the deployment. Your preference is saved.</p>}
       {scheduled.error || jobs?.error ? <p role="alert" className="mt-3 text-sm text-red-700">Scheduled status is unavailable. Try again later.</p> : <SummaryRuns initial={runs} />}
-      <p className="mt-3 text-sm text-muted-foreground">If a scheduled review fails, you can run a fresh review from AI. Completed summaries appear in Activity.</p>
+      <p className="mt-4 text-sm text-muted-foreground">Finished summaries appear in Activity. If one fails, run a new review from AI.</p>
     </section>
     <InsightSettings />
-    <section className="rounded-xl border border-border bg-card p-5"><h2 className="font-semibold">AI usage</h2><p className="mt-2 text-sm text-muted-foreground">Provider usage is shown when available in Activity. Missing token counts or costs are unknown; they are not reported as zero.</p></section>
+    <section className="rounded-xl border border-border bg-card p-6"><h2 className="text-base font-semibold">AI usage</h2><p className="mt-1 text-sm text-muted-foreground">Usage appears in Activity when the provider reports it. Missing figures are shown as unknown, not zero.</p></section>
+    <ResetData />
   </main>;
 }

@@ -23,14 +23,14 @@ export function ManualBalanceForm({ account, snapshots, ledger, asOf, timeZone, 
     (row.posted_at ? Date.parse(row.posted_at) <= Date.parse(asOf) : row.posted_on <= today))
     .sort((a, b) => a.posted_on.localeCompare(b.posted_on) || a.id.localeCompare(b.id));
   return <>
-    <SourceCoverageDetails coverage={account.sourceCoverage ?? buildSourceCoverage({ from: "0001-01-01", to: today, accountId: account.id, currencyCode: account.currency_code, ledgerBasis: "balance_activity" }, ledger.map(row => ({ ...row, kind: row.kind ?? "ordinary" })))} />
-    {!account.archived_at && balance.status === "stale" && balance.estimated_amount_minor !== null && <details className="mt-4 rounded-md border border-border p-3 text-xs">
+    <div className="mt-4"><SourceCoverageDetails coverage={account.sourceCoverage ?? buildSourceCoverage({ from: "0001-01-01", to: today, accountId: account.id, currencyCode: account.currency_code, ledgerBasis: "balance_activity" }, ledger.map(row => ({ ...row, kind: row.kind ?? "ordinary" })))} /></div>
+    {!account.archived_at && balance.status === "stale" && balance.estimated_amount_minor !== null && <details className="mt-4 rounded-lg border border-border p-4 text-sm">
       <summary className="cursor-pointer font-medium text-brand">Confirm recorded balance</summary>
-      <p className="mt-2">Recorded changes since {boundary} give an unverified booked estimate of {formatMoney(balance.estimated_amount_minor, account.currency_code, locale)} before pending holds.</p>
-      <ul className="mt-2 max-h-60 space-y-1 overflow-auto">{changes.map(row => <li key={row.id}>{row.description ?? "Recorded posting"} — {formatMoney(row.amount_minor, row.currency_code, locale)} — {row.posted_at ? calendarDate(row.posted_at, timeZone) : row.posted_on}</li>)}</ul>
-      {changes.length === 0 && <p className="mt-2">No later posted activity is recorded. This does not prove that activity is complete.</p>}
-      <p className="mt-2 text-muted-foreground">Check this amount against your bank. If it differs, use the booked balance form below. Missing statement periods remain unknown; confirmation does not fill them in.</p>
-      <form action={confirmRecordedBalance} className="mt-3 space-y-2">
+      <p className="mt-2">Recorded changes since {boundary} give an estimated booked balance of {formatMoney(balance.estimated_amount_minor, account.currency_code, locale)} before pending holds.</p>
+      <ul className="mt-3 max-h-60 divide-y divide-border overflow-auto">{changes.map(row => <li key={row.id} className="py-1.5">{row.description ?? "Recorded posting"} — {formatMoney(row.amount_minor, row.currency_code, locale)} — {row.posted_at ? calendarDate(row.posted_at, timeZone) : row.posted_on}</li>)}</ul>
+      {changes.length === 0 && <p className="mt-2">No later activity is recorded.</p>}
+      <p className="mt-2 text-muted-foreground">Check this against your bank. If it differs, enter the balance below instead.</p>
+      <form action={confirmRecordedBalance} className="mt-4 space-y-3">
         <input type="hidden" name="accountId" value={account.id} />
         <input type="hidden" name="requestId" value={randomUUID()} />
         <input type="hidden" name="expectedSnapshotId" value={latest?.id ?? ""} />
@@ -39,31 +39,30 @@ export function ManualBalanceForm({ account, snapshots, ledger, asOf, timeZone, 
         <input type="hidden" name="amount" value={formatInputAmount(balance.estimated_amount_minor, account.currency_code)} />
         <input type="hidden" name="asOf" value={today} />
         <label className="flex items-start gap-2"><input type="checkbox" name="reviewedActivity" required /><span>I checked my bank and confirm this booked balance before pending holds includes all recorded postings through {today}.</span></label>
-        <button className="font-medium text-brand hover:underline">Confirm balance without retyping</button>
+        <button className="text-sm font-medium text-brand hover:underline">Confirm balance without retyping</button>
       </form>
     </details>}
-    <form action={setManualBalance} className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4 text-xs">
+    <form action={setManualBalance} className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4 text-sm">
       <input type="hidden" name="accountId" value={account.id} />
       <input type="hidden" name="requestId" value={randomUUID()} />
       <input type="hidden" name="expectedSnapshotId" value={latest?.id ?? ""} />
       <input type="hidden" name="expectedVersion" value={latest?.version ?? 0} />
       <input type="hidden" name="coveredTransactions" value={JSON.stringify(review)} />
-      <input name="amount" required placeholder="Booked balance" aria-label={`${account.name} balance`} className="w-24 rounded-md border border-border bg-card p-2" />
-      <input name="asOf" required type="date" defaultValue={today} max={today} aria-label="Balance as of" className="min-w-0 rounded-md border border-border bg-card p-2" />
-      <button className="font-medium text-brand hover:underline">Save</button>
+      <input name="amount" required placeholder="Booked balance" aria-label={`${account.name} balance`} className="min-h-10 w-32 rounded-lg border border-border bg-card px-3 py-2 text-sm" />
+      <input name="asOf" required type="date" defaultValue={today} max={today} aria-label="Balance as of" className="min-h-10 min-w-0 rounded-lg border border-border bg-card px-3 py-2 text-sm" />
+      <button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">Save</button>
       <details className="w-full">
-        <summary className="cursor-pointer">Review activity included in today&apos;s booked balance ({review.length})</summary>
-        <p className="mt-2 text-muted-foreground">Check your bank&apos;s booked balance before pending holds. Confirm only if it includes every posting below. Refresh this page if activity changes.</p>
-        <ul className="mt-2 max-h-60 space-y-1 overflow-auto">
-          {review.map(row => <li key={row.id}>{descriptions.get(row.id) ?? "Recorded posting"} — {formatMoney(row.amount_minor, row.currency_code, locale)} — {row.posted_at ? new Date(row.posted_at).toLocaleString(locale, { timeZone }) : `${row.posted_on} (date only)`}</li>)}
+        <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Confirm today&apos;s activity ({review.length})</summary>
+        <p className="mt-3 text-muted-foreground">Tick the box below if your bank&apos;s booked balance includes every posting listed here.</p>
+        <ul className="mt-3 max-h-60 divide-y divide-border overflow-auto">
+          {review.map(row => <li key={row.id} className="py-1.5">{descriptions.get(row.id) ?? "Recorded posting"} — {formatMoney(row.amount_minor, row.currency_code, locale)} — {row.posted_at ? new Date(row.posted_at).toLocaleString(locale, { timeZone }) : `${row.posted_on} (date only)`}</li>)}
         </ul>
-        {review.length === 0 && <p className="mt-2 text-muted-foreground">No posted activity recorded today.</p>}
+        {review.length === 0 && <p className="mt-3 text-muted-foreground">No posted activity recorded today.</p>}
         <label className="mt-3 flex items-start gap-2"><input type="checkbox" name="reviewedActivity" className="mt-0.5" /><span>I checked today&apos;s booked balance and confirm it includes all {review.length} listed postings.</span></label>
-        <p className="mt-2 text-muted-foreground">Without confirmation, same-day activity may leave the balance uncertain. This review applies only to today&apos;s date.</p>
       </details>
     </form>
-    {history.some(row => row.actor_id) && <details className="mt-3 text-xs"><summary className="cursor-pointer">Manual balance history and undo</summary>
-      <ul className="mt-2 space-y-2">{history.filter(row => row.actor_id).map(row => <li key={row.id}>
+    {history.some(row => row.actor_id) && <details className="mt-4 text-sm"><summary className="cursor-pointer text-muted-foreground hover:text-foreground">Manual balance history and undo</summary>
+      <ul className="mt-3 space-y-2">{history.filter(row => row.actor_id).map(row => <li key={row.id}>
         {formatMoney(row.amount_minor, row.currency_code, locale)} — {new Date(row.as_of).toLocaleString(locale, { timeZone })} — {row.boundary_kind === "reviewed_activity" ? "activity reviewed" : "date only"}
         {row.undone_at ? <span> — undone</span> : <form action={undoManualBalance} className="inline ml-2">
           <input type="hidden" name="snapshotId" value={row.id} /><input type="hidden" name="expectedVersion" value={row.version ?? 1} />

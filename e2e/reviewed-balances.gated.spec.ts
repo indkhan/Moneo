@@ -43,7 +43,7 @@ test("explicit booked-balance review covers timestamped and date-only activity, 
     await card.getByLabel("Synthetic reviewed cash balance", { exact: true }).fill("100.00");
     await card.getByRole("button", { name: "Save", exact: true }).click();
     await expect(async () => { await page.reload(); await expect(card).toContainText("ambiguous"); }).toPass({ timeout: 30_000 });
-    await card.getByText(/Review activity included in today's booked balance/).click();
+    await card.getByText(/Confirm today's activity/).click();
     await expect(card).toContainText("Synthetic morning posting");
     await expect(card).toContainText("Synthetic date-only posting");
     await card.getByLabel(/I checked today's booked balance/).check();

@@ -12,7 +12,7 @@ test("Evidence room handles rich replies, artifacts, cancellation and modal keyb
   const base = process.env.E2E_BASE_URL ?? "http://localhost:3000";
   const conversation = process.env.E2E_AI_CONVERSATION;
   await page.goto(`${base}/ai${conversation ? `?conversation=${conversation}` : ""}`);
-  await expect(page.getByRole("heading", { name: "Every answer has a trail." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ask Moneo" })).toBeVisible();
   expect(await page.locator("main").evaluate(element => getComputedStyle(element).getPropertyValue("--color-background").trim())).toBe("#182333");
   // Deterministic mocked contract for the dialog's conversation history. The POST
   // /api/chat mock never reaches the server, so the mock records the posted
@@ -74,7 +74,7 @@ test("Evidence room handles rich replies, artifacts, cancellation and modal keyb
   await expect(dialog.locator("table")).toContainText("Dining");
   await expect(dialog.locator("code.language-sql")).toContainText("SELECT amount_minor");
   await expect(dialog.getByRole("link", { name: /Open saved tool/ })).toHaveAttribute("href", /\/ai\/library\//);
-  await dialog.getByText("Completed tools · 2", { exact: true }).click();
+  await dialog.getByText("Used 2 tools", { exact: true }).click();
   await expect(dialog.getByRole("listitem").filter({ hasText: "Search transactions" })).toBeVisible();
   // The rich reply and its tool activity are asserted; release the held
   // post-send reload now, while the dialog is still open, so the recorded Q&A

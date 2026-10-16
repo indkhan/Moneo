@@ -50,7 +50,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       savedFilters = parseStoredFilters(data.filters as unknown);
     }
   }
-  const pageHeader = (<header className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Money / Ledger</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">Transactions</h1><p className="mt-1 text-sm text-muted-foreground">Search, review, and correct your ledger.</p></div><div className="flex flex-wrap gap-2"><Link href="/money/organization" className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium hover:bg-muted">Organize spending</Link><Link href="/money/investigations" className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium hover:bg-muted">Investigate</Link><Link href="/money/accounts" className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium hover:bg-muted">Accounts</Link><Link href="/money/wealth" className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium hover:bg-muted">Investments, assets and debts</Link><Link href="/money/recurring" className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium hover:bg-muted">Review recurring</Link><Link href="/import" className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90">Import statement</Link></div></header>);
+  const pageHeader = (<header className="space-y-4"><div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Money</p><h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Transactions</h1><p className="mt-2 text-sm text-muted-foreground">Search, review, and correct your ledger.</p></div><Link href="/import" className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">Import statement</Link></div><nav aria-label="Money sections" className="flex flex-wrap gap-2"><Link href="/money/accounts" className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted">Accounts</Link><Link href="/money/organization" className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted">Organize spending</Link><Link href="/money/recurring" className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted">Recurring</Link><Link href="/money/wealth" className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted">Investments, assets and debts</Link><Link href="/money/investigations" className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted">Investigate</Link></nav></header>);
   const viewRows = (savedViews ?? []).map(view => ({ id: view.id, name: view.name, created_at: view.created_at, version: view.version }));
 
   // An invalid persisted scope never reaches the ledger query: no rows or
@@ -58,9 +58,9 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   // keeps rename/delete so the broken view can be removed; saving is
   // disabled so the broadened scope cannot be re-saved.
   if (savedViewScopeError && activeView) {
-    return <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 text-foreground sm:px-8">
+    return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 text-foreground sm:px-8 lg:py-10">
       {pageHeader}
-      <section aria-label="Invalid saved view" className="rounded-xl border border-border bg-card p-5 shadow-sm">
+      <section aria-label="Invalid saved view" className="rounded-xl border border-border bg-card p-6">
         <p role="alert" className="text-sm text-red-700 dark:text-red-300">{savedViewScopeError}</p>
         <p className="mt-2 text-sm text-muted-foreground">Set the tag and spending group with normal filters, save a corrected view, then delete this broken view below.</p>
         <Link className="mt-3 inline-block underline" href="/money/transactions">Back to normal filters</Link>
@@ -267,44 +267,44 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     baseQuery = sortParams.toString();
   }
 
-  return <main className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 text-foreground sm:px-8">
+  return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 text-foreground sm:px-8 lg:py-10">
     {pageHeader}
     {viewNotFound ? <p role="alert" className="mt-6">Saved view not found. Showing normal filters.</p> : null}
-    <details className="rounded-xl border border-border bg-card p-4">
+    <details className="rounded-xl border border-border bg-card p-6">
       <summary className="cursor-pointer text-sm font-semibold">Add a manual transaction</summary>
-      {!accounts?.some(account => !account.archived_at) ? <p className="mt-3 text-sm text-muted-foreground">Add or restore an active account before entering a transaction.</p> : <form action={createManualTransaction} className="mt-4 flex flex-wrap items-end gap-3">
+      {!accounts?.some(account => !account.archived_at) ? <p className="mt-3 text-sm text-muted-foreground">Add or restore an active account before entering a transaction.</p> : <form action={createManualTransaction} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <input type="hidden" name="requestId" value={crypto.randomUUID()} />
-        <label className="grid gap-1 text-sm">Account<select name="accountId" required className="rounded-lg border bg-card p-2">{accounts.filter(account => !account.archived_at).map(account => <option key={account.id} value={account.id}>{account.name} ({account.currency_code})</option>)}</select></label>
-        <label className="grid gap-1 text-sm">Posting date<input name="postedOn" type="date" required defaultValue={calendarDate(new Date(), workspace.timezone)} className="rounded-lg border bg-card p-2" /></label>
-        <label className="grid gap-1 text-sm">Description<input name="description" required maxLength={500} className="rounded-lg border bg-card p-2" /></label>
-        <label className="grid gap-1 text-sm">Signed decimal amount<input name="amount" required maxLength={30} inputMode="decimal" placeholder="-12.34" className="w-36 rounded-lg border bg-card p-2" /><span className="text-xs text-muted-foreground">Expenses negative; decimal dot, no grouping.</span></label>
-        <label className="grid gap-1 text-sm">Status<select name="status" defaultValue="posted" className="rounded-lg border bg-card p-2"><option value="posted">Posted</option><option value="pending">Pending</option></select></label>
-        <label className="grid gap-1 text-sm">Category<select name="categoryId" className="rounded-lg border bg-card p-2"><option value="">Uncategorized</option>{categories?.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-        <label className="grid gap-1 text-sm">Note<input name="note" maxLength={2000} className="rounded-lg border bg-card p-2" /></label>
-        <button className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white">Add transaction</button>
+        <label className="grid gap-1 text-sm">Account<select name="accountId" required className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm">{accounts.filter(account => !account.archived_at).map(account => <option key={account.id} value={account.id}>{account.name} ({account.currency_code})</option>)}</select></label>
+        <label className="grid gap-1 text-sm">Posting date<input name="postedOn" type="date" required defaultValue={calendarDate(new Date(), workspace.timezone)} className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm" /></label>
+        <label className="grid gap-1 text-sm">Description<input name="description" required maxLength={500} className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm" /></label>
+        <label className="grid gap-1 text-sm">Amount<input name="amount" required maxLength={30} inputMode="decimal" placeholder="-12.34" className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm" /><span className="text-xs text-muted-foreground">Use a minus sign for spending, e.g. -12.34.</span></label>
+        <label className="grid gap-1 text-sm">Status<select name="status" defaultValue="posted" className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm"><option value="posted">Posted</option><option value="pending">Pending</option></select></label>
+        <label className="grid gap-1 text-sm">Category<select name="categoryId" className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm"><option value="">Uncategorized</option>{categories?.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+        <label className="grid gap-1 text-sm">Note<input name="note" maxLength={2000} className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm" /></label>
+        <button className="min-h-10 self-end rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white">Add transaction</button>
       </form>}
     </details>
-    <form className="flex flex-wrap items-center gap-2.5 rounded-xl border border-border bg-card p-4 shadow-sm [&_input]:rounded-lg [&_input]:border-border [&_input]:bg-card [&_input]:px-3 [&_input]:py-2 [&_input]:text-xs [&_select]:rounded-lg [&_select]:border-border [&_select]:bg-card [&_select]:px-3 [&_select]:py-2 [&_select]:text-xs" method="get">
-      <input name="q" defaultValue={filters.q} placeholder="Search descriptions" aria-label="Search descriptions" className="rounded border p-2" />
-      <input name="tag" defaultValue={tag} placeholder="Tag" aria-label="Filter by tag" maxLength={40} className="rounded border p-2" />
-      <input name="event" defaultValue={eventName} placeholder="Trip / event group" aria-label="Filter by spending group" maxLength={120} className="rounded border p-2" />
-      <input name="from" type="date" defaultValue={filters.from} aria-label="From date" className="rounded border p-2" />
-      <input name="to" type="date" defaultValue={filters.to} aria-label="To date" className="rounded border p-2" />
-      <select name="account" defaultValue={filters.accountId ?? ""} aria-label="Account" className="rounded border p-2"><option value="">All accounts</option>{accounts?.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select>
-      <select name="category" defaultValue={filters.uncategorized ? "none" : filters.categoryId ?? ""} aria-label="Category" className="rounded border p-2"><option value="">All categories</option><option value="none">Uncategorized</option>{categories?.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
-      <select name="merchant" defaultValue={merchantUnknown ? "none" : merchantId ?? ""} aria-label="Merchant" className="rounded border p-2"><option value="">All merchants</option><option value="none">Unknown</option>{merchants?.map(merchant => <option key={merchant.id} value={merchant.id}>{merchant.name}</option>)}</select>
-      <input name="minAmount" defaultValue={filters.minAmountMinor} placeholder="Min (minor units)" aria-label="Minimum amount in minor units" inputMode="numeric" pattern="-?[0-9]+" title="Exact amount in minor units, e.g. cents (no decimals)" className="w-36 rounded border p-2" />
-      <input name="maxAmount" defaultValue={filters.maxAmountMinor} placeholder="Max (minor units)" aria-label="Maximum amount in minor units" inputMode="numeric" pattern="-?[0-9]+" title="Exact amount in minor units, e.g. cents (no decimals)" className="w-36 rounded border p-2" />
-      <select name="status" defaultValue={filters.status ?? ""} aria-label="Status" className="rounded border p-2"><option value="">All statuses</option><option value="posted">Posted</option><option value="pending">Pending</option></select>
-      <select name="kind" defaultValue={filters.kind ?? ""} aria-label="Type" className="rounded border p-2"><option value="">All types</option><option value="ordinary">Ordinary</option><option value="transfer">Transfer</option><option value="refund">Refund</option></select>
-      <select name="direction" defaultValue={filters.direction ?? ""} aria-label="Direction" className="rounded border p-2"><option value="">Income and outflow</option><option value="income">Income</option><option value="outflow">Outflow</option></select>
-      <select name="sort" defaultValue={filters.sort} aria-label="Sort order" className="rounded border p-2"><option value="date-desc">Newest first</option><option value="date-asc">Oldest first</option><option value="amount-desc">Largest amount first</option><option value="amount-asc">Smallest amount first</option></select>
-      <button className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:opacity-90">Apply filters</button>
+    <form className="grid gap-3 rounded-xl border border-border bg-card p-6 sm:grid-cols-2 lg:grid-cols-4 [&_input]:min-h-10 [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:px-3 [&_input]:py-2 [&_input]:text-sm [&_select]:min-h-10 [&_select]:w-full [&_select]:rounded-lg [&_select]:border [&_select]:border-border [&_select]:bg-card [&_select]:px-3 [&_select]:py-2 [&_select]:text-sm" method="get">
+      <input name="q" defaultValue={filters.q} placeholder="Search descriptions" aria-label="Search descriptions" />
+      <input name="tag" defaultValue={tag} placeholder="Tag" aria-label="Filter by tag" maxLength={40} />
+      <input name="event" defaultValue={eventName} placeholder="Trip / event group" aria-label="Filter by spending group" maxLength={120} />
+      <input name="from" type="date" defaultValue={filters.from} aria-label="From date" />
+      <input name="to" type="date" defaultValue={filters.to} aria-label="To date" />
+      <select name="account" defaultValue={filters.accountId ?? ""} aria-label="Account"><option value="">All accounts</option>{accounts?.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select>
+      <select name="category" defaultValue={filters.uncategorized ? "none" : filters.categoryId ?? ""} aria-label="Category"><option value="">All categories</option><option value="none">Uncategorized</option>{categories?.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
+      <select name="merchant" defaultValue={merchantUnknown ? "none" : merchantId ?? ""} aria-label="Merchant"><option value="">All merchants</option><option value="none">Unknown</option>{merchants?.map(merchant => <option key={merchant.id} value={merchant.id}>{merchant.name}</option>)}</select>
+      <input name="minAmount" defaultValue={filters.minAmountMinor} placeholder="Min amount, in cents" aria-label="Minimum amount in minor units" inputMode="numeric" pattern="-?[0-9]+" title="Whole number of cents, e.g. 1250 for 12.50" />
+      <input name="maxAmount" defaultValue={filters.maxAmountMinor} placeholder="Max amount, in cents" aria-label="Maximum amount in minor units" inputMode="numeric" pattern="-?[0-9]+" title="Whole number of cents, e.g. 1250 for 12.50" />
+      <select name="status" defaultValue={filters.status ?? ""} aria-label="Status"><option value="">All statuses</option><option value="posted">Posted</option><option value="pending">Pending</option></select>
+      <select name="kind" defaultValue={filters.kind ?? ""} aria-label="Type"><option value="">All types</option><option value="ordinary">Ordinary</option><option value="transfer">Transfer</option><option value="refund">Refund</option></select>
+      <select name="direction" defaultValue={filters.direction ?? ""} aria-label="Direction"><option value="">Income and outflow</option><option value="income">Income</option><option value="outflow">Outflow</option></select>
+      <select name="sort" defaultValue={filters.sort} aria-label="Sort order"><option value="date-desc">Newest first</option><option value="date-asc">Oldest first</option><option value="amount-desc">Largest amount first</option><option value="amount-asc">Smallest amount first</option></select>
+      <button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 sm:col-span-2 lg:col-span-1 lg:col-start-4">Apply filters</button>
     </form>
     <SavedViewsPanel views={viewRows} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} />
     {!!rows.length && <BulkEditor locale={workspace.locale} rows={rows} categories={categories ?? []} query={current.toString()} requestId={crypto.randomUUID()} />}
     {error ? <p role="alert" className="mt-6">Could not load transactions: {error.message}</p> : <TransactionTable locale={workspace.locale} rows={rows} accountNames={names} merchantNames={merchantNames} query={current.toString()} sort={filters.sort} baseQuery={baseQuery} />}
-    {next && <Link className="mt-5 inline-block underline" href={`/money/transactions?${nextParams}`}>Next page</Link>}
+    {next && <Link className="inline-block text-sm underline" href={`/money/transactions?${nextParams}`}>Next page</Link>}
     <EditingHistory query={current.toString()} />
     {selected && <aside aria-label="Transaction details" className="fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto border-l border-border bg-card p-6 shadow-2xl [&_input:not([type=hidden])]:border-border [&_select]:border-border [&_textarea]:border-border">
       {selected.status === "pending" && selected.kind === "ordinary" && BigInt(selected.amount_minor) < 0n && <PendingHoldPanel transaction={selected} />}

@@ -135,9 +135,9 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
       await started;
       await panel.getByRole("button", { name: "Close AI assistant" }).click();
       const other = owned[99], identity = destination === "New" ? "new" : other;
-      if (destination === "New") await page.getByRole("link", { name: "New conversation", exact: true }).click();
+      if (destination === "New") await page.getByRole("link", { name: "New chat", exact: true }).click();
       else await page.getByRole("navigation", { name: "Conversations" }).locator(`a[href="/ai?conversation=${other}"]`).click();
-      await expect(page.locator("main").getByRole("heading", { name: destination === "New" ? "New conversation" : `Synthetic thread ${other}`, exact: true })).toBeVisible();
+      await expect(page.locator("main").getByRole("heading", { name: destination === "New" ? "New chat" : `Synthetic thread ${other}`, exact: true })).toBeVisible();
       if (destination === "navigation") {
         await page.getByRole("link", { name: "Settings", exact: true }).click();
         await expect(page).toHaveURL(/\/settings$/);
@@ -180,13 +180,13 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     await page.goto(`/ai?conversation=${selected}`, { waitUntil: "domcontentloaded" });
     await expect(page.locator("html")).toHaveAttribute("data-mne024-ready", "true");
     await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
-    await panel.getByRole("button", { name: "New conversation", exact: true }).click();
+    await panel.getByRole("button", { name: "New chat", exact: true }).click();
     await expect(page).toHaveURL(/conversation=new/);
     await expect(panel.getByText("Synthetic newest post-send answer", { exact: true })).toHaveCount(0);
     await page.reload({ waitUntil: "domcontentloaded" }); await expect(page.locator("html")).toHaveAttribute("data-mne024-ready", "true");
     await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
     await expect(panel.getByText("Synthetic newest post-send answer", { exact: true })).toHaveCount(0);
-    await expect(page.locator("main").getByRole("heading", { name: "New conversation", exact: true })).toBeVisible();
+    await expect(page.locator("main").getByRole("heading", { name: "New chat", exact: true })).toBeVisible();
     await expect(panel).toBeVisible();
     await panel.getByLabel("Question", { exact: true }).fill("Synthetic new panel question");
     await panel.getByRole("button", { name: "Send", exact: true }).click();
@@ -195,8 +195,8 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     await page.goto("/ai", { waitUntil: "domcontentloaded" });
     await expect(page.locator("main").getByText("Synthetic new panel answer", { exact: true })).toBeVisible();
     await expect(page.locator("main").getByText("Synthetic newest post-send answer", { exact: true })).toHaveCount(0);
-    await page.getByRole("link", { name: "New conversation", exact: true }).click();
-    await expect(page.locator("main").getByRole("heading", { name: "New conversation", exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "New chat", exact: true }).click();
+    await expect(page.locator("main").getByRole("heading", { name: "New chat", exact: true })).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("data-mne024-ready", "true");
     await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
     await expect(panel.getByText("Synthetic new panel answer", { exact: true })).toHaveCount(0);

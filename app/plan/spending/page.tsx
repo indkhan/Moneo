@@ -90,35 +90,34 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
 
   });
 
-  return <main className="mx-auto max-w-7xl space-y-7 px-4 py-8 text-foreground sm:px-6 lg:px-10">
+  return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 text-foreground sm:px-8 lg:py-10">
     <header>
       <Link href="/plan" className="text-sm text-muted-foreground">← Plan</Link>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Monthly spending plans</h1>
-      <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-        Targets for {month}, not predictions. Posted ordinary spending, net of linked refunds;
-        transfers, pending and income are excluded. Plans never change account balances and are separate from goal reservations.
+      <p className="mt-2 text-sm text-muted-foreground">
+        Spending targets for {month}. Counts posted spending, minus refunds; transfers, pending items and income are left out.
       </p>
-      <form method="get" className="mt-4 flex flex-wrap items-end gap-2"><label className="grid gap-1 text-sm">Calendar month<input type="month" name="month" defaultValue={month} required className="rounded border border-border bg-card px-3 py-2" /></label><button className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground">View month</button></form><p className="mt-2 text-xs text-muted-foreground">Edits below apply to the current calendar month ({currentMonth}). Past targets use recorded history; missing historical targets remain unknown.</p>
+      <form method="get" className="mt-4 flex flex-wrap items-end gap-2"><label className="grid gap-1 text-sm">Calendar month<input type="month" name="month" defaultValue={month} required className="rounded border border-border bg-card px-3 py-2" /></label><button className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground">View month</button></form><p className="mt-2 text-sm text-muted-foreground">Edits apply to the current month ({currentMonth}).</p>
     </header>
-    {rows.some(row => row.status === "posted" && row.reviewReasons?.length) && <p role="status" className="text-sm text-amber-700 dark:text-amber-300">Partial spending: {rows.filter(row => row.status === "posted" && row.reviewReasons?.length).length} transactions await financial classification. <Link href="/import" className="underline">Review import evidence</Link></p>}
-    <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-      <h2 className="text-lg font-semibold">Plans</h2>
+    {rows.some(row => row.status === "posted" && row.reviewReasons?.length) && <p role="status" className="text-sm text-amber-700 dark:text-amber-300">Some spending is not counted yet: {rows.filter(row => row.status === "posted" && row.reviewReasons?.length).length} transactions need review. <Link href="/import" className="underline">Review imports</Link></p>}
+    <section className="rounded-xl border border-border bg-card p-6">
+      <h2 className="text-base font-semibold">Plans</h2>
       {!progress.length && <p className="mt-3 text-muted-foreground">No spending plans yet. Set one below.</p>}
-      <ul className="mt-4 grid gap-3 lg:grid-cols-2">{progress.map(plan => (
-        <li key={`${plan.id}:${plan.version}`} className="rounded-lg border border-border bg-muted/35 p-4">
+      <ul className="mt-4 grid gap-4 lg:grid-cols-2">{progress.map(plan => (
+        <li key={`${plan.id}:${plan.version}`} className="space-y-3 rounded-lg border border-border bg-muted/35 p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h3 className="font-medium">{names.get(plan.category_id) ?? "Unknown category"}{plan.periodEnabled === false ? " (disabled that month)" : ""}</h3>
             <p className="font-mono text-sm text-muted-foreground">{formatMoney(plan.spent, plan.currency_code, workspace.locale)} of {plan.limit === null ? "Unknown historical target" : formatMoney(plan.limit, plan.currency_code, workspace.locale)}</p>
           </div>
-          <p className="mt-2 font-mono text-sm font-medium">{plan.periodEnabled !== false
-            ? (plan.partial ? plan.limitation : plan.remaining === null ? "Historical target unavailable" : plan.remaining >= 0n ? `${formatMoney(plan.remaining, plan.currency_code, workspace.locale)} left in accepted records` : `${formatMoney(-plan.remaining, plan.currency_code, workspace.locale)} over plan in accepted records`)
-            : "Disabled: not counted as an active target."}</p>
-          {plan.partial && <p className="mt-2 text-xs text-muted-foreground">Classified spending shown; remaining budget is unknown. {plan.limitation?.includes("classification") && <Link href="/import" className="text-brand underline">Review classifications</Link>}</p>}
+          <p className="font-mono text-sm font-medium">{plan.periodEnabled !== false
+            ? (plan.partial ? plan.limitation : plan.remaining === null ? "Historical target unavailable" : plan.remaining >= 0n ? `${formatMoney(plan.remaining, plan.currency_code, workspace.locale)} left` : `${formatMoney(-plan.remaining, plan.currency_code, workspace.locale)} over plan`)
+            : "Disabled: not counted as a target."}</p>
+          {plan.partial && <p className="text-sm text-muted-foreground">Only classified spending is shown, so the amount left is unknown. {plan.limitation?.includes("classification") && <Link href="/import" className="text-brand underline">Review classifications</Link>}</p>}
           <SourceCoverageDetails coverage={plan.sourceCoverage} />
-          {plan.periodEnabled === true && plan.limit !== null && !plan.partial && <progress className="mt-3 h-1.5 w-full accent-brand" max={Number(plan.limit)} value={Math.max(0, Number(plan.spent))} aria-label={`${names.get(plan.category_id) ?? "Category"} plan used`} />}
-          {plan.rolloverResult?.status === "available" && <p className="mt-2 text-xs text-muted-foreground">Accepted-record carry from earlier months: {formatMoney(plan.rolloverResult.carriedMinor, plan.currency_code, workspace.locale)}. Accepted-record allowance: {formatMoney(plan.rolloverResult.allowanceMinor, plan.currency_code, workspace.locale)}.</p>}
-          <form action={setRollover} className="mt-3 flex flex-wrap items-end gap-3 text-sm"><input type="hidden" name="planId" value={plan.id} /><input type="hidden" name="version" value={plan.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><label className="flex gap-2"><input type="checkbox" name="rollover" defaultChecked={plan.rollover} />Carry remaining budget into the next month</label><label className="grid gap-1 text-xs">Rollover starts<input type="month" name="rolloverFrom" required defaultValue={plan.rollover_from.slice(0, 7)} className="rounded border border-border bg-card px-3 py-2" /></label><button className="text-brand underline">Save rollover rule</button><p className="w-full text-xs text-muted-foreground">Positive and negative remainders carry; disabled months reset carry. Each month uses its recorded target. Missing history or uncertain classifications make carry unavailable. Budgets never add a second forecast expense.</p></form>
-          <div className="mt-3 flex flex-wrap gap-2">
+          {plan.periodEnabled === true && plan.limit !== null && !plan.partial && <progress className="h-1.5 w-full accent-brand" max={Number(plan.limit)} value={Math.max(0, Number(plan.spent))} aria-label={`${names.get(plan.category_id) ?? "Category"} plan used`} />}
+          {plan.rolloverResult?.status === "available" && <p className="text-sm text-muted-foreground">Carried over: {formatMoney(plan.rolloverResult.carriedMinor, plan.currency_code, workspace.locale)}. Total allowance: {formatMoney(plan.rolloverResult.allowanceMinor, plan.currency_code, workspace.locale)}.</p>}
+          <form action={setRollover} className="flex flex-wrap items-end gap-3 text-sm"><input type="hidden" name="planId" value={plan.id} /><input type="hidden" name="version" value={plan.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><label className="flex gap-2"><input type="checkbox" name="rollover" defaultChecked={plan.rollover} />Carry remaining budget into the next month</label><label className="grid gap-1 text-xs">Rollover starts<input type="month" name="rolloverFrom" required defaultValue={plan.rollover_from.slice(0, 7)} className="rounded border border-border bg-card px-3 py-2" /></label><button className="text-brand underline">Save rollover rule</button><p className="w-full text-sm text-muted-foreground">Leftover and overspent amounts both carry over. Disabled months reset the carry.</p></form>
+          <div className="flex flex-wrap gap-3">
             <form action={saveSpendingPlan} className="flex flex-wrap gap-2">
               <input type="hidden" name="planId" value={plan.id} /><input type="hidden" name="version" value={plan.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} />
               <input type="hidden" name="categoryId" value={plan.category_id} />
@@ -136,10 +135,10 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
         </li>))}</ul>
     </section>
     {!!categories?.length && (
-      <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-        <h2 className="text-lg font-semibold">Set a monthly limit</h2>
-        <form action={saveSpendingPlan} className="mt-4 flex flex-wrap items-end gap-2">
-          <label className="grid gap-1 text-sm">Category
+      <section className="rounded-xl border border-border bg-card p-6">
+        <h2 className="text-base font-semibold">Set a monthly limit</h2>
+        <form action={saveSpendingPlan} className="mt-4 flex flex-wrap items-end gap-3">
+          <label className="grid gap-1 text-sm font-medium">Category
             <select name="categoryId" aria-label="Category" className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15">
               {categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>

@@ -32,6 +32,8 @@ type ConversationRow = { id: string; title: string; created_at: string };
 
 type Item = { key: string; at: string; badge: string; title: string; detail: string; href: string };
 
+const words = (value: string) => { const text = value.replaceAll("_", " "); return text[0].toUpperCase() + text.slice(1); };
+
 function truncate(value: string | null | undefined, max = 280) {
   if (!value) return "";
   return value.length > max ? `${value.slice(0, max)}…` : value;
@@ -118,9 +120,7 @@ export default async function ActivityPage() {
       at: row.updated_at ?? row.created_at,
       badge: "Analysis",
       title: title ? `Deep Analysis ${row.status}: ${title}` : `Deep Analysis ${row.status}`,
-      detail:
-        `stage ${row.stage}` +
-        (row.status === "failed" && row.error ? ` · ${truncate(row.error, 200)}` : ""),
+      detail: row.status === "failed" ? truncate(row.error, 200) || "Failed" : row.status === "completed" ? "Completed" : words(row.stage),
       href: `/ai/activity/${row.id}`,
     });
   }
@@ -146,26 +146,27 @@ export default async function ActivityPage() {
     });
   }
   for (const row of requests.data ?? []) {
-    items.push({ key: `chat:${row.id}`, at: row.updated_at, badge: "Chat", title: `Chat ${row.status}`,
-      detail: `${usageLabel(row.usage as ReportedUsage | null)}${row.status === "failed" ? ` · ${truncate(row.error, 200)}` : ""}`, href: `/ai?conversation=${row.conversation_id}` });
+    items.push({ key: `chat:${row.id}`, at: row.updated_at, badge: "Chat", title: `Chat reply ${row.status}`,
+      detail: [row.usage ? usageLabel(row.usage as ReportedUsage) : "", row.status === "failed" ? truncate(row.error, 200) : ""].filter(Boolean).join(" · ") || words(row.status), href: `/ai?conversation=${row.conversation_id}` });
   }
   for (const row of generations.data ?? []) {
     items.push({ key: `generation:${row.id}`, at: row.updated_at, badge: "Generation", title: `${row.purpose === "calculator" ? "Calculator draft" : "Tool proposal"} ${row.status}`,
-      detail: `${truncate(row.description, 120)} · ${usageLabel(row.usage as ReportedUsage | null)}${row.status === "failed" ? ` · ${truncate(row.error, 200)}` : ""}`, href: `/ai/activity/generation/${row.id}` });
+      detail: [truncate(row.description, 120), row.usage ? usageLabel(row.usage as ReportedUsage) : "", row.status === "failed" ? truncate(row.error, 200) : ""].filter(Boolean).join(" · "), href: `/ai/activity/generation/${row.id}` });
   }
   items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
   const visible = items.slice(0, 50);
 
   return (
-    <main className="mx-auto max-w-5xl px-5 py-8 lg:px-8">
+    <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
+      <header>
       <Link href="/ai" className="text-sm underline">
         ← AI
       </Link>
-      <p className="mt-5 text-xs font-semibold uppercase tracking-widest text-brand">AI / Activity</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Activity</h1>
+      <h1 className="mt-4 text-2xl font-semibold tracking-tight sm:text-3xl">Activity</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Your imports, financial reviews, saved tools, and conversations in one place.
+        Your imports, reviews, saved tools, and conversations in one place.
       </p>
+      </header>
       {errors.length > 0 && (
         <p role="alert" className="mt-4 rounded-xl border border-border bg-card p-4 shadow-sm text-sm text-red-700">
           Could not load part of this workspace activity: {truncate(errors[0]?.message ?? "Unavailable", 200)}
@@ -178,9 +179,9 @@ export default async function ActivityPage() {
         </p>
       )}
       {visible.length > 0 && (
-        <ul className="mt-6 space-y-3">
+        <ul className="space-y-3">
           {visible.map((item) => (
-            <li key={item.key} className="rounded-xl border border-border bg-card p-5 shadow-sm">
+            <li key={item.key} className="rounded-xl border border-border bg-card p-6">
               <p className="text-xs font-semibold uppercase text-muted-foreground">
                 {item.badge} · {new Date(item.at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}
               </p>

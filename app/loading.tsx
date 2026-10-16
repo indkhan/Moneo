@@ -1,5 +1,5 @@
 export default function Loading() {
-  return <main aria-busy="true" className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
+  return <main aria-busy="true" className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
     <p role="status" className="text-sm text-muted-foreground">Loading workspace…</p>
     <div aria-hidden="true" className="space-y-6 motion-safe:animate-pulse">
       <div className="h-8 w-48 rounded-lg bg-muted" />

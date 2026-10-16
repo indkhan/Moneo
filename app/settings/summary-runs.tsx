@@ -31,13 +31,13 @@ export function SummaryRuns({ initial }: { initial: SummaryRun[] }) {
       setRuns(current => current.map(run => run.job_id === jobId ? { ...run, stage: "stopping" } : run));
     } catch { setError("Summary could not be stopped; try again"); }
   }
-  return <div className="mt-4 space-y-3">
+  return <div className="mt-4 divide-y divide-border">
     {!runs.length && <p className="text-sm text-muted-foreground">No scheduled summaries yet.</p>}
-    {runs.map(run => <div key={run.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border p-3 text-sm">
-      <div><p>{run.cadence} · period starting {run.period_start}</p><p className="text-muted-foreground">{run.status} · {run.stage}</p>
+    {runs.map(run => <div key={run.id} className="flex flex-wrap items-start justify-between gap-3 py-3 text-sm first:pt-0">
+      <div><p className="font-medium capitalize">{run.cadence} · from {run.period_start}</p><p className="text-muted-foreground capitalize">{run.status} · {run.stage.replaceAll("_", " ")}</p>
         {run.error && <p className="text-red-700">{run.error}</p>}
         {run.status === "completed" && <Link className="underline" href={`/ai/activity/${run.job_id}`}>Read summary</Link>}</div>
-      {["queued", "running"].includes(run.status) && <button className="rounded border border-border px-3 py-1" disabled={run.stage === "stopping"} onClick={() => stop(run.job_id)}>{run.stage === "stopping" ? "Stopping…" : "Stop summary"}</button>}
+      {["queued", "running"].includes(run.status) && <button className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted" disabled={run.stage === "stopping"} onClick={() => stop(run.job_id)}>{run.stage === "stopping" ? "Stopping…" : "Stop summary"}</button>}
     </div>)}
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
   </div>;

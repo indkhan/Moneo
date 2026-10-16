@@ -43,6 +43,7 @@ test("owned Stop and reload distinguish request, worker acknowledgment and uncon
     await db`insert into public.background_jobs(id,workspace_id,kind,status,stage,workflow_run_id,dispatched_at) values(${job},${workspace!},'financial_review','running','writing_review',${run},now())`;
     const page = await context.newPage();
     await page.goto("/ai");
+    await page.getByText("Run a deep review", { exact: true }).click();
     await page.getByLabel("Saved reviews").selectOption(job);
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Stop", exact: true }).click();

@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { saveSettings } from "./actions";
+import { resetAllData, saveSettings } from "./actions";
+import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { listFreeModels, modelForSettings } from "@/lib/ai/provider";
 import { generateText } from "ai";
@@ -7,6 +8,7 @@ import { settingsSchema } from "@/lib/settings";
 
 vi.mock("next/headers", () => ({ cookies: async () => ({ set: vi.fn() }) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ listFreeModels: vi.fn(), modelForSettings: vi.fn() }));
 vi.mock("ai", () => ({ generateText: vi.fn() }));
@@ -142,4 +144,52 @@ it("leaves output headroom for a usable reasoning model before saving its select
   const data = form(); data.set("openrouter_model", "new-free");
   expect(await saveSettings({}, data)).toEqual({ saved: true });
   expect(rpc).toHaveBeenCalledOnce();
+});
+
+function resetForm(confirmation: string) {
+  const data = new FormData(); data.set("confirmation", confirmation); return data;
+}
+
+function resetWorkspaceWith(rpc: ReturnType<typeof vi.fn>, files: string[] = []) {
+  const remaining = new Map([["imports", files.map(name => ({ name }))], ["artifacts", []]]);
+  const remove = vi.fn(async (paths: string[]) => ({ data: paths, error: null }));
+  const from = (bucket: string) => ({
+    list: async () => ({ data: remaining.get(bucket) ?? [], error: null }),
+    remove: async (paths: string[]) => { remaining.set(bucket, []); return remove(paths); },
+  });
+  return { remove, context: { workspace: { id: "owned" }, supabase: { rpc, storage: { from } } } as unknown as Awaited<ReturnType<typeof requireWorkspace>> };
+}
+
+it("requires a signed-in user before resetting anything", async () => {
+  vi.mocked(requireWorkspace).mockRejectedValue(new Error("Unauthorized"));
+  expect(await resetAllData({}, resetForm("RESET"))).toEqual({ error: expect.any(String) });
+  expect(redirect).not.toHaveBeenCalled();
+});
+
+it("requires the exact RESET confirmation", async () => {
+  const rpc = vi.fn();
+  const { remove, context } = resetWorkspaceWith(rpc, ["a.csv"]);
+  vi.mocked(requireWorkspace).mockResolvedValue(context);
+  for (const typed of ["", "reset", "RESET "]) expect(await resetAllData({}, resetForm(typed))).toEqual({ error: "Type RESET to confirm" });
+  expect(rpc).not.toHaveBeenCalled();
+  expect(remove).not.toHaveBeenCalled();
+});
+
+it("removes uploaded statements, calls the reset RPC and returns to Home", async () => {
+  vi.mocked(redirect).mockClear();
+  const rpc = vi.fn(async () => ({ error: null }));
+  const { remove, context } = resetWorkspaceWith(rpc, ["a.csv", "b.xlsx"]);
+  vi.mocked(requireWorkspace).mockResolvedValue(context);
+  await resetAllData({}, resetForm("RESET"));
+  expect(remove).toHaveBeenCalledWith(["owned/a.csv", "owned/b.xlsx"]);
+  expect(rpc).toHaveBeenCalledWith("reset_workspace");
+  expect(redirect).toHaveBeenCalledWith("/");
+});
+
+it("reports a failed reset instead of redirecting", async () => {
+  vi.mocked(redirect).mockClear();
+  const { context } = resetWorkspaceWith(vi.fn(async () => ({ error: { message: "boom" } })));
+  vi.mocked(requireWorkspace).mockResolvedValue(context);
+  expect(await resetAllData({}, resetForm("RESET"))).toEqual({ error: expect.stringContaining("could not be reset") });
+  expect(redirect).not.toHaveBeenCalled();
 });
