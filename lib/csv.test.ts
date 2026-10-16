@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
 import { compareReviewEvidence } from "./finance/review-freshness";
-import { mapRows, parseAmountMinor, parseCsv, parseExcel, parseTransactionStatus, previewImport, validateMapping, validateAiMapping, proposeAccountRoutes, validateImportConfirmation } from "./csv";
+import { mapRows, parseAmountMinor, parseCsv, parseExcel, parseTransactionStatus, previewImport, validateMapping, validateAiMapping, proposeAccountRoutes, validateImportConfirmation, detectStatementFormat, proposeKnownStatementMapping, friendlyAccountName } from "./csv";
 
 const mapping = {
   accountName: "Checking",
@@ -258,6 +258,19 @@ describe("financial import parsing", () => {
     expect(proposed.productColumn).toBe("Product");
     expect(proposed.accountRoutes?.map(route => route.accountName)).toEqual(["Checking · Current", "Checking · Savings"]);
     expect(mapRows(rows, proposed).map(row => row.accountName)).toEqual(["Checking · Current", "Checking · Savings"]);
+  });
+  it("proposes friendly account names instead of filenames and full IBANs", () => {
+    const revolut = parseCsv("Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance\nCard Payment,Current,2026-09-01 10:00:00,2026-09-01 10:00:00,Shop,-1.00,0.00,EUR,COMPLETED,1.00\nCard Payment,Current,2026-09-01 10:00:00,2026-09-01 10:00:00,Shop,-1.00,0.00,USD,COMPLETED,1.00\nInterest,Savings,2026-09-01 10:00:00,2026-09-01 10:00:00,Interest,1.00,0.00,EUR,COMPLETED,1.00");
+    expect(detectStatementFormat(revolut)).toBe("Revolut");
+    expect(proposeKnownStatementMapping(revolut, "account-statement_2026-01-01", "EUR")?.accountRoutes?.map(route => route.accountName))
+      .toEqual(["Revolut Current EUR", "Revolut Current USD", "Revolut Savings"]);
+    const iban = parseCsv("Booking date,Value date,Transaction type,Booking text,Amount,Currency,Account IBAN,Category,Sender,Recipient,Transfer purpose\n01.09.2026,01.09.2026,Debit,Shop,-1.00,EUR,DE89 3704 0044 0532 0130 00,Food,,,");
+    expect(proposeKnownStatementMapping(iban, "export", "EUR")?.accountRoutes?.map(route => route.accountName)).toEqual(["Account ••3000"]);
+    const generic = parseCsv("Date,Description,Amount,Account\n2026-09-01,Shop,-1,DE89370400440532013000");
+    expect(proposeAccountRoutes(generic, { ...mapping, dateFormat: "iso" }).accountRoutes?.map(route => route.accountName)).toEqual(["Checking · ••3000"]);
+    expect(detectStatementFormat(generic)).toBeUndefined();
+    expect(friendlyAccountName("account-statement_2026-01-01_2026-06-30_DE89370400440532013000.csv")).toBe("account statement ••3000");
+    expect(friendlyAccountName("2026-09.csv")).toBe("Imported account");
   });
 
   it("routes every product and currency explicitly and preserves evidence", () => {
