@@ -18,7 +18,8 @@ export default async function CurrencyPage() {
       .select("from_currency, to_currency, rate_text, rate_date, source")
       .eq("workspace_id", workspace.id)
       .order("rate_date", { ascending: false })
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false })
+      .limit(100),
   ]);
   const currencies = [...new Set([
     workspace.display_currency,
@@ -75,6 +76,7 @@ export default async function CurrencyPage() {
 
       <section className="rounded-xl border border-border bg-card p-6">
         <h2 className="text-base font-semibold">Saved rates</h2>
+        {rates?.length === 100 && <p className="mt-1 text-sm text-muted-foreground">Showing the latest 100 rates.</p>}
         {!rates?.length && <p className="mt-3 text-muted-foreground">No FX rates yet. Add one above to enable conversion.</p>}
         <ul className="mt-4 grid gap-3 sm:grid-cols-2">
           {rates?.map((rate, index) => (
