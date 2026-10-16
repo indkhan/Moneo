@@ -3,6 +3,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { formatMoney } from "@/lib/finance/format";
 import { clearLink, markRefund, quickEditTransaction, undoCorrection, undoTransactionSplits, undoVerifiedLink } from "./actions";
 import { SplitEditor } from "./split-editor";
+import { AskAbout } from "@/components/ask-about";
 import { VerifiedLinkEditor, type LinkPosting } from "./verified-link-editor";
 import { PendingHoldPanel } from "./pending-hold-panel";
 import { describeChanges, kindLabel, operationLabel, reviewReasonLabel, statusLabel } from "./labels";
@@ -78,6 +79,7 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
         <h2 className="text-xl font-semibold">{selected.description}</h2>
         <p className={`mt-2 font-mono text-2xl font-semibold tabular-nums ${amount > 0n ? "text-emerald-700 dark:text-emerald-400" : ""}`}>{money(amount, selected.currency_code)}</p>
         <p className="mt-1 text-sm text-muted-foreground">{selected.posted_on} · {accountNames[selected.account_id] ?? "Unknown account"} · {statusLabel(selected.status)} · {kindLabel(selected.kind)}</p>
+        <p className="mt-2 flex flex-wrap gap-3"><AskAbout question="Explain this transaction: is it normal for me, is it recurring, and how does it compare with similar ones?" about={{ kind: "transaction", id: selected.id, label: `${selected.posted_on} · ${selected.description.slice(0, 60)}` }} /></p>
         {(selected.tags?.length || selected.event_name) ? <p className="mt-1 text-sm text-muted-foreground">{selected.tags?.length ? `Tags: ${selected.tags.join(", ")}` : ""}{selected.tags?.length && selected.event_name ? " · " : ""}{selected.event_name ? `Group: ${selected.event_name}` : ""}</p> : null}
       </header>
 

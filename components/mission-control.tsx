@@ -8,6 +8,7 @@ import { AGENTS, WAVES, type AgentId, type ProposalKind } from "@/lib/agents/tea
 import type { AgentProposalView, AgentRunView, AgentTaskView } from "@/lib/agents/state";
 import { formatMoney } from "@/lib/finance/format";
 import { decideAgentProposals } from "@/app/ai/agents/actions";
+import { AskAbout } from "./ask-about";
 
 const ACTIVE = new Set(["queued", "running"]);
 const WAVE_LABELS = ["Analysts · in parallel", "Builders · read the analysts' results", "Writer · after the lead merges"];
@@ -177,6 +178,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
                 {item.status === "failed" && item.result?.error && <p className="mt-1 text-xs text-danger">{item.result.error}</p>}
                 {item.status === "accepted" && item.result?.href && <p className="mt-1 text-xs"><Link href={item.result.href} className="text-brand underline">Open</Link>{item.result.undo && <span className="text-muted-foreground"> · {item.result.undo}</span>}</p>}
                 <EvidenceView proposal={item} locale={locale} />
+                <AskAbout label="Ask why" question={`The ${AGENTS[item.agent as AgentId]?.name ?? "agent"} proposed “${item.title}”. Check the underlying transactions and tell me whether I should accept it.`} about={{ kind: "agent_proposal", id: item.id, label: item.title.slice(0, 80) }} className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" />
               </div>
               {decidable && <div className="flex shrink-0 gap-1">
                 <button type="button" disabled={pending} onClick={() => decide([item.id], "reject")} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">Reject</button>

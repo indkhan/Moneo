@@ -3,6 +3,7 @@ import {renderToStaticMarkup} from "react-dom/server";
 import {afterEach, expect, it, vi} from "vitest";
 import Home from "./page";
 
+vi.mock("./agent-briefing", () => ({ AgentBriefing: () => null }));
 vi.mock("next/link", () => ({default: "a"}));
 vi.mock("@/lib/env", () => ({getSupabaseConfig: () => ({status: "configured"})}));
 vi.mock("./insights/panel", () => ({ImportantInsights: () => null, loadInsightEvidence: async () => ({})}));
