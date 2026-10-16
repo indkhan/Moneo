@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { DraftPreview } from "./draft-preview";
 import { FALLBACK_CALCULATORS } from "@/lib/artifacts/templates";
 import type { ArtifactKind } from "@/lib/artifacts/spec";
@@ -15,6 +15,7 @@ type Draft = {
 };
 
 const EMPTY_PARAMS: Record<string, number | string> = {};
+export const DESCRIBE_KEY = "moneo:artifact-describe:";
 
 export function GenerateCalculatorForm({
   artifactId,
@@ -24,7 +25,6 @@ export function GenerateCalculatorForm({
   initialParams = EMPTY_PARAMS,
   currency,
   locale,
-  initialDescription = "",
 }: {
   artifactId: string;
   kind: ArtifactKind;
@@ -33,12 +33,9 @@ export function GenerateCalculatorForm({
   initialParams?: Record<string, number | string>;
   currency?: string;
   locale?: string;
-  // Carried from the Library's "Describe a tool" so users never type it twice.
-  initialDescription?: string;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const [description, setDescription] = useState(initialDescription.slice(0, 500));
+  const [description, setDescription] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [status, setStatus] = useState("");
   const [working, setWorking] = useState(false);
@@ -46,18 +43,23 @@ export function GenerateCalculatorForm({
   const [conflict, setConflict] = useState(false);
   const active = useRef<{ id: string; controller: AbortController } | null>(null);
 
-  const autoStarted = useRef(false);
+  // The Library's "Describe a tool" hands its text over once (kept out of the URL),
+  // so the first draft starts without typing the description twice.
   useEffect(() => {
-    if (!initialDescription.trim() || autoStarted.current) return;
-    autoStarted.current = true;
-    // Drop the one-shot parameter so a reload does not start another generation.
-    router.replace(pathname, { scroll: false });
-    const timer = setTimeout(() => { void suggest(); }, 0);
+    const key = `${DESCRIBE_KEY}${artifactId}`;
+    let handed = "";
+    try { handed = sessionStorage.getItem(key)?.slice(0, 500) ?? ""; } catch { /* Storage unavailable: the user can describe it here. */ }
+    if (!handed.trim()) return;
+    // Consume only when the draft actually starts (StrictMode re-runs effects).
+    const timer = setTimeout(() => {
+      try { sessionStorage.removeItem(key); } catch { /* Ignore. */ }
+      setDescription(handed); void suggest(handed);
+    }, 0);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot handoff from the Library
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot handoff on mount
+  }, [artifactId]);
 
-  async function suggest() {
+  async function suggest(text = description) {
     setWorking(true);
     setStatus("");
     setDraft(null);
@@ -67,7 +69,7 @@ export function GenerateCalculatorForm({
       const res = await fetch("/api/artifacts/calculator/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ artifactId, description, requestId: generation.id }),
+        body: JSON.stringify({ artifactId, description: text, requestId: generation.id }),
         signal: generation.controller.signal,
       });
       const payload = await res.json().catch(() => null);
@@ -166,7 +168,7 @@ export function GenerateCalculatorForm({
         <button
           type="button"
           disabled={working || saving || description.trim().length === 0}
-          onClick={suggest}
+          onClick={() => suggest()}
           className={primary}
         >
           {working ? "Asking AI…" : "Suggest calculator"}
@@ -176,7 +178,7 @@ export function GenerateCalculatorForm({
           Use safe fallback
         </button>
         {draft && (
-          <button type="button" disabled={working || saving} onClick={suggest} className={button}>
+          <button type="button" disabled={working || saving} onClick={() => suggest()} className={button}>
             Retry suggestion
           </button>
         )}

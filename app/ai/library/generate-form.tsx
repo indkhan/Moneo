@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ArtifactKind } from "@/lib/artifacts/spec";
+import { DESCRIBE_KEY } from "./generate-calculator-form";
 
 type Proposal = {
   kind: ArtifactKind;
@@ -77,6 +78,8 @@ export function GenerateForm() {
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error ?? "Creation failed");
+      // Hand the description to the new tool's generator so it drafts code straight away.
+      try { sessionStorage.setItem(`${DESCRIBE_KEY}${payload.id}`, description); } catch { /* Optional convenience. */ }
       router.push(`/ai/library/${payload.id}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Creation failed");
@@ -85,10 +88,10 @@ export function GenerateForm() {
   }
 
   return (
-    <section aria-label="AI-assisted tool suggestion" className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
+    <section aria-label="AI-assisted tool suggestion" className="rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 className="text-lg font-semibold">Describe a tool</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        AI suggests one trusted template. Nothing is created until you choose Continue.
+        AI suggests a tool type and name. Nothing is created until you choose Continue; the new tool then drafts its calculator from the same description for you to preview and accept.
       </p>
       <label className="mt-3 block text-sm font-medium" htmlFor="ai-tool-description">
         What should the tool help with?

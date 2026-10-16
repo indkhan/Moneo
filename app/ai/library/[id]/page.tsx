@@ -29,10 +29,10 @@ const kinds: ArtifactKind[] = artifactKindSchema.options;
 
 export default async function ArtifactPage({ params, searchParams }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ q?: string; goalId?: string; extra?: string; spendingView?: string; describe?: string }>;
+  searchParams: Promise<{ q?: string; goalId?: string; extra?: string; spendingView?: string }>;
 }) {
   const { id } = await params;
-  const { q = "", goalId = "", extra = "", spendingView, describe = "" } = await searchParams;
+  const { q = "", goalId = "", extra = "", spendingView } = await searchParams;
   const nativeReportingView = spendingView === "original" ? "original" : "base";
   const { supabase, workspace } = await requireWorkspace();
   const [{ data: artifact }, { data: state }, { data: pin }] = await Promise.all([
@@ -140,7 +140,7 @@ export default async function ArtifactPage({ params, searchParams }: {
       </p>
     )}
     <GenerateCalculatorForm artifactId={id} kind={kind} activeVersionId={artifact.active_version_id} snapshot={snapshot} initialParams={initialParams}
-      currency={currency} locale={workspace.locale} initialDescription={describe.slice(0, 500)} />
+      currency={currency} locale={workspace.locale} />
     {version && (
       <VersionEditor
         artifactId={id}
