@@ -46,6 +46,7 @@ export default function LoginPage() {
           <button disabled={pending} className="min-h-10 w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">{pending ? "Sending…" : "Send sign-in link"}</button>
         </form>
         <p role="status" className="mt-4 min-h-5 text-sm text-muted-foreground">{message ?? (failedCallback ? "The sign-in link could not be verified. Request a new link and try again." : "")}</p>
+        <p className="mt-4 text-center text-xs text-muted-foreground"><a href="/privacy" className="underline hover:text-foreground">Privacy</a><span aria-hidden="true"> · </span><a href="/terms" className="underline hover:text-foreground">Terms</a></p>
         {process.env.NODE_ENV === "development" && <form method="post" action="/auth/dev" className="mt-6 border-t border-border pt-6">
           <input type="hidden" name="email" value={email} />
           <button disabled={!email} className="min-h-10 w-full rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50">Sign in instantly (local dev)</button>

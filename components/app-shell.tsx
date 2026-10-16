@@ -133,7 +133,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [router]);
 
-  if (pathname === "/login") return <>{children}</>;
+  if (pathname === "/login" || pathname === "/privacy" || pathname === "/terms" || pathname.startsWith("/privacy/") || pathname.startsWith("/terms/")) return <>{children}</>;
 
   const commands: Command[] = [
     { id: "new-chat", label: "New AI chat", group: "Actions", keywords: "ask conversation assistant", run: () => router.push("/ai?conversation=new") },
