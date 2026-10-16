@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { parseManualAmount } from "@/app/money/transactions/input";
 import { forecastPreferencesSchema } from "@/lib/finance/preferences";
+import { percentToBps } from "./ui";
 
 export async function saveForecastPreferences(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
@@ -12,7 +13,7 @@ export async function saveForecastPreferences(form: FormData) {
   const record = forecastPreferencesSchema.parse({ currency_code: currency,
     safety_buffer_minor: parseManualAmount(String(form.get("buffer") ?? ""), currency).toString(),
     daily_spending_minor: parseManualAmount(String(form.get("dailySpending") ?? ""), currency).toString(),
-    uncertainty_bps: z.coerce.number().int().min(0).max(10000).parse(form.get("uncertaintyBps")),
+    uncertainty_bps: percentToBps(form.get("uncertaintyPercent")),
     spending_account_id: form.get("spendingAccountId") || null,
     spending_starts_on: form.get("spendingStartsOn") || null });
   const { error } = await supabase.rpc("edit_forecast_preferences", { p_workspace_id: workspace.id, p_record: record,
