@@ -47,7 +47,7 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     const providerCalls: string[] = [];
     await context.route(/openrouter\.ai/, route => { providerCalls.push(route.request().url()); return route.abort(); });
     await page.goto(`/?account=${checking}`);
-    const home = page.getByRole("region", { name: "Spending and planning" });
+    const home = page.getByRole("region", { name: "Available funds" });
     await expect(home).toContainText("EUR 600.00"); await expect(home).toContainText("Checking QA funding shortfall: EUR 400.00");
     await expect(home).toContainText(tomorrow); await expect(home).toContainText("-EUR 400.00");
     await expect(page.getByText("Recurring bill QA", { exact: false }).first()).toBeVisible();

@@ -62,6 +62,7 @@ test("dated observations remain visible and explicit booked confirmation reloads
     await expect(dated).toContainText("Historical debt QA"); await expect(dated).toContainText("synthetic imported observation");
     await expect(dated).toContainText("not verified current funds"); await expect(dated).toContainText(old);
     const card = page.locator("article").filter({has: page.getByRole("heading", {name: "Dated cash QA", exact: true})});
+    await card.getByText("Update balance", {exact: true}).click();
     await card.getByText("Confirm recorded balance", {exact: true}).click();
     await expect(card).toContainText("EUR 96.50"); await expect(card).toContainText("Earlier dated posting");
     const confirmation = card.getByRole("checkbox", {name: /I checked my bank/});
@@ -75,6 +76,7 @@ test("dated observations remain visible and explicit booked confirmation reloads
     expect(saved).toMatchObject({amount_minor: "9650", boundary_kind: "reviewed_activity", actor_id: user}); expect(saved.covered_transactions).toHaveLength(1);
     const plan = await evaluatePlanForWorkspace(admin, {id: workspace!, display_currency: "EUR", timezone: "UTC"}, 30);
     expect(plan.input.missingInputs?.some(input => input.includes("principal valuation is historical"))).toBe(true);
+    await card.getByText("Update balance", {exact: true}).click();
     await card.getByText("Manual balance history and undo", {exact: true}).click();
     await card.getByRole("button", {name: "Undo balance", exact: true}).click();
     console.log('MNE012 step: Undo submitted');
