@@ -2,25 +2,52 @@
 
 import { useRef, useState } from "react";
 
+export type ChatAnswer = { answer: string; conversationId: string; toolsUsed?: string[] };
+export type ChatStreamEvent =
+  | { type: "started" }
+  | { type: "tool"; id?: string; name: string; state: "running" | "done" | "failed" }
+  | ({ type: "answer" } & ChatAnswer)
+  | { type: "result"; status: number; body: unknown };
+
+/** Reads the opt-in NDJSON stream, or a plain JSON response, into the final status and body. */
+async function readResponse(response: Response, onEvent: (event: ChatStreamEvent) => void): Promise<{ ok: boolean; body: { error?: string } & Partial<ChatAnswer> }> {
+  if (!response.headers.get("content-type")?.includes("application/x-ndjson") || !response.body) return { ok: response.ok, body: await response.json() };
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    buffer += value ?? "";
+    const lines = buffer.split("\n");
+    buffer = done ? "" : lines.pop()!;
+    for (const line of lines.filter(Boolean)) {
+      const event = JSON.parse(line) as ChatStreamEvent;
+      if (event.type === "result") return { ok: event.status < 400, body: event.body as { error?: string } };
+      onEvent(event);
+    }
+    if (done) throw new Error("The answer stream ended early; reload to see whether it was saved");
+  }
+}
+
 export function useChatRequest() {
   const active = useRef<{ requestId: string; controller: AbortController } | null>(null);
   const [status, setStatus] = useState<"idle" | "running" | "completed" | "failed" | "canceled">("idle");
   const [error, setError] = useState("");
 
-  async function send(payload: { conversationId: string; message: string; context?: Record<string, unknown> }) {
+  async function send(payload: { conversationId: string; message: string; context?: Record<string, unknown> }, onEvent?: (event: ChatStreamEvent) => void) {
     if (active.current) return null;
     const run = { requestId: crypto.randomUUID(), controller: new AbortController() };
     active.current = run;
     setStatus("running");
     setError("");
     try {
-      const response = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" },
+      const response = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/x-ndjson, application/json" },
         signal: run.controller.signal, body: JSON.stringify({ ...payload, requestId: run.requestId }) });
-      const result = await response.json();
+      // Events from a canceled run are never shown.
+      const result = await readResponse(response, event => { if (active.current === run) onEvent?.(event); });
       if (active.current !== run) return null;
-      if (!response.ok) throw new Error(result.error ?? "Could not answer");
+      if (!result.ok) throw new Error(result.body.error ?? "Could not answer");
       setStatus("completed");
-      return result as { answer: string; conversationId: string; toolsUsed?: string[] };
+      return result.body as ChatAnswer;
     } catch (cause) {
       if (active.current === run) { setStatus("failed"); setError(cause instanceof Error ? cause.message : "Could not answer"); }
       return null;

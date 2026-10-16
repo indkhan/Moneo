@@ -11,7 +11,7 @@ test("Settings customizes Home and remembers hidden and reordered widgets", asyn
   await page.goto("/settings");
   await page.getByText("Customize Home", { exact: true }).click();
   const form = page.locator("form").filter({ has: page.getByRole("button", { name: "Save dashboard", exact: true, includeHidden: true }) });
-  await form.getByRole("checkbox", { name: "Net worth and ledger", exact: true }).uncheck();
+  await form.getByRole("checkbox", { name: "Overview", exact: true }).uncheck();
   await form.locator('input[name="position:accounts"]').fill("1");
   await form.locator('input[name="position:planning"]').fill("2");
   const version = Number(await form.locator('input[name="version"]').inputValue());
@@ -26,7 +26,7 @@ test("Settings customizes Home and remembers hidden and reordered widgets", asyn
   expect(headings.indexOf("Accounts")).toBeLessThan(headings.indexOf("Aggregate headroom"));
   await page.goto("/settings");
   await page.getByText("Customize Home", { exact: true }).click();
-  await form.getByRole("checkbox", { name: "Net worth and ledger", exact: true }).check();
+  await form.getByRole("checkbox", { name: "Overview", exact: true }).check();
   const restoredVersion = Number(await form.locator('input[name="version"]').inputValue());
   await form.getByRole("button", { name: "Save dashboard", exact: true }).click();
   await expect(form.locator('input[name="version"]')).toHaveValue(String(restoredVersion + 1), { timeout: 30_000 });

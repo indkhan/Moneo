@@ -557,7 +557,10 @@ export const conversations = pgTable("conversations", {
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   title: text("title").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => [
+  index("conversations_workspace_live").on(table.workspaceId, table.createdAt.desc(), table.id.desc()).where(sql`${table.deletedAt} is null`),
+]);
 
 export const messages = pgTable("messages", {
   id: uuid("id").defaultRandom().primaryKey(),

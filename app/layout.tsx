@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Suspense } from "react";
 import { Providers } from "@/components/providers";
-import { AppShell } from "@/components/app-shell";
+import { AppShell, type ShellData } from "@/components/app-shell";
 import { cookies } from "next/headers";
 import { ThemePreference } from "@/components/theme-preference";
 import { hasSupabase } from "@/lib/env";
@@ -22,6 +22,25 @@ async function WorkspaceTheme({ fallback }: { fallback: Theme }) {
   return <ThemePreference preference={theme} />;
 }
 
+// Sidebar counts and palette accounts. Not awaited: the shell streams them in behind <Suspense>.
+// ponytail: root layouts don't re-render on client navigation, so counts refresh on reload or router.refresh().
+async function loadShellData(): Promise<ShellData> {
+  try {
+    const { supabase, workspace } = await requireWorkspace();
+    const pending = (table: string) => supabase.from(table).select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id);
+    const [accounts, recurring, reviews, jobs] = await Promise.all([
+      supabase.from("accounts").select("id, name").eq("workspace_id", workspace.id).is("archived_at", null).order("name").limit(200),
+      pending("recurring_series").eq("status", "pending"),
+      pending("organization_reviews").eq("status", "pending"),
+      pending("background_jobs").in("status", ["queued", "running"]),
+    ]);
+    return {
+      accounts: accounts.data ?? [],
+      counts: { "/money/recurring": recurring.count ?? 0, "/money/organization": reviews.count ?? 0, "/ai/activity": jobs.count ?? 0 },
+    };
+  } catch { return null; }
+}
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const cookieTheme = (await cookies()).get("moneo-theme")?.value;
   const theme: Theme = cookieTheme === "light" || cookieTheme === "dark" ? cookieTheme : "system";
@@ -29,7 +48,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en" data-theme={theme} suppressHydrationWarning>
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         {hasSupabase() ? <Suspense fallback={<ThemePreference preference={theme} />}><WorkspaceTheme fallback={theme} /></Suspense> : <ThemePreference preference={theme} />}
-        <Providers><AppShell>{children}</AppShell></Providers>
+        <Providers><AppShell shell={hasSupabase() ? loadShellData() : Promise.resolve(null)}>{children}</AppShell></Providers>
       </body>
     </html>
   );

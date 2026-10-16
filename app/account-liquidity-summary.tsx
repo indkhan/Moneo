@@ -1,12 +1,13 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import type { accountLiquidity } from "@/lib/finance/calculations";
 import { describeMissingInputs, formatMoney } from "@/lib/finance/format";
 
-export function HomeLiquidity({ liquidity, accountId, names, locale }: {
-  liquidity: ReturnType<typeof accountLiquidity>; accountId?: string; names: Map<string, string>; locale?: string;
+export function HomeLiquidity({ liquidity, accountId, names, locale, coverage }: {
+  liquidity: ReturnType<typeof accountLiquidity>; accountId?: string; names: Map<string, string>; locale?: string; coverage?: ReactNode;
 }) {
-  const card = "space-y-4 rounded-xl border border-border bg-card p-6";
-  if (liquidity.status === "unavailable") return <div className={card}><h2 className="text-base font-semibold">Spending headroom</h2><p className="text-sm text-muted-foreground">Not available yet.</p><ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{describeMissingInputs(liquidity.missingInputs, names).map(item => <li key={item}>{item}</li>)}</ul><Link href="/plan" className="inline-block text-sm font-medium text-brand hover:underline">Open plan</Link></div>;
+  const card = "min-w-0 space-y-4 rounded-xl border border-border bg-card p-5";
+  if (liquidity.status === "unavailable") return <div className={card}><h2 className="text-base font-semibold">Spending headroom</h2><p className="text-sm text-muted-foreground">Not available yet.</p><ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{describeMissingInputs(liquidity.missingInputs, names).map(item => <li key={item}>{item}</li>)}</ul>{coverage}<Link href="/plan" className="inline-block text-sm font-medium text-brand hover:underline">Open plan</Link></div>;
   const selected = liquidity.accounts.find(account => account.accountId === accountId);
   const money = (amount: bigint) => formatMoney(amount, liquidity.currencyCode, locale);
   return <div className={card}>
@@ -21,6 +22,7 @@ export function HomeLiquidity({ liquidity, accountId, names, locale }: {
     {accountId && !selected && <p role="alert" className="text-sm">Choose a current liquid account.</p>}
     {selected && <div className="space-y-1"><h3 className="text-sm font-semibold">Chosen-account headroom — {names.get(selected.accountId) ?? selected.accountId}</h3><p className="font-mono text-xl">{money(selected.spendableMinor)}</p><p className="text-sm text-muted-foreground">Protected funds: {money(selected.protectedMinor)}. Account liquidity: {money(selected.amountMinor)} on {selected.limitingDate}. Limiting date {selected.spendingLimitingDate}.</p></div>}
     {liquidity.accounts.filter(account => account.shortfallMinor > 0n).map(account => <p key={account.accountId} role="alert" className="text-sm font-medium">{names.get(account.accountId) ?? account.accountId} funding shortfall: {money(account.shortfallMinor)}. First shortfall {account.firstShortfallDate}; limiting date {account.limitingDate}. <Link href={`/plan?account=${encodeURIComponent(account.accountId)}`} className="text-brand underline">Review payments and funding</Link></p>)}
+    {coverage}
     <Link href={selected ? `/plan?account=${encodeURIComponent(selected.accountId)}` : "/plan"} className="inline-block text-sm font-medium text-brand hover:underline">Review forecast, protections and goals</Link>
   </div>;
 }

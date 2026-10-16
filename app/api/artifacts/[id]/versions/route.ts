@@ -1,8 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { artifactKindSchema } from "@/lib/artifacts/spec";
-import { validateGeneratedCandidate } from "@/lib/artifacts/validate";
+import { saveCandidateVersion } from "@/lib/artifacts/save-version";
 
 const saveSchema = z
   .object({
@@ -54,10 +53,8 @@ export async function GET(
     nextCursor: (data?.length ?? 0) > 20 ? versions.at(-1)?.version : null });
 }
 
-// Every candidate is re-validated server-side (allowlist, manifest,
-// QuickJS smoke incl. missing-data, resource checks) BEFORE the version
-// RPC. Failed candidates are stored with status='failed' and the RPC keeps
-// the prior active version and artifact_state untouched.
+// Every candidate is re-validated server-side in saveCandidateVersion
+// BEFORE the version RPC; failed candidates never replace the active version.
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -105,54 +102,16 @@ export async function POST(
     if (error || !saved) return failedSave(error);
     return Response.json({ version: Array.isArray(saved) ? saved[0] : saved, status: "validated" });
   }
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) return Response.json({ error: "Artifact validation service is not configured" }, { status: 503 });
-  const permissions = Array.isArray(artifact.permissions) ? (artifact.permissions as string[]) : [];
-
-  const { data: stateRow } = await supabase
-    .from("artifact_state")
-    .select("state")
-    .eq("workspace_id", workspace.id)
-    .eq("artifact_id", id)
-    .maybeSingle();
-  const state =
-    stateRow?.state && typeof stateRow.state === "object"
-      ? (stateRow.state as Record<string, unknown>)
-      : {};
-
-  const validation = await validateGeneratedCandidate({
-    kind: kind.data,
-    source: parsed.data.source,
-    manifest: parsed.data.manifest,
-    permissions,
-    state,
-  });
-
-  const status = validation.ok ? "validated" : "failed";
-  const errorText = validation.ok ? "" : validation.errors.join("; ").slice(0, 2000);
-  const manifestToStore = validation.manifest ?? parsed.data.manifest;
-
-  // This client stays in the server save boundary; generated code never receives it.
-  const service = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data: saved, error: saveError } = await service.rpc(
-    "save_validated_generated_artifact_version",
-    {
-      p_artifact_id: id,
-      p_actor_id: context.user.id,
-      p_source: parsed.data.source,
-      p_manifest: manifestToStore,
-      p_status: status,
-      p_error: errorText,
-      p_expected_active_version_id: parsed.data.expectedActiveVersionId,
-    },
-  );
+  const result = await saveCandidateVersion({ supabase, workspaceId: workspace.id, actorId: context.user.id,
+    artifact: { id, kind: kind.data, permissions: artifact.permissions }, source: parsed.data.source,
+    manifest: parsed.data.manifest, expectedActiveVersionId: parsed.data.expectedActiveVersionId });
+  if (!result.configured) return Response.json({ error: "Artifact validation service is not configured" }, { status: 503 });
+  const { validation, status, saved, error: saveError } = result;
   if (saveError || !saved) {
     return failedSave(saveError);
   }
-  const row = Array.isArray(saved) ? saved[0] : saved;
   return Response.json({
-    version: row,
+    version: saved,
     status,
     activeVersionPreserved: !validation.ok
       ? (artifact.active_version_id ?? null)

@@ -16,7 +16,7 @@ export function DatedOverview({accounts, wealth, today, timeZone, locale}: {
   for (const observation of observations) totals.set(observation.currency, (totals.get(observation.currency) ?? 0n) + observation.amount);
   const missing = accounts.filter(account => !account.archived_at && !account.balance.snapshot_valid);
   const uncertain = accounts.filter(account => !account.archived_at && account.balance.snapshot_valid && account.balance.status === "ambiguous");
-  return <details className="mt-6 border-t border-border pt-4 text-sm">
+  return <details className="rounded-xl border border-border bg-card px-4 py-3 text-sm">
     <summary className="cursor-pointer font-medium text-brand">Recorded net worth by currency</summary>
     <p className="mt-3 text-muted-foreground">Latest recorded values up to {today}, not verified current funds. Different observation dates are listed below; no exchange rates are applied.</p>
     <ul className="mt-3 space-y-1">{[...totals].map(([currency, amount]) => <li key={currency} className="font-mono font-semibold">{formatMoney(amount, currency, locale)}{missing.length > 0 || valuations.missingInputs.length > 0 ? " (partial)" : ""}</li>)}</ul>

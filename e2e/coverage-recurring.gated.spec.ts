@@ -70,6 +70,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
         await page.goto("/");
         for (const [name, accountId, decimal, minor] of [[label,account,"2000.00","200000"],[creditLabel,counterpart,"0.00","0"]]) {
           const card=page.locator("article").filter({has:page.getByRole("heading",{name,exact:true})});
+          await card.getByText("Update balance",{exact:true}).click();
           const form=card.locator("form").filter({has:page.getByLabel(`${name} balance`,{exact:true})});
           const requestId=await form.locator('input[name="requestId"]').inputValue();
           const coveredTransactions=JSON.parse(await form.locator('input[name="coveredTransactions"]').inputValue());

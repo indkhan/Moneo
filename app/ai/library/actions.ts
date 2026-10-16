@@ -8,6 +8,8 @@ import { tripHorizon, tripScenarioSchema, type TripScenario } from "@/lib/financ
 import { calendarDate } from "@/lib/finance/calendar";
 import { assertTripCostCurrency, tripScenarioForParams, tripStateForScenario } from "@/lib/artifacts/trip-params";
 import { tripForArtifact } from "@/lib/artifacts/finance-sdk";
+import { libraryTemplate } from "@/lib/artifacts/library-templates";
+import { saveCandidateVersion } from "@/lib/artifacts/save-version";
 
 const kind = artifactKindSchema;
 const stateRevision = z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(0).max(2147483646));
@@ -20,6 +22,28 @@ export async function createArtifact(form: FormData) {
   const { data, error } = await supabase.rpc("create_trusted_artifact", { p_kind: artifactKind, p_name: name });
   if (error || !data) throw error ?? new Error("Artifact creation failed");
   redirect(`/ai/library/${data.id}`);
+}
+
+// Templates create a trusted artifact, then save their reviewed code through the
+// same validated CAS boundary as any edit. A failed save leaves the placeholder.
+export async function createFromTemplate(form: FormData) {
+  const context = await requireWorkspace();
+  const template = libraryTemplate(z.string().max(60).parse(form.get("template")));
+  if (!template) throw new Error("Unknown template");
+  const name = z.string().trim().min(1).max(120).catch(template.name).parse(form.get("name") ?? template.name);
+  const { data, error } = await context.supabase.rpc("create_trusted_artifact", { p_kind: template.kind, p_name: name });
+  if (error || !data) throw error ?? new Error("Artifact creation failed");
+  if (template.build) {
+    const { source, manifest } = template.build(calendarDate(new Date(), context.workspace.timezone));
+    await saveCandidateVersion({ supabase: context.supabase, workspaceId: context.workspace.id, actorId: context.user.id,
+      artifact: { id: data.id, kind: template.kind, permissions: data.permissions }, source, manifest, expectedActiveVersionId: data.active_version_id });
+  }
+  redirect(`/ai/library/${data.id}`);
+}
+
+// Pin controls exist on the gallery and the tool page; only these two destinations are allowed.
+function pinDestination(form: FormData, artifactId: string) {
+  return form.get("returnTo") === "/ai/library" ? "/ai/library" : `/ai/library/${artifactId}`;
 }
 
 export async function renameArtifact(form: FormData) {
@@ -39,7 +63,7 @@ export async function pinArtifact(form: FormData) {
     workspace_id: workspace.id, artifact_id: artifactId,
   }, { onConflict: "workspace_id,artifact_id" });
   if (error) throw error;
-  redirect(`/ai/library/${artifactId}`);
+  redirect(pinDestination(form, artifactId));
 }
 
 export async function unpinArtifact(form: FormData) {
@@ -48,7 +72,7 @@ export async function unpinArtifact(form: FormData) {
   const { error } = await supabase.from("dashboard_items").delete()
     .eq("workspace_id", workspace.id).eq("artifact_id", artifactId);
   if (error) throw error;
-  redirect(`/ai/library/${artifactId}`);
+  redirect(pinDestination(form, artifactId));
 }
 
 export async function saveCalculatorParams(form: FormData) {

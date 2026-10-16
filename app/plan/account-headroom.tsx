@@ -1,27 +1,30 @@
 import { accountLiquidity, forecastDaily, withInternalFunding, type ForecastInput } from "@/lib/finance/calculations";
 import { forecastInput } from "@/lib/finance/tools";
 import { describeMissingInputs, formatMoney } from "@/lib/finance/format";
+import { positiveMinor, field } from "./ui";
 
-export type LiquidityParams = { horizon?: string; scenario?: string; account?: string; fundingFrom?: string; fundingDate?: string; fundingMinor?: string };
-const field = "min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-brand";
+export type LiquidityParams = { horizon?: string; scenario?: string; account?: string; fundingFrom?: string; fundingDate?: string; funding?: string };
 
 export function planLiquidity(input: ForecastInput, params: LiquidityParams) {
   let appliedInput = input;
   let fundingError: string | null = null;
-  if (params.fundingFrom || params.fundingDate || params.fundingMinor) {
+  let fundingMinor: string | null = null;
+  if (params.fundingFrom || params.fundingDate || params.funding) {
+    // Decimal currency input becomes exact minor units here, before the shared schema validates it.
+    fundingMinor = positiveMinor(params.funding ?? "", input.currencyCode);
     const parsed = forecastInput.safeParse({ funding: [{ fromAccountId: params.fundingFrom, toAccountId: params.account,
-      date: params.fundingDate, amountMinor: params.fundingMinor, currencyCode: input.currencyCode }] });
-    if (!parsed.success) fundingError = "Choose two different liquid accounts, a date within the horizon, and a positive whole amount in cents.";
+      date: params.fundingDate, amountMinor: fundingMinor ?? undefined, currencyCode: input.currencyCode }] });
+    if (!parsed.success) fundingError = "Choose two different liquid accounts, a date within the horizon, and a positive amount.";
     else try { appliedInput = withInternalFunding(input, parsed.data.funding!.map(item => ({ ...item, amountMinor: BigInt(item.amountMinor) }))); }
     catch (error) { fundingError = error instanceof Error ? error.message : "Invalid funding"; }
   }
-  return { liquidity: accountLiquidity(appliedInput), forecast: forecastDaily(appliedInput), fundingError };
+  return { liquidity: accountLiquidity(appliedInput), forecast: forecastDaily(appliedInput), fundingError, fundingMinor };
 }
 
 export function AccountHeadroom({ input, params, names, locale, result }: {
   input: ForecastInput; params: LiquidityParams; names: Map<string, string>; locale?: string; result: ReturnType<typeof planLiquidity>;
 }) {
-  const { liquidity, fundingError } = result;
+  const { liquidity, fundingError, fundingMinor } = result;
   const money = (amount: bigint) => formatMoney(amount, input.currencyCode, locale);
   const selected = liquidity.status === "available" ? liquidity.accounts.find(account => account.accountId === params.account) : undefined;
   const invalidAccount = params.account && !input.accounts.some(account => account.id === params.account);
@@ -38,7 +41,7 @@ export function AccountHeadroom({ input, params, names, locale, result }: {
         {input.accounts.map(account => <option key={account.id} value={account.id}>{names.get(account.id) ?? account.id}</option>)}
       </select></label>
       <label className="grid gap-1 text-sm font-medium">Funding date<input type="date" name="fundingDate" defaultValue={params.fundingDate ?? ""} className={field} /></label>
-      <label className="grid gap-1 text-sm font-medium">Funding amount (in cents or smallest unit)<input name="fundingMinor" inputMode="numeric" defaultValue={params.fundingMinor ?? ""} className={field} /></label>
+      <label className="grid gap-1 text-sm font-medium">Funding amount ({input.currencyCode})<input name="funding" inputMode="decimal" placeholder="0.00" defaultValue={params.funding ?? ""} className={field} /></label>
       <button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Evaluate account</button>
     </form>
     <p className="text-sm text-muted-foreground">No automatic transfer from another account. Funding here is only a what-if; your real balances do not change.</p>
@@ -49,7 +52,7 @@ export function AccountHeadroom({ input, params, names, locale, result }: {
     <p className="text-sm text-muted-foreground">Workspace buffer: {money(liquidity.workspaceBufferMinor)}, kept once across all accounts. Chosen-account spending is limited by both account liquidity and aggregate headroom.</p>
     {liquidity.workspaceBufferPressureMinor > 0n && <p role="alert" className="text-sm">Workspace buffer pressure: {money(liquidity.workspaceBufferPressureMinor)} on {liquidity.aggregate.limitingDate}.</p>}
       {selected ? <div className="rounded-lg border border-border p-4"><h3 className="font-semibold">Chosen-account headroom — {names.get(selected.accountId) ?? selected.accountId}</h3><p className="font-mono text-2xl">{money(selected.spendableMinor)}</p><p className="text-sm">Tightest day {selected.spendingLimitingDate}, after protections. Account cash: {money(selected.amountMinor)} on {selected.limitingDate}. {selected.shortfallMinor > 0n ? "Funding is needed before spending more." : "Extra spending should stay within this amount."}</p></div> : <p className="text-sm text-muted-foreground">Choose a paying account to evaluate spending.</p>}
-      {params.fundingFrom && !fundingError && <p className="text-sm">Hypothetical funding: {names.get(params.fundingFrom) ?? params.fundingFrom} to {names.get(params.account ?? "") ?? params.account}, {money(BigInt(params.fundingMinor!))} on {params.fundingDate}.</p>}
+      {params.fundingFrom && !fundingError && <p className="text-sm">Hypothetical funding: {names.get(params.fundingFrom) ?? params.fundingFrom} to {names.get(params.account ?? "") ?? params.account}, {money(BigInt(fundingMinor!))} on {params.fundingDate}.</p>}
       <div className="grid gap-4 sm:grid-cols-2">{liquidity.accounts.map(account => {
         const source = input.accounts.find(item => item.id === account.accountId)!;
         const name = names.get(account.accountId) ?? account.accountId;

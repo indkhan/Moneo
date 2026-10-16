@@ -296,3 +296,26 @@ it("allows transaction detail with planning disabled", async () => {
   await expect(tools.finance_detail.execute({ kind: "transaction", id: requestId })).resolves.toEqual({ synthetic: "detail" });
 });
 
+it("streams tool progress and the verified answer before durable publication finishes", async () => {
+  let publish!: () => void;
+  serviceRpc.mockImplementationOnce(() => new Promise(resolve => { publish = () => resolve({ error: null, data: "completed" }); }));
+  vi.mocked(generateText).mockImplementationOnce(async options => {
+    const tools = options.tools as unknown as Record<string, { execute: (input: unknown, options: unknown) => Promise<unknown> }>;
+    await tools.accounts_list.execute({}, { toolCallId: "call" });
+    return { text: "Evidence reviewed", totalUsage: {}, steps: [] } as never;
+  });
+  const streamed = new Request("http://localhost/api/chat", { method: "POST", headers: { Accept: "application/x-ndjson" }, body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000002", requestId, message: "List accounts" }) });
+  const response = await POST(streamed);
+  expect(response.headers.get("content-type")).toContain("application/x-ndjson");
+  const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
+  let text = "";
+  while (!text.includes('"type":"answer"')) text += (await reader.read()).value ?? "";
+  expect(text).toContain('{"type":"tool","id":"call","name":"accounts_list","state":"running"}');
+  expect(text).toContain('"state":"done"');
+  expect(text).not.toContain('"type":"result"');
+  await vi.waitFor(() => expect(publish).toBeTypeOf("function"));
+  publish();
+  for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) text += chunk.value;
+  expect(JSON.parse(text.trim().split("\n").at(-1)!)).toMatchObject({ type: "result", status: 200, body: { conversationId: "00000000-0000-4000-8000-000000000002" } });
+});
+

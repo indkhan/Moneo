@@ -1,192 +1,92 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
-import { detectRecurring } from "@/lib/finance/recurring";
-import { confirmSeries, declineSeries } from "./actions";
-import { formatMoney as formatCurrency, seriesKey } from "./series";
+import { recurringCadences } from "@/lib/finance/cadences";
+import { calendarDate } from "@/lib/finance/calendar";
+import { expandSchedule } from "@/lib/finance/model";
+import { formatMoney, monthlyEquivalent } from "./series";
+import { DetectedPatterns } from "./detected";
 import { OccurrenceReview } from "./occurrences";
 
-const MAX_TRANSACTIONS = 10_000;
-const PAGE_SIZE = 1000;
-
-type TxRow = {
-  id: string;
-  posted_on: string;
-  description: string;
-  amount_minor: string;
-  currency_code: string;
-  account_id: string;
-  merchant_id: string | null;
-  version: number;
-  status: "posted";
-  kind: "ordinary";
-  review_reasons: string[];
-};
+type Schedule = { id: string; name: string; account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; schedule_anchor_on: string | null; source: string };
+const UPCOMING_DAYS = 30;
 
 export default async function RecurringPage() {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
-  try {
-    context = await requireWorkspace();
-  } catch {
-    redirect("/login");
-  }
+  try { context = await requireWorkspace(); } catch { redirect("/login"); }
   const { supabase, workspace } = context;
-  const formatMoney=(amount:string|bigint,currency:string)=>formatCurrency(amount,currency,workspace.locale);
+  const money = (amount: string | bigint, currency: string) => formatMoney(amount, currency, workspace.locale);
+  const today = calendarDate(new Date(), workspace.timezone);
 
-  const [{ data: accounts, error: accountsError }, { data: stored, error: storedError }] = await Promise.all([
-    supabase.from("accounts").select("id, name, currency_code").eq("workspace_id", workspace.id).order("name"),
-    supabase.from("recurring_series")
-      .select("id, account_id, normalized_label, cadence, currency_code, status, assumption_id, label, evidence_invalidated, evidence_baseline, recurring_series_transactions(transaction_id), assumption:financial_assumptions(source,confirmed,enabled,removed_at)")
-      .eq("workspace_id", workspace.id),
+  const [{ data: accounts, error: accountsError }, { data: scheduleData, error: schedulesError }] = await Promise.all([
+    supabase.from("accounts").select("id, name").eq("workspace_id", workspace.id).order("name"),
+    supabase.from("financial_assumptions").select("id, name, account_id, amount_minor::text, currency_code, cadence, starts_on, ends_on, schedule_anchor_on, source")
+      .eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).is("removed_at", null).in("cadence", recurringCadences).order("name").limit(500),
   ]);
+  const names: Record<string, string> = Object.fromEntries((accounts ?? []).map(account => [account.id, account.name]));
 
-  const rows: TxRow[] = [];
-  let queryError: string | null = null;
-  // Keyset pages preserve chronological selection even when other rows are inserted.
-  // They are not a transaction snapshot: decisions validate owned evidence versions again.
-  let cursor: TxRow | undefined;
-  while (rows.length <= MAX_TRANSACTIONS) {
-    let query = supabase.from("transactions")
-      .select("id, posted_on, description, amount_minor::text, currency_code, account_id, merchant_id, version, status, kind, review_reasons")
-      .eq("workspace_id", workspace.id)
-      .eq("status", "posted")
-      .eq("kind", "ordinary").eq("review_reasons", "{}")
-      .order("posted_on", { ascending: false }).order("id", { ascending: false });
-    if (cursor) query = query.or(`posted_on.lt.${cursor.posted_on},and(posted_on.eq.${cursor.posted_on},id.lt.${cursor.id})`);
-    const size = Math.min(PAGE_SIZE, MAX_TRANSACTIONS + 1 - rows.length);
-    const { data, error } = await query.range(0, size - 1);
-    if (error) { queryError = error.message; break; }
-    const page = (data ?? []) as TxRow[];
-    rows.push(...page);
-    if (page.length < size) break;
-    cursor = page.at(-1);
+  // Same expansion as the forecast, so "next" here matches Plan. Account-less schedules still get a date.
+  const schedules = ((scheduleData ?? []) as Schedule[]).map(item => {
+    const dated = { ...item, account_id: item.account_id ?? "unassigned" };
+    const upcoming = expandSchedule(dated, today, UPCOMING_DAYS);
+    const amount = BigInt(item.amount_minor);
+    return { ...item, amount, next: expandSchedule(dated, today, 400)[0]?.date ?? null, upcoming: amount * BigInt(upcoming.length), monthly: monthlyEquivalent(amount, item.cadence) };
+  }).sort((a, b) => (a.next ?? "9999").localeCompare(b.next ?? "9999") || a.name.localeCompare(b.name));
+  const totals = new Map<string, { out: bigint; in: bigint; upcoming: bigint }>();
+  for (const item of schedules) {
+    if (!item.next) continue;
+    const total = totals.get(item.currency_code) ?? { out: 0n, in: 0n, upcoming: 0n };
+    if (item.monthly < 0n) total.out += item.monthly; else total.in += item.monthly;
+    total.upcoming += item.upcoming;
+    totals.set(item.currency_code, total);
   }
-  const truncated = rows.length > MAX_TRANSACTIONS;
-  const cutoff = truncated ? rows[MAX_TRANSACTIONS].posted_on : null;
-  // Exclude the entire boundary date rather than presenting an arbitrary slice of that day's postings.
-  if (cutoff) rows.splice(0, rows.length, ...rows.filter(row => row.posted_on > cutoff));
-  const observedFrom = rows.at(-1)?.posted_on;
-  const observedTo = rows[0]?.posted_on;
-
-  let detected: ReturnType<typeof detectRecurring> = [];
-  let detectError: string | null = null;
-  if (!queryError) {
-    try {
-      detected = detectRecurring(rows.map((row) => ({
-        id: row.id,
-        date: row.posted_on,
-        description: row.description,
-        amountMinor: BigInt(row.amount_minor),
-        currencyCode: row.currency_code,
-        accountId: row.account_id,
-        merchantId: row.merchant_id,
-      })));
-    } catch (error) {
-      detectError = error instanceof Error ? error.message : String(error);
-    }
-  }
-
-  const byId = new Map(rows.map((row) => [row.id, row]));
-  const names = Object.fromEntries((accounts ?? []).map((account) => [account.id, account.name]));
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 text-foreground sm:px-8 lg:py-10">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="space-y-4">
+        <nav aria-label="Money sections" className="flex gap-4 text-sm text-muted-foreground"><Link className="hover:text-foreground" href="/money/transactions">Transactions</Link><Link className="hover:text-foreground" href="/money/accounts">Accounts</Link><Link className="hover:text-foreground" href="/money/wealth">Wealth</Link></nav>
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">
-            Money
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Recurring payments</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Likely repeating payments found in your history. Nothing changes your forecast until you confirm it.</p>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Recurring payments</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Bills, subscriptions and income you confirmed, plus patterns found in your history. Nothing changes your forecast until you confirm it.</p>
         </div>
-        <Link href="/money/transactions" className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted">Back to transactions</Link>
       </header>
+      {accountsError && <p role="alert">Could not load accounts: {accountsError.message}</p>}
 
-      {(stored??[]).some(series=>series.evidence_invalidated) && <section aria-label="Recurring source changes" className="rounded-xl border border-amber-500 p-6"><h2 className="text-base font-semibold">Confirmed source evidence changed</h2><p className="mt-2 text-sm">Inferred assumptions are disabled when their transaction evidence is reclassified. Intentional user assumptions are retained. Undo the source correction to restore unchanged inference, or review a new valid pattern before confirming it.</p><ul className="mt-3 space-y-3">{(stored??[]).filter(series=>series.evidence_invalidated).map(series=><li key={series.id} className="text-sm"><p>{series.label} · {names[series.account_id]??"Account"}</p><div className="flex flex-wrap gap-3">{((series.evidence_baseline??[]) as {id:string;posted_on:string}[]).map(source=><Link key={source.id} href={`/money/transactions?transaction=${source.id}`} className="underline">Source {source.posted_on}</Link>)}<Link href="/plan" className="underline">Review assumption in Plan</Link></div></li>)}</ul></section>}
-      {accountsError && <p role="alert" className="mt-6">Could not load accounts: {accountsError.message}</p>}
-      {storedError && <p role="alert" className="mt-6">Could not load review state: {storedError.message}</p>}
-      {queryError && <p role="alert" className="mt-6">Could not load transactions: {queryError}</p>}
-      {detectError && <p role="alert" className="mt-6">Could not detect patterns: {detectError}</p>}
-      <div className="text-sm text-muted-foreground"><p>{observedFrom ? `Based on posted transactions from ${observedFrom} to ${observedTo}.` : "No posted transactions to analyze yet."}</p>
-        <details className="mt-2"><summary className="cursor-pointer underline">More details</summary><p className="mt-2">Looks at up to {MAX_TRANSACTIONS.toLocaleString(workspace.locale)} recent posted transactions. Statement intervals, missing statements and account completeness are unknown. Pending items, transfers and unresolved classifications are excluded. A pattern needs at least three payments, so yearly ones need two years of history. Confirming creates one forecast assumption; schedules you edited in Plan are kept.</p></details></div>
-      {truncated && <p className="mt-6 text-sm text-muted-foreground">History limit reached. All postings on or before {cutoff} were excluded to retain complete posting dates. Older patterns may be absent.</p>}
+      <section aria-label="Bills and subscriptions" className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <h2 className="text-base font-semibold">Bills and subscriptions</h2>
+          {totals.size > 0 && <dl className="flex flex-wrap gap-x-6 gap-y-1 text-right text-sm">{[...totals].map(([currency, total]) => <div key={currency} className="grid">
+            <dt className="text-xs text-muted-foreground">Per month ({currency})</dt>
+            <dd className="font-mono font-semibold tabular-nums">{money(total.out, currency)}{total.in > 0n && <span className="ml-2 text-emerald-700 dark:text-emerald-400">+{money(total.in, currency)} in</span>}</dd>
+            <dd className="text-xs text-muted-foreground">Next {UPCOMING_DAYS} days: {money(total.upcoming, currency)}</dd>
+          </div>)}</dl>}
+        </div>
+        {schedulesError ? <p role="alert">Could not load confirmed schedules: {schedulesError.message}</p> : schedules.length ? <div className="overflow-x-auto rounded-xl border border-border bg-card">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead className="border-b border-border text-xs text-muted-foreground"><tr>
+              <th className="px-4 py-2.5 font-medium">Next</th><th className="px-3 py-2.5 font-medium">Name</th><th className="px-3 py-2.5 font-medium">Cadence</th>
+              <th className="px-3 py-2.5 font-medium">Account</th><th className="px-3 py-2.5 text-right font-medium">Amount</th><th className="px-4 py-2.5 text-right font-medium">Per month</th>
+            </tr></thead>
+            <tbody className="divide-y divide-border">{schedules.map(item => <tr key={item.id} className={item.next ? "" : "text-muted-foreground"}>
+              <td className="whitespace-nowrap px-4 py-2.5 font-mono">{item.next ?? "Ended"}</td>
+              <td className="px-3 py-2.5"><Link href="/plan" className="font-medium hover:underline">{item.name}</Link>{item.source === "user" && <span className="ml-2 text-xs text-muted-foreground">added in Plan</span>}</td>
+              <td className="px-3 py-2.5 capitalize">{item.cadence}</td>
+              <td className="px-3 py-2.5 text-muted-foreground">{item.account_id ? names[item.account_id] ?? "Unknown account" : "No account"}</td>
+              <td className={`whitespace-nowrap px-3 py-2.5 text-right font-mono tabular-nums ${item.amount > 0n ? "text-emerald-700 dark:text-emerald-400" : ""}`}>{money(item.amount, item.currency_code)}</td>
+              <td className="whitespace-nowrap px-4 py-2.5 text-right font-mono tabular-nums text-muted-foreground">{money(item.monthly, item.currency_code)}</td>
+            </tr>)}</tbody>
+          </table>
+        </div> : <p className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">No confirmed schedules yet. Confirm a detected pattern below or add one in <Link href="/plan" className="underline">Plan</Link>.</p>}
+        <p className="text-xs text-muted-foreground">Per-month amounts are exact equivalents (52 weeks or 26 fortnights a year); totals are per currency without exchange rates. Edit, pause or end a schedule in <Link href="/plan" className="underline">Plan</Link>.</p>
+      </section>
 
-      {!queryError && !detectError && detected.length === 0 && (
-        <p className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">No recurring payments found yet. Import more history to improve detection.</p>
-      )}
-
-      <OccurrenceReview supabase={supabase} workspace={workspace} accountNames={names} />
-      <div className="grid gap-6 lg:grid-cols-2">
-        {detected.map((series) => {
-          const key = seriesKey({
-            accountId: series.accountId,
-            currencyCode: series.currencyCode,
-            cadence: series.cadence,
-            label: series.label,
-            runAnchorId: series.runAnchorId,
-          });
-          const related = (stored ?? []).filter(item => item.account_id === series.accountId &&
-            item.currency_code === series.currencyCode && item.cadence === series.cadence &&
-            item.recurring_series_transactions?.some((link: {transaction_id: string}) => series.transactionIds.includes(link.transaction_id)));
-          const state = related.length === 1 ? related[0] : undefined;
-          const status = state?.status ?? "pending";
-          const assumption = Array.isArray(state?.assumption) ? state.assumption[0] : state?.assumption;
-          const evidence = series.transactionIds.map((id) => byId.get(id)).filter((row): row is TxRow => Boolean(row));
-          return (
-            <article key={key} className="rounded-xl border border-border bg-card p-6">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-base font-semibold">{series.label}</h2>
-                <span className="rounded bg-blue-50 px-2 py-0.5 text-xs capitalize text-blue-700">{series.cadence}</span>
-                {status === "confirmed" && <span className="rounded bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">Confirmed{assumption?.confirmed && assumption.enabled && !assumption.removed_at ? " used in forecast" : " review schedule in Plan"}</span>}
-                {status === "dismissed" && <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">Dismissed</span>}
-              </div>
-              <p className="mt-3 font-mono text-sm">
-                {formatMoney(series.amountMinMinor.toString(), series.currencyCode)}
-                {series.amountMinMinor !== series.amountMaxMinor && <> to {formatMoney(series.amountMaxMinor.toString(), series.currencyCode)}</>}
-                {" · "}{names[series.accountId] ?? "Unknown account"}
-                {" · "}{series.occurrences} payments
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">{series.amountMinMinor === series.amountMaxMinor ? "Same amount each time." : "Amount varies a little."} Regular purchases can look like this too, so check the transactions before confirming.</p>
-              {(series.evidenceLimited || series.sameDateAlternatives > 0) && <p className="mt-2 text-sm text-muted-foreground">{series.evidenceLimited && `Review evidence retains the original calendar anchor and the latest 999 of ${series.observedOccurrences} matching observations. `}{series.sameDateAlternatives > 0 && `${series.sameDateAlternatives} other similar same-date postings were not selected. They may represent separate purchases or obligations; review them before confirming.`}</p>}
-              <details className="mt-4 border-t border-border pt-3 text-sm">
-                <summary className="cursor-pointer underline">Evidence ({evidence.length} posted transactions)</summary>
-                <ul className="mt-2 space-y-1">
-                  {evidence.slice(0, 8).map((row) => (
-                    <li key={row.id} className="text-muted-foreground">
-                      {row.posted_on} · {formatMoney(row.amount_minor, row.currency_code)} · {row.description}
-                    </li>
-                  ))}
-                </ul>
-                {evidence.length > 8 && <p className="mt-1 text-muted-foreground">…and {evidence.length - 8} more.</p>}
-              </details>
-              {assumption?.source === "user" && <p className="mt-3 text-sm text-muted-foreground">Your intentional Plan schedule is retained when confirming or declining this candidate. Edit or disable it in <Link href="/plan" className="underline">Plan</Link>.</p>}
-              {related.length > 1 && <p role="alert" className="mt-3 text-sm">Evidence overlaps several reviewed runs. Review their schedules in Plan before deciding.</p>}
-              <div className="mt-4 flex flex-wrap gap-3">
-                <form action={confirmSeries}>
-                  <input type="hidden" name="accountId" value={series.accountId} />
-                  <input type="hidden" name="label" value={series.label} />
-                  <input type="hidden" name="cadence" value={series.cadence} />
-                  <input type="hidden" name="currencyCode" value={series.currencyCode} />
-                  <input type="hidden" name="sourceEvidence" value={JSON.stringify(evidence.map(row => ({id: row.id, version: row.version})))} />
-                  <input type="hidden" name="runAnchorId" value={series.runAnchorId} />
-                  <input type="hidden" name="evidenceLimited" value={String(series.evidenceLimited)} />
-                  <button disabled={related.length > 1} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">Confirm</button>
-                </form>
-                <form action={declineSeries}>
-                  <input type="hidden" name="accountId" value={series.accountId} />
-                  <input type="hidden" name="label" value={series.label} />
-                  <input type="hidden" name="cadence" value={series.cadence} />
-                  <input type="hidden" name="currencyCode" value={series.currencyCode} />
-                  <input type="hidden" name="sourceEvidence" value={JSON.stringify(evidence.map(row => ({id: row.id, version: row.version})))} />
-                  <input type="hidden" name="runAnchorId" value={series.runAnchorId} />
-                  <input type="hidden" name="evidenceLimited" value={String(series.evidenceLimited)} />
-                  <button disabled={related.length > 1} className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">Not recurring</button>
-                </form>
-              </div>
-            </article>
-          );
-        })}
-      </div>
+      <Suspense fallback={<p className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">Looking for recurring patterns in your history…</p>}>
+        <DetectedPatterns supabase={supabase} workspace={workspace} names={names} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <OccurrenceReview supabase={supabase} workspace={workspace} accountNames={names} />
+      </Suspense>
     </main>
   );
 }
