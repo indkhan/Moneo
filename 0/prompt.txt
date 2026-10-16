@@ -1,0 +1,1 @@
+Keep the dev-only instant sign-in. I clicked it in the Browser pane and I'm signed in, go ahead and test everything.
