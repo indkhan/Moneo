@@ -1,0 +1,99 @@
+import type { requireWorkspace } from "@/lib/auth";
+import { calendarDate } from "@/lib/finance/calendar";
+import { loadOrganizationSuggestions } from "@/lib/import-organization-loader";
+import { libraryTemplate } from "@/lib/artifacts/library-templates";
+import { saveCandidateVersion } from "@/lib/artifacts/save-version";
+import { payloadSchemas, type ProposalKind } from "./team";
+
+// Accepting a proposal calls the SAME audited RPCs a person uses by hand, as
+// the signed-in owner (auth.uid()), so corrections, batches and Undo stay intact.
+type Context = Awaited<ReturnType<typeof requireWorkspace>>;
+export type StoredProposal = { id: string; kind: ProposalKind; payload: unknown };
+export type Applied = { href: string; undo?: string; [key: string]: unknown };
+
+export async function applyProposal(context: Context, proposal: StoredProposal): Promise<Applied> {
+  const { supabase, workspace } = context;
+  switch (proposal.kind) {
+    case "categorize": {
+      const payload = payloadSchemas.categorize.parse(proposal.payload);
+      // Same guard as a manual organization review: corrections and complete rows take precedence.
+      const current = await loadOrganizationSuggestions(supabase, workspace.id, payload.rows);
+      if (current.proposals.length !== payload.rows.length) throw new Error("Some rows were corrected or organized since the agent ran");
+      const evidence = [...new Map(current.proposals.flatMap(item => item.evidence).map(row => [row.id, row])).values()];
+      const created = await supabase.rpc("create_organization_review", { p_rows: payload.rows, p_patch: payload.patch, p_merchant_name: payload.merchantName,
+        p_rule_key: payload.ruleKey, p_evidence: evidence, p_request_id: proposal.id });
+      if (created.error) throw new Error(created.error.message);
+      const reviewId = String(created.data.id);
+      const applied = await supabase.rpc("apply_organization_review", { p_review_id: reviewId, p_save_rule: payload.ruleKey !== null });
+      if (applied.error) throw new Error(applied.error.message);
+      return { reviewId, href: `/money/organization?review=${reviewId}`, undo: "Undo from the organization review" };
+    }
+    case "recurring": {
+      const payload = payloadSchemas.recurring.parse(proposal.payload);
+      const { error } = await supabase.rpc("review_recurring_series_versions", { p_decision: "confirmed", p_account_id: payload.accountId, p_label: payload.label,
+        p_cadence: payload.cadence, p_currency_code: payload.currencyCode, p_evidence: payload.evidence, p_run_anchor_id: payload.runAnchorId, p_evidence_limited: payload.evidenceLimited });
+      if (error) throw new Error(error.message);
+      return { href: "/money/recurring", undo: "Choose “Not recurring” on the Recurring page" };
+    }
+    case "budget": {
+      const payload = payloadSchemas.budget.parse(proposal.payload);
+      const category = await supabase.from("categories").select("id").eq("workspace_id", workspace.id).eq("id", payload.categoryId).maybeSingle();
+      if (category.error || !category.data) throw new Error("Category not found");
+      // Same insert as Plan → Spending limits; a target only, never touches balances or goals.
+      const { error } = await supabase.from("spending_plans").insert({ workspace_id: workspace.id, category_id: payload.categoryId, currency_code: payload.currencyCode,
+        limit_minor: payload.limitMinor, enabled: true, updated_at: new Date().toISOString() });
+      if (error?.code === "23505") throw new Error("A limit already exists for this category and currency");
+      if (error) throw new Error(error.message);
+      return { href: "/plan/spending", undo: "Turn the limit off in Plan → Spending" };
+    }
+    case "tool": {
+      const payload = payloadSchemas.tool.parse(proposal.payload);
+      const template = libraryTemplate(payload.template);
+      if (!template?.build) throw new Error("Unknown template");
+      const { data, error } = await supabase.rpc("create_trusted_artifact", { p_kind: template.kind, p_name: payload.name });
+      if (error || !data) throw new Error(error?.message ?? "Tool creation failed");
+      const { source, manifest } = template.build(calendarDate(new Date(), workspace.timezone));
+      const params = manifest.params as Record<string, { default: number; min?: number; max?: number }>;
+      for (const [name, value] of Object.entries(payload.params)) {
+        const definition = params[name];
+        if (definition && value >= (definition.min ?? -Infinity) && value <= (definition.max ?? Infinity)) params[name] = { ...definition, default: value };
+      }
+      // The template's code goes through the same validated sandbox save as any edit.
+      const saved = await saveCandidateVersion({ supabase, workspaceId: workspace.id, actorId: context.user.id,
+        artifact: { id: data.id, kind: template.kind, permissions: data.permissions }, source, manifest, expectedActiveVersionId: data.active_version_id });
+      if (saved.configured && (saved.status !== "validated" || saved.error)) throw new Error("The tool did not pass sandbox validation");
+      return { artifactId: data.id, href: `/ai/library/${data.id}` };
+    }
+    case "finding":
+      payloadSchemas.finding.parse(proposal.payload);
+      return { href: "/money/transactions", acknowledged: true };
+  }
+}
+
+/** Claims each proposal once, applies it, and records the outcome. Rejecting never changes data. */
+export async function decideProposals(context: Context, ids: string[], decision: "accept" | "reject") {
+  const { supabase, workspace } = context;
+  const outcomes: { id: string; status: string; error?: string }[] = [];
+  for (const id of ids) {
+    const now = new Date().toISOString();
+    if (decision === "reject") {
+      const { data, error } = await supabase.from("agent_proposals").update({ status: "rejected", decided_at: now }).eq("id", id).eq("workspace_id", workspace.id).in("status", ["proposed", "failed"]).select("id").maybeSingle();
+      outcomes.push({ id, status: error ? "failed" : data ? "rejected" : "unchanged", ...(error ? { error: error.message } : {}) });
+      continue;
+    }
+    const claim = await supabase.from("agent_proposals").update({ status: "applying", decided_at: now }).eq("id", id).eq("workspace_id", workspace.id).in("status", ["proposed", "failed"])
+      .select("id, kind, payload").maybeSingle();
+    if (claim.error || !claim.data) { outcomes.push({ id, status: "unchanged", ...(claim.error ? { error: claim.error.message } : {}) }); continue; }
+    let result: Applied;
+    try { result = await applyProposal(context, claim.data as StoredProposal); }
+    catch (cause) {
+      const message = (cause instanceof Error ? cause.message : String(cause)).slice(0, 500);
+      await supabase.from("agent_proposals").update({ status: "failed", result: { error: message } }).eq("id", id).eq("workspace_id", workspace.id).eq("status", "applying");
+      outcomes.push({ id, status: "failed", error: message });
+      continue;
+    }
+    const saved = await supabase.from("agent_proposals").update({ status: "accepted", result, decided_at: new Date().toISOString() }).eq("id", id).eq("workspace_id", workspace.id).eq("status", "applying");
+    outcomes.push({ id, status: "accepted", ...(saved.error ? { error: `Applied, but the review record was not updated: ${saved.error.message}` } : {}) });
+  }
+  return outcomes;
+}

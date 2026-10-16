@@ -8,6 +8,7 @@ import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 vi.mock("@/lib/env", () => ({ getSupabaseConfig: () => ({ status: "configured" }) }));
 vi.mock("@/lib/finance/model", () => ({ evaluatePlanForWorkspace: vi.fn() }));
 vi.mock("./insights/panel", () => ({ ImportantInsights: () => null, loadInsightEvidence: async () => ({}) }));
+vi.mock("./agent-briefing", () => ({ AgentBriefing: () => null }));
 vi.mock("./manual-balance-form", () => ({ ManualBalanceForm: () => null }));
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("@/lib/finance/tools", () => ({ cashflow: async () => ({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), unavailable: "Synthetic period" }) }));

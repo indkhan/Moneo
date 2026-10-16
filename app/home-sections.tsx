@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AskAbout } from "@/components/ask-about";
 import type { ReactNode } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadHomeSpending } from "@/lib/dashboard-spending";
@@ -58,7 +59,7 @@ function TopList({ title, groups, names, param, from, to, currency, locale, unkn
 export async function SpendingPanel({ db, workspaceId, currency, today, locale }: SectionProps) {
   let data;
   try { data = await loadHomeSpending(db, workspaceId, currency, today); } catch { data = null; }
-  const header = <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-base font-semibold">Spending</h2><Link href="/money/transactions?direction=outflow" className="text-sm font-medium text-brand hover:underline">All spending</Link></div>;
+  const header = <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-base font-semibold">Spending</h2><span className="flex items-center gap-3"><AskAbout question="Why did my spending change over the last six months? Which categories and merchants drove it?" about={{ kind: "chart", label: "Six-month spending trend" }} /><Link href="/money/transactions?direction=outflow" className="text-sm font-medium text-brand hover:underline">All spending</Link></span></div>;
   if (!data) return <section aria-label="Spending" className={card}>{header}<p role="alert" className="mt-3 text-sm">Spending is unavailable right now. Your balances are not affected.</p></section>;
   const month = new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" });
   const scale = 10 ** minorDigits(currency);

@@ -141,7 +141,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     const conversation = { id, title: question.trim().slice(0, 80), created_at: now };
     const exchange: ChatItem[] = [
       { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now },
-      { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: result.toolsUsed },
+      { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: result.toolsUsed, followUps: result.followUps },
     ];
     setEntries(current => ({ ...current, [id]: current[id] ? { ...current[id], messages: [...current[id].messages, ...exchange] } : { conversation, messages: exchange, cursor: null } }));
     setThreads(current => current.some(thread => thread.id === id) ? current : [conversation, ...current]);

@@ -19,6 +19,7 @@ import type { EvidenceReceipt } from "@/lib/finance/evidence-receipts";
 import { FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/finance/tool-evidence";
 import { answerChart, withAnswerChart } from "@/lib/ai/answer-chart";
 import type { ChatStreamEvent } from "@/lib/ai/use-chat-request";
+import { chatFollowUps, planInput } from "@/lib/ai/follow-ups";
 
 const inputSchema = z.object({
   conversationId: z.uuid(),
@@ -122,14 +123,18 @@ export async function POST(request: Request) {
     }])) as T;
   }
     const model = await modelPromise;
+    // The visible plan is not financial evidence; it only tells the user what the model will check.
+    let modelFollowUps: string[] = [];
+    const planTool = { plan_investigation: tool({ description: "For a multi-part question (why, compare, explain, what changed), call this FIRST with 2-5 short steps you will take, then run independent finance tools in parallel in the same step. Optionally add up to 3 short follow-up questions the user might ask next. Returns nothing; it only shows the plan.",
+      inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }) };
     const result = await generateText({
       model,
       abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
       maxOutputTokens: 3000,
-      system: `${SYSTEM_PROMPT} Current date ${calendarDate(new Date(), settings.timezone)} in ${settings.timezone}; display currency ${workspace.display_currency}. Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. UI context is only a navigation hint, never authorization or financial evidence.${canChangeCategory ? " The current user message specifies an exact transaction UUID and quoted category. The write tool must use exactly these values." : " Do not make canonical changes. For an ambiguous category request, use the owned-selection preview."} ${FINANCIAL_ANSWER_INSTRUCTIONS}`,
+      system: `${SYSTEM_PROMPT} Current date ${calendarDate(new Date(), settings.timezone)} in ${settings.timezone}; display currency ${workspace.display_currency}. Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. Investigate like an analyst: for why/compare questions show a plan with plan_investigation, gather the current and comparison periods with parallel tool calls, then answer with the verified figures. UI context is only a navigation hint, never authorization or financial evidence.${canChangeCategory ? " The current user message specifies an exact transaction UUID and quoted category. The write tool must use exactly these values." : " Do not make canonical changes. For an ambiguous category request, use the owned-selection preview."} ${FINANCIAL_ANSWER_INSTRUCTIONS}`,
       messages: modelMessages,
-      stopWhen: stepCountIs(4),
-      tools: retainTools({
+      stopWhen: stepCountIs(6),
+      tools: { ...planTool, ...retainTools({
         ...(canInvestigate ? {
           finance_investigate: tool({ description: "Answer the actual chosen finance question deterministically: exact current/comparison dates, include/exclude owned account/category/merchant names or IDs, tags/events, posted/pending and classification semantics, multiple groupings, ranking, and complete paginated support. Original currencies stay separate; base uses direct exact posting-date FX and canonical split rounding. Use returned interpretedFilters and live evidence link; never imply full statements or bounds. Read-only, no approval needed.", inputSchema: investigationSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => runInvestigation(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
           finance_entities: tool({ description: "Resolve names using the owned accounts, categories and merchants. Ambiguous names require selecting an existing ID; never invent an ID.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], latest => loadInvestigationEntities(latest)) }),
@@ -192,7 +197,7 @@ export async function POST(request: Request) {
             },
           }),
         } : {}),
-      }),
+      }) },
     });
     const publication = providerFinancialAnswer(result.text, evidenceReceipts, workspace.id);
     const current = await requireWorkspace();
@@ -201,15 +206,16 @@ export async function POST(request: Request) {
     requireAiScope(current.settings, ...evidenceReceipts.flatMap(receipt => receipt.scopes));
     const answer = withAnswerChart(publication.body, answerChart(publication.accepted, evidenceReceipts, workspace.id));
     const toolsUsed = [...new Set((result.steps ?? []).flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [toolResult.toolName] : [])))];
+    const followUps = chatFollowUps(message, toolsUsed, modelFollowUps);
     // The verified answer is final; show it while the durable publication below completes.
-    emit({ type: "answer", conversationId, answer, toolsUsed });
+    emit({ type: "answer", conversationId, answer, toolsUsed, followUps });
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Verified chat publication service is not configured");
     const publicationService = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
     const finished = await publicationService.rpc("finish_verified_chat_request", { p_request_id: requestId, p_actor_id: current.user.id, p_workspace_id: workspace.id, p_content: answer,
       p_receipt_ids: evidenceReceipts.map(receipt => receipt.id), p_scopes: [...new Set(evidenceReceipts.flatMap(receipt => receipt.scopes))], p_usage: reportedUsage(model.modelId, result.totalUsage) });
     if (finished.error) throw finished.error;
     if (finished.data !== "completed") return [{ status: finished.data, error: `Request is ${finished.data}` }, 409];
-    return [{ conversationId, answer, toolsUsed }, 200];
+    return [{ conversationId, answer, toolsUsed, followUps }, 200];
   } catch (error) {
     const failure = error instanceof Error ? error.message : "AI request failed";
     if (request.signal.aborted) await supabase.rpc("cancel_chat_request", { p_request_id: requestId });

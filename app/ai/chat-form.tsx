@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { selectConversation } from "@/lib/ai/selected-conversation";
 import { useChatRequest, type ChatAnswer, type ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import { ChatComposer } from "@/components/chat-composer";
+import { DRAFT_EVENT } from "@/components/chat-messages";
 
 const suggestions = ["What changed in my spending last month?", "Where did most of my money go this month?", "Find my largest transactions", "Create a spending chart"];
 
@@ -17,6 +18,11 @@ export type ChatFormEvents = {
 export function ChatForm({ conversationId, selectionKey, empty = false, scope, onStart, onEvent, onDone }: { conversationId: string; selectionKey: string; isNewConversation?: boolean; empty?: boolean; scope?: React.ReactNode } & ChatFormEvents) {
   const [message, setMessage] = useState("");
   const { send, cancel, busy, error, status } = useChatRequest();
+  useEffect(() => {
+    const draft = (event: Event) => { const detail = (event as CustomEvent<{ prompt?: string; compact: boolean }>).detail; if (!detail.compact && detail.prompt) { setMessage(detail.prompt); document.getElementById("question")?.focus(); } };
+    window.addEventListener(DRAFT_EVENT, draft);
+    return () => window.removeEventListener(DRAFT_EVENT, draft);
+  }, []);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, use, useEffect, useState, useSyncExternalStore } from "react";
 import {
-  ArrowLeftRight, Bell, ChartLine, ChartPie, Coins, House, Landmark, Library, ListChecks, Menu, MessageSquare,
+  ArrowLeftRight, Bell, Bot, ChartLine, ChartPie, Coins, House, Landmark, Library, ListChecks, Menu, MessageSquare,
   PanelLeftClose, PanelLeftOpen, Repeat, Search, SearchCheck, Settings, Tags, TrendingUp, Upload, type LucideIcon,
 } from "lucide-react";
 import { AiPanel } from "@/components/ai-panel";
@@ -35,6 +35,7 @@ const sections: { title: string; items: NavItem[] }[] = [
   ] },
   { title: "AI", items: [
     { label: "Chat", href: "/ai", icon: MessageSquare, go: "c" },
+    { label: "Agents", href: "/ai/agents", icon: Bot, go: "m" },
     { label: "Library", href: "/ai/library", icon: Library, go: "l" },
     { label: "Activity", href: "/ai/activity", icon: ListChecks },
   ] },

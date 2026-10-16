@@ -61,10 +61,10 @@ it("publishes supported tool claims with application amounts and calculation lin
   expect(body.answer).not.toContain("Unsupported sections");
   expect(serviceRpc.mock.calls.find(call => call[0] === "finish_verified_chat_request")?.[1]).toMatchObject({ p_content: body.answer });
 });
-it("offers scoped investigation and question-bound review start within four model steps", async () => {
+it("offers scoped investigation and question-bound review start within six model steps (plan + parallel tools)", async () => {
   expect((await POST(request("Start a deep financial review"))).status).toBe(200);
   const options = vi.mocked(generateText).mock.calls[0][0];
-  expect(options.stopWhen).toBe(4);
+  expect(options.stopWhen).toBe(6);
   const tools = options.tools as unknown as Record<string, { execute: () => Promise<unknown> }>;
   expect(await tools.reviews_investigate.execute()).toEqual({ source: "exact evidence" });
   expect(await tools.reviews_start.execute()).toMatchObject({ jobId: "job", status: "queued", href: "/ai" });
@@ -113,6 +113,20 @@ it("broad category requests offer only an owned-selection preview, never an imme
   const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, { execute: (input: unknown) => Promise<unknown> }>;
   expect(tools).not.toHaveProperty("transactions_setCategory");
   expect(await tools.transactions_previewCategory.execute({ transactionIds: [requestId], categoryId: requestId })).toMatchObject({ warning: "Preview only", href: expect.stringContaining("/ai/actions/preview") });
+});
+
+it("shows the model's plan as a stream event and returns follow-ups without treating them as evidence", async () => {
+  vi.mocked(generateText).mockImplementationOnce(async options => {
+    const tools = options.tools as unknown as Record<string, { execute: (input: unknown) => Promise<unknown> }>;
+    expect(await tools.plan_investigation.execute({ steps: ["Compare September with August", "Rank categories by change"], followUps: ["Which merchant grew most?"] })).toEqual({ shown: true });
+    return { text: "Done", totalUsage: {}, steps: [{ toolResults: [{ toolName: "plan_investigation" }, { toolName: "finance_investigate" }] }] } as never;
+  });
+  const response = await POST(new Request("http://localhost/api/chat", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
+    body: JSON.stringify({ conversationId: requestId, requestId, message: "Why did I spend more in September?" }) }));
+  const events = (await response.text()).trim().split("\n").map(line => JSON.parse(line));
+  expect(events).toContainEqual({ type: "plan", steps: ["Compare September with August", "Rank categories by change"] });
+  const result = events.find(event => event.type === "result").body;
+  expect(result.followUps.map((item: { label: string }) => item.label)).toEqual(["Which merchant grew most?", "Break this down by merchant", "Compare with the same period last year", "Start a deep review"]);
 });
 
 it("returns only completed tool names from actual model steps, without leaking tool inputs or results", async () => {

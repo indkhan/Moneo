@@ -136,7 +136,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         <SavedViewsPanel views={viewRows} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} />
       </aside>
       <div className="order-1 min-w-0 space-y-3 lg:order-2">
-        <FilterBar key={shareable.toString()} values={filterValues} accounts={accounts ?? []} categories={categories ?? []} merchants={merchants ?? []} displayCurrency={workspace.display_currency} />
+        <FilterBar key={shareable.toString()} values={filterValues} accounts={accounts ?? []} categories={categories ?? []} merchants={merchants ?? []} displayCurrency={workspace.display_currency} timezone={workspace.timezone} />
         <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
           <ul aria-label="Active filters" className="flex flex-wrap items-center gap-1.5">
             {activeView ? <li className="rounded-full bg-brand/10 px-2.5 py-1 text-xs font-medium text-brand">View: {activeView.name}</li> : null}

@@ -6,10 +6,11 @@ import { SquarePen, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ChatComposer } from "./chat-composer";
-import { ChatMessages, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
+import { ChatMessages, DRAFT_EVENT, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
 import { selectConversation } from "@/lib/ai/selected-conversation";
+import type { AskSeed } from "./ask-about";
 
-export function AiPanelDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose: () => void; seed?: (AskSeed & { nonce: number }) | null }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (open) dialog.current?.showModal();
@@ -17,6 +18,10 @@ export function AiPanelDialog({ open, onClose }: { open: boolean; onClose: () =>
   }, [open]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
+  // "Ask about this" drafts the question and attaches what it is about; the user still sends it.
+  const [about, setAbout] = useState<AskSeed["about"] | null>(null);
+  const [seenSeed, setSeenSeed] = useState<number | null>(null);
+  if (seed && seed.nonce !== seenSeed) { setSeenSeed(seed.nonce); setQuestion(seed.question); setAbout(seed.about); }
   const [pending, setPending] = useState<PendingExchange | null>(null);
   const [history, setHistory] = useState<ChatItem[]>([]);
   const [older, setOlder] = useState<string | null>(null);
@@ -52,13 +57,18 @@ export function AiPanelDialog({ open, onClose }: { open: boolean; onClose: () =>
     return () => { window.clearTimeout(timer); ++counter.current; window.removeEventListener("moneo-conversation-change", changed); };
   }, [open, pathname, load]);
   const { send, cancel, busy, error, status } = useChatRequest();
+  useEffect(() => {
+    const draft = (event: Event) => { const detail = (event as CustomEvent<{ prompt?: string; compact: boolean }>).detail; if (detail.compact && detail.prompt) { setQuestion(detail.prompt); document.getElementById("panel-question")?.focus(); } };
+    window.addEventListener(DRAFT_EVENT, draft);
+    return () => window.removeEventListener(DRAFT_EVENT, draft);
+  }, []);
 
   async function ask(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!question.trim() || busy || loading || historyError) return;
     const id = conversationId ?? crypto.randomUUID();
     setConversationId(id);
-    const context = { path: window.location.pathname + window.location.search };
+    const context = { path: window.location.pathname + window.location.search, ...(about ? { about } : {}) };
     const selectionGeneration = generation.current;
     setPending({ question, tools: [] });
     const result = await send({ conversationId: id, message: question, context }, event => setPending(current => current && applyChatEvent(current, event)));
@@ -66,8 +76,9 @@ export function AiPanelDialog({ open, onClose }: { open: boolean; onClose: () =>
     if (result && selectionGeneration === generation.current) {
       selectConversation(selectionKey, id);
       const now = new Date().toISOString();
-      setHistory(current => [...current, { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now }, { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: result.toolsUsed }]);
+      setHistory(current => [...current, { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now }, { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: result.toolsUsed, followUps: result.followUps }]);
       setQuestion(current => current === question ? "" : current);
+      setAbout(null);
       // The AI page keeps its own client state; refresh it only when it is the page behind the panel.
       if (pathname === "/ai") { router.push(`/ai?conversation=${id}`); router.refresh(); }
     }
@@ -88,6 +99,7 @@ export function AiPanelDialog({ open, onClose }: { open: boolean; onClose: () =>
         {!history.length && !pending && !historyError && !loading && <div className="flex h-full flex-col items-center justify-center text-center"><h3 className="text-lg font-semibold">How can I help with your money?</h3><p className="mt-1 text-sm text-muted-foreground">Ask about this page, a transaction or a balance.</p><div className="mt-5 flex flex-wrap justify-center gap-2">{["What changed in my spending last month?", "Create a spending chart"].map(prompt => <button key={prompt} type="button" onClick={() => { setQuestion(prompt); document.getElementById("panel-question")?.focus(); }} className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{prompt}</button>)}</div></div>}
       </div>
       <div className="px-3 pb-3">
+        {about && <p className="mb-2 flex items-center gap-2 px-2 text-xs text-muted-foreground">About: <span className="min-w-0 truncate rounded bg-muted px-1.5 py-0.5 text-foreground">{about.label}</span><button type="button" onClick={() => setAbout(null)} aria-label="Remove context" className="hover:text-foreground"><X className="size-3" aria-hidden="true" /></button></p>}
         <ChatComposer compact id="panel-question" label="Question" value={question} onChange={setQuestion} onSubmit={ask} onStop={() => void cancel()} busy={busy} disabled={loading || !!historyError} placeholder="Ask about this page…" busyText="Request running · waiting for response" />
         {error && <p role="alert" className="mt-2 px-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
         {status === "canceled" && <p role="status" className="mt-2 px-2 text-sm text-muted-foreground">Canceled. Completed edits remain in transaction history.</p>}
