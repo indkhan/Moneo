@@ -1,11 +1,13 @@
 "use client";
 
 import { useRef, useState } from "react";
+import type { FollowUp } from "./follow-ups";
 
-export type ChatAnswer = { answer: string; conversationId: string; toolsUsed?: string[] };
+export type ChatAnswer = { answer: string; conversationId: string; toolsUsed?: string[]; followUps?: FollowUp[] };
 export type ChatStreamEvent =
   | { type: "started" }
   | { type: "tool"; id?: string; name: string; state: "running" | "done" | "failed" }
+  | { type: "plan"; steps: string[] }
   | ({ type: "answer" } & ChatAnswer)
   | { type: "result"; status: number; body: unknown };
 

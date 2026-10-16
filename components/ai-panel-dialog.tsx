@@ -6,7 +6,7 @@ import { SquarePen, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ChatComposer } from "./chat-composer";
-import { ChatMessages, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
+import { ChatMessages, DRAFT_EVENT, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
 import { selectConversation } from "@/lib/ai/selected-conversation";
 import type { AskSeed } from "./ask-about";
 
@@ -57,6 +57,11 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     return () => { window.clearTimeout(timer); ++counter.current; window.removeEventListener("moneo-conversation-change", changed); };
   }, [open, pathname, load]);
   const { send, cancel, busy, error, status } = useChatRequest();
+  useEffect(() => {
+    const draft = (event: Event) => { const detail = (event as CustomEvent<{ prompt?: string; compact: boolean }>).detail; if (detail.compact && detail.prompt) { setQuestion(detail.prompt); document.getElementById("panel-question")?.focus(); } };
+    window.addEventListener(DRAFT_EVENT, draft);
+    return () => window.removeEventListener(DRAFT_EVENT, draft);
+  }, []);
 
   async function ask(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -71,7 +76,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     if (result && selectionGeneration === generation.current) {
       selectConversation(selectionKey, id);
       const now = new Date().toISOString();
-      setHistory(current => [...current, { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now }, { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: result.toolsUsed }]);
+      setHistory(current => [...current, { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now }, { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: result.toolsUsed, followUps: result.followUps }]);
       setQuestion(current => current === question ? "" : current);
       setAbout(null);
       // The AI page keeps its own client state; refresh it only when it is the page behind the panel.

@@ -8,7 +8,7 @@ const labels: Record<string, string> = {
   artifacts_create: "Create saved tool", transactions_previewCategory: "Preview category change",
   transactions_setCategory: "Apply selected category change",
   finance_investigate: "Investigate transactions", finance_entities: "Resolve accounts, categories and merchants",
-  finance_detail: "Read transaction detail", finance_scenario: "Compare a what-if scenario",
+  finance_detail: "Read transaction detail", finance_scenario: "Compare a what-if scenario", plan_investigation: "Plan the investigation",
 };
 
 export type ToolStep = { id?: string; name: string; state: "running" | "done" | "failed" };
