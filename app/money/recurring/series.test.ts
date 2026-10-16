@@ -25,3 +25,12 @@ it("keeps separate runs of the same merchant and cadence distinct", () => {
   const second = {...first, runAnchorId: "second"};
   expect(seriesKey(first)).not.toBe(seriesKey(second));
 });
+
+it("converts cadences to an exact monthly equivalent", async () => {
+  const { monthlyEquivalent } = await import("./series");
+  expect(monthlyEquivalent(-1000n, "monthly")).toBe(-1000n);
+  expect(monthlyEquivalent(-1000n, "weekly")).toBe(-4333n);
+  expect(monthlyEquivalent(-1000n, "biweekly")).toBe(-2167n);
+  expect(monthlyEquivalent(3000n, "quarterly")).toBe(1000n);
+  expect(monthlyEquivalent(-11999n, "yearly")).toBe(-1000n);
+});
