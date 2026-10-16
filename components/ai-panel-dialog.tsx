@@ -2,13 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChatRequest } from "@/lib/ai/use-chat-request";
-import { ArrowUp, SquarePen, Square, X } from "lucide-react";
+import { SquarePen, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AiMessage } from "./ai-message";
-import { AiToolActivity } from "./ai-tool-activity";
+import { ChatComposer } from "./chat-composer";
+import { ChatMessages, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
 import { selectConversation } from "@/lib/ai/selected-conversation";
-import type { HistoryMessage } from "@/lib/ai/conversation-history";
 
 export function AiPanelDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -18,8 +17,8 @@ export function AiPanelDialog({ open, onClose }: { open: boolean; onClose: () =>
   }, [open]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
-  const [exchanges, setExchanges] = useState<{ question: string; answer: string; tools: string[] }[]>([]);
-  const [history, setHistory] = useState<HistoryMessage[]>([]);
+  const [pending, setPending] = useState<PendingExchange | null>(null);
+  const [history, setHistory] = useState<ChatItem[]>([]);
   const [older, setOlder] = useState<string | null>(null);
   const [historyError, setHistoryError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -40,7 +39,6 @@ export function AiPanelDialog({ open, onClose }: { open: boolean; onClose: () =>
       selectConversation(result.selectionKey, result.selected?.id ?? "new", false);
       setHistory(current => cursor ? [...result.messages, ...current] : result.messages);
       setOlder(result.messagesCursor);
-      if (!cursor) setExchanges([]);
     } catch (cause) {
       if (run === generation.current) setHistoryError(cause instanceof Error ? cause.message : "Could not load conversation");
     } finally { if (run === generation.current) setLoading(false); }
@@ -62,12 +60,18 @@ export function AiPanelDialog({ open, onClose }: { open: boolean; onClose: () =>
     setConversationId(id);
     const context = { path: window.location.pathname + window.location.search };
     const selectionGeneration = generation.current;
-    const result = await send({ conversationId: id, message: question, context });
-    if (result && selectionGeneration === generation.current) { selectConversation(selectionKey, id); setExchanges(current => [...current, { question, answer: result.answer, tools: result.toolsUsed ?? [] }]); setQuestion(current => current === question ? "" : current); if (pathname === "/ai") { router.push(`/ai?conversation=${id}`); router.refresh(); } }
+    setPending({ question, tools: [] });
+    const result = await send({ conversationId: id, message: question, context }, event => setPending(current => current && applyChatEvent(current, event)));
+    setPending(null);
+    if (result && selectionGeneration === generation.current) {
+      selectConversation(selectionKey, id);
+      const now = new Date().toISOString();
+      setHistory(current => [...current, { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now }, { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: result.toolsUsed }]);
+      setQuestion(current => current === question ? "" : current);
+      // The AI page keeps its own client state; refresh it only when it is the page behind the panel.
+      if (pathname === "/ai") { router.push(`/ai?conversation=${id}`); router.refresh(); }
+    }
   }
-
-  const bubble = "ml-auto w-fit max-w-[85%] whitespace-pre-wrap break-words rounded-3xl bg-muted px-4 py-2.5 text-sm";
-  const avatar = <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground" aria-hidden="true">M</span>;
 
   return <dialog ref={dialog} id="moneo-ai-panel" aria-label="AI assistant" onCancel={onClose} className="fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-none w-full max-w-md border-l border-border bg-background p-0 text-foreground shadow-2xl backdrop:bg-black/30">
     <div className="flex h-full flex-col">
@@ -80,17 +84,11 @@ export function AiPanelDialog({ open, onClose }: { open: boolean; onClose: () =>
         {historyError && <div role="alert" className="text-sm"><p>{historyError}</p><button type="button" onClick={() => void load()} className="mt-2 underline">Try again</button></div>}
         {loading && <p role="status" className="text-sm text-muted-foreground">Loading conversation...</p>}
         {older && !historyError && <button type="button" disabled={loading || busy} onClick={() => void load(older)} className="mx-auto mb-4 block text-sm text-muted-foreground hover:text-foreground">Older messages</button>}
-        <div className="space-y-6">{!historyError && history.map(item => <article key={item.id}>{item.role === "user" ? <p className={bubble}>{item.content}</p> : <div className="flex min-w-0 gap-2.5">{avatar}<div className="min-w-0 flex-1"><AiMessage content={item.content} /></div></div>}</article>)}</div>
-        {!history.length && !exchanges.length && !historyError && !loading && <div className="flex h-full flex-col items-center justify-center text-center"><h3 className="text-lg font-semibold">How can I help with your money?</h3><p className="mt-1 text-sm text-muted-foreground">Ask about this page, a transaction or a balance.</p><div className="mt-5 flex flex-wrap justify-center gap-2">{["What changed in my spending last month?", "Create a spending chart"].map(prompt => <button key={prompt} type="button" onClick={() => { setQuestion(prompt); document.getElementById("panel-question")?.focus(); }} className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{prompt}</button>)}</div></div>}
-        <div className="mt-6 space-y-6" aria-live="polite">{!historyError && exchanges.map((exchange, index) => <article key={index} className="min-w-0 space-y-6"><p className={bubble}>{exchange.question}</p><div className="flex min-w-0 gap-2.5">{avatar}<div className="min-w-0 flex-1"><AiToolActivity tools={exchange.tools} /><AiMessage content={exchange.answer} /></div></div></article>)}</div>
+        {!historyError && <ChatMessages compact messages={history} pending={pending} />}
+        {!history.length && !pending && !historyError && !loading && <div className="flex h-full flex-col items-center justify-center text-center"><h3 className="text-lg font-semibold">How can I help with your money?</h3><p className="mt-1 text-sm text-muted-foreground">Ask about this page, a transaction or a balance.</p><div className="mt-5 flex flex-wrap justify-center gap-2">{["What changed in my spending last month?", "Create a spending chart"].map(prompt => <button key={prompt} type="button" onClick={() => { setQuestion(prompt); document.getElementById("panel-question")?.focus(); }} className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{prompt}</button>)}</div></div>}
       </div>
       <div className="px-3 pb-3">
-        <form onSubmit={ask} className="rounded-3xl border border-border bg-card p-2 shadow-sm focus-within:border-muted-foreground/40"><label htmlFor="panel-question" className="sr-only">Question</label>
-          <textarea id="panel-question" rows={1} maxLength={4000} value={question} onChange={event => setQuestion(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="Ask about this page…" className="block max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-2 text-sm [field-sizing:content] focus:outline-none" />
-          <div className="flex items-center justify-between gap-3 pl-2.5"><span role={busy ? "status" : undefined} className="text-xs text-muted-foreground">{busy ? "Request running · waiting for response" : ""}</span>
-            {busy ? <button type="button" onClick={() => void cancel()} aria-label="Stop" className="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90"><Square className="size-3 fill-current" aria-hidden="true" /></button>
-              : <button disabled={loading || !!historyError || !question.trim()} aria-label="Send" className="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-30"><ArrowUp className="size-4" aria-hidden="true" /></button>}</div>
-        </form>
+        <ChatComposer compact id="panel-question" label="Question" value={question} onChange={setQuestion} onSubmit={ask} onStop={() => void cancel()} busy={busy} disabled={loading || !!historyError} placeholder="Ask about this page…" busyText="Request running · waiting for response" />
         {error && <p role="alert" className="mt-2 px-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
         {status === "canceled" && <p role="status" className="mt-2 px-2 text-sm text-muted-foreground">Canceled. Completed edits remain in transaction history.</p>}
         <Link href={historyError ? "/ai" : `/ai?conversation=${conversationId ?? "new"}`} onClick={onClose} className="mt-2 block text-center text-xs text-muted-foreground hover:text-foreground">Continue in AI workspace ↗</Link>

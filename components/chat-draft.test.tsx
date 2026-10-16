@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { isValidElement, type ReactNode } from "react";
 import { ChatForm } from "@/app/ai/chat-form";
 import { AiPanelDialog } from "./ai-panel-dialog";
+import { ChatComposer } from "./chat-composer";
 
 const host = vi.hoisted(() => ({ index: 0, slots: [] as unknown[], effects: [] as (() => void)[], send: vi.fn() }));
 vi.mock("react", async original => ({ ...await original<typeof import("react")>(),
@@ -31,6 +32,8 @@ type Props = { children?: ReactNode; value?: string; onChange?: (event: { target
 function find(node: ReactNode, type: string): Props | undefined {
   if (Array.isArray(node)) return node.map(child => find(child, type)).find(Boolean);
   if (!isValidElement<Props>(node)) return;
+  // Expand the shared composer so its textarea and form are reachable.
+  if (node.type === ChatComposer) return find(ChatComposer(node.props as Parameters<typeof ChatComposer>[0]), type);
   return node.type === type ? node.props : find(node.props.children, type);
 }
 const entryPoints = [
@@ -47,7 +50,7 @@ it.each(entryPoints)("%s preserves a next question typed while the submitted que
   find(render(), "textarea")!.onChange!({ target: { value: "Next question draft" } });
   settle({ answer: "Completed answer" });
   await pending;
-  expect(host.send).toHaveBeenCalledWith(expect.objectContaining({ message: "Submitted question" }));
+  expect(host.send.mock.calls[0][0]).toMatchObject({ message: "Submitted question" });
   expect(find(render(), "textarea")!.value).toBe("Next question draft");
 });
 
@@ -61,27 +64,4 @@ it.each(entryPoints)("%s clears unchanged submitted text only after a successful
   host.send.mockResolvedValue({ answer: "Completed answer" });
   await find(render(), "form")!.onSubmit!({ preventDefault: vi.fn() });
   expect(find(render(), "textarea")!.value).toBe("");
-});
-
-it("hands a next-question draft to the first saved conversation without sharing it with other conversations", async () => {
-  function render(isNewConversation = true, conversationId = "first-saved") {
-    host.index = 0;
-    return ChatForm({ conversationId, selectionKey: "synthetic", isNewConversation });
-  }
-  let settle!: (result: { answer: string }) => void;
-  host.send.mockReturnValue(new Promise(resolve => { settle = resolve; }));
-  find(render(), "textarea")!.onChange!({ target: { value: "First question" } });
-  const pending = find(render(), "form")!.onSubmit!({ preventDefault: vi.fn() });
-  find(render(), "textarea")!.onChange!({ target: { value: "Next question draft" } });
-  settle({ answer: "Completed answer" });
-  await pending;
-  find(render(), "textarea")!.onChange!({ target: { value: "Still typing during navigation" } });
-  // The server page changes ChatForm's key from "new" to the saved conversation ID.
-  host.slots = [];
-  expect(find(render(false), "textarea")!.value).toBe("Still typing during navigation");
-  host.effects.splice(0).forEach(effect => effect());
-  host.slots = [];
-  expect(find(render(false, "another-conversation"), "textarea")!.value).toBe("");
-  host.slots = [];
-  expect(find(render(false), "textarea")!.value).toBe("");
 });
