@@ -58,10 +58,19 @@ describe("bank statement mapping", () => {
     expect(decisions.map(decision => decision.action)).toEqual(["matched", "new"]);
   });
 
-  it("prefers the booked closing balance in the account currency", () => {
+  it("attaches the closing balance to the latest booked row only when it covers it", () => {
+    const closing = { balance_type: "CLBD", reference_date: "2026-10-02", balance_amount: { currency: "EUR", amount: "-40.50" } };
+    const statement = bankStatement([tx({ entry_reference: "b", booking_date: "2026-10-02" }), tx({})], account, closing)!;
+    const rows = inspectRows(parseCsv(statement.csv), statement.mapping).mapped;
+    expect(rows.map(row => row.balanceMinor)).toEqual([undefined, -4050n]);
+    const stale = bankStatement([tx({ booking_date: "2026-10-03" })], account, closing)!;
+    expect(inspectRows(parseCsv(stale.csv), stale.mapping).mapped[0].balanceMinor).toBeUndefined();
+  });
+
+  it("prefers a booked balance in the account currency, never an available one", () => {
     const balance = (type: string, amount: string, currency = "EUR") => ({ balance_type: type, balance_amount: { currency, amount } });
-    expect(preferredBalance([balance("ITAV", "5"), balance("CLBD", "4"), balance("CLBD", "9", "USD")], "EUR")?.balance_amount.amount).toBe("4");
-    expect(preferredBalance([balance("OTHR", "1")], "EUR")?.balance_type).toBe("OTHR");
+    expect(preferredBalance([balance("ITBD", "5"), balance("CLBD", "4"), balance("CLBD", "9", "USD")], "EUR")?.balance_amount.amount).toBe("4");
+    expect(preferredBalance([balance("ITAV", "1"), balance("OTHR", "1")], "EUR")).toBeUndefined();
     expect(preferredBalance([balance("CLBD", "1", "USD")], "EUR")).toBeUndefined();
   });
 });

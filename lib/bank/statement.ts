@@ -26,7 +26,9 @@ export function bankStatementRow(tx: BankTransaction) {
 
 // Deterministic bytes: the same bank data always hashes to the same import, so a repeated
 // sync of an unchanged window is a no-op at the imports(file_hash) unique index.
-export function bankStatement(transactions: BankTransaction[], account: { accountName: string; currencyCode: string; calendarTimezone?: string }) {
+// The closing balance rides on the latest booked row's balance column, so it lands in
+// balance_snapshots with that import's provenance and undoes with it.
+export function bankStatement(transactions: BankTransaction[], account: { accountName: string; currencyCode: string; calendarTimezone?: string }, closing?: BankBalance) {
   const byId = new Map<string, ReturnType<typeof bankStatementRow>>();
   const unidentified: ReturnType<typeof bankStatementRow>[] = [];
   for (const tx of transactions) {
@@ -38,6 +40,9 @@ export function bankStatement(transactions: BankTransaction[], account: { accoun
   const rows = [...byId.values(), ...unidentified].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)
     || a.amount.localeCompare(b.amount) || a.description.localeCompare(b.description));
   if (!rows.length) return null;
+  const last = rows[rows.length - 1];
+  if (closing && !last.balance && last.currency === account.currencyCode && closing.balance_amount.currency === account.currencyCode
+    && (!closing.reference_date || closing.reference_date >= last.date)) last.balance = closing.balance_amount.amount;
   const csv = Papa.unparse({ fields: [...headers], data: rows.map(row => headers.map(header => row[header])) }, { newline: "\n" });
   const mapping: ImportMapping = {
     accountName: account.accountName, currencyCode: account.currencyCode,
@@ -47,12 +52,12 @@ export function bankStatement(transactions: BankTransaction[], account: { accoun
     ...(account.calendarTimezone ? { calendarTimezone: account.calendarTimezone } : {}),
   };
   const parsed = parseCsv(csv);
-  return { csv, rowCount: parsed.length, lastBookedOn: rows[rows.length - 1].date, mapping: validateImportConfirmation(parsed, mapping) };
+  return { csv, rowCount: parsed.length, lastBookedOn: last.date, mapping: validateImportConfirmation(parsed, mapping) };
 }
 
-// Prefer the booked closing balance, then the most authoritative interim one.
+// Booked balances only: "available" types can include overdraft or credit lines.
 export function preferredBalance(balances: BankBalance[], currencyCode: string) {
-  const order = ["CLBD", "ITBD", "XPCD", "ITAV", "CLAV"];
-  const usable = balances.filter(balance => balance.balance_amount.currency === currencyCode);
-  return usable.sort((a, b) => (order.indexOf(a.balance_type) + 1 || 99) - (order.indexOf(b.balance_type) + 1 || 99))[0];
+  const order = ["CLBD", "ITBD", "XPCD"];
+  const usable = balances.filter(balance => balance.balance_amount.currency === currencyCode && order.includes(balance.balance_type));
+  return usable.sort((a, b) => order.indexOf(a.balance_type) - order.indexOf(b.balance_type))[0];
 }
