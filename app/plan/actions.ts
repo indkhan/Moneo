@@ -117,6 +117,7 @@ export async function addAssumption(form: FormData) {
     starts_on: start, source: "user", confirmed: true, enabled: true,
   });
   if (error) throw error;
+  revalidatePath("/", "layout");
   redirect("/plan");
 }
 
