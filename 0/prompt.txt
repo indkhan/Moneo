@@ -1,0 +1,10 @@
+firstly commit and push currrent things 
+
+then for each thing you do commit it 
+it still looks shit 
+re image the ai page it shold be clean and nice and all like how claude and chatgpt looks and also for the ai sidebar
+
+they should look clean and nice  
+on setting there shold be at botton reset button where if you click it will remove all your data from the applicaiton and it is like new sign up 
+leave the hope page load for now 
+for the things i said have different new session so it is nicely done
