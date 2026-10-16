@@ -5,7 +5,7 @@ import Home from "./page";
 
 vi.mock("next/link", () => ({default: "a"}));
 vi.mock("@/lib/env", () => ({getSupabaseConfig: () => ({status: "configured"})}));
-vi.mock("./insights/panel", () => ({ImportantInsights: () => null}));
+vi.mock("./insights/panel", () => ({ImportantInsights: () => null, loadInsightEvidence: async () => ({})}));
 vi.mock("./manual-balance-form", () => ({ManualBalanceForm: () => null}));
 vi.mock("@/lib/finance/model", () => ({evaluatePlanForWorkspace: async () => ({input: null, liquidity: null})}));
 vi.mock("@/lib/finance/tools", () => ({cashflow: async () => ({unavailable: "Synthetic unavailable cash"})}));

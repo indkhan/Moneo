@@ -2,8 +2,8 @@ import Link from "next/link";
 import { HomeLiquidity } from "./account-liquidity-summary";
 import { DatedOverview } from "./dated-overview";
 import { ManualBalanceForm } from "./manual-balance-form";
-import { ImportantInsights } from "./insights/panel";
-import type { ReactNode } from "react";
+import { ImportantInsights, loadInsightEvidence } from "./insights/panel";
+import { Suspense, type ReactNode } from "react";
 import { dashboardItems, dashboardLayoutSchema } from "@/lib/dashboard";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
@@ -39,6 +39,8 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const balanceEvidencePromise = loadBalanceEvidence(supabase, workspace.id);
   const wealthPromise = loadWealthItems(supabase, workspace.id);
   const sourceMetadataPromise = loadSourceCoverageMetadata(supabase, workspace.id, true);
+  // Start the insight reads now (memoized); the streamed panel picks up the same promise.
+  loadInsightEvidence(supabase, workspace.id, workspace.display_currency, today).catch(() => undefined);
   const [balanceEvidence, ledgerCount, projection, spending, wealthItems, rates, pinnedItems, layout, goals, allocations, sourceMetadata] = await Promise.all([
     balanceEvidencePromise,
     supabase.from("transactions").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id),
@@ -47,7 +49,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     wealthPromise,
     supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
       .eq("workspace_id", workspace.id).order("rate_date", { ascending: false }).order("created_at", { ascending: false }),
-    supabase.from("dashboard_items").select("artifact_id, position").eq("workspace_id", workspace.id).order("position"),
+    supabase.from("dashboard_items").select("artifact_id, position, artifacts(id, name, kind)").eq("workspace_id", workspace.id).eq("artifacts.workspace_id", workspace.id).order("position"),
     supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle(),
     supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date").eq("workspace_id", workspace.id).eq("status", "active").order("priority").limit(10),
     supabase.from("goal_allocations").select("goal_id, account_id, amount_minor::text").eq("workspace_id", workspace.id),
@@ -103,11 +105,8 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     if (result.status === "available") { netWorthMinor += result.converted.amountMinor; convertedCount += 1; }
     else missingInputs.push(...result.missingInputs.map(input => `${input} for ${valuation.name}`));
   }
-  const pins = pinnedItems.data;
-  const { data: pinnedArtifacts, error: artifactsError } = pins?.length ? await supabase.from("artifacts")
-    .select("id, name, kind").eq("workspace_id", workspace.id).in("id", pins.map(pin => pin.artifact_id))
-    : { data: [] as { id: string; name: string; kind: string }[], error: null };
-  if (artifactsError) throw artifactsError;
+  const pins = pinnedItems.data as { artifact_id: string; artifacts: { id: string; name: string; kind: string } | null }[] | null;
+  const pinnedArtifacts = (pins ?? []).flatMap(pin => pin.artifacts ? [pin.artifacts] : []);
   const parsedLayout = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
   if (parsedLayout && !parsedLayout.success) throw new Error("Dashboard preferences are invalid; review them in Settings");
   const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null, (pins ?? []).map(pin => pin.artifact_id));
@@ -134,7 +133,9 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         </section>,
     upcoming: <section className="rounded-xl border border-border bg-card p-6"><h2 className="text-base font-semibold">Upcoming payments</h2><p className="mt-1 text-sm text-muted-foreground">Confirmed payments over the next 30 days, in {displayCurrency}.</p><ul className="mt-4 divide-y divide-border">{(projection.input?.events ?? []).filter(event => event.expectedMinor < 0n && event.source !== "estimated").sort((a, b) => a.date.localeCompare(b.date)).slice(0, 10).map((event, index) => <li key={`${event.accountId}:${event.date}:${index}`} className="flex justify-between gap-3 py-2 text-sm"><span>{event.date} · {accounts.find(account => account.id === event.accountId)?.name ?? "Account"} · {event.name ?? "Confirmed payment"}</span><span>{money(event.expectedMinor, displayCurrency)}</span></li>)}</ul>{!(projection.input?.events ?? []).some(event => event.expectedMinor < 0n && event.source !== "estimated") && <p className="mt-4 text-sm text-muted-foreground">No confirmed payments in this forecast.</p>}<Link href="/money/recurring" className="mt-4 inline-block text-sm font-medium text-brand hover:underline">Review recurring payments</Link></section>,
     goals: <section className="rounded-xl border border-border bg-card p-6"><h2 className="text-base font-semibold">Goals</h2><p className="mt-1 text-sm text-muted-foreground">Reserving money for a goal does not move it.</p><ul className="mt-4 space-y-3">{(goals.data ?? []).map(goal => { const reservations = (allocations.data ?? []).filter(row => row.goal_id === goal.id); const comparable = reservations.every(row => accounts.find(account => account.id === row.account_id)?.currency_code === goal.currency_code); const reserved = reservations.reduce((sum, row) => sum + BigInt(row.amount_minor), 0n); return <li key={goal.id} className="text-sm"><Link href="/plan" className="font-medium underline">{goal.name}</Link><p className="text-muted-foreground">{comparable ? money(reserved, goal.currency_code) : "Reservation conversion required"} reserved of {money(goal.target_minor, goal.currency_code)}{goal.target_date ? ` · target ${goal.target_date}` : ""}</p></li>; })}</ul>{!goals.data?.length && <p className="mt-4 text-sm text-muted-foreground">No goals yet. <Link href="/plan" className="underline">Create a goal</Link>.</p>}</section>,
-    insights: <ImportantInsights db={supabase} workspaceId={workspace.id} currency={displayCurrency} today={today} settings={context.settings} projection={projection} missingInputs={missingInputs} names={accountNames} wealth={wealthItems} />,
+    insights: <Suspense fallback={<section aria-busy="true" className="rounded-xl border border-border bg-card p-6"><h2 className="text-base font-semibold">Important insights</h2><p role="status" className="mt-3 text-sm text-muted-foreground">Loading insights…</p></section>}>
+        <ImportantInsights db={supabase} workspaceId={workspace.id} currency={displayCurrency} today={today} settings={context.settings} projection={projection} missingInputs={missingInputs} names={accountNames} wealth={wealthItems} />
+      </Suspense>,
   };
   for (const artifact of pinnedArtifacts ?? []) widgets[`tool:${artifact.id}`] = <section className="rounded-xl border border-border bg-card p-6"><p className="text-sm text-muted-foreground">Saved tool · {artifact.kind.replaceAll("_", " ")}</p><Link href={`/ai/library/${artifact.id}`} className="mt-2 inline-flex items-center gap-2 font-semibold underline">{artifact.name}<ArrowRight size={15} /></Link><p className="mt-2 text-sm text-muted-foreground">Open to see current data.</p></section>;
 
