@@ -18,6 +18,9 @@ export const SORT_ORDER: Record<TransactionSort, { column: "posted_on" | "amount
   "amount-asc": { column: "amount_minor", ascending: true },
 };
 
+export const TRANSACTION_GROUPS = ["category", "merchant", "month"] as const;
+export type TransactionGroup = (typeof TRANSACTION_GROUPS)[number];
+
 export type ParsedTransactionParams = {
   q?: string;
   from?: string;
@@ -28,11 +31,17 @@ export type ParsedTransactionParams = {
   direction?: "income" | "outflow";
   categoryId?: string;
   uncategorized?: boolean;
+  merchantId?: string;
+  merchantUnknown?: boolean;
+  tag?: string;
+  eventName?: string;
   minAmountMinor?: string;
   maxAmountMinor?: string;
   sort: TransactionSort;
   cursor?: { value: string; id: string };
   transactionId?: string;
+  /** Display-only grouping; never stored in saved views. */
+  group?: TransactionGroup;
 };
 
 const UUID_PATTERN = /^[0-9a-f-]{36}$/i;
@@ -64,6 +73,22 @@ export function parseMinorUnits(raw: string | undefined): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** Stored tag form (trimmed, lowercase, 1–40 chars), matching bulk tagging. */
+export function normalizeTag(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const tag = raw.trim().toLowerCase();
+  if (!tag || tag.length > 40) return undefined;
+  return tag;
+}
+
+/** Spending-group identity: trimmed, case preserved, 1–120 chars (exact `event_name` match). */
+export function normalizeEventName(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const eventName = raw.trim();
+  if (!eventName || eventName.length > 120) return undefined;
+  return eventName;
 }
 
 function parseCursor(raw: string | undefined, sort: TransactionSort): ParsedTransactionParams["cursor"] {
@@ -98,6 +123,10 @@ export function parseTransactionParams(
   const kind = first(raw.kind);
   const direction = first(raw.direction);
   const category = first(raw.category);
+  const merchant = first(raw.merchant);
+  const tag = normalizeTag(first(raw.tag));
+  const eventName = normalizeEventName(first(raw.event));
+  const group = first(raw.group);
   const transactionId = first(raw.transaction);
   const minAmountMinor = parseMinorUnits(first(raw.minAmount));
   const maxAmountMinor = parseMinorUnits(first(raw.maxAmount));
@@ -116,11 +145,19 @@ export function parseTransactionParams(
       : category && UUID_PATTERN.test(category)
         ? { categoryId: category }
         : {}),
+    ...(merchant === "none"
+      ? { merchantUnknown: true }
+      : merchant && UUID_PATTERN.test(merchant)
+        ? { merchantId: merchant }
+        : {}),
+    ...(tag ? { tag } : {}),
+    ...(eventName ? { eventName } : {}),
     ...(minAmountMinor === undefined ? {} : { minAmountMinor }),
     sort,
     ...(cursor ? { cursor } : {}),
     ...(transactionId && UUID_PATTERN.test(transactionId) ? { transactionId } : {}),
     ...(maxAmountMinor === undefined ? {} : { maxAmountMinor }),
+    ...((TRANSACTION_GROUPS as readonly string[]).includes(group ?? "") ? { group: group as TransactionGroup } : {}),
   };
 }
 
@@ -168,9 +205,14 @@ export function toQueryParams(
   if (filters.direction) params.set("direction", filters.direction);
   if (filters.uncategorized) params.set("category", "none");
   else if (filters.categoryId) params.set("category", filters.categoryId);
+  if (filters.merchantUnknown) params.set("merchant", "none");
+  else if (filters.merchantId) params.set("merchant", filters.merchantId);
+  if (filters.tag) params.set("tag", filters.tag);
+  if (filters.eventName) params.set("event", filters.eventName);
   if (filters.minAmountMinor !== undefined) params.set("minAmount", filters.minAmountMinor);
   if (filters.maxAmountMinor !== undefined) params.set("maxAmount", filters.maxAmountMinor);
   if (filters.sort !== DEFAULT_SORT) params.set("sort", filters.sort);
+  if (filters.group) params.set("group", filters.group);
   if (options.includeCursor && filters.cursor) params.set("cursor", `${filters.cursor.value}|${filters.cursor.id}`);
   return params;
 }

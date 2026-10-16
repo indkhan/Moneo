@@ -8,7 +8,7 @@
 // loaded server-side, so search terms and account/category/merchant UUIDs
 // stay in workspace-scoped storage and never appear in the saved-view link.
 
-import { DEFAULT_SORT, TRANSACTION_SORTS, parseMinorUnits, type TransactionSort } from "../transactions/filters";
+import { DEFAULT_SORT, TRANSACTION_SORTS, normalizeEventName, normalizeTag, parseMinorUnits, type ParsedTransactionParams, type TransactionSort } from "../transactions/filters";
 
 export type SavedViewFilters = {
   q?: string;
@@ -76,28 +76,19 @@ export type SaveInput = {
   sort?: string;
 };
 
-/**
- * Tolerant tag normalizer shared by the live URL path and the saved-view
- * loader. Returns the stored form (trimmed, lowercase) or undefined when
- * empty/invalid. The strict save path throws on invalid instead.
- */
-export function normalizeTag(raw: unknown): string | undefined {
-  if (typeof raw !== "string") return undefined;
-  const tag = raw.trim().toLowerCase();
-  if (!tag || tag.length > 40) return undefined;
-  return tag;
-}
+// Tolerant normalizers shared with the live URL path; the strict save path throws instead.
+export { normalizeTag, normalizeEventName };
 
-/**
- * Tolerant spending-group normalizer. Identity is the trimmed text with
- * case preserved (exact `event_name` match), or undefined when
- * empty/invalid.
- */
-export function normalizeEventName(raw: unknown): string | undefined {
-  if (typeof raw !== "string") return undefined;
-  const eventName = raw.trim();
-  if (!eventName || eventName.length > 120) return undefined;
-  return eventName;
+/** Saved JSON → the same filter shape the live URL produces. */
+export function savedViewToParams(saved: SavedViewFilters): ParsedTransactionParams {
+  const { accountId, categoryId, uncategorized, merchantId, merchantUnknown, sort, ...rest } = saved;
+  return {
+    ...rest,
+    ...(accountId ? { accountId } : {}),
+    ...(uncategorized ? { uncategorized } : categoryId ? { categoryId } : {}),
+    ...(merchantUnknown ? { merchantUnknown } : merchantId ? { merchantId } : {}),
+    sort: sort ?? DEFAULT_SORT,
+  };
 }
 
 function emptyToUndefined(value: string | undefined): string | undefined {
