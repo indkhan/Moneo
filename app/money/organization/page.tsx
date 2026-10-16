@@ -38,35 +38,52 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
  }
  const review=selectedReview.data;
  const snapshots=review?z.array(snapshotSchema).max(50).parse(review.snapshots):[];
- const batch=review?.batch_id?await supabase.from('transaction_batches').select('undone').eq('workspace_id',workspace.id).eq('id',review.batch_id).maybeSingle():{data:null,error:null};
- if(batch.error)throw batch.error;
- const currentRows=review?.batch_id?await supabase.from('transactions').select('id,version').eq('workspace_id',workspace.id).in('id',snapshots.map(row=>row.id)):{data:[],error:null};
- if(currentRows.error)throw currentRows.error;
+ const [batch,currentRows]=await Promise.all([
+  review?.batch_id?supabase.from('transaction_batches').select('undone').eq('workspace_id',workspace.id).eq('id',review.batch_id).maybeSingle():{data:null,error:null},
+  review?.batch_id?supabase.from('transactions').select('id,version').eq('workspace_id',workspace.id).in('id',snapshots.map(row=>row.id)):{data:[],error:null},
+ ]);
+ if(batch.error||currentRows.error)throw batch.error??currentRows.error;
+ const merchantName=(id:unknown)=>id?merchants.data.find(row=>row.id===id)?.name??'a removed merchant':null;
+ const categoryName=(id:unknown)=>id?categories.data.find(row=>row.id===id)?.name??'a removed category':null;
+ const reviewStatus:Record<string,string>={pending:'Waiting for approval',applied:'Applied',dismissed:'Dismissed'};
  const totals:Record<string,string>={};for(const row of snapshots)totals[row.currency_code]=(BigInt(totals[row.currency_code]??'0')+BigInt(row.amount_minor)).toString();
  const last=queueRows[49],next=queueRows.length>50&&last?new URLSearchParams({...importId?{import:importId}:{},cursor:last.posted_on+':'+last.id}).toString():null;
+ const patchMerchant=review?(review.merchant_name??(Object.hasOwn(review.patch,'merchant_id')?merchantName(review.patch.merchant_id)??'no merchant':undefined)):undefined;
+ const patchCategory=review&&Object.hasOwn(review.patch,'category_id')?categoryName(review.patch.category_id)??'uncategorized':undefined;
+ const card='rounded-xl border border-border bg-card p-6';
  return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 text-foreground sm:px-8 lg:py-10">
-  <header className="flex flex-wrap justify-between gap-3"><div><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Organize spending</h1><p className="mt-2 text-sm text-muted-foreground">Review suggested merchants and categories before they are applied.</p></div><div className="flex gap-3 text-sm"><Link className="underline" href="/money/transactions">Manual correction in Transactions</Link><Link className="underline" href="/import">Import statement</Link></div></header>
-  {reviewId&&!review&&<p role="alert">This owned review is unavailable. Create a fresh preview below.</p>}
-  {review&&<section aria-label="Organization impact preview" className="rounded-xl border border-border bg-card p-6">
+  <header className="flex flex-wrap items-end justify-between gap-3">
+   <div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Money</p><h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Organize spending</h1>
+    <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Give transactions a merchant and category in batches. Moneo suggests matches from your rules and history; nothing changes until you approve, and every batch can be undone.</p></div>
+   <div className="flex gap-3 text-sm"><Link className="underline" href="/money/transactions">Manual correction in Transactions</Link><Link className="underline" href="/import">Import statement</Link></div>
+  </header>
+  <ol className="grid gap-3 text-sm sm:grid-cols-3">{['Pick a group of similar transactions below','Choose a merchant and category, then preview','Approve the exact changes (optionally save a rule)'].map((step,index)=><li key={step} className="rounded-lg border border-border bg-card px-4 py-3"><span className="mr-2 font-mono text-brand">{index+1}</span>{step}</li>)}</ol>
+  {reviewId&&!review&&<p role="alert">This review is no longer available. Start a fresh preview below.</p>}
+  {review&&<section aria-label="Organization impact preview" className={card}>
    <h2 className="text-base font-semibold">{batch.data?.undone?'Undone organization':review.status==='applied'?'Applied organization':review.status==='dismissed'?'Dismissed review':'Review exact changes'}</h2>
-   <p className="mt-2 text-sm">{snapshots.length} affected entries. Merchant: {review.merchant_name??(Object.hasOwn(review.patch,'merchant_id')?(merchants.data.find(row=>row.id===review.patch.merchant_id)?.name??'clear'):'keep current')}. Category: {Object.hasOwn(review.patch,'category_id')?(categories.data.find(row=>row.id===review.patch.category_id)?.name??'uncategorized'):'keep current'}.</p>
-   <ul className="mt-3 space-y-2 text-sm">{snapshots.map(row=>{
-    const beforeMerchant=merchants.data.find(target=>target.id===row.merchant_id)?.name??(row.merchant_id?row.merchant_id:'unassigned');
-    const beforeCategory=categories.data.find(target=>target.id===row.category_id)?.name??(row.category_id?row.category_id:'uncategorized');
-    const afterMerchant=review.merchant_name??(Object.hasOwn(review.patch,'merchant_id')?(merchants.data.find(target=>target.id===review.patch.merchant_id)?.name??(review.patch.merchant_id||'unassigned')):beforeMerchant);
-    const afterCategory=Object.hasOwn(review.patch,'category_id')?(categories.data.find(target=>target.id===review.patch.category_id)?.name??(review.patch.category_id||'uncategorized')):beforeCategory;
-    return <li key={row.id}>{row.posted_on} · <Link className="underline" href={'/money/transactions?transaction='+row.id}>{row.description}</Link> · {formatMoney(row.amount_minor,row.currency_code,workspace.locale)} · before version {row.version}<p>{`Merchant: ${beforeMerchant} → ${afterMerchant}`}</p><p>{`Category: ${beforeCategory} → ${afterCategory}`}</p></li>;
+   <p className="mt-2 text-sm">{snapshots.length} {snapshots.length===1?'transaction':'transactions'}. Merchant: {patchMerchant??'keep current'}. Category: {patchCategory??'keep current'}.</p>
+   <ul className="mt-3 divide-y divide-border text-sm">{snapshots.map(row=>{
+    const beforeMerchant=merchantName(row.merchant_id)??'unassigned';
+    const beforeCategory=categoryName(row.category_id)??'uncategorized';
+    return <li key={row.id} className="py-2"><p><span className="font-mono text-muted-foreground">{row.posted_on}</span> · <Link className="underline" href={'/money/transactions?transaction='+row.id}>{row.description}</Link> · <span className="font-mono">{formatMoney(row.amount_minor,row.currency_code,workspace.locale)}</span></p>
+     <p className="text-muted-foreground">{`Merchant: ${beforeMerchant} → ${patchMerchant??beforeMerchant}`}</p><p className="text-muted-foreground">{`Category: ${beforeCategory} → ${patchCategory??beforeCategory}`}</p></li>;
    })}</ul>
-   <p className="mt-3 text-sm">Selected totals: {Object.entries(totals).map(([currency,minor])=>formatMoney(minor,currency,workspace.locale)).join('; ')}. Amounts, currency, source evidence and financial links remain unchanged.</p>
+   <p className="mt-3 text-sm">Total: {Object.entries(totals).map(([currency,minor])=>formatMoney(minor,currency,workspace.locale)).join('; ')}. Only the merchant and category change; amounts, currencies, source records and links stay the same.</p>
    {review.status==='pending'&&<><ApprovalForm reviewId={review.id} canSaveRule={Boolean(review.rule_key)} /><form action={dismissReview} className="mt-3"><input type="hidden" name="reviewId" value={review.id} /><button className="text-sm underline">Dismiss this review</button></form></>}
    {review.batch_id&&!batch.data?.undone&&currentRows.data.length===snapshots.length&&<UndoReviewForm reviewId={review.id} rows={versionedRows.parse(currentRows.data)} />}
   </section>}
-  <section aria-label="Organization suggestions" className="space-y-4"><h2 className="text-base font-semibold">Suggestions to review</h2><p className="text-sm text-muted-foreground">Up to 50 entries per page. Suggestions compare up to 2,000 recent posted entries and 200 rules.</p>
+  <section aria-label="Organization suggestions" className="space-y-4">
+   <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-base font-semibold">{selected.length?`${selected.length}${queueRows.length>50?'+':''} transactions need a merchant or category`:'Everything here is organized'}</h2>
+    <p className="text-xs text-muted-foreground">Up to 50 entries per page. Suggestions compare up to 2,000 recent posted entries and 200 rules.</p></div>
    {[...groups.values()].sort((a,b)=>Number(b.proposal.financialReviewRequired)-Number(a.proposal.financialReviewRequired)).map(group=><OrganizationGroup key={group.rows.map(row=>row.id+':'+row.version).join(',')} {...group} merchants={merchants.data} categories={categories.data} requestId={crypto.randomUUID()} locale={workspace.locale} />)}
-   {!groups.size&&<p className="text-sm">No uncorrected suggestions on this page. Continue to older entries or use the manual ledger.</p>}
+   {!groups.size&&<p className="text-sm text-muted-foreground">No suggestions on this page. Continue to older entries or correct entries one by one in Transactions.</p>}
    {next&&<Link className="inline-block text-sm underline" href={'/money/organization?'+next}>Older entries needing organization</Link>}
   </section>
-  <section aria-label="Approved organization rules" className="rounded-xl border border-border bg-card p-6"><h2 className="text-base font-semibold">Your approved rules</h2><ul className="mt-3 space-y-3 text-sm">{rules.data.map(rule=><li key={rule.id} className="flex flex-wrap justify-between gap-2"><span>{rule.description_key} · {rule.enabled?'Enabled':'Disabled'}</span><form action={toggleRule}><input type="hidden" name="key" value={rule.description_key} /><input type="hidden" name="merchant" value={rule.merchant_id??''} /><input type="hidden" name="category" value={rule.category_id??''} /><input type="hidden" name="version" value={rule.version} /><input type="hidden" name="enabled" value={String(!rule.enabled)} /><button className="underline">{rule.enabled?'Disable':'Enable'} rule</button></form></li>)}</ul>{!rules.data.length&&<p className="mt-2 text-sm">Approve a preview and opt in to save its rule.</p>}</section>
-  <section aria-label="Organization review history"><h2 className="text-base font-semibold">Recent reviews</h2><ul className="mt-3 space-y-2 text-sm">{reviews.data.map(row=><li key={row.id}><Link className="underline" href={'/money/organization?review='+row.id}><span className="capitalize">{row.status}</span> · {new Date(row.created_at).toLocaleString(workspace.locale,{timeZone:workspace.timezone})}</Link></li>)}</ul></section>
+  <div className="grid gap-6 lg:grid-cols-2">
+   <section aria-label="Approved organization rules" className={card}><h2 className="text-base font-semibold">Your approved rules</h2><p className="mt-1 text-xs text-muted-foreground">Future transactions whose description matches are suggested this way. Rules never apply without your review.</p>
+    <ul className="mt-3 divide-y divide-border text-sm">{rules.data.map(rule=><li key={rule.id} className="flex flex-wrap items-center justify-between gap-2 py-2"><span className={rule.enabled?'':'text-muted-foreground'}><span className="font-medium">“{rule.description_key}”</span> → {[merchantName(rule.merchant_id),categoryName(rule.category_id)].filter(Boolean).join(' · ')}{rule.enabled?'':' (off)'}</span><form action={toggleRule}><input type="hidden" name="key" value={rule.description_key} /><input type="hidden" name="merchant" value={rule.merchant_id??''} /><input type="hidden" name="category" value={rule.category_id??''} /><input type="hidden" name="version" value={rule.version} /><input type="hidden" name="enabled" value={String(!rule.enabled)} /><button className="text-xs underline">{rule.enabled?'Disable':'Enable'} rule</button></form></li>)}</ul>
+    {!rules.data.length&&<p className="mt-2 text-sm text-muted-foreground">No rules yet. Tick “Save a rule” when you approve a preview.</p>}</section>
+   <section aria-label="Organization review history" className={card}><h2 className="text-base font-semibold">Recent reviews</h2><ul className="mt-3 space-y-2 text-sm">{reviews.data.map(row=><li key={row.id}><Link className="underline" href={'/money/organization?review='+row.id}>{reviewStatus[row.status]??row.status} · {new Date(row.created_at).toLocaleString(workspace.locale,{timeZone:workspace.timezone})}</Link></li>)}</ul>{!reviews.data.length&&<p className="mt-2 text-sm text-muted-foreground">No reviews yet.</p>}</section>
+  </div>
  </main>;
 }
