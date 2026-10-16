@@ -160,6 +160,9 @@ const FORBIDDEN_SOURCE_PATTERNS: { test: RegExp; message: string }[] = [
   { test: /<iframe/i, message: "<iframe> is not allowed" },
 ];
 
+// Human-readable list for the in-app SDK reference.
+export const FORBIDDEN_SOURCE_MESSAGES = [...new Set(FORBIDDEN_SOURCE_PATTERNS.map(pattern => pattern.message))];
+
 export function checkSourceAllowlist(source: string): string[] {
   const errors: string[] = [];
   if (!source || source.trim().length === 0) {
