@@ -1,0 +1,1 @@
+OK NOW THE first thing works but i can still not connect when i choose cournty and then bank it shows me this The bank connection could not be started you can take control of the main browser i give you access and try it yourself to find the problme and fix it
