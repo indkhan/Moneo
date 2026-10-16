@@ -33,7 +33,7 @@ function find(node: ReactNode, type: string): Props | undefined {
   if (Array.isArray(node)) return node.map(child => find(child, type)).find(Boolean);
   if (!isValidElement<Props>(node)) return;
   // Expand the shared composer so its textarea and form are reachable.
-  if (node.type === ChatComposer) return find(ChatComposer(node.props as Parameters<typeof ChatComposer>[0]), type);
+  if (node.type === ChatComposer) return find(ChatComposer(node.props as unknown as Parameters<typeof ChatComposer>[0]), type);
   return node.type === type ? node.props : find(node.props.children, type);
 }
 const entryPoints = [
