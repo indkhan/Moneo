@@ -2,7 +2,7 @@ import { generateObject } from "ai";
 import { modelForSettings } from "@/lib/ai/provider";
 import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { requireWorkspace } from "@/lib/auth";
-import { mappingSchema, parseCsv, inspectExcel, workbookScopeSchema, previewImport, proposeAccountRoutes, proposeKnownStatementMapping, proposeStatementTimezones, validateAiMapping } from "@/lib/csv";
+import { mappingSchema, parseCsv, inspectExcel, workbookScopeSchema, previewImport, proposeAccountRoutes, proposeKnownStatementMapping, proposeStatementTimezones, validateAiMapping, detectStatementFormat, friendlyAccountName } from "@/lib/csv";
 
 export async function POST(request: Request) {
   let workspaceCurrency: string;
@@ -34,7 +34,8 @@ export async function POST(request: Request) {
     const rows = workbook?.rows ?? parseCsv(await file.text());
     if (!rows.length) throw new Error("Selected file scope has no data rows");
     const headers = Object.keys(rows[0]).filter(header => !header.startsWith("__moneo_csv_"));
-    const knownMapping = proposeKnownStatementMapping(rows, file.name.replace(/\.(csv|xlsx)$/i, ""), workspaceCurrency);
+    const suggestedAccountName = friendlyAccountName(file.name);
+    const knownMapping = proposeKnownStatementMapping(rows, suggestedAccountName, workspaceCurrency);
     let mapping;
     let preview;
     let previewError: string | undefined;
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
           maxRetries: 0,
           maxOutputTokens: 1800,
           schema: mappingSchema,
-          prompt: `Return one JSON object with exactly these required keys: accountName (use the filename stem ${JSON.stringify(file.name.replace(/\.(csv|xlsx)$/i, ""))}), currencyCode (three uppercase letters), dateColumn, descriptionColumn, dateFormat (exactly "iso", "dmy", or "mdy"), and amountSign (exactly "signed" or "outflow-positive"). Optional keys are amountColumn, debitColumn, creditColumn, currencyColumn, balanceColumn, merchantColumn, categoryColumn, externalIdColumn, and statusColumn. Omit unused optional keys. Do not use keys such as "currency" or date formats such as "yyyy-MM-dd". Propose a financial statement column mapping. Return only values justified by headers and sample rows. Sign convention: positive means money entering the account; negative means money leaving it. Use amountSign "outflow-positive" only if positive amounts represent expenses. For separate debit/credit columns, include both and omit amountColumn. For a single amount column, include amountColumn and omit debitColumn/creditColumn. dateFormat must match the data. Currency is a three-letter code; when the file has no currency column, use workspace display currency ${workspaceCurrency} as a provisional default. Include merchantColumn only when a header clearly holds merchant/counterparty names, and categoryColumn only when a header clearly holds categories; otherwise omit them. Include statusColumn only when a header clearly holds an explicit posted/pending indicator (values like posted, pending, or COMPLETED); include accountColumn/productColumn for explicit account/product headers. Account routes will be proposed deterministically from all rows for user review; omit accountRoutes. Otherwise omit statusColumn and all rows default to posted. Do not invent columns.\nHeaders: ${JSON.stringify(headers)}\nSample rows: ${JSON.stringify(rows.slice(0, 8))}`,
+          prompt: `Return one JSON object with exactly these required keys: accountName (use ${JSON.stringify(suggestedAccountName)}), currencyCode (three uppercase letters), dateColumn, descriptionColumn, dateFormat (exactly "iso", "dmy", or "mdy"), and amountSign (exactly "signed" or "outflow-positive"). Optional keys are amountColumn, debitColumn, creditColumn, currencyColumn, balanceColumn, merchantColumn, categoryColumn, externalIdColumn, and statusColumn. Omit unused optional keys. Do not use keys such as "currency" or date formats such as "yyyy-MM-dd". Propose a financial statement column mapping. Return only values justified by headers and sample rows. Sign convention: positive means money entering the account; negative means money leaving it. Use amountSign "outflow-positive" only if positive amounts represent expenses. For separate debit/credit columns, include both and omit amountColumn. For a single amount column, include amountColumn and omit debitColumn/creditColumn. dateFormat must match the data. Currency is a three-letter code; when the file has no currency column, use workspace display currency ${workspaceCurrency} as a provisional default. Include merchantColumn only when a header clearly holds merchant/counterparty names, and categoryColumn only when a header clearly holds categories; otherwise omit them. Include statusColumn only when a header clearly holds an explicit posted/pending indicator (values like posted, pending, or COMPLETED); include accountColumn/productColumn for explicit account/product headers. Account routes will be proposed deterministically from all rows for user review; omit accountRoutes. Otherwise omit statusColumn and all rows default to posted. Do not invent columns.\nHeaders: ${JSON.stringify(headers)}\nSample rows: ${JSON.stringify(rows.slice(0, 8))}`,
         });
         mapping = proposeStatementTimezones(rows, { ...validateAiMapping(result.object, rows, workspaceCurrency), timestampTimezoneConfirmed: false }, settings?.timezone);
       } catch (error) {
@@ -67,6 +68,9 @@ export async function POST(request: Request) {
     }
     return new Response(JSON.stringify({
       headers,
+      format: detectStatementFormat(rows) ?? null,
+      interpretation: typeof supplied === "string" ? "reviewed" : knownMapping ? "known" : mapping ? "proposed" : "manual",
+      suggestedAccountName,
       ...(workbook ? { workbook: { inventory: workbook.inventory }, workbookScope } : {}),
       warnings: headers.some(header => /^(type|fee)$/i.test(header.trim()))
         ? ["Source type and fee evidence is preserved. Transfers, refunds, exchanges and fees require transaction review; no internal movement or separate fee is guessed."] : [],

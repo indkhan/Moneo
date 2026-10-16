@@ -54,6 +54,7 @@ it.each([
   expect(response.status).toBe(200);
   expect(result.mapping).toMatchObject({ ...expected, currencyColumn: "Currency", amountColumn: "Amount", amountSign: "signed" });
   expect(result.preview).toMatchObject({ totalRows: 1, examples: [{ amountMinor: "-1250", postedOn: "2026-09-01" }] });
+  expect(result).toMatchObject({ format: filename === "revolut.csv" ? "Revolut" : "IBAN bank export", interpretation: "known" });
   expect(generateObject).not.toHaveBeenCalled();
 });
 

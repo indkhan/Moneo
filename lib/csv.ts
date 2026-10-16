@@ -77,18 +77,58 @@ export const mappingSchema = z.object({
 
 export type ImportMapping = z.infer<typeof mappingSchema>;
 
-// Recognized statement formats avoid a provider round trip; every proposal still needs review.
-export function proposeKnownStatementMapping(rows: SourceRow[], accountName: string, currencyCode: string): ImportMapping | undefined {
+type AccountRoute = NonNullable<ImportMapping["accountRoutes"]>[number];
+
+// IBANs and long account numbers become "••1234"; anything else is kept as written.
+export function maskAccountNumber(value: string): string {
+  const compact = value.replace(/\s/g, "");
+  return /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/i.test(compact) || /^\d{6,}$/.test(compact) ? `••${compact.slice(-4)}` : value;
+}
+
+// A readable default from a statement filename: no extension, dates, long numbers or separators.
+export function friendlyAccountName(filename: string): string {
+  const name = filename.replace(/\.(csv|xlsx)$/i, "")
+    .replace(/(?<![A-Z0-9])[A-Z]{2}\d{2}[A-Z0-9]{10,30}|(?<!\d)\d{9,}(?!\d)/gi, maskAccountNumber)
+    .replace(/(?<!\d)\d{4}[-_.]?\d{2}(?:[-_.]?\d{2})?(?!\d)/g, " ")
+    .replace(/[_\-.]+/g, " ").replace(/\s+/g, " ").trim();
+  return Array.from(name).slice(0, 100).join("") || "Imported account";
+}
+
+const knownStatements: { format: string; headers: string[]; mapping: Omit<ImportMapping, "accountName" | "currencyCode">; routeName: (route: AccountRoute) => string }[] = [
+  { format: "Revolut", headers: ["Type", "Product", "Started Date", "Completed Date", "Description", "Amount", "Fee", "Currency", "State", "Balance"],
+    mapping: { amountColumn: "Amount", currencyColumn: "Currency", amountSign: "signed", dateColumn: "Completed Date", descriptionColumn: "Description", dateFormat: "iso",
+      productColumn: "Product", statusColumn: "State", balanceColumn: "Balance", typeColumn: "Type", feeColumn: "Fee" },
+    routeName: route => ["Revolut", route.productValue].filter(Boolean).join(" ") },
+  { format: "IBAN bank export", headers: ["Booking date", "Value date", "Transaction type", "Booking text", "Amount", "Currency", "Account IBAN", "Category", "Sender", "Recipient", "Transfer purpose"],
+    mapping: { amountColumn: "Amount", currencyColumn: "Currency", amountSign: "signed", dateColumn: "Booking date", descriptionColumn: "Booking text", dateFormat: "dmy",
+      categoryColumn: "Category", typeColumn: "Transaction type", accountColumn: "Account IBAN" },
+    routeName: route => route.accountValue ? `Account ${maskAccountNumber(route.accountValue)}` : "Bank account" },
+];
+
+function knownStatement(rows: SourceRow[]) {
   const headers = Object.keys(rows[0] ?? {});
-  const has = (columns: string[]) => columns.every(column => headers.includes(column));
-  const base = { accountName, currencyCode, amountColumn: "Amount", currencyColumn: "Currency", amountSign: "signed" as const };
-  if (has(["Type", "Product", "Started Date", "Completed Date", "Description", "Amount", "Fee", "Currency", "State", "Balance"]))
-    return proposeAccountRoutes(rows, { ...base, dateColumn: "Completed Date", descriptionColumn: "Description", dateFormat: "iso",
-      productColumn: "Product", statusColumn: "State", balanceColumn: "Balance", typeColumn: "Type", feeColumn: "Fee" });
-  if (has(["Booking date", "Value date", "Transaction type", "Booking text", "Amount", "Currency", "Account IBAN", "Category", "Sender", "Recipient", "Transfer purpose"]))
-    return proposeAccountRoutes(rows, { ...base, dateColumn: "Booking date", descriptionColumn: "Booking text", dateFormat: "dmy",
-      categoryColumn: "Category", typeColumn: "Transaction type", accountColumn: "Account IBAN" });
-  return undefined;
+  return knownStatements.find(known => known.headers.every(column => headers.includes(column)));
+}
+
+// The recognized statement format, shown so users can tell a known layout from a proposal.
+export function detectStatementFormat(rows: SourceRow[]): string | undefined {
+  return knownStatement(rows)?.format;
+}
+
+// Same-named routes in several currencies get the currency appended, so each account reads distinctly.
+function distinctRouteNames(routes: AccountRoute[]): AccountRoute[] {
+  const counts = new Map<string, number>();
+  for (const route of routes) counts.set(route.accountName, (counts.get(route.accountName) ?? 0) + 1);
+  return routes.map(route => counts.get(route.accountName)! > 1 ? { ...route, accountName: `${route.accountName} ${route.currencyCode}` } : route);
+}
+
+// Recognized statement formats avoid a provider round trip; every proposal still needs review.
+// Account names default to bank/product plus the last account digits, never the filename or a full IBAN.
+export function proposeKnownStatementMapping(rows: SourceRow[], accountName: string, currencyCode: string): ImportMapping | undefined {
+  const known = knownStatement(rows);
+  if (!known) return undefined;
+  const proposed = proposeAccountRoutes(rows, { ...known.mapping, accountName: known.routeName({ currencyCode }) || accountName, currencyCode });
+  return proposed.accountRoutes ? { ...proposed, accountRoutes: distinctRouteNames(proposed.accountRoutes.map(route => ({ ...route, accountName: known.routeName(route) }))) } : proposed;
 }
 
 export function validateImportConfirmation(rows: SourceRow[], input: unknown): ImportMapping {
@@ -267,9 +307,9 @@ export function proposeAccountRoutes(rows: SourceRow[], input: unknown): ImportM
     if (!/^[A-Z]{3}$/.test(currencyCode ?? "")) continue;
     const key = JSON.stringify([accountValue, productValue, currencyCode]);
     routes.set(key, { accountValue, productValue, currencyCode,
-      accountName: [mapping.accountName, accountValue, productValue].filter(Boolean).join(" · ") });
+      accountName: Array.from([mapping.accountName, accountValue && maskAccountNumber(accountValue), productValue].filter(Boolean).join(" · ")).slice(0, 96).join("") });
   }
-  return mappingSchema.parse({ ...mapping, accountColumn, productColumn, statusColumn, accountRoutes: [...routes.values()] });
+  return mappingSchema.parse({ ...mapping, accountColumn, productColumn, statusColumn, accountRoutes: distinctRouteNames([...routes.values()]) });
 }
 
 function databaseMinor(amount: bigint): bigint {
