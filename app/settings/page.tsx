@@ -9,12 +9,13 @@ import { SkeletonCard } from "@/components/ui/skeleton";
 import { SettingsForm } from "./form";
 import { SummaryRuns, type SummaryRun } from "./summary-runs";
 import { ResetData } from "./reset";
+import { ConnectedBanks } from "@/components/connected-banks";
 
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 const card = "scroll-mt-20 rounded-xl border border-border bg-card p-6";
 const sectionNav = [
   ["display", "Display and calendar"], ["ai", "AI and your data"], ["insights", "Insights and summaries"], ["relevance", "Insight relevance"],
-  ["home", "Customize Home"], ["summaries", "Scheduled summaries"], ["usage", "AI usage"], ["danger", "Danger zone"],
+  ["home", "Customize Home"], ["banks", "Connected banks"], ["summaries", "Scheduled summaries"], ["usage", "AI usage"], ["danger", "Danger zone"],
 ] as const;
 
 async function loadDashboard({ supabase, workspace }: Workspace) {
@@ -67,6 +68,7 @@ export default async function SettingsPage() {
           defaultModel={process.env.OPENROUTER_MODEL ?? "qwen/qwen3.8-27b:free"} />
         <div id="relevance" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={4} />}><InsightSettings /></Suspense></div>
         <details id="home" className={card}><summary className="cursor-pointer text-base font-semibold">Customize Home</summary><form action={saveDashboard} className="mt-4 space-y-4"><input type="hidden" name="version" value={dashboard.version} />{dashboard.choices.map((key, index) => <div key={key} className="flex flex-wrap items-center gap-3 border-b border-border pb-3 last:border-0"><label className="flex flex-1 items-center gap-2 text-sm"><input type="checkbox" name="enabled" value={key} defaultChecked={dashboard.ordered.includes(key)} disabled={key.startsWith("tool:")} />{key.startsWith("tool:") && <input type="hidden" name="enabled" value={key} />}{Object.hasOwn(BUILTIN_WIDGETS, key) ? BUILTIN_WIDGETS[key as keyof typeof BUILTIN_WIDGETS] : dashboard.pinnedById.get(key.slice(5))?.name}</label><label className="flex items-center gap-2 text-sm">Position<input type="number" name={`position:${key}`} min="1" max="50" defaultValue={dashboard.ordered.includes(key) ? dashboard.ordered.indexOf(key) + 1 : index + 1} className="min-h-10 w-20 rounded-lg border border-border bg-card px-3 py-2 text-sm" /></label></div>)}<button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Save dashboard</button><p className="text-sm text-muted-foreground">Pin or unpin tools in the <Link href="/ai/library" className="underline">Library</Link>. Lower positions appear first.</p></form></details>
+        <div id="banks" className="scroll-mt-20"><ConnectedBanks /></div>
         <section id="summaries" className={card}><h2 className="text-base font-semibold">Scheduled summaries</h2>
           <p className="mt-1 text-sm text-muted-foreground">Recent summary runs. Change the schedule under Insights and summaries.</p>
           <details className="mt-2 text-sm text-muted-foreground"><summary className="cursor-pointer">More details</summary><p className="mt-2">Weekly summaries are due on Monday and monthly ones on the first, in your timezone and at your preferred time. A daily check starts due summaries, so they can arrive a day late. Turn summaries off to stop future runs, or stop an active run below.</p></details>

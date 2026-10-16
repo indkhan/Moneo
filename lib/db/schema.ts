@@ -135,6 +135,46 @@ export const imports = pgTable("imports", {
   check("imports_route_accounts_check", sql`jsonb_typeof(${table.routeAccounts}) = 'object'`),
 ]);
 
+export const bankConnections = pgTable("bank_connections", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  provider: text("provider").notNull().default("enable_banking"),
+  aspspName: text("aspsp_name").notNull(),
+  aspspCountry: text("aspsp_country").notNull(),
+  // AES-256-GCM ciphertext of the Enable Banking session id; service_role only.
+  sessionIdEncrypted: text("session_id_encrypted"),
+  authState: uuid("auth_state").defaultRandom().notNull().unique(),
+  status: text("status").notNull().default("pending"),
+  validUntil: timestamp("valid_until", { withTimezone: true }),
+  lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("bank_connections_workspace_idx").on(table.workspaceId),
+  check("bank_connections_provider_check", sql`${table.provider} = 'enable_banking'`),
+  check("bank_connections_aspsp_name_check", sql`char_length(${table.aspspName}) between 1 and 200`),
+  check("bank_connections_aspsp_country_check", sql`${table.aspspCountry} ~ '^[A-Z]{2}$'`),
+  check("bank_connections_status_check", sql`${table.status} in ('pending','active','expired','revoked','error')`),
+  check("bank_connections_last_error_check", sql`char_length(${table.lastError}) <= 1000`),
+  check("bank_connections_check", sql`${table.status} <> 'active' or (${table.sessionIdEncrypted} is not null and ${table.validUntil} is not null)`),
+]);
+
+export const bankConnectionAccounts = pgTable("bank_connection_accounts", {
+  connectionId: uuid("connection_id").notNull().references(() => bankConnections.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  providerAccountUid: text("provider_account_uid").notNull(),
+  iban: text("iban"),
+  currencyCode: text("currency_code").notNull(),
+  accountName: text("account_name").notNull(),
+  lastBookedOn: date("last_booked_on"),
+}, (table) => [
+  primaryKey({ columns: [table.connectionId, table.providerAccountUid] }),
+  check("bank_connection_accounts_provider_account_uid_check", sql`char_length(${table.providerAccountUid}) between 1 and 200`),
+  check("bank_connection_accounts_iban_check", sql`char_length(${table.iban}) <= 34`),
+  check("bank_connection_accounts_currency_code_check", sql`${table.currencyCode} ~ '^[A-Z]{3}$'`),
+  check("bank_connection_accounts_account_name_check", sql`char_length(${table.accountName}) between 1 and 100`),
+]);
+
 export const importControlEvents = pgTable("import_control_events", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),

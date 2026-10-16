@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { ImportMapping, SourceRow, WorkbookScope } from "@/lib/csv";
 import { WorkbookScopeReview, type WorkbookSheet } from "./workbook-scope";
 import { formatMoney } from "@/lib/finance/format";
+import { ConnectedBanks } from "@/components/connected-banks";
 
 type Preview = {
   accountName: string;
@@ -351,6 +352,8 @@ export default function ImportPage() {
           <span className={`grid size-6 place-items-center rounded-full text-xs ${i === step ? "bg-brand text-white" : i < step ? "bg-muted text-brand" : "border border-border"}`}>{i < step ? "✓" : i + 1}</span>{label}
         </li>)}</ol>
     </header>
+
+    <ConnectedBanks />
 
     <label className={`relative block rounded-xl border border-dashed border-border bg-card text-center transition-colors hover:bg-muted/40 focus-within:ring-2 focus-within:ring-brand ${file ? "p-5" : "p-10"}`}>
       <span className="block text-base font-semibold">{file ? "Drop more statements to replace this selection" : "Drop statements here, or click to choose"}</span>
