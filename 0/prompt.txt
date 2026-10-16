@@ -1,0 +1,20 @@
+i have these three related to bank 
+
+<pasted_content id="95bc">
+ENABLE_BANKING_PRIVATE_KEY
+Production
+Updated 
+2h ago
+
+
+BANK_TOKEN_PRIVATE_KEY
+Production
+Added 
+2h ago
+
+
+ENABLE_BANKING_APP_ID
+Production
+Added 
+2h ago
+</pasted_content id="95bc">
