@@ -3,10 +3,12 @@
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
+import Link from "next/link";
+import { DraftPreview } from "./draft-preview";
 
 const CodeEditor = dynamic(() => import("@/components/code-editor").then(module => module.CodeEditor), {
   ssr: false,
-  loading: () => <p role="status" className="h-[280px] rounded-lg border border-border bg-muted p-3 text-sm text-muted-foreground">Loading source editor…</p>,
+  loading: () => <p role="status" className="h-[360px] rounded-lg border border-border bg-muted p-3 text-sm text-muted-foreground">Loading source editor…</p>,
 });
 
 type VersionRow = {
@@ -19,18 +21,28 @@ type VersionRow = {
   source?: string;
 };
 
+const EMPTY_PARAMS: Record<string, number | string> = {};
+
 export function VersionEditor({
   artifactId,
   activeVersionId,
   versions,
   currentSource,
   currentManifest,
+  snapshot = null,
+  initialParams = EMPTY_PARAMS,
+  currency,
+  locale,
 }: {
   artifactId: string;
   activeVersionId: string | null;
   versions: VersionRow[];
   currentSource: string;
   currentManifest: unknown;
+  snapshot?: unknown;
+  initialParams?: Record<string, number | string>;
+  currency?: string;
+  locale?: string;
 }) {
   const router = useRouter();
   const currentManifestText = JSON.stringify(currentManifest ?? {}, null, 2);
@@ -81,9 +93,7 @@ export function VersionEditor({
         throw new Error(payload?.error ?? "Save failed");
       }
       if (payload?.status === "failed") {
-        setStatus(
-          `Version ${payload?.version?.version ?? "?"} recorded as failed; active version preserved. Errors: ${(payload?.validation?.errors ?? []).join("; ")}`,
-        );
+        setStatus(`Version ${payload?.version?.version ?? "?"} recorded as failed; active version preserved. Errors: ${(payload?.validation?.errors ?? []).join("; ")}`);
       } else {
         setLocal(previous => previous && (previous.source !== source || previous.manifestText !== manifestText) ? previous : null);
         setServerConflict(false);
@@ -111,96 +121,116 @@ export function VersionEditor({
     finally { setLoadingHistory(false); }
   }
 
+  const button = "rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50";
   return (
-    <section aria-label="Edit calculator version" className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
-      <h2 className="text-lg font-semibold">Edit calculator version</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Edits create a new version. Validation (allowlist, manifest, QuickJS smoke test incl.
-        missing data) runs before activation. Failed edits preserve the active version and
-        artifact state.
-      </p>
-      <label className="mt-3 block text-sm font-medium" htmlFor="version-source">
-        Source (pure function of input.snapshot + input.params)
-      </label>
-      <div id="version-source" className="mt-2">
-        <CodeEditor value={source} onChange={editSource} />
+    <section aria-label="Edit calculator version" className="rounded-xl border border-border bg-card shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight">Edit calculator version</h2>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            Edits create a new version. Validation (allowlist, manifest, QuickJS smoke test incl.
+            missing data) runs before activation. Failed edits preserve the active version and
+            artifact state.
+          </p>
+        </div>
+        <div className="flex items-center gap-3 text-sm">
+          {dirty && <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-700">Unsaved changes</span>}
+          <Link href="/ai/library/sdk" target="_blank" className="font-medium text-brand underline-offset-4 hover:underline">SDK reference</Link>
+        </div>
       </div>
-      <label className="mt-3 block text-sm font-medium" htmlFor="version-manifest">
-        Manifest (JSON)
-      </label>
-      <textarea
-        id="version-manifest"
-        value={manifestText}
-        onChange={(e) => edit({ manifestText: e.target.value })}
-        rows={8}
-        spellCheck={false}
-        className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 font-mono text-xs"
-      />
-      <button
-        type="button"
-        disabled={saving || source.trim().length === 0}
-        onClick={() => save()}
-        className="mt-3 rounded-lg bg-brand px-3 py-2 font-medium text-white hover:opacity-90 text-sm disabled:opacity-50"
-      >
-        {saving ? "Validating…" : "Save new version"}
-      </button>
-      <button type="button" disabled={saving} onClick={() => { setLocal(null); setServerConflict(false); setStatus(""); router.refresh(); }} className="ml-2 rounded border px-3 py-2 text-sm">
-        Reload current version
-      </button>
-      {conflict && <div role="alert" className="mt-3 text-sm">
-        <p>The active version changed. Your unsaved work is preserved on its original base. Review the current version in history, then reload to discard local edits or explicitly replace it.</p>
-        <p>Edited base: {baseVersionId ?? "none"}. Current active: {activeVersionId ?? "none"}.</p>
-        <button type="button" disabled={saving || (serverConflict && baseVersionId === activeVersionId) || !dirty} onClick={() => save(source, manifestText, activeVersionId)} className="mt-2 rounded border px-3 py-2">
-          Replace current version with my edits
-        </button>
-        {serverConflict && <button type="button" onClick={() => { setServerConflict(false); router.refresh(); }} className="ml-2 rounded border px-3 py-2">Review refreshed version</button>}
-      </div>}
-      {status && (
-        <p role="status" className="mt-3 text-sm text-muted-foreground">
-          {status}
-        </p>
-      )}
+      <div className="grid lg:grid-cols-2">
+        <div className="min-w-0 space-y-3 p-5 lg:border-r lg:border-border">
+          <label className="block text-sm font-medium" htmlFor="version-source">
+            Source (pure function of input.snapshot + input.params)
+          </label>
+          <div id="version-source" className="overflow-hidden rounded-lg border border-border">
+            <CodeEditor value={source} onChange={editSource} />
+          </div>
+          <label className="block text-sm font-medium" htmlFor="version-manifest">
+            Manifest (JSON)
+          </label>
+          <textarea
+            id="version-manifest"
+            value={manifestText}
+            onChange={(e) => edit({ manifestText: e.target.value })}
+            rows={8}
+            spellCheck={false}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
+          />
+        </div>
+        <div className="min-w-0 border-t border-border p-5 lg:border-t-0">
+          <DraftPreview source={source} manifestText={manifestText} snapshot={snapshot} params={initialParams} currency={currency} locale={locale} />
+        </div>
+      </div>
+      <div className="space-y-3 border-t border-border px-5 py-4">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={saving || source.trim().length === 0}
+            onClick={() => save()}
+            className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? "Validating…" : "Save new version"}
+          </button>
+          <button type="button" disabled={saving} onClick={() => { setLocal(null); setServerConflict(false); setStatus(""); router.refresh(); }} className={button}>
+            Reload current version
+          </button>
+        </div>
+        {conflict && <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+          <p>The active version changed. Your unsaved work is preserved on its original base. Review the current version in history, then reload to discard local edits or explicitly replace it.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Edited base: {baseVersionId ?? "none"}. Current active: {activeVersionId ?? "none"}.</p>
+          <button type="button" disabled={saving || (serverConflict && baseVersionId === activeVersionId) || !dirty} onClick={() => save(source, manifestText, activeVersionId)} className={`mt-2 ${button}`}>
+            Replace current version with my edits
+          </button>
+          {serverConflict && <button type="button" onClick={() => { setServerConflict(false); router.refresh(); }} className={`ml-2 mt-2 ${button}`}>Review refreshed version</button>}
+        </div>}
+        {status && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {status}
+          </p>
+        )}
+      </div>
 
-      <h3 className="mt-6 font-medium">Version history</h3>
-      <ul className="mt-2 space-y-2 text-sm">
-        {history.map((v) => (
-          <li key={v.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
-            <p>
-              v{v.version} · {v.status}
-              {v.id === activeVersionId ? " · active" : ""}
-              <span className="ml-2 text-xs text-muted-foreground">{v.created_at}</span>
-            </p>
-            {v.error && <p className="mt-1 text-destructive">{v.error}</p>}
-            {v.source && <details className="mt-1">
-              <summary className="cursor-pointer underline">Source</summary>
-              <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap font-mono text-xs">{v.source}</pre>
-            </details>}
-            {v.status === "validated" && v.id !== activeVersionId && v.source && v.manifest !== null && typeof v.manifest === "object" && "runtime" in v.manifest && (v.manifest.runtime === "quickjs-calculator-v1" || v.manifest.runtime === "trusted") && <button type="button" disabled={saving || dirty || serverConflict} onClick={() => save(v.source!, JSON.stringify(v.manifest), activeVersionId, (v.manifest as { runtime: string }).runtime === "trusted" ? v.id : undefined)} className="mt-2 rounded border px-3 py-1 text-xs">Restore v{v.version} as a new version</button>}
-            <details className="mt-1">
-              <summary className="cursor-pointer underline">Manifest</summary>
-              <pre className="mt-1 max-h-32 overflow-auto font-mono text-xs">
-                {JSON.stringify(v.manifest, null, 2)}
-              </pre>
-            </details>
-            {v.status === "failed" && v.source && (
-              <button
-                type="button"
-                disabled={saving || dirty}
-                className="mt-2 rounded border px-3 py-1 text-xs"
-                onClick={() => {
-                  edit({ source: v.source!, manifestText: JSON.stringify(v.manifest, null, 2) });
-                  setStatus(`Loaded failed v${v.version} into the editor; fix and save to retry. Active version preserved until a candidate validates.`);
-                }}
-              >
-                Retry this version (load into editor)
-              </button>
-            )}
-          </li>
-        ))}
-        {!versions.length && <li className="text-muted-foreground">No versions yet.</li>}
-      </ul>
-      {dirty && <p className="mt-2 text-sm">Reload current version to discard local edits before restoring history.</p>}
-      {nextCursor !== null && <button type="button" disabled={loadingHistory} onClick={loadOlder} className="mt-3 rounded border px-3 py-2 text-sm">{loadingHistory ? "Loading history…" : "Load older versions"}</button>}
+      <div className="border-t border-border px-5 py-4">
+        <h3 className="text-sm font-semibold">Version history</h3>
+        <ul className="mt-2 divide-y divide-border rounded-lg border border-border text-sm">
+          {history.map((v) => (
+            <li key={v.id} className="px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="font-medium tabular-nums">v{v.version}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${v.status === "failed" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}>{v.status}</span>
+                {v.id === activeVersionId && <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">active</span>}
+                <time className="text-xs text-muted-foreground" dateTime={v.created_at}>{v.created_at}</time>
+                <span className="ml-auto flex flex-wrap gap-1.5">
+                  {v.status === "validated" && v.id !== activeVersionId && v.source && v.manifest !== null && typeof v.manifest === "object" && "runtime" in v.manifest && (v.manifest.runtime === "quickjs-calculator-v1" || v.manifest.runtime === "trusted") && <button type="button" disabled={saving || dirty || serverConflict} onClick={() => save(v.source!, JSON.stringify(v.manifest), activeVersionId, (v.manifest as { runtime: string }).runtime === "trusted" ? v.id : undefined)} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">Restore v{v.version} as a new version</button>}
+                  {v.source && <button
+                    type="button"
+                    disabled={saving || dirty}
+                    className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
+                    onClick={() => {
+                      edit({ source: v.source!, manifestText: JSON.stringify(v.manifest, null, 2) });
+                      setStatus(v.status === "failed" ? `Loaded failed v${v.version} into the editor; fix and save to retry. Active version preserved until a candidate validates.` : `Loaded v${v.version} into the editor. Saving creates a new version.`);
+                    }}
+                  >
+                    {v.status === "failed" ? "Retry this version (load into editor)" : "Load into editor"}
+                  </button>}
+                </span>
+              </div>
+              {v.error && <ul className="mt-1 list-disc pl-5 text-xs text-destructive">{v.error.split("; ").map(item => <li key={item}>{item}</li>)}</ul>}
+              <details className="mt-1">
+                <summary className="cursor-pointer text-xs text-muted-foreground">Code and manifest</summary>
+                {v.source && <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-xs">{v.source}</pre>}
+                <pre className="mt-1 max-h-32 overflow-auto rounded bg-muted p-2 font-mono text-xs">
+                  {JSON.stringify(v.manifest, null, 2)}
+                </pre>
+              </details>
+            </li>
+          ))}
+          {!versions.length && <li className="px-3 py-2.5 text-muted-foreground">No versions yet.</li>}
+        </ul>
+        {dirty && <p className="mt-2 text-sm text-muted-foreground">Reload current version to discard local edits before restoring history.</p>}
+        {nextCursor !== null && <button type="button" disabled={loadingHistory} onClick={loadOlder} className={`mt-3 ${button}`}>{loadingHistory ? "Loading history…" : "Load older versions"}</button>}
+      </div>
     </section>
   );
 }

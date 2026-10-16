@@ -29,10 +29,10 @@ const kinds: ArtifactKind[] = artifactKindSchema.options;
 
 export default async function ArtifactPage({ params, searchParams }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ q?: string; goalId?: string; extra?: string; spendingView?: string }>;
+  searchParams: Promise<{ q?: string; goalId?: string; extra?: string; spendingView?: string; describe?: string }>;
 }) {
   const { id } = await params;
-  const { q = "", goalId = "", extra = "", spendingView } = await searchParams;
+  const { q = "", goalId = "", extra = "", spendingView, describe = "" } = await searchParams;
   const nativeReportingView = spendingView === "original" ? "original" : "base";
   const { supabase, workspace } = await requireWorkspace();
   const [{ data: artifact }, { data: state }, { data: pin }] = await Promise.all([
@@ -95,17 +95,22 @@ export default async function ArtifactPage({ params, searchParams }: {
     }
   }
 
-  return <main className="mx-auto max-w-5xl px-5 py-8 lg:px-8">
-    <Link href="/ai/library" className="text-sm underline">Library</Link>
-    <p className="mt-5 text-xs font-semibold uppercase tracking-widest text-brand">AI / Saved tool</p>
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-      <h1 className="text-3xl font-semibold tracking-tight text-foreground">{artifact.name}</h1>
+  const currency = snapshot !== null && typeof snapshot === "object" && "currency" in snapshot && typeof snapshot.currency === "string" && snapshot.currency ? snapshot.currency : workspace.display_currency;
+  return <main className="mx-auto max-w-7xl space-y-6 px-5 py-8 lg:px-8">
+    <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground"><Link href="/ai/library" className="hover:text-foreground hover:underline">Library</Link> <span aria-hidden>/</span> <span className="text-foreground">{artifact.name}</span></nav>
+    <header className="flex flex-wrap items-start justify-between gap-4">
+      <div className="min-w-0">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">{artifact.name}</h1>
+        <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          {isCalculator && manifestParsed.data.sdk.map(operation => <span key={operation} className="rounded-full border border-border px-2 py-0.5 text-xs">{operation}</span>)}
+          <span>Live financial data · trusted {artifact.kind.replaceAll("_", " ")} v{version?.version ?? "?"}</span>
+        </p>
+      </div>
       <form action={pin ? unpinArtifact : pinArtifact}>
         <input type="hidden" name="artifactId" value={id} />
         <button className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted">{pin ? "Unpin from Home" : "Pin to Home"}</button>
       </form>
-    </div>
-    <p className="mt-2 text-sm text-muted-foreground">Live financial data · trusted {artifact.kind.replaceAll("_", " ")} v{version?.version ?? "?"}</p>
+    </header>
     <RenameArtifactForm artifactId={id} activeVersionId={artifact.active_version_id} name={artifact.name} action={renameArtifact} />
     {artifact.kind === "spending_explorer" && <SpendingExplorer id={id} query={q.slice(0, 100)} view={nativeReportingView} locale={workspace.locale} />}
     {artifact.kind === "trip_planner" && <TripPlanner id={id} costMinor={costMinor} stateVersion={state?.version ?? 0} scenario={stateValue.tripScenario} />}
@@ -129,12 +134,13 @@ export default async function ArtifactPage({ params, searchParams }: {
       />
     )}
     {version && !isCalculator && (
-      <p className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm text-sm text-muted-foreground">
-        This tool still uses the built-in trusted template (no generated calculator yet). Use the
-        generator below to draft the first validated calculator version.
+      <p className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground shadow-sm">
+        This tool still uses the built-in trusted template (no generated calculator yet). Describe what
+        you want below, or write it in the editor, to create the first validated calculator version.
       </p>
     )}
-    <GenerateCalculatorForm artifactId={id} kind={kind} activeVersionId={artifact.active_version_id} />
+    <GenerateCalculatorForm artifactId={id} kind={kind} activeVersionId={artifact.active_version_id} snapshot={snapshot} initialParams={initialParams}
+      currency={currency} locale={workspace.locale} initialDescription={describe.slice(0, 500)} />
     {version && (
       <VersionEditor
         artifactId={id}
@@ -145,6 +151,10 @@ export default async function ArtifactPage({ params, searchParams }: {
         }))}
         currentSource={version.source}
         currentManifest={version.manifest}
+        snapshot={snapshot}
+        initialParams={initialParams}
+        currency={currency}
+        locale={workspace.locale}
       />
     )}
   </main>;
@@ -153,8 +163,8 @@ export default async function ArtifactPage({ params, searchParams }: {
 async function SpendingExplorer({ id, query, view, locale }: { id: string; query: string; view: "base" | "original"; locale: string }) {
   let data: Awaited<ReturnType<typeof spendingForArtifact>>;
   try { data = await spendingForArtifact(id, query, "spending", undefined, view); }
-  catch { return <p role="status" className="mt-8 rounded border p-5">Spending evidence is unavailable. Check this tool&apos;s permissions and AI data access in Settings.</p>; }
-  return <section className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
+  catch { return <p role="status" className="rounded-xl border border-border bg-card p-5">Spending evidence is unavailable. Check this tool&apos;s permissions and AI data access in Settings.</p>; }
+  return <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
     {data.reporting ? <ExpenditureSummary report={data.reporting} locale={locale} title="This month" viewHref={selected => `/ai/library/${id}?${new URLSearchParams({ q: query, spendingView: selected })}`} coverage={<SourceCoverageDetails coverage={data.sourceCoverage} />} /> : <><h2 className="text-xl font-semibold tracking-tight text-foreground">This month</h2>
     {"unavailable" in data.summary ? <p className="mt-3">{data.summary.unavailable}</p>
       : <p className="mt-3 text-2xl">Spending {money(data.summary.spendingMinor, data.currency)}</p>}
@@ -187,8 +197,8 @@ async function TripPlanner({ id, costMinor, stateVersion, scenario }: { id: stri
     }
   }
   const available = data ?? editor;
-  if (!available) return <p role="status" className="mt-8 rounded border p-5">Forecast evidence is unavailable. Check this tool&apos;s permissions and AI data access in Settings.</p>;
-  return <section className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
+  if (!available) return <p role="status" className="rounded-xl border border-border bg-card p-5">Forecast evidence is unavailable. Check this tool&apos;s permissions and AI data access in Settings.</p>;
+  return <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
     <h2 className="text-xl font-semibold tracking-tight text-foreground">Dated trip planner</h2>
     <DatedTripForm artifactId={id} stateVersion={stateVersion} initial={available.scenario} initialResult={data?.tripResult ?? null} currency={available.currency} initialError={editor?.error} accounts={available.accounts} sourceCoverage={data?.sourceCoverage} />
   </section>;
@@ -197,14 +207,14 @@ async function TripPlanner({ id, costMinor, stateVersion, scenario }: { id: stri
 async function GoalTracker({ id, scenarioGoalId, extra }: { id: string; scenarioGoalId: string; extra: string }) {
   let data: Awaited<ReturnType<typeof goalsForArtifact>>;
   try { data = await goalsForArtifact(id); }
-  catch { return <p role="status" className="mt-8 rounded border p-5">Goal evidence is unavailable. Check this tool&apos;s permissions and AI data access in Settings.</p>; }
+  catch { return <p role="status" className="rounded-xl border border-border bg-card p-5">Goal evidence is unavailable. Check this tool&apos;s permissions and AI data access in Settings.</p>; }
   const today = calendarDate(new Date(), data.timezone);
   const accountCurrencies = new Map(data.balances.map(item => [item.id, item.currency_code]));
   const targetGoal = data.goals.find(g => g.id === scenarioGoalId);
   const extraCurrency = targetGoal?.currency_code ?? "EUR";
   let extraMinor = 0n;
   try { if (extra) extraMinor = parseManualAmount(extra, extraCurrency); } catch { /* Ignore invalid what-if input. */ }
-  return <section className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
+  return <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
     <h2 className="text-xl font-semibold tracking-tight text-foreground">Goals and reservations</h2>
     <SourceCoverageDetails coverage={data.sourceCoverage} />
     {!data.goals.length && <p className="mt-3">No goals yet. <Link href="/plan" className="underline">Create a goal</Link>.</p>}

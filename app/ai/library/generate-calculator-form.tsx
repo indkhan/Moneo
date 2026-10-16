@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { DraftPreview } from "./draft-preview";
 import { FALLBACK_CALCULATORS } from "@/lib/artifacts/templates";
 import type { ArtifactKind } from "@/lib/artifacts/spec";
 
@@ -13,23 +14,48 @@ type Draft = {
   validation: { ok: boolean; errors?: string[]; warnings?: string[] };
 };
 
+const EMPTY_PARAMS: Record<string, number | string> = {};
+
 export function GenerateCalculatorForm({
   artifactId,
   kind,
   activeVersionId,
+  snapshot = null,
+  initialParams = EMPTY_PARAMS,
+  currency,
+  locale,
+  initialDescription = "",
 }: {
   artifactId: string;
   kind: ArtifactKind;
   activeVersionId: string | null;
+  snapshot?: unknown;
+  initialParams?: Record<string, number | string>;
+  currency?: string;
+  locale?: string;
+  // Carried from the Library's "Describe a tool" so users never type it twice.
+  initialDescription?: string;
 }) {
   const router = useRouter();
-  const [description, setDescription] = useState("");
+  const pathname = usePathname();
+  const [description, setDescription] = useState(initialDescription.slice(0, 500));
   const [draft, setDraft] = useState<Draft | null>(null);
   const [status, setStatus] = useState("");
   const [working, setWorking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState(false);
   const active = useRef<{ id: string; controller: AbortController } | null>(null);
+
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (!initialDescription.trim() || autoStarted.current) return;
+    autoStarted.current = true;
+    // Drop the one-shot parameter so a reload does not start another generation.
+    router.replace(pathname, { scroll: false });
+    const timer = setTimeout(() => { void suggest(); }, 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot handoff from the Library
+  }, []);
 
   async function suggest() {
     setWorking(true);
@@ -114,12 +140,14 @@ export function GenerateCalculatorForm({
     setConflict(false);
   }
 
+  const button = "rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50";
+  const primary = "rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50";
   return (
-    <section aria-label="AI-generated calculator" className="mt-8 rounded-xl border border-border bg-card p-5 shadow-sm">
-      <h2 className="text-lg font-semibold">Generate calculator code</h2>
+    <section aria-label="AI-generated calculator" className="rounded-xl border border-border bg-card p-5 shadow-sm">
+      <h2 className="text-base font-semibold tracking-tight">Describe it</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        AI drafts a tiny pure calculator. Nothing is saved until you choose Save. Failed
-        candidates never replace the active version.
+        AI drafts a small pure calculator and the sandbox previews it below. Nothing is saved until
+        you accept it with Save. Failed candidates never replace the active version.
       </p>
       <label className="mt-3 block text-sm font-medium" htmlFor="calc-description">
         What should the calculator compute?
@@ -128,71 +156,75 @@ export function GenerateCalculatorForm({
         id="calc-description"
         value={description}
         onChange={(e) => setDescription(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && description.trim() && !working && !saving) void suggest(); }}
         maxLength={500}
         rows={3}
         placeholder="e.g. average daily dining spend from the snapshot"
-        className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm"
+        className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
       />
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
           disabled={working || saving || description.trim().length === 0}
           onClick={suggest}
-          className="rounded-lg bg-brand px-3 py-2 font-medium text-white hover:opacity-90 text-sm disabled:opacity-50"
+          className={primary}
         >
           {working ? "Asking AI…" : "Suggest calculator"}
         </button>
-        {working && <button type="button" onClick={stop} className="rounded border px-3 py-2 text-sm">Stop generation</button>}
-        <button type="button" onClick={useFallback} disabled={working || saving} className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50">
+        {working && <button type="button" onClick={stop} className={button}>Stop generation</button>}
+        <button type="button" onClick={useFallback} disabled={working || saving} className={button}>
           Use safe fallback
         </button>
         {draft && (
-          <button
-            type="button"
-            disabled={working || saving}
-            onClick={suggest}
-            className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
-          >
+          <button type="button" disabled={working || saving} onClick={suggest} className={button}>
             Retry suggestion
           </button>
         )}
+        <span className="text-xs text-muted-foreground">Ctrl/⌘ + Enter to suggest</span>
       </div>
 
       {draft && (
         <div className="mt-4 space-y-3 text-sm">
-          {(conflict || draft.baseVersionId !== activeVersionId) && <div role="alert">
+          {(conflict || draft.baseVersionId !== activeVersionId) && <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
             <p>The active version changed. Your draft is preserved. Review the current version in history before replacing it, or discard this draft.</p>
-            <button type="button" disabled={saving || draft.validation.ok === false || (conflict && draft.baseVersionId === activeVersionId)} onClick={() => save(draft.source, draft.manifest, activeVersionId)} className="mt-2 rounded border px-3 py-2">Replace current version with this draft</button>
-            <button type="button" disabled={saving} onClick={() => { setDraft(null); setConflict(false); setStatus(""); }} className="ml-2 rounded border px-3 py-2">Discard draft</button>
+            <button type="button" disabled={saving || draft.validation.ok === false || (conflict && draft.baseVersionId === activeVersionId)} onClick={() => save(draft.source, draft.manifest, activeVersionId)} className={`mt-2 ${button}`}>Replace current version with this draft</button>
+            <button type="button" disabled={saving} onClick={() => { setDraft(null); setConflict(false); setStatus(""); }} className={`ml-2 mt-2 ${button}`}>Discard draft</button>
           </div>}
           {draft.rationale && (
             <p>
               <span className="font-medium">Rationale:</span> {draft.rationale}
             </p>
           )}
-          <div>
-            <p className="font-medium">Proposed source (inspect before saving)</p>
-            <pre className="mt-1 max-h-64 overflow-auto rounded bg-muted p-3 font-mono text-xs">
-              {draft.source}
-            </pre>
-          </div>
-          <div>
-            <p className="font-medium">Manifest</p>
-            <pre className="mt-1 max-h-40 overflow-auto rounded bg-muted p-3 font-mono text-xs">
-              {JSON.stringify(draft.manifest, null, 2)}
-            </pre>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="min-w-0 space-y-3">
+              <div>
+                <p className="font-medium">Proposed source (inspect before saving)</p>
+                <pre className="mt-1 max-h-64 overflow-auto rounded-lg bg-muted p-3 font-mono text-xs">
+                  {draft.source}
+                </pre>
+              </div>
+              <details>
+                <summary className="cursor-pointer font-medium">Manifest</summary>
+                <pre className="mt-1 max-h-40 overflow-auto rounded-lg bg-muted p-3 font-mono text-xs">
+                  {JSON.stringify(draft.manifest, null, 2)}
+                </pre>
+              </details>
+            </div>
+            <div className="min-w-0 rounded-lg border border-border p-3">
+              <DraftPreview source={draft.source} manifestText={JSON.stringify(draft.manifest)} snapshot={snapshot} params={initialParams} currency={currency} locale={locale} />
+            </div>
           </div>
           {draft.validation.ok === false && (
-            <ul className="rounded border border-destructive p-3 text-destructive">
+            <ul aria-label="Server validation errors" className="list-disc rounded-lg border border-destructive/40 bg-destructive/5 py-2 pl-8 pr-3 text-destructive">
               {(draft.validation.errors ?? []).map((e) => (
-                <li key={e}>• {e}</li>
+                <li key={e}>{e}</li>
               ))}
             </ul>
           )}
           {draft.validation.ok === true && draft.validation.warnings?.length ? (
-            <ul className="rounded-xl border border-border bg-card p-4 shadow-sm text-muted-foreground">
+            <ul className="list-disc rounded-lg border border-border bg-muted py-2 pl-8 pr-3 text-muted-foreground">
               {draft.validation.warnings.map((w) => (
-                <li key={w}>• {w}</li>
+                <li key={w}>{w}</li>
               ))}
             </ul>
           ) : null}
@@ -200,7 +232,7 @@ export function GenerateCalculatorForm({
             type="button"
             disabled={saving || draft.validation.ok === false}
             onClick={() => save(draft.source, draft.manifest)}
-            className="rounded-lg bg-brand px-3 py-2 font-medium text-white hover:opacity-90 text-sm disabled:opacity-50"
+            className={primary}
             title={
               draft.validation.ok === false
                 ? "Fix validation errors before saving (or save via the editor to record a failed attempt)"
