@@ -1,0 +1,1 @@
+i am on the latest deployed version on vercel why do i not see that the bank is connected that i connected using enable banking check it and tell me i have already added the secret keys to vercel
