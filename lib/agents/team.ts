@@ -41,10 +41,10 @@ export type ProposalKind = keyof typeof payloadSchemas;
 
 export type EvidenceRow = { id: string; date: string; description: string; amountMinor: string; currency: string };
 export type Evidence = { facts: { label: string; value: string }[]; transactions: EvidenceRow[]; links: { label: string; href: string }[] };
-export type Proposal<K extends ProposalKind = ProposalKind> = {
+export type Proposal<K extends ProposalKind = ProposalKind> = K extends ProposalKind ? {
   agent: AgentId; kind: K; conflictKey: string; title: string; detail: string; evidence: Evidence;
   payload: z.infer<(typeof payloadSchemas)[K]>; confidence: number; notes: string[];
-};
+} : never;
 export type LedgerRow = {
   id: string; version: number; date: string; description: string; amountMinor: bigint; currency: string; accountId: string;
   categoryId: string | null; merchantId: string | null; kind: string; status: string; reviewReasons: string[];
