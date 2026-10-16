@@ -505,6 +505,7 @@ export default function ImportPage() {
               {item.status === "canceled" && <p className="text-sm text-muted-foreground">Stopped. Rows already imported are kept, and resuming will not duplicate them.</p>}
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm"><Link className="underline" href={`/import/${item.id}/review`}>Review rows and source coverage{item.classification_review_rows ? ` · ${item.classification_review_rows} to categorize` : ""}</Link>
                 <Link className="underline" href={`/money/organization?import=${item.id}`}>Organize imported spending</Link>
+                {item.status === "completed" && <Link className="font-medium text-brand underline" href={`/ai/agents?import=${item.id}`}>Watch the agent team</Link>}
                 {active(item.status) && <button className="underline" type="button" disabled={busy} onClick={() => void control(item, "cancel")}>Stop import</button>}
                 {["failed", "canceled"].includes(item.status) && <button className="underline" type="button" disabled={busy} onClick={() => void control(item, "resume")}>{item.status === "canceled" ? "Resume import" : "Retry"}</button>}
                 {item.status === "completed" && <button className="underline" type="button" disabled={busy} onClick={() => void showUndo(item.id)}>Undo import</button>}</div>

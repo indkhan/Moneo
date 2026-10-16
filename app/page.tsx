@@ -17,6 +17,7 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { describeMissingInputs, formatMoney } from "@/lib/finance/format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { SourceCoverageDetails } from "./source-coverage";
+import { AgentBriefing } from "./agent-briefing";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { ArrowRight, Plus } from "lucide-react";
@@ -173,6 +174,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
           <Link href="/import" className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"><Plus size={15} /> Import statement</Link>
         </div>
       </header>
+      <Suspense fallback={null}><AgentBriefing db={supabase} workspaceId={workspace.id} /></Suspense>
       <div className="grid gap-4 lg:grid-cols-2">
         {rows.map(row => <div key={row.key} className={row.wide ? "min-w-0 lg:col-span-2" : "min-w-0"}>{row.node}</div>)}
       </div>
