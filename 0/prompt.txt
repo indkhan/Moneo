@@ -1,0 +1,10 @@
+<task-notification>
+<task-id>af3eeebf1f12fa6b9</task-id>
+<tool-use-id>toolu_01PnnrUSw4mYt8irPJ1u81hE</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--codebases-Moneo\b6202dc6-5580-4cb6-a750-ba8fb47a9897\tasks\af3eeebf1f12fa6b9.output</output-file>
+<status>failed</status>
+<summary>Agent "Reimagine Import/Activity" failed: Agent terminated early due to an API error: You've hit your session limit · resets 7:10am (Europe/Berlin) (error type rate_limit, HTTP 429, request id REDACTED, model sent to the API: claude-opus-5-5)</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once. This agent's work so far is saved. The limit resets at 7:10am (Europe/Berlin). Once its requests are accepted again, send the agent a message (SendMessage) to let it continue from where it stopped instead of starting a new agent.</note>
+<result>Now the main import page rewrite.</result>
+<worktree><worktreePath>C:\codebases\Moneo\.claude\worktrees\agent-af3eeebf1f12fa6b9</worktreePath><worktreeBranch>worktree-agent-af3eeebf1f12fa6b9</worktreeBranch></worktree>
+</task-notification>
