@@ -2,22 +2,49 @@
 @import "tailwindcss";
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+/* One token set: light-dark() picks the value from color-scheme, which data-theme sets below.
+   "system" follows the OS in CSS, so there is no light flash before ThemePreference runs. */
 @theme {
   --font-sans: "Inter", Arial, sans-serif;
   --font-mono: "JetBrains Mono", Consolas, monospace;
   --radius-lg: 0.625rem;
-  --color-background: #f8f9ff;
-  --color-card: #ffffff;
-  --color-foreground: #0b1c30;
-  --color-muted: #eff4ff;
-  --color-muted-foreground: #57677c;
-  --color-border: #dce5f2;
-  --color-primary: #131b2e;
-  --color-primary-foreground: #ffffff;
-  --color-accent: #e5eeff;
-  --color-accent-foreground: #0b1c30;
-  --color-brand: #0051d5;
+  --color-background: light-dark(#f6f7f9, #0e0f12);
+  --color-card: light-dark(#ffffff, #16181d);
+  --color-foreground: light-dark(#16181d, #e7e9ee);
+  --color-muted: light-dark(#eff1f4, #1f2228);
+  --color-muted-foreground: light-dark(#5b6270, #9ca3af);
+  --color-border: light-dark(#e2e5ea, #2b2f37);
+  --color-primary: light-dark(#16181d, #e7e9ee);
+  --color-primary-foreground: light-dark(#ffffff, #16181d);
+  --color-accent: light-dark(#eaecf1, #252830);
+  --color-accent-foreground: light-dark(#16181d, #e7e9ee);
+  --color-brand: light-dark(#4353d6, #8e9cff);
+  --color-sidebar: light-dark(#fbfbfc, #121317);
+  --color-success: light-dark(#067647, #4ade80);
+  --color-success-soft: light-dark(#ecfdf3, #0f2a1c);
+  --color-warning: light-dark(#a74b06, #fbbf24);
+  --color-warning-soft: light-dark(#fffaeb, #2b2108);
+  --color-danger: light-dark(#b42318, #f87171);
+  --color-danger-soft: light-dark(#fef3f2, #2e1414);
+
+  /* Status shades pages already use follow the theme instead of a fixed palette. */
+  --color-red-700: var(--color-danger);
+  --color-red-800: var(--color-danger);
+  --color-red-50: var(--color-danger-soft);
+  --color-amber-700: var(--color-warning);
+  --color-amber-50: var(--color-warning-soft);
+  --color-emerald-700: var(--color-success);
+  --color-emerald-50: var(--color-success-soft);
+  --color-blue-700: var(--color-brand);
+  --color-blue-50: var(--color-accent);
+  --color-slate-100: var(--color-muted);
+  --color-slate-600: var(--color-muted-foreground);
+  --color-slate-700: var(--color-foreground);
 }
+
+:root { color-scheme: light dark; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 
 body {
   font-feature-settings: "cv11", "ss01";
@@ -31,23 +58,8 @@ body {
 fieldset { min-width: 0; }
 main { overflow-wrap: anywhere; }
 main select { min-width: 0; max-width: 100%; }
+dialog::backdrop { background: rgb(0 0 0 / 0.4); }
 
-html[data-theme="dark"] {
-  color-scheme: dark;
-  --color-background: #101827;
-  --color-card: #172235;
-  --color-foreground: #e7eef9;
-  --color-muted: #223147;
-  --color-muted-foreground: #b1c0d5;
-  --color-border: #3a4a62;
-  --color-primary: #d4e3ff;
-  --color-primary-foreground: #142038;
-  --color-accent: #263b5b;
-  --color-accent-foreground: #e7eef9;
-  --color-brand: #83b3ff;
-}
-
-html[data-theme="dark"] .bg-white { background-color: var(--color-card); }
 html[data-theme="dark"] .bg-brand.text-white { color: var(--color-primary-foreground); }
 
 .ai-markdown { min-width: 0; overflow-wrap: anywhere; font-size: 15px; line-height: 1.75; }
