@@ -21,20 +21,38 @@ function returnPath(form: FormData) {
   return `/money/transactions?${params}`;
 }
 
-export async function correctTransaction(form: FormData) {
+const quickEdit = z.object({
+  id: z.uuid(), version: z.coerce.number().int().min(0).max(2147483647), requestId: z.uuid(),
+  category: z.string().trim().max(100), originalCategory: z.string().trim().max(100),
+  note: z.string().max(2000), originalNote: z.string().max(2000),
+  merchant: z.union([z.uuid(), z.literal("")]), originalMerchant: z.union([z.uuid(), z.literal("")]),
+});
+
+/**
+ * Drawer quick edit. Category/note go through correct_transaction and the
+ * merchant through the bounded metadata batch, so each change keeps its own
+ * audited correction event and Undo. Unchanged fields write nothing.
+ */
+export async function quickEditTransaction(form: FormData) {
   const { supabase } = await requireWorkspace();
-  const id = String(form.get("id") ?? "");
-  const version = Number(form.get("version"));
-  if (!/^[0-9a-f-]{36}$/i.test(id) || !Number.isSafeInteger(version)) throw new Error("Invalid correction");
-  const { error } = await supabase.rpc("correct_transaction", {
-    p_transaction_id: id,
-    p_expected_version: version,
-    p_category_name: String(form.get("category") ?? ""),
-    p_note: String(form.get("note") ?? ""),
-  });
-  if (error) throw new Error(error.message);
+  const input = quickEdit.parse(Object.fromEntries(["id", "version", "requestId", "category", "originalCategory", "note", "originalNote", "merchant", "originalMerchant"]
+    .map(key => [key, String(form.get(key) ?? "")])));
+  let version = input.version;
+  if (input.category !== input.originalCategory || input.note !== input.originalNote) {
+    const { data, error } = await supabase.rpc("correct_transaction", {
+      p_transaction_id: input.id, p_expected_version: version, p_category_name: input.category, p_note: input.note,
+    });
+    if (error) throw new Error(error.message);
+    version = z.number().int().parse((data as { version: number }).version);
+  }
+  if (input.merchant !== input.originalMerchant) {
+    const { error } = await supabase.rpc("bulk_edit_transactions", {
+      p_rows: [{ id: input.id, version }], p_patch: { merchant_id: input.merchant || null }, p_request_id: input.requestId,
+    });
+    if (error) throw new Error(error.message);
+  }
   revalidatePath("/", "layout");
-  redirect(`${returnPath(form)}&transaction=${id}`);
+  redirect(`${returnPath(form)}&transaction=${input.id}`);
 }
 
 export async function undoCorrection(form: FormData) {
@@ -142,21 +160,6 @@ export async function undoTransactionBatch(form: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout");
   redirect(returnPath(form));
-}
-
-export async function markTransfer(form: FormData) {
-  const { supabase } = await requireWorkspace();
-  const { id, version } = linkInput(form);
-  const counterpartId = String(form.get("counterpartId") ?? "");
-  if (!uuidPattern.test(counterpartId) || counterpartId === id) throw new Error("Select a valid counterpart transaction");
-  const { error } = await supabase.rpc("mark_transaction_transfer", {
-    p_transaction_id: id,
-    p_expected_version: version,
-    p_counterpart_id: counterpartId,
-  });
-  if (error) throw new Error(error.message);
-  revalidatePath("/", "layout");
-  redirect(`${returnPath(form)}&transaction=${id}`);
 }
 
 export async function markRefund(form: FormData) {
