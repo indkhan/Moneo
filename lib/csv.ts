@@ -94,7 +94,7 @@ export function friendlyAccountName(filename: string): string {
   return Array.from(name).slice(0, 100).join("") || "Imported account";
 }
 
-const knownStatements: { format: string; headers: string[]; mapping: Omit<ImportMapping, "accountName" | "currencyCode">; routeName: (route: AccountRoute) => string }[] = [
+const knownStatements: { format: string; headers: string[]; mapping: Omit<ImportMapping, "accountName" | "currencyCode">; routeName: (route: Omit<AccountRoute, "accountName">) => string }[] = [
   { format: "Revolut", headers: ["Type", "Product", "Started Date", "Completed Date", "Description", "Amount", "Fee", "Currency", "State", "Balance"],
     mapping: { amountColumn: "Amount", currencyColumn: "Currency", amountSign: "signed", dateColumn: "Completed Date", descriptionColumn: "Description", dateFormat: "iso",
       productColumn: "Product", statusColumn: "State", balanceColumn: "Balance", typeColumn: "Type", feeColumn: "Fee" },
