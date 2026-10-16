@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadConversationHistory } from "./conversation-history";
+import { loadConversationHistory, loadThreads } from "./conversation-history";
 
 const workspace = "owned";
 const rows = Array.from({ length: 1000 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, workspace_id: workspace, conversation_id: "00000000-0000-4000-8000-000000000000", title: `Thread ${i}`, content: `Message ${i}`, created_at: "2026-01-01T00:00:00+00:00" }));
@@ -7,7 +7,7 @@ function client(fail: boolean | "selected" | "messages" = false) {
   return { from(table: string) {
     let data = table === "messages" ? [...rows] : rows.slice(0, 100);
     const query = {
-      select: () => query,
+      select: () => query, is: () => query,
       eq: (key: string, value: string) => { data = data.filter(row => row[key as keyof typeof row] === value); return query; },
       order: (key: string, options?: { ascending: boolean }) => { data.sort((a, b) => (options?.ascending === false ? -1 : 1) * (a[key as "id"].localeCompare(b[key as "id"]))); return query; },
       or: (filter: string) => { const id = filter.match(/id.lt.([0-9a-f-]+)/)?.[1]; const timestamp = filter.match(/created_at.lt.([^,]+)/)?.[1]; data = data.filter(row => row.created_at < timestamp! || (row.created_at === timestamp && row.id < id!)); return query; },
@@ -61,4 +61,23 @@ describe("saved conversation history", () => {
   it.each([true, "selected", "messages"] as const)("reports database failures at %s", async (failure) => {
     await expect(loadConversationHistory(client(failure) as never, workspace, rows[0].id)).rejects.toThrow("Could not load");
   });
+});
+
+it("searches live titles and message text with escaped wildcards", async () => {
+  const calls: [string, string, unknown[]][] = [];
+  const result = (data: unknown[]) => ({ data, error: null });
+  const searchClient = { from(table: string) {
+    const query: Record<string, unknown> = {};
+    for (const name of ["select", "eq", "is", "order", "limit", "in", "ilike"]) query[name] = (...args: unknown[]) => { calls.push([table, name, args]); return query; };
+    query.then = (resolve: (v: unknown) => unknown) => Promise.resolve(table === "messages"
+      ? result([{ conversation_id: "b" }, { conversation_id: "a" }])
+      : calls.at(-1)?.[1] === "in" ? result([{ id: "b", title: "Rent", created_at: "2026-02-01T00:00:00Z" }]) : result([{ id: "a", title: "100% rent", created_at: "2026-01-01T00:00:00Z" }])).then(resolve);
+    return query;
+  } };
+  const found = await loadThreads(searchClient as never, workspace, undefined, " 100%_rent* ");
+  expect(found.threads.map(thread => thread.id)).toEqual(["b", "a"]);
+  expect(found.threadsCursor).toBeNull();
+  expect(calls.filter(call => call[1] === "ilike").map(call => call[2][1])).toEqual(["%100\\%\\_rent_%", "%100\\%\\_rent_%"]);
+  expect(calls.filter(call => call[0] === "conversations" && call[1] === "is")).toHaveLength(2);
+  expect(calls.find(call => call[1] === "in")?.[2]).toEqual(["id", ["b"]]);
 });
