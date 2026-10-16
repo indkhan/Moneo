@@ -8,8 +8,9 @@ import { budgetProgress, type MonthlyLimit } from "@/lib/finance/spending-plans"
 import { type WorkspaceSettings } from "@/lib/settings";
 import type { evaluatePlan } from "@/lib/finance/model";
 import { dismissInsight } from "./actions";
-import { buildSourceCoverage, loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
-import { SourceCoverageDetails } from "@/app/source-coverage";
+import { buildSourceCoverage, loadSourceCoverageMetadata, sourceCoverageNeedsReview } from "@/lib/finance/source-coverage";
+
+const card = "min-w-0 rounded-xl border border-border bg-card p-5";
 
 type Projection = Awaited<ReturnType<typeof evaluatePlan>>;
 type Budget = { id: string; category_id: string; currency_code: string; limit_minor: string; enabled: boolean; rollover: boolean; rollover_from: string };
@@ -108,10 +109,16 @@ async function loadInsights({ db, workspaceId, currency, today, settings, projec
 export async function ImportantInsights(props: InsightPanelProps) {
   let insights: Awaited<ReturnType<typeof loadInsights>> | null = null;
   try { insights = await loadInsights(props); } catch { insights = null; }
-  const card = "rounded-xl border border-border bg-card p-6";
-  if (insights === null) return <section className={card}><h2 className="text-base font-semibold">Important insights</h2><p role="alert" className="mt-3 text-sm">Insights are unavailable right now. Your totals elsewhere are not affected.</p><Link href="/import" className="mt-3 inline-block text-sm font-medium text-brand hover:underline">Review imports</Link></section>;
-  return <section className={card}><h2 className="text-base font-semibold">Important insights</h2>
-    <ul className="mt-4 divide-y divide-border">
-      {insights.map(insight => <li key={insight.key} className="space-y-2 py-4 first:pt-0 last:pb-0"><div className="flex items-start justify-between gap-4"><Link className="text-sm font-medium underline" href={insight.href}>{insight.title}</Link><form action={dismissInsight}><input type="hidden" name="key" value={insight.key} /><input type="hidden" name="type" value={insight.type} /><button className="text-sm text-muted-foreground underline" aria-label={`Dismiss ${insight.title}`}>Dismiss</button></form></div><p className="text-sm text-muted-foreground">{insight.detail}</p><SourceCoverageDetails coverage={insight.sourceCoverage} /><p className="text-sm text-muted-foreground">As of {insight.asOf} · <span className="capitalize">{insight.type.replaceAll("_", " ")}</span></p></li>)}
-    </ul>{!insights.length ? <p className="mt-4 text-sm text-muted-foreground">Nothing to flag right now.</p> : null}<Link href="/settings" className="mt-4 inline-block text-sm text-muted-foreground underline hover:text-foreground">Customize insights</Link></section>;
+  const header = <div className="flex items-baseline justify-between gap-2"><h2 className="text-base font-semibold">Important insights</h2><Link href="/settings" className="text-sm text-muted-foreground hover:text-foreground hover:underline">Customize</Link></div>;
+  if (insights === null) return <section className={card}>{header}<p role="alert" className="mt-3 text-sm">Insights are unavailable right now. Your totals elsewhere are not affected.</p><Link href="/import" className="mt-3 inline-block text-sm font-medium text-brand hover:underline">Review imports</Link></section>;
+  return <section className={card}>{header}
+    <ul className="mt-2 divide-y divide-border">
+      {insights.map(insight => <li key={insight.key} className="flex items-start gap-3 py-2">
+        <div className="min-w-0 flex-1">
+          <Link className="block truncate text-sm font-medium hover:underline" href={insight.href}>{insight.title}</Link>
+          <p className="line-clamp-2 text-xs text-muted-foreground" title={insight.detail}><span className="capitalize">{insight.type.replaceAll("_", " ")}</span>{sourceCoverageNeedsReview(insight.sourceCoverage) ? " · sources incomplete" : ""} · {insight.detail}</p>
+        </div>
+        <form action={dismissInsight}><input type="hidden" name="key" value={insight.key} /><input type="hidden" name="type" value={insight.type} /><button className="rounded px-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Dismiss ${insight.title}`} title="Dismiss">×</button></form>
+      </li>)}
+    </ul>{!insights.length ? <p className="mt-3 text-sm text-muted-foreground">Nothing to flag right now.</p> : null}</section>;
 }

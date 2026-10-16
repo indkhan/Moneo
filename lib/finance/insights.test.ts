@@ -30,6 +30,7 @@ describe("deterministic evidence-backed insights", () => {
     }, { ...DEFAULT_INSIGHT_PREFERENCES, important_only: false, max_items: 20 });
     expect(new Set(insights.map(item => item.type))).toEqual(new Set(["spending_changes", "budget_pressure", "unusual_activity", "recurring_changes", "upcoming_obligations", "cash_shortfall", "goal_progress", "asset_debt", "data_quality"]));
     expect(insights.find(item => item.type === "unusual_activity")?.detail).toContain("EUR 300.00");
+    expect(insights.slice(0, 3).map(item => item.type)).toEqual(["cash_shortfall", "upcoming_obligations", "budget_pressure"]);
   });
   it("requires comparable samples and excludes ambiguous, pending and transfer evidence", () => {
     const rows = ["pending", "posted"].map((status, index) => ({ id: String(index), amount_minor: "-9007199254740993", currency_code: "USD", status, kind: "ordinary", review_reasons: ["source_type"], posted_on: "2026-10-02", category_id: null, merchant_id: null }));

@@ -40,9 +40,11 @@ test("explicit booked-balance review covers timestamped and date-only activity, 
     const page = await context.newPage();
     await page.goto("/");
     const card = page.locator("article").filter({ has: page.getByRole("heading", { name: "Synthetic reviewed cash", exact: true }) });
+    await card.getByText("Update balance", { exact: true }).click();
     await card.getByLabel("Synthetic reviewed cash balance", { exact: true }).fill("100.00");
     await card.getByRole("button", { name: "Save", exact: true }).click();
     await expect(async () => { await page.reload(); await expect(card).toContainText("ambiguous"); }).toPass({ timeout: 30_000 });
+    await card.getByText("Update balance", { exact: true }).click();
     await card.getByText(/Confirm today's activity/).click();
     await expect(card).toContainText("Synthetic morning posting");
     await expect(card).toContainText("Synthetic date-only posting");
@@ -61,6 +63,7 @@ test("explicit booked-balance review covers timestamped and date-only activity, 
       values(${workspace.id},${account},(clock_timestamp() at time zone 'Europe/Berlin')::date,clock_timestamp(),'Synthetic later posting',-250,'EUR')`;
     await page.reload();
     expect(await cash()).toMatchObject({ amount_minor: "9750", reconciled_rows: 1 });
+    await card.getByText("Update balance", { exact: true }).click();
     await card.getByText("Manual balance history and undo", { exact: true }).click();
     await card.getByRole("button", { name: "Undo balance", exact: true }).first().click();
     await expect(async () => { await page.reload(); await expect(card).toContainText("ambiguous"); }).toPass({ timeout: 30_000 });

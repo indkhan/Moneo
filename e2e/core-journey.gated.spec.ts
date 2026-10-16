@@ -112,9 +112,9 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
         page.getByRole("heading", { name: "Home" }),
       ).toBeVisible();
       await expect(page.getByText("Net worth", { exact: true })).toBeVisible();
-      await expect(page.getByText("Accepted ledger entries", { exact: true })).toBeVisible();
-      await expect(page.getByRole("link").filter({ hasText: "Accepted ledger entries" })).toContainText("2");
+      await expect(page.getByRole("region", { name: "Recent transactions" }).getByRole("link", { name: "All 2", exact: true })).toBeVisible();
       // Establish an independent known opening balance through the actual form.
+      await page.locator("article").filter({ has: page.getByRole("heading", { name: "Checking", exact: true }) }).getByText("Update balance", { exact: true }).click();
       await page.getByLabel("Checking balance", { exact: true }).fill("1000.00");
       await page.getByLabel("Checking balance", { exact: true }).locator("..").getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByText("EUR 1000.00", { exact: true }).first()).toBeVisible();
@@ -250,7 +250,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
       await expect(
         page.getByRole("heading", { name: "Home" }),
       ).toBeVisible();
-      await expect(page.getByRole("link").filter({ hasText: "Accepted ledger entries" })).toContainText("4");
+      await expect(page.getByRole("region", { name: "Recent transactions" }).getByRole("link", { name: "All 4", exact: true })).toBeVisible();
       await expect(page.getByRole("link", { name: /E2E Spending Explorer/ }).first()).toBeVisible();
     });
 

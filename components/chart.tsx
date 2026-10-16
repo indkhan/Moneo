@@ -5,15 +5,17 @@ import dynamic from "next/dynamic";
 // Loaded on the client only, so echarts never ships in the server render or blocks first paint.
 const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
 
-export function SpendingChart({ values }: { values: number[] }) {
+export function SpendingChart({ values, labels, height = 280 }: { values: number[]; labels?: string[]; height?: number }) {
   return (
     <ReactECharts
       option={{
-        xAxis: { type: "category", data: values.map((_, i) => `W${i + 1}`) },
+        grid: { left: 8, right: 8, top: 16, bottom: 8, containLabel: true },
+        tooltip: { trigger: "axis" },
+        xAxis: { type: "category", data: labels ?? values.map((_, i) => `W${i + 1}`) },
         yAxis: { type: "value" },
         series: [{ type: "bar", data: values }],
       }}
-      style={{ height: 280 }}
+      style={{ height }}
     />
   );
 }

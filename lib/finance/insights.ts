@@ -14,6 +14,7 @@ export function defaultInsightPreferences(currency: string): InsightPreferences 
   return { ...DEFAULT_INSIGHT_PREFERENCES, currency_code: currency, minimum_change_minor: (20n * 10n ** BigInt(minorDigits(currency))).toString() };
 }
 export type InsightPreferences = z.infer<typeof insightPreferencesSchema>;
+const SEVERITY: readonly (typeof INSIGHT_TYPES[number])[] = ["cash_shortfall", "upcoming_obligations", "budget_pressure", "unusual_activity", "spending_changes", "recurring_changes", "data_quality", "goal_progress", "asset_debt"];
 export type Insight = { key: string; type: typeof INSIGHT_TYPES[number]; priority: "important" | "context"; title: string; detail: string; href: string; asOf: string; sourceCoverage: SourceCoverage };
 export type InsightInput = {
   today: string; currency: string; locale?: string; transactions: (ReviewTransaction & { account_id?: string })[]; categories: { id: string; name: string }[];
@@ -75,5 +76,7 @@ export function buildInsights(input: InsightInput, preferences: InsightPreferenc
   for (const goal of input.goals) if (goal.savedMinor !== null && goal.savedAsOf !== null && goal.savedAsOf <= input.today && BigInt(goal.targetMinor) > 0n && BigInt(goal.savedMinor) * 10n >= BigInt(goal.targetMinor) * 9n) add("goal_progress", goal.id, [goal.savedMinor, goal.targetMinor, goal.savedAsOf], `${goal.name} recorded savings milestone`, `Recorded savings cover at least 90% of the target as of ${goal.savedAsOf}. Virtual reservations are separate and do not prove actual savings.`, "/plan", "context");
   for (const item of input.wealth.filter(item => item.asOf === input.today)) add("asset_debt", item.id, [item.amountMinor, item.currency, item.asOf], `${item.name} dated ${item.kind} context`, `${money(item.amountMinor, item.currency)} recorded on ${item.asOf}. Manual valuation evidence does not prove a trend or increase spendable cash.`, "/money/wealth", "context");
   for (const missing of [...new Set(input.missingInputs)].sort()) add("data_quality", missing, missing, "Financial evidence needs attention", missing, "/plan");
-  return results.sort((a, b) => (a.priority === "important" ? 0 : 1) - (b.priority === "important" ? 0 : 1) || a.type.localeCompare(b.type) || a.key.localeCompare(b.key)).slice(0, preferences.max_items);
+  // Most actionable first, so max_items never drops a shortfall behind lower-stakes items.
+  const severity = (type: Insight["type"]) => SEVERITY.indexOf(type);
+  return results.sort((a, b) => (a.priority === "important" ? 0 : 1) - (b.priority === "important" ? 0 : 1) || severity(a.type) - severity(b.type) || a.key.localeCompare(b.key)).slice(0, preferences.max_items);
 }
