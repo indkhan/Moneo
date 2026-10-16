@@ -121,4 +121,11 @@ describe("transaction filter params", () => {
     expect(toQueryParams(parsed, { includeCursor: true }).get("cursor")).toBe(`-5|${UUID2}`);
     expect(toQueryParams(parseTransactionParams({})).get("sort")).toBeNull();
   });
+
+  it("parses merchant, tag, spending group and display grouping from the URL", () => {
+    const parsed = parseTransactionParams({ merchant: UUID, tag: " Trip ", event: " Berlin ", group: "month" });
+    expect(parsed).toMatchObject({ merchantId: UUID, tag: "trip", eventName: "Berlin", group: "month" });
+    expect(parseTransactionParams({ merchant: "none", group: "evil", tag: "x".repeat(41) })).toEqual({ merchantUnknown: true, sort: "date-desc" });
+    expect(toQueryParams(parsed).toString()).toBe(`merchant=${UUID}&tag=trip&event=Berlin&group=month`);
+  });
 });

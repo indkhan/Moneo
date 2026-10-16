@@ -25,19 +25,19 @@ test("manual exact entries, reviewed bulk tags, batch undo and manual source res
     await page.waitForURL(/transaction=[0-9a-f-]{36}/, { timeout: 30_000 });
     const detail = page.getByRole("complementary", { name: "Transaction details" });
     await expect(detail.getByRole("heading", { name: description, exact: true })).toBeVisible();
-    await expect(detail.getByText(index ? "-2000 minor units EUR" : "-1234 minor units EUR", { exact: false })).toBeVisible();
+    await expect(detail.getByText(index ? "-EUR 20.00" : "-EUR 12.34", { exact: true })).toBeVisible();
     await expect(detail.locator("pre").first()).toContainText('"type": "manual"');
     await detail.getByRole("link", { name: "Close", exact: true }).click();
   }
-  await page.getByText("Bulk categories, tags and spending groups", { exact: true }).click();
-  const bulk = page.locator("details").filter({ has: page.getByText("Bulk categories, tags and spending groups", { exact: true }) });
-  for (const description of descriptions) await bulk.getByLabel(description, { exact: false }).check();
+  for (const description of descriptions) await page.getByLabel(`Select ${description}`, { exact: true }).check();
+  const bulk = page.getByRole("region", { name: "Bulk edit" });
   await bulk.getByRole("combobox", { name: "Change", exact: true }).selectOption("tags");
   await bulk.getByLabel("Tags, separated by commas").fill(`qa-${suffix}`);
   await bulk.getByRole("button", { name: "Preview changes", exact: true }).click();
   await expect(bulk.getByRole("region", { name: "Bulk impact preview" })).toContainText("2 selected transactions");
   await bulk.getByRole("button", { name: "Apply to 2 transactions", exact: true }).click();
-  await expect(page.getByText(JSON.stringify({ tags: [`qa-${suffix}`] }), { exact: true })).toHaveCount(1, { timeout: 30_000 });
+  await expect(page.getByText(`Tags set to qa-${suffix}`, { exact: true })).toHaveCount(1, { timeout: 30_000 });
+  await page.getByRole("button", { name: "More", exact: true }).click();
   await page.getByLabel("Filter by tag").fill(`qa-${suffix}`);
   await page.getByRole("button", { name: "Apply filters", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`tag=qa-${suffix}`));

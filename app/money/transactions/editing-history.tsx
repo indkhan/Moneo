@@ -1,8 +1,9 @@
 import { requireWorkspace } from "@/lib/auth";
 import { formatMoney as formatCurrency } from "@/lib/finance/format";
 import { restoreManualTransaction, undoManualTransaction, undoTransactionBatch } from "./actions";
+import { describePatch } from "./labels";
 
-export async function EditingHistory({ query }: { query: string }) {
+export async function EditingHistory({ query, names }: { query: string; names: Parameters<typeof describePatch>[1] }) {
   const { supabase, workspace } = await requireWorkspace();
   const formatMoney=(amount:Parameters<typeof formatCurrency>[0],currency:string)=>formatCurrency(amount,currency,workspace.locale);
   const [{ data: entries, error: entryError }, { data: batches, error: batchError }] = await Promise.all([
@@ -30,7 +31,7 @@ export async function EditingHistory({ query }: { query: string }) {
       const selection = batch.selection as { id: string }[];
       const targets = selection.filter(row => versions.has(row.id)).map(row => ({ id: row.id, version: versions.get(row.id)! }));
       return <li key={batch.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 text-sm">
-        <div><p>Batch · {selection.length} transactions · {new Date(batch.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{batch.undone ? " · Undone" : ""}</p><p className="text-muted-foreground">{JSON.stringify(batch.patch)}</p></div>
+        <div><p>Bulk edit · {selection.length} transactions · {new Date(batch.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{batch.undone ? " · Undone" : ""}</p><p className="text-muted-foreground">{describePatch(batch.patch, names)}</p></div>
         {!batch.undone && targets.length === selection.length && <form action={undoTransactionBatch}><input type="hidden" name="batchId" value={batch.id} /><input type="hidden" name="rows" value={JSON.stringify(targets)} /><input type="hidden" name="query" value={query} /><button className="underline">Undo batch</button></form>}
       </li>;
     })}</ul>

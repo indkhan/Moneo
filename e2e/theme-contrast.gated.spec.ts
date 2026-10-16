@@ -119,18 +119,18 @@ test("money and import text stays readable in persisted light, dark and system t
 
     async function expectMoneyReadable(theme: string) {
       await page.goto("/money/transactions");
-      await expect(page.getByText("2 shown", { exact: true })).toBeVisible();
+      await expect(page.getByText("2 transactions", { exact: true })).toBeVisible();
       await expectReadable(page, page.getByRole("link", { name: outDesc }), `${theme} description`);
       await expectReadable(page, outRow.locator("td").last(), `${theme} negative amount`);
       await expectReadable(page, inRow.locator("td").last(), `${theme} positive amount`);
       await expectReadable(page, page.getByLabel("Search descriptions"), `${theme} filter input`);
       await expectReadable(page, page.getByRole("link", { name: viewName }), `${theme} saved-view label`);
-      await expectReadable(page, page.getByText("2 shown", { exact: true }), `${theme} muted count`);
+      await expectReadable(page, page.getByText("2 transactions", { exact: true }), `${theme} muted count`);
       await expectReadable(page, page.getByRole("columnheader", { name: "Description" }), `${theme} table header`);
-      await expectReadable(page, outRow.getByText("posted", { exact: true }), `${theme} status badge`);
-      await expectReadable(page, outRow.getByText("ordinary", { exact: true }), `${theme} kind badge`);
+      await expectReadable(page, outRow.getByText("Regular", { exact: true }), `${theme} type label`);
+      await expectReadable(page, page.getByText("Group", { exact: true }), `${theme} group toolbar`);
       await page.getByRole("link", { name: viewName }).click();
-      await expect(page.getByText("(open)", { exact: true })).toBeVisible();
+      await expect(page.getByText(`View: ${viewName}`, { exact: true })).toBeVisible();
       await page.goto(`/money/transactions?view=${badView}`);
       await expectReadable(page, page.locator('section[aria-label="Invalid saved view"]').getByRole("alert"), `${theme} saved-view error`);
     }
@@ -149,7 +149,7 @@ test("money and import text stays readable in persisted light, dark and system t
     await expectMoneyReadable("light");
     await expectPlanReadable("light");
     await page.goto("/money/transactions");
-    await expect(page.getByText("2 shown", { exact: true })).toBeVisible();
+    await expect(page.getByText("2 transactions", { exact: true })).toBeVisible();
     await page.screenshot({ path: ".qa/mne044-transactions-light.png" });
     await page.goto("/settings");
     const appearance = page.getByRole("combobox", { name: "Appearance", exact: true });
@@ -164,7 +164,7 @@ test("money and import text stays readable in persisted light, dark and system t
     await expect(page.getByRole("heading", { name: "Import financial data" })).toBeVisible();
     await expectReadable(page, page.getByText("Choose CSV or XLSX statements.", { exact: false }), "dark import muted");
     await page.goto("/money/transactions");
-    await expect(page.getByText("2 shown", { exact: true })).toBeVisible();
+    await expect(page.getByText("2 transactions", { exact: true })).toBeVisible();
     await page.screenshot({ path: ".qa/mne044-transactions-dark.png", fullPage: true });
     await page.goto("/settings");
     await page.getByRole("combobox", { name: "Appearance", exact: true }).selectOption(originalTheme);
