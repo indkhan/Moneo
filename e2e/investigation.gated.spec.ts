@@ -89,8 +89,8 @@ test("owned September/August investigation uses exact splits/refunds, complete s
     await page.goto(`/money/investigations?${new URLSearchParams({ query: JSON.stringify(query) })}`);
     await expect(page.getByRole("heading", { name: "Investigate your money" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Comparison results" })).toContainText("EUR 25.30");
-    await expect(page.getByRole("region", { name: "Interpreted scope" })).toContainText("exclude events: Berlin trip");
-    await expect(page.getByRole("listbox", { name: "Include (empty means all)" }).first()).toHaveValues([account]);
+    await expect(page.getByRole("region", { name: "Interpreted scope" })).toContainText("Leaving out eventsBerlin trip");
+    await expect(page.getByRole("listbox", { name: "Only these (empty means all)" }).first()).toHaveValues([account]);
     await page.screenshot({ path: ".qa/mne017-investigation-desktop.png", fullPage: true });
     await page.getByRole("link", { name: "Open records (28)" }).click();
     await expect(page.getByRole("heading", { name: "Supporting records (28)" })).toBeVisible();
