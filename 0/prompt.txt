@@ -1,0 +1,1 @@
+ok now that works but now it shows sync started new rows apear in impport hsitory but does not show anything
