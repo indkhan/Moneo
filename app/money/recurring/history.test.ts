@@ -1,5 +1,8 @@
 import { expect, it, vi } from "vitest";
-import RecurringPage from "./page";
+import { DetectedPatterns } from "./detected";
+import { requireWorkspace } from "@/lib/auth";
+import type { SupabaseClient } from "@supabase/supabase-js";
+const RecurringPage = async () => { const { supabase, workspace } = await requireWorkspace(); return DetectedPatterns({ supabase: supabase as unknown as SupabaseClient, workspace, names: {} }); };
 const reads: {table: string; columns?: string; orders: string[]; cursor?: string}[] = [];
 let stored: {id: string; account_id: string; currency_code: string; cadence: string; normalized_label: string; status: string; assumption?: {source: string; confirmed: boolean; enabled: boolean; removed_at: string | null}; recurring_series_transactions: {transaction_id: string}[]}[] = [];
 const renderedText = (node: unknown): string => {
