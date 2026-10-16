@@ -17,6 +17,8 @@ import { evaluateInvestigationScenario, investigationDetail, investigationDetail
 import { captureToolEvidence } from "@/lib/finance/capture-evidence";
 import type { EvidenceReceipt } from "@/lib/finance/evidence-receipts";
 import { FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/finance/tool-evidence";
+import { answerChart, withAnswerChart } from "@/lib/ai/answer-chart";
+import type { ChatStreamEvent } from "@/lib/ai/use-chat-request";
 
 const inputSchema = z.object({
   conversationId: z.uuid(),
@@ -35,8 +37,16 @@ export async function POST(request: Request) {
   if (!process.env.OPENROUTER_API_KEY) return Response.json({ error: "AI is not configured" }, { status: 503 });
   const { conversationId, requestId, message, context: capturedContext } = parsed.data;
   const { supabase, workspace, settings } = context;
-  const existing = await supabase.from("conversations").select("id").eq("workspace_id", workspace.id).eq("id", conversationId).maybeSingle();
+  // Model resolution and earlier history do not depend on the claim; start them with the ownership check.
+  const modelPromise = modelForSettings(settings);
+  const historyPromise = Promise.resolve(supabase.from("messages").select("role, content, context")
+    .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false }).limit(19));
+  modelPromise.catch(() => {});
+  historyPromise.catch(() => {});
+  const existing = await supabase.from("conversations").select("id, deleted_at").eq("workspace_id", workspace.id).eq("id", conversationId).maybeSingle();
   if (existing.error) throw existing.error;
+  if (existing.data?.deleted_at) return Response.json({ error: "Conversation was deleted" }, { status: 404 });
   if (!existing.data) {
     const { error } = await supabase.from("conversations").insert({ id: conversationId, workspace_id: workspace.id, title: message.slice(0, 80) });
     if (error && error.code !== "23505") return Response.json({ error: "Conversation unavailable" }, { status: 403 });
@@ -53,12 +63,14 @@ export async function POST(request: Request) {
     await supabase.rpc("cancel_chat_request", { p_request_id: requestId });
     return Response.json({ status: "canceled" }, { status: 409 });
   }
+  const streaming = request.headers.get("accept")?.includes("application/x-ndjson") ?? false;
+  async function complete(emit: (event: ChatStreamEvent) => void): Promise<[unknown, number]> {
   try {
-  const { data: history, error: historyError } = await supabase.from("messages").select("role, content, context")
-    .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
-    .order("created_at", { ascending: false }).limit(20);
+  const { data: history, error: historyError } = await historyPromise;
   if (historyError) throw historyError;
-  const modelMessages = (history ?? []).filter(item => settings.ai_data_scopes.length === 4 || item.role === "user").reverse().map(item => ({
+  // History was read before the claim saved this message, so append it exactly as the claim stores it.
+  const submitted = { role: "user", content: message, context: capturedContext ?? {} };
+  const modelMessages = [...(history ?? []).filter(item => settings.ai_data_scopes.length === 4 || item.role === "user").reverse(), submitted].map(item => ({
     role: item.role as "user" | "assistant",
     content: item.context ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content,
   }));
@@ -89,7 +101,11 @@ export async function POST(request: Request) {
     return Object.fromEntries(Object.entries(tools).map(([name, definition]) => [name, { ...definition,
       execute: async (input: unknown, options: ToolExecutionOptions<unknown>) => {
         const execute = definition.execute as (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>;
-        const output = await execute(input, options);
+        emit({ type: "tool", id: options?.toolCallId, name, state: "running" });
+        let output: unknown;
+        try { output = await execute(input, options); }
+        catch (cause) { emit({ type: "tool", id: options?.toolCallId, name, state: "failed" }); throw cause; }
+        emit({ type: "tool", id: options?.toolCallId, name, state: "done" });
         const latest = await requireWorkspace();
         if (latest.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
         if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Financial evidence service is not configured");
@@ -105,7 +121,7 @@ export async function POST(request: Request) {
       },
     }])) as T;
   }
-    const model = await modelForSettings(settings);
+    const model = await modelPromise;
     const result = await generateText({
       model,
       abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
@@ -183,21 +199,32 @@ export async function POST(request: Request) {
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (request.signal.aborted) throw new Error("Request canceled");
     requireAiScope(current.settings, ...evidenceReceipts.flatMap(receipt => receipt.scopes));
-    const answer = publication.body;
+    const answer = withAnswerChart(publication.body, answerChart(publication.accepted, evidenceReceipts, workspace.id));
+    const toolsUsed = [...new Set((result.steps ?? []).flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [toolResult.toolName] : [])))];
+    // The verified answer is final; show it while the durable publication below completes.
+    emit({ type: "answer", conversationId, answer, toolsUsed });
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Verified chat publication service is not configured");
     const publicationService = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
     const finished = await publicationService.rpc("finish_verified_chat_request", { p_request_id: requestId, p_actor_id: current.user.id, p_workspace_id: workspace.id, p_content: answer,
       p_receipt_ids: evidenceReceipts.map(receipt => receipt.id), p_scopes: [...new Set(evidenceReceipts.flatMap(receipt => receipt.scopes))], p_usage: reportedUsage(model.modelId, result.totalUsage) });
     if (finished.error) throw finished.error;
-    if (finished.data !== "completed") return Response.json({ status: finished.data, error: `Request is ${finished.data}` }, { status: 409 });
-    const toolsUsed = [...new Set((result.steps ?? []).flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [toolResult.toolName] : [])))];
-    return Response.json({ conversationId, answer, toolsUsed });
+    if (finished.data !== "completed") return [{ status: finished.data, error: `Request is ${finished.data}` }, 409];
+    return [{ conversationId, answer, toolsUsed }, 200];
   } catch (error) {
     const failure = error instanceof Error ? error.message : "AI request failed";
     if (request.signal.aborted) await supabase.rpc("cancel_chat_request", { p_request_id: requestId });
     else await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "failed", p_content: failure.slice(0, 500) });
-    return Response.json({ error: error instanceof Error ? error.message : "AI request failed" }, { status: 502 });
+    return [{ error: error instanceof Error ? error.message : "AI request failed" }, 502];
   }
+  }
+  if (!streaming) { const [body, status] = await complete(() => {}); return Response.json(body, { status }); }
+  // Opt-in NDJSON: tool progress and the verified answer arrive before publication finishes.
+  const encoder = new TextEncoder();
+  return new Response(new ReadableStream({ start(controller) {
+    const write = (event: ChatStreamEvent) => { try { controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); } catch { /* the reader went away; work continues */ } };
+    write({ type: "started" });
+    void complete(write).then(([body, status]) => { write({ type: "result", status, body }); try { controller.close(); } catch { /* already closed */ } });
+  } }), { headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" } });
 }
 
 
