@@ -10,7 +10,7 @@ import { evaluateForecast } from "@/lib/finance/tools";
 vi.mock("@/lib/finance/model", () => ({ evaluatePlan: vi.fn() }));
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("./history", () => ({ PlanningHistory: () => null }));
-vi.mock("./goal-plan", () => ({ GoalPlanEditor: () => null, GoalPlanHistory: () => null }));
+vi.mock("./goal-plan", () => ({ GoalPlanEditor: () => null, GoalPlanHistory: () => null, ReservationHistory: () => null }));
 vi.mock("./preferences", () => ({ ForecastPreferenceEditor: () => null }));
 vi.mock("./scenarios", () => ({ ScenarioEditor: () => null, ScenarioHistory: () => null }));
 vi.mock("./model-sources", () => ({ ModelSources: () => null }));
@@ -56,14 +56,14 @@ it("renders checking's dated EUR 400 shortfall and bill even while aggregate cas
   });
 });
 it.each([["2026-10-08", false], ["2026-10-09", true]])("renders only timely explicit paired funding as resolved: %s", async (date, shortfall) => {
-  const html = await render({ account: "checking", horizon: "3", fundingFrom: "savings", fundingDate: date, fundingMinor: "40000" });
+  const html = await render({ account: "checking", horizon: "3", fundingFrom: "savings", fundingDate: date, funding: "400.00" });
   expect(html.includes("Checking funding shortfall: EUR 400.00")).toBe(shortfall);
   expect(html).toContain("EUR 600.00"); expect(html).toContain(`value="${date}"`);
-  expect(html).toContain('value="40000"'); expect(html).toContain("Hypothetical funding");
+  expect(html).toContain('value="400.00"'); expect(html).toContain("Hypothetical funding");
   const scenarioLink = [...html.matchAll(/href="([^"]*)"/g)].map(match => match[1].replaceAll("&amp;", "&")).find(href => href.includes("scenario=00000000"))!;
   const query = new URL(scenarioLink, "https://synthetic.test").searchParams;
   expect(query.get("account")).toBe("checking"); expect(query.get("horizon")).toBe("3");
-  expect(query.get("fundingDate")).toBe(date); expect(query.get("fundingMinor")).toBe("40000");
+  expect(query.get("fundingDate")).toBe(date); expect(query.get("funding")).toBe("400.00");
   expect(input.events).toHaveLength(1);
 });
 it("does not turn incomplete balance evidence into an available forecast", async () => {
@@ -75,7 +75,7 @@ it("does not turn incomplete balance evidence into an available forecast", async
 });
 it("does not select pooled spending or discard unknown account and invalid funding input", async () => {
   expect(await render()).toContain("Choose a paying account");
-  const html = await render({ account: "missing", fundingFrom: "savings", fundingDate: "2026-10-09", fundingMinor: "bad" });
+  const html = await render({ account: "missing", fundingFrom: "savings", fundingDate: "2026-10-09", funding: "bad" });
   expect(html).toContain("Choose a current liquid account"); expect(html).toContain('value="bad"');
   expect(html).toContain("Funding was not applied");
 });
@@ -106,4 +106,13 @@ it("shows the retained calendar anchor after an enabled toggle makes a schedule 
   const html=await render();
   expect(html).toContain("Calendar anchor: 2025-10-31");
   expect(html).toContain('value="2026-04-30"');
+});
+
+it("lists upcoming obligations under the forecast chart and compares a scenario with the real plan", async () => {
+  const html = await render({ horizon: "3" });
+  expect(html).toContain("Upcoming obligations"); expect(html).toContain("Tomorrow bill");
+  expect(html).toContain("Expected at horizon"); expect(html).not.toContain("Compared with the real plan");
+  const withScenario = await render({ horizon: "3", scenario: "00000000-0000-4000-8000-000000000001" });
+  expect(withScenario).toContain("Real plan compared with Test scenario");
+  expect(withScenario).toContain("Compared with the real plan: EUR 0.00 change in spare cash over 3 days.");
 });

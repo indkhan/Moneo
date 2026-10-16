@@ -27,8 +27,10 @@ function token(name: string, fallback: string) {
 }
 
 // Approximate chart coordinates (major units as numbers); exact amounts are rendered by the caller.
-export function ForecastChart({ days, obligations, currency, label }: {
+export function ForecastChart({ days, obligations, currency, label, compare }: {
   days: ForecastChartDay[]; obligations: ForecastChartObligation[]; currency: string; label: string;
+  /** Optional second expected line, e.g. the real plan while a what-if scenario is shown. */
+  compare?: { name: string; values: number[] };
 }) {
   const brand = token("--color-brand", "#0051d5"), muted = token("--color-muted-foreground", "#57677c"), border = token("--color-border", "#dce5f2");
   const expectedOn = new Map(days.map(day => [day.date, day.expected]));
@@ -39,7 +41,7 @@ export function ForecastChart({ days, obligations, currency, label }: {
         const day = days[items[0]?.dataIndex];
         if (!day) return "";
         const due = obligations.filter(item => item.date === day.date).map(item => `\n${item.name}: ${item.amount}`).join("");
-        return `${day.date}\nExpected ${currency} ${day.expected.toFixed(2)}\nConservative ${currency} ${day.conservative.toFixed(2)}${due}`;
+        return `${day.date}\nExpected ${currency} ${day.expected.toFixed(2)}\nConservative ${currency} ${day.conservative.toFixed(2)}${compare ? `\n${compare.name} ${currency} ${compare.values[items[0].dataIndex]?.toFixed(2)}` : ""}${due}`;
       } },
       xAxis: { type: "category", boundaryGap: false, data: days.map(day => day.date), axisLabel: { color: muted }, axisLine: { lineStyle: { color: border } } },
       yAxis: { type: "value", scale: true, axisLabel: { color: muted }, splitLine: { lineStyle: { color: border, type: "dashed" } } },
@@ -48,6 +50,7 @@ export function ForecastChart({ days, obligations, currency, label }: {
         { name: "Range", type: "line", stack: "band", symbol: "none", lineStyle: { opacity: 0 }, areaStyle: { color: brand, opacity: 0.12 },
           data: days.map(day => day.optimistic - day.conservative) },
         { name: "Expected", type: "line", symbol: "none", lineStyle: { color: brand, width: 2.5 }, data: days.map(day => day.expected) },
+        ...(compare ? [{ name: compare.name, type: "line", symbol: "none", lineStyle: { color: muted, width: 1.5, type: "dashed" }, data: compare.values }] : []),
         { name: "Obligations", type: "scatter", symbolSize: 9, itemStyle: { color: muted }, tooltip: { show: false },
           data: [...new Set(obligations.map(item => item.date))].filter(date => expectedOn.has(date)).map(date => [date, expectedOn.get(date)]) },
       ],

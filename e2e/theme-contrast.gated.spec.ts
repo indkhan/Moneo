@@ -140,7 +140,7 @@ test("money and import text stays readable in persisted light, dark and system t
     // A balance-free workspace deterministically shows "Forecast unavailable".
     async function expectPlanReadable(theme: string) {
       await page.goto("/plan");
-      await expect(page.getByRole("heading", { name: "Financial horizon & runway" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Plan", exact: true })).toBeVisible();
       await expectReadable(page, page.getByText("Explore your forecast, cash reservations, and changes to your plan.", { exact: true }), `${theme} plan subtitle`);
       await expect(page.getByText("Forecast unavailable", { exact: false })).toBeVisible();
       await expectReadable(page, page.getByText("Forecast unavailable", { exact: false }), `${theme} plan unavailable`);

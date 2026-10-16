@@ -132,7 +132,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
     await test.step("create a goal and view forecast availability", async () => {
       await page.goto("/plan");
       await expect(
-        page.getByRole("heading", { name: "Financial horizon & runway" }),
+        page.getByRole("heading", { name: "Plan", exact: true }),
       ).toBeVisible();
       await page.getByPlaceholder("Goal name").fill("E2E Japan");
       await page.getByPlaceholder("Target amount").fill("3500.00");
