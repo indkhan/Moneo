@@ -1,0 +1,1 @@
+Yes, apply migration 202610150001_reset_workspace.sql to my Supabase database, then merge both branches into rn and push.
