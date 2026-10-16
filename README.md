@@ -33,7 +33,7 @@ After saving the settings, request a new sign-in email from the deployed website
 Moneo can sync booked transactions and balances from EU banks (for example Revolut and Commerzbank) through [Enable Banking](https://enablebanking.com). Its restricted mode is free for personal use and covers the accounts you link yourself. Each sync is written as an ordinary import, so it shows in import history and can be reviewed and undone.
 
 1. Sign up at the [Enable Banking control panel](https://enablebanking.com/cp/) and create a new application in the **Production** environment. A new production app runs in restricted mode, which limits it to linked accounts.
-2. Set the redirect URL to `http://localhost:3000/api/bank/callback` (add `https://<your-app>/api/bank/callback` for a deployment).
+2. Set the redirect URL to `https://<your-app>/api/bank/callback`. Production apps accept only `https://` redirects, so `http://localhost` is rejected. To try the flow locally, register a second app in the **Sandbox** environment (it only reaches mock banks) with `http://localhost:3000/api/bank/callback`.
 3. Let the control panel generate the key pair and keep the downloaded private key (`<application-id>.pem`), or upload your own public certificate and keep its private key.
 4. In the control panel, link your own accounts to the application (activate it by linking accounts). Only linked accounts can be synced.
 5. Set the environment variables in `.env`:
