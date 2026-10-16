@@ -1,0 +1,1 @@
+Yes, apply migration 202610160003_conversation_management.sql to my Supabase database.
