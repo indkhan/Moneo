@@ -1,0 +1,1 @@
+do a new session ro sessins  to make it really snappy each thing the home page load ai chats old chats and others sections all should be really optimized so running aplicaiton and all is fun do that and also remove dead code so the codebase is clean
