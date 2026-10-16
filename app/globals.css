@@ -58,7 +58,6 @@ body {
 fieldset { min-width: 0; }
 main { overflow-wrap: anywhere; }
 main select { min-width: 0; max-width: 100%; }
-dialog::backdrop { background: rgb(0 0 0 / 0.4); }
 
 html[data-theme="dark"] .bg-brand.text-white { color: var(--color-primary-foreground); }
 
