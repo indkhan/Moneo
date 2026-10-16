@@ -4,6 +4,8 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { formatInputAmount } from "@/lib/finance/format";
 import { parseManualAmount } from "./input";
+import { compileFilterQuery } from "./nl-filter";
+import { calendarDate } from "@/lib/finance/calendar";
 
 type Named = { id: string; name: string };
 export type FilterValues = Partial<Record<"q" | "from" | "to" | "account" | "category" | "merchant" | "status" | "kind" | "direction" | "tag" | "event" | "minAmount" | "maxAmount" | "sort" | "group", string>>;
@@ -15,8 +17,8 @@ const control = "min-h-9 w-full rounded-lg border border-border bg-card px-2.5 p
  * decimals in the account (or display) currency and converted exactly to
  * minor units before they reach the URL.
  */
-export function FilterBar({ values, accounts, categories, merchants, displayCurrency }: {
-  values: FilterValues; accounts: (Named & { currency_code: string })[]; categories: Named[]; merchants: Named[]; displayCurrency: string;
+export function FilterBar({ values, accounts, categories, merchants, displayCurrency, timezone = "UTC" }: {
+  values: FilterValues; accounts: (Named & { currency_code: string })[]; categories: Named[]; merchants: Named[]; displayCurrency: string; timezone?: string;
 }) {
   const router = useRouter();
   const [account, setAccount] = useState(values.account ?? "");
@@ -41,7 +43,21 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
     router.push(`/money/transactions${params.size ? `?${params}` : ""}`);
   }
 
-  return <form onSubmit={submit} role="search" aria-label="Filter transactions" className="space-y-2 rounded-xl border border-border bg-card p-3">
+  function ask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const text = String(new FormData(event.currentTarget).get("ask") ?? "").trim();
+    if (!text) return;
+    const { params } = compileFilterQuery(text, { today: calendarDate(new Date(), timezone), currency, accounts, categories, merchants });
+    const query = new URLSearchParams(Object.entries(params).filter((entry): entry is [string, string] => Boolean(entry[1])));
+    router.push(`/money/transactions${query.size ? `?${query}` : ""}`);
+  }
+
+  return <div className="space-y-2">
+  <form onSubmit={ask} role="search" aria-label="Describe transactions" className="flex gap-2">
+    <input name="ask" maxLength={200} placeholder="Describe what to find, e.g. coffee over 5 last month · income this year · biggest groceries by merchant" aria-label="Describe what to find" className={`${control} flex-1`} />
+    <button className="min-h-9 whitespace-nowrap rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted">Find</button>
+  </form>
+  <form onSubmit={submit} role="search" aria-label="Filter transactions" className="space-y-2 rounded-xl border border-border bg-card p-3">
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,2fr)_repeat(5,minmax(0,1fr))_auto]">
       <input id="ledger-search" name="q" defaultValue={values.q} placeholder="Search descriptions  ( / )" aria-label="Search descriptions" maxLength={200} className={control} />
       <input name="from" type="date" defaultValue={values.from} aria-label="From date" className={control} />
@@ -65,5 +81,6 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
     </div>
     {more && <p className="text-xs text-muted-foreground">Amounts are signed: spending is negative, e.g. -50 to -10 finds purchases between 10 and 50.</p>}
     {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
-  </form>;
+  </form>
+  </div>;
 }
