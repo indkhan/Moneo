@@ -1,0 +1,10 @@
+<task-notification>
+<task-id>a5602af2744ac8654</task-id>
+<tool-use-id>toolu_01FBZLk1SwDNJfzZiHJvqiFq</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--codebases-Moneo\b6202dc6-5580-4cb6-a750-ba8fb47a9897\tasks\a5602af2744ac8654.output</output-file>
+<status>failed</status>
+<summary>Agent "Reimagine artifact layer" failed: Agent terminated early due to an API error: You've hit your session limit · resets 7:10am (Europe/Berlin) (error type rate_limit, HTTP 429, request id req_011Cg4yKosBpiPrxD8E51CKM, model sent to the API: claude-opus-5-5)</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once. This agent's work so far is saved. The limit resets at 7:10am (Europe/Berlin). Once its requests are accepted again, send the agent a message (SendMessage) to let it continue from where it stopped instead of starting a new agent.</note>
+<result>Now update the route to use it.</result>
+<worktree><worktreePath>C:\codebases\Moneo\.claude\worktrees\agent-a5602af2744ac8654</worktreePath><worktreeBranch>worktree-agent-a5602af2744ac8654</worktreeBranch></worktree>
+</task-notification>
