@@ -8,6 +8,7 @@ import { loadWorkspaceSettings, requireAiScope } from "@/lib/settings";
 import { stableId } from "@/lib/import-row";
 import { batchDecisions, candidateRowsSchema, stageImportRows } from "@/lib/import-batch";
 import { dispatchFinancialReview } from "@/lib/finance/start-review";
+import { startAgentRun } from "@/lib/agents/dispatch";
 
 function checked<T>(result: { data: T | null; error: { message: string } | null }): T | null {
   if (result.error) throw new Error(result.error.message);
@@ -26,7 +27,19 @@ export async function importFile(importId: string, workspaceId: string, rowCount
     await failImport(importId, workspaceId, String(error), runVersion);
     return;
   }
+  await startAgentTeam(importId, workspaceId);
   await maybeStartFirstReview(importId, workspaceId);
+}
+
+// The agent team starts the moment an import's rows are in. It only proposes;
+// a failure here never affects the completed import.
+async function startAgentTeam(importId: string, workspaceId: string) {
+  "use step";
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
+  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  const imported = checked(await db.from("imports").select("new_rows").eq("id", importId).eq("workspace_id", workspaceId).single()) as { new_rows: number | null };
+  if (!imported.new_rows) return;
+  await startAgentRun(db, workspaceId, { importId }).catch(error => console.error("Agent team did not start", error));
 }
 
 async function prepareImport(importId: string, workspaceId: string, rowCount: number, runVersion: number) {

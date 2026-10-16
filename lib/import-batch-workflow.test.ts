@@ -47,12 +47,12 @@ it.each([100, 1000, 10000])("downloads and normalizes %i rows once with two RPCs
   expect(fixture.requests.filter(name => name === "stage_import_rows")).toHaveLength(1);
   expect(fixture.stage).toHaveLength(total);
   expect(parses).toHaveBeenCalledTimes(1); expect(normalizations).toHaveBeenCalledTimes(1);
-  expect(fixture.requests).toHaveLength(6 + 2 * Math.ceil(total / 250));
+  expect(fixture.requests).toHaveLength(7 + 2 * Math.ceil(total / 250)); // includes the agent-team start check
   fixture.requests = [];
   await importFile("import", "workspace", total);
   expect(fixture.downloads).toBe(1);
   expect(parses).toHaveBeenCalledTimes(1); expect(normalizations).toHaveBeenCalledTimes(1);
-  expect(fixture.requests).toHaveLength(3 + 2 * Math.ceil(total / 250));
+  expect(fixture.requests).toHaveLength(4 + 2 * Math.ceil(total / 250));
 });
 
 it("stops at a committed batch boundary and resumes from retained staging with a fenced run", async () => {

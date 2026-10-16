@@ -78,7 +78,7 @@ grant select on public.agent_runs, public.agent_tasks, public.agent_proposals to
 -- Owners decide proposals and request cancellation; agents write through the service role only.
 grant update (status, result, decided_at) on public.agent_proposals to authenticated;
 grant update (cancel_requested, updated_at) on public.agent_runs to authenticated;
-grant select, insert, update on public.agent_runs, public.agent_tasks, public.agent_proposals to service_role;
+grant select, insert, update, delete on public.agent_runs, public.agent_tasks, public.agent_proposals to service_role;
 
 create policy own_agent_runs on public.agent_runs for select to authenticated using (public.owns_workspace(workspace_id));
 create policy own_agent_runs_cancel on public.agent_runs for update to authenticated
