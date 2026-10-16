@@ -77,7 +77,6 @@ it("does not replace an authoritative over-bound native cost with a cheaper gene
 
 import React, { cloneElement, isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { TripStateForm } from "../trip-state-form";
 import { DatedTripForm } from "../dated-trip-form";
 import { defaultTripScenario, evaluateTripScenario } from "@/lib/finance/trip-scenario";
 import { tripForArtifact, tripEditorForArtifact, goalsForArtifact } from "@/lib/artifacts/finance-sdk";
@@ -87,7 +86,7 @@ async function resolveNative(node: ReactNode): Promise<ReactNode> {
   if (Array.isArray(node)) return Promise.all(React.Children.toArray(node).map(resolveNative));
   if (!isValidElement(node)) return node;
   const element = node as ReactElement<{ children?: ReactNode }>;
-  if (element.type === TripStateForm || element.type === DatedTripForm) return element;
+  if (element.type === DatedTripForm) return element;
   if (typeof element.type === "function") return resolveNative(await (element.type as (props: unknown) => ReactNode)(element.props));
   const children = await resolveNative(element.props.children);
   return cloneElement(element, {}, ...(Array.isArray(children) ? React.Children.toArray(children) : [children]));
