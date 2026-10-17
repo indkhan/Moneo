@@ -98,3 +98,14 @@ it("marks the sync running until it finishes", async () => {
   const connection = tables.bank_connections[0];
   expect(Date.parse(connection.last_synced_at as string)).toBeGreaterThanOrEqual(Date.parse(connection.sync_started_at as string));
 });
+
+it("asks for full history on the first sync and falls back to 90 days when the bank refuses", async () => {
+  await syncBankConnection("c1", "w1");
+  expect(bank.bookedTransactions).toHaveBeenNthCalledWith(1, "u1", "2000-01-01", undefined);
+  tables.bank_connection_accounts[0].last_booked_on = null;
+  bank.bookedTransactions.mockClear().mockRejectedValueOnce(new EnableBankingError(400, "WRONG_TRANSACTIONS_PERIOD", "too old"));
+  await syncBankConnection("c1", "w1");
+  expect(bank.bookedTransactions).toHaveBeenCalledTimes(2);
+  expect(bank.bookedTransactions.mock.calls[1][1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(bank.bookedTransactions.mock.calls[1][1]).not.toBe("2000-01-01");
+});

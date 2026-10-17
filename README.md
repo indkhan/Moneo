@@ -43,7 +43,7 @@ Moneo can sync booked transactions and balances from EU banks (for example Revol
    - `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_APP_URL` (the callback base) must also be set
 6. Apply the new migrations, restart `npm run dev`, then use **Import → Connected banks → Choose a bank → Connect bank**.
 
-Consent usually lasts up to 180 days, depending on the bank. A reconnect banner appears 7 days before it ends. A daily cron (`/api/cron/bank-sync`, authorized by `CRON_SECRET`) syncs in the background. PSD2 allows about 4 background fetches a day per bank. **Sync now** runs with you present, so it doesn't count toward that limit. Pending transactions are not synced.
+Consent usually lasts up to 180 days, depending on the bank. A reconnect banner appears 7 days before it ends. A daily cron (`/api/cron/bank-sync`, authorized by `CRON_SECRET`) syncs in the background. PSD2 allows about 4 background fetches a day per bank. **Sync now** runs with you present, so it doesn't count toward that limit. Pending transactions are not synced. The first sync, and the next one after you undo a sync import, asks for full history. How far back that goes is up to the bank: under PSD2 most share full history only shortly after you approve access, and about 90 days later on.
 
 ## Checks
 

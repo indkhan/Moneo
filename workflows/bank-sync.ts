@@ -25,6 +25,19 @@ export async function syncBankConnection(connectionId: string, workspaceId: stri
 function isoDay(date: Date) { return date.toISOString().slice(0, 10); }
 function daysBefore(day: string, days: number) { return isoDay(new Date(Date.parse(`${day}T00:00:00Z`) - days * 86_400_000)); }
 
+// Banks decide how far back they answer; under PSD2 most share full history only shortly after
+// consent (when the first sync runs) and about 90 days after that. So with no cursor ask for
+// everything, falling back to 90 days for banks that reject an old date_from.
+const FULL_HISTORY_FROM = "2000-01-01";
+async function bookedSince(client: ReturnType<typeof enableBankingClient>, uid: string, lastBookedOn: string | null, today: string, psu?: PsuContext) {
+  // Re-fetch a week of overlap: late-booked rows dedupe on the bank id.
+  if (lastBookedOn) return client.bookedTransactions(uid, daysBefore(lastBookedOn, 7), psu);
+  try { return await client.bookedTransactions(uid, FULL_HISTORY_FROM, psu); } catch (error) {
+    if (!(error instanceof EnableBankingError) || error.expired || error.rateLimited || error.status < 400 || error.status >= 500) throw error;
+    return client.bookedTransactions(uid, daysBefore(today, 90), psu);
+  }
+}
+
 async function stageBankImports(connectionId: string, workspaceId: string, psu?: PsuContext): Promise<{ imports: BankImport[]; error: string | null }> {
   "use step";
   const db = serviceDb();
@@ -46,10 +59,8 @@ async function stageBankImports(connectionId: string, workspaceId: string, psu?:
   const imports: BankImport[] = [];
   try {
     for (const account of accounts.data) {
-      // Re-fetch a week of overlap: late-booked rows dedupe on the bank id.
-      const dateFrom = account.last_booked_on ? daysBefore(account.last_booked_on, 7) : daysBefore(today, 90);
       const closing = preferredBalance(await client.balances(account.provider_account_uid, psu), account.currency_code);
-      const transactions = await client.bookedTransactions(account.provider_account_uid, dateFrom, psu);
+      const transactions = await bookedSince(client, account.provider_account_uid, account.last_booked_on, today, psu);
       const statement = bankStatement(transactions, { accountName: account.account_name, currencyCode: account.currency_code, calendarTimezone: settings.timezone }, closing);
       if (!statement) continue;
       if (statement.rowCount > 10_000) throw new Error("Bank returned more than 10,000 transactions for one account");
