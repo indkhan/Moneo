@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M55HPY3QBDNAA8JDPP2PJ615",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "lib/agents/runtime.ts",
+    "lib/agents/team.ts",
+    "lib/ai/conversation-history.ts",
+    "lib/ai/write-intent.test.ts",
+    "lib/ai/write-intent.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 78,
+    "cache_creation_tokens": 71731,
+    "cache_read_tokens": 3398234,
+    "output_tokens": 15349,
+    "api_call_count": 36
+  }
+}
