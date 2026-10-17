@@ -212,11 +212,18 @@ export default function ImportPage() {
     setFiles([]); setIndex(0); setInspection(null); setMapping(null); setEditorOpen(false); setStale(false); setBusy(false); setInterpreting(false); setError("");
   }
 
-  async function confirm() {
-    if (!file || !mapping) return;
+  // Runs one user action with the shared busy flag and surfaces its error.
+  async function run(fallback: string, action: () => Promise<void>, onError?: () => void) {
     setBusy(true);
     setError("");
-    try {
+    try { await action(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : fallback); onError?.(); }
+    finally { setBusy(false); }
+  }
+
+  async function confirm() {
+    if (!file || !mapping) return;
+    await run("Import failed", async () => {
       const form = new FormData();
       form.set("file", file);
       form.set("mapping", JSON.stringify(mapping));
@@ -234,20 +241,12 @@ export default function ImportPage() {
         setFiles([]);
         setIndex(0);
       }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Import failed");
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
-  function decideRow(decision: NonNullable<ImportMapping["rowDecisions"]>[number]) {
-    setMapping(current => current && ({ ...current, rowDecisions: [...(current.rowDecisions ?? []).filter(item => item.rowNumber !== decision.rowNumber), decision] }));
-    setStale(true); setRowsReviewed(false);
-  }
-
-  function resetRowDecision(rowNumber: number) {
-    setMapping(current => current && ({ ...current, rowDecisions: (current.rowDecisions ?? []).filter(row => row.rowNumber !== rowNumber) }));
+  // Replaces (or with no decision, clears) the review of one source row.
+  function setRowDecision(rowNumber: number, decision?: NonNullable<ImportMapping["rowDecisions"]>[number]) {
+    setMapping(current => current && ({ ...current, rowDecisions: [...(current.rowDecisions ?? []).filter(item => item.rowNumber !== rowNumber), ...(decision ? [decision] : [])] }));
     setStale(true); setRowsReviewed(false);
   }
 
@@ -257,9 +256,7 @@ export default function ImportPage() {
   }
 
   async function control(item: ImportStatus, action: "cancel" | "resume") {
-    setBusy(true);
-    setError("");
-    try {
+    await run("Retry failed", async () => {
       const key = `${item.id}:${item.run_version}:${action}`;
       if (!controlRequests.current.has(key)) controlRequests.current.set(key, crypto.randomUUID());
       const response = await fetch(`/api/imports/${item.id}/control`, { method: "POST", headers: { "Content-Type": "application/json" },
@@ -268,36 +265,23 @@ export default function ImportPage() {
       if (!response.ok) throw new Error(result.error ?? "Retry failed");
       mergeHistory([{ id: item.id, status: result.status, run_version: result.runVersion, total_rows: result.totalRows, error: null }], ++historyRequest.current);
       await loadHistory();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Retry failed");
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function showUndo(id: string) {
-    setBusy(true);
-    setError("");
     setUndoId(id);
     setPreview(null);
-    try {
+    await run("Undo preview failed", async () => {
       const response = await fetch(`/api/imports/${id}/undo`, { cache: "no-store" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Undo preview failed");
       setPreview(result as UndoPreview);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Undo preview failed");
-      setUndoId(null);
-    } finally {
-      setBusy(false);
-    }
+    }, () => setUndoId(null));
   }
 
   async function confirmUndo() {
     if (!preview) return;
-    setBusy(true);
-    setError("");
-    try {
+    await run("Undo failed", async () => {
       const response = await fetch(`/api/imports/${preview.import_id}/undo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -310,11 +294,7 @@ export default function ImportPage() {
       setUndoId(null);
       setPreview(null);
       await loadHistory();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Undo failed");
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   const chooseColumn = (label: string, key: keyof ImportMapping, optional = false) => (
@@ -429,14 +409,14 @@ export default function ImportPage() {
           {result.acceptedRows != null && <p className="text-sm text-muted-foreground">{result.acceptedRows} accepted · {result.correctedRows ?? 0} corrected · {result.excludedRows?.length ?? 0} excluded · {unresolved.length} unresolved</p>}
         </div>
         {!!unresolved.length && <p role="alert" className="text-sm text-muted-foreground">Correct each row or exclude it with a reason. The original row is always kept.</p>}
-        {unresolved.map(row => <SourceRowReview key={row.rowNumber} row={row} mapping={mapping!} onDecision={decideRow} />)}
+        {unresolved.map(row => <SourceRowReview key={row.rowNumber} row={row} mapping={mapping!} onDecision={decision => setRowDecision(decision.rowNumber, decision)} />)}
         {decisions.filter(row => row.action === "correct").map(row => <details key={row.rowNumber} className="rounded-lg border border-border p-4 text-sm"><summary className="cursor-pointer">Corrected source row {row.rowNumber}</summary>
           <div className="mt-3"><SourceFields row={row.values} /></div>
-          <button type="button" className="mt-3 underline" onClick={() => resetRowDecision(row.rowNumber)}>Reset review for row {row.rowNumber}</button>
+          <button type="button" className="mt-3 underline" onClick={() => setRowDecision(row.rowNumber)}>Reset review for row {row.rowNumber}</button>
         </details>)}
         {result.excludedRows?.map(row => <details key={row.rowNumber} className="rounded-lg border border-border p-4 text-sm"><summary className="cursor-pointer">Excluded source row {row.rowNumber}: {row.reason}</summary>
           <div className="mt-3 rounded-lg bg-muted p-3"><SourceFields row={row.sourceRow} /></div>
-          <button type="button" className="mt-3 underline" onClick={() => resetRowDecision(row.rowNumber)}>Reset review for row {row.rowNumber}</button>
+          <button type="button" className="mt-3 underline" onClick={() => setRowDecision(row.rowNumber)}>Reset review for row {row.rowNumber}</button>
         </details>)}
         {!!decisions.length && <label className="flex gap-2 text-sm"><input type="checkbox" checked={rowsReviewed} onChange={event => setRowsReviewed(event.target.checked)} />I checked the corrections and exclusions against the original file.</label>}
       </section>}
