@@ -1,0 +1,3 @@
+now its showing the only thing is firstly while it is syncing and all it takes alot of time and user does not know at all where it is it should be clear where it is find the best interactive way to show that secondly it was running i went to other place and then came back it is done it think when i left it stopped so it only got the things that it could get while i was there at start as usually it found 131 but now only 14 
+
+check and fix both these things and do it in this branch only no need to make pr and all , do thes things commit by commit and then push
