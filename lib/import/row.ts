@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { normalizeCategoryName, resolveMerchantName, type MappedRow } from "@/lib/csv";
+import { normalizeCategoryName, resolveMerchantName, type MappedRow } from "@/lib/import/csv";
 import { calendarDayBoundary } from "@/lib/finance/calendar";
 
 // Stable IDs make every canonical effect safe to retry after a partial workflow failure.

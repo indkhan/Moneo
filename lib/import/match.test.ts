@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideImportMatch } from "./import-match";
+import { decideImportMatch } from "@/lib/import/match";
 
 describe("overlapping imports", () => {
   it("matches only one stable external ID", () => {

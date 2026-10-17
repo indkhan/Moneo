@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { mapRows, normalizeCategoryName, parseCsv, resolveMerchantName } from "./csv";
-import { importRowPayload } from "./import-row";
+import { mapRows, normalizeCategoryName, parseCsv, resolveMerchantName } from "@/lib/import/csv";
+import { importRowPayload } from "@/lib/import/row";
 
 const base = {
   accountName: "Checking",

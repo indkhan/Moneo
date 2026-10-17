@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { parseAmountMinor } from "@/lib/csv";
+import { parseAmountMinor } from "@/lib/import/csv";
 import { expandSchedule } from "@/lib/finance/model";
 
 describe("plan assumption controls", () => {

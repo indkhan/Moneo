@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { inspectRows, parseCsv } from "@/lib/csv";
-import { batchDecisions } from "@/lib/import-batch";
+import { inspectRows, parseCsv } from "@/lib/import/csv";
+import { batchDecisions } from "@/lib/import/batch";
 import { bankStatement, preferredBalance } from "./statement";
 import type { BankTransaction } from "./enable-banking";
 

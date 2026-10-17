@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
-import { compareReviewEvidence } from "./finance/review-freshness";
-import { mapRows, parseAmountMinor, parseCsv, parseExcel, parseTransactionStatus, previewImport, validateMapping, validateAiMapping, proposeAccountRoutes, validateImportConfirmation, detectStatementFormat, proposeKnownStatementMapping, friendlyAccountName } from "./csv";
+import { compareReviewEvidence } from "@/lib/finance/review-freshness";
+import { mapRows, parseAmountMinor, parseCsv, parseExcel, parseTransactionStatus, previewImport, validateMapping, validateAiMapping, proposeAccountRoutes, validateImportConfirmation, detectStatementFormat, proposeKnownStatementMapping, friendlyAccountName } from "@/lib/import/csv";
 
 const mapping = {
   accountName: "Checking",

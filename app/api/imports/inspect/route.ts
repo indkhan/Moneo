@@ -2,7 +2,7 @@ import { generateObject } from "ai";
 import { modelForSettings } from "@/lib/ai/provider";
 import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { requireWorkspace } from "@/lib/auth";
-import { mappingSchema, parseCsv, inspectExcel, workbookScopeSchema, previewImport, proposeAccountRoutes, proposeKnownStatementMapping, proposeStatementTimezones, validateAiMapping, detectStatementFormat, friendlyAccountName } from "@/lib/csv";
+import { mappingSchema, parseCsv, inspectExcel, workbookScopeSchema, previewImport, proposeAccountRoutes, proposeKnownStatementMapping, proposeStatementTimezones, validateAiMapping, detectStatementFormat, friendlyAccountName } from "@/lib/import/csv";
 
 export async function POST(request: Request) {
   let workspaceCurrency: string;

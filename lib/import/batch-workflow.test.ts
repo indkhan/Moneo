@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { importFile } from "@/workflows/import-file";
-import * as csvModule from "@/lib/csv";
+import * as csvModule from "@/lib/import/csv";
 
 const fixture = vi.hoisted(() => ({ total: 100, requests: [] as string[], stageArgs: null as Record<string, unknown> | null, downloads: 0, stage: null as null | { row: { rowNumber: number; status: string } }[], status: "running", version: 1, cancelAfter: 0, attempts: 0, conflict: false, badHash: false }));
 const csv = () => ["Date,Description,Amount,ID", ...Array.from({ length: fixture.total }, (_, i) => `2026-10-01,Synthetic batch ${i},-1.01,row-${i}`)].join("\n");

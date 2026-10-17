@@ -1,10 +1,10 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 import {requireWorkspace} from '@/lib/auth';
-import {loadOrganizationSuggestions} from '@/lib/import-organization-loader';
+import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
 import {createReview,applyReview,dismissReview,toggleRule,undoReview} from './actions';
 const rpc=vi.fn();
 vi.mock('@/lib/auth',()=>({requireWorkspace:vi.fn()}));
-vi.mock('@/lib/import-organization-loader',()=>({loadOrganizationSuggestions:vi.fn()}));
+vi.mock('@/lib/import/organization-loader',()=>({loadOrganizationSuggestions:vi.fn()}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw new Error('REDIRECT '+url);}}));
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;

@@ -17,8 +17,8 @@ beforeEach(()=>{
   vi.stubEnv('SUPABASE_DB_URL','postgres://db.synthetic.supabase.co/postgres');
 });
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
-const runners={throughput:()=>import('../supabase/tests/import-batch-throughput.mjs'),
-  concurrency:()=>import('../supabase/tests/import-batch-concurrency.mjs'),proxy:()=>import('../supabase/tests/import-batch-proxy.mjs')};
+const runners={throughput:()=>import('../../supabase/tests/import-batch-throughput.mjs'),
+  concurrency:()=>import('../../supabase/tests/import-batch-concurrency.mjs'),proxy:()=>import('../../supabase/tests/import-batch-proxy.mjs')};
 for(const [name,load] of Object.entries(runners))for(const mode of ['startup','cleanup'])it(`${name} closes every database handle after a ${mode} failure and retains recovery evidence`,async()=>{
   state.mode=mode;
   await expect(load()).rejects.toThrow();

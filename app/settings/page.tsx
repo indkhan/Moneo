@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { BUILTIN_WIDGETS, dashboardItems, dashboardLayoutSchema } from "@/lib/dashboard";
+import { BUILTIN_WIDGETS, dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
 import { saveDashboard } from "../dashboard-actions";
 import { InsightSettings } from "./insights";
 import { requireWorkspace } from "@/lib/auth";

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AskAbout } from "@/components/ask-about";
 import type { ReactNode } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { loadHomeSpending } from "@/lib/dashboard-spending";
+import { loadHomeSpending } from "@/lib/finance/dashboard-spending";
 import { formatMoney } from "@/lib/finance/format";
 import { minorDigits } from "@/lib/finance/fx";
 import { TrendChart } from "./home-trend-chart";

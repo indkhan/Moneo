@@ -5,8 +5,8 @@ import { MonthSpendingKpi, RecentTransactions, SpendingPanel } from "./home-sect
 
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("./home-trend-chart", () => ({ TrendChart: ({ labels }: { labels: string[] }) => <div data-chart={labels.join(",")} /> }));
-vi.mock("@/lib/dashboard-spending", async original => {
-  const actual = await original<typeof import("@/lib/dashboard-spending")>();
+vi.mock("@/lib/finance/dashboard-spending", async original => {
+  const actual = await original<typeof import("@/lib/finance/dashboard-spending")>();
   const row = { account_id: "a", currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [] };
   const summary = actual.summarizeSpending([
     { ...row, id: "1", posted_on: "2026-10-02", amount_minor: "-4000", category_id: "food", merchant_id: null },

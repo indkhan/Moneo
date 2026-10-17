@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
-import { mapRows } from "@/lib/csv";
-import { importRowPayload } from "@/lib/import-row";
+import { mapRows } from "@/lib/import/csv";
+import { importRowPayload } from "@/lib/import/row";
 
 it("truncates imported merchant names at Unicode character boundaries", () => {
   const merchant = "x".repeat(99) + "🛒" + "extra";

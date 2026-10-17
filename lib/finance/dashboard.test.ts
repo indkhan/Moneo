@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { dashboardItems, dashboardLayoutSchema } from "./dashboard";
+import { dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
 
 it("keeps saved widget order and visibility, removes unpinned tools and appends newly pinned tools", () => {
   const one = "11111111-1111-4111-8111-111111111111";

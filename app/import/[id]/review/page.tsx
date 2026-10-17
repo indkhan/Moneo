@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { ClassificationActions, ReviewActions } from "./actions";
 import { formatMoney } from "@/lib/finance/format";
-import { mappingSchema, mapImportReviewRow, type SourceRow } from "@/lib/csv";
+import { mappingSchema, mapImportReviewRow, type SourceRow } from "@/lib/import/csv";
 import { PendingSettlement } from "./pending-settlement";
 
 // Original source evidence as a compact field list; internal parser columns stay hidden.

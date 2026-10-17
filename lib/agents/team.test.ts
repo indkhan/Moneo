@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { organizationProposals } from "@/lib/import-organization";
+import { organizationProposals } from "@/lib/import/organization";
 import { detectRecurring } from "@/lib/finance/recurring";
 import { anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, payloadSchemas, planRun, recurringProposals, toolProposals, verifiedBriefing, type LedgerRow, type Proposal } from "./team";
 

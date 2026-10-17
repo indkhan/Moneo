@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { summarizeSpending, type SpendingRow } from "./dashboard-spending";
+import { summarizeSpending, type SpendingRow } from "@/lib/finance/dashboard-spending";
 
 const row = (id: string, posted_on: string, amount_minor: string, extra: Partial<SpendingRow> = {}): SpendingRow => ({
   id, account_id: "a", posted_on, amount_minor, currency_code: "EUR", status: "posted", kind: "ordinary", review_reasons: [], category_id: "food", merchant_id: "shop", ...extra });

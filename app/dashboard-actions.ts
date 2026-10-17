@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { BUILTIN_WIDGETS, dashboardLayoutSchema } from "@/lib/dashboard";
+import { BUILTIN_WIDGETS, dashboardLayoutSchema } from "@/lib/finance/dashboard";
 
 export async function saveDashboard(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();

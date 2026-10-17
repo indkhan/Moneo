@@ -1,5 +1,5 @@
 import {expect, it} from 'vitest';
-import {mergeOrganizationSuggestions, organizationDescriptionKey, organizationProposals} from './import-organization';
+import {mergeOrganizationSuggestions, organizationDescriptionKey, organizationProposals} from '@/lib/import/organization';
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const row = (n: number, description = 'CARD PAYMENT NORTHSTAR MARKET REF:93821') => ({id: id(n), version: 1, description, merchantId: null, categoryId: null, kind: 'ordinary' as const, reviewReasons: [], userCorrected: false});
 const history = [1, 2, 3].map(n => ({...row(n, `CARD PAYMENT NORTHSTAR MARKET REF:${n}`), merchantId: id(20), categoryId: id(21)}));

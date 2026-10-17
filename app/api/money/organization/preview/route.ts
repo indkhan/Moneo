@@ -1,5 +1,5 @@
 import {requireWorkspace} from '@/lib/auth';
-import {loadOrganizationPreview,organizationPreviewSchema} from '@/lib/import-organization-preview';
+import {loadOrganizationPreview,organizationPreviewSchema} from '@/lib/import/organization-preview';
 
 export async function POST(request:Request) {
   let context:Awaited<ReturnType<typeof requireWorkspace>>;

@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { AiDataScope } from "@/lib/settings";
 import { formatMoney } from "@/lib/finance/format";
 import { minorDigits } from "@/lib/finance/fx";
-import type { OrganizationProposal } from "@/lib/import-organization";
+import type { OrganizationProposal } from "@/lib/import/organization";
 import type { RecurringSeries } from "@/lib/finance/recurring";
 import { recurringCadences } from "@/lib/finance/cadences";
 import { monthlyEquivalent } from "@/app/money/recurring/series";

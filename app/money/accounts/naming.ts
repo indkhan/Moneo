@@ -1,6 +1,6 @@
 export const accountTypes = ["checking", "savings", "cash", "credit", "investment", "wallet", "other"] as const;
 
-// Imports name accounts "<file stem> · <account value> · <product>" (lib/csv.ts proposeAccountRoutes).
+// Imports name accounts "<file stem> · <account value> · <product>" (lib/import/csv.ts proposeAccountRoutes).
 // This only proposes a friendlier name; the user still confirms the rename.
 const knownExports: [RegExp, string][] = [[/^account-statement_/i, "Revolut"]];
 const fileLike = /[_]|\d{4}-\d{2}-\d{2}|\.(csv|xlsx)$/i;

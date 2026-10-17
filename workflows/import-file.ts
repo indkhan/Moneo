@@ -2,11 +2,11 @@
 
 import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
-import { inspectRows, mappingSchema, parseCsv, parseExcel, parseLegacyExcel } from "@/lib/csv";
+import { inspectRows, mappingSchema, parseCsv, parseExcel, parseLegacyExcel } from "@/lib/import/csv";
 import { modelForSettings } from "@/lib/ai/provider";
 import { loadWorkspaceSettings, requireAiScope } from "@/lib/settings";
-import { stableId } from "@/lib/import-row";
-import { batchDecisions, candidateRowsSchema, stageImportRows } from "@/lib/import-batch";
+import { stableId } from "@/lib/import/row";
+import { batchDecisions, candidateRowsSchema, stageImportRows } from "@/lib/import/batch";
 import { dispatchFinancialReview } from "@/lib/finance/start-review";
 import { startAgentRun } from "@/lib/agents/dispatch";
 

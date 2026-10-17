@@ -2,8 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import postgres from "postgres";
 import { afterEach, expect, it, vi } from "vitest";
-import { mapRows, parseCsv } from "@/lib/csv";
-import { importRowPayload, stableId } from "@/lib/import-row";
+import { mapRows, parseCsv } from "@/lib/import/csv";
+import { importRowPayload, stableId } from "@/lib/import/row";
 import { POST } from "./route";
 
 // Mock only the storage/Supabase transport boundary; all reads and RPCs below

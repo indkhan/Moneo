@@ -1,5 +1,5 @@
 import Papa from "papaparse";
-import { parseCsv, validateImportConfirmation, type ImportMapping } from "@/lib/csv";
+import { parseCsv, validateImportConfirmation, type ImportMapping } from "@/lib/import/csv";
 import type { BankBalance, BankTransaction } from "./enable-banking";
 
 // A bank sync is an ordinary import: booked transactions become a canonical CSV with a

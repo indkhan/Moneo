@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { batchDecisions, stageImportRows } from "./import-batch";
+import { batchDecisions, stageImportRows } from "@/lib/import/batch";
 
 it("stages exact financial payloads and exclusions in source order with explicit bounds", () => {
   const mapped = { rowNumber: 3, accountName: "Checking", currencyCode: "EUR", postedOn: "2026-10-01", description: "large", amountMinor: 9007199254740993n, status: "posted" as const, kind: "ordinary" as const, reviewReasons: [], sourceRow: { Amount: "90071992547409.93" } };

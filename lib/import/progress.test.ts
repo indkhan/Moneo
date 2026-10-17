@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { importFile } from "@/workflows/import-file";
 import { createHash } from "node:crypto";
-import { stableId } from "@/lib/import-row";
+import { stableId } from "@/lib/import/row";
 
 const state = vi.hoisted(() => ({ sources: new Map<string, Record<string, unknown>>(), links: new Map<string, Record<string, unknown>>(),
   transactions: new Map<string, Record<string, unknown>>(), snapshots: new Map<string, Record<string, unknown>>(), progress: [] as number[], importsWrites: [] as Record<string, unknown>[], timestamped: false, threeDecimal: false, accountArchived: false, importStatus: "queued", runVersion: 1, cancelAt: 0, legacyAccountId: "", total: 27, staged: new Map<string, { accountId: string; row: Record<string, unknown> }[]>() }));

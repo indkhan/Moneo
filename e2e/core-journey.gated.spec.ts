@@ -59,7 +59,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
       // correction previews pass through to the real route. Playwright
       // cannot cheaply distinguish them, so fulfil all multipart inspects
       // with the deterministic mapping — the real mapping validation is
-      // covered by lib/csv.test.ts and the confirm step below.
+      // covered by lib/import/csv.test.ts and the confirm step below.
       await route.fulfill({
         status: 200,
         contentType: "application/json",

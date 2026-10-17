@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { maskAccountNumber } from "@/lib/csv";
+import { maskAccountNumber } from "@/lib/import/csv";
 import { enableBankingClient, enableBankingConfigured, type BankAccount, type PsuContext } from "./enable-banking";
 import { decryptToken } from "./token-crypto";
 

@@ -10,7 +10,7 @@ const investigationRuntime = process.env.MNE019_RUNTIME === "1";
 const root = resolve(investigationRuntime ? ".qa/mne019-runtime" : ".qa/mne020-runtime");
 const runtimeData = resolve(root, `runtime-data-${randomUUID()}`);
 function write(path, value) { mkdirSync(resolve(root, path, ".."), { recursive: true }); writeFileSync(resolve(root, path), value); }
-for (const path of ["workflows/financial-review.ts", "workflows/import-file.ts", "lib/finance/start-review.ts", "lib/settings.ts", "app/api/cron/reviews/route.ts", "app/api/cron/summaries/route.ts", "lib/summary-schedule.ts", "lib/import-match.ts", "lib/import-row.ts", "lib/csv.ts", "lib/finance/calendar.ts", "lib/finance/fx.ts", "instrumentation.ts"]) {
+for (const path of ["workflows/financial-review.ts", "workflows/import-file.ts", "lib/finance/start-review.ts", "lib/settings.ts", "app/api/cron/reviews/route.ts", "app/api/cron/summaries/route.ts", "lib/summary-schedule.ts", "lib/import/match.ts", "lib/import/row.ts", "lib/import/csv.ts", "lib/finance/calendar.ts", "lib/finance/fx.ts", "instrumentation.ts"]) {
   const baseline = process.env.MNE020_RUNTIME_BASELINE;
   write(path, baseline && path !== "lib/settings.ts" ? execFileSync("git", ["show", `${baseline}:${path}`], {encoding: "utf8"}) : readFileSync(path, "utf8"));
 }

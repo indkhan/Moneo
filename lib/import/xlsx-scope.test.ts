@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import ExcelJS from "exceljs";
-import { inspectExcel, inspectRows, mapRows, parseExcel, parseLegacyExcel } from "./csv";
+import { inspectExcel, inspectRows, mapRows, parseExcel, parseLegacyExcel } from "@/lib/import/csv";
 
 async function workbookFixture() {
   const book = new ExcelJS.Workbook();

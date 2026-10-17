@@ -3,7 +3,7 @@ import {z} from 'zod';
 import {redirect} from 'next/navigation';
 import {revalidatePath} from 'next/cache';
 import {requireWorkspace} from '@/lib/auth';
-import {loadOrganizationSuggestions} from '@/lib/import-organization-loader';
+import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
 import {versionedRows} from '../transactions/input';
 
 export type ReviewState={error?:string};

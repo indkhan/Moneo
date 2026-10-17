@@ -4,8 +4,8 @@ import {requireWorkspace} from '@/lib/auth';
 import {requireAiScope} from '@/lib/settings';
 import {modelForSettings} from '@/lib/ai/provider';
 import {versionedRows} from '@/app/money/transactions/input';
-import {loadOrganizationSuggestions} from '@/lib/import-organization-loader';
-import {mergeOrganizationSuggestions,organizationSuggestionsSchema,type OrganizationRow} from '@/lib/import-organization';
+import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
+import {mergeOrganizationSuggestions,organizationSuggestionsSchema,type OrganizationRow} from '@/lib/import/organization';
 
 const inputSchema=z.object({rows:versionedRows,useProvider:z.boolean().default(false)}).strict();
 export async function POST(request:Request) {

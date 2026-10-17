@@ -1,13 +1,13 @@
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {generateObject} from 'ai';
 import {requireWorkspace} from '@/lib/auth';
-import {loadOrganizationSuggestions} from '@/lib/import-organization-loader';
+import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
 import {modelForSettings} from '@/lib/ai/provider';
 import {settingsSchema} from '@/lib/settings';
 import {POST} from './route';
 vi.mock('ai',()=>({generateObject:vi.fn()}));
 vi.mock('@/lib/auth',()=>({requireWorkspace:vi.fn()}));
-vi.mock('@/lib/import-organization-loader',()=>({loadOrganizationSuggestions:vi.fn()}));
+vi.mock('@/lib/import/organization-loader',()=>({loadOrganizationSuggestions:vi.fn()}));
 vi.mock('@/lib/ai/provider',()=>({modelForSettings:vi.fn()}));
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const row={id:id(1),version:0,description:'NORTHSTAR MARKET REF:771',merchant_id:null,category_id:null,kind:'ordinary',review_reasons:[],amount_minor:'-9007199254740993',currency_code:'EUR'};

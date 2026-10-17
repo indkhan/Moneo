@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import type { ImportMapping, SourceRow, WorkbookScope } from "@/lib/csv";
+import type { ImportMapping, SourceRow, WorkbookScope } from "@/lib/import/csv";
 import { WorkbookScopeReview, type WorkbookSheet } from "./workbook-scope";
 import { formatMoney } from "@/lib/finance/format";
 import { ConnectedBanks } from "@/components/connected-banks";

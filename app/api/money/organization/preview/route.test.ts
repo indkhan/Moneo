@@ -1,9 +1,9 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 import {requireWorkspace} from '@/lib/auth';
-import {loadOrganizationPreview} from '@/lib/import-organization-preview';
+import {loadOrganizationPreview} from '@/lib/import/organization-preview';
 import {POST} from './route';
 vi.mock('@/lib/auth',()=>({requireWorkspace:vi.fn()}));
-vi.mock('@/lib/import-organization-preview',async original=>({...await original<typeof import('@/lib/import-organization-preview')>(),loadOrganizationPreview:vi.fn()}));
+vi.mock('@/lib/import/organization-preview',async original=>({...await original<typeof import('@/lib/import/organization-preview')>(),loadOrganizationPreview:vi.fn()}));
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const selection={rows:[{id:id(1),version:3}],categoryId:id(2),merchantId:id(3)};
 const db={} as never;

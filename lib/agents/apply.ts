@@ -1,6 +1,6 @@
 import type { requireWorkspace } from "@/lib/auth";
 import { calendarDate } from "@/lib/finance/calendar";
-import { loadOrganizationSuggestions } from "@/lib/import-organization-loader";
+import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
 import { libraryTemplate } from "@/lib/artifacts/library-templates";
 import { saveCandidateVersion } from "@/lib/artifacts/save-version";
 import { payloadSchemas, type ProposalKind } from "./team";

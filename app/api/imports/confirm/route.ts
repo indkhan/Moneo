@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { start } from "workflow/api";
 import { createClient } from "@supabase/supabase-js";
 import { requireWorkspace } from "@/lib/auth";
-import { parseCsv, parseExcel, workbookScopeSchema, validateImportConfirmation } from "@/lib/csv";
+import { parseCsv, parseExcel, workbookScopeSchema, validateImportConfirmation } from "@/lib/import/csv";
 import { importFile } from "@/workflows/import-file";
 
 export async function POST(request: Request) {

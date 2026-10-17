@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import type {SupabaseClient} from '@supabase/supabase-js';
-import {loadOrganizationPreview} from './import-organization-preview';
+import {loadOrganizationPreview} from '@/lib/import/organization-preview';
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const rows=[{id:id(1),version:4,description:'Noisy Northstar ref:777',posted_on:'2026-09-01',amount_minor:'-9007199254740993',currency_code:'EUR',merchant_id:null,category_id:null},
   {id:id(2),version:2,description:'Noisy Northstar ref:888',posted_on:'2026-09-02',amount_minor:'-300',currency_code:'JPY',merchant_id:id(5),category_id:id(6)}];

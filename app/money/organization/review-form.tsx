@@ -2,7 +2,7 @@
 import {useActionState,useRef,useState} from 'react';
 import {createReview,applyReview,undoReview} from './actions';
 import {formatMoney} from '@/lib/finance/format';
-import type {OrganizationProposal} from '@/lib/import-organization';
+import type {OrganizationProposal} from '@/lib/import/organization';
 
 type Row={id:string;version:number;description:string;posted_on:string;amount_minor:string;currency_code:string};
 type Target={id:string;name:string};

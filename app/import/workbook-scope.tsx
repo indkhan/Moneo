@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import type { WorkbookScope } from "@/lib/csv";
+import type { WorkbookScope } from "@/lib/import/csv";
 export type WorkbookSheet = {sheetId: number; name: string; state: string; rowCount: number; columnCount: number; preview: {rowNumber: number; values: string[]}[]};
 export function WorkbookScopeReview({inventory, initialScope, busy, onEdit, onPreview}: {inventory: WorkbookSheet[]; initialScope?: WorkbookScope; busy: boolean; onEdit: () => void; onPreview: (scope: WorkbookScope) => void}) {
   const [tables,setTables] = useState<WorkbookScope["tables"]>(initialScope?.tables ?? []);

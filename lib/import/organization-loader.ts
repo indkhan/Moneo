@@ -1,7 +1,7 @@
 import type {SupabaseClient} from '@supabase/supabase-js';
 import {z} from 'zod';
 import {versionedRows} from '@/app/money/transactions/input';
-import {organizationProposals,organizationRuleSchema,type OrganizationRow} from './import-organization';
+import {organizationProposals,organizationRuleSchema,type OrganizationRow} from '@/lib/import/organization';
 
 const columns='id,version,description,merchant_id,category_id,kind,review_reasons,posted_on,amount_minor::text,currency_code,status';
 export async function loadOrganizationSuggestions(db:SupabaseClient,workspaceId:string,selection:unknown) {

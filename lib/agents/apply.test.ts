@@ -1,10 +1,10 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { applyProposal, decideProposals } from "./apply";
-import { loadOrganizationSuggestions } from "@/lib/import-organization-loader";
+import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
 import { saveCandidateVersion } from "@/lib/artifacts/save-version";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
-vi.mock("@/lib/import-organization-loader", () => ({ loadOrganizationSuggestions: vi.fn() }));
+vi.mock("@/lib/import/organization-loader", () => ({ loadOrganizationSuggestions: vi.fn() }));
 vi.mock("@/lib/artifacts/save-version", () => ({ saveCandidateVersion: vi.fn(async () => ({ configured: true, status: "validated", error: null })) }));
 
 type Call = { kind: "rpc" | "update" | "insert"; name: string; args: unknown; filters: unknown[][] };

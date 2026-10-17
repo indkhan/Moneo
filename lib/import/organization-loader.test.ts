@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import type {SupabaseClient} from '@supabase/supabase-js';
-import {loadOrganizationSuggestions} from './import-organization-loader';
+import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const entry=(n:number)=>({id:id(n),version:0,description:`CARD PAYMENT NORTHSTAR MARKET REF:${n}`,merchant_id:null,category_id:null,kind:'ordinary',review_reasons:[],posted_on:'2026-09-01',amount_minor:'-9007199254740993',currency_code:'EUR',status:'posted'});
 function client(options:{corrected?:boolean;stale?:boolean;rulesError?:boolean}={}){
