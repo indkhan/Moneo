@@ -60,8 +60,10 @@ begin
   perform public.finish_import_run(second_import,workspace,1,null);
   execute 'set local role authenticated';
   perform public.undo_import(second_import,0,0);
-  begin perform public.undo_import(imported,1,0); raise exception 'Shared canonical undo bypassed existing guard' using errcode='ZX001'; exception when serialization_failure then null; end;
+  -- The undone overlap's matched link no longer holds the original's posting.
+  perform public.undo_import(imported,1,0);
   execute 'reset role';
+  if exists(select 1 from public.transactions where workspace_id=workspace) then raise exception 'Original undo kept its posting'; end if;
   if (select count(*) from public.source_transactions where import_id in(imported,second_import))<>3
     or (select count(*) from public.import_staging where import_id in(imported,second_import))<>2 then raise exception 'Undo erased immutable batch/source history'; end if;
 end;
