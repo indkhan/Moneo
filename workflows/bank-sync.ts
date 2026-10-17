@@ -14,7 +14,11 @@ type BankImport = { importId: string; rowCount: number; uid: string; lastBookedO
 export async function syncBankConnection(connectionId: string, workspaceId: string, psu?: PsuContext) {
   "use workflow";
   const { imports, error } = await stageBankImports(connectionId, workspaceId, psu);
-  for (const item of imports) await importFile(item.importId, workspaceId, item.rowCount, 1);
+  for (const item of imports) {
+    // importFile runs flattened into this run, so a throw from its optional tail (first review,
+    // agent team) would end the sync here. The import's stored status is the truth; finishBankSync reads it.
+    try { await importFile(item.importId, workspaceId, item.rowCount, 1); } catch {}
+  }
   await finishBankSync(connectionId, workspaceId, imports, error);
 }
 
