@@ -3,6 +3,7 @@
 // What it proves: the app boots, reports configuration status, and renders
 // the key entry routes without making OpenRouter requests.
 import { test, expect } from "@playwright/test";
+import { DEFAULT_OPENROUTER_MODEL } from "../lib/env";
 
 test.describe("core journey smoke (no session, no live AI)", () => {
   test("home shows setup guidance or redirects unauthenticated users", async ({
@@ -30,7 +31,7 @@ test.describe("core journey smoke (no session, no live AI)", () => {
     expect(body.ok).toBe(true);
     expect(body.supabase).toBe(Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY));
     expect(body.openrouter).toBe(Boolean(process.env.OPENROUTER_API_KEY));
-    expect(body.model).toBe(process.env.OPENROUTER_MODEL ?? "qwen/qwen3.8-27b:free");
+    expect(body.model).toBe(DEFAULT_OPENROUTER_MODEL);
   });
 
   test("login page renders OTP form", async ({ page }) => {

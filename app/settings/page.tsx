@@ -5,6 +5,7 @@ import { saveDashboard } from "../dashboard-actions";
 import { InsightSettings } from "./insights";
 import { requireWorkspace } from "@/lib/auth";
 import { listFreeModels } from "@/lib/ai/provider";
+import { DEFAULT_OPENROUTER_MODEL } from "@/lib/env";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { SettingsForm } from "./form";
 import { SummaryRuns, type SummaryRun } from "./summary-runs";
@@ -65,7 +66,7 @@ export default async function SettingsPage() {
       </nav>
       <div className="min-w-0 space-y-8">
         <SettingsForm settings={settings} currency={workspace.display_currency} models={models} catalogueError={catalogueError}
-          defaultModel={process.env.OPENROUTER_MODEL ?? "qwen/qwen3.8-27b:free"} />
+          defaultModel={DEFAULT_OPENROUTER_MODEL} />
         <div id="relevance" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={4} />}><InsightSettings /></Suspense></div>
         <details id="home" className={card}><summary className="cursor-pointer text-base font-semibold">Customize Home</summary><form action={saveDashboard} className="mt-4 space-y-4"><input type="hidden" name="version" value={dashboard.version} />{dashboard.choices.map((key, index) => <div key={key} className="flex flex-wrap items-center gap-3 border-b border-border pb-3 last:border-0"><label className="flex flex-1 items-center gap-2 text-sm"><input type="checkbox" name="enabled" value={key} defaultChecked={dashboard.ordered.includes(key)} disabled={key.startsWith("tool:")} />{key.startsWith("tool:") && <input type="hidden" name="enabled" value={key} />}{Object.hasOwn(BUILTIN_WIDGETS, key) ? BUILTIN_WIDGETS[key as keyof typeof BUILTIN_WIDGETS] : dashboard.pinnedById.get(key.slice(5))?.name}</label><label className="flex items-center gap-2 text-sm">Position<input type="number" name={`position:${key}`} min="1" max="50" defaultValue={dashboard.ordered.includes(key) ? dashboard.ordered.indexOf(key) + 1 : index + 1} className="min-h-10 w-20 rounded-lg border border-border bg-card px-3 py-2 text-sm" /></label></div>)}<button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Save dashboard</button><p className="text-sm text-muted-foreground">Pin or unpin tools in the <Link href="/ai/library" className="underline">Library</Link>. Lower positions appear first.</p></form></details>
         <div id="banks" className="scroll-mt-20"><ConnectedBanks /></div>

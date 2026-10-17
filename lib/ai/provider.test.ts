@@ -1,13 +1,14 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { getModel, listFreeModels, modelForSettings } from "./provider";
+import { DEFAULT_OPENROUTER_MODEL } from "@/lib/env";
 import { settingsSchema } from "@/lib/settings";
 
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
-test("accepts the configured OpenRouter model without a suffix restriction", () => {
+test("falls back to the built-in default model and honours an explicit override", () => {
   vi.stubEnv("OPENROUTER_API_KEY", "test-key");
-  vi.stubEnv("OPENROUTER_MODEL", "example/model");
-  expect(getModel().modelId).toBe("example/model");
+  expect(getModel().modelId).toBe(DEFAULT_OPENROUTER_MODEL);
+  expect(getModel("example/model").modelId).toBe("example/model");
 });
 
 test("bounds draft reasoning while retaining the zero-price provider ceiling", () => {

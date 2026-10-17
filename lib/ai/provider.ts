@@ -1,4 +1,5 @@
 import { createOpenRouter, type OpenRouterChatSettings } from "@openrouter/ai-sdk-provider";
+import { DEFAULT_OPENROUTER_MODEL } from "@/lib/env";
 import type { WorkspaceSettings } from "@/lib/settings";
 
 // OpenRouter via the Vercel AI SDK.
@@ -7,7 +8,7 @@ export function getModel(modelOverride?: string, reasoning?: OpenRouterChatSetti
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is missing. Add it to .env (see .env.example).");
   const openrouter = createOpenRouter({ apiKey });
-  const modelId = modelOverride ?? process.env.OPENROUTER_MODEL ?? "qwen/qwen3.8-27b:free";
+  const modelId = modelOverride ?? DEFAULT_OPENROUTER_MODEL;
   return openrouter.chat(modelId, { ...(reasoning ? { reasoning } : {}), provider: { max_price: { prompt: 0, completion: 0, request: 0, image: 0, audio: 0 } } });
 }
 
@@ -23,7 +24,7 @@ export async function listFreeModels() {
 }
 
 export async function modelForSettings(settings?: WorkspaceSettings, reasoning?: OpenRouterChatSettings["reasoning"]) {
-  const id = settings?.openrouter_model ?? process.env.OPENROUTER_MODEL ?? "qwen/qwen3.8-27b:free";
+  const id = settings?.openrouter_model ?? DEFAULT_OPENROUTER_MODEL;
   if (!(await listFreeModels()).some(model => model.id === id))
     throw new Error("Selected model is unavailable, lacks required capabilities, or is no longer free; choose a verified free model in Settings");
   return getModel(id, reasoning);

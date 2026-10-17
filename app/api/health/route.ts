@@ -1,4 +1,4 @@
-import { getSupabaseConfig, hasOpenRouter, hasSupabase } from "@/lib/env";
+import { DEFAULT_OPENROUTER_MODEL, getSupabaseConfig, hasOpenRouter, hasSupabase } from "@/lib/env";
 
 export async function GET() {
   const supabaseConfig = getSupabaseConfig();
@@ -8,6 +8,6 @@ export async function GET() {
     supabaseStatus: supabaseConfig.status,
     detail: supabaseConfig.detail,
     openrouter: hasOpenRouter(),
-    model: process.env.OPENROUTER_MODEL ?? "qwen/qwen3.8-27b:free",
+    model: DEFAULT_OPENROUTER_MODEL,
   });
 }
