@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_01Ms8hjPxJUxQoTQnzrgCvCq",
+  "agent_id": "aa889994d955b0c68",
+  "subagent_type": "general-purpose",
+  "task_description": "Simplify app/money",
+  "token_usage": {
+    "input_tokens": 52,
+    "cache_creation_tokens": 44926,
+    "cache_read_tokens": 1824178,
+    "output_tokens": 8926,
+    "api_call_count": 26
+  },
+  "started_at": "2026-10-17T20:05:12.2346338+02:00",
+  "completed_at": "2026-10-17T20:20:24.5382388+02:00"
+}

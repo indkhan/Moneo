@@ -1,0 +1,24 @@
+<task-notification>
+<task-id>aa889994d955b0c68</task-id>
+<tool-use-id>toolu_01Ms8hjPxJUxQoTQnzrgCvCq</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--codebases-Moneo\f1e7ba6e-691b-47a3-b1df-4f73d12785e1\tasks\aa889994d955b0c68.output</output-file>
+<status>completed</status>
+<summary>Agent "Simplify app/money" is waiting on its own background work</summary>
+<note>This agent stopped with background work of its own still running. It may resume on its own when that work completes or reports, and the same task-id notifies again if it does; the result below may be interim.</note>
+<result>The commit I had started is stopped, and HEAD is still `69ffaf6`. The export cleanup is staged but not committed.
+
+**Staged (not committed), branch `worktree-agent-aa889994d955b0c68`:**
+- Nine files under `app/money` and `app/plan` where I removed the `export` keyword from symbols that no other file imports: `ReviewState`, `TRANSACTION_GROUPS`, `LedgerGroups`, `CompiledFilter`, `SavedViewFilters`, `SavedViewRow`, `NetWorthPoint`, `upcomingObligations`, `preferenceSummary`.
+- Pure visibility change, no logic touched. `npx tsc --noEmit -p .` and `npx eslint app/money app/plan` both passed on this change.
+- Net effect is 9 lines changed, 0 lines removed.
+
+**Not done:**
+- The main duplication I found is in `editing-history.tsx`, `split-editor.tsx`, `verified-link-editor.tsx`, and `wealth/page.tsx`. Each one re-wraps `formatMoney` from `lib/finance/format` with a locale-bound closure. I did not consolidate them.
+- `app/money/views/actions.ts` has a local `str` helper that I did not compare with anything else.
+- I did not run `npm test` or `npx vitest run app/money app/plan` to completion. The one vitest run I started produced truncated output with no pass/fail line, so I have no test result for this change.
+- Net lines removed is zero so far.
+
+If you want more reduction, the formatter-wrapper consolidation is the next candidate, but its wins are small.</result>
+<usage><subagent_tokens>83498</subagent_tokens><tool_uses>27</tool_uses><duration_ms>915493</duration_ms></usage>
+<worktree><worktreePath>C:\codebases\Moneo\.claude\worktrees\agent-aa889994d955b0c68</worktreePath><worktreeBranch>worktree-agent-aa889994d955b0c68</worktreeBranch></worktree>
+</task-notification>
