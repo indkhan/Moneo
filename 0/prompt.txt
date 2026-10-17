@@ -1,0 +1,1 @@
+make a commit there is this problem that it does not save if i chage a model to be something in setting i can not save it so if i reload it or anythin it goes back to default
