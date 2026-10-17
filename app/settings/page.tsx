@@ -4,7 +4,7 @@ import { BUILTIN_WIDGETS, dashboardItems, dashboardLayoutSchema } from "@/lib/fi
 import { saveDashboard } from "../dashboard-actions";
 import { InsightSettings } from "./insights";
 import { requireWorkspace } from "@/lib/auth";
-import { SkeletonCard } from "@/components/ui/skeleton";
+import { SkeletonCard } from "@/components/skeleton";
 import { SettingsForm } from "./form";
 import { SummaryRuns, type SummaryRun } from "./summary-runs";
 import { ResetData } from "./reset";

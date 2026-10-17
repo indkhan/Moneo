@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase-client";
 
 // Reached from the password-reset email (signed in via /auth/callback). Any
 // signed-in user, including magic-link-only accounts, can set a password here.

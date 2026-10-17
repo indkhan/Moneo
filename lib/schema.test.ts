@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
-import * as schema from "./schema";
+import * as schema from "@/lib/schema";
 
 const tables = Object.values(schema).map((table) => getTableConfig(table as PgTable));
 const table = (name: string) => tables.find((item) => item.name === name)!;

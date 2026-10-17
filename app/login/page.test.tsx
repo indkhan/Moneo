@@ -6,7 +6,7 @@ import LoginPage from "./page";
 const host = vi.hoisted(() => ({ index: 0, slots: [] as unknown[], createClient: vi.fn(), signInWithOtp: vi.fn(), signInWithPassword: vi.fn(), signUp: vi.fn(), resetPasswordForEmail: vi.fn() }));
 const router = vi.hoisted(() => ({ replace: vi.fn(), refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
-vi.mock("@/lib/supabase/client", () => ({ createClient: host.createClient }));
+vi.mock("@/lib/supabase-client", () => ({ createClient: host.createClient }));
 vi.mock("react", async original => ({ ...await original<typeof import("react")>(),
   useState: (initial: unknown) => {
     const index = host.index++;

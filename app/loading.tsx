@@ -1,4 +1,4 @@
-import { Skeleton, SkeletonCard, SkeletonTable } from "@/components/ui/skeleton";
+import { Skeleton, SkeletonCard, SkeletonTable } from "@/components/skeleton";
 
 export default function Loading() {
   return <main aria-busy="true" className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-8 lg:py-10">

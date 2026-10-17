@@ -19,7 +19,7 @@ Use npm (`package-lock.json` is authoritative).
 - `lib/finance/` — deterministic financial logic
 - `lib/ai/` — model/provider behavior
 - `lib/artifacts/` — generated-tool sandbox/runtime
-- `lib/db/schema.ts` + `supabase/migrations/` — database schema
+- `lib/schema.ts` + `supabase/migrations/` — database schema
 - `workflows/` — durable background jobs
 - `e2e/` — Playwright flows
 
@@ -29,7 +29,7 @@ Use npm (`package-lock.json` is authoritative).
 - Validate user/external input; Zod is the established pattern.
 - Financial truth comes from application code/data, not AI guesses. Keep money in integer minor units/`bigint` and currencies explicit.
 - Preserve source records, correction/history, and undo semantics when changing financial data flows.
-- For schema changes, add a new ordered migration and keep `lib/db/schema.ts` aligned. Do not rewrite applied migrations.
+- For schema changes, add a new ordered migration and keep `lib/schema.ts` aligned. Do not rewrite applied migrations.
 - Preserve artifact isolation/validation; do not weaken sandbox or timeout boundaries.
 - for each thing break it down and for each thing make a commit directly if a big task make multiple commits
 

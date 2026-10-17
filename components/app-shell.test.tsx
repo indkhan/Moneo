@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { filterCommands, type Command } from "@/components/ui/command-palette";
+import { filterCommands, type Command } from "@/components/command-palette";
 
 const path = vi.hoisted(() => ({ current: "/money/transactions" }));
 vi.mock("next/navigation", () => ({ usePathname: () => path.current, useRouter: () => ({ push: vi.fn() }) }));

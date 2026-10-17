@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
-import { createClient } from "./server";
+import { createClient } from "@/lib/supabase-server";
 
 vi.mock("next/headers", () => ({ cookies: vi.fn() }));
 vi.mock("@supabase/ssr", () => ({ createServerClient: vi.fn() }));

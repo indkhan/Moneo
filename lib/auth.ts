@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase-server";
 import { settingsSchema } from "@/lib/settings";
 
 // Memoized per request so the root layout and the page share one auth and workspace lookup.

@@ -8,7 +8,7 @@ import {
   PanelLeftClose, PanelLeftOpen, Repeat, Search, SearchCheck, Settings, Tags, TrendingUp, Upload, type LucideIcon,
 } from "lucide-react";
 import { AiPanel } from "@/components/ai-panel";
-import { CommandPalette, Kbd, Modal, ShortcutHelp, type Command } from "@/components/ui/command-palette";
+import { CommandPalette, Kbd, Modal, ShortcutHelp, type Command } from "@/components/command-palette";
 import { cn } from "@/lib/utils";
 
 /** Streamed from the root layout; null when signed out or the lookup failed. */
