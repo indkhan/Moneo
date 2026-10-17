@@ -3,7 +3,7 @@ import { resetAllData, saveSettings } from "./actions";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { listFreeModels, modelForSettings } from "@/lib/ai/provider";
-import { generateText } from "ai";
+import { APICallError, generateText } from "ai";
 import { settingsSchema } from "@/lib/settings";
 
 vi.mock("next/headers", () => ({ cookies: async () => ({ set: vi.fn() }) }));
@@ -11,7 +11,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ listFreeModels: vi.fn(), modelForSettings: vi.fn() }));
-vi.mock("ai", () => ({ generateText: vi.fn() }));
+vi.mock("ai", async importOriginal => ({ ...await importOriginal<typeof import("ai")>(), generateText: vi.fn() }));
 
 function form() {
   const data = new FormData();
@@ -144,6 +144,17 @@ it("leaves output headroom for a usable reasoning model before saving its select
   const data = form(); data.set("openrouter_model", "new-free");
   expect(await saveSettings({}, data)).toEqual({ saved: true });
   expect(rpc).toHaveBeenCalledOnce();
+});
+
+it("saves a newly selected model that is rate-limited upstream", async () => {
+  const rpc = vi.fn(async () => ({ error: null }));
+  vi.mocked(requireWorkspace).mockResolvedValue(workspaceWith(null, rpc));
+  vi.mocked(listFreeModels).mockResolvedValue([{ id: "new-free", name: "New" }]);
+  vi.mocked(modelForSettings).mockResolvedValue({} as unknown as Awaited<ReturnType<typeof modelForSettings>>);
+  vi.mocked(generateText).mockRejectedValue(new APICallError({ message: "rate-limited", url: "", requestBodyValues: {}, statusCode: 429 }));
+  const data = form(); data.set("openrouter_model", "new-free");
+  expect(await saveSettings({}, data)).toEqual({ saved: true });
+  expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({ p_preferences: expect.objectContaining({ openrouter_model: "new-free" }) }));
 });
 
 function resetForm(confirmation: string) {
