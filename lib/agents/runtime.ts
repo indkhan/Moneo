@@ -260,7 +260,7 @@ export async function startRun(runId: string, workspaceId: string, workflowRunId
     const first = (oldest.data as { posted_on: string } | null)?.posted_on;
     const months = first ? (Number(today.slice(0, 4)) - Number(first.slice(0, 4))) * 12 + Number(today.slice(5, 7)) - Number(first.slice(5, 7)) : 0;
     let modelStatus = "disabled";
-    if (process.env.OPENAI_API_KEY) modelStatus = await modelForSettings(settings, "agents").then(() => "available", () => "unavailable");
+    if (process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY) modelStatus = await modelForSettings(settings, "agents").then(() => "available", () => "unavailable");
     const plan = planRun({ transactions: count.count ?? 0, unorganized: unorganized.count ?? 0, months, currencies: [workspace.display_currency], scopes: settings.ai_data_scopes, modelAvailable: modelStatus === "available" });
     checked(await db.from("agent_runs").update({ plan, model_status: modelStatus }).eq("id", runId).eq("workspace_id", workspaceId));
     checked(await db.from("agent_tasks").insert(plan.map((task, index) => ({ run_id: runId, workspace_id: workspaceId, agent: task.agent, position: index + 1,

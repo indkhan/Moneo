@@ -7,12 +7,12 @@ export const INSIGHT_TYPES = ["spending_changes", "budget_pressure", "unusual_ac
 export type AiDataScope = typeof AI_DATA_SCOPES[number];
 // Each AI agent and its default OpenAI model; Settings lets the user type a different one per agent.
 export const AI_AGENTS = {
-  chat: { label: "Chat assistant", model: "gpt-5" },
-  review: { label: "Financial review", model: "gpt-5" },
-  artifacts: { label: "Tool builder", model: "gpt-5" },
-  agents: { label: "Agent team", model: "gpt-5-mini" },
-  imports: { label: "Import mapping", model: "gpt-5-mini" },
-  organize: { label: "Organization suggestions", model: "gpt-5-mini" },
+  chat: { label: "Chat assistant", model: "gpt-6.1-sol" },
+  review: { label: "Financial review", model: "gpt-6.1-sol" },
+  artifacts: { label: "Tool builder", model: "gpt-6.1-sol" },
+  agents: { label: "Agent team", model: "gpt-6-luna" },
+  imports: { label: "Import mapping", model: "gpt-6-luna" },
+  organize: { label: "Organization suggestions", model: "gpt-6-luna" },
 } as const;
 export type AiAgent = keyof typeof AI_AGENTS;
 export const AI_AGENT_KEYS = Object.keys(AI_AGENTS) as AiAgent[];

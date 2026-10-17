@@ -27,7 +27,7 @@ export async function saveSettings(_previous: { error?: string; saved?: boolean 
       if (!settings.ai_models[agent] || settings.ai_models[agent] === previous?.ai_models[agent]) continue;
       const check = await generateText({ model: await modelForSettings(settings, agent), prompt: "Reply with the single word OK.",
         maxOutputTokens: 512, maxRetries: 0, abortSignal: AbortSignal.timeout(15000) }).catch(() => null);
-      if (!check?.text.trim()) throw new Error(`Model "${settings.ai_models[agent]}" did not respond; check the name and your OpenAI key`);
+      if (!check?.text.trim()) throw new Error(`Model "${settings.ai_models[agent]}" did not respond; check the name and its API key`);
     }
     const result = await supabase.rpc("save_workspace_preferences", { p_workspace_id: workspace.id, p_display_currency: currency, p_preferences: settings });
     if (result.error) throw new Error("Preferences could not be saved; your previous settings are preserved");

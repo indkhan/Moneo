@@ -59,7 +59,7 @@ export async function POST(request: Request) {
   const proposeParsed = proposeRequestSchema.safeParse(body);
   if (!proposeParsed.success)
     return Response.json({ error: "Describe a financial tool in 1–500 characters" }, { status: 400 });
-  if (!process.env.OPENAI_API_KEY)
+  if (!(process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY))
     return Response.json({ error: "AI is not configured" }, { status: 503 });
 
   return runArtifactGeneration(context.supabase, request, { requestId: proposeParsed.data.requestId ?? crypto.randomUUID(), purpose: "proposal", description: proposeParsed.data.description }, async () => {

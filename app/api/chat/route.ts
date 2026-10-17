@@ -35,7 +35,7 @@ export async function POST(request: Request) {
   const parsed = inputSchema.safeParse(body);
   if (!parsed.success || JSON.stringify(parsed.data.context ?? {}).length > 2000)
     return Response.json({ error: "Invalid message" }, { status: 400 });
-  if (!process.env.OPENAI_API_KEY) return Response.json({ error: "AI is not configured" }, { status: 503 });
+  if (!(process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY)) return Response.json({ error: "AI is not configured" }, { status: 503 });
   const { conversationId, requestId, message, context: capturedContext } = parsed.data;
   const { supabase, workspace, settings } = context;
   // Model resolution and earlier history do not depend on the claim; start them with the ownership check.

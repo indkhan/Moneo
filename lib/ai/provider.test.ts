@@ -17,3 +17,10 @@ test("requires an OpenAI key", () => {
   vi.stubEnv("OPENAI_API_KEY", "test-key");
   expect(getModel("gpt-5").modelId).toBe("gpt-5");
 });
+
+test("sends vendor/model IDs to OpenRouter", () => {
+  vi.stubEnv("OPENROUTER_API_KEY", "");
+  expect(() => getModel("nvidia/nemotron-3.5-lightning:free")).toThrow("OPENROUTER_API_KEY");
+  vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+  expect(getModel("nvidia/nemotron-3.5-lightning:free").provider).toContain("openrouter");
+});

@@ -1,9 +1,16 @@
 import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { AI_AGENTS, type AiAgent, type WorkspaceSettings } from "@/lib/settings";
 
-// OpenAI via the Vercel AI SDK. Each agent uses the model typed in Settings, else its default.
-// Docs: https://ai-sdk.dev/providers/ai-sdk-providers/openai
+// Each agent uses the model typed in Settings, else its default. OpenRouter IDs are
+// "vendor/model" and go to OpenRouter; plain IDs ("gpt-6.1-sol") go to OpenAI.
+// Docs: https://ai-sdk.dev/providers/ai-sdk-providers/openai + https://openrouter.ai/docs
 export function getModel(modelId: string) {
+  if (modelId.includes("/")) {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) throw new Error("OPENROUTER_API_KEY is missing. Add it to .env (see .env.example).");
+    return createOpenRouter({ apiKey }).chat(modelId);
+  }
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is missing. Add it to .env (see .env.example).");
   return createOpenAI({ apiKey })(modelId);

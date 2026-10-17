@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); }
   catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.OPENAI_API_KEY)
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !(process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY))
     return Response.json({ error: "Financial review service is not configured" }, { status: 503 });
   const parsed = z.object({ requestId: z.uuid(), investigation: reviewRequestSchema.optional() }).strict().safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Provide a valid review request ID and bounded investigation scope" }, { status: 400 });

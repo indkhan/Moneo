@@ -72,3 +72,7 @@ export function hasSupabase() {
 export function hasOpenAI() {
   return Boolean(process.env.OPENAI_API_KEY);
 }
+
+export function hasOpenRouter() {
+  return Boolean(process.env.OPENROUTER_API_KEY);
+}

@@ -72,7 +72,7 @@ export async function POST(request: Request) {
   if (!kind.success) return Response.json({ error: "Unsupported artifact kind" }, { status: 400 });
   const permissions = Array.isArray(artifact.permissions) ? (artifact.permissions as string[]) : [];
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!(process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY)) {
     return Response.json({ error: "AI is not configured" }, { status: 503 });
   }
 

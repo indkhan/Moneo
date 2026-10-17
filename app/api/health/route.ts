@@ -1,4 +1,4 @@
-import { getSupabaseConfig, hasOpenAI, hasSupabase } from "@/lib/env";
+import { getSupabaseConfig, hasOpenAI, hasOpenRouter, hasSupabase } from "@/lib/env";
 
 export async function GET() {
   const supabaseConfig = getSupabaseConfig();
@@ -8,5 +8,6 @@ export async function GET() {
     supabaseStatus: supabaseConfig.status,
     detail: supabaseConfig.detail,
     openai: hasOpenAI(),
+    openrouter: hasOpenRouter(),
   });
 }
