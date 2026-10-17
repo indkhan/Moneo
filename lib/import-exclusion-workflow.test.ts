@@ -31,7 +31,7 @@ afterEach(() => { fixture.calls = []; fixture.status = "queued"; fixture.version
 it("processes each excluded original index exactly once across a workflow chunk boundary", async () => {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
-  vi.stubEnv("OPENROUTER_API_KEY", "");
+  vi.stubEnv("OPENAI_API_KEY", "");
   fixture.exclusions = 251;
   await importFile("import", "workspace", 251);
   const rows = fixture.calls.filter(call => call.name === "stage_import_rows").flatMap(call => (call.args.p_rows as { row: { rowNumber: number } }[]).map(item => item.row.rowNumber));
@@ -42,7 +42,7 @@ it("processes each excluded original index exactly once across a workflow chunk 
 it("executes the complete reviewed corrected row while retaining original status and date evidence", async () => {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
-  vi.stubEnv("OPENROUTER_API_KEY", "");
+  vi.stubEnv("OPENAI_API_KEY", "");
   fixture.correction = true;
   await importFile("import", "workspace", 1);
   await importFile("import", "workspace", 1);
@@ -57,7 +57,7 @@ it("executes the complete reviewed corrected row while retaining original status
 it("persists excluded original observations with stable identities across retries", async () => {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
-  vi.stubEnv("OPENROUTER_API_KEY", "");
+  vi.stubEnv("OPENAI_API_KEY", "");
   await importFile("import", "workspace", 1);
   await importFile("import", "workspace", 1);
   const calls = fixture.calls.filter(call => call.name === "stage_import_rows");

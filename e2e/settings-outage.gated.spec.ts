@@ -31,11 +31,10 @@ test("settings save revocation and display changes with an unchanged unavailable
     expect((await auth.auth.signInWithPassword({ email, password })).error).toBeNull();
     await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: host, path: "/", sameSite: "Lax" as const })));
     const syntheticModel = "synthetic/mne-023-unavailable";
-    await db`insert into public.workspace_settings(workspace_id,openrouter_model,ai_data_scopes,summary_cadence) values(${workspace.id},${syntheticModel},array['accounts','transactions','planning','imports']::text[],'weekly')`;
+    await db`insert into public.workspace_settings(workspace_id,ai_models,ai_data_scopes,summary_cadence) values(${workspace.id},${db.json({ chat: syntheticModel })},array['accounts','transactions','planning','imports']::text[],'weekly')`;
     const page = await context.newPage();
     await page.goto(settingsUrl);
-    await expect(page.getByLabel("Free OpenRouter model")).toHaveValue(syntheticModel);
-    await expect(page.locator('select[name="openrouter_model"]')).toContainText(`${syntheticModel} · verification unavailable`);
+    await expect(page.getByLabel("Chat assistant model")).toHaveValue(syntheticModel);
     await page.locator('input[name="ai_data_scopes"]').evaluateAll(inputs => inputs.forEach(input => { if ((input as HTMLInputElement).checked) (input as HTMLInputElement).click(); }));
     await expect(page.locator('input[name="ai_data_scopes"]:checked')).toHaveCount(0);
     await page.getByLabel("In-app summary preference").selectOption("none");
@@ -44,8 +43,8 @@ test("settings save revocation and display changes with an unchanged unavailable
     await page.getByRole("button", { name: "Save preferences", exact: true }).click();
     await expect(page.getByText("Preferences saved.")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("form").getByRole("alert")).toHaveCount(0);
-    const [saved] = await db`select openrouter_model,ai_data_scopes,summary_cadence,theme from public.workspace_settings where workspace_id=${workspace.id}`;
-    expect(saved).toEqual({ openrouter_model: syntheticModel, ai_data_scopes: [], summary_cadence: "none", theme: "light" });
+    const [saved] = await db`select ai_models,ai_data_scopes,summary_cadence,theme from public.workspace_settings where workspace_id=${workspace.id}`;
+    expect(saved).toEqual({ ai_models: { chat: syntheticModel }, ai_data_scopes: [], summary_cadence: "none", theme: "light" });
     const [renamed] = await db`select display_currency from public.workspaces where id=${workspace.id}`;
     expect(renamed).toEqual({ display_currency: "USD" });
     await page.goto(settingsUrl);

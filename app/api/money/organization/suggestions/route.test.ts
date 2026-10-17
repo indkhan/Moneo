@@ -16,7 +16,7 @@ const selection={rows:[{id:id(1),version:0}],useProvider:true};
 const db={from:()=>{const q={select:()=>q,eq:()=>q,order:()=>q,limit:async()=>({data:[{id:id(20),name:'Groceries'}],error:null})};return q;}};
 afterEach(()=>vi.unstubAllEnvs());
 function request(value:unknown){return new Request('http://localhost/api/money/organization/suggestions',{method:'POST',body:JSON.stringify(value)});}
-beforeEach(()=>{vi.resetAllMocks();vi.stubEnv('OPENROUTER_API_KEY','synthetic-test-only');vi.mocked(requireWorkspace).mockResolvedValue({supabase:db,workspace:{id:id(10)},settings:settingsSchema.parse({})} as never);
+beforeEach(()=>{vi.resetAllMocks();vi.stubEnv('OPENAI_API_KEY','synthetic-test-only');vi.mocked(requireWorkspace).mockResolvedValue({supabase:db,workspace:{id:id(10)},settings:settingsSchema.parse({})} as never);
  vi.mocked(loadOrganizationSuggestions).mockResolvedValue({rows:[row],proposals:[proposal],historyLimit:2000,historyCount:0} as never);
  vi.mocked(modelForSettings).mockResolvedValue({} as never);});
 it('returns attributable metadata only and never sends exact amounts to the optional provider',async()=>{

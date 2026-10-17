@@ -13,7 +13,7 @@ describe("Drizzle migration contract", () => {
     for (const match of migrations.matchAll(/create table public\.(\w+)\s*\(([\s\S]*?)\n\);/g)) {
       expect(table(match[1]), match[1]).toBeDefined();
       const columns = [...match[2].matchAll(/^\s{2}(\w+) (?:uuid|text|bigint|integer|boolean|jsonb|date|timestamptz)\b/gm)]
-        .map((column) => column[1]);
+        .map((column) => column[1]).filter((column) => !migrations.includes(`alter table public.${match[1]} drop column ${column};`));
       expect(table(match[1]).columns.map((column) => column.name)).toEqual(expect.arrayContaining(columns));
     }
     for (const match of migrations.matchAll(/alter table public\.(\w+)\s+add column (\w+)/g)) {

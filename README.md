@@ -5,7 +5,7 @@ Moneo is a personal finance workspace for importing transactions, tracking accou
 ## Run locally
 
 1. Install dependencies: `npm ci`
-2. Copy `.env.example` to `.env` and add your Supabase URL and publishable key. Add `SUPABASE_SERVICE_ROLE_KEY` for import and analysis workflows, and `OPENROUTER_API_KEY` for AI features.
+2. Copy `.env.example` to `.env` and add your Supabase URL and publishable key. Add `SUPABASE_SERVICE_ROLE_KEY` for import and analysis workflows, and `OPENAI_API_KEY` for AI features (models per agent are set in Settings).
 3. Apply the SQL files in `supabase/migrations/` to your Supabase project in filename order. Configure Supabase email sign-in with `http://localhost:3000/auth/callback` as an allowed redirect URL.
 4. Start the app: `npm run dev`, then open [http://localhost:3000](http://localhost:3000).
 5. Sign in: during `npm run dev` on localhost, type your email and click **Sign in instantly (local dev)**. It needs `SUPABASE_SERVICE_ROLE_KEY`, sends no email, and is disabled in production builds. The normal email link also works, but must be opened in the same browser that requested it.

@@ -1,5 +1,5 @@
 // Most useful deterministic Playwright test for Moneo's core journey
-// (prompt.md §46) that can run WITHOUT Supabase credentials or OpenRouter.
+// (prompt.md §46) that can run WITHOUT Supabase credentials or OpenAI.
 //
 // Why this slice: CSV/XLSX import with AI-proposed mapping → Preview →
 // Continue / Correct / Cancel (§4–§5) is the highest-priority, highest-risk
@@ -9,7 +9,7 @@
 //
 // Strategy: fully mock the AI/backend boundary with page.route fulfilments
 // shaped exactly like the real routes, using synthetic fixtures from
-// e2e/fixtures.ts. No request ever reaches Supabase or openrouter.ai — the
+// e2e/fixtures.ts. No request ever reaches Supabase or api.openai.com — the
 // test fails if one tries to. This exercises the real client component
 // (app/import/page.tsx): file input → inspect → preview → Correct → Preview
 // correction → Continue → import history → Cancel.
@@ -77,10 +77,10 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
   test("upload → AI mapping preview → Correct → Continue → history → Cancel", async ({
     page,
   }) => {
-    const openRouterCalls: string[] = [];
+    const openAiCalls: string[] = [];
     page.on("request", (request) => {
-      if (request.url().includes("openrouter.ai"))
-        openRouterCalls.push(request.url());
+      if (request.url().includes("api.openai.com"))
+        openAiCalls.push(request.url());
     });
     // Never let the test accidentally depend on a real backend: fail fast on
     // any unmocked imports API call.
@@ -192,7 +192,7 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
       page.getByText("august.csv (1 of 1)"),
     ).toHaveCount(0);
     expect(unmocked).toEqual([]);
-    expect(openRouterCalls).toEqual([]);
+    expect(openAiCalls).toEqual([]);
   });
 
   test("cancel discards the preview without importing", async ({ page }) => {

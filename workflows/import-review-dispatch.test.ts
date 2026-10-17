@@ -9,7 +9,7 @@ vi.mock("@/lib/ai/provider", () => ({ modelForSettings: async () => { if (eligib
 vi.mock("@/lib/finance/start-review", () => ({ dispatchFinancialReview: vi.fn() }));
 vi.mock("@/lib/agents/dispatch", () => ({ startAgentRun: vi.fn(async () => null) }));
 beforeEach(() => {
-  vi.stubEnv("OPENROUTER_API_KEY", "synthetic"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic"); vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.invalid");
+  vi.stubEnv("OPENAI_API_KEY", "synthetic"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic"); vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.invalid");
   vi.clearAllMocks();
   Object.assign(eligibility, { settingsFail: false, modelFail: false, scopesDenied: false });
   db.rpc.mockResolvedValue({ data: "completed", error: null });

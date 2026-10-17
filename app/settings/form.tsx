@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { AI_DATA_SCOPES, INSIGHT_TYPES, type WorkspaceSettings } from "@/lib/settings";
+import { AI_AGENT_KEYS, AI_AGENTS, AI_DATA_SCOPES, INSIGHT_TYPES, type WorkspaceSettings } from "@/lib/settings";
 import { saveSettings } from "./actions";
 
 const input = "min-h-10 min-w-0 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-normal text-foreground";
@@ -12,9 +12,7 @@ const help = "text-sm text-muted-foreground";
 const scopeDescriptions = { accounts: "Account names and dated balances", transactions: "Booked transactions, categories and spending evidence",
   planning: "Goals, budgets and forecast assumptions", imports: "Headers and up to eight source rows for import mapping" };
 
-export function SettingsForm({ settings, currency, models, defaultModel, catalogueError }: {
-  settings: WorkspaceSettings; currency: string; models: { id: string; name: string }[]; defaultModel: string; catalogueError?: string;
-}) {
+export function SettingsForm({ settings, currency }: { settings: WorkspaceSettings; currency: string }) {
   const [state, action, pending] = useActionState(saveSettings, {});
   // React also resets uncontrolled fields when an action returns a validation error.
   return <form action={action} onReset={event => event.preventDefault()} className="space-y-8">
@@ -28,13 +26,10 @@ export function SettingsForm({ settings, currency, models, defaultModel, catalog
     </fieldset>
     <fieldset id="ai" className={card}><legend className={legend}>AI and your data</legend>
       <p className={help}>Choose which of your data the AI may use. Secrets are never sent.</p>
-      <label className="grid gap-1.5 text-sm font-medium">Free OpenRouter model<select className={input} name="openrouter_model" defaultValue={settings.openrouter_model ?? ""}>
-        <option value="">Default ({defaultModel})</option>
-        {settings.openrouter_model && !models.some(model => model.id === settings.openrouter_model) && <option value={settings.openrouter_model}>{settings.openrouter_model} · verification unavailable</option>}
-        {models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
-      </select></label>
-      {catalogueError && <p className="text-sm text-amber-700 dark:text-amber-300">{catalogueError}</p>}
-      <details className="text-sm text-muted-foreground"><summary className="cursor-pointer">More details</summary><p className="mt-2">OpenRouter receives your prompts and only the enabled data needed for the task. Chat never receives raw statement files. Import mapping may send column headers and up to eight sample rows. Models are checked to be free before use; unavailable or paid models are refused.</p></details>
+      <div className="grid gap-3 sm:grid-cols-2">{AI_AGENT_KEYS.map(agent => <label key={agent} className={label}>{AI_AGENTS[agent].label} model
+        <input className={input} name={`model:${agent}`} defaultValue={settings.ai_models[agent] ?? ""} placeholder={AI_AGENTS[agent].model} maxLength={200} autoComplete="off" spellCheck={false} /></label>)}</div>
+      <p className={help}>Type an OpenAI model ID (gpt-6.1-sol) or an OpenRouter one (vendor/model, e.g. nvidia/nemotron-3.5-lightning:free), or leave blank for the default shown. A changed model is tested before saving.</p>
+      <details className="text-sm text-muted-foreground"><summary className="cursor-pointer">More details</summary><p className="mt-2">OpenAI or OpenRouter (depending on the model) receives your prompts and only the enabled data needed for the task. Chat never receives raw statement files. Import mapping may send column headers and up to eight sample rows. Usage is billed to the matching API key.</p></details>
       <div className="divide-y divide-border">{AI_DATA_SCOPES.map(scope => <label key={scope} className="flex items-start gap-3 py-3 text-sm"><input type="checkbox" className="mt-1 size-4" name="ai_data_scopes" value={scope} defaultChecked={settings.ai_data_scopes.includes(scope)} /><span><strong className="block capitalize">{scope}</strong><span className="text-muted-foreground">{scopeDescriptions[scope]}</span></span></label>)}</div>
     </fieldset>
     <fieldset id="insights" className={card}><legend className={legend}>Insights and summaries</legend>

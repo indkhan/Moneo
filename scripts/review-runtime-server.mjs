@@ -191,7 +191,7 @@ const server = createServer(async (request, response) => {
 await new Promise(resolve => server.listen(3041, "127.0.0.1", resolve));
 function launch() {
 const current = spawn(process.execPath, [resolve("node_modules/next/dist/bin/next"), "dev", root, "--webpack", "--port", "3040"], {
-  cwd: root, windowsHide: true, stdio: "inherit", env: { ...process.env, NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:3041", SUPABASE_SERVICE_ROLE_KEY: "synthetic", OPENROUTER_API_KEY: "synthetic-not-used-by-mock-model", CRON_SECRET: "synthetic-cron", WORKFLOW_TARGET_WORLD: "local", WORKFLOW_LOCAL_DATA_DIR: runtimeData, WORKFLOW_LOCAL_BASE_URL: "http://localhost:3040", PORT: "3040" },
+  cwd: root, windowsHide: true, stdio: "inherit", env: { ...process.env, NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:3041", SUPABASE_SERVICE_ROLE_KEY: "synthetic", OPENAI_API_KEY: "synthetic-not-used-by-mock-model", CRON_SECRET: "synthetic-cron", WORKFLOW_TARGET_WORLD: "local", WORKFLOW_LOCAL_DATA_DIR: runtimeData, WORKFLOW_LOCAL_BASE_URL: "http://localhost:3040", PORT: "3040" },
 });
 current.on("exit", code => { if (child === current) { server.close(); process.exitCode = code ?? 1; } });
 return current;

@@ -17,6 +17,7 @@
     "prelint": "npm run check:privacy"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.96",
     "@ai-sdk/react": "^4.0.119",
     "@codemirror/lang-javascript": "^6.2.5",
     "@codemirror/theme-one-dark": "^6.1.3",

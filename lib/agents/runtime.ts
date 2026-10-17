@@ -62,9 +62,9 @@ async function withModel<T>(context: Context, label: string, call: (model: Await
     return null;
   }
   await report(context, { type: "tool", text: label });
-  try { return await call(await modelForSettings(context.settings, { effort: "minimal", exclude: true })); }
+  try { return await call(await modelForSettings(context.settings, "agents")); }
   catch {
-    await report(context, { type: "note", text: "The free model was slow or unavailable; using deterministic results" });
+    await report(context, { type: "note", text: "The model was slow or unavailable; using deterministic results" });
     return null;
   }
 }
@@ -260,14 +260,14 @@ export async function startRun(runId: string, workspaceId: string, workflowRunId
     const first = (oldest.data as { posted_on: string } | null)?.posted_on;
     const months = first ? (Number(today.slice(0, 4)) - Number(first.slice(0, 4))) * 12 + Number(today.slice(5, 7)) - Number(first.slice(5, 7)) : 0;
     let modelStatus = "disabled";
-    if (process.env.OPENROUTER_API_KEY) modelStatus = await modelForSettings(settings).then(() => "available", () => "unavailable");
+    if (process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY) modelStatus = await modelForSettings(settings, "agents").then(() => "available", () => "unavailable");
     const plan = planRun({ transactions: count.count ?? 0, unorganized: unorganized.count ?? 0, months, currencies: [workspace.display_currency], scopes: settings.ai_data_scopes, modelAvailable: modelStatus === "available" });
     checked(await db.from("agent_runs").update({ plan, model_status: modelStatus }).eq("id", runId).eq("workspace_id", workspaceId));
     checked(await db.from("agent_tasks").insert(plan.map((task, index) => ({ run_id: runId, workspace_id: workspaceId, agent: task.agent, position: index + 1,
       status: task.status, step: task.reason, ...(task.status === "skipped" ? { summary: task.reason, finished_at: new Date().toISOString() } : {}) }))));
     const running = plan.filter(task => task.status === "pending");
     await report(lead, { type: "step", text: `Assigned ${running.length} agents in ${new Set(running.map(task => task.wave)).size} waves` }, { summary: `Planned ${running.length} of ${plan.length} agents` });
-    await report(lead, { type: "note", text: modelStatus === "available" ? "Free model ready; at most 6 model calls for this run" : "No free model available; every agent runs deterministically" });
+    await report(lead, { type: "note", text: modelStatus === "available" ? "Model ready; at most 6 model calls for this run" : "No model available; every agent runs deterministically" });
   } else await report(lead, { type: "step", text: "Resuming: finished agents keep their results" }, { status: "running" });
   const tasks = checked(await db.from("agent_tasks").select("agent, status").eq("run_id", runId).eq("workspace_id", workspaceId)) as { agent: AgentId; status: string }[];
   const pending = new Set(tasks.filter(task => task.status === "pending" && task.agent !== "lead").map(task => task.agent));
