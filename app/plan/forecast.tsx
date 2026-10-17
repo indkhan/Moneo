@@ -6,7 +6,7 @@ type Days = Extract<ReturnType<typeof forecastDaily>, { status: "available" }>["
 const major = (amount: bigint, currency: string) => Number(formatInputAmount(amount, currency));
 
 /** Outgoing dated payments inside the forecast window, soonest first. */
-export function upcomingObligations(events: ForecastEvent[], days: Days) {
+function upcomingObligations(events: ForecastEvent[], days: Days) {
   const window = new Set(days.map(day => day.date));
   return events.filter(event => event.expectedMinor < 0n && window.has(event.date)).sort((a, b) => a.date.localeCompare(b.date));
 }

@@ -6,7 +6,7 @@ export type OccurrenceSettlement = { id: string; assumption_id: string; schedule
 
 type Obligation = { id: string; account_id: string | null; amount_minor: string; currency_code: string };
 // Status and booking date may change when a pending transaction settles; financial identity may not.
-export function settlementReceipt(row: OccurrencePosting): SettlementReceipt {
+function settlementReceipt(row: OccurrencePosting): SettlementReceipt {
   return { account_id: row.account_id, amount_minor: BigInt(row.canonical_amount_minor ?? row.amount_minor).toString(), currency_code: row.currency_code,
     kind: row.kind ?? "ordinary", review_reasons: [...(row.review_reasons ?? [])].sort() };
 }

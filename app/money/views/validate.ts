@@ -76,8 +76,6 @@ export type SaveInput = {
   sort?: string;
 };
 
-// Tolerant normalizers shared with the live URL path; the strict save path throws instead.
-export { normalizeTag, normalizeEventName };
 
 /** Saved JSON → the same filter shape the live URL produces. */
 export function savedViewToParams(saved: SavedViewFilters): ParsedTransactionParams {

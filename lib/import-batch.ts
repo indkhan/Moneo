@@ -4,8 +4,8 @@ import { decideImportMatch } from "./import-match";
 import { z } from "zod";
 
 type Excluded = { rowNumber: number; sourceRow: Record<string, unknown>; reason: string };
-export const IMPORT_BATCH_ROWS = 250;
-export const IMPORT_STAGE_BYTES = 64_000_000;
+const IMPORT_BATCH_ROWS = 250;
+const IMPORT_STAGE_BYTES = 64_000_000;
 export const candidateRowsSchema = z.array(z.object({ rowNumber: z.number().int().min(2), hasExternalId: z.boolean(), status: z.enum(["posted", "pending"]), candidates: z.array(z.object({ id: z.string().max(36), stableExternalMatch: z.boolean(), status: z.enum(["posted", "pending"]), version: z.number().int().nonnegative() })).max(1000) })).max(IMPORT_BATCH_ROWS);
 type CandidateRow = z.input<typeof candidateRowsSchema>[number];
 export function stageImportRows(workspaceId: string, importId: string, mapped: MappedRow[], excluded: Excluded[], accounts: Map<string, string>, total: number) {

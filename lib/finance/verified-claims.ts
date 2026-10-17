@@ -10,7 +10,7 @@ export type FinancialEvidenceReceipt = {
 };
 const periodSchema = z.object({ from: z.iso.date(), to: z.iso.date() }).strict().refine(value => value.from <= value.to);
 const referenceSchema = z.object({ receiptId: z.uuid(), metricId: z.string().min(1).max(200) }).strict();
-export const financialClaimSchema = z.object({
+const financialClaimSchema = z.object({
   operation: z.enum(["metric", "sum", "difference"]),
   operands: z.array(referenceSchema).min(1).max(20),
   valueMinor: z.string().regex(/^-?(?:0|[1-9]\d{0,79})$/),
@@ -39,10 +39,6 @@ const explanationSchema = z.object({
 const limitationSchema = z.object({ action: z.literal("limitation"), receiptId: z.uuid(), limitationId: z.string().min(1).max(200) }).strict();
 const interpretationSchema = z.union([nextStepSchema, explanationSchema, limitationSchema]);
 const clarificationSchema = z.object({ topic: z.enum(["welcome", "help", "question", "period", "comparison_period", "account", "category", "merchant", "currency", "classification", "goal", "assumptions"]) }).strict();
-export const financialAnswerSchema = z.object({
-  claims: z.array(financialClaimSchema).max(100), interpretation: z.array(interpretationSchema).max(20),
-  clarification: clarificationSchema.optional(),
-}).strict();
 type Claim = z.infer<typeof financialClaimSchema>;
 const qualifications: Record<string, string> = {
   partial_classification: "Partial classification: unresolved rows are excluded; totals may rise or fall and are neither upper nor lower bounds.",

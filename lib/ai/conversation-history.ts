@@ -4,7 +4,7 @@ import { z } from "zod";
 const cursorSchema = z.object({ created_at: z.iso.datetime({ offset: true }), id: z.uuid() });
 export type HistoryMessage = { id: string; role: string; content: string; created_at: string };
 export type HistoryThread = { id: string; title: string; created_at: string };
-export const THREAD_PAGE = 30;
+const THREAD_PAGE = 30;
 const MESSAGE_PAGE = 100;
 export const conversationTitleSchema = z.string().trim().min(1).max(120);
 

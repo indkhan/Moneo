@@ -81,7 +81,3 @@ export async function validateGeneratedCandidate(args: {
   }
   return { ok: true, manifest, warnings: [...warnings, "Validation checks execution and output shape, not the accuracy of generated financial claims."] };
 }
-
-export function defaultParams(manifest: CalculatorManifest): Record<string, number | string> {
-  return normalizeCalculatorParams(manifest);
-}

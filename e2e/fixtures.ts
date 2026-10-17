@@ -27,7 +27,7 @@ export const SEPTEMBER_CSV = [
 // Deterministic stand-in for the AI-proposed column mapping
 // (POST /api/imports/inspect without a `mapping` field calls OpenAI in
 // production; tests fulfil that request with this payload instead).
-export const MOCK_MAPPING = {
+const MOCK_MAPPING = {
   accountName: "Checking",
   currencyCode: "EUR",
   dateColumn: "date",

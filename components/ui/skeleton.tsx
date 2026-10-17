@@ -5,7 +5,7 @@ export function Skeleton({ className }: { className?: string }) {
   return <div aria-hidden="true" className={cn("rounded-md bg-muted motion-safe:animate-pulse", className)} />;
 }
 
-export function SkeletonText({ lines = 3, className }: { lines?: number; className?: string }) {
+function SkeletonText({ lines = 3, className }: { lines?: number; className?: string }) {
   return <div aria-hidden="true" className={cn("space-y-2", className)}>
     {Array.from({ length: lines }, (_, index) => <Skeleton key={index} className={cn("h-3.5", index === lines - 1 && lines > 1 ? "w-3/5" : "w-full")} />)}
   </div>;

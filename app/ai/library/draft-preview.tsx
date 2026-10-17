@@ -15,7 +15,7 @@ export function draftProblems(source: string, manifest: unknown): { manifest?: C
   return { manifest: parsed.success ? parsed.data : undefined, errors };
 }
 
-export function ProblemList({ errors, label }: { errors: string[]; label: string }) {
+function ProblemList({ errors, label }: { errors: string[]; label: string }) {
   if (!errors.length) return null;
   return <div aria-live="polite" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
     <p className="font-medium">{label}</p>

@@ -15,7 +15,7 @@ import { AGENTS, WAVES, anomalyFindings, budgetProposals, categorizeGroups, dete
 // query is fenced by workspace_id; they write only agent_* rows. Canonical
 // data changes happen later, when the owner accepts a proposal.
 
-export class RunInactive extends Error {}
+class RunInactive extends Error {}
 type Db = SupabaseClient;
 type Workspace = { id: string; display_currency: string; timezone: string; locale: string };
 type Context = { db: Db; runId: string; workspace: Workspace; settings: WorkspaceSettings; today: string; agent: AgentId };

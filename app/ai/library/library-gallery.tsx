@@ -16,7 +16,7 @@ const ICONS: Record<string, typeof Calculator> = {
 };
 const FILTERS = ["All", "Pinned", "Custom", "Built-in"] as const;
 
-export function kindLabel(kind: string) {
+function kindLabel(kind: string) {
   const label = kind.replace(/^custom_/, "").replaceAll("_", " ");
   return label[0].toUpperCase() + label.slice(1);
 }

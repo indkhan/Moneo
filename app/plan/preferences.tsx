@@ -5,7 +5,7 @@ import { formatInputAmount, formatMoney } from "@/lib/finance/format";
 import { saveForecastPreferences, undoForecastPreferences } from "./preference-actions";
 import { bpsToPercent, button, stackedField as field } from "./ui";
 
-export function preferenceSummary(preferences: ForecastPreferences, locale?: string) {
+function preferenceSummary(preferences: ForecastPreferences, locale?: string) {
   const money = (amount: string) => formatMoney(amount, preferences.currency_code, locale);
   return `Buffer ${money(preferences.safety_buffer_minor)} · ±${bpsToPercent(preferences.uncertainty_bps)}% · ${preferences.daily_spending_minor === "0" ? "no extra daily spending" : `extra spending ${money(preferences.daily_spending_minor)} daily`}`;
 }

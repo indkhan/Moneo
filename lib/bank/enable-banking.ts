@@ -6,7 +6,7 @@ import { z } from "zod";
 
 const amountSchema = z.object({ currency: z.string().regex(/^[A-Z]{3}$/), amount: z.string().regex(/^-?\d+(?:\.\d+)?$/) });
 
-export const aspspSchema = z.object({
+const aspspSchema = z.object({
   name: z.string().min(1).max(200),
   country: z.string().regex(/^[A-Z]{2}$/),
   logo: z.string().url().optional().nullable(),
