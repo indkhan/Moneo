@@ -7,7 +7,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => db }));
 vi.mock("@/lib/settings", () => ({ loadWorkspaceSettings: async () => { if (eligibility.settingsFail) throw new Error("settings unavailable"); return {}; }, requireAiScope: () => { if (eligibility.scopesDenied) throw new Error("scopes denied"); } }));
 vi.mock("@/lib/ai/provider", () => ({ modelForSettings: async () => { if (eligibility.modelFail) throw new Error("model catalogue unavailable"); return {}; } }));
 vi.mock("@/lib/finance/start-review", () => ({ dispatchFinancialReview: vi.fn() }));
-vi.mock("@/lib/agents/dispatch", () => ({ startAgentRun: vi.fn(async () => null) }));
+vi.mock("@/lib/ai/agent-dispatch", () => ({ startAgentRun: vi.fn(async () => null) }));
 beforeEach(() => {
   vi.stubEnv("OPENAI_API_KEY", "synthetic"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic"); vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.invalid");
   vi.clearAllMocks();

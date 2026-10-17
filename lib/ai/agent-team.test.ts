@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { organizationProposals } from "@/lib/import/organization";
 import { detectRecurring } from "@/lib/finance/recurring";
-import { anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, payloadSchemas, planRun, recurringProposals, toolProposals, verifiedBriefing, type LedgerRow, type Proposal } from "./team";
+import { anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, payloadSchemas, planRun, recurringProposals, toolProposals, verifiedBriefing, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const account = id(900);

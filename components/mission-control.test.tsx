@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MissionControl } from "./mission-control";
-import type { AgentRunView } from "@/lib/agents/state";
+import type { AgentRunView } from "@/lib/ai/agent-state";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/app/ai/agents/actions", () => ({ decideAgentProposals: vi.fn() }));

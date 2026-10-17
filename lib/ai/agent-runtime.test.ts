@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { runAgent, startRun } from "./runtime";
+import { runAgent, startRun } from "@/lib/ai/agent-runtime";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const db = vi.hoisted(() => ({ run: {} as Record<string, unknown>, settings: {} as Record<string, unknown>, tasks: [] as Record<string, unknown>[], ledger: [] as Record<string, unknown>[],

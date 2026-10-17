@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { applyProposal, decideProposals } from "./apply";
+import { applyProposal, decideProposals } from "@/lib/ai/agent-apply";
 import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
 import { saveCandidateVersion } from "@/lib/artifacts/save-version";
 

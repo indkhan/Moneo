@@ -8,7 +8,7 @@ import { loadWorkspaceSettings, requireAiScope } from "@/lib/settings";
 import { stableId } from "@/lib/import/row";
 import { batchDecisions, candidateRowsSchema, stageImportRows } from "@/lib/import/batch";
 import { dispatchFinancialReview } from "@/lib/finance/start-review";
-import { startAgentRun } from "@/lib/agents/dispatch";
+import { startAgentRun } from "@/lib/ai/agent-dispatch";
 
 function checked<T>(result: { data: T | null; error: { message: string } | null }): T | null {
   if (result.error) throw new Error(result.error.message);

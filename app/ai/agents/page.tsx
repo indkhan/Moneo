@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Bot } from "lucide-react";
 import { requireWorkspace } from "@/lib/auth";
-import { AGENTS, AGENT_IDS } from "@/lib/agents/team";
+import { AGENTS, AGENT_IDS } from "@/lib/ai/agent-team";
 import { StartAgentRun } from "./start-run";
 
 export default async function AgentRunsPage({ searchParams }: { searchParams: Promise<{ import?: string }> }) {

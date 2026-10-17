@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { loadAgentRun } from "@/lib/agents/state";
+import { loadAgentRun } from "@/lib/ai/agent-state";
 import { MissionControl } from "@/components/mission-control";
 
 export default async function AgentRunPage({ params }: { params: Promise<{ id: string }> }) {

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireWorkspace } from "@/lib/auth";
 import { requireAiScope } from "@/lib/settings";
-import { startAgentRun } from "@/lib/agents/dispatch";
-import { service } from "@/lib/agents/runtime";
+import { startAgentRun } from "@/lib/ai/agent-dispatch";
+import { service } from "@/lib/ai/agent-runtime";
 
 /** Starts a manual agent-team run (or returns the one already running). */
 export async function POST() {

@@ -1,8 +1,8 @@
 "use workflow";
 
 import { getWorkflowMetadata } from "workflow";
-import { finishRun, mergeRun, runAgent, startRun } from "@/lib/agents/runtime";
-import type { AgentId } from "@/lib/agents/team";
+import { finishRun, mergeRun, runAgent, startRun } from "@/lib/ai/agent-runtime";
+import type { AgentId } from "@/lib/ai/agent-team";
 
 // Durable agent team. Each agent is its own step, so a crash or redeploy
 // resumes after the last finished agent; agents in a wave run in parallel.

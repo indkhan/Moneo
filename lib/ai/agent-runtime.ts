@@ -9,7 +9,7 @@ import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { mergeOrganizationSuggestions, organizationProposals, organizationRuleSchema, organizationSuggestionsSchema, type OrganizationProposal, type OrganizationRow } from "@/lib/import/organization";
 import { monthlyEquivalent } from "@/app/money/recurring/series";
 import { AGENTS, WAVES, anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, planRun, recurringProposals, toolProposals, verifiedBriefing,
-  daysBefore, reviewed, type AgentId, type BriefingFacts, type LedgerRow, type Proposal } from "./team";
+  daysBefore, reviewed, type AgentId, type BriefingFacts, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
 
 // Server-only agent runtime. Agents read through the service role, so every
 // query is fenced by workspace_id; they write only agent_* rows. Canonical

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { loadAgentRun } from "@/lib/agents/state";
-import { cancelAgentRun, resumeAgentRun } from "@/lib/agents/dispatch";
-import { service } from "@/lib/agents/runtime";
+import { loadAgentRun } from "@/lib/ai/agent-state";
+import { cancelAgentRun, resumeAgentRun } from "@/lib/ai/agent-dispatch";
+import { service } from "@/lib/ai/agent-runtime";
 
 async function owned(params: Promise<{ id: string }>) {
   const context = await requireWorkspace();
