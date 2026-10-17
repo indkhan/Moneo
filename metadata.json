@@ -1,0 +1,45 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M55G9A51PC25KCDV8QR8R1Q5",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/ai/library/draft-preview.tsx",
+    "app/ai/library/library-gallery.tsx",
+    "app/money/views/validate.ts",
+    "app/plan/forecast.tsx",
+    "app/plan/preferences.tsx",
+    "components/ui/skeleton.tsx",
+    "e2e/fixtures.ts",
+    "e2e/import-batch.config.ts",
+    "lib/agents/runtime.ts",
+    "lib/ai/conversation-history.ts",
+    "lib/artifacts/validate.ts",
+    "lib/bank/enable-banking.ts",
+    "lib/finance/recurring-occurrences.ts",
+    "lib/finance/verified-claims.ts",
+    "lib/import-batch.ts",
+    "package-lock.json",
+    "package.json",
+    "scripts/artifact-version-browser.mjs",
+    "scripts/evaluate-import-organization.mjs",
+    "scripts/fixtures/import-organization-holdout.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 22,
+    "cache_creation_tokens": 29112,
+    "cache_read_tokens": 829776,
+    "output_tokens": 4007,
+    "api_call_count": 11
+  }
+}
