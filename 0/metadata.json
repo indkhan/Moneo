@@ -1,0 +1,90 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M55HREYKK59HS5M9MZZ18TRN",
+  "session_id": "f1e7ba6e-691b-47a3-b1df-4f73d12785e1",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-17T18:25:06.9030287Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "b7c640dbc4c1",
+  "checkpoint_transcript_start": 407,
+  "transcript_lines_at_start": 407,
+  "compact_transcript_start": 47,
+  "token_usage": {
+    "input_tokens": 6,
+    "cache_creation_tokens": 2842,
+    "cache_read_tokens": 377180,
+    "output_tokens": 1121,
+    "api_call_count": 3,
+    "subagent_tokens": {
+      "input_tokens": 20,
+      "cache_creation_tokens": 48786,
+      "cache_read_tokens": 1059131,
+      "output_tokens": 5736,
+      "api_call_count": 10
+    }
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1302,
+      "user_lines_removed": 1138,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 13,
+        ".claude/worktrees/agentic-build.log": 88,
+        ".claude/worktrees/agentic-e2e.log": 8,
+        ".claude/worktrees/agentic-lint.log": 12,
+        ".claude/worktrees/agentic-npmci.log": 19,
+        ".claude/worktrees/agentic-test.log": 24,
+        "app/ai/agents/[id]/page.tsx": 1,
+        "app/ai/agents/actions.ts": 1,
+        "app/ai/agents/page.tsx": 1,
+        "app/api/agents/runs/[id]/route.ts": 3,
+        "app/api/agents/runs/route.ts": 2,
+        "components/mission-control.test.tsx": 1,
+        "components/mission-control.tsx": 2,
+        "lib/ai/agent-apply.test.ts": 87,
+        "lib/ai/agent-apply.ts": 99,
+        "lib/ai/agent-dispatch.ts": 63,
+        "lib/ai/agent-runtime.test.ts": 70,
+        "lib/ai/agent-runtime.ts": 334,
+        "lib/ai/agent-state.ts": 19,
+        "lib/ai/agent-team.test.ts": 123,
+        "lib/ai/agent-team.ts": 326,
+        "workflows/agent-team.test.ts": 2,
+        "workflows/agent-team.ts": 2,
+        "workflows/import-file.ts": 1,
+        "workflows/import-review-dispatch.test.ts": 1
+      },
+      "user_removed_per_file": {
+        "app/ai/agents/[id]/page.tsx": 1,
+        "app/ai/agents/actions.ts": 1,
+        "app/ai/agents/page.tsx": 1,
+        "app/api/agents/runs/[id]/route.ts": 3,
+        "app/api/agents/runs/route.ts": 2,
+        "components/mission-control.test.tsx": 1,
+        "components/mission-control.tsx": 2,
+        "lib/agents/apply.test.ts": 87,
+        "lib/agents/apply.ts": 99,
+        "lib/agents/dispatch.ts": 63,
+        "lib/agents/runtime.test.ts": 70,
+        "lib/agents/runtime.ts": 334,
+        "lib/agents/state.ts": 19,
+        "lib/agents/team.test.ts": 123,
+        "lib/agents/team.ts": 326,
+        "workflows/agent-team.test.ts": 2,
+        "workflows/agent-team.ts": 2,
+        "workflows/import-file.ts": 1,
+        "workflows/import-review-dispatch.test.ts": 1
+      }
+    }
+  ]
+}
