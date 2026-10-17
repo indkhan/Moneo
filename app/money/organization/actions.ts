@@ -6,7 +6,7 @@ import {requireWorkspace} from '@/lib/auth';
 import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
 import {versionedRows} from '../transactions/input';
 
-export type ReviewState={error?:string};
+type ReviewState={error?:string};
 const target=z.union([z.uuid(),z.literal('keep'),z.literal('')]);
 export async function createReview(_state:ReviewState,form:FormData):Promise<ReviewState> {
  let reviewId:string;

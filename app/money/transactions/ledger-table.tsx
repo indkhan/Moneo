@@ -15,7 +15,7 @@ export type LedgerRow = {
   account_id: string; category_id: string | null; merchant_id: string | null; tags: string[] | null; event_name: string | null; review_reasons: string[] | null;
 };
 type Named = { id: string; name: string };
-export type LedgerGroups = { by: TransactionGroup; labels: Record<string, string>; summaries: Record<string, { count: number; totals: Record<string, string> }> };
+type LedgerGroups = { by: TransactionGroup; labels: Record<string, string>; summaries: Record<string, { count: number; totals: Record<string, string> }> };
 
 function signed(minor: string, currency: string, locale: string) {
   const value = BigInt(minor);

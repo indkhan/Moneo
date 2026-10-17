@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { deleteTransactionView, renameTransactionView, saveTransactionView, updateTransactionViewFilters } from "./actions";
 import type { SaveInput } from "./validate";
 
-export type SavedViewRow = { id: string; name: string; created_at: string; version: number };
+type SavedViewRow = { id: string; name: string; created_at: string; version: number };
 
 /**
  * Saved-views side rail. Open links carry only the opaque view UUID

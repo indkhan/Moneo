@@ -7,7 +7,7 @@ import type { FilterValues } from "./filter-bar";
 // as a chip, and anything it does not understand becomes a description search.
 
 type Named = { id: string; name: string };
-export type CompiledFilter = { params: FilterValues; understood: string[] };
+type CompiledFilter = { params: FilterValues; understood: string[] };
 
 const MONTHS = ["january|jan", "february|feb", "march|mar", "april|apr", "may", "june|jun", "july|jul", "august|aug", "september|sept|sep", "october|oct", "november|nov", "december|dec"];
 const SYMBOLS: Record<string, string> = { "€": "EUR", "$": "USD", "£": "GBP", "¥": "JPY" };

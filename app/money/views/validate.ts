@@ -10,7 +10,7 @@
 
 import { DEFAULT_SORT, TRANSACTION_SORTS, normalizeEventName, normalizeTag, parseMinorUnits, type ParsedTransactionParams, type TransactionSort } from "../transactions/filters";
 
-export type SavedViewFilters = {
+type SavedViewFilters = {
   q?: string;
   from?: string;
   to?: string;

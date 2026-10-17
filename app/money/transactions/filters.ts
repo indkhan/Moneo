@@ -18,7 +18,7 @@ export const SORT_ORDER: Record<TransactionSort, { column: "posted_on" | "amount
   "amount-asc": { column: "amount_minor", ascending: true },
 };
 
-export const TRANSACTION_GROUPS = ["category", "merchant", "month"] as const;
+const TRANSACTION_GROUPS = ["category", "merchant", "month"] as const;
 export type TransactionGroup = (typeof TRANSACTION_GROUPS)[number];
 
 export type ParsedTransactionParams = {

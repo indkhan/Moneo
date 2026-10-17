@@ -2,7 +2,7 @@ import { calendarDate } from "@/lib/finance/calendar";
 
 type Snapshot = { account_id: string; amount_minor: string; currency_code: string; as_of: string; undone_at?: string | null };
 type Valuation = { item_id: string; created_at: string; kind: string; amount_minor: string; currency_code: string; as_of: string; linked_account_id: string | null };
-export type NetWorthPoint = { date: string; accounts: Map<string, bigint>; assets: Map<string, bigint>; debts: Map<string, bigint> };
+type NetWorthPoint = { date: string; accounts: Map<string, bigint>; assets: Map<string, bigint>; debts: Map<string, bigint> };
 
 const add = (map: Map<string, bigint>, currency: string, amount: bigint) => map.set(currency, (map.get(currency) ?? 0n) + amount);
 
