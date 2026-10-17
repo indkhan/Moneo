@@ -52,7 +52,7 @@ try {
     assertRequiredResults("vitest", unitReport);
     const specs = readdirSync("e2e").filter(file => file.endsWith(".spec.ts") && file !== "core-journey.gated.spec.ts").map(file => `e2e/${file}`);
     // Run the verified production build without HMR or a live provider key.
-    run("browser", "node_modules/@playwright/test/cli.js", ["test", ...specs, "--workers=1", "--reporter=json", `--output=${directory}/browser-artifacts`], { PLAYWRIGHT_JSON_OUTPUT_FILE: browser, OPENROUTER_API_KEY: "", E2E_PRODUCTION_BUILD: "1", CI: "1" });
+    run("browser", "node_modules/@playwright/test/cli.js", ["test", ...specs, "--workers=1", "--reporter=json", `--output=${directory}/browser-artifacts`], { PLAYWRIGHT_JSON_OUTPUT_FILE: browser, OPENAI_API_KEY: "", E2E_PRODUCTION_BUILD: "1", CI: "1" });
     const browserReport = JSON.parse(readFileSync(browser, "utf8"));
     result.browser = browserReport.stats;
     assertRequiredResults("playwright", browserReport);

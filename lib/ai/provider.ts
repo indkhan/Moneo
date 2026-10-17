@@ -1,33 +1,20 @@
-import { createOpenRouter, type OpenRouterChatSettings } from "@openrouter/ai-sdk-provider";
-import { DEFAULT_OPENROUTER_MODEL } from "@/lib/env";
-import type { WorkspaceSettings } from "@/lib/settings";
+import { createOpenAI } from "@ai-sdk/openai";
+import { AI_AGENTS, type AiAgent, type WorkspaceSettings } from "@/lib/settings";
 
-// OpenRouter via the Vercel AI SDK.
-// Docs: https://openrouter.ai/docs + https://ai-sdk.dev
-export function getModel(modelOverride?: string, reasoning?: OpenRouterChatSettings["reasoning"]) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is missing. Add it to .env (see .env.example).");
-  const openrouter = createOpenRouter({ apiKey });
-  const modelId = modelOverride ?? DEFAULT_OPENROUTER_MODEL;
-  return openrouter.chat(modelId, { ...(reasoning ? { reasoning } : {}), provider: { max_price: { prompt: 0, completion: 0, request: 0, image: 0, audio: 0 } } });
+// OpenAI via the Vercel AI SDK. Each agent uses the model typed in Settings, else its default.
+// Docs: https://ai-sdk.dev/providers/ai-sdk-providers/openai
+export function getModel(modelId: string) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY is missing. Add it to .env (see .env.example).");
+  return createOpenAI({ apiKey })(modelId);
 }
 
-export async function listFreeModels() {
-  const response = await fetch("https://openrouter.ai/api/v1/models", { signal: AbortSignal.timeout(10000), cache: "no-store" });
-  if (!response.ok) throw new Error("Free model availability could not be verified; try again later");
-  const body = await response.json() as { data?: { id: string; name: string; pricing?: Record<string, string>; supported_parameters?: string[] }[] };
-  if (!Array.isArray(body.data)) throw new Error("Provider model catalogue is invalid");
-  return body.data.filter(model => model.pricing && Object.values(model.pricing).length > 0 &&
-    Object.values(model.pricing).every(price => typeof price === "string" && /^0(?:\.0+)?$/.test(price)) &&
-    model.supported_parameters?.includes("tools") && model.supported_parameters?.includes("response_format"))
-    .map(model => ({ id: model.id, name: model.name }));
+export function modelIdFor(settings: WorkspaceSettings | undefined, agent: AiAgent) {
+  return settings?.ai_models[agent] ?? AI_AGENTS[agent].model;
 }
 
-export async function modelForSettings(settings?: WorkspaceSettings, reasoning?: OpenRouterChatSettings["reasoning"]) {
-  const id = settings?.openrouter_model ?? DEFAULT_OPENROUTER_MODEL;
-  if (!(await listFreeModels()).some(model => model.id === id))
-    throw new Error("Selected model is unavailable, lacks required capabilities, or is no longer free; choose a verified free model in Settings");
-  return getModel(id, reasoning);
+export async function modelForSettings(settings: WorkspaceSettings | undefined, agent: AiAgent) {
+  return getModel(modelIdFor(settings, agent));
 }
 
 export const SYSTEM_PROMPT =

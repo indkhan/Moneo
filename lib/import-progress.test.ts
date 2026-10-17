@@ -70,7 +70,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
 
 it("writes reviewed three-decimal amounts, fees and balances as exact strings with original evidence", async () => {
   state.sources.clear(); state.links.clear(); state.transactions.clear(); state.snapshots.clear(); state.timestamped = true; state.threeDecimal = true; state.importStatus = "queued";
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key"); vi.stubEnv("OPENROUTER_API_KEY", "");
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key"); vi.stubEnv("OPENAI_API_KEY", "");
   try {
     await importFile("decimal-import", "workspace", 27);
     expect(state.importStatus).toBe("completed");
@@ -86,7 +86,7 @@ it("writes reviewed three-decimal amounts, fees and balances as exact strings wi
 it("reports persisted progress at the committed batch boundary and keeps counts/idempotent ledger stable on replay", async () => {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
-  vi.stubEnv("OPENROUTER_API_KEY", "");
+  vi.stubEnv("OPENAI_API_KEY", "");
   try {
     await importFile("import", "workspace", 27);
     expect(state.progress).toEqual([27, 27]);
@@ -102,7 +102,7 @@ it("reports persisted progress at the committed batch boundary and keeps counts/
 it("stops row effects at effective cancellation and resumes the same sources without duplicate ledger", async () => {
   state.sources.clear(); state.links.clear(); state.transactions.clear(); state.snapshots.clear(); state.progress.length = 0;
   state.importStatus = "queued"; state.runVersion = 1; state.cancelAt = 250; state.total = 277;
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key"); vi.stubEnv("OPENROUTER_API_KEY", "");
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key"); vi.stubEnv("OPENAI_API_KEY", "");
   try {
     await importFile("cancel-import", "workspace", 277);
     expect(state.importStatus).toBe("canceled"); expect(state.sources.size).toBe(250); expect(state.transactions.size).toBe(250);
@@ -118,7 +118,7 @@ it("stops row effects at effective cancellation and resumes the same sources wit
 
 it("refuses an archived reviewed target before writing any source or canonical row", async () => {
   state.sources.clear(); state.transactions.clear(); state.links.clear(); state.importsWrites = []; state.accountArchived = true; state.importStatus = "queued";
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key"); vi.stubEnv("OPENROUTER_API_KEY", "");
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key"); vi.stubEnv("OPENAI_API_KEY", "");
   try {
     await importFile("archive-import", "workspace", 27);
     expect(state.importsWrites).toContainEqual({ status: "failed", error: "Error: Archived accounts cannot receive new imports" });
@@ -128,7 +128,7 @@ it("refuses an archived reviewed target before writing any source or canonical r
 
 it("persists reviewed source instants and repairs a lost after-row snapshot on retry without changing ledger", async () => {
   state.sources.clear(); state.links.clear(); state.transactions.clear(); state.snapshots.clear(); state.progress.length = 0; state.timestamped = true; state.importStatus = "queued";
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key"); vi.stubEnv("OPENROUTER_API_KEY", "");
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key"); vi.stubEnv("OPENAI_API_KEY", "");
   try {
     await importFile("timestamp-import", "workspace", 27);
     expect([...state.transactions.values()][1]).toMatchObject({ posted_at: "2026-10-01T10:01:00.000Z", amount_minor: "-100", review_reasons: ["fee_semantics"] });

@@ -4,7 +4,7 @@ begin
   insert into auth.users(id,email) values(actor,'qa-'||actor||'@example.invalid'),(foreign_actor,'qa-'||foreign_actor||'@example.invalid');
   select id into strict workspace from public.workspaces where owner_id=actor;
   select id into strict foreign_workspace from public.workspaces where owner_id=foreign_actor;
-  preferences:='{"timezone":"Europe/Berlin","locale":"en-GB","theme":"dark","openrouter_model":null,"ai_data_scopes":["accounts"],"muted_insight_types":[],"summary_cadence":"none","summary_time":"09:00"}';
+  preferences:='{"timezone":"Europe/Berlin","locale":"en-GB","theme":"dark","ai_models":{},"ai_data_scopes":["accounts"],"muted_insight_types":[],"summary_cadence":"none","summary_time":"09:00"}';
   perform set_config('request.jwt.claim.sub',actor::text,true);
   execute 'set local role authenticated';
   perform public.save_workspace_preferences(workspace,'USD',preferences);

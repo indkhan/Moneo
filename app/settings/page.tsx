@@ -4,8 +4,6 @@ import { BUILTIN_WIDGETS, dashboardItems, dashboardLayoutSchema } from "@/lib/da
 import { saveDashboard } from "../dashboard-actions";
 import { InsightSettings } from "./insights";
 import { requireWorkspace } from "@/lib/auth";
-import { listFreeModels } from "@/lib/ai/provider";
-import { DEFAULT_OPENROUTER_MODEL } from "@/lib/env";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { SettingsForm } from "./form";
 import { SummaryRuns, type SummaryRun } from "./summary-runs";
@@ -46,16 +44,10 @@ async function loadRuns({ supabase, workspace }: Workspace): Promise<SummaryRun[
   });
 }
 
-async function loadModels() {
-  try { return { models: await listFreeModels() }; }
-  catch (error) { return { models: [], catalogueError: error instanceof Error ? error.message : "Model availability could not be checked" }; }
-}
-
 export default async function SettingsPage() {
   const context = await requireWorkspace();
   const { user, workspace, settings } = context;
-  // Independent loads run together; the external model catalogue no longer waits behind the database.
-  const [dashboard, runs, { models, catalogueError }] = await Promise.all([loadDashboard(context), loadRuns(context), loadModels()]);
+  const [dashboard, runs] = await Promise.all([loadDashboard(context), loadRuns(context)]);
   return <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-8 lg:py-10">
     <div><h1 className="text-2xl font-semibold tracking-tight">Settings</h1><p className="mt-1 break-words text-sm text-muted-foreground">Your private workspace · {user.email ?? "Signed in"}</p></div>
     <div className="mt-8 grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)]">
@@ -65,8 +57,7 @@ export default async function SettingsPage() {
         </li>)}</ul>
       </nav>
       <div className="min-w-0 space-y-8">
-        <SettingsForm settings={settings} currency={workspace.display_currency} models={models} catalogueError={catalogueError}
-          defaultModel={DEFAULT_OPENROUTER_MODEL} />
+        <SettingsForm settings={settings} currency={workspace.display_currency} />
         <div id="relevance" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={4} />}><InsightSettings /></Suspense></div>
         <details id="home" className={card}><summary className="cursor-pointer text-base font-semibold">Customize Home</summary><form action={saveDashboard} className="mt-4 space-y-4"><input type="hidden" name="version" value={dashboard.version} />{dashboard.choices.map((key, index) => <div key={key} className="flex flex-wrap items-center gap-3 border-b border-border pb-3 last:border-0"><label className="flex flex-1 items-center gap-2 text-sm"><input type="checkbox" name="enabled" value={key} defaultChecked={dashboard.ordered.includes(key)} disabled={key.startsWith("tool:")} />{key.startsWith("tool:") && <input type="hidden" name="enabled" value={key} />}{Object.hasOwn(BUILTIN_WIDGETS, key) ? BUILTIN_WIDGETS[key as keyof typeof BUILTIN_WIDGETS] : dashboard.pinnedById.get(key.slice(5))?.name}</label><label className="flex items-center gap-2 text-sm">Position<input type="number" name={`position:${key}`} min="1" max="50" defaultValue={dashboard.ordered.includes(key) ? dashboard.ordered.indexOf(key) + 1 : index + 1} className="min-h-10 w-20 rounded-lg border border-border bg-card px-3 py-2 text-sm" /></label></div>)}<button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Save dashboard</button><p className="text-sm text-muted-foreground">Pin or unpin tools in the <Link href="/ai/library" className="underline">Library</Link>. Lower positions appear first.</p></form></details>
         <div id="banks" className="scroll-mt-20"><ConnectedBanks /></div>

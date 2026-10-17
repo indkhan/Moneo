@@ -29,7 +29,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
   },
 }) }));
 afterEach(() => { Object.assign(fixture, { total: 100, requests: [], stageArgs: null, downloads: 0, stage: null, status: "running", version: 1, cancelAfter: 0, attempts: 0, conflict: false, badHash: false }); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
-function env() { vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic"); vi.stubEnv("OPENROUTER_API_KEY", ""); }
+function env() { vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic"); vi.stubEnv("OPENAI_API_KEY", ""); }
 
 it("stages the raw mapping and routing snapshots actually used by normalization", async () => {
   env();

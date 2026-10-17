@@ -19,14 +19,14 @@ export async function POST(request: Request) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); }
   catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.OPENROUTER_API_KEY)
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.OPENAI_API_KEY)
     return Response.json({ error: "Financial review service is not configured" }, { status: 503 });
   const parsed = z.object({ requestId: z.uuid(), investigation: reviewRequestSchema.optional() }).strict().safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Provide a valid review request ID and bounded investigation scope" }, { status: 400 });
   const specification = resolveReviewRequest({...parsed.data.investigation ?? {version: 1, question: "Review my finances"}, allowedScopes: context.settings.ai_data_scopes}, calendarDate(new Date(), context.settings.timezone));
   try { requireAiScope(context.settings, "accounts", "transactions", ...(specification.includePlanning ? ["planning" as const] : [])); }
   catch (error) { return Response.json({ error: String(error) }, { status: 403 }); }
-  try { await modelForSettings(context.settings); }
+  try { await modelForSettings(context.settings, "review"); }
   catch (error) { return Response.json({ error: String(error) }, { status: 503 }); }
   try {
     const result = await startFinancialReview(context.supabase, context.workspace.id, parsed.data.requestId, undefined, specification);

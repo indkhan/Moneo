@@ -72,7 +72,7 @@ export async function POST(request: Request) {
   if (!kind.success) return Response.json({ error: "Unsupported artifact kind" }, { status: 400 });
   const permissions = Array.isArray(artifact.permissions) ? (artifact.permissions as string[]) : [];
 
-  if (!process.env.OPENROUTER_API_KEY) {
+  if (!process.env.OPENAI_API_KEY) {
     return Response.json({ error: "AI is not configured" }, { status: 503 });
   }
 
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
   return runArtifactGeneration(supabase, request, { requestId: parsed.data.requestId ?? crypto.randomUUID(), purpose: "calculator", artifactId: artifact.id, description: parsed.data.description }, async () => {
     const current = await supabase.from("artifact_versions").select("source, manifest").eq("workspace_id", workspace.id).eq("id", artifact.active_version_id).maybeSingle();
     if (current.error) throw current.error;
-    const model = await modelForSettings(context.settings, { effort: "minimal", exclude: true });
+    const model = await modelForSettings(context.settings, "artifacts");
     const generated = await generateText({
       model,
       maxOutputTokens: 4000,

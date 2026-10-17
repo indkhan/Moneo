@@ -1,4 +1,4 @@
-import { DEFAULT_OPENROUTER_MODEL, getSupabaseConfig, hasOpenRouter, hasSupabase } from "@/lib/env";
+import { getSupabaseConfig, hasOpenAI, hasSupabase } from "@/lib/env";
 
 export async function GET() {
   const supabaseConfig = getSupabaseConfig();
@@ -7,7 +7,6 @@ export async function GET() {
     supabase: hasSupabase(),
     supabaseStatus: supabaseConfig.status,
     detail: supabaseConfig.detail,
-    openrouter: hasOpenRouter(),
-    model: DEFAULT_OPENROUTER_MODEL,
+    openai: hasOpenAI(),
   });
 }

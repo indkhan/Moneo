@@ -1,38 +1,19 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { getModel, listFreeModels, modelForSettings } from "./provider";
-import { DEFAULT_OPENROUTER_MODEL } from "@/lib/env";
-import { settingsSchema } from "@/lib/settings";
+import { getModel, modelIdFor } from "./provider";
+import { AI_AGENTS, settingsSchema } from "@/lib/settings";
 
-afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+afterEach(() => { vi.unstubAllEnvs(); });
 
-test("falls back to the built-in default model and honours an explicit override", () => {
-  vi.stubEnv("OPENROUTER_API_KEY", "test-key");
-  expect(getModel().modelId).toBe(DEFAULT_OPENROUTER_MODEL);
-  expect(getModel("example/model").modelId).toBe("example/model");
+test("uses each agent's typed model and falls back to its default", () => {
+  const settings = settingsSchema.parse({ ai_models: { chat: "gpt-custom" } });
+  expect(modelIdFor(settings, "chat")).toBe("gpt-custom");
+  expect(modelIdFor(settings, "imports")).toBe(AI_AGENTS.imports.model);
+  expect(modelIdFor(undefined, "chat")).toBe(AI_AGENTS.chat.model);
 });
 
-test("bounds draft reasoning while retaining the zero-price provider ceiling", () => {
-  vi.stubEnv("OPENROUTER_API_KEY", "test-key");
-  const model = getModel("verified-free", { effort: "minimal", exclude: true });
-  expect(model.settings.reasoning).toEqual({ effort: "minimal", exclude: true });
-  expect(model.settings.provider?.max_price).toEqual({ prompt: 0, completion: 0, request: 0, image: 0, audio: 0 });
-});
-
-test("offers only zero-price models with tools and structured response support", async () => {
-  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: [
-    { id: "free", name: "Free", pricing: { prompt: "0", completion: "0" }, supported_parameters: ["tools", "response_format"] },
-    { id: "paid", pricing: { prompt: "0.01", completion: "0" }, supported_parameters: ["tools", "response_format"] },
-    { id: "underflow", pricing: { prompt: "1e-1000", completion: "0" }, supported_parameters: ["tools", "response_format"] },
-    { id: "empty", pricing: { prompt: "", completion: "0" }, supported_parameters: ["tools", "response_format"] },
-    { id: "limited", pricing: { prompt: "0", completion: "0" }, supported_parameters: [] },
-  ] })));
-  expect(await listFreeModels()).toEqual([{ id: "free", name: "Free" }]);
-});
-
-test("refuses a formerly free selected model before provider invocation", async () => {
-  vi.stubEnv("OPENROUTER_API_KEY", "test-key");
-  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: [
-    { id: "changed", name: "Changed", pricing: { prompt: "0", completion: "1" }, supported_parameters: ["tools", "response_format"] },
-  ] })));
-  await expect(modelForSettings(settingsSchema.parse({ openrouter_model: "changed" }))).rejects.toThrow("no longer free");
+test("requires an OpenAI key", () => {
+  vi.stubEnv("OPENAI_API_KEY", "");
+  expect(() => getModel("gpt-5")).toThrow("OPENAI_API_KEY");
+  vi.stubEnv("OPENAI_API_KEY", "test-key");
+  expect(getModel("gpt-5").modelId).toBe("gpt-5");
 });

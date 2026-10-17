@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       try {
         requireAiScope(settings, "imports");
         const result = await generateObject({
-          model: await modelForSettings(settings, { effort: "minimal", exclude: true }),
+          model: await modelForSettings(settings, "imports"),
           abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(30_000)]),
           maxRetries: 0,
           maxOutputTokens: 1800,

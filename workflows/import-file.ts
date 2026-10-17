@@ -146,13 +146,13 @@ async function failImport(importId: string, workspaceId: string, error: string, 
 
 async function maybeStartFirstReview(importId: string, workspaceId: string) {
   "use step";
-  if (!process.env.OPENROUTER_API_KEY || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
+  if (!process.env.OPENAI_API_KEY || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
   const settings = await loadWorkspaceSettings(db, workspaceId);
   try {
     requireAiScope(settings, "accounts", "transactions");
   } catch { return; } // Analysis eligibility is optional; the completed import remains valid.
-  await modelForSettings(settings);
+  await modelForSettings(settings, "imports");
   const first = await db.from("imports").select("id").eq("workspace_id", workspaceId).eq("status", "completed").gt("new_rows", 0).order("created_at").order("id").limit(1).maybeSingle();
   if (first.error) throw first.error;
   if (first.data?.id !== importId) return;

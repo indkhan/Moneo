@@ -6,8 +6,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { generateText } from "ai";
 import { requireWorkspace } from "@/lib/auth";
-import { settingsSchema } from "@/lib/settings";
-import { listFreeModels, modelForSettings } from "@/lib/ai/provider";
+import { AI_AGENT_KEYS, settingsSchema } from "@/lib/settings";
+import { modelForSettings } from "@/lib/ai/provider";
 import { minorDigits } from "@/lib/finance/fx";
 import { revokeBankSessions } from "@/lib/bank/server";
 
@@ -16,19 +16,18 @@ export async function saveSettings(_previous: { error?: string; saved?: boolean 
     const { supabase, workspace, settings: previous } = await requireWorkspace();
     const settings = settingsSchema.parse({
       timezone: form.get("timezone"), locale: form.get("locale"), theme: form.get("theme"),
-      openrouter_model: String(form.get("openrouter_model") ?? "").trim() || null,
+      ai_models: Object.fromEntries(AI_AGENT_KEYS.map(agent => [agent, String(form.get(`model:${agent}`) ?? "").trim()]).filter(([, model]) => model)),
       ai_data_scopes: form.getAll("ai_data_scopes"), muted_insight_types: form.getAll("muted_insight_types"),
       summary_cadence: form.get("summary_cadence"), summary_time: form.get("summary_time"),
     });
     const currency = z.string().regex(/^[A-Z]{3}$/, "Use a three-letter currency code").parse(form.get("display_currency"));
     minorDigits(currency);
-    const modelChanged = settings.openrouter_model !== previous?.openrouter_model;
-    if (settings.openrouter_model && modelChanged) {
-      if (!(await listFreeModels()).some(model => model.id === settings.openrouter_model))
-        throw new Error("Choose a currently verified free model with the required capabilities");
-      const check = await generateText({ model: await modelForSettings(settings), prompt: "Reply with the single word OK.",
-        maxOutputTokens: 512, maxRetries: 0, abortSignal: AbortSignal.timeout(15000) });
-      if (!check.text.trim()) throw new Error("The selected free model returned no usable response; choose another model");
+    // Typed models are free text, so each newly changed one must answer before it is saved.
+    for (const agent of AI_AGENT_KEYS) {
+      if (!settings.ai_models[agent] || settings.ai_models[agent] === previous?.ai_models[agent]) continue;
+      const check = await generateText({ model: await modelForSettings(settings, agent), prompt: "Reply with the single word OK.",
+        maxOutputTokens: 512, maxRetries: 0, abortSignal: AbortSignal.timeout(15000) }).catch(() => null);
+      if (!check?.text.trim()) throw new Error(`Model "${settings.ai_models[agent]}" did not respond; check the name and your OpenAI key`);
     }
     const result = await supabase.rpc("save_workspace_preferences", { p_workspace_id: workspace.id, p_display_currency: currency, p_preferences: settings });
     if (result.error) throw new Error("Preferences could not be saved; your previous settings are preserved");
