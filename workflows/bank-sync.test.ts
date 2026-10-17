@@ -66,6 +66,17 @@ it("syncing the same bank data twice adds no second import", async () => {
   expect(tables.bank_connections[0]).toMatchObject({ status: "active", last_error: null });
 });
 
+it("records progress when work after a completed import fails", async () => {
+  // importFile is flattened into this run: its optional tail (first review, agent team) can throw after the rows are in.
+  vi.mocked(importFile).mockImplementationOnce(async importId => {
+    tables.imports.find(row => row.id === importId)!.status = "completed";
+    throw new Error("Selected model is unavailable");
+  });
+  await syncBankConnection("c1", "w1");
+  expect(tables.bank_connection_accounts[0].last_booked_on).toBe("2026-10-02");
+  expect(tables.bank_connections[0].last_synced_at).toEqual(expect.any(String));
+});
+
 it("marks an expired consent and records rate limits without importing", async () => {
   bank.bookedTransactions.mockRejectedValueOnce(new EnableBankingError(429, undefined, "limited"));
   await syncBankConnection("c1", "w1");
