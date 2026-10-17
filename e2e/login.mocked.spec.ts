@@ -5,7 +5,7 @@ test("failed sign-in callback explains how to retry", async ({ page }) => {
   await page.goto("/auth/callback");
   await expect(page).toHaveURL(/\/login\?error=sign-in$/);
   await expect(page.getByRole("status")).toContainText("The sign-in link could not be verified. Request a new link and try again.");
-  await expect(page.getByRole("button", { name: "Send sign-in link", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeEnabled();
 });
 
 test("sign-in shows pending feedback and allows retry after a rejected request without sending email", async ({ page }) => {
@@ -22,6 +22,7 @@ test("sign-in shows pending feedback and allows retry after a rejected request w
   });
   try {
     await page.goto("/login");
+    await page.getByRole("button", { name: "Email me a sign-in link" }).click();
     await page.getByLabel("Email", { exact: true }).fill("qa-login@example.invalid");
     await page.getByRole("button", { name: "Send sign-in link", exact: true }).click();
     await expect.poll(() => requests).toBe(1);

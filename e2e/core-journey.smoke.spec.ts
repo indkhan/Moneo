@@ -34,14 +34,15 @@ test.describe("core journey smoke (no session, no live AI)", () => {
     expect(body.model).toBe(DEFAULT_OPENROUTER_MODEL);
   });
 
-  test("login page renders OTP form", async ({ page }) => {
+  test("login page renders email and password form", async ({ page }) => {
     await page.goto("/login");
     await expect(
       page.getByRole("heading", { name: "Sign in to Moneo" }),
     ).toBeVisible();
     await expect(page.getByLabel("Email")).toBeVisible();
+    await expect(page.getByLabel("Password")).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Send sign-in link" }),
+      page.getByRole("button", { name: "Sign in", exact: true }),
     ).toBeVisible();
   });
 
