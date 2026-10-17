@@ -1,0 +1,71 @@
+if there are 2 folder which has code even differnt but can be at same place and it will be better for agent then then remove that folder by having that code in the main folder
+
+---
+
+<task-notification>
+<task-id>acd5fa16de71cd304</task-id>
+<tool-use-id>toolu_012RvVhW3A7ti47AsksNAwf5</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--codebases-Moneo\f1e7ba6e-691b-47a3-b1df-4f73d12785e1\tasks\acd5fa16de71cd304.output</output-file>
+<status>completed</status>
+<summary>Agent "Simplify app/ai/library" is waiting on its own background work</summary>
+<note>This agent stopped with background work of its own still running. It may resume on its own when that work completes or reports, and the same task-id notifies again if it does; the result below may be interim.</note>
+<result>I stopped partway through. Only one simplification is done, and it is staged but not committed, so the requested commit-per-change workflow is incomplete.
+
+**What changed (staged in `app/ai/library/actions.ts`):**
+- Pulled the repeated compare-and-swap write on `artifact_state` (update, version bump, `updated_at`, workspace and version filters, `maybeSingle`) into one helper, `writeArtifactState`. It returns the new version or `null` on conflict. The three callers (`saveCalculatorParams`, `saveTripState`, `saveDatedTripState`) use it.
+- Removed the `kind` alias and the inline `Awaited&lt;ReturnType&lt;typeof requireWorkspace&gt;&gt;["supabase"]` type, replacing both with a single `Supabase` type.
+- Validation, auth checks and conflict semantics are unchanged.
+
+**Verification:**
+- `npx vitest run app/ai`: 92/92 passed on the baseline. After the change, `actions.test.ts` passes 41/41.
+- `npx eslint app/ai`: exit 0.
+- `npx tsc --noEmit -p .`: did not return. Two background runs were still going after roughly 40 minutes with no output, so the typecheck is unverified.
+
+**Commit status:**
+- `git commit` was started with the required message and co-author line, but it has not landed. `git log` still shows `69ffaf6` as HEAD, and `git status` shows the file staged. Several git and node processes were still running in the background, so it may be stuck behind the sluggish environment. Check `git log -1` before retrying, and clear any `.git/index.lock` if one is left behind.
+- Net lines removed: not computed, since nothing has landed on the branch yet.
+
+**Left for the next pass:**
+- `generate-form.tsx` and `generate-calculator-form.tsx` duplicate the suggest, stop and `AbortController` logic, plus the button class strings. This is the best remaining duplication target.
+- `calculator-panel.tsx` repeats the `snapshot !== null &amp;&amp; typeof snapshot === "object" &amp;&amp; "x" in snapshot` checks about five times. I did not touch it because it is complex and the risk of behavior change is high.
+- `draftProblems` and `ProblemList` in `draft-preview.tsx` are exported but used only in that file. Dropping the `export` is a small safe cleanup I did not get to.
+
+Branch: `worktree-agent-acd5fa16de71cd304`. Worktree: `C:\codebases\Moneo\.claude\worktrees\agent-acd5fa16de71cd304`.</result>
+<usage><subagent_tokens>114253</subagent_tokens><tool_uses>59</tool_uses><duration_ms>689556</duration_ms></usage>
+<worktree><worktreePath>C:\codebases\Moneo\.claude\worktrees\agent-acd5fa16de71cd304</worktreePath><worktreeBranch>worktree-agent-acd5fa16de71cd304</worktreeBranch></worktree>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>acd5fa16de71cd304</task-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--codebases-Moneo\f1e7ba6e-691b-47a3-b1df-4f73d12785e1\tasks\acd5fa16de71cd304.output</output-file>
+<status>completed</status>
+<summary>Agent "Simplify app/ai/library" is waiting on its own background work</summary>
+<note>This agent stopped with background work of its own still running. It may resume on its own when that work completes or reports, and the same task-id notifies again if it does; the result below may be interim.</note>
+<result>The one refactor is verified but not committed. The commit command hangs in this environment, and HEAD is still `69ffaf6`.
+
+**Staged change (`app/ai/library/actions.ts`):**
+- Moved the repeated compare-and-swap write on `artifact_state` into one helper, `writeArtifactState`. It returns the new version or `null` on conflict. `saveCalculatorParams`, `saveTripState` and `saveDatedTripState` now use it.
+- Replaced the `kind` alias and the inline Supabase type with one `Supabase` type.
+- Validation, auth checks and conflict behavior are unchanged.
+
+**Verification:**
+- `npx vitest run app/ai`: 92/92 on the baseline. `actions.test.ts` passes 41/41 after the change.
+- `npx eslint app/ai`: exit 0.
+- `npx tsc --noEmit -p .`: exit 0 with no output, run twice.
+
+**Commit:** `git commit` has not returned for about 20 minutes, and `.git` is a worktree pointer, so I could not check the hooks or locks from here. To finish, run this from the worktree:
+
+```
+git commit -m "refactor(ai): share artifact state compare-and-swap write in library actions" -m "Co-Authored-By: Claude Opus 5.5 &lt;noreply@anthropic.com&gt;"
+```
+
+If it hangs again, check for a stuck `git.exe` and an `index.lock`.
+
+**Not done:** `npm test` and the rest of the planned work. The remaining simplifications are listed in my previous report: the duplicated generation logic in `generate-form.tsx` and `generate-calculator-form.tsx`, the repeated snapshot checks in `calculator-panel.tsx`, and the unnecessary exports in `draft-preview.tsx`.
+
+Branch: `worktree-agent-acd5fa16de71cd304`.</result>
+<usage><subagent_tokens>122883</subagent_tokens><tool_uses>72</tool_uses><duration_ms>744476</duration_ms></usage>
+<worktree><worktreePath>C:\codebases\Moneo\.claude\worktrees\agent-acd5fa16de71cd304</worktreePath><worktreeBranch>worktree-agent-acd5fa16de71cd304</worktreeBranch></worktree>
+</task-notification>
