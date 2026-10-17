@@ -58,10 +58,11 @@ const median = (values: bigint[]) => {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle] + 1n) / 2n;
 };
 const titleCase = (key: string) => key.replace(/\b\p{L}/gu, letter => letter.toLocaleUpperCase("en")).slice(0, 100);
-const reviewed = (row: LedgerRow) => row.status === "posted" && row.kind === "ordinary" && !row.reviewReasons.length;
+export const reviewed = (row: LedgerRow) => row.status === "posted" && row.kind === "ordinary" && !row.reviewReasons.length;
+export const daysBefore = (today: string, days: number) => new Date(Date.parse(`${today}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
 
 // ── Lead: plan ───────────────────────────────────────────────────────────────
-export type Profile = { transactions: number; unorganized: number; months: number; currencies: string[]; scopes: AiDataScope[]; modelAvailable: boolean };
+export type Profile = { transactions: number; unorganized: number; months: number; scopes: AiDataScope[] };
 export type PlannedTask = { agent: AgentId; wave: number; status: "pending" | "skipped"; reason: string };
 
 /** Deterministic plan: which agents run, in which wave, and why the others are skipped. */
@@ -184,7 +185,7 @@ export function anomalyFindings(rows: LedgerRow[], today: string, locale?: strin
         payload: { severity: "high", transactionIds: [a.id, b.id] }, confidence: 70, notes: [] });
     }
   }
-  const since = new Date(Date.parse(`${today}T00:00:00Z`) - 90 * 86_400_000).toISOString().slice(0, 10);
+  const since = daysBefore(today, 90);
   const fees = rows.filter(row => row.status === "posted" && row.amountMinor < 0n && row.date >= since && FEE.test(row.description));
   for (const currency of [...new Set(fees.map(row => row.currency))].sort()) {
     const items = fees.filter(row => row.currency === currency), total = items.reduce((sum, row) => sum - row.amountMinor, 0n);
@@ -194,7 +195,7 @@ export function anomalyFindings(rows: LedgerRow[], today: string, locale?: strin
         transactions: items.slice(0, 8).map(evidenceRow), links: [{ label: "Search fees", href: "/money/transactions?q=fee" }] },
       payload: { severity: "medium", transactionIds: items.slice(0, 50).map(row => row.id) }, confidence: 75, notes: [] });
   }
-  const recentFrom = new Date(Date.parse(`${today}T00:00:00Z`) - 45 * 86_400_000).toISOString().slice(0, 10);
+  const recentFrom = daysBefore(today, 45);
   for (const row of spend.filter(row => row.date >= recentFrom)) {
     const peers = spend.filter(peer => peer.accountId === row.accountId && peer.currency === row.currency && peer.date < row.date).map(peer => -peer.amountMinor);
     if (peers.length < 10) continue;

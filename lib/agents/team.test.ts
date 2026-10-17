@@ -12,7 +12,7 @@ const organizationRow = (item: LedgerRow) => ({ id: item.id, version: item.versi
 
 describe("lead plan", () => {
   it("runs agents in waves and explains every skip", () => {
-    const plan = planRun({ transactions: 120, unorganized: 0, months: 1, currencies: ["EUR"], scopes: ["accounts", "transactions"], modelAvailable: false });
+    const plan = planRun({ transactions: 120, unorganized: 0, months: 1, scopes: ["accounts", "transactions"] });
     expect(plan.find(task => task.agent === "categorizer")).toMatchObject({ status: "skipped", reason: expect.stringContaining("already") });
     expect(plan.find(task => task.agent === "recurring")).toMatchObject({ status: "skipped", reason: expect.stringContaining("two months") });
     expect(plan.find(task => task.agent === "forecaster")).toMatchObject({ status: "skipped", reason: "Allow AI access to planning in Settings" });
@@ -20,7 +20,7 @@ describe("lead plan", () => {
     expect(plan.find(task => task.agent === "writer")).toMatchObject({ status: "pending", wave: 2 });
   });
   it("skips everything except writing when there is no data", () => {
-    expect(planRun({ transactions: 0, unorganized: 0, months: 0, currencies: [], scopes: ["accounts", "transactions", "planning", "imports"], modelAvailable: true })
+    expect(planRun({ transactions: 0, unorganized: 0, months: 0, scopes: ["accounts", "transactions", "planning", "imports"] })
       .every(task => task.status === "skipped")).toBe(true);
   });
 });

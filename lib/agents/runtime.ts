@@ -9,7 +9,7 @@ import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { mergeOrganizationSuggestions, organizationProposals, organizationRuleSchema, organizationSuggestionsSchema, type OrganizationProposal, type OrganizationRow } from "@/lib/import/organization";
 import { monthlyEquivalent } from "@/app/money/recurring/series";
 import { AGENTS, WAVES, anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, planRun, recurringProposals, toolProposals, verifiedBriefing,
-  type AgentId, type BriefingFacts, type LedgerRow, type Proposal } from "./team";
+  daysBefore, reviewed, type AgentId, type BriefingFacts, type LedgerRow, type Proposal } from "./team";
 
 // Server-only agent runtime. Agents read through the service role, so every
 // query is fenced by workspace_id; they write only agent_* rows. Canonical
@@ -85,7 +85,6 @@ async function loadLedger(db: Db, workspaceId: string, since: string, table: "tr
   }
   return rows;
 }
-const daysBefore = (today: string, days: number) => new Date(Date.parse(`${today}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
 async function names(db: Db, workspaceId: string) {
   const [categories, merchants] = await Promise.all([db.from("categories").select("id, name").eq("workspace_id", workspaceId).order("name").limit(500),
     db.from("merchants").select("id, name").eq("workspace_id", workspaceId).order("name").limit(2000)]);
@@ -148,12 +147,12 @@ async function recurring(context: Context) {
   await report(context, { type: "step", text: "Scanning up to 10,000 posted transactions for repeating payments" });
   const [rows, stored] = await Promise.all([loadLedger(db, workspace.id, "0001-01-01"),
     db.from("recurring_series").select("account_id, currency_code, cadence, recurring_series_transactions(transaction_id)").eq("workspace_id", workspace.id)]);
-  const eligible = rows.filter(row => row.status === "posted" && row.kind === "ordinary" && !row.reviewReasons.length);
+  const eligible = rows.filter(reviewed);
   await report(context, { type: "tool", text: `detectRecurring over ${eligible.length} reviewed postings` });
   const series = detectRecurring(eligible.map(row => ({ id: row.id, date: row.date, description: row.description, amountMinor: row.amountMinor, currencyCode: row.currency, accountId: row.accountId, merchantId: row.merchantId })));
-  const reviewed = (checked(stored) as { account_id: string; currency_code: string; cadence: string; recurring_series_transactions: { transaction_id: string }[] }[])
+  const confirmed = (checked(stored) as { account_id: string; currency_code: string; cadence: string; recurring_series_transactions: { transaction_id: string }[] }[])
     .map(item => ({ accountId: item.account_id, currencyCode: item.currency_code, cadence: item.cadence, transactionIds: item.recurring_series_transactions.map(link => link.transaction_id) }));
-  const { proposals, findings } = recurringProposals(series, reviewed, new Map(eligible.map(row => [row.id, row])), workspace.locale);
+  const { proposals, findings } = recurringProposals(series, confirmed,new Map(eligible.map(row => [row.id, row])), workspace.locale);
   return { proposals: [...proposals, ...findings], summary: `${series.length} patterns detected, ${proposals.length} new to review, ${findings.length} price increases` };
 }
 
@@ -261,7 +260,7 @@ export async function startRun(runId: string, workspaceId: string, workflowRunId
     const months = first ? (Number(today.slice(0, 4)) - Number(first.slice(0, 4))) * 12 + Number(today.slice(5, 7)) - Number(first.slice(5, 7)) : 0;
     let modelStatus = "disabled";
     if (process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY) modelStatus = await modelForSettings(settings, "agents").then(() => "available", () => "unavailable");
-    const plan = planRun({ transactions: count.count ?? 0, unorganized: unorganized.count ?? 0, months, currencies: [workspace.display_currency], scopes: settings.ai_data_scopes, modelAvailable: modelStatus === "available" });
+    const plan = planRun({ transactions: count.count ?? 0, unorganized: unorganized.count ?? 0, months, scopes: settings.ai_data_scopes });
     checked(await db.from("agent_runs").update({ plan, model_status: modelStatus }).eq("id", runId).eq("workspace_id", workspaceId));
     checked(await db.from("agent_tasks").insert(plan.map((task, index) => ({ run_id: runId, workspace_id: workspaceId, agent: task.agent, position: index + 1,
       status: task.status, step: task.reason, ...(task.status === "skipped" ? { summary: task.reason, finished_at: new Date().toISOString() } : {}) }))));

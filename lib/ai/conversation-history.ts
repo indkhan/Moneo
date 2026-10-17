@@ -12,7 +12,7 @@ function before(value?: string) {
   if (!value) return null;
   try { return cursorSchema.parse(JSON.parse(value)); } catch { throw new Error("Invalid history cursor"); }
 }
-function cursor(row: { id: string; created_at: string }) { return JSON.stringify(row && { id: row.id, created_at: row.created_at }); }
+function cursor(row: { id: string; created_at: string }) { return JSON.stringify({ id: row.id, created_at: row.created_at }); }
 // ponytail: LIKE wildcards are escaped; PostgREST also treats * as %, so it becomes a one-character wildcard.
 function likePattern(query: string) { return `%${query.replace(/[\\%_]/g, "\\$&").replaceAll("*", "_")}%`; }
 
