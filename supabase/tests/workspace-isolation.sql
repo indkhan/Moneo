@@ -86,6 +86,12 @@ begin
   insert into public.financial_evidence_receipts(id,workspace_id,scopes,receipt)
     values(md5('financial_evidence_receipts'||workspace_b)::uuid,workspace_b,array[]::text[],
       jsonb_build_object('id',md5('financial_evidence_receipts'||workspace_b)::uuid,'workspaceId',workspace_b,'query','{}'::jsonb,'metrics','[]'::jsonb,'sources','[]'::jsonb,'scopes','[]'::jsonb));
+  insert into public.agent_runs(id,workspace_id) values(md5('agent_runs'||workspace_b)::uuid,workspace_b);
+  insert into public.agent_tasks(run_id,workspace_id,agent) values(md5('agent_runs'||workspace_b)::uuid,workspace_b,'lead');
+  insert into public.agent_proposals(run_id,workspace_id,agent,kind,conflict_key,title) values(md5('agent_runs'||workspace_b)::uuid,workspace_b,'lead','finding','synthetic','Synthetic finding');
+  insert into public.bank_connections(id,workspace_id,aspsp_name,aspsp_country) values(md5('bank_connections'||workspace_b)::uuid,workspace_b,'Synthetic Bank','DE');
+  insert into public.bank_connection_accounts(connection_id,workspace_id,provider_account_uid,currency_code,account_name)
+    values(md5('bank_connections'||workspace_b)::uuid,workspace_b,'synthetic','EUR','Synthetic Bank');
   insert into public.accounts(workspace_id,name,currency_code) values(workspace_a,'Synthetic own','EUR');
   foreign_transaction := md5('transactions'||workspace_b)::uuid;
   foreign_account := md5('accounts'||workspace_b)::uuid;

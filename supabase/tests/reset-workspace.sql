@@ -82,6 +82,12 @@ begin
   insert into public.financial_evidence_receipts(id,workspace_id,scopes,receipt)
     values(md5('financial_evidence_receipts'||seed_ws)::uuid,seed_ws,array[]::text[],
       jsonb_build_object('id',md5('financial_evidence_receipts'||seed_ws)::uuid,'workspaceId',seed_ws,'query','{}'::jsonb,'metrics','[]'::jsonb,'sources','[]'::jsonb,'scopes','[]'::jsonb));
+  insert into public.agent_runs(id,workspace_id) values(md5('agent_runs'||seed_ws)::uuid,seed_ws);
+  insert into public.agent_tasks(run_id,workspace_id,agent) values(md5('agent_runs'||seed_ws)::uuid,seed_ws,'lead');
+  insert into public.agent_proposals(run_id,workspace_id,agent,kind,conflict_key,title) values(md5('agent_runs'||seed_ws)::uuid,seed_ws,'lead','finding','synthetic','Synthetic finding');
+  insert into public.bank_connections(id,workspace_id,aspsp_name,aspsp_country) values(md5('bank_connections'||seed_ws)::uuid,seed_ws,'Synthetic Bank','DE');
+  insert into public.bank_connection_accounts(connection_id,workspace_id,provider_account_uid,currency_code,account_name)
+    values(md5('bank_connections'||seed_ws)::uuid,seed_ws,'synthetic','EUR','Synthetic Bank');
   -- Links that the delete guards protect: a refund of the seeded transaction and an active artifact version.
   perform set_config('moneo.link_edit','on',true);
   insert into public.transactions(id,workspace_id,account_id,posted_on,description,amount_minor,currency_code)
