@@ -9,6 +9,7 @@ const timezoneSchema = z.string().max(100).refine(value => {
 }, "Invalid timestamp timezone");
 
 export type SourceRow = Record<string, string>;
+const NAIVE_TIMESTAMP = /[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?$/;
 const csvIssueColumn = "__moneo_csv_issue";
 const csvExtraColumn = "__moneo_csv_extra_cells";
 
@@ -30,7 +31,6 @@ export const workbookScopeSchema = z.object({
     .refine(table => table.endRow > table.headerRow, "A table needs data rows after its header")).min(1).max(100),
 }).strict();
 export type WorkbookScope = z.infer<typeof workbookScopeSchema>;
-
 
 export const mappingSchema = z.object({
   accountName: z.string().trim().min(1).refine(value => Array.from(value).length <= 100, "Account name exceeds 100 characters"),
@@ -134,7 +134,7 @@ export function proposeKnownStatementMapping(rows: SourceRow[], accountName: str
 export function validateImportConfirmation(rows: SourceRow[], input: unknown): ImportMapping {
   const mapping = validateMapping(input, rows);
   if (!mapping.numericConvention) throw new Error("Review and select the source numeric convention before importing");
-  const naive = reviewedSourceRows(rows, mapping).some(row => row && /[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?$/.test(row[mapping.dateColumn]?.trim() ?? ""));
+  const naive = reviewedSourceRows(rows, mapping).some(row => row && NAIVE_TIMESTAMP.test(row[mapping.dateColumn]?.trim() ?? ""));
   if (naive && (!mapping.timestampTimezone || !mapping.timestampTimezoneConfirmed))
     throw new Error("Review and confirm the source timestamp timezone before importing");
   mapRows(rows, mapping);
@@ -142,7 +142,7 @@ export function validateImportConfirmation(rows: SourceRow[], input: unknown): I
 }
 
 export function proposeStatementTimezones(rows: SourceRow[], mapping: ImportMapping, workspaceTimezone = "Europe/Berlin"): ImportMapping {
-  const naive = rows.some(row => /[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?$/.test(row[mapping.dateColumn]?.trim() ?? ""));
+  const naive = rows.some(row => NAIVE_TIMESTAMP.test(row[mapping.dateColumn]?.trim() ?? ""));
   return { ...mapping, calendarTimezone: workspaceTimezone,
     ...(naive ? { timestampTimezone: mapping.timestampTimezone ?? workspaceTimezone,
       timestampTimezoneConfirmed: mapping.timestampTimezoneConfirmed ?? false } : {}) };
@@ -185,7 +185,6 @@ function cellText(cell: ExcelJS.Cell, preserveTime = false): string {
   if (typeof value === "object") return cell.text;
   return String(value);
 }
-
 
 function workbookRows(workbook: ExcelJS.Workbook, input?: WorkbookScope, legacy = false): SourceRow[] {
   if (!workbook.worksheets.length) throw new Error("Workbook has no sheets");
@@ -232,9 +231,14 @@ function workbookRows(workbook: ExcelJS.Workbook, input?: WorkbookScope, legacy 
   return rows;
 }
 
-export async function inspectExcel(file: ArrayBuffer, scope?: WorkbookScope) {
+async function loadWorkbook(file: ArrayBuffer) {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(file);
+  return workbook;
+}
+
+export async function inspectExcel(file: ArrayBuffer, scope?: WorkbookScope) {
+  const workbook = await loadWorkbook(file);
   const inventory = workbook.worksheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name, state: sheet.state, rowCount: sheet.rowCount, columnCount: sheet.columnCount,
     preview: Array.from({length: Math.min(sheet.rowCount, 20)}, (_, index) => ({rowNumber: index + 1, values: Array.from({length: Math.min(sheet.columnCount, 50)}, (_, column) => cellText(sheet.getRow(index + 1).getCell(column + 1), true)) })) }));
   return { inventory, rows: scope ? workbookRows(workbook, scope) : null };
@@ -243,15 +247,11 @@ export async function inspectExcel(file: ArrayBuffer, scope?: WorkbookScope) {
 // Replay only an already confirmed pre-scope import using its original contract.
 // New confirmation always requires explicit scope and cannot request this mode.
 export async function parseLegacyExcel(file: ArrayBuffer): Promise<SourceRow[]> {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(file);
-  return workbookRows(workbook, undefined, true);
+  return workbookRows(await loadWorkbook(file), undefined, true);
 }
 
 export async function parseExcel(file: ArrayBuffer, scope?: WorkbookScope): Promise<SourceRow[]> {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(file);
-  return workbookRows(workbook, scope);
+  return workbookRows(await loadWorkbook(file), scope);
 }
 
 export function validateMapping(input: unknown, rows: SourceRow[]): ImportMapping {
@@ -338,12 +338,8 @@ export function parseAmountMinor(input: string, currencyCode: string = "EUR", co
   }
   const whole = parts[0].replace(/[.,]/g, "");
   const fraction = (parts[1] ?? "").padEnd(digits, "0").slice(0, digits);
-  const minor = BigInt(whole) * pow10(digits) + BigInt(fraction || "0");
+  const minor = BigInt(whole) * 10n ** BigInt(digits) + BigInt(fraction || "0");
   return databaseMinor(negative ? -minor : minor);
-}
-
-function pow10(exponent: number): bigint {
-  return 10n ** BigInt(exponent);
 }
 
 function parseDate(input: string, format: ImportMapping["dateFormat"]): string {
@@ -647,7 +643,7 @@ export function previewImport(rows: SourceRow[], input: unknown) {
     pendingRows: mapped.filter((row) => row.status === "pending").length,
     postedRows: mapped.filter((row) => row.status === "posted").length,
     classificationReviewRows: mapped.filter(row => row.reviewReasons.length > 0).length,
-    timestampReviewRequired: reviewedSourceRows(rows, mapping).some(row => row && /[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?$/.test(row[mapping.dateColumn]?.trim() ?? "")),
+    timestampReviewRequired: reviewedSourceRows(rows, mapping).some(row => row && NAIVE_TIMESTAMP.test(row[mapping.dateColumn]?.trim() ?? "")),
     dateRange: { from: dates[0], to: dates[dates.length - 1] },
     examples: mapped.slice(0, 5),
   };
