@@ -17,7 +17,7 @@ const AnalysisPanel = dynamic(() => import("@/app/ai/analysis-panel").then(modul
 });
 
 type Entry = { conversation: HistoryThread; messages: ChatItem[]; cursor: string | null };
-export type ChatWorkspaceInitial = { threads: HistoryThread[]; threadsCursor: string | null; selected: HistoryThread | null; messages: ChatItem[]; messagesCursor: string | null };
+type ChatWorkspaceInitial = { threads: HistoryThread[]; threadsCursor: string | null; selected: HistoryThread | null; messages: ChatItem[]; messagesCursor: string | null };
 
 async function json<T>(input: string, init?: RequestInit): Promise<T> {
   const response = await fetch(input, { cache: "no-store", ...init });

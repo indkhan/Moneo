@@ -51,8 +51,8 @@ export function SpendingChart({ values, labels, type = "bar", height = 280, aria
   );
 }
 
-export type ForecastChartDay = { date: string; expected: number; conservative: number; optimistic: number };
-export type ForecastChartObligation = { date: string; name: string; amount: string };
+type ForecastChartDay = { date: string; expected: number; conservative: number; optimistic: number };
+type ForecastChartObligation = { date: string; name: string; amount: string };
 
 function token(name: string, fallback: string) {
   if (typeof document === "undefined") return fallback;
