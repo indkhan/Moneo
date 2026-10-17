@@ -51,7 +51,7 @@ test("dated observations remain visible and explicit booked confirmation reloads
     expect((await auth.auth.signInWithPassword({email, password})).error).toBeNull();
     await context.addCookies([...cookies].map(([name, value]) => ({name, value, domain: "localhost", path: "/", sameSite: "Lax" as const})));
     const page = await context.newPage(), modelRequests: string[] = [];
-    page.on("request", request => {if (/openrouter|\/api\/chat|\/api\/analysis/.test(request.url())) modelRequests.push(request.url());});
+    page.on("request", request => {if (/api.openai.com|\/api\/chat|\/api\/analysis/.test(request.url())) modelRequests.push(request.url());});
     page.setDefaultTimeout(30_000);
     console.log('MNE012 step: opening Home');
     await page.goto("/", {waitUntil: 'domcontentloaded'});

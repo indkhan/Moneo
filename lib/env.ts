@@ -1,13 +1,10 @@
 import { z } from "zod";
 
-// Fallback model when the workspace has no model setting.
-export const DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3.5-lightning:free";
-
 // Validates server env. Call lazily so the homepage renders even before keys are set.
 const serverSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1).optional(),
-  OPENROUTER_API_KEY: z.string().min(1).optional(),
+  OPENAI_API_KEY: z.string().min(1).optional(),
   NEXT_PUBLIC_APP_URL: z.string().default("http://localhost:3000"),
 });
 
@@ -18,7 +15,7 @@ export function getEnv(): Env {
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || undefined,
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || undefined,
-    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || undefined,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY || undefined,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
   });
 }
@@ -70,6 +67,10 @@ export function getSupabaseConfig(): SupabaseConfig {
 
 export function hasSupabase() {
   return getSupabaseConfig().status === "configured";
+}
+
+export function hasOpenAI() {
+  return Boolean(process.env.OPENAI_API_KEY);
 }
 
 export function hasOpenRouter() {

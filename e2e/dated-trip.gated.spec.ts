@@ -65,7 +65,7 @@ test("dated native budgets and unsaved calculator inputs agree without financial
     context = await browser.newContext({ baseURL });
     await context.addCookies([...cookies].map(([name,value]) => ({ name,value,domain: new URL(baseURL!).hostname,path: "/",sameSite: "Lax" as const })));
     const modelRequests: string[] = [];
-    await context.route(/\/api\/chat|\/api\/artifacts\/.*generate|openrouter\.ai/, route => { modelRequests.push(route.request().url()); return route.abort(); });
+    await context.route(/\/api\/chat|\/api\/artifacts\/.*generate|api.openai.com/, route => { modelRequests.push(route.request().url()); return route.abort(); });
     const page = await context.newPage(); page.setDefaultTimeout(20_000);
     const readState = async () => (await db`select state,version from public.artifact_state where artifact_id=${artifact} and workspace_id=${workspace!}`)[0];
     await page.goto(`/ai/library/${artifact}`);

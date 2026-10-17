@@ -219,7 +219,7 @@ test("a repeated request reconciles a runtime whose terminal DB writes exhausted
   } finally { expect((await (await request.delete(fixture)).json()).removed).toBe(true); }
 });
 
-test("Stop aborts the actual AI SDK/OpenRouter HTTP transport in an installed Workflow step", async ({ request }) => {
+test("Stop aborts the actual AI SDK/OpenAI HTTP transport in an installed Workflow step", async ({ request }) => {
   const id = randomUUID(), workspace = randomUUID();
   const fixture = `http://127.0.0.1:3041/fixture/${id}`;
   await request.post("http://127.0.0.1:3041/fixture", { data: { id, workspace, mode: "provider-stop" } });

@@ -8,7 +8,7 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ modelForSettings: vi.fn(async () => ({})), getModel: vi.fn() }));
 vi.mock("@/lib/finance/start-review", () => ({ startFinancialReview: vi.fn(async () => ({ jobId: "job", status: "queued" })) }));
 it("uses the reviewed request identity and refuses disabled financial data scope", async () => {
-  process.env.OPENROUTER_API_KEY = "test"; process.env.SUPABASE_SERVICE_ROLE_KEY = "test"; process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
+  process.env.OPENAI_API_KEY = "test"; process.env.SUPABASE_SERVICE_ROLE_KEY = "test"; process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
   const context = { workspace: { id: "w" }, supabase: {}, settings: DEFAULT_SETTINGS };
   vi.mocked(requireWorkspace).mockResolvedValue(context as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
   const requestId = "00000000-0000-4000-8000-000000000001";
@@ -19,7 +19,7 @@ it("uses the reviewed request identity and refuses disabled financial data scope
   expect((await POST(request())).status).toBe(403);
 });
 it("retains a scoped ordinary question and refuses excessive budgets and disabled requested planning", async () => {
-  process.env.OPENROUTER_API_KEY = "test"; process.env.SUPABASE_SERVICE_ROLE_KEY = "test"; process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
+  process.env.OPENAI_API_KEY = "test"; process.env.SUPABASE_SERVICE_ROLE_KEY = "test"; process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.test";
   const context = {workspace: {id: "w"}, supabase: {}, settings: DEFAULT_SETTINGS};
   vi.mocked(requireWorkspace).mockResolvedValue(context as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
   const requestId = "00000000-0000-4000-8000-000000000001";

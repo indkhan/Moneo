@@ -13,7 +13,7 @@ vi.mock("@/lib/artifacts/generation", () => ({ runArtifactGeneration: async (_db
 } }));
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
 it("validates a real JSON text draft without requiring provider json_schema support", async () => {
-  vi.stubEnv("OPENROUTER_API_KEY", "test");
+  vi.stubEnv("OPENAI_API_KEY", "test");
   fixture.generateText.mockResolvedValue({ totalUsage: {}, text: JSON.stringify({ source: "(input) => ({summary:'Exact'})", manifest: { kind: "custom_comparison", runtime: "quickjs-calculator-v1", sdk: [], params: {}, renderer: "trusted" }, rationale: "Reviewed comparison" }) });
   const response = await POST(new Request("http://localhost", { method: "POST", body: JSON.stringify({ artifactId: "00000000-0000-4000-8000-000000000001", description: "Compare exact amounts" }) }));
   expect(response.status).toBe(200);
@@ -26,13 +26,13 @@ it("validates a real JSON text draft without requiring provider json_schema supp
   expect(prompt).toContain("explicit paired dated funding");
 });
 it("retains the source version used to generate a draft, including Activity recovery", async () => {
-  vi.stubEnv("OPENROUTER_API_KEY", "test");
+  vi.stubEnv("OPENAI_API_KEY", "test");
   fixture.generateText.mockResolvedValue({ totalUsage: {}, text: JSON.stringify({ source: "input => ({summary:'Draft'})", manifest: { kind: "custom_comparison", runtime: "quickjs-calculator-v1", sdk: [], params: {}, renderer: "trusted" }, rationale: "Synthetic draft" }) });
   const response = await POST(new Request("http://localhost", { method: "POST", body: JSON.stringify({ artifactId: "00000000-0000-4000-8000-000000000001", description: "Synthetic draft" }) }));
   expect((await response.json()).baseVersionId).toBe("v");
 });
 it("rejects malformed or out-of-contract JSON rather than fabricating a draft", async () => {
-  vi.stubEnv("OPENROUTER_API_KEY", "test"); fixture.generateText.mockResolvedValue({ text: "Here is some guessed code" });
+  vi.stubEnv("OPENAI_API_KEY", "test"); fixture.generateText.mockResolvedValue({ text: "Here is some guessed code" });
   const response = await POST(new Request("http://localhost", { method: "POST", body: JSON.stringify({ artifactId: "00000000-0000-4000-8000-000000000001", description: "Compare exact amounts" }) }));
   expect(response.status).toBe(502);
 });

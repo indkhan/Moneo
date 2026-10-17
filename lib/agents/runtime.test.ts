@@ -30,7 +30,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
   },
 }) }));
 beforeEach(() => {
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic"); vi.stubEnv("OPENROUTER_API_KEY", "");
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://synthetic.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "synthetic"); vi.stubEnv("OPENAI_API_KEY", "");
   db.run = { status: "running", cancel_requested: false, model_status: "disabled", import_id: null };
   db.settings = {}; db.tasks = []; db.writes = [];
   db.ledger = [...Array.from({ length: 12 }, (_, n) => ({ id: id(n + 10), version: 1, posted_on: `2026-08-${String(n + 1).padStart(2, "0")}`, description: `SHOP ${n}`, amount_minor: "-2000" })),

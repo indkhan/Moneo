@@ -192,7 +192,7 @@ async function writeReview(jobId: string, workspaceId: string, evidence: NonNull
       requireAiScope(settings, ...receipt.scopes);
       receipts.push(receipt);
     }
-    const model = await modelForSettings(settings, { effort: "minimal", exclude: true });
+    const model = await modelForSettings(settings, "review");
     // Recheck after asynchronous preparation, before submitting financial context.
     if (!await enterStage(db, jobId, workspaceId, runId, "writing_review")) return null;
     monitoring = (async () => {

@@ -37,7 +37,7 @@ export default function PrivacyPage() {
             </section>
             <section>
               <h2 className="text-base font-semibold text-foreground">AI and third parties</h2>
-              <p className="mt-1">When you use AI features, the minimum needed context is sent to the model provider (via OpenRouter) and to hosting/database providers (Supabase) to store your workspace. Bank connections, when added later, bring data in only — they never move money.</p>
+              <p className="mt-1">When you use AI features, the minimum needed context is sent to the model provider (OpenAI or OpenRouter, depending on the model you choose) and to hosting/database providers (Supabase) to store your workspace. Bank connections, when added later, bring data in only — they never move money.</p>
             </section>
             <section>
               <h2 className="text-base font-semibold text-foreground">What we do not do</h2>
