@@ -11,13 +11,13 @@ import { tripForArtifact } from "@/lib/artifacts/finance-sdk";
 import { libraryTemplate } from "@/lib/artifacts/library-templates";
 import { saveCandidateVersion } from "@/lib/artifacts/save-version";
 
-const kind = artifactKindSchema;
+type Supabase = Awaited<ReturnType<typeof requireWorkspace>>["supabase"];
 const stateRevision = z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(0).max(2147483646));
 const unknownTripAccount = { error: "Unknown paying or receiving account" } as const;
 
 export async function createArtifact(form: FormData) {
   const { supabase } = await requireWorkspace();
-  const artifactKind = kind.parse(form.get("kind"));
+  const artifactKind = artifactKindSchema.parse(form.get("kind"));
   const name = z.string().trim().min(1).max(120).parse(form.get("name"));
   const { data, error } = await supabase.rpc("create_trusted_artifact", { p_kind: artifactKind, p_name: name });
   if (error || !data) throw error ?? new Error("Artifact creation failed");
@@ -120,13 +120,9 @@ export async function saveCalculatorParams(form: FormData) {
     } catch (error) { return inputError(error); }
   }
   if (merged.tripScenario !== undefined && !await validTripAccounts(supabase, workspace.id, tripScenarioSchema.parse(merged.tripScenario).payments.map(item => item.accountId))) return unknownTripAccount;
-  const { data: saved, error } = await supabase.from("artifact_state").update({
-    state: merged, version: expectedVersion + 1, updated_at: new Date().toISOString(),
-  }).eq("workspace_id", workspace.id).eq("artifact_id", artifactId).eq("version", expectedVersion)
-    .select("version").maybeSingle();
-  if (error) throw error;
-  if (!saved) return { conflict: true } as const;
-  return { saved: true, version: saved.version as number, value: next } as const;
+  const savedVersion = await writeArtifactState(supabase, workspace.id, artifactId, expectedVersion, merged);
+  if (savedVersion === null) return { conflict: true } as const;
+  return { saved: true, version: savedVersion, value: next } as const;
 }
 
 export async function saveTripState(form: FormData) {
@@ -143,13 +139,9 @@ export async function saveTripState(form: FormData) {
     .eq("workspace_id", workspace.id).eq("artifact_id", artifactId).single();
   if (readError || !current) throw readError ?? new Error("Artifact state unavailable");
   if (current.version !== expectedVersion) return { conflict: true } as const;
-  const { data: saved, error } = await supabase.from("artifact_state").update({
-    state: { costMinor: cost }, version: expectedVersion + 1, updated_at: new Date().toISOString(),
-  }).eq("workspace_id", workspace.id).eq("artifact_id", artifactId).eq("version", expectedVersion)
-    .select("version").maybeSingle();
-  if (error) throw error;
-  if (!saved) return { conflict: true } as const;
-  return { saved: true, version: saved.version as number, value: String(cost) } as const;
+  const savedVersion = await writeArtifactState(supabase, workspace.id, artifactId, expectedVersion, { costMinor: cost });
+  if (savedVersion === null) return { conflict: true } as const;
+  return { saved: true, version: savedVersion, value: String(cost) } as const;
 }
 
 export async function saveDatedTripState(form: FormData) {
@@ -170,15 +162,22 @@ export async function saveDatedTripState(form: FormData) {
   if (current.version !== expectedVersion) return { conflict: true } as const;
   if (!await validTripAccounts(supabase, workspace.id, scenario.payments.map(item => item.accountId))) return unknownTripAccount;
   const next = tripStateForScenario((current.state as Record<string, unknown>) ?? {}, scenario, workspace.display_currency);
-  const { data: saved, error } = await supabase.from("artifact_state").update({
-    state: next, version: expectedVersion + 1, updated_at: new Date().toISOString(),
-  }).eq("workspace_id", workspace.id).eq("artifact_id", artifactId).eq("version", expectedVersion).select("version").maybeSingle();
-  if (error) throw error;
-  if (!saved) return { conflict: true } as const;
-  return { saved: true, version: saved.version as number, value: scenario } as const;
+  const savedVersion = await writeArtifactState(supabase, workspace.id, artifactId, expectedVersion, next);
+  if (savedVersion === null) return { conflict: true } as const;
+  return { saved: true, version: savedVersion, value: scenario } as const;
 }
 
-async function validTripAccounts(supabase: Awaited<ReturnType<typeof requireWorkspace>>["supabase"], workspaceId: string, ids: string[]) {
+// Compare-and-swap on the state revision: returns the new version, or null when it moved.
+async function writeArtifactState(supabase: Supabase, workspaceId: string, artifactId: string, expectedVersion: number, state: Record<string, unknown>) {
+  const { data, error } = await supabase.from("artifact_state").update({
+    state, version: expectedVersion + 1, updated_at: new Date().toISOString(),
+  }).eq("workspace_id", workspaceId).eq("artifact_id", artifactId).eq("version", expectedVersion)
+    .select("version").maybeSingle();
+  if (error) throw error;
+  return data ? (data.version as number) : null;
+}
+
+async function validTripAccounts(supabase: Supabase, workspaceId: string, ids: string[]) {
   const accountIds = [...new Set(ids)];
   if (accountIds.some(id => !z.uuid().safeParse(id).success)) return false;
   const { data: accounts, error: accountsError } = await supabase.from("accounts").select("id").eq("workspace_id", workspaceId).is("archived_at", null).in("id", accountIds);
