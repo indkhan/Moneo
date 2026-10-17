@@ -1,25 +1,24 @@
 // Smoke test for both configured and unconfigured environments.
 //
 // What it proves: the app boots, reports configuration status, and renders
-// the key entry routes without making OpenRouter requests.
+// the key entry routes without making OpenAI requests.
 import { test, expect } from "@playwright/test";
-import { DEFAULT_OPENROUTER_MODEL } from "../lib/env";
 
 test.describe("core journey smoke (no session, no live AI)", () => {
   test("home shows setup guidance or redirects unauthenticated users", async ({
     page, request,
   }) => {
-    const openRouterCalls: string[] = [];
+    const openAiCalls: string[] = [];
     page.on("request", (request) => {
-      if (request.url().includes("openrouter.ai"))
-        openRouterCalls.push(request.url());
+      if (request.url().includes("api.openai.com"))
+        openAiCalls.push(request.url());
     });
 
     const health = await (await request.get("/api/health")).json();
     await page.goto("/");
     if (health.supabase) await expect(page).toHaveURL(/\/login$/);
     else await expect(page.getByText(/to start Moneo\./)).toBeVisible();
-    expect(openRouterCalls).toEqual([]);
+    expect(openAiCalls).toEqual([]);
   });
 
   test("health endpoint reports backend configuration", async ({
@@ -30,8 +29,7 @@ test.describe("core journey smoke (no session, no live AI)", () => {
     const body = await response.json();
     expect(body.ok).toBe(true);
     expect(body.supabase).toBe(Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY));
-    expect(body.openrouter).toBe(Boolean(process.env.OPENROUTER_API_KEY));
-    expect(body.model).toBe(DEFAULT_OPENROUTER_MODEL);
+    expect(body.openai).toBe(Boolean(process.env.OPENAI_API_KEY));
   });
 
   test("login page renders OTP form", async ({ page }) => {
