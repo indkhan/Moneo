@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M53Q3TY384RP08TGNRX6QS5Y",
+  "strategy": "manual-commit",
+  "branch": "claude/undo-after-undone-duplicate",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "supabase/migrations/202610170001_undo_ignores_undone_matches.sql",
+    "supabase/tests/import-batches.sql",
+    "supabase/tests/import-undo-duplicate.sql"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 316,
+    "cache_creation_tokens": 293697,
+    "cache_read_tokens": 25212820,
+    "output_tokens": 64179,
+    "api_call_count": 156
+  }
+}

@@ -1,0 +1,178 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M53Q3TY384RP08TGNRX6QS5Y",
+  "session_id": "f8f0e3c0-851b-4d10-82bf-b77a783da607",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-17T01:20:12.2678601Z",
+  "branch": "claude/undo-after-undone-duplicate",
+  "checkpoints_count": 9,
+  "save_step_count": 8,
+  "files_touched": [
+    "supabase/migrations/202610170001_undo_ignores_undone_matches.sql",
+    "supabase/tests/import-batches.sql",
+    "supabase/tests/import-undo-duplicate.sql"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "6101c23b7ab5",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 316,
+    "cache_creation_tokens": 293697,
+    "cache_read_tokens": 25212820,
+    "output_tokens": 64179,
+    "api_call_count": 156
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-17T01:20:12.2028169Z",
+    "agent_lines": 289,
+    "agent_removed": 1,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 289,
+    "total_lines_changed": 290,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 265,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.json": 101,
+        ".claude/settings.local.json": 13,
+        ".claude/worktrees/agentic-build.log": 88,
+        ".claude/worktrees/agentic-e2e.log": 8,
+        ".claude/worktrees/agentic-lint.log": 12,
+        ".claude/worktrees/agentic-npmci.log": 19,
+        ".claude/worktrees/agentic-test.log": 24
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 265,
+      "user_lines_removed": 0,
+      "agent_lines_added": 286,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.json": 101,
+        ".claude/settings.local.json": 13,
+        ".claude/worktrees/agentic-build.log": 88,
+        ".claude/worktrees/agentic-e2e.log": 8,
+        ".claude/worktrees/agentic-lint.log": 12,
+        ".claude/worktrees/agentic-npmci.log": 19,
+        ".claude/worktrees/agentic-test.log": 24
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 265,
+      "user_lines_removed": 0,
+      "agent_lines_added": 289,
+      "agent_lines_removed": 1,
+      "user_added_per_file": {
+        ".claude/settings.json": 101,
+        ".claude/settings.local.json": 13,
+        ".claude/worktrees/agentic-build.log": 88,
+        ".claude/worktrees/agentic-e2e.log": 8,
+        ".claude/worktrees/agentic-lint.log": 12,
+        ".claude/worktrees/agentic-npmci.log": 19,
+        ".claude/worktrees/agentic-test.log": 24
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 265,
+      "user_lines_removed": 0,
+      "agent_lines_added": 289,
+      "agent_lines_removed": 1,
+      "user_added_per_file": {
+        ".claude/settings.json": 101,
+        ".claude/settings.local.json": 13,
+        ".claude/worktrees/agentic-build.log": 88,
+        ".claude/worktrees/agentic-e2e.log": 8,
+        ".claude/worktrees/agentic-lint.log": 12,
+        ".claude/worktrees/agentic-npmci.log": 19,
+        ".claude/worktrees/agentic-test.log": 24
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 265,
+      "user_lines_removed": 0,
+      "agent_lines_added": 289,
+      "agent_lines_removed": 1,
+      "user_added_per_file": {
+        ".claude/settings.json": 101,
+        ".claude/settings.local.json": 13,
+        ".claude/worktrees/agentic-build.log": 88,
+        ".claude/worktrees/agentic-e2e.log": 8,
+        ".claude/worktrees/agentic-lint.log": 12,
+        ".claude/worktrees/agentic-npmci.log": 19,
+        ".claude/worktrees/agentic-test.log": 24
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 265,
+      "user_lines_removed": 0,
+      "agent_lines_added": 289,
+      "agent_lines_removed": 1,
+      "user_added_per_file": {
+        ".claude/settings.json": 101,
+        ".claude/settings.local.json": 13,
+        ".claude/worktrees/agentic-build.log": 88,
+        ".claude/worktrees/agentic-e2e.log": 8,
+        ".claude/worktrees/agentic-lint.log": 12,
+        ".claude/worktrees/agentic-npmci.log": 19,
+        ".claude/worktrees/agentic-test.log": 24
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 265,
+      "user_lines_removed": 0,
+      "agent_lines_added": 289,
+      "agent_lines_removed": 1,
+      "user_added_per_file": {
+        ".claude/settings.json": 101,
+        ".claude/settings.local.json": 13,
+        ".claude/worktrees/agentic-build.log": 88,
+        ".claude/worktrees/agentic-e2e.log": 8,
+        ".claude/worktrees/agentic-lint.log": 12,
+        ".claude/worktrees/agentic-npmci.log": 19,
+        ".claude/worktrees/agentic-test.log": 24
+      }
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 265,
+      "user_lines_removed": 0,
+      "agent_lines_added": 289,
+      "agent_lines_removed": 1,
+      "user_added_per_file": {
+        ".claude/settings.json": 101,
+        ".claude/settings.local.json": 13,
+        ".claude/worktrees/agentic-build.log": 88,
+        ".claude/worktrees/agentic-e2e.log": 8,
+        ".claude/worktrees/agentic-lint.log": 12,
+        ".claude/worktrees/agentic-npmci.log": 19,
+        ".claude/worktrees/agentic-test.log": 24
+      }
+    }
+  ]
+}
