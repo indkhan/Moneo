@@ -35,6 +35,9 @@ async function stageBankImports(connectionId: string, workspaceId: string, psu?:
     await db.from("bank_connections").update({ status: "expired", last_error: "Bank consent expired; reconnect to keep syncing" }).eq("id", connectionId);
     return { imports: [], error: null };
   }
+  // Marks the sync as running for the UI until finishBankSync sets last_synced_at.
+  const started = await db.from("bank_connections").update({ sync_started_at: new Date().toISOString() }).eq("id", connectionId).eq("workspace_id", workspaceId);
+  if (started.error) throw new Error(started.error.message);
   const accounts = await db.from("bank_connection_accounts").select("provider_account_uid, currency_code, account_name, last_booked_on").eq("connection_id", connectionId);
   if (accounts.error) throw new Error(accounts.error.message);
   const settings = await loadWorkspaceSettings(db, workspaceId);

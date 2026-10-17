@@ -86,3 +86,15 @@ it("marks an expired consent and records rate limits without importing", async (
   expect(tables.bank_connections[0].status).toBe("expired");
   expect(importFile).not.toHaveBeenCalled();
 });
+
+it("marks the sync running until it finishes", async () => {
+  vi.mocked(importFile).mockImplementationOnce(async importId => {
+    const connection = tables.bank_connections[0];
+    expect(connection.sync_started_at).toEqual(expect.any(String));
+    expect(connection.last_synced_at).toBeUndefined();
+    tables.imports.find(row => row.id === importId)!.status = "completed";
+  });
+  await syncBankConnection("c1", "w1");
+  const connection = tables.bank_connections[0];
+  expect(Date.parse(connection.last_synced_at as string)).toBeGreaterThanOrEqual(Date.parse(connection.sync_started_at as string));
+});

@@ -147,6 +147,7 @@ export const bankConnections = pgTable("bank_connections", {
   status: text("status").notNull().default("pending"),
   validUntil: timestamp("valid_until", { withTimezone: true }),
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+  syncStartedAt: timestamp("sync_started_at", { withTimezone: true }),
   lastError: text("last_error"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
