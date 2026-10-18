@@ -6,6 +6,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { chromium } from "@playwright/test";
+import postgres from "postgres";
 
 const journal = ".qa/e2e-auth-user.json", statePath = "e2e/.auth.json";
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
@@ -13,10 +14,24 @@ const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUP
 if (process.argv.includes("--delete")) {
   if (!existsSync(journal)) throw new Error(`No ${journal}; nothing to delete`);
   const { id } = JSON.parse(readFileSync(journal, "utf8"));
-  const { error } = await admin.auth.admin.deleteUser(id);
-  if (error) throw error;
+  // Audit history (e.g. planning_events) blocks a plain user delete, so remove the disposable
+  // workspace's rows directly. ponytail: column-name sweep; add a table here if a new owner column appears.
+  const db = postgres(process.env.SUPABASE_DB_URL, { max: 1, onnotice: () => {} });
+  await db.begin(async tx => {
+    const [user] = await tx`select raw_user_meta_data->>'qa_test' as qa from auth.users where id=${id}`;
+    if (user?.qa !== "e2e-auth") throw new Error("Refusing to delete a user not created by this script");
+    const owned = [id, ...(await tx`select id from public.workspaces where owner_id=${id}`).map(row => row.id)];
+    await tx`set local session_replication_role = replica`;
+    const columns = await tx`select table_name, column_name from information_schema.columns join information_schema.tables using (table_schema, table_name)
+      where table_schema='public' and table_type='BASE TABLE' and column_name in ('workspace_id','actor_id','user_id','owner_id','created_by')`;
+    for (const { table_name, column_name } of columns)
+      await tx.unsafe(`delete from public."${table_name}" where "${column_name}"::text = any($1::text[])`, [owned]);
+    await tx`delete from public.workspaces where owner_id=${id}`;
+    await tx`delete from auth.users where id=${id}`;
+  });
+  await db.end();
   rmSync(journal); rmSync(statePath, { force: true });
-  console.log("Deleted QA user and auth state");
+  console.log("Deleted QA user, its workspace and auth state");
   process.exit(0);
 }
 
