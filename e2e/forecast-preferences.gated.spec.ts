@@ -15,8 +15,11 @@ test("forecast buffer and case preferences persist and undo as assumptions", asy
   await section.getByLabel("Safety buffer", { exact: true }).fill("12.34");
   await section.getByLabel("Uncertainty (%)", { exact: true }).fill("0");
   await section.getByRole("button", { name: "Save forecast preferences", exact: true }).click();
-  // The typed value already matches; wait for the persisted revision before reloading.
-  await expect(version).not.toHaveValue(previousVersion, { timeout: 30_000 });
+  // Saving redirects back to /plan with the settings collapsed; reopen until the persisted revision shows.
+  await expect(async () => {
+    if (!await section.getByLabel("Safety buffer", { exact: true }).isVisible()) await page.getByText("Forecast settings", { exact: true }).click();
+    await expect(version).not.toHaveValue(previousVersion, { timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
   await expect(section.getByLabel("Safety buffer", { exact: true })).toHaveValue("12.34", { timeout: 30_000 });
   await page.reload();
   await page.getByText("Forecast settings", { exact: true }).click();

@@ -11,6 +11,7 @@ test("current cash reservations persist and undo without claiming recorded savin
   await page.getByRole("button", { name: "Add account", exact: true }).click();
   const account = page.locator("article").filter({ has: page.getByRole("heading", { name: accountName, exact: true }) });
   await expect(account).toBeVisible({ timeout: 30_000 });
+  await account.getByText("Update balance", { exact: true }).click();
   await account.getByLabel(`${accountName} balance`, { exact: true }).fill("500.00");
   await account.getByRole("button", { name: "Save", exact: true }).click();
   await expect(account).toContainText("EUR 500.00", { timeout: 30_000 });
@@ -24,13 +25,13 @@ test("current cash reservations persist and undo without claiming recorded savin
   const form = goal.locator("form").filter({ has: page.getByLabel(`${accountName} reservation (EUR)`, { exact: true }) });
   await form.getByLabel(`${accountName} reservation (EUR)`, { exact: true }).fill("100.00");
   await form.getByRole("button", { name: "Set reservation", exact: true }).click();
-  await expect(goal).toContainText("Virtual cash reservations: EUR 100.00", { timeout: 30_000 });
-  await expect(goal).toContainText("Recorded savings: Unknown");
+  await expect(goal).toContainText("Cash set asideEUR 100.00", { timeout: 30_000 });
+  await expect(goal).toContainText("Saved so far is unknown");
   await page.reload();
-  await expect(goal).toContainText("Virtual cash reservations: EUR 100.00");
+  await expect(goal).toContainText("Cash set asideEUR 100.00");
   await page.getByText("Reservation history and undo", { exact: true }).click();
-  const event = page.locator("li").filter({ hasText: `${goalName}: EUR 0.00 ? EUR 100.00` });
+  const event = page.locator("li").filter({ hasText: `${goalName}: EUR 0.00 → EUR 100.00` });
   await event.getByRole("button", { name: "Undo reservation", exact: true }).click();
-  await expect(goal).toContainText("Virtual cash reservations: EUR 0.00", { timeout: 30_000 });
-  await expect(goal).toContainText("Recorded savings: Unknown");
+  await expect(goal).toContainText("Cash set asideEUR 0.00", { timeout: 30_000 });
+  await expect(goal).toContainText("Saved so far is unknown");
 });
