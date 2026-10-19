@@ -39,6 +39,7 @@ it("keeps useful dated net worth after day rollover without asserting current ca
   const html = renderToStaticMarkup(await resolveTree(await Home()));
   expect(html).toContain("Recorded net worth by currency");
   expect(html).toContain("EUR 600.00"); expect(html).toContain("JPY 300");
-  for (const text of ["2026-09-30", "2026-09-29", "Recorded debt", "import:synthetic", "Unknown cash", "Different observation dates", "not verified current funds"]) expect(html).toContain(text);
-  expect(html).toContain("Net worth unavailable in EUR");
+  expect(html).toContain("Recorded debt");
+  for (const text of ["import:synthetic", "Different observation dates", "not verified current funds"]) expect(html).not.toContain(text);
+  expect(html).toContain("Partial");
 });

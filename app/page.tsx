@@ -25,7 +25,7 @@ import { ArrowRight, Plus } from "lucide-react";
 
 const WIDE = new Set(["overview", "spending", "accounts"]);
 
-export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string }> } = {}) {
+export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string; month?: string }> } = {}) {
   const params = await searchParams;
   const accountId = typeof params?.account === "string" ? params.account : undefined;
   const supabaseConfig = getSupabaseConfig();
@@ -108,8 +108,8 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
             : convertedCount > 0 && <p className="mt-1 text-xs text-muted-foreground">Includes debts and valuations.</p>}
         </Kpi>
         <Kpi label="Cash available" href="/plan" action="Forecast">
-          {available?.status === "available" ? <><p className="mt-1 font-mono text-2xl font-semibold tracking-tight">{money(available.amountMinor, displayCurrency)}</p><p className="mt-1 text-xs text-muted-foreground">Lowest point in 30 days after protections, on {available.limitingDate}</p></>
-            : <p className="mt-2 text-sm text-muted-foreground">Needs current balances and confirmed payments to forecast.</p>}
+          {available?.status === "available" ? <><p className="mt-1 font-mono text-2xl font-semibold tracking-tight">{money(available.amountMinor, displayCurrency)}</p><p className="mt-1 text-xs text-muted-foreground">After upcoming payments and your buffer · lowest on {available.limitingDate}</p></>
+            : <p className="mt-2 text-sm text-muted-foreground">Add a balance for each spending account to see this.</p>}
         </Kpi>
         <Suspense fallback={<KpiFallback label="Spent this month" />}><MonthSpendingKpi {...sectionProps} /></Suspense>
         <Kpi label="Upcoming payments" href="/money/recurring" action="Recurring">
@@ -117,9 +117,9 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
             : <p className="mt-2 text-sm text-muted-foreground">No confirmed payments in the next 30 days.</p>}
         </Kpi>
       </div>
-      <DatedOverview accounts={accounts} wealth={wealthItems} today={today} timeZone={workspace.timezone} locale={locale} />
+      <DatedOverview accounts={accounts} wealth={wealthItems} today={today} locale={locale} />
     </section>,
-    spending: <Suspense fallback={<SectionFallback title="Spending" />}><SpendingPanel {...sectionProps} /></Suspense>,
+    spending: <Suspense fallback={<SectionFallback title="Spending" />}><SpendingPanel {...sectionProps} month={typeof params?.month === "string" ? params.month : undefined} /></Suspense>,
     recent: <Suspense fallback={<SectionFallback title="Recent transactions" />}><RecentTransactions db={supabase} workspaceId={workspace.id} locale={locale} names={accountNames} /></Suspense>,
     planning: projection.liquidity && <section aria-label="Available funds"><HomeLiquidity liquidity={projection.liquidity} accountId={accountId} names={accountNames} locale={locale} coverage={<SourceCoverageDetails coverage={projection.sourceCoverage} />} /></section>,
     accounts: <section aria-labelledby="home-accounts" className={card}>

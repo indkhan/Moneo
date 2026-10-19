@@ -52,26 +52,29 @@ function TopList({ title, groups, names, param, from, to, currency, locale, unkn
         <span className="flex justify-between gap-3 text-sm"><span className="truncate group-hover:underline">{group.id ? names.get(group.id) ?? unknown : unknown}</span><span className="shrink-0 font-mono">{formatMoney(group.spendingMinor, currency, locale)}{group.partial ? "*" : ""}</span></span>
         <span aria-hidden="true" className="mt-1 block h-1 rounded-full bg-muted"><span className="block h-1 rounded-full bg-brand" style={{ width: `${max > 0n ? Number(group.spendingMinor * 100n / max) : 0}%` }} /></span>
       </Link>
-    </li>)}</ul> : <p className="mt-2 text-sm text-muted-foreground">No reviewed spending yet this month.</p>}
+    </li>)}</ul> : <p className="mt-2 text-sm text-muted-foreground">No reviewed spending this month.</p>}
   </div>;
 }
 
-export async function SpendingPanel({ db, workspaceId, currency, today, locale }: SectionProps) {
+export async function SpendingPanel({ db, workspaceId, currency, today, locale, month: selectedMonth }: SectionProps & { month?: string }) {
   let data;
   try { data = await loadHomeSpending(db, workspaceId, currency, today); } catch { data = null; }
   const header = <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-base font-semibold">Spending</h2><span className="flex items-center gap-3"><AskAbout question="Why did my spending change over the last six months? Which categories and merchants drove it?" about={{ kind: "chart", label: "Six-month spending trend" }} /><Link href="/money/transactions?direction=outflow" className="text-sm font-medium text-brand hover:underline">All spending</Link></span></div>;
   if (!data) return <section aria-label="Spending" className={card}>{header}<p role="alert" className="mt-3 text-sm">Spending is unavailable right now. Your balances are not affected.</p></section>;
   const month = new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" });
   const scale = 10 ** minorDigits(currency);
-  const partial = data.trend.some(row => row.partial) || data.categories.some(row => row.partial);
+  const selected = data.months.find(row => row.month === selectedMonth) ?? data.months[data.months.length - 1];
+  const bars = data.trend.filter(row => row.spendingMinor > 0n);
+  const label = selected.month === data.thisMonth.month ? "this month" : `in ${new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${selected.from}T00:00:00Z`))}`;
+  const partial = data.trend.some(row => row.partial) || selected.categories.some(row => row.partial);
   return <section aria-label="Spending" className={card}>
     {header}
     <p className="mt-1 text-xs text-muted-foreground">Last six months in {currency}. Refunds are subtracted; pending items, transfers and items needing review are left out.</p>
-    <div className="mt-3"><TrendChart height={200} labels={data.trend.map(row => month.format(new Date(`${row.from}T00:00:00Z`)))} values={data.trend.map(row => Number(row.spendingMinor) / scale)} /></div>
+    <div className="mt-3"><TrendChart height={200} months={bars.map(row => row.month)} labels={bars.map(row => month.format(new Date(`${row.from}T00:00:00Z`)))} values={bars.map(row => Number(row.spendingMinor) / scale)} /></div>
     {partial && <p className="mt-2 text-xs text-amber-700">* Partial: some rows need review or an exchange rate for their posting date.</p>}
     <div className="mt-4 grid gap-6 md:grid-cols-2">
-      <TopList title="Top categories this month" groups={data.categories} names={data.categoryNames} param="category" from={data.thisMonth.from} to={today} currency={currency} locale={locale} unknown="Uncategorized" />
-      <TopList title="Top merchants this month" groups={data.merchants} names={data.merchantNames} param="merchant" from={data.thisMonth.from} to={today} currency={currency} locale={locale} unknown="Unknown merchant" />
+      <TopList title={`Top categories ${label}`} groups={selected.categories} names={data.categoryNames} param="category" from={selected.from} to={selected.to} currency={currency} locale={locale} unknown="Uncategorized" />
+      <TopList title={`Top merchants ${label}`} groups={selected.merchants} names={data.merchantNames} param="merchant" from={selected.from} to={selected.to} currency={currency} locale={locale} unknown="Unknown merchant" />
     </div>
   </section>;
 }

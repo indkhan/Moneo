@@ -27,7 +27,7 @@ it("reuses the page's in-flight evidence without scanning the ledger and wealth 
   const balanceEvidence = Promise.resolve(await loadBalanceEvidence(supabase, workspace.id));
   const queries = vi.spyOn(supabase, "from");
   const result = await evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence, wealth: Promise.resolve([]) });
-  expect(result.input.missingInputs).toContain("balance:00000000-0000-4000-8000-000000000001:stale");
+  expect(result.input.missingInputs).not.toContain("balance:00000000-0000-4000-8000-000000000001:stale");
   expect(queries.mock.calls.map(([table]) => table).filter(table => ["accounts", "balance_snapshots", "transactions", "transaction_link_fees", "wealth_items"].includes(table))).toEqual([]);
 });
 
@@ -38,13 +38,12 @@ it("uses confirmed recurring assumptions rather than unreviewed inferences", asy
   finally { fixture.includeAssumptions = false; fixture.asOf = "2026-09-28T12:00:00Z"; }
 });
 
-it("does not fund a forecast from a historical opening balance", async () => {
+it("funds a forecast from an older balance plus later recorded activity", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
   const result = await evaluatePlan(30);
-  expect(result.input.accounts[0].balanceMinor).toBeNull();
-  expect(result.available.status).toBe("unavailable");
-  expect(result.input.missingInputs).toContain("balance:00000000-0000-4000-8000-000000000001:stale");
+  expect(result.input.accounts[0].balanceMinor).not.toBeNull();
+  expect(result.input.missingInputs).not.toContain("balance:00000000-0000-4000-8000-000000000001:stale");
 });
 
 it("deducts negative pending book-balance holds once", async () => {
