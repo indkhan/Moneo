@@ -5,6 +5,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { bulkInput, parseManualAmount, splitInput, versionedRows } from "./input";
+import { similarRows } from "./similar";
 
 const uuidPattern = /^[0-9a-f-]{36}$/i;
 
@@ -141,6 +142,29 @@ export async function restoreManualTransaction(form: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout");
   redirect(`/money/transactions?transaction=${z.uuid().parse(data)}`);
+}
+
+/**
+ * Puts every transaction with the same description into this one's category
+ * and saves a rule, through the audited organization review (Undo lives on
+ * Money → Organization). Reviews hold 50 rows, so larger sets go in chunks.
+ */
+export async function applyCategoryToSimilar(form: FormData) {
+  const { supabase, workspace } = await requireWorkspace();
+  const id = z.uuid().parse(form.get("id"));
+  const { data: row, error } = await supabase.from("transactions").select("id, description, category_id").eq("workspace_id", workspace.id).eq("id", id).single();
+  if (error) throw new Error(error.message);
+  const { key, rows } = await similarRows(supabase, workspace.id, row);
+  for (let start = 0; start < rows.length; start += 50) {
+    const first = start === 0;
+    const created = await supabase.rpc("create_organization_review", { p_rows: rows.slice(start, start + 50).map(other => ({ id: other.id, version: other.version })),
+      p_patch: { category_id: row.category_id }, p_merchant_name: null, p_rule_key: first ? key : null, p_evidence: [], p_request_id: crypto.randomUUID() });
+    if (created.error) throw new Error(created.error.message);
+    const applied = await supabase.rpc("apply_organization_review", { p_review_id: created.data.id, p_save_rule: first });
+    if (applied.error) throw new Error(applied.error.message);
+  }
+  revalidatePath("/", "layout");
+  redirect(`${returnPath(form)}&transaction=${id}`);
 }
 
 export async function bulkEditTransactions(form: FormData) {

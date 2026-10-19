@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { requireWorkspace } from "@/lib/auth";
 import { formatMoney } from "@/lib/finance/format";
-import { clearLink, markRefund, quickEditTransaction, undoCorrection, undoTransactionSplits, undoVerifiedLink } from "./actions";
+import { applyCategoryToSimilar, clearLink, markRefund, quickEditTransaction, undoCorrection, undoTransactionSplits, undoVerifiedLink } from "./actions";
 import { SplitEditor } from "./split-editor";
 import { AskAbout } from "@/components/ask-about";
 import { VerifiedLinkEditor, type LinkPosting } from "./verified-link-editor";
 import { PendingHoldPanel } from "./pending-hold-panel";
+import { similarRows } from "./similar";
 import { describeChanges, kindLabel, operationLabel, reviewReasonLabel, statusLabel } from "./labels";
 
 type Named = { id: string; name: string };
@@ -60,6 +61,7 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
     canLinkRefund ? refundQuery() : none,
   ]);
   for (const result of [splitRows, fees, transferCandidates, refundCandidates]) if (result.error) throw result.error;
+  const similar = splitSet.data ? [] : (await similarRows(supabase, ws, selected)).rows;
 
   const categoryNames = Object.fromEntries(categories.map(row => [row.id, row.name]));
   const merchantNames = Object.fromEntries(merchants.map(row => [row.id, row.name]));
@@ -101,6 +103,13 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
         <button className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">Save correction</button>
         <p className="text-xs text-muted-foreground">Each change is recorded below and can be undone.</p>
       </form>
+
+      {similar.length > 0 && <form action={applyCategoryToSimilar} aria-label="Similar transactions" className="space-y-2 rounded-lg border border-border p-3 text-sm">
+        {hidden("id", selected.id)}{hidden("query", query)}
+        <p>{similar.length} other {similar.length === 1 ? "transaction has" : "transactions have"} this description but {similar.length === 1 ? "is" : "are"} not in {categoryName}.</p>
+        <button className="rounded-lg border border-border px-3 py-1.5 font-medium hover:bg-muted">Put {similar.length === 1 ? "it" : `all ${similar.length}`} in {categoryName}</button>
+        <p className="text-xs text-muted-foreground">Also saves a rule so future imports and agent runs use {categoryName}. Undo from <Link href="/money/organization" className="underline">Organization</Link>.</p>
+      </form>}
 
       {splitSet.data ? <section aria-label="Split allocations" className="rounded-lg border border-border p-3">
         <h3 className="font-medium">Split allocations</h3>
