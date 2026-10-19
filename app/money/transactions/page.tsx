@@ -51,7 +51,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   // saving is disabled so the broadened scope cannot be re-saved.
   const scopeError = viewRow ? invalidStoredViewScope(viewRow.filters as unknown) : null;
   if (scopeError && activeView) {
-    return <main className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 text-foreground sm:px-6">
+    return <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 text-foreground sm:px-8 lg:py-10">
       {header}
       <section aria-label="Invalid saved view" className="rounded-xl border border-border bg-card p-6">
         <p role="alert" className="text-sm text-red-700 dark:text-red-300">{scopeError}</p>
@@ -127,7 +127,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const filterValues = Object.fromEntries(shareable);
   const activeAccounts = (accounts ?? []).filter(account => !account.archived_at);
 
-  return <main className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 text-foreground sm:px-6">
+  return <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 text-foreground sm:px-8 lg:py-10">
     {header}
     {viewId && !activeView ? <p role="alert" className="text-sm">Saved view not found. Showing normal filters.</p> : null}
     <div className="grid gap-6">

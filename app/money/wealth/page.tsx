@@ -62,7 +62,7 @@ export default async function WealthPage() {
   const currencies = [...totals.keys()].sort((a, b) => Number(b === workspace.display_currency) - Number(a === workspace.display_currency) || a.localeCompare(b));
   const dated = active.filter(item => !item.linked_account_id && item.as_of !== today).length;
 
-  return <main className="mx-auto w-full max-w-4xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
+  return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
     <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Wealth</h1>
 
     <section aria-label="Net worth" className="space-y-4">
