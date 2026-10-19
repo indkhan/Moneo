@@ -57,30 +57,37 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   expect(rows.every(row=>row.merchant_id===null&&row.category_id===null)).toBe(true);
   const fingerprint=async()=>JSON.stringify({transactions:[...await db`select to_jsonb(t)-array['version','merchant_id','category_id','note'] as value from public.transactions t where workspace_id=${workspace!} order by id`],sources:[...await db`select id,original_row from public.source_transactions where workspace_id=${workspace!} order by id`],links:[...await db`select transaction_id,source_transaction_id from public.transaction_sources where source_transaction_id in(select id from public.source_transactions where workspace_id=${workspace!}) order by transaction_id,source_transaction_id`]});
   const before=await fingerprint();
-  const cedar=()=>page.locator('article').filter({has:page.getByRole('heading',{name:'cedar cooperative',exact:true})});
-  await expect(cedar()).toContainText('2 entries',{timeout:20000});
-  await cedar().getByRole('button',{name:'Request optional AI suggestions',exact:true}).click();
-  await expect(cedar().getByRole('status')).toContainText('unavailable');
-  await expect(cedar().getByRole('combobox',{name:'Category',exact:true})).toBeEnabled();
+  // One selectable queue: tick entries, then one searchable Category/Merchant bar applies to all of them.
+  const queue=()=>page.getByRole('region',{name:'Organization suggestions'});
+  const cedar=()=>queue().getByRole('listitem').filter({hasText:'CEDAR COOPERATIVE'});
+  const selectCedar=async()=>{await expect(cedar()).toHaveCount(2,{timeout:20000});for(const box of await cedar().getByRole('checkbox').all())await box.check();await expect(queue()).toContainText('2 selected');};
+  const pick=async(name:'Category'|'Merchant',value:string)=>queue().getByRole('combobox',{name,exact:true}).fill(value);
+  const approve=async(saveRule:boolean)=>{
+   await impact().getByRole('checkbox',{name:'I reviewed these entries',exact:false}).check();
+   if(saveRule)await impact().getByRole('checkbox',{name:'Suggest the same for future entries',exact:false}).check();
+   await impact().getByRole('button',{name:'Approve',exact:true}).click();await expect(impact().getByRole('heading',{name:'Applied',exact:true})).toBeVisible();
+  };
+  const rules=async()=>{const details=page.locator('details').filter({hasText:'Rules ('});if(!await details.evaluate(node=>(node as HTMLDetailsElement).open))await details.locator('summary').click();return details.getByRole('listitem').filter({hasText:'cedar cooperative'});};
+  await selectCedar();
+  await queue().getByRole('button',{name:'Suggest with AI',exact:true}).click();
+  await expect(queue().getByRole('status')).toContainText('unavailable');
+  await expect(queue().getByRole('combobox',{name:'Category',exact:true})).toBeEnabled();
   // Controlled delayed response validates browser draft ownership, not model quality.
   let fulfill!:()=>Promise<void>;let requested!:()=>void;
   const requestStarted=new Promise<void>(resolve=>{requested=resolve;});
   await page.route('**/api/money/organization/suggestions',async route=>{fulfill=()=>route.fulfill({json:{providerStatus:'available',proposals:rows.filter(row=>row.description.includes('CEDAR')).map(row=>({transactionId:row.id,basis:'provider-suggestion',merchantId:null,merchantName:'Obsolete suggestion',categoryId:category,evidenceQuote:'CEDAR COOPERATIVE'}))}});requested();});
-  await cedar().getByRole('button',{name:'Request optional AI suggestions',exact:true}).click();await requestStarted;
-  await cedar().getByRole('combobox',{name:'Merchant',exact:true}).selectOption('new');
-  await cedar().getByRole('textbox',{name:'Merchant name',exact:true}).fill('Cedar Cooperative');await fulfill();
-  await expect(cedar().getByRole('status')).toContainText('draft changed');
-  await expect(cedar().getByRole('textbox',{name:'Merchant name',exact:true})).toHaveValue('Cedar Cooperative');
+  await queue().getByRole('button',{name:'Suggest with AI',exact:true}).click();await requestStarted;
+  await pick('Merchant','Cedar Cooperative');await fulfill();
+  await expect(queue().getByRole('status')).toContainText('draft changed');
+  await expect(queue().getByRole('combobox',{name:'Merchant',exact:true})).toHaveValue('Cedar Cooperative');
   await page.unroute('**/api/money/organization/suggestions');
-  await cedar().getByRole('combobox',{name:'Category',exact:true}).selectOption(category);
-  await cedar().getByRole('button',{name:'Preview 2 entries',exact:true}).click();
+  await pick('Category','QA Groceries');
+  await queue().getByRole('button',{name:'Preview changes',exact:true}).click();
   const impact=()=>page.getByRole('region',{name:'Organization impact preview'});
   await expect(impact()).toContainText('Merchant: unassigned → Cedar Cooperative');await expect(impact()).toContainText('Category: uncategorized → QA Groceries');
   await expect(impact()).toContainText('90071992547409.93');expect(await fingerprint()).toBe(before);
   await page.screenshot({path:testInfo.outputPath('native-organization-exact-preview.png'),fullPage:true});
-  await impact().getByRole('checkbox',{name:'I reviewed these exact entries',exact:false}).check();
-  await impact().getByRole('checkbox',{name:'Save a rule',exact:false}).check();
-  await impact().getByRole('button',{name:'Approve organization',exact:true}).click();await expect(impact().getByRole('heading',{name:'Applied organization',exact:true})).toBeVisible();
+  await approve(true);
   await page.reload();expect(await fingerprint()).toBe(before);
   const [rule]=await db`select id,enabled,version,merchant_id,category_id from public.organization_rules where workspace_id=${workspace!}`;
   expect(rule).toMatchObject({enabled:true,version:1,category_id:category});
@@ -89,24 +96,27 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await page.getByRole('complementary',{name:'Transaction details'}).getByRole('button',{name:'Undo correction',exact:true}).click();
   await expect(page).toHaveURL(/\/money\/organization\?review=/);
   expect((await db`select version from public.transactions where id=${first.id} and workspace_id=${workspace!}`)[0].version).toBe(1);
-  await impact().getByRole('button',{name:'Undo organization batch and its saved rule',exact:true}).click();
-  await expect(impact().getByRole('heading',{name:'Undone organization',exact:true})).toBeVisible();
+  await impact().getByRole('button',{name:'Undo this batch',exact:true}).click();
+  await expect(impact().getByRole('heading',{name:'Undone',exact:true})).toBeVisible();
   expect((await db`select enabled from public.organization_rules where id=${rule.id} and workspace_id=${workspace!}`)[0].enabled).toBe(false);
   expect((await db`select merchant_id,category_id,version from public.transactions where workspace_id=${workspace!} and description like '%CEDAR%'`).every(row=>row.merchant_id===null&&row.category_id===null&&row.version===2)).toBe(true);expect(await fingerprint()).toBe(before);
-  // Undone corrections permit a fresh full preview and explicit rule approval.
+  // Undone corrections permit a fresh full preview and explicit rule approval; typed names resolve to the existing merchant and category.
   await page.goto('/money/organization?import='+imported);
-  await cedar().getByRole('combobox',{name:'Merchant',exact:true}).selectOption(rule.merchant_id);await cedar().getByRole('combobox',{name:'Category',exact:true}).selectOption(category);
-  await cedar().getByRole('button',{name:'Preview 2 entries',exact:true}).click();
-  await impact().getByRole('checkbox',{name:'I reviewed these exact entries',exact:false}).check();await impact().getByRole('checkbox',{name:'Save a rule',exact:false}).check();
-  await impact().getByRole('button',{name:'Approve organization',exact:true}).click();await expect(impact().getByRole('heading',{name:'Applied organization',exact:true})).toBeVisible();
+  await selectCedar();await pick('Merchant','cedar cooperative');await pick('Category','qa groceries');
+  await queue().getByRole('button',{name:'Preview changes',exact:true}).click();
+  await expect(impact()).toContainText('Category: uncategorized → QA Groceries');
+  await approve(true);
+  expect((await db`select count(*)::int count from public.categories where workspace_id=${workspace!}`)[0].count).toBe(1);
   const originalSources=[...await db`select id,original_row from public.source_transactions where workspace_id=${workspace!} order by id`];
   await importCsv('organization-rule-reuse.csv','date,description,amount,id\n2026-09-04,CARD PAYMENT CEDAR COOPERATIVE REF:103,-3.00,cedar-103\n');
-  await expect(cedar()).toContainText('Your approved rule');await expect(cedar().getByRole('combobox',{name:'Merchant',exact:true})).toHaveValue(rule.merchant_id);await expect(cedar().getByRole('combobox',{name:'Category',exact:true})).toHaveValue(category);
-  const rules=()=>page.getByRole('region',{name:'Approved organization rules'}).getByRole('listitem').filter({hasText:'cedar cooperative'});
-  await rules().getByRole('button',{name:'Disable rule',exact:true}).click();await expect(rules()).toContainText('(off)');
-  await expect(cedar().getByRole('combobox',{name:'Category',exact:true})).toHaveValue('keep');
-  await rules().getByRole('button',{name:'Enable rule',exact:true}).click();await expect(rules()).not.toContainText('(off)');
-  await expect(cedar()).toContainText('Your approved rule');await expect(cedar().getByRole('combobox',{name:'Category',exact:true})).toHaveValue(category);
+  const suggested=()=>cedar().getByRole('button',{name:'Cedar Cooperative · QA Groceries',exact:true});
+  await expect(suggested()).toBeVisible();
+  await (await rules()).getByRole('button',{name:'Disable',exact:true}).click();await expect(await rules()).toContainText('(off)');
+  await expect(suggested()).toHaveCount(0);
+  await (await rules()).getByRole('button',{name:'Enable',exact:true}).click();await expect(await rules()).not.toContainText('(off)');
+  await expect(suggested()).toBeVisible();
+  // Using the suggestion selects the entry and fills the bar.
+  await suggested().click();await expect(queue().getByRole('combobox',{name:'Category',exact:true})).toHaveValue('QA Groceries');await expect(queue()).toContainText('1 selected');
   // A retained native correction suppresses later proposals without changing its source.
   const moss=rows.find(row=>row.description.includes('MOSS'))!;
   await page.goto('/money/transactions?transaction='+moss.id);
@@ -117,7 +127,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await page.getByRole('link',{name:'Organize spending',exact:true}).click();
   await expect(page).toHaveURL(/\/money\/organization$/);
   await expect(page.getByRole('heading',{name:'Organize spending',exact:true})).toBeVisible();
-  await expect(page.locator('article').filter({has:page.getByRole('heading',{name:'moss travel',exact:true})})).toHaveCount(0);
+  await expect(page.getByRole('region',{name:'Organization suggestions'}).getByRole('listitem').filter({hasText:'MOSS TRAVEL'})).toHaveCount(0);
   expect([...await db`select id,original_row from public.source_transactions where workspace_id=${workspace!} and id=any(${originalSources.map(row=>row.id)}) order by id`]).toEqual(originalSources);
   await page.screenshot({path:testInfo.outputPath('native-organization-rules-correction.png'),fullPage:true});
   record({status:'passed',exactSourcePreserved:true,provider:'disabled key/scopes; one controlled delayed HTTP fixture, no model-quality claim'});
