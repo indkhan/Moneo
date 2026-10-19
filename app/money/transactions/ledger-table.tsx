@@ -90,7 +90,7 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
       <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left text-sm">
         <thead className="sticky top-0 z-10 bg-card text-xs text-muted-foreground">
           {table.getHeaderGroups().map(group => <tr key={group.id}>{group.headers.map(header =>
-            <th key={header.id} scope="col" className={`border-b border-border px-3 py-2.5 font-medium ${header.column.id === "amount" ? "text-right" : ""} ${header.column.id === "select" ? "w-8" : ""}`}>{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr>)}
+            <th key={header.id} scope="col" className={`whitespace-nowrap border-b border-border px-3 py-2.5 font-medium ${header.column.id === "amount" ? "text-right" : ""} ${header.column.id === "select" ? "w-8" : ""}`}>{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr>)}
         </thead>
         <tbody ref={body}>
           {tableRows.map((row, index) => {
@@ -104,7 +104,7 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
               </th></tr>}
               <tr data-index={index} data-active={index === active || undefined} onClick={() => setActive(index)}
                 className={`${index === active ? "bg-brand/10" : "hover:bg-muted"} ${row.original.id === openId ? "outline outline-1 -outline-offset-1 outline-brand" : ""}`}>
-                {row.getAllCells().map(cell => <td key={cell.id} className={`max-w-xs border-b border-border px-3 py-1.5 ${cell.column.id === "amount" ? "whitespace-nowrap text-right" : ""}`}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}
+                {row.getAllCells().map(cell => <td key={cell.id} className={`max-w-xs whitespace-nowrap border-b border-border px-3 py-1.5 ${cell.column.id === "amount" ? "text-right" : ""}`}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}
               </tr>
             </Fragment>;
           })}

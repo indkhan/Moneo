@@ -41,8 +41,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const header = <header className="flex flex-wrap items-end justify-between gap-4">
     <div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Money</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">Transactions</h1></div>
     <nav aria-label="Money sections" className="flex flex-wrap gap-1 text-sm">
-      {[["/money/accounts", "Accounts"], ["/money/organization", "Organize spending"], ["/money/recurring", "Recurring"], ["/money/wealth", "Investments, assets and debts"], ["/money/investigations", "Investigate"]].map(([href, label]) =>
-        <Link key={href} href={href} className="rounded-lg px-3 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">{label}</Link>)}
+      <Link href="/money/organization" className="rounded-lg px-3 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">Organize spending</Link>
       <Link href="/import" className="rounded-lg bg-primary px-3 py-1.5 font-medium text-primary-foreground hover:opacity-90">Import statement</Link>
     </nav>
   </header>;
@@ -131,11 +130,11 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   return <main className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 text-foreground sm:px-6">
     {header}
     {viewId && !activeView ? <p role="alert" className="text-sm">Saved view not found. Showing normal filters.</p> : null}
-    <div className="grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
-      <aside className="order-2 space-y-6 lg:order-1 lg:sticky lg:top-6 lg:self-start">
+    <div className="grid gap-6">
+      <aside className="order-2 space-y-6">
         <SavedViewsPanel views={viewRows} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} />
       </aside>
-      <div className="order-1 min-w-0 space-y-4 lg:order-2">
+      <div className="order-1 min-w-0 space-y-4">
         <FilterBar key={shareable.toString()} values={filterValues} accounts={accounts ?? []} categories={categories ?? []} merchants={merchants ?? []} displayCurrency={workspace.display_currency} timezone={workspace.timezone} />
         <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
           <ul aria-label="Active filters" className="flex flex-wrap items-center gap-1.5">
