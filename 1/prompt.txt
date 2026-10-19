@@ -1,0 +1,2 @@
+Okay, I opened the application again, and the things still did not get a category, even though there was a PR which would categorize it. I think the reason is that it is only if there is a new thing coming in, or they were new from the start import, and that's fine. How it should be is that if you go to agents and then run the agents team, and it finds that there are a lot of things which do not have a category, it can give them a category and all of those things still. That's how it should be. 
+and it will in in agents with the decisions it took
