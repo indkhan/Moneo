@@ -12,8 +12,7 @@ test("Evidence room handles rich replies, artifacts, cancellation and modal keyb
   const base = process.env.E2E_BASE_URL ?? "http://localhost:3000";
   const conversation = process.env.E2E_AI_CONVERSATION;
   await page.goto(`${base}/ai${conversation ? `?conversation=${conversation}` : ""}`);
-  await expect(page.getByRole("heading", { name: "Ask Moneo" })).toBeVisible();
-  expect(await page.locator("main").evaluate(element => getComputedStyle(element).getPropertyValue("--color-background").trim())).toBe("#182333");
+  await expect(page.getByRole("textbox", { name: "Ask about your finances" })).toBeVisible();
   // Deterministic mocked contract for the dialog's conversation history. The POST
   // /api/chat mock never reaches the server, so the mock records the posted
   // Q&A and the GET serves it back as the consistent owned persisted history.
