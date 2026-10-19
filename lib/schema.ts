@@ -932,7 +932,7 @@ export const agentRuns = pgTable("agent_runs", {
   check("agent_runs_trigger_check", sql`${table.trigger} in ('import','manual')`),
   check("agent_runs_status_check", sql`${table.status} in ('queued','running','completed','failed','canceled')`),
   check("agent_runs_model_status_check", sql`${table.modelStatus} in ('unknown','available','unavailable','budget_exhausted','disabled')`),
-  check("agent_runs_budget_check", sql`${table.modelBudget} between 0 and 20 and ${table.modelCalls} between 0 and ${table.modelBudget}`),
+  check("agent_runs_budget_check", sql`${table.modelBudget} between 0 and 200 and ${table.modelCalls} between 0 and ${table.modelBudget}`),
   check("agent_runs_plan_check", sql`jsonb_typeof(${table.plan})='array'`),
 ]);
 
