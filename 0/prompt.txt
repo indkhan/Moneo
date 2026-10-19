@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b5c2hrkd1</task-id>
+<tool-use-id>toolu_01JmJpHbFGLZSXqa15F2Wadh</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--codebases-Moneo\f1e7ba6e-691b-47a3-b1df-4f73d12785e1\tasks\b5c2hrkd1.output</output-file>
+<status>completed</status>
+<summary>Background command "Commit and rerun remaining failing specs" completed (exit code 0)</summary>
+</task-notification>
