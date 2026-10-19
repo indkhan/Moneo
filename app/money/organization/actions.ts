@@ -14,14 +14,19 @@ export async function createReview(_state:ReviewState,form:FormData):Promise<Rev
   const {supabase,workspace}=await requireWorkspace();
   const rows=versionedRows.parse(JSON.parse(z.string().max(5000).parse(form.get('rows'))));
   const merchant=z.union([target,z.literal('new')]).parse(form.get('merchant'));
-  const category=target.parse(form.get('category'));
+  const category=z.union([target,z.literal('new')]).parse(form.get('category'));
+  const categoryName=category==='new'?z.string().trim().min(1).max(100).parse(form.get('categoryName')):null;
   const merchantName=merchant==='new'?z.string().trim().min(1).max(100).parse(form.get('merchantName')):null;
   const requestId=z.uuid().parse(form.get('requestId'));
   const current=await loadOrganizationSuggestions(supabase,workspace.id,rows);
   if(current.proposals.length!==rows.length)throw new Error('Corrections or complete source organization take precedence');
   const patch:Record<string,string|null>={};
   if(merchant!=='keep'&&merchant!=='new')patch.merchant_id=merchant||null;
-  if(category!=='keep')patch.category_id=category||null;
+  if(categoryName){
+   // Find-or-create by exact name (unique per workspace); an unused category remains if the review is dismissed.
+   const {data:found,error:createError}=await supabase.from('categories').upsert({workspace_id:workspace.id,name:categoryName},{onConflict:'workspace_id,name'}).select('id').single();
+   if(createError)throw createError;patch.category_id=z.uuid().parse(found.id);
+  }else if(category!=='keep')patch.category_id=category||null;
   if(!merchantName&&!Object.keys(patch).length)throw new Error('Choose an organization change');
   const keys=new Set(current.proposals.map(proposal=>proposal.descriptionKey));
   const key=keys.size===1?[...keys][0]:null;
