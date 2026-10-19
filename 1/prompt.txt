@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b9hsn629q</task-id>
+<tool-use-id>toolu_01C9S1Pu5pYJJgndyFd6UrRV</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--codebases-Moneo\f1e7ba6e-691b-47a3-b1df-4f73d12785e1\tasks\b9hsn629q.output</output-file>
+<status>completed</status>
+<summary>Background command "Run unit, lint, build and full E2E suite" completed (exit code 0)</summary>
+</task-notification>
