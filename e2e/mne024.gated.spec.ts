@@ -47,7 +47,7 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     await db`insert into public.messages ${db(sorted.map((id, i) => ({ id, workspace_id: workspaceIds[0], conversation_id: selected, role: i % 2 ? "assistant" : "user", content: `Synthetic message ${i + 1}`, created_at: "2026-01-01T00:00:00Z" })))}`;
     console.log("MNE024: authenticated synthetic fixtures ready");
     await page.goto(`/ai?conversation=${owned[69]}`, { waitUntil: "domcontentloaded" });
-    await expect(page.locator("h2").filter({ hasText: `Synthetic thread ${owned[69]}` })).toBeVisible();
+    await expect(page.getByRole("heading", { name: `Synthetic thread ${owned[69]}` })).toBeVisible();
     await page.goto(`/ai?conversation=${selected}`, { waitUntil: "domcontentloaded" });
     await expect(page.getByText("Synthetic message 1000", { exact: true })).toBeVisible();
     await expect(page.getByText("Synthetic message 1", { exact: true })).toHaveCount(0);
@@ -71,14 +71,14 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     while (cursor) { const response = await context.request.get(`/api/conversations?${new URLSearchParams({ conversation: selected, messagesBefore: cursor })}`, { timeout: 60_000 }); expect(response.ok()).toBe(true); const body = await response.json(); if (body.messages.some((row: { content: string }) => row.content === "Synthetic message 101")) message101Cursor = cursor; all.push(...body.messages.map((row: { id: string }) => row.id)); cursor = body.messagesCursor; }
     console.log("MNE024: tied history paged through 1000 records after new arrivals");
     expect(all).toHaveLength(1000); expect(new Set(all).size).toBe(1000); expect([...new Set(all)].sort()).toEqual(sorted);
-    await page.getByRole("link", { name: "Older messages", exact: true }).click();
+    await page.getByRole("button", { name: "Older messages", exact: true }).click();
     await expect(page.getByText("Synthetic message 801", { exact: true })).toBeVisible();
-    await page.getByRole("link", { name: "Latest messages", exact: true }).click();
+    await page.goto(`/ai?conversation=${selected}`, { waitUntil: "domcontentloaded" });
     await expect(page.getByText("Synthetic new arrival answer", { exact: true })).toBeVisible();
     expect(message101Cursor).toBeTruthy();
     await page.goto(`/ai?${new URLSearchParams({ conversation: selected, messagesBefore: message101Cursor! })}`, { waitUntil: "domcontentloaded" });
     await expect(page.getByText("Synthetic message 101", { exact: true })).toBeVisible();
-    await page.getByRole("link", { name: "Latest messages", exact: true }).click();
+    await page.goto(`/ai?conversation=${selected}`, { waitUntil: "domcontentloaded" });
     let delayedReply: Promise<void> | undefined;
     let delayedStarted: (() => void) | undefined;
     await page.route("**/api/chat", async route => {
@@ -115,13 +115,12 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     await panel.getByRole("link", { name: "Continue in AI workspace" }).click();
     await expect(page).toHaveURL(new RegExp(selected));
     console.log("MNE024: panel reload and fullpage share selected identity");
-    await page.getByRole("link", { name: "Older conversations", exact: true }).click();
-    await expect(page).toHaveURL(/threadsBefore=/);
-    await expect(page.getByRole("navigation", { name: "Conversations" }).getByRole("link")).toHaveCount(30);
-    await expect(page.getByRole("navigation", { name: "Conversations" }).getByText("Synthetic new arrival", { exact: true })).toHaveCount(0);
-    await page.getByRole("link", { name: "Latest conversations", exact: true }).click();
-    await expect(page).not.toHaveURL(/threadsBefore=/);
-    await expect(page.getByRole("navigation", { name: "Conversations" }).getByText("Synthetic new arrival", { exact: true })).toBeVisible();
+    // Older conversations append below the newest page instead of replacing it.
+    const conversations = page.getByRole("navigation", { name: "Conversations" });
+    const firstPage = await conversations.getByRole("link").count();
+    await page.getByRole("button", { name: "Older conversations", exact: true }).click();
+    await expect.poll(() => conversations.getByRole("link").count()).toBeGreaterThan(firstPage);
+    await expect(conversations.getByText("Synthetic new arrival", { exact: true })).toBeVisible();
     for (const destination of ["B", "New", "navigation"] as const) {
       await page.goto(`/ai?conversation=${selected}`, { waitUntil: "domcontentloaded" });
       await expect(page.locator("html")).toHaveAttribute("data-mne024-ready", "true");
