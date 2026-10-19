@@ -27,6 +27,8 @@ if (process.argv.includes("--reset")) {
       and column_name in ('workspace_id','actor_id','user_id','created_by')`;
     for (const { table_name, column_name } of columns)
       await tx.unsafe(`delete from public."${table_name}" where "${column_name}"::text = any($1::text[])`, [[user.id, ...workspaces]]);
+    // Same starting categories a new signup gets from seed_default_categories().
+    await tx`insert into public.categories(workspace_id,name) select w,n from unnest(${workspaces}::uuid[]) w cross join unnest(public.default_category_names()) n`;
   });
   await db.end();
   console.log("Emptied the QA user's workspace");
