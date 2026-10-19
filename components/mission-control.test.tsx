@@ -43,3 +43,11 @@ it("ends with the briefing and a review screen with evidence, lead notes and und
   expect(html).toContain("Turn the limit off in Plan → Spending");
   expect(html).not.toContain(">Stop<");
 });
+
+it("lights up the flowchart with each agent's live status", () => {
+  const html = renderToStaticMarkup(<MissionControl initial={run("running")} locale="en-GB" />);
+  expect(html).toContain("Live run");
+  expect(html).toMatch(/data-status="running"[^>]*>.*?Categorizer/);
+  expect(html).toMatch(/data-status="done"[^>]*>.*?Recurring detective/);
+  expect(html).toMatch(/data-status="skipped"[^>]*>.*?Budget coach/);
+});

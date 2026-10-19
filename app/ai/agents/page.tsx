@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Bot } from "lucide-react";
 import { requireWorkspace } from "@/lib/auth";
-import { AGENTS, AGENT_IDS } from "@/lib/ai/agent-team";
+import { TeamFlow } from "@/components/team-flow";
 import { StartAgentRun } from "./start-run";
 
 export default async function AgentRunsPage({ searchParams }: { searchParams: Promise<{ import?: string }> }) {
@@ -26,7 +26,7 @@ export default async function AgentRunsPage({ searchParams }: { searchParams: Pr
       <StartAgentRun />
     </header>
     {importId.success && <p role="status" className="rounded-lg bg-muted p-3 text-sm">The team starts as soon as that import&apos;s rows are in. <Link href={`/ai/agents?import=${importId.data}`} className="underline">Check again</Link></p>}
-    <section aria-label="Agents" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{AGENT_IDS.map(agent => <div key={agent} className="rounded-xl border border-border bg-card p-3"><p className="text-sm font-semibold">{AGENTS[agent].name}</p><p className="text-xs text-muted-foreground">{AGENTS[agent].role}</p></div>)}</section>
+    <TeamFlow />
     <section aria-label="Runs" className="space-y-2">
       <h2 className="text-base font-semibold">Runs</h2>
       {runs.error && <p role="alert">Could not load runs: {runs.error.message}</p>}
@@ -40,3 +40,4 @@ export default async function AgentRunsPage({ searchParams }: { searchParams: Pr
     </section>
   </main>;
 }
+
