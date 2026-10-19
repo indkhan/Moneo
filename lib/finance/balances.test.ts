@@ -41,11 +41,11 @@ describe("evidenced account balances", () => {
     expect(resolveBalances(accounts, [dated], [included, later], now)[0].balance).toMatchObject({ amount_minor: "8750", reconciled_rows: 1, status: "current" });
     expect(resolveBalances(accounts, [dated], [included, { ...later, posted_at: dated.as_of }], now)[0].balance?.status).toBe("ambiguous");
   });
-  it("keeps old snapshots stale and reconciles only later posted dates", () => {
+  it("labels old snapshots stale, uses them plus reconciled only later posted dates", () => {
     const [balance] = resolveBalances(accounts, [snapshot], [transaction,
       { ...transaction, id: "pending", status: "pending", amount_minor: "-500" },
       { ...transaction, id: "future", posted_on: "2026-10-02", amount_minor: "100000" }], now);
-    expect(balance.balance).toMatchObject({ amount_minor: null, snapshot_amount_minor: "10000", estimated_amount_minor: "8750",
+    expect(balance.balance).toMatchObject({ amount_minor: "8750", snapshot_amount_minor: "10000", estimated_amount_minor: "8750",
       as_of: snapshot.as_of, status: "stale", reconciled_rows: 1 });
   });
   it("excludes future snapshots and does not use ingestion order to resolve financial ties", () => {
@@ -54,11 +54,11 @@ describe("evidenced account balances", () => {
     expect(resolveBalances(accounts, [tied, snapshot], [], now)[0].balance?.status).toBe("ambiguous");
     expect(resolveBalances(accounts, [{ ...snapshot, as_of: "2026-10-02T00:00:00Z" }], [], now)[0].balance?.status).toBe("missing");
   });
-  it("refuses same-day ledger guesses and unsafe numeric database values", () => {
+  it("treats same-day date-only rows as included and refuses and unsafe numeric database values", () => {
     const today = { ...snapshot, as_of: "2026-10-01T08:00:00Z" };
     expect(resolveBalances(accounts, [today], [], now)[0].balance?.amount_minor).toBe("10000");
     expect(resolveBalances(accounts, [today], [{ ...transaction, posted_on: "2026-10-01" }], now)[0].balance)
-      .toMatchObject({ amount_minor: null, estimated_amount_minor: null, status: "ambiguous" });
+      .toMatchObject({ amount_minor: "10000", status: "current" });
     expect(resolveBalances(accounts, [{ ...today, amount_minor: Number.MAX_SAFE_INTEGER + 1 }], [], now)[0].balance)
       .toMatchObject({ amount_minor: null, status: "ambiguous" });
     expect(resolveBalances(accounts, [{ ...today, currency_code: "USD" }], [], now)[0].balance?.status).toBe("ambiguous");

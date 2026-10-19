@@ -5,8 +5,8 @@ const row = { id: "morning", account_id: "cash", amount_minor: "-100", currency_
 const snapshot = { id: "review", account_id: "cash", amount_minor: "10000", currency_code: "EUR", as_of: "2026-10-06T12:00:00Z", provenance: "manual" };
 const reviewed = { ...snapshot, boundary_kind: "reviewed_activity", covered_transactions: [{ id: row.id, amount_minor: row.amount_minor, currency_code: "EUR", version: 0, posted_on: row.posted_on, posted_at: row.posted_at }] } as BalanceSnapshot;
 const result = (s: BalanceSnapshot, rows: BalanceTransaction[] = [row]) => resolveBalances([account], [s], rows, "2026-10-06T14:00:00Z")[0].balance;
-it("retains ambiguity when entering current booked balance without reviewed activity", () => {
-  expect(result(snapshot)).toMatchObject({ status: "ambiguous", amount_minor: null });
+it("treats a same-day booked balance as including that day's earlier activity", () => {
+  expect(result(snapshot)).toMatchObject({ status: "current", amount_minor: "10000" });
 });
 it("covers reviewed timestamped activity and counts a later posting once", () => {
   expect(result(reviewed, [row, { ...row, id: "later", posted_at: "2026-10-06T13:00:00Z", amount_minor: "-250" }])).toMatchObject({ status: "current", amount_minor: "9750", reconciled_rows: 1 });

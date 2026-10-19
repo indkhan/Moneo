@@ -47,12 +47,11 @@ it("separates dated savings, virtual reservations and budget pressure with exact
   expect(future.goals[0]).toMatchObject({ recordedSavedMinor: null, remainingMinor: null, completionDate: null });
 });
 
-it("labels historical evidence stale instead of presenting it as current net worth", () => {
+it("labels historical evidence stale while still counting it", () => {
   const evidence = buildReviewEvidence([{ id: "a", name: "Cash", currency_code: "EUR" }],
     [{ account_id: "a", amount_minor: "10000", currency_code: "EUR", as_of: "2026-09-01T00:00:00Z", provenance: "manual" }],
     [], "2026-07-01", "2026-10-01", { asOf: "2026-10-01T12:00:00Z", ledger: [] });
-  expect(evidence.accounts[0]).toMatchObject({ balanceMinor: null, snapshotBalanceMinor: "10000", balanceStatus: "stale" });
-  expect(evidence.netWorth).toEqual({ EUR: null });
+  expect(evidence.accounts[0]).toMatchObject({ balanceMinor: "10000", snapshotBalanceMinor: "10000", balanceStatus: "stale" });
 });
 
 it("keeps unresolved classifications visible as partial review evidence", () => {

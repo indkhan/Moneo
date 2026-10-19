@@ -84,15 +84,16 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
             if (row.source_transaction_ids?.includes(snapshot.source_transaction_id)) continue;
             throw new Error("Same-timestamp ledger has no evidenced order relative to the snapshot");
           }
-        } else if (postingDate === boundaryDate) throw new Error("Same-day ledger has no evidenced snapshot boundary");
+        } else if (postingDate === boundaryDate) continue; // a date-only balance is that day's closing balance, so it already includes the day's rows
         if (row.currency_code !== account.currency_code) throw new Error("Ledger currency differs from account currency");
         estimate += delta;
         balance.reconciled_rows++;
       }
       balance.estimated_amount_minor = estimate.toString();
       balance.status = boundaryDate === today ? "current" : "stale";
-      if (balance.status === "current") balance.amount_minor = estimate.toString();
-      else balance.warnings.push("Dated balance plus recorded later activity; completeness through today is unverified");
+      // Older balance plus recorded later activity is still the best known balance; status keeps it labelled.
+      balance.amount_minor = estimate.toString();
+      if (balance.status === "stale") balance.warnings.push("Dated balance plus recorded later activity; completeness through today is unverified");
     } catch (error) {
       balance.status = "ambiguous";
       balance.estimated_amount_minor = null;

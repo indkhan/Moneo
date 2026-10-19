@@ -195,7 +195,7 @@ export async function evaluatePlanForWorkspace(supabase: SupabaseClient, workspa
       const snapshot = account.balance;
       const balanceMinor = snapshot.amount_minor !== null ? convert(BigInt(snapshot.amount_minor), snapshot.currency_code, startDate) : null;
       const reservedMinor = convert(reserved.get(account.id) ?? 0n, account.currency_code, startDate);
-      if (snapshot.status !== "current") missingInputs.push(`balance:${account.id}:${snapshot.status}`);
+      if (snapshot.amount_minor === null) missingInputs.push(`balance:${account.id}:${snapshot.status}`);
       else if (balanceMinor === null) missingInputs.push(`fx:balance:${account.id}`);
       if (reservedMinor === null) missingInputs.push(`fx:allocation:${account.id}`);
       let pendingHoldMinor = 0n;
