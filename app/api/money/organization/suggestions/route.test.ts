@@ -20,7 +20,7 @@ beforeEach(()=>{vi.resetAllMocks();vi.stubEnv('OPENAI_API_KEY','synthetic-test-o
  vi.mocked(loadOrganizationSuggestions).mockResolvedValue({rows:[row],proposals:[proposal],historyLimit:2000,historyCount:0} as never);
  vi.mocked(modelForSettings).mockResolvedValue({} as never);});
 it('returns attributable metadata only and never sends exact amounts to the optional provider',async()=>{
- vi.mocked(generateObject).mockResolvedValue({object:[{transactionId:id(1),merchantName:'Northstar Market',categoryId:id(20),evidenceQuote:'NORTHSTAR MARKET'}]} as never);
+ vi.mocked(generateObject).mockResolvedValue({object:{suggestions:[{transactionId:id(1),merchantName:'Northstar Market',categoryId:id(20),evidenceQuote:'NORTHSTAR MARKET'}]}} as never);
  const response=await POST(request(selection));expect(response.status).toBe(200);
  expect(await response.json()).toMatchObject({providerStatus:'available',proposals:[{basis:'provider-suggestion',categoryId:id(20),evidenceQuote:'NORTHSTAR MARKET'}]});
  expect(vi.mocked(generateObject).mock.calls[0][0].prompt).not.toContain('9007199254740993');
