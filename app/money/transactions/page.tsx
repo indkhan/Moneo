@@ -144,7 +144,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             {chips.length ? <li><Link href="/money/transactions" className="px-1 text-xs text-muted-foreground underline">Clear all</Link></li> : <li className="text-xs text-muted-foreground">No filters</li>}
           </ul>
           <div className="flex items-center gap-3">
-            {count !== null ? <span className="font-mono text-xs text-muted-foreground">{filters.cursor ? `${count.toLocaleString(workspace.locale)} from here` : `${count.toLocaleString(workspace.locale)} transactions`}</span> : null}
+            {count !== null ? <span className="font-mono text-xs text-muted-foreground">{filters.cursor ? `${count.toLocaleString(workspace.locale)} from here` : `${count.toLocaleString(workspace.locale)} ${count === 1 ? "transaction" : "transactions"}`}</span> : null}
             <nav aria-label="Group by" className="flex items-center gap-1 text-xs"><span className="text-muted-foreground">Group</span>
               {GROUPS.map(option => <Link key={option.value} scroll={false} aria-current={(filters.group ?? "") === option.value ? "true" : undefined}
                 href={withParams(viewBase, { group: option.value || null, cursor: null })}
