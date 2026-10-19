@@ -18,11 +18,14 @@ const props = { db: {} as SupabaseClient, workspaceId: "w", currency: "EUR", tod
 
 it("links top categories and merchants to filtered transactions and compares with the same days last month", async () => {
   const html = renderToStaticMarkup(await SpendingPanel(props));
-  expect(html).toContain('data-chart="May,Jun,Jul,Aug,Sep,Oct"');
+  expect(html).toContain('data-chart="Sep,Oct"');
   expect(html).toContain("Food");
   expect(html).toContain("/money/transactions?category=food&amp;from=2026-10-01&amp;to=2026-10-16&amp;direction=outflow");
   expect(html).toContain("Unknown merchant");
   expect(html).toContain("merchant=none");
+  const september = renderToStaticMarkup(await SpendingPanel({ ...props, month: "2026-09" }));
+  expect(september).toContain("Top merchants in September 2026");
+  expect(september).toContain("merchant=shop&amp;from=2026-09-01&amp;to=2026-09-30");
   const kpi = renderToStaticMarkup(await MonthSpendingKpi(props));
   expect(kpi).toContain("EUR 40.00"); expect(kpi).toContain("vs EUR 20.00 by this day last month"); expect(kpi).toContain("up 100%");
 });

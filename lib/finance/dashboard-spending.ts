@@ -29,19 +29,22 @@ export function summarizeSpending(rows: SpendingRow[], rates: ExpenditureRate[],
   // Same number of days into last month, clamped to its end (31 Mar compares with 28/29 Feb).
   const lastFrom = day(year, month - 2, 1), lastTo = min(day(year, month - 2, date), day(year, month - 1, 0));
   const lastMonthToDate = { from: lastFrom, to: lastTo, ...total(rows, rates, currencyCode, lastFrom, lastTo) };
-  const current = rows.filter(row => row.posted_on >= thisMonth.from && row.posted_on <= today);
-  const top = (key: "category_id" | "merchant_id") => {
+  const top = (key: "category_id" | "merchant_id", from: string, to: string) => {
+    const current = rows.filter(row => row.posted_on >= from && row.posted_on <= to);
     const groups = new Map<string | null, SpendingRow[]>();
     for (const row of current) {
       const group = groups.get(row[key]);
       if (group) group.push(row); else groups.set(row[key], [row]);
     }
-    return [...groups].map(([id, subset]) => ({ id, ...total(subset, rates, currencyCode, thisMonth.from, today) }))
+    return [...groups].map(([id, subset]) => ({ id, ...total(subset, rates, currencyCode, from, to) }))
       .filter(group => group.spendingMinor > 0n)
       .sort((a, b) => a.spendingMinor === b.spendingMinor ? 0 : a.spendingMinor < b.spendingMinor ? 1 : -1)
       .slice(0, 5);
   };
-  return { currencyCode, trend, thisMonth, lastMonthToDate, categories: top("category_id"), merchants: top("merchant_id") };
+  // Top lists for every trend month, so Home can switch months without another read.
+  const months = trend.map(({ month, from, to }) => ({ month, from, to, categories: top("category_id", from, to), merchants: top("merchant_id", from, to) }));
+  const { categories, merchants } = months[MONTHS - 1];
+  return { currencyCode, trend, thisMonth, lastMonthToDate, months, categories, merchants };
 }
 
 // One read of the last six months feeds the KPI tile, trend chart and top lists; memoized per request.
@@ -69,6 +72,6 @@ export const loadHomeSpending = cache(async (db: SupabaseClient, workspaceId: st
     if (error) throw error;
     return new Map((data ?? []).map(row => [row.id as string, row.name as string]));
   }
-  const [categoryNames, merchantNames] = await Promise.all([names("categories", summary.categories), names("merchants", summary.merchants)]);
+  const [categoryNames, merchantNames] = await Promise.all([names("categories", summary.months.flatMap(m => m.categories)), names("merchants", summary.months.flatMap(m => m.merchants))]);
   return { ...summary, categoryNames, merchantNames };
 });

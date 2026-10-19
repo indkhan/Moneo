@@ -24,13 +24,14 @@ function useThemeColors() {
   }, [theme]);
 }
 
-export function SpendingChart({ values, labels, type = "bar", height = 280, ariaLabel, formatValue }: {
+export function SpendingChart({ values, labels, type = "bar", height = 280, ariaLabel, formatValue, onSelect }: {
   values: number[];
   labels?: string[];
   type?: "bar" | "line";
   height?: number;
   ariaLabel?: string;
   formatValue?: (value: number) => string;
+  onSelect?: (index: number) => void;
 }) {
   const colors = useThemeColors();
   const axis = { axisLine: { lineStyle: { color: colors.border } }, axisLabel: { color: colors.muted }, splitLine: { lineStyle: { color: colors.border } } };
@@ -45,7 +46,8 @@ export function SpendingChart({ values, labels, type = "bar", height = 280, aria
           yAxis: { type: "value", ...axis, ...(formatValue ? { axisLabel: { color: colors.muted, formatter: formatValue } } : {}) },
           series: [{ type, data: values, ...(type === "line" ? { smooth: true, showSymbol: false, areaStyle: { opacity: 0.12 } } : { barMaxWidth: 28, itemStyle: { borderRadius: [4, 4, 0, 0] } }) }],
         }}
-        style={{ height }}
+        style={{ height, cursor: onSelect ? "pointer" : undefined }}
+        onEvents={onSelect ? { click: (event: { dataIndex: number }) => onSelect(event.dataIndex) } : undefined}
       />
     </div>
   );
