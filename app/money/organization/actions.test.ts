@@ -18,6 +18,13 @@ it('creates exact durable review from current server proposals rather than clien
  await expect(createReview({},data)).rejects.toThrow('REDIRECT /money/organization?review='+id(30));
  expect(rpc).toHaveBeenCalledWith('create_organization_review',{p_rows:selection,p_patch:{category_id:id(20)},p_merchant_name:'Northstar Market',p_rule_key:'northstar market',p_evidence:[{id:id(11),version:1}],p_request_id:id(40)});
 });
+it('creates a typed new category before the review and patches its id',async()=>{
+ const upsert=vi.fn(()=>({select:()=>({single:async()=>({data:{id:id(21)},error:null})})}));
+ vi.mocked(requireWorkspace).mockResolvedValue({supabase:{rpc,from:()=>({upsert})},workspace:{id:id(10)}} as never);
+ await expect(createReview({},form({rows:JSON.stringify(selection),merchant:'keep',category:'new',categoryName:' Pets ',requestId:id(40)}))).rejects.toThrow('REDIRECT');
+ expect(upsert).toHaveBeenCalledWith({workspace_id:id(10),name:'Pets'},{onConflict:'workspace_id,name'});
+ expect(rpc).toHaveBeenCalledWith('create_organization_review',expect.objectContaining({p_patch:{category_id:id(21)},p_merchant_name:null}));
+});
 it('accepts a 100-character Unicode merchant proposal and rejects 101 characters before writing',async()=>{
  const merchantName='x'.repeat(99)+'\u{10428}';
  const data=form({rows:JSON.stringify(selection),merchant:'new',merchantName,category:'keep',requestId:id(40)});

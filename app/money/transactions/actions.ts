@@ -144,9 +144,17 @@ export async function restoreManualTransaction(form: FormData) {
 }
 
 export async function bulkEditTransactions(form: FormData) {
-  const { supabase } = await requireWorkspace();
+  const { supabase, workspace } = await requireWorkspace();
+  let value = form.get("value");
+  // A typed name with no matching category creates it first (same upsert-by-name as correct_transaction).
+  const newCategory = z.string().trim().max(100).parse(form.get("newCategory") ?? "");
+  if (form.get("mode") === "category" && newCategory && form.get("confirmed") === "true") {
+    const { data, error } = await supabase.from("categories").upsert({ workspace_id: workspace.id, name: newCategory }, { onConflict: "workspace_id,name" }).select("id").single();
+    if (error) throw new Error(error.message);
+    value = data.id;
+  }
   const input = bulkInput({ rows: JSON.parse(z.string().max(10000).parse(form.get("rows"))),
-    requestId: form.get("requestId"), confirmed: form.get("confirmed"), mode: form.get("mode"), value: form.get("value") });
+    requestId: form.get("requestId"), confirmed: form.get("confirmed"), mode: form.get("mode"), value });
   const { error } = await supabase.rpc("bulk_edit_transactions", { p_rows: input.rows, p_patch: input.patch, p_request_id: input.requestId });
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout");

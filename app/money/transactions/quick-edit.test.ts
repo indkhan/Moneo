@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { requireWorkspace } from "@/lib/auth";
-import { quickEditTransaction } from "./actions";
+import { bulkEditTransactions, quickEditTransaction } from "./actions";
 
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn(() => { throw new Error("redirect"); }) }));
@@ -30,4 +30,14 @@ it("writes nothing when nothing changed and rejects invented merchants", async (
   expect(rpc).not.toHaveBeenCalled();
   await expect(quickEditTransaction(form({ merchant: "Invented" }))).rejects.toThrow();
   expect(rpc).not.toHaveBeenCalled();
+});
+
+it("bulk category with a new name creates it, then applies its id", async () => {
+  const upsert = vi.fn(() => ({ select: () => ({ single: async () => ({ data: { id: id(7) }, error: null }) }) }));
+  vi.mocked(requireWorkspace).mockResolvedValue({ supabase: { rpc, from: () => ({ upsert }) }, workspace: { id: id(8) } } as never);
+  const data = new FormData();
+  for (const [key, value] of Object.entries({ rows: JSON.stringify([{ id: id(1), version: 3 }]), requestId: id(2), confirmed: "true", mode: "category", value: "", newCategory: " Pets ", query: "" })) data.set(key, value);
+  await expect(bulkEditTransactions(data)).rejects.toThrow("redirect");
+  expect(upsert).toHaveBeenCalledWith({ workspace_id: id(8), name: "Pets" }, { onConflict: "workspace_id,name" });
+  expect(rpc).toHaveBeenCalledWith("bulk_edit_transactions", { p_rows: [{ id: id(1), version: 3 }], p_patch: { category_id: id(7) }, p_request_id: id(2) });
 });
