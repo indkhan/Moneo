@@ -67,7 +67,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
    if(saveRule)await impact().getByRole('checkbox',{name:'Suggest the same for future entries',exact:false}).check();
    await impact().getByRole('button',{name:'Approve',exact:true}).click();await expect(impact().getByRole('heading',{name:'Applied',exact:true})).toBeVisible();
   };
-  const rules=async()=>{const details=page.locator('details').filter({hasText:'Rules ('});if(!await details.evaluate(node=>(node as HTMLDetailsElement).open))await details.locator('summary').click();return details.getByRole('listitem').filter({hasText:'cedar cooperative'});};
+  const rules=async()=>{const details=page.locator('details').filter({hasText:'Rules ('});if(!await details.evaluate(node=>(node as HTMLDetailsElement).open))await details.locator('summary').click();return details.locator('li').filter({hasText:'cedar cooperative'});};
   await selectCedar();
   await queue().getByRole('button',{name:'Suggest with AI',exact:true}).click();
   await expect(queue().getByRole('status')).toContainText('unavailable');
@@ -124,7 +124,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await detail.getByLabel('Category',{exact:true}).fill('QA Groceries');await detail.getByLabel('Note',{exact:true}).fill('Retained owner correction');
   await detail.getByRole('button',{name:'Save correction',exact:true}).click();await expect(detail.getByLabel('Note',{exact:true})).toHaveValue('Retained owner correction');
   await expect.poll(async()=>{const [row]=await db`select category_id,note,version from public.transactions where id=${moss.id} and workspace_id=${workspace!}`;return row;}).toMatchObject({category_id:category,note:'Retained owner correction',version:1});
-  await page.getByRole('link',{name:'Organize spending',exact:true}).click();
+  await page.keyboard.press('Escape');await expect(detail).toHaveCount(0);await page.getByRole('link',{name:'Organize spending',exact:true}).click();
   await expect(page).toHaveURL(/\/money\/organization$/);
   await expect(page.getByRole('heading',{name:'Organize spending',exact:true})).toBeVisible();
   await expect(page.getByRole('region',{name:'Organization suggestions'}).getByRole('listitem').filter({hasText:'MOSS TRAVEL'})).toHaveCount(0);
