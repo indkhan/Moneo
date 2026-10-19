@@ -69,13 +69,13 @@ export default async function AccountsPage() {
     const manual = ordered.filter((snapshot): snapshot is BalanceSnapshot & { id: string } => Boolean(snapshot.actor_id && snapshot.id)).slice(0, 5);
     const suggestion = suggestAccountName(account.name);
     const asOf = account.balance.as_of ? calendarDate(account.balance.as_of, timeZone) : null;
-    return <article key={account.id} className="rounded-xl border border-border bg-card px-4 py-3 sm:px-5">
+    return <article key={account.id} className="px-4 py-4 sm:px-5">
       <div className="flex flex-wrap items-start gap-x-6 gap-y-2">
         <div className="min-w-0 flex-1 basis-80">
           <AccountForm key={`${account.id}:${account.version}`} account={{ id: account.id, name: account.name, type: account.type ?? "checking", version: account.version ?? 1, archived_at: account.archived_at ?? null }} requestId={randomUUID()} />
-          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-2 text-xs text-muted-foreground">
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 px-2 text-xs text-muted-foreground">
             <span>{account.currency_code}</span>
-            {account.archived_at ? <span className="rounded bg-muted px-1.5 py-0.5">Archived</span> : null}
+            {account.archived_at ? <span>Archived</span> : null}
             <Link className="hover:text-foreground hover:underline" href={`/money/transactions?account=${account.id}`}>Transactions</Link>
           </p>
         </div>
@@ -92,12 +92,12 @@ export default async function AccountsPage() {
       {account.balance.status === "ambiguous" ? <p className="mt-2 px-2 text-xs text-amber-700 dark:text-amber-300">{account.balance.warnings.join("; ")}</p> : null}
       {suggestion ? <div className="mt-2 px-2"><RenameSuggestion account={{ id: account.id, name: account.name, type: account.type ?? "checking", version: account.version ?? 1, archived_at: account.archived_at ?? null }} suggestion={suggestion} requestId={randomUUID()} /></div> : null}
       {!account.archived_at ? <details className="mt-2 px-2 text-sm" open={account.balance.status === "missing" && active.length === 1}>
-        <summary className="cursor-pointer text-sm font-medium text-brand">Update balance</summary>
+        <summary className="cursor-pointer text-xs font-medium text-brand">Update balance</summary>
         <div className="mt-3 space-y-3">
           <BalanceForm accountId={account.id} name={account.name} currency={account.currency_code} today={today} requestId={randomUUID()}
             expectedSnapshotId={latest?.id ?? ""} expectedVersion={latest?.version ?? 0}
             placeholder={amount !== null ? formatInputAmount(amount, account.currency_code) : "0.00"} />
-          <p className="text-xs text-muted-foreground">Enter the booked balance your bank shows. Earlier balances stay in history.</p>
+          <p className="text-xs text-muted-foreground">The booked balance your bank shows. Earlier balances stay in history.</p>
           {manual.length ? <ul className="divide-y divide-border text-xs">{manual.map(snapshot => <li key={snapshot.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
             <span className={snapshot.undone_at ? "text-muted-foreground line-through" : ""}>{formatMoney(snapshot.amount_minor, snapshot.currency_code, locale)} · as of {calendarDate(snapshot.as_of, timeZone)}{snapshot.boundary_kind === "reviewed_activity" ? " · activity reviewed" : ""}</span>
             {snapshot.undone_at ? <span className="text-muted-foreground">Undone</span> : snapshot.id === newestActive?.id && latest ? <form action={undoBalance}>
@@ -112,35 +112,35 @@ export default async function AccountsPage() {
 
   return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
     <header className="space-y-4">
-      <nav aria-label="Money sections" className="flex gap-4 text-sm text-muted-foreground"><Link className="hover:text-foreground" href="/money/transactions">Transactions</Link><Link className="hover:text-foreground" href="/money/recurring">Recurring</Link><Link className="hover:text-foreground" href="/money/wealth">Wealth</Link></nav>
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Accounts</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Balances, trends and names. Archiving keeps all history.</p></div>
-        {totals.size ? <dl className="text-right"><dt className="text-xs text-muted-foreground">Total across {active.length} active {active.length === 1 ? "account" : "accounts"}{partial ? " (partial)" : ""}</dt>
-          {[...totals].map(([currency, amount]) => <dd key={currency} className="font-mono text-lg font-semibold tabular-nums">{formatMoney(amount, currency, locale)}</dd>)}</dl> : null}
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Accounts</h1>
+        <details className="group relative">
+          <summary className="min-h-9 cursor-pointer list-none rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">Add account</summary>
+          <form action={addAccount} className="absolute right-0 z-10 mt-2 grid w-72 gap-3 rounded-xl border border-border bg-card p-4 shadow-lg">
+            <label className="grid gap-1 text-sm">Name<input name="name" className={field} maxLength={120} required /></label>
+            <div className="flex gap-3">
+              <label className="grid flex-1 gap-1 text-sm">Type<select name="type" className={field}>{accountTypes.map(type => <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}</select></label>
+              <label className="grid gap-1 text-sm">Currency<input name="currency" className={`${field} w-20 uppercase`} defaultValue={workspace.display_currency} pattern="[A-Za-z]{3}" maxLength={3} required /></label>
+            </div>
+            <p className="text-xs text-muted-foreground">Currency can’t be changed later.</p>
+            <button className="min-h-9 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">Add account</button>
+          </form>
+        </details>
       </div>
+      {totals.size ? <dl className="rounded-xl border border-border bg-card px-5 py-4"><dt className="text-xs text-muted-foreground">Total across {active.length} active {active.length === 1 ? "account" : "accounts"}{partial ? " (partial)" : ""}</dt>
+        {[...totals].map(([currency, amount]) => <dd key={currency} className="mt-1 font-mono text-2xl font-semibold tabular-nums">{formatMoney(amount, currency, locale)}</dd>)}</dl> : null}
     </header>
 
-    <section className="space-y-3" aria-label="Your accounts">
-      {!active.length ? <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No accounts yet. Add one below or <Link className="underline" href="/import">import a statement</Link>.</p> : null}
-      {active.map(row)}
-    </section>
+    {active.length ? <section className="divide-y divide-border rounded-xl border border-border bg-card" aria-label="Your accounts">{active.map(row)}</section>
+      : <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No accounts yet. Use Add account or <Link className="underline" href="/import">import a statement</Link>.</p>}
 
-    {archived.length ? <section className="space-y-3 opacity-80" aria-label="Archived accounts"><h2 className="text-sm font-medium text-muted-foreground">Archived accounts ({archived.length})</h2>{archived.map(row)}</section> : null}
+    {archived.length ? <section className="space-y-2 opacity-80" aria-label="Archived accounts"><h2 className="text-sm font-medium text-muted-foreground">Archived accounts ({archived.length})</h2><div className="divide-y divide-border rounded-xl border border-border bg-card">{archived.map(row)}</div></section> : null}
 
-    <section className="rounded-xl border border-border bg-card p-5"><h2 className="text-base font-semibold">Add account</h2><p className="mt-1 text-sm text-muted-foreground">Currency can’t be changed after the account is created.</p>
-      <form action={addAccount} className="mt-4 flex flex-wrap items-end gap-3">
-        <label className="grid gap-1 text-sm">Name<input name="name" className={field} maxLength={120} required /></label>
-        <label className="grid gap-1 text-sm">Type<select name="type" className={field}>{accountTypes.map(type => <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}</select></label>
-        <label className="grid gap-1 text-sm">Currency<input name="currency" className={`${field} w-24 uppercase`} defaultValue={workspace.display_currency} pattern="[A-Za-z]{3}" maxLength={3} required /></label>
-        <button className="min-h-9 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">Add account</button>
-      </form></section>
-
-    <section className="rounded-xl border border-border bg-card p-5"><h2 className="text-base font-semibold">Account and saved view history</h2>
-      {events.length ? <ul className="mt-3 divide-y divide-border text-sm">{events.map(event => <li key={event.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
+    {events.length ? <section><h2 className="text-sm font-medium text-muted-foreground">Account and saved view history</h2>
+      <ul className="mt-2 divide-y divide-border text-sm">{events.map(event => <li key={event.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
         <span>{describeEvent(event)} <span className="text-muted-foreground">· {when.format(new Date(event.created_at))}{event.undone_at ? " · Undone" : event.undo_of ? " · Restored by undo" : ""}</span></span>
         {canUndo(event) ? <form action={undoMoneyMetadata}><input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="version" value={versions.get(event.entity_id)} /><input type="hidden" name="requestId" value={randomUUID()} /><button className={field}>Undo</button></form> : null}
-      </li>)}</ul> : <p className="mt-2 text-sm text-muted-foreground">Renames, type changes and archiving appear here with undo.</p>}
-    </section>
+      </li>)}</ul>
+    </section> : null}
   </main>;
 }

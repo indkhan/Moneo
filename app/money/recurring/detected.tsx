@@ -96,12 +96,12 @@ export async function DetectedPatterns({ supabase, workspace, names }: { supabas
           {status !== "dismissed" && <form action={declineSeries}>{hidden}<button disabled={blocked} className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-50">Not recurring</button></form>}
         </div>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">{names[series.accountId] ?? "Unknown account"} · {series.occurrences} observed payments (a count, not a probability) · {series.amountMinMinor === series.amountMaxMinor ? "same amount each time" : "amount varies a little"}</p>
-      {(series.evidenceLimited || series.sameDateAlternatives > 0) && <p className="mt-1 text-xs text-muted-foreground">{series.evidenceLimited && `Review evidence retains the original calendar anchor and the latest 999 of ${series.observedOccurrences} matching observations. `}{series.sameDateAlternatives > 0 && `${series.sameDateAlternatives} other similar same-date postings were not selected. They may represent separate purchases or obligations; review them before confirming.`}</p>}
-      {assumption?.source === "user" && <p className="mt-1 text-xs text-muted-foreground">Your intentional Plan schedule is retained when confirming or declining this candidate. Edit or disable it in <Link href="/plan" className="underline">Plan</Link>.</p>}
+      <p className="mt-1 text-xs text-muted-foreground">{names[series.accountId] ?? "Unknown account"} · {series.occurrences} observed payments (a count, not a probability)</p>
       {blocked && <p role="alert" className="mt-1 text-xs">Evidence overlaps several reviewed runs. Review their schedules in Plan before deciding.</p>}
       <details className="mt-1 text-xs">
         <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Evidence ({evidence.length} posted transactions)</summary>
+        {(series.evidenceLimited || series.sameDateAlternatives > 0) && <p className="mt-1 text-muted-foreground">{series.evidenceLimited && `Review evidence retains the original calendar anchor and the latest 999 of ${series.observedOccurrences} matching observations. `}{series.sameDateAlternatives > 0 && `${series.sameDateAlternatives} other similar same-date postings were not selected. They may represent separate purchases or obligations; review them before confirming.`}</p>}
+        {assumption?.source === "user" && <p className="mt-1 text-muted-foreground">Your intentional Plan schedule is retained when confirming or declining this candidate. Edit or disable it in <Link href="/plan" className="underline">Plan</Link>.</p>}
         <ul className="mt-1 space-y-0.5 text-muted-foreground">{evidence.slice(0, 8).map(row => <li key={row.id}>
           <Link className="hover:underline" href={`/money/transactions?transaction=${row.id}`}>{row.posted_on} · {formatMoney(row.amount_minor, row.currency_code)} · {row.description}</Link></li>)}</ul>
         {evidence.length > 8 && <p className="mt-1 text-muted-foreground">…and {evidence.length - 8} more.</p>}
@@ -117,7 +117,7 @@ export async function DetectedPatterns({ supabase, workspace, names }: { supabas
 
     <section aria-label="Detected patterns" className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-base font-semibold">Needs review {pending.length ? <span className="text-muted-foreground">({pending.length})</span> : null}</h2>
+        <h2 className="text-base font-semibold">Suggestions {pending.length ? <span className="text-muted-foreground">({pending.length})</span> : null}</h2>
         <p className="text-xs text-muted-foreground">{observedFrom ? `Based on posted transactions from ${observedFrom} to ${observedTo}.` : "No posted transactions to analyze yet."}</p>
       </div>
       {truncated && <p className="text-xs text-muted-foreground">History limit reached. All postings on or before {cutoff} were excluded to retain complete posting dates. Older patterns may be absent.</p>}
@@ -128,7 +128,6 @@ export async function DetectedPatterns({ supabase, workspace, names }: { supabas
 
     {reviewed.length > 0 && <section aria-label="Reviewed patterns" className="space-y-3">
       <h2 className="text-base font-semibold">Reviewed <span className="text-muted-foreground">({reviewed.length})</span></h2>
-      <p className="text-xs text-muted-foreground">Change your mind in one click: “Not recurring” turns an inferred schedule off, “Confirm” turns it back on.</p>
       {reviewed.map(card)}
     </section>}
   </>;

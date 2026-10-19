@@ -11,37 +11,45 @@ type Mode = keyof typeof MODES;
 
 /**
  * Bulk recategorize / re-merchant / tag the rows selected in the ledger.
- * Always shows the exact affected rows before applying; the batch is audited
- * and can be undone together from batch history.
+ * Category is a searchable text field over existing categories; a name with no
+ * match is created on apply. Always shows the exact affected rows before
+ * applying; the batch is audited and can be undone together from batch history.
  */
 export function BulkBar({ targets, categories, merchants, query, requestId, locale, onClear }: {
   targets: Target[]; categories: Named[]; merchants: Named[]; query: string; requestId: string; locale: string; onClear: () => void;
 }) {
   const [mode, setMode] = useState<Mode>("category");
-  const [value, setValue] = useState("");
+  const [text, setText] = useState("");
   const [preview, setPreview] = useState(false);
-  const options = mode === "category" ? categories : mode === "merchant" ? merchants : null;
   const name = (list: Named[], id: string | null, empty: string) => list.find(item => item.id === id)?.name ?? empty;
-  const next = options ? name(options, value || null, mode === "category" ? "Uncategorized" : "Unknown merchant") : value || "empty";
+  const typed = text.trim();
+  const match = mode === "category" ? categories.find(item => item.name.toLowerCase() === typed.toLowerCase()) : undefined;
+  const newCategory = mode === "category" && typed && !match ? typed : "";
+  const value = mode === "category" ? match?.id ?? "" : text;
+  const next = mode === "category" ? match?.name ?? (newCategory ? `${newCategory} (new category)` : "Uncategorized")
+    : mode === "merchant" ? name(merchants, value || null, "Unknown merchant") : value || "empty";
   const current = (row: Target) => mode === "category" ? name(categories, row.category_id, "Uncategorized") : mode === "merchant" ? name(merchants, row.merchant_id, "Unknown merchant")
     : mode === "tags" ? row.tags?.join(", ") || "no tags" : row.event_name || "no group";
   const change = (fn: () => void) => { fn(); setPreview(false); };
-  const control = "min-h-9 rounded-lg border border-border bg-card px-2 py-1.5 text-sm";
-  return <section aria-label="Bulk edit" className="sticky bottom-4 z-20 rounded-xl border border-brand/40 bg-card p-3 shadow-lg">
+  const control = "min-h-9 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground";
+  return <section aria-label="Bulk edit" className="sticky bottom-4 z-20 rounded-xl border border-border bg-card p-3 shadow-lg">
     <form action={bulkEditTransactions} className="space-y-3">
       <input type="hidden" name="rows" value={JSON.stringify(targets.map(row => ({ id: row.id, version: row.version })))} />
       <input type="hidden" name="requestId" value={requestId} /><input type="hidden" name="query" value={query} />
-      <input type="hidden" name="mode" value={mode} /><input type="hidden" name="value" value={value} />
-      <div className="flex flex-wrap items-end gap-2">
-        <p className="mr-2 self-center text-sm font-medium">{targets.length} selected</p>
-        <label className="text-xs text-muted-foreground">Change<select value={mode} onChange={event => change(() => { setMode(event.target.value as Mode); setValue(""); })} className={`${control} block text-foreground`}>
+      <input type="hidden" name="mode" value={mode} /><input type="hidden" name="value" value={value} /><input type="hidden" name="newCategory" value={newCategory} />
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="mr-1 text-sm font-medium">{targets.length} selected</p>
+        <select aria-label="Change" value={mode} onChange={event => change(() => { setMode(event.target.value as Mode); setText(""); })} className={control}>
           {Object.entries(MODES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-        </select></label>
-        {options ? <label className="text-xs text-muted-foreground">{MODES[mode]}<select value={value} onChange={event => change(() => setValue(event.target.value))} className={`${control} block text-foreground`}>
-          <option value="">{mode === "category" ? "Uncategorized" : "Unknown merchant"}</option>{options.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
-        </select></label> : <label className="text-xs text-muted-foreground">{mode === "tags" ? "Tags, separated by commas" : "Group name"}<input value={value} maxLength={mode === "event" ? 120 : 1000} onChange={event => change(() => setValue(event.target.value))} className={`${control} block text-foreground`} /></label>}
-        <button type="button" onClick={() => setPreview(true)} className="min-h-9 rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted">Preview changes</button>
-        <button type="button" onClick={onClear} className="min-h-9 px-2 text-sm text-muted-foreground underline">Clear selection</button>
+        </select>
+        {mode === "category" ? <>
+          <input aria-label="Category" list="bulk-categories" value={text} maxLength={100} placeholder="Search or create a category" onChange={event => change(() => setText(event.target.value))} className={`${control} w-56`} />
+          <datalist id="bulk-categories">{categories.map(option => <option key={option.id} value={option.name} />)}</datalist>
+        </> : mode === "merchant" ? <select aria-label="Merchant" value={text} onChange={event => change(() => setText(event.target.value))} className={control}>
+          <option value="">Unknown merchant</option>{merchants.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
+        </select> : <input aria-label={mode === "tags" ? "Tags, separated by commas" : "Group name"} placeholder={mode === "tags" ? "Tags, separated by commas" : "Group name"} value={text} maxLength={mode === "event" ? 120 : 1000} onChange={event => change(() => setText(event.target.value))} className={`${control} w-56`} />}
+        <button type="button" onClick={() => setPreview(true)} className="min-h-9 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90">Preview changes</button>
+        <button type="button" onClick={onClear} className="ml-auto min-h-9 px-2 text-sm text-muted-foreground hover:text-foreground">Clear selection</button>
       </div>
       {preview && <div className="rounded-lg bg-muted p-3 text-sm" role="region" aria-label="Bulk impact preview">
         <p className="font-medium">{targets.length} selected transactions: set {MODES[mode].toLowerCase()} to {next}.</p>

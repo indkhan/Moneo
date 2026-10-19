@@ -6,7 +6,7 @@ import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
 import Page from './page';
 vi.mock('@/lib/auth',()=>({requireWorkspace:vi.fn()}));
 vi.mock('@/lib/import/organization-loader',()=>({loadOrganizationSuggestions:vi.fn()}));
-vi.mock('./review-form',()=>({OrganizationGroup:({proposal}:{proposal:{descriptionKey:string}})=><article>{proposal.descriptionKey}</article>,ApprovalForm:()=> <p>Explicit approval required</p>}));
+vi.mock('./review-form',()=>({OrganizationQueue:({items}:{items:{proposal:{descriptionKey:string}}[]})=><article>{items.map(item=>item.proposal.descriptionKey).join()}</article>,ApprovalForm:()=> <p>Explicit approval required</p>}));
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const calls:unknown[][]=[];
 const snapshots=[{id:id(1),version:0,description:'Northstar purchase',posted_on:'2026-09-01',amount_minor:'-9007199254740993',currency_code:'EUR',merchant_id:null,category_id:null}];
@@ -30,7 +30,7 @@ it('renders persisted exact preview, explicit approval, coverage limits and manu
 it('paginates older unorganized history with a validated date/id cursor and retained import scope',async()=>{
  vi.mocked(requireWorkspace).mockResolvedValue({supabase:client({count:51}),workspace:{id:id(10),locale:'en-US',timezone:'UTC'}} as never);
  const html=renderToStaticMarkup(await Page({searchParams:Promise.resolve({import:id(40),cursor:'2026-09-02:'+id(80)})}));
- expect(html).toContain('Older entries needing organization');expect(html).toContain('import='+id(40));
+ expect(html).toContain('Older entries');expect(html).toContain('import='+id(40));
  expect(calls).toContainEqual(['transactions','transaction_sources.source_transactions.import_id',id(40)]);
  expect(calls.some(call=>JSON.stringify(call).includes('posted_on.lt.2026-09-02'))).toBe(true);
 });
