@@ -23,7 +23,7 @@ if (process.argv.includes("--reset")) {
     // ponytail: column-name sweep; extend the list if a new owner column appears.
     await tx`set local session_replication_role = replica`;
     const columns = await tx`select table_name, column_name from information_schema.columns join information_schema.tables using (table_schema, table_name)
-      where table_schema='public' and table_type='BASE TABLE' and table_name not in ('workspaces','workspace_members','workspace_settings')
+      where table_schema='public' and table_type='BASE TABLE' and table_name <> 'workspaces'
       and column_name in ('workspace_id','actor_id','user_id','created_by')`;
     for (const { table_name, column_name } of columns)
       await tx.unsafe(`delete from public."${table_name}" where "${column_name}"::text = any($1::text[])`, [[user.id, ...workspaces]]);
