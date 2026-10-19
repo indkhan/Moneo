@@ -63,7 +63,7 @@ test("rejected raw manifests persist through authenticated saves without activat
     const editor = page.getByRole("region", { name: "Edit calculator version" });
     const failed = editor.getByRole("listitem").filter({ hasText: /v2.*failed/ });
     await expect(failed).toBeVisible({ timeout: 30_000 });
-    await failed.getByText("Manifest", { exact: true }).click();
+    await failed.getByText("Code and manifest", { exact: true }).click();
     await expect(failed.locator("pre").last()).toHaveText("null");
     await expect(failed.getByRole("button", { name: /Restore/ })).toHaveCount(0);
     await failed.getByRole("button", { name: "Retry this version (load into editor)", exact: true }).click();
