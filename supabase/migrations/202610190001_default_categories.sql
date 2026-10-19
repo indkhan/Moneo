@@ -9,7 +9,7 @@ $$;
 create function public.seed_default_categories()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin
-  insert into public.categories(workspace_id,name) select new.id,name from unnest(public.default_category_names()) name
+  insert into public.categories(workspace_id,name) select new.id,d.category from unnest(public.default_category_names()) d(category)
     on conflict(workspace_id,name) do nothing;
   return new;
 end;
@@ -21,6 +21,6 @@ after insert on public.workspaces for each row execute function public.seed_defa
 
 -- Backfill workspaces that never got any category.
 insert into public.categories(workspace_id,name)
-select w.id,name from public.workspaces w cross join unnest(public.default_category_names()) name
+select w.id,d.category from public.workspaces w cross join unnest(public.default_category_names()) d(category)
 where not exists(select 1 from public.categories c where c.workspace_id=w.id)
 on conflict(workspace_id,name) do nothing;
