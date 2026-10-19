@@ -108,8 +108,8 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
             : convertedCount > 0 && <p className="mt-1 text-xs text-muted-foreground">Includes debts and valuations.</p>}
         </Kpi>
         <Kpi label="Cash available" href="/plan" action="Forecast">
-          {available?.status === "available" ? <><p className="mt-1 font-mono text-2xl font-semibold tracking-tight">{money(available.amountMinor, displayCurrency)}</p><p className="mt-1 text-xs text-muted-foreground">Lowest point in 30 days after protections, on {available.limitingDate}</p></>
-            : <p className="mt-2 text-sm text-muted-foreground">Needs current balances and confirmed payments to forecast.</p>}
+          {available?.status === "available" ? <><p className="mt-1 font-mono text-2xl font-semibold tracking-tight">{money(available.amountMinor, displayCurrency)}</p><p className="mt-1 text-xs text-muted-foreground">After upcoming payments and your buffer · lowest on {available.limitingDate}</p></>
+            : <p className="mt-2 text-sm text-muted-foreground">Add a balance for each spending account to see this.</p>}
         </Kpi>
         <Suspense fallback={<KpiFallback label="Spent this month" />}><MonthSpendingKpi {...sectionProps} /></Suspense>
         <Kpi label="Upcoming payments" href="/money/recurring" action="Recurring">
