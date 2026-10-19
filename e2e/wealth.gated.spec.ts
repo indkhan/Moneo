@@ -8,7 +8,7 @@ test("fractional wealth valuation, cost basis, audited edit, removal and undo", 
   test.setTimeout(120_000);
   const name = `Fractional holding QA ${crypto.randomUUID().slice(0, 8)}`;
   await page.goto("/money/wealth");
-  await page.locator("summary").filter({ hasText: /^Add holding$/ }).click();
+  await page.locator("summary").filter({ hasText: /^Add investment / }).click();
   const form = page.locator("form").filter({ has: page.getByRole("button", { name: "Add holding", exact: true }) });
   await form.getByRole("textbox", { name: "Name", exact: true }).fill(name);
   await form.getByRole("textbox", { name: "Currency", exact: true }).fill("EUR");
@@ -43,7 +43,7 @@ test("dated assets and signed debt repayment assumptions preserve source history
   await expect(page.getByRole("heading", { name: account, exact: true })).toBeVisible();
   await page.goto("/money/wealth");
   const assetName = `Manual asset QA ${suffix}`;
-  await page.locator("summary").filter({ hasText: /^Add asset$/ }).click();
+  await page.locator("summary").filter({ hasText: /^Add asset / }).click();
   const assetForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Add asset", exact: true }) });
   await assetForm.getByRole("textbox", { name: "Name", exact: true }).fill(assetName);
   await assetForm.getByRole("textbox", { name: "Currency", exact: true }).fill("EUR");
@@ -55,7 +55,7 @@ test("dated assets and signed debt repayment assumptions preserve source history
   await asset.getByRole("button", { name: "Remove wealth record (keep history)", exact: true }).click();
   await expect(asset).toHaveCount(0, { timeout: 30_000 });
   const debtName = `Manual debt QA ${suffix}`;
-  await page.locator("summary").filter({ hasText: /^Add debt$/ }).click();
+  await page.locator("summary").filter({ hasText: /^Add debt / }).click();
   const debtForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Add debt", exact: true }) });
   await debtForm.getByRole("textbox", { name: "Name", exact: true }).fill(debtName);
   await debtForm.getByRole("textbox", { name: "Currency", exact: true }).fill("EUR");
