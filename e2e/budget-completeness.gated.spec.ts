@@ -50,8 +50,8 @@ test("native and AI budget completeness follow real classification correction an
       const card = page.locator("li").filter({ has: page.getByRole("heading", { name, exact: true }) });
       await expect(card).toContainText(partial ? "EUR 10.00 of EUR 100.00" : "EUR 210.00 of EUR 100.00");
       if (partial) {
-        await expect(card).toContainText("remaining budget is unknown");
-        await expect(card).not.toContainText("left"); await expect(card).not.toContainText("over plan");
+        await expect(card).toContainText("the amount left is unknown");
+        await expect(card).not.toContainText(/EUR [0-9.,]+ left/); await expect(card).not.toContainText("over plan");
         await expect(card.getByRole("link", { name: "Review classifications" })).toHaveAttribute("href", "/import");
         await expect(card.locator("progress")).toHaveCount(0);
       } else await expect(card).toContainText("EUR 110.00 over plan");

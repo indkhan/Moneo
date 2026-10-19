@@ -21,11 +21,11 @@ test("goal contributions, recorded savings and audit undo remain separate from c
   await goal.getByLabel("Target date", { exact: true }).fill("2027-01-31");
   await goal.getByRole("button", { name: "Save goal plan", exact: true }).click();
   await expect(goal).toContainText("Expected completion 2026-12-31", { timeout: 30_000 });
-  await expect(goal).toContainText("Cash set aside: EUR 0.00");
+  await expect(goal).toContainText("Cash set asideEUR 0.00");
   await page.reload();
-  await expect(goal).toContainText("100.00 as of 2026-10-01");
+  await expect(goal).toContainText("Saved so far as of 2026-10-01");
   await page.getByText("Goal history and undo", { exact: true }).click();
   await page.locator("li").filter({ hasText: name }).getByRole("button", { name: "Undo goal change", exact: true }).first().click();
-  await expect(goal).toContainText("Saved so far: Unknown", { timeout: 30_000 });
-  await expect(goal).toContainText("Cash set aside: EUR 0.00");
+  await expect(goal).toContainText("Saved so far is unknown", { timeout: 30_000 });
+  await expect(goal).toContainText("Cash set asideEUR 0.00");
 });

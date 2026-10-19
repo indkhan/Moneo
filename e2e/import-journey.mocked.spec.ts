@@ -70,7 +70,7 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await expect(page.getByLabel("Financial statement files")).toBeEnabled();
     await page.getByLabel("Financial statement files").setInputFiles({ name: "august.csv", mimeType: "text/csv", buffer: Buffer.from(AUGUST_CSV) });
     await page.getByRole("button", { name: "Continue", exact: true }).click();
-    await expect(page.locator("main").getByRole("alert")).toHaveText("Import history is unavailable. Try again.", { timeout: 15_000 });
+    await expect(page.locator("main").getByRole("alert").filter({ hasText: "Import history" })).toHaveText("Import history is unavailable. Try again.", { timeout: 15_000 });
     await expect(page.getByLabel("Financial statement files")).toBeEnabled();
     await expect(page.getByText("Working…", { exact: true })).toHaveCount(0);
   });

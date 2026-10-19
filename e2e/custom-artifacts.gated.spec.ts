@@ -16,7 +16,7 @@ test("custom tool exact results, rename, code versions, restore, failed edit pre
   await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
   const editor = page.getByRole("region", { name: "Edit calculator version" });
   const manifest = { kind: "custom_comparison", runtime: "quickjs-calculator-v1", sdk: [], params: { amount: { type: "number", min: 0, max: 1000, default: 111 } }, renderer: "trusted" };
-  await editor.locator(".cm-content").fill(`(input) => ({ summary: "First comparison", numbers: { exactMinor: "9007199254740993", inputMinor: String(input.params.amount) } })`);
+  await editor.locator(".cm-content").fill(`(input) => ({ summary: "First comparison", numbers: { exact: "9007199254740993", input: String(input.params.amount) } })`);
   await editor.getByLabel("Manifest (JSON)").fill(JSON.stringify(manifest));
   await editor.getByRole("button", { name: "Save new version", exact: true }).click();
   const output = page.getByRole("region", { name: "Generated calculator output" });

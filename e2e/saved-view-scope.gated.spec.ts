@@ -38,7 +38,7 @@ test("saved transaction view preserves tag and event scope across save, reopen, 
       (${other},${workspace.id},${account},'2026-09-13',${otherDesc},'-300','EUR',${["work"]},${null})`;
     const page = await context.newPage();
     async function expectScopedView() {
-      await expect(page.getByText("1 shown", { exact: true })).toBeVisible();
+      await expect(page.getByText("1 transaction", { exact: true })).toBeVisible();
       await expect(page.getByRole("link", { name: matchDesc })).toBeVisible();
       await expect(page.getByRole("link", { name: tagOnlyDesc })).toHaveCount(0);
       await expect(page.getByRole("link", { name: eventOnlyDesc })).toHaveCount(0);

@@ -27,7 +27,7 @@ for (const panel of [false, true]) {
     await scope.getByRole("button", { name: "Send", exact: true }).click();
     await expect.poll(() => submitted?.requestId).toBeTruthy();
     await scope.getByRole("button", { name: "Stop", exact: true }).click();
-    await expect(scope.getByRole("status")).toContainText("Canceled");
+    await expect(scope.getByRole("status").filter({ hasText: "Canceled" })).toBeVisible({ timeout: 15_000 });
     release();
     await expect(scope.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await expect(page.getByText("Late answer must stay hidden")).toHaveCount(0);

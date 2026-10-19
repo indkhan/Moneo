@@ -79,7 +79,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await expect(impact()).toContainText('90071992547409.93');expect(await fingerprint()).toBe(before);
   await page.screenshot({path:testInfo.outputPath('native-organization-exact-preview.png'),fullPage:true});
   await impact().getByRole('checkbox',{name:'I reviewed these exact entries',exact:false}).check();
-  await impact().getByRole('checkbox',{name:'Save an approved rule',exact:false}).check();
+  await impact().getByRole('checkbox',{name:'Save a rule',exact:false}).check();
   await impact().getByRole('button',{name:'Approve organization',exact:true}).click();await expect(impact().getByRole('heading',{name:'Applied organization',exact:true})).toBeVisible();
   await page.reload();expect(await fingerprint()).toBe(before);
   const [rule]=await db`select id,enabled,version,merchant_id,category_id from public.organization_rules where workspace_id=${workspace!}`;
@@ -97,15 +97,15 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await page.goto('/money/organization?import='+imported);
   await cedar().getByRole('combobox',{name:'Merchant',exact:true}).selectOption(rule.merchant_id);await cedar().getByRole('combobox',{name:'Category',exact:true}).selectOption(category);
   await cedar().getByRole('button',{name:'Preview 2 entries',exact:true}).click();
-  await impact().getByRole('checkbox',{name:'I reviewed these exact entries',exact:false}).check();await impact().getByRole('checkbox',{name:'Save an approved rule',exact:false}).check();
+  await impact().getByRole('checkbox',{name:'I reviewed these exact entries',exact:false}).check();await impact().getByRole('checkbox',{name:'Save a rule',exact:false}).check();
   await impact().getByRole('button',{name:'Approve organization',exact:true}).click();await expect(impact().getByRole('heading',{name:'Applied organization',exact:true})).toBeVisible();
   const originalSources=[...await db`select id,original_row from public.source_transactions where workspace_id=${workspace!} order by id`];
   await importCsv('organization-rule-reuse.csv','date,description,amount,id\n2026-09-04,CARD PAYMENT CEDAR COOPERATIVE REF:103,-3.00,cedar-103\n');
   await expect(cedar()).toContainText('Your approved rule');await expect(cedar().getByRole('combobox',{name:'Merchant',exact:true})).toHaveValue(rule.merchant_id);await expect(cedar().getByRole('combobox',{name:'Category',exact:true})).toHaveValue(category);
   const rules=()=>page.getByRole('region',{name:'Approved organization rules'}).getByRole('listitem').filter({hasText:'cedar cooperative'});
-  await rules().getByRole('button',{name:'Disable rule',exact:true}).click();await expect(rules()).toContainText('Disabled');
+  await rules().getByRole('button',{name:'Disable rule',exact:true}).click();await expect(rules()).toContainText('(off)');
   await expect(cedar().getByRole('combobox',{name:'Category',exact:true})).toHaveValue('keep');
-  await rules().getByRole('button',{name:'Enable rule',exact:true}).click();await expect(rules()).toContainText('Enabled');
+  await rules().getByRole('button',{name:'Enable rule',exact:true}).click();await expect(rules()).not.toContainText('(off)');
   await expect(cedar()).toContainText('Your approved rule');await expect(cedar().getByRole('combobox',{name:'Category',exact:true})).toHaveValue(category);
   // A retained native correction suppresses later proposals without changing its source.
   const moss=rows.find(row=>row.description.includes('MOSS'))!;
@@ -116,7 +116,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await expect.poll(async()=>{const [row]=await db`select category_id,note,version from public.transactions where id=${moss.id} and workspace_id=${workspace!}`;return row;}).toMatchObject({category_id:category,note:'Retained owner correction',version:1});
   await page.getByRole('link',{name:'Organize spending',exact:true}).click();
   await expect(page).toHaveURL(/\/money\/organization$/);
-  await expect(page.getByRole('heading',{name:'Organize imported spending',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Organize spending',exact:true})).toBeVisible();
   await expect(page.locator('article').filter({has:page.getByRole('heading',{name:'moss travel',exact:true})})).toHaveCount(0);
   expect([...await db`select id,original_row from public.source_transactions where workspace_id=${workspace!} and id=any(${originalSources.map(row=>row.id)}) order by id`]).toEqual(originalSources);
   await page.screenshot({path:testInfo.outputPath('native-organization-rules-correction.png'),fullPage:true});

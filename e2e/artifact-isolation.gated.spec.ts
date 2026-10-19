@@ -69,7 +69,7 @@ test("revoked host SDK scope yields unavailable evidence without financial rows"
   await editor.getByLabel("Manifest (JSON)").fill(JSON.stringify({ kind: "custom_comparison", runtime: "quickjs-calculator-v1", sdk: ["spending"], params: {}, renderer: "trusted" }));
   await editor.getByRole("button", { name: "Save new version", exact: true }).click();
   const output = page.getByRole("region", { name: "Generated calculator output" });
-  await expect(output.getByText("financialRowsSupplied", { exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(output.getByText("Financial rows supplied", { exact: true })).toBeVisible({ timeout: 20_000 });
   await page.goto("/settings");
   const transactions = page.locator('input[name="ai_data_scopes"][value="transactions"]');
   const initiallyEnabled = await transactions.isChecked();

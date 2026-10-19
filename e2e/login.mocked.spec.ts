@@ -26,7 +26,7 @@ test("sign-in shows pending feedback and allows retry after a rejected request w
     await page.getByLabel("Email", { exact: true }).fill("qa-login@example.invalid");
     await page.getByRole("button", { name: "Send sign-in link", exact: true }).click();
     await expect.poll(() => requests).toBe(1);
-    await expect(page.getByRole("button", { name: "Sending…", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Working…", exact: true })).toBeDisabled();
     release();
     await expect(page.getByRole("status")).toContainText("Synthetic sign-in request rejected");
     const retry = page.getByRole("button", { name: "Send sign-in link", exact: true });

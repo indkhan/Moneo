@@ -43,19 +43,20 @@ test("owned Stop and reload distinguish request, worker acknowledgment and uncon
     await db`insert into public.background_jobs(id,workspace_id,kind,status,stage,workflow_run_id,dispatched_at) values(${job},${workspace!},'financial_review','running','writing_review',${run},now())`;
     const page = await context.newPage();
     await page.goto("/ai");
-    await page.getByText("Run a deep review", { exact: true }).click();
-    await page.getByLabel("Saved reviews").selectOption(job);
+    // The deep review panel starts collapsed on every load.
+    const openReview = async (id = job) => { await page.getByText("Run a deep review", { exact: true }).click(); await page.getByLabel("Saved reviews").selectOption(id); };
+    await openReview();
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Stop", exact: true }).click();
     await expect(page.getByRole("status")).toContainText("Stop requested. Waiting for active work");
     expect(await (await context.request.get(`/api/analysis/${job}`)).json()).toMatchObject({ status: "running", stage: "cancel_requested", cancel_requested: true, analysis: null });
-    await page.reload();
+    await page.reload(); await openReview();
     await expect(page.getByRole("status")).toContainText("Stop requested. Waiting for active work");
     expect((await context.request.delete(`/api/analysis/${randomUUID()}`)).status()).toBe(404);
     // Installed-runtime transport acknowledgment is separately exercised by the
     // real HTTP provider test. This gate verifies its persisted receipt/UI contract.
     expect((await admin.rpc("fail_financial_review", { p_job_id: job, p_workspace_id: workspace, p_run_id: run, p_stage: "writing_review", p_error: "Synthetic settled transport" })).data).toBe("canceled");
-    await page.reload();
+    await page.reload(); await openReview();
     await expect(page.getByText("Application work stopped.", { exact: false })).toBeVisible();
     expect(await (await context.request.get(`/api/analysis/${job}`)).json()).toMatchObject({ status: "canceled", stage: "canceled", cancel_requested: true, analysis: null });
     expect((await admin.rpc("finish_financial_review", { p_job_id: job, p_workspace_id: workspace, p_title: "Late", p_body: "Late synthetic result", p_evidence: {}, p_scheduled: false })).data).toBe("canceled");
@@ -65,7 +66,7 @@ test("owned Stop and reload distinguish request, worker acknowledgment and uncon
     expect((await db`select * from public.correction_events where id=${correction}`)[0]).toEqual(originalCorrection);
     await db`insert into public.background_jobs(id,workspace_id,kind,status,stage,cancel_requested,workflow_run_id,dispatched_at) values(${uncertain},${workspace!},'financial_review','running','cancel_requested',true,${run + '_uncertain'},now())`;
     expect((await admin.rpc("fail_financial_review", { p_job_id: uncertain, p_workspace_id: workspace, p_run_id: run + "_uncertain", p_stage: "cancellation_unconfirmed", p_error: "Synthetic runtime ended with a running step" })).data).toBe("canceled");
-    await page.reload();
+    await page.reload(); await openReview(uncertain);
     await expect(page.getByText("request termination could not be confirmed", { exact: false })).toBeVisible();
     await expect(page.getByText("Application work stopped.", { exact: false })).toHaveCount(0);
   } finally {
