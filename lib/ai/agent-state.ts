@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentId, Evidence, ProposalKind } from "@/lib/ai/agent-team";
 
 export type AgentTaskView = { agent: AgentId; position: number; status: string; step: string | null; summary: string | null; events: { at: string; type: string; text: string }[]; started_at: string | null; finished_at: string | null };
-export type AgentProposalView = { id: string; agent: AgentId; kind: ProposalKind; title: string; detail: string; evidence: Evidence; confidence: number; notes: string[]; status: string; result: { href?: string; undo?: string; error?: string } | null };
+export type AgentProposalView = { id: string; agent: AgentId; kind: ProposalKind; title: string; detail: string; evidence: Evidence; confidence: number; notes: string[]; status: string; result: { href?: string; undo?: string; error?: string; auto?: boolean } | null };
 export type AgentRunView = { id: string; status: string; trigger: string; import_id: string | null; briefing: string | null; model_calls: number; model_budget: number; model_status: string; error: string | null; created_at: string; finished_at: string | null;
   tasks: AgentTaskView[]; proposals: AgentProposalView[] };
 

@@ -113,10 +113,12 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
 
   const byAgent = new Map(run.tasks.map(task => [task.agent, task]));
   const lead = byAgent.get("lead");
-  const open = run.proposals.filter(item => item.status === "proposed" || item.status === "failed");
+  const decided = run.proposals.filter(item => item.result?.auto);
+  const manual = run.proposals.filter(item => !item.result?.auto);
+  const open = manual.filter(item => item.status === "proposed" || item.status === "failed");
   const reviewable = !active;
   const toggle = (id: string) => setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
-  const kinds = (Object.keys(KIND_LABELS) as ProposalKind[]).filter(kind => run.proposals.some(item => item.kind === kind));
+  const kinds = (Object.keys(KIND_LABELS) as ProposalKind[]).filter(kind => manual.some(item => item.kind === kind));
   const model = run.model_status === "available" || run.model_status === "budget_exhausted" ? `Free model · ${run.model_calls}/${run.model_budget} calls`
     : run.model_status === "unknown" ? "Checking model…" : "Deterministic only (no free model)";
 
@@ -151,9 +153,20 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       <p className="mt-2 text-xs text-muted-foreground">Every figure comes from application code; the writer is only allowed to repeat them.</p>
     </section>}
 
+    {decided.length > 0 && <section aria-labelledby="decided-heading" className="space-y-2">
+      <h2 id="decided-heading" className="text-base font-semibold">Decided automatically <span className="text-muted-foreground">({decided.length})</span></h2>
+      <p className="text-xs text-muted-foreground">The Categorizer applied these itself. Each one is an audited batch; open it to check the rows or Undo.</p>
+      <ul className="space-y-2">{decided.map(item => <li key={item.id} className="rounded-xl border border-border bg-card p-3">
+        <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{item.title}</p>{pill(item.status, "applied")}</div>
+        <p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
+        {item.result?.href && <p className="mt-1 text-xs"><Link href={item.result.href} className="text-brand underline">Open · Undo</Link></p>}
+        <EvidenceView proposal={item} locale={locale} />
+      </li>)}</ul>
+    </section>}
+
     <section aria-labelledby="review-heading" className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 id="review-heading" className="mr-auto text-base font-semibold">Review <span className="text-muted-foreground">({open.length} open of {run.proposals.length})</span></h2>
+        <h2 id="review-heading" className="mr-auto text-base font-semibold">Review <span className="text-muted-foreground">({open.length} open of {manual.length})</span></h2>
         {reviewable && open.length > 0 && <>
           <button type="button" onClick={() => setSelected(selected.size === open.length ? new Set() : new Set(open.map(item => item.id)))} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">{selected.size === open.length ? "Clear selection" : "Select all"}</button>
           <button type="button" disabled={pending || !selected.size} onClick={() => decide([...selected], "reject")} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">Reject selected</button>
@@ -164,7 +177,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       {notice && <p role="status" className="text-sm">{notice}</p>}
       {kinds.map(kind => <div key={kind} className="space-y-2">
         <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{KIND_LABELS[kind]}</h3>
-        <ul className="space-y-2">{run.proposals.filter(item => item.kind === kind).map(item => {
+        <ul className="space-y-2">{manual.filter(item => item.kind === kind).map(item => {
           const decidable = reviewable && (item.status === "proposed" || item.status === "failed");
           return <li key={item.id} className="rounded-xl border border-border bg-card p-3">
             <div className="flex items-start gap-3">
