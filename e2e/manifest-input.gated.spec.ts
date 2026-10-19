@@ -40,7 +40,7 @@ test("manifest inputs restore, execute and save under one typed contract", async
       // Dynamic source editor mounts after its parent has hydrated.
       await expect(editor.locator(".cm-content")).toBeVisible();
     }
-    const source = 'input => ({ numbers: { amount: input.params.amount, reference: input.params.reference, exactMinor: input.params.exactMinor } })';
+    const source = 'input => ({ numbers: { amount: input.params.amount, reference: input.params.reference, exact: input.params.exactMinor } })';
     const manifest = { kind: "custom_report", runtime: "quickjs-calculator-v1", sdk: [], params: {
       amount: { type: "number", default: 50, min: 0, max: 100, label: "Amount" },
       reference: { type: "string", default: "00123", maxLength: 8, label: "Reference" },
@@ -104,22 +104,22 @@ test("manifest inputs restore, execute and save under one typed contract", async
     await db`update public.artifacts set active_version_id=${version} where id=${trip} and workspace_id=${workspaceId}`;
     await db`insert into public.artifact_state(workspace_id,artifact_id,state) values(${workspaceId},${trip},'{}')`;
     await page.goto(`/ai/library/${trip}`);
-    await expect(output.locator("dd")).toHaveText("12000", { timeout: 30_000 });
+    await expect(output.locator("dd")).toHaveText("EUR 120.00", { timeout: 30_000 });
     await expect(output.getByLabel(/costMinor/)).toHaveValue("12000");
     await expect(output).toContainText("EUR");
     await expect(output).toContainText("minor units");
     await db`update public.artifact_state set state=${db.json({ costMinor: 15000 })} where workspace_id=${workspaceId} and artifact_id=${trip}`;
     await reloadArtifact();
-    await expect(output.locator("dd")).toHaveText("15000", { timeout: 30_000 });
+    await expect(output.locator("dd")).toHaveText("EUR 150.00", { timeout: 30_000 });
     await db`update public.artifact_state set state=${db.json({ costMinor: 90000 })} where workspace_id=${workspaceId} and artifact_id=${trip}`;
     await reloadArtifact();
-    await expect(output.locator("dd")).toHaveText("12000", { timeout: 30_000 });
+    await expect(output.locator("dd")).toHaveText("EUR 120.00", { timeout: 30_000 });
     await expect(output).toContainText("default applies");
     // Revoked evidence must not reset compatible inputs to defaults.
     await db`update public.artifacts set permissions='[]' where id=${trip} and workspace_id=${workspaceId}`;
     await db`update public.artifact_state set state=${db.json({ costMinor: 15000 })} where workspace_id=${workspaceId} and artifact_id=${trip}`;
     await reloadArtifact();
-    await expect(output.locator("dd")).toHaveText("15000", { timeout: 30_000 });
+    await expect(output.locator("dd")).toHaveText("EUR 150.00", { timeout: 30_000 });
   } finally {
     await context.close().catch(() => {});
     if (workspace && user) await db.begin(async tx => {

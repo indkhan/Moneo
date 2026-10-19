@@ -55,7 +55,7 @@ test("saved review stays historical while balance corrections and scopes change 
     await page.waitForURL(/\/ai\/library\/[0-9a-f-]{36}$/);
     const toolUrl = page.url();
     const editor = page.getByRole("region", { name: "Edit calculator version" });
-    await editor.locator(".cm-content").fill('input => { const cash = input.snapshot.balances?.[0]?.balance?.amount_minor; return cash ? { numbers: { cashMinor: cash } } : { unavailable: input.snapshot.unavailable || "No dated balance" }; }');
+    await editor.locator(".cm-content").fill('input => { const cash = input.snapshot.balances?.[0]?.balance?.amount_minor; return cash ? { numbers: { cash } } : { unavailable: input.snapshot.unavailable || "No dated balance" }; }');
     await editor.getByLabel("Manifest (JSON)").fill(JSON.stringify({ kind: "custom_comparison", runtime: "quickjs-calculator-v1", sdk: ["balances"], params: {}, renderer: "trusted" }));
     await editor.getByRole("button", { name: "Save new version", exact: true }).click();
     const output = page.getByRole("region", { name: "Generated calculator output" });
