@@ -117,7 +117,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
             : <p className="mt-2 text-sm text-muted-foreground">No confirmed payments in the next 30 days.</p>}
         </Kpi>
       </div>
-      <DatedOverview accounts={accounts} wealth={wealthItems} today={today} timeZone={workspace.timezone} locale={locale} />
+      <DatedOverview accounts={accounts} wealth={wealthItems} today={today} locale={locale} />
     </section>,
     spending: <Suspense fallback={<SectionFallback title="Spending" />}><SpendingPanel {...sectionProps} /></Suspense>,
     recent: <Suspense fallback={<SectionFallback title="Recent transactions" />}><RecentTransactions db={supabase} workspaceId={workspace.id} locale={locale} names={accountNames} /></Suspense>,
@@ -129,7 +129,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         <div className="min-w-0 flex-1"><h3 className="truncate text-sm font-medium">{account.name}</h3><p className="truncate text-xs text-muted-foreground"><span className="capitalize">{account.type}</span> · {balance.as_of ? `As of ${calendarDate(balance.as_of, workspace.timezone)} · ${balance.status.replaceAll("_", " ")}` : "Add a dated balance"}</p></div>
         <p className="font-mono text-sm font-semibold">{balance.snapshot_amount_minor !== null ? money(balance.snapshot_amount_minor, balance.snapshot_currency_code!) : "Balance unknown"}</p>
         <AskAbout label="Ask" question={`How is my ${account.name} account doing? Summarise recent activity, upcoming payments and its balance trend.`} about={{ kind: "account", id: account.id, label: account.name }} />
-        <details className="open:w-full"><summary className="cursor-pointer text-xs font-medium text-brand hover:underline">Update balance</summary><div className="mt-2 rounded-lg border border-border p-3"><ManualBalanceForm account={account} snapshots={balanceEvidence.snapshots} ledger={balanceEvidence.ledger} asOf={balanceEvidence.asOf} timeZone={workspace.timezone} locale={locale} /></div></details>
+        <details className="open:w-full"><summary className="cursor-pointer text-xs font-medium text-brand hover:underline">Update balance</summary><div className="mt-2 rounded-lg border border-border p-3"><ManualBalanceForm account={account} snapshots={balanceEvidence.snapshots} ledger={balanceEvidence.ledger} asOf={balanceEvidence.asOf} locale={locale} /></div></details>
         {balance.warnings.length > 0 && <p className="w-full text-xs text-amber-700">{balance.warnings.join("; ")}</p>}
         {balance.status === "stale" && balance.estimated_amount_minor !== null && <p className="w-full text-xs text-muted-foreground">Recent activity suggests about {money(balance.estimated_amount_minor, balance.currency_code)}. Update the balance to confirm.</p>}
       </article></li>; })}</ul>
