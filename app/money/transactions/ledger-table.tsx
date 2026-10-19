@@ -51,13 +51,13 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
       cell: ({ row }) => <span className="font-mono text-muted-foreground">{row.original.posted_on}</span> },
     { id: "description", header: "Description", cell: ({ row }) => <span className="flex min-w-0 items-center gap-2">
       <Link className="truncate font-medium text-foreground hover:text-brand hover:underline" href={href(row.original.id)} scroll={false}>{row.original.description}</Link>
+      {row.original.kind !== "ordinary" || row.original.status !== "posted" ? <span className="shrink-0 text-[11px] text-muted-foreground">{[row.original.kind !== "ordinary" && kindLabel(row.original.kind), row.original.status !== "posted" && statusLabel(row.original.status)].filter(Boolean).join(" · ")}</span> : null}
       {row.original.review_reasons?.length ? <span title="Needs review" className="shrink-0 rounded bg-amber-100 px-1.5 text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-200">Review</span> : null}
       {row.original.tags?.map(tag => <span key={tag} className="hidden shrink-0 rounded bg-muted px-1.5 text-[11px] text-muted-foreground lg:inline">{tag}</span>)}
     </span> },
     { id: "category", header: "Category", cell: ({ row }) => <span className="text-muted-foreground">{row.original.category_id ? categoryNames[row.original.category_id] ?? "Unknown" : "Uncategorized"}</span> },
     { id: "merchant", header: "Merchant", cell: ({ row }) => <span className="text-muted-foreground">{row.original.merchant_id ? merchantNames[row.original.merchant_id] ?? "Unknown" : "—"}</span> },
     { id: "account", header: "Account", cell: ({ row }) => <span className="text-muted-foreground">{accountNames[row.original.account_id] ?? "Unknown"}</span> },
-    { id: "type", header: "Type", cell: ({ row }) => <span className="whitespace-nowrap text-xs text-muted-foreground">{kindLabel(row.original.kind)}{row.original.status === "posted" ? "" : ` · ${statusLabel(row.original.status)}`}</span> },
     { id: "amount", header: () => <Link className="hover:text-brand" aria-label={`Sort by amount (currently ${sortName})`} href={sortHrefs.amount} scroll={false}>Amount {arrow("amount")}</Link>,
       cell: ({ row }) => <span className={`font-mono font-medium tabular-nums ${BigInt(row.original.amount_minor) > 0n ? "text-emerald-700 dark:text-emerald-400" : ""}`}>{signed(row.original.amount_minor, row.original.currency_code, locale)}</span> },
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -87,10 +87,10 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
   const targets = rows.filter(row => selected.includes(row.id));
   return <>
     <div className="overflow-auto rounded-xl border border-border bg-card [max-height:calc(100dvh-12rem)]">
-      <table className="w-full min-w-[860px] border-separate border-spacing-0 text-left text-sm">
-        <thead className="sticky top-0 z-10 bg-muted text-xs text-muted-foreground">
+      <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left text-sm">
+        <thead className="sticky top-0 z-10 bg-card text-xs text-muted-foreground">
           {table.getHeaderGroups().map(group => <tr key={group.id}>{group.headers.map(header =>
-            <th key={header.id} scope="col" className={`border-b border-border px-3 py-2 font-medium ${header.column.id === "amount" ? "text-right" : ""} ${header.column.id === "select" ? "w-8" : ""}`}>{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr>)}
+            <th key={header.id} scope="col" className={`border-b border-border px-3 py-2.5 font-medium ${header.column.id === "amount" ? "text-right" : ""} ${header.column.id === "select" ? "w-8" : ""}`}>{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr>)}
         </thead>
         <tbody ref={body}>
           {tableRows.map((row, index) => {
@@ -111,7 +111,6 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
         </tbody>
       </table>
     </div>
-    <p className="text-xs text-muted-foreground"><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>Enter</kbd> open · <kbd>x</kbd> select · <kbd>/</kbd> search · <kbd>Esc</kbd> close</p>
     {targets.length > 0 && <BulkBar targets={targets} categories={categories} merchants={merchants} query={query} requestId={requestId} locale={locale} onClear={() => setSelected([])} />}
   </>;
 }

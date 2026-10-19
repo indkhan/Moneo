@@ -54,10 +54,10 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
 
   return <div className="space-y-2">
   <form onSubmit={ask} role="search" aria-label="Describe transactions" className="flex gap-2">
-    <input name="ask" maxLength={200} placeholder="Describe what to find, e.g. coffee over 5 last month · income this year · biggest groceries by merchant" aria-label="Describe what to find" className={`${control} flex-1`} />
-    <button className="min-h-9 whitespace-nowrap rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted">Find</button>
+    <input name="ask" maxLength={200} placeholder="Ask, e.g. coffee over 5 last month" aria-label="Describe what to find" className={`${control} flex-1`} />
+    <button className="min-h-9 whitespace-nowrap rounded-lg border border-border px-3 text-sm hover:bg-muted">Find</button>
   </form>
-  <form onSubmit={submit} role="search" aria-label="Filter transactions" className="space-y-2 rounded-xl border border-border bg-card p-3">
+  <form onSubmit={submit} role="search" aria-label="Filter transactions" className="space-y-2">
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,2fr)_repeat(5,minmax(0,1fr))_auto]">
       <input id="ledger-search" name="q" defaultValue={values.q} placeholder="Search descriptions  ( / )" aria-label="Search descriptions" maxLength={200} className={control} />
       <input name="from" type="date" defaultValue={values.from} aria-label="From date" className={control} />
@@ -79,7 +79,7 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
       <input name="tag" defaultValue={values.tag} placeholder="Tag" aria-label="Filter by tag" maxLength={40} className={control} />
       <input name="event" defaultValue={values.event} placeholder="Trip / event group" aria-label="Filter by spending group" maxLength={120} className={control} />
     </div>
-    {more && <p className="text-xs text-muted-foreground">Amounts are signed: spending is negative, e.g. -50 to -10 finds purchases between 10 and 50.</p>}
+    {more && <p className="text-xs text-muted-foreground">Amounts are signed: -50 to -10 finds purchases between 10 and 50.</p>}
     {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
   </form>
   </div>;

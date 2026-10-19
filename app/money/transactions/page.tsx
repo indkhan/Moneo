@@ -128,20 +128,20 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const filterValues = Object.fromEntries(shareable);
   const activeAccounts = (accounts ?? []).filter(account => !account.archived_at);
 
-  return <main className="mx-auto w-full max-w-7xl space-y-5 px-4 py-6 text-foreground sm:px-6">
+  return <main className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 text-foreground sm:px-6">
     {header}
     {viewId && !activeView ? <p role="alert" className="text-sm">Saved view not found. Showing normal filters.</p> : null}
     <div className="grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
       <aside className="order-2 space-y-6 lg:order-1 lg:sticky lg:top-6 lg:self-start">
         <SavedViewsPanel views={viewRows} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} />
       </aside>
-      <div className="order-1 min-w-0 space-y-3 lg:order-2">
+      <div className="order-1 min-w-0 space-y-4 lg:order-2">
         <FilterBar key={shareable.toString()} values={filterValues} accounts={accounts ?? []} categories={categories ?? []} merchants={merchants ?? []} displayCurrency={workspace.display_currency} timezone={workspace.timezone} />
         <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
           <ul aria-label="Active filters" className="flex flex-wrap items-center gap-1.5">
             {activeView ? <li className="rounded-full bg-brand/10 px-2.5 py-1 text-xs font-medium text-brand">View: {activeView.name}</li> : null}
             {chips.map(([key, label]) => <li key={key}><Link href={withParams(shareable, { [key]: null })} scroll={false} aria-label={`Remove filter ${label}`} className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-xs hover:bg-muted">{label}<span aria-hidden>×</span></Link></li>)}
-            {chips.length ? <li><Link href="/money/transactions" className="px-1 text-xs text-muted-foreground underline">Clear all</Link></li> : <li className="text-xs text-muted-foreground">No filters</li>}
+            {chips.length ? <li><Link href="/money/transactions" className="px-1 text-xs text-muted-foreground underline">Clear all</Link></li> : null}
           </ul>
           <div className="flex items-center gap-3">
             {count !== null ? <span className="font-mono text-xs text-muted-foreground">{filters.cursor ? `${count.toLocaleString(workspace.locale)} from here` : `${count.toLocaleString(workspace.locale)} ${count === 1 ? "transaction" : "transactions"}`}</span> : null}
@@ -152,14 +152,16 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             </nav>
           </div>
         </div>
-        {groups && grouped?.data && count !== null && count > grouped.data.length ? <p className="text-xs text-muted-foreground">Group subtotals cover the {grouped.data.length.toLocaleString(workspace.locale)} most recent matching transactions. Narrow the dates for complete totals.</p> : null}
-        {groups?.by === "category" ? <p className="text-xs text-muted-foreground">Split transactions are grouped under their original category.</p> : null}
+        {groups && (groups.by === "category" || (grouped?.data && count !== null && count > grouped.data.length)) ? <p className="text-xs text-muted-foreground">
+          {grouped?.data && count !== null && count > grouped.data.length ? `Subtotals cover the ${grouped.data.length.toLocaleString(workspace.locale)} most recent matches; narrow the dates for complete totals. ` : ""}
+          {groups.by === "category" ? "Split transactions are grouped under their original category." : ""}</p> : null}
         {error ? <p role="alert">Could not load transactions: {error.message}</p> : <LedgerTable rows={rows} accountNames={accountNames} categories={categories ?? []} merchants={merchants ?? []}
           query={current.toString()} sort={filters.sort} sortHrefs={{ date: sortHref("date"), amount: sortHref("amount") }} groups={groups} openId={filters.transactionId ?? null}
           closeHref={`/money/transactions${current.size ? `?${current}` : ""}`} locale={workspace.locale} requestId={crypto.randomUUID()} />}
-        <div className="flex gap-4 text-sm">
+        <div className="flex flex-wrap items-center gap-4 text-sm">
           {filters.cursor ? <Link className="underline" href={withParams(viewBase, {})}>First page</Link> : null}
           {next ? <Link className="underline" href={withParams(viewBase, { cursor: next })}>Next page</Link> : null}
+          <p className="ml-auto hidden text-xs text-muted-foreground sm:block"><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>Enter</kbd> open · <kbd>x</kbd> select · <kbd>/</kbd> search · <kbd>Esc</kbd> close</p>
         </div>
         <details className="rounded-xl border border-border bg-card p-4">
           <summary className="cursor-pointer text-sm font-semibold">Add a manual transaction</summary>
