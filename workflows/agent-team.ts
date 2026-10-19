@@ -1,7 +1,7 @@
 "use workflow";
 
 import { getWorkflowMetadata } from "workflow";
-import { finishRun, mergeRun, runAgent, startRun } from "@/lib/ai/agent-runtime";
+import { autoApplyRun, finishRun, mergeRun, runAgent, startRun } from "@/lib/ai/agent-runtime";
 import type { AgentId } from "@/lib/ai/agent-team";
 
 // Durable agent team. Each agent is its own step, so a crash or redeploy
@@ -17,6 +17,7 @@ export async function agentTeam(runId: string, workspaceId: string) {
       if (results.includes("canceled")) return void await finishStep(runId, workspaceId);
     }
     if (!await mergeStep(runId, workspaceId)) return void await finishStep(runId, workspaceId);
+    await autoApplyStep(runId, workspaceId);
     for (const agent of writers) await agentStep(runId, workspaceId, agent as Exclude<AgentId, "lead">);
     await finishStep(runId, workspaceId);
   } catch (error) {
@@ -37,6 +38,11 @@ async function agentStep(runId: string, workspaceId: string, agent: Exclude<Agen
 async function mergeStep(runId: string, workspaceId: string) {
   "use step";
   return mergeRun(runId, workspaceId);
+}
+
+async function autoApplyStep(runId: string, workspaceId: string) {
+  "use step";
+  return autoApplyRun(runId, workspaceId);
 }
 
 async function finishStep(runId: string, workspaceId: string, error?: string) {

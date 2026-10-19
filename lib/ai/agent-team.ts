@@ -117,7 +117,7 @@ export function categorizeGroups(proposals: OrganizationProposal[], rows: Map<st
         categoryId ? names.categories.get(categoryId) ?? "known category" : null].filter(Boolean).join(" · ");
       result.push({ agent: "categorizer", kind: "categorize", conflictKey: `categorize:${key}:${offset}`,
         title: `${target} for ${chunk.length} “${descriptionKey.slice(0, 40)}” ${chunk.length === 1 ? "row" : "rows"}`,
-        detail: `${BASIS[basis]}. Accepting applies one audited batch${descriptionKey.length >= 3 ? " and saves a rule for future imports" : ""}; Undo restores every row.`,
+        detail: `${BASIS[basis]}. Applies one audited batch${descriptionKey.length >= 3 ? " and saves a rule for future imports" : ""}; Undo restores every row.`,
         evidence: { facts: [{ label: "Rows", value: String(chunk.length) }, { label: "Basis", value: BASIS[basis] },
           ...(evidence.length ? [{ label: "Matching history", value: `${evidence.length} earlier rows` }] : []),
           ...(chunk[0].evidenceQuote ? [{ label: "Quoted text", value: chunk[0].evidenceQuote }] : [])],
