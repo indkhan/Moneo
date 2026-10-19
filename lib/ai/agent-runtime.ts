@@ -173,11 +173,14 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
     const asked = new Map(batch.map(proposal => [proposal.transactionId, proposal.descriptionKey]));
     const spread = suggested.flatMap(item => (unfamiliar.get(asked.get(item.transactionId) ?? "") ?? []).map(proposal => ({ ...item, transactionId: proposal.transactionId })))
       .filter(item => !corrected.has(item.transactionId) && rows.get(item.transactionId)!.description.includes(item.evidenceQuote) && (!item.categoryId || owned.categories.has(item.categoryId)));
-    const eligible = new Set(spread.map(item => item.transactionId));
-    const merged = mergeOrganizationSuggestions(raw.filter(row => eligible.has(row.id)).map(toRow), proposals.filter(proposal => eligible.has(proposal.transactionId)), spread, [...owned.categories.keys()]);
-    const byId = new Map(merged.map(proposal => [proposal.transactionId, proposal]));
-    proposals = proposals.map(proposal => byId.get(proposal.transactionId) ?? proposal);
-    await report(context, { type: "note", text: `Model categorized ${suggested.length} of ${batch.length} descriptions, covering ${eligible.size} rows; each quotes its source text` });
+    // The merge validates at most 50 suggestions at a time, and one answer can cover many rows.
+    for (let start = 0; start < spread.length; start += 50) {
+      const chunk = spread.slice(start, start + 50), eligible = new Set(chunk.map(item => item.transactionId));
+      const merged = mergeOrganizationSuggestions(raw.filter(row => eligible.has(row.id)).map(toRow), proposals.filter(proposal => eligible.has(proposal.transactionId)), chunk, [...owned.categories.keys()]);
+      const byId = new Map(merged.map(proposal => [proposal.transactionId, proposal]));
+      proposals = proposals.map(proposal => byId.get(proposal.transactionId) ?? proposal);
+    }
+    await report(context, { type: "note", text: `Model categorized ${suggested.length} of ${batch.length} descriptions, covering ${spread.length} rows; each quotes its source text` });
   }
   const groups = categorizeGroups(proposals, rows, owned);
   return { proposals: groups, summary: `${raw.length} unorganized rows reviewed; ${groups.reduce((sum, group) => sum + group.payload.rows.length, 0)} rows covered by ${groups.length} proposals` };
