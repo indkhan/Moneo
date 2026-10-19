@@ -37,6 +37,11 @@ Use npm (`package-lock.json` is authoritative).
 
 Run the smallest relevant test while iterating. Before finishing, run `npm test` and `npm run lint`; add `npm run build` for app/config/build changes and Playwright for changed user flows. Gated E2E requires configured Supabase/auth; see `e2e/README.md`.
 
+Signed-in E2E uses one persistent QA user (login in the git-ignored `.env` as `E2E_USER_EMAIL`/`E2E_USER_PASSWORD`). With the app on localhost:3000:
+
+- `node --env-file=.env scripts/e2e-auth.mjs` signs it in and writes `e2e/.auth.json` (creates the user on first run).
+- `node --env-file=.env scripts/e2e-auth.mjs --reset` empties its workspace; do this before a full suite run. Never delete the user.
+
 ## Context
  
  
