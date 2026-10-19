@@ -20,8 +20,8 @@ export function AccountForm({ account, requestId }: { account: Account; requestI
     <Hidden account={account} requestId={requestId} />
     <input aria-label="Name" name="name" defaultValue={account.name} required maxLength={120}
       className="min-h-9 min-w-0 flex-1 basis-48 rounded-lg border border-transparent bg-transparent px-2 py-1 text-base font-semibold hover:border-border focus:border-border focus:bg-card" />
-    <select aria-label="Account type" name="type" defaultValue={account.type} className={field}>{accountTypes.map(type => <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}</select>
-    <button disabled={pending} className={field} name="operation" value="edit">Save changes</button>
+    <select aria-label="Account type" name="type" defaultValue={account.type} className={quiet}>{accountTypes.map(type => <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}</select>
+    <button disabled={pending} className={quiet} name="operation" value="edit">Save changes</button>
     <button disabled={pending} className={quiet} name="operation" value={account.archived_at ? "restore" : "archive"}>{account.archived_at ? "Restore account" : "Archive account"}</button>
     <ErrorText error={state.error} />
   </form>;
