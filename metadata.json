@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M59V3Y3G0KQK8TP6KPS1MKEQ",
+  "strategy": "manual-commit",
+  "branch": "cleanup/e2e-fixes",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 518,
+    "cache_creation_tokens": 693404,
+    "cache_read_tokens": 58167024,
+    "output_tokens": 95725,
+    "api_call_count": 249
+  }
+}
