@@ -3,8 +3,12 @@
   "checkpoint_id": "01M5AQ8YSHFKHBFWER4WA3WW6Q",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 1,
-  "files_touched": null,
+  "checkpoints_count": 2,
+  "files_touched": [
+    "lib/ai/agent-runtime.ts",
+    "lib/schema.ts",
+    "supabase/migrations/202610190004_agent_budget_sized_by_work.sql"
+  ],
   "sessions": [
     {
       "metadata": "/0/metadata.json",
@@ -12,13 +16,20 @@
       "compact_transcript": "/0/transcript.jsonl",
       "content_hash": "/0/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/1/metadata.json",
+      "transcript": "/1/full.jsonl",
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "prompt": "/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 0,
-    "cache_creation_tokens": 0,
-    "cache_read_tokens": 0,
-    "output_tokens": 0,
-    "api_call_count": 0
+    "input_tokens": 16,
+    "cache_creation_tokens": 13202,
+    "cache_read_tokens": 963890,
+    "output_tokens": 7267,
+    "api_call_count": 8
   }
 }

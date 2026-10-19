@@ -1,0 +1,5 @@
+no look at it from a big pircture we should not hard code teh limit it should be open first look at it from a big picture then change things in it and then tell me in consice how it should be that it works for me , it works for someone who has 1000 thigns and all as well
+
+---
+
+it is supposed to be agentic why we hard codeing it
