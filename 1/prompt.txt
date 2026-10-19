@@ -1,0 +1,17 @@
+Apply migration 202610190004 to my Supabase database using SUPABASE_DB_URL from .env.
+
+---
+
+<pasted_content id="85be">
+Categorizer
+Proposes merchants and categories for unorganized rows and learns rules
+failed
+Asking the model about descriptions 1–50 of 85
+
+1. Reading rows without a merchant or category
+2. organization_rules + history: 0 rules, 132 earlier rows
+3. 132 rows share 85 unfamiliar descriptions; working through them in 2 batches
+4. Asking the model about descriptions 1–50 of 85
+5. generateObject: suggest owned categories
+6. Failed: [ { "origin": "array", "code": "too_big", "maximum": 50, "inclusive": true, "path": [], "message": "Too big: expected array to have <=50 items" } ]
+</pasted_content id="85be">
