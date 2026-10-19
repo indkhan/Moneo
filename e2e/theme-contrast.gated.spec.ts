@@ -130,7 +130,7 @@ test("money and import text stays readable in persisted light, dark and system t
       await expectReadable(page, outRow.getByText("Regular", { exact: true }), `${theme} type label`);
       await expectReadable(page, page.getByText("Group", { exact: true }), `${theme} group toolbar`);
       await page.getByRole("link", { name: viewName }).click();
-      await expect(page.getByText(`View: ${viewName}`, { exact: true })).toBeVisible();
+      await expect(page.getByText(`Showing ${viewName}.`, { exact: true })).toBeVisible();
       await page.goto(`/money/transactions?view=${badView}`);
       await expectReadable(page, page.locator('section[aria-label="Invalid saved view"]').getByRole("alert"), `${theme} saved-view error`);
     }
@@ -141,7 +141,7 @@ test("money and import text stays readable in persisted light, dark and system t
     async function expectPlanReadable(theme: string) {
       await page.goto("/plan");
       await expect(page.getByRole("heading", { name: "Plan", exact: true })).toBeVisible();
-      await expectReadable(page, page.getByText("Explore your forecast, cash reservations, and changes to your plan.", { exact: true }), `${theme} plan subtitle`);
+      await expectReadable(page, page.getByText("Where your cash is heading, what is due, and what your goals need.", { exact: true }), `${theme} plan subtitle`);
       await expect(page.getByText("Forecast unavailable", { exact: false })).toBeVisible();
       await expectReadable(page, page.getByText("Forecast unavailable", { exact: false }), `${theme} plan unavailable`);
     }
@@ -162,7 +162,7 @@ test("money and import text stays readable in persisted light, dark and system t
     await expectPlanReadable("dark");
     await page.goto("/import");
     await expect(page.getByRole("heading", { name: "Import financial data" })).toBeVisible();
-    await expectReadable(page, page.getByText("Choose CSV or XLSX statements.", { exact: false }), "dark import muted");
+    await expectReadable(page, page.getByText("Drop CSV or XLSX statements.", { exact: false }), "dark import muted");
     await page.goto("/money/transactions");
     await expect(page.getByText("2 transactions", { exact: true })).toBeVisible();
     await page.screenshot({ path: ".qa/mne044-transactions-dark.png", fullPage: true });
