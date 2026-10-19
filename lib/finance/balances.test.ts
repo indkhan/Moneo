@@ -54,7 +54,7 @@ describe("evidenced account balances", () => {
     expect(resolveBalances(accounts, [tied, snapshot], [], now)[0].balance?.status).toBe("ambiguous");
     expect(resolveBalances(accounts, [{ ...snapshot, as_of: "2026-10-02T00:00:00Z" }], [], now)[0].balance?.status).toBe("missing");
   });
-  it("treats same-day date-only rows as included and refuses and unsafe numeric database values", () => {
+  it("treats same-day date-only rows as included and refuses unsafe numeric database values", () => {
     const today = { ...snapshot, as_of: "2026-10-01T08:00:00Z" };
     expect(resolveBalances(accounts, [today], [], now)[0].balance?.amount_minor).toBe("10000");
     expect(resolveBalances(accounts, [today], [{ ...transaction, posted_on: "2026-10-01" }], now)[0].balance)
