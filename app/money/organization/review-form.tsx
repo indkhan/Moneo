@@ -6,71 +6,91 @@ import type {OrganizationProposal} from '@/lib/import/organization';
 
 type Row={id:string;version:number;description:string;posted_on:string;amount_minor:string;currency_code:string};
 type Target={id:string;name:string};
-export function OrganizationGroup({rows,proposal,merchants,categories,requestId,locale}:{rows:Row[];proposal:OrganizationProposal;merchants:Target[];categories:Target[];requestId:string;locale:string}) {
+type Item={row:Row;proposal:OrganizationProposal};
+const field='min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground';
+// Typed name -> [existing id | 'new' | 'keep', new name].
+function choice(targets:Target[],name:string):[string,string]{
+ const trimmed=name.trim();if(!trimmed)return ['keep',''];
+ const found=targets.find(target=>target.name.toLowerCase()===trimmed.toLowerCase());
+ return found?[found.id,'']:['new',trimmed];
+}
+export function OrganizationQueue({items,merchants,categories,requestId,locale}:{items:Item[];merchants:Target[];categories:Target[];requestId:string;locale:string}) {
  const [state,action,pending]=useActionState(createReview,{});
- const [selected,setSelected]=useState(rows.map(row=>row.id));
- const [merchant,setMerchant]=useState(proposal.merchantId??(proposal.merchantName?'new':'keep'));
- const [merchantName,setMerchantName]=useState(proposal.merchantName??'');
- const [category,setCategory]=useState(proposal.categoryId??'keep');
+ const [selected,setSelected]=useState<string[]>([]);
+ const [merchant,setMerchant]=useState('');
+ const [category,setCategory]=useState('');
  const [assistance,setAssistance]=useState('');
  const [providerBusy,setProviderBusy]=useState(false);
- const [providerProposals,setProviderProposals]=useState<OrganizationProposal[]>([]);
  const draftRevision=useRef(0);
+ const nameOf=(targets:Target[],id:string|null)=>id?targets.find(target=>target.id===id)?.name??'':'';
+ const suggestion=(proposal:Pick<OrganizationProposal,'merchantId'|'merchantName'|'categoryId'>)=>[proposal.merchantName??nameOf(merchants,proposal.merchantId),nameOf(categories,proposal.categoryId)];
+ const fill=(proposal:Pick<OrganizationProposal,'merchantId'|'merchantName'|'categoryId'>)=>{const [m,c]=suggestion(proposal);setMerchant(m);setCategory(c);};
+ const rows=items.filter(item=>selected.includes(item.row.id)).map(({row:{id,version}})=>({id,version}));
+ const [merchantValue,merchantName]=choice(merchants,merchant);
+ const [categoryValue,categoryName]=choice(categories,category);
+ const toggle=(ids:string[],on:boolean)=>{draftRevision.current++;setSelected(on?[...new Set([...selected,...ids])]:selected.filter(id=>!ids.includes(id)));};
+ function applySuggestion(proposal:OrganizationProposal){
+  const key=JSON.stringify(suggestion(proposal));draftRevision.current++;
+  setSelected(items.filter(item=>JSON.stringify(suggestion(item.proposal))===key).map(item=>item.row.id));fill(proposal);
+ }
  async function requestSuggestions(){
   const requestedRevision=draftRevision.current;
-  setProviderBusy(true);setAssistance('');setProviderProposals([]);
+  setProviderBusy(true);setAssistance('');
   try{
-   const response=await fetch('/api/money/organization/suggestions',{method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(25000),
-    body:JSON.stringify({rows:rows.filter(row=>selected.includes(row.id)).map(({id,version})=>({id,version})),useProvider:true})});
+   const response=await fetch('/api/money/organization/suggestions',{method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(25000),body:JSON.stringify({rows,useProvider:true})});
    const body=await response.json() as {proposals?:OrganizationProposal[];providerStatus?:string;notice?:string};
-   if(draftRevision.current!==requestedRevision){setAssistance('Your draft changed while suggestions were requested. Keep your current choices or request fresh suggestions.');return;}
-   if(!response.ok||body.providerStatus!=='available'){setAssistance(body.notice??'Optional suggestions unavailable. Keep using the manual choices below.');return;}
-   const candidates=(body.proposals??[]).filter(candidate=>selected.includes(candidate.transactionId)&&candidate.basis==='provider-suggestion');setProviderProposals(candidates);
-   if(!candidates.length){setAssistance('No attributable AI suggestions were returned. Keep using the source/history suggestions and manual choices.');return;}
+   if(draftRevision.current!==requestedRevision){setAssistance('Your draft changed while suggestions were requested. Keep your choices or ask again.');return;}
+   if(!response.ok||body.providerStatus!=='available'){setAssistance(body.notice??'AI suggestions are unavailable right now.');return;}
+   const candidates=(body.proposals??[]).filter(candidate=>selected.includes(candidate.transactionId)&&candidate.basis==='provider-suggestion');
    const choices=new Set(candidates.map(candidate=>JSON.stringify([candidate.merchantId,candidate.merchantName,candidate.categoryId])));
-   if(candidates.length===selected.length&&choices.size===1){
-    const candidate=candidates[0];setMerchant(candidate.merchantId??(candidate.merchantName?'new':'keep'));setMerchantName(candidate.merchantName??'');setCategory(candidate.categoryId??'keep');
-    setAssistance('Optional suggestions filled the draft choices. Review their evidence and the exact preview before approving.');
-   }else setAssistance('Suggestions differ across these entries. Select one entry to review its suggestion, or use the manual choices.');
-  }catch{setAssistance('Optional suggestions unavailable. Keep using the manual choices below.');}
+   if(candidates.length&&candidates.length===selected.length&&choices.size===1){fill(candidates[0]);setAssistance('Filled from an AI suggestion. Check it in the preview before approving.');}
+   else setAssistance(candidates.length?'AI suggestions differ across the selection. Select fewer entries.':'No AI suggestions were returned.');
+  }catch{setAssistance('AI suggestions are unavailable right now.');}
   finally{setProviderBusy(false);}
  }
- return <article className="rounded-xl border border-border bg-card p-6">
-  <h2 className="font-semibold">{proposal.descriptionKey||'Unrecognized description'}</h2>
-  <p className="mt-1 text-sm text-muted-foreground">{proposal.basis==='approved-rule'?'Your approved rule':proposal.basis==='consistent-history'?`${proposal.evidence.length} consistent historical entries`:'Merchant guessed from the description; please choose a category.'} Nothing changes until you approve.</p>
-  {proposal.financialReviewRequired&&<p className="mt-2 text-sm font-medium">Financial interpretation needs separate review in Transactions. Organization changes only merchant/category metadata.</p>}
-  {proposal.evidence.length>0&&<details className="mt-2 text-sm"><summary className="cursor-pointer">Similar past entries ({proposal.evidence.length})</summary><ul>{proposal.evidence.map(row=><li key={row.id}><a className="underline" href={'/money/transactions?transaction='+row.id}>View entry</a></li>)}</ul></details>}
-  <form action={action} className="mt-3 space-y-3">
-   <input type="hidden" name="rows" value={JSON.stringify(rows.filter(row=>selected.includes(row.id)).map(({id,version})=>({id,version})))} />
-   <input type="hidden" name="requestId" value={requestId} />
-   <ul className="space-y-1">{rows.map(row=><li key={row.id}><label className="flex gap-2 text-sm"><input type="checkbox" checked={selected.includes(row.id)} onChange={event=>{draftRevision.current++;setSelected(event.target.checked?[...selected,row.id]:selected.filter(id=>id!==row.id));}} /><span>{row.posted_on} · {row.description} · {formatMoney(row.amount_minor,row.currency_code,locale)}</span></label></li>)}</ul>
-   <div className="flex flex-wrap gap-3">
-    <label className="grid gap-1 text-sm">Merchant<select name="merchant" value={merchant} onChange={event=>{draftRevision.current++;setMerchant(event.target.value);}} className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm"><option value="keep">Keep current merchants</option><option value="">Clear merchant</option><option value="new">Review a merchant name</option>{merchants.map(target=><option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
-    {merchant==='new'&&<label className="grid gap-1 text-sm">Merchant name<input name="merchantName" required maxLength={100} value={merchantName} onChange={event=>{draftRevision.current++;setMerchantName(event.target.value);}} className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm" /></label>}
-    <label className="grid gap-1 text-sm">Category<select name="category" value={category} onChange={event=>{draftRevision.current++;setCategory(event.target.value);}} className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm"><option value="keep">Keep current categories</option><option value="">Uncategorized</option>{categories.map(target=><option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
-   </div>
-   <button type="button" disabled={providerBusy||pending||!selected.length} onClick={requestSuggestions} className="text-sm underline disabled:opacity-40">{providerBusy?'Requesting optional suggestions…':'Request optional AI suggestions'}</button>
-   {assistance&&<p role="status" className="text-sm">{assistance}</p>}
-   {providerProposals.length>0&&<ul className="space-y-1 text-sm">{providerProposals.map(candidate=><li key={candidate.transactionId}>{rows.find(row=>row.id===candidate.transactionId)?.description}: {candidate.merchantName??merchants.find(target=>target.id===candidate.merchantId)?.name??'keep merchant'} · {categories.find(target=>target.id===candidate.categoryId)?.name??'keep category'}{candidate.evidenceQuote&&<> · Source quote: “{candidate.evidenceQuote}”</>}</li>)}</ul>}
-   {state.error&&<p role="alert" className="text-sm text-red-700 dark:text-red-300">{state.error}</p>}
-   <button disabled={pending||providerBusy||!selected.length} className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Preparing review…':`Preview ${selected.length} entries`}</button>
-  </form>
- </article>;
+ const created=[categoryName&&`category “${categoryName}”`,merchantName&&`merchant “${merchantName}”`].filter(Boolean).join(' and ');
+ return <form action={action} className="rounded-xl border border-border bg-card">
+  <input type="hidden" name="rows" value={JSON.stringify(rows)} />
+  <input type="hidden" name="requestId" value={requestId} />
+  <input type="hidden" name="merchant" value={merchantValue} /><input type="hidden" name="merchantName" value={merchantName} />
+  <input type="hidden" name="category" value={categoryValue} /><input type="hidden" name="categoryName" value={categoryName} />
+  <div className="flex flex-wrap items-end gap-3 border-b border-border p-4">
+   <label className="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" checked={items.length>0&&selected.length===items.length} onChange={event=>toggle(items.map(item=>item.row.id),event.target.checked)} />{selected.length?`${selected.length} selected`:'Select all'}</label>
+   <label className="grid gap-1 text-xs text-muted-foreground">Category<input name="categorySearch" list="organize-categories" value={category} onChange={event=>{draftRevision.current++;setCategory(event.target.value);}} maxLength={100} placeholder="Search or create" className={field} /></label>
+   <label className="grid gap-1 text-xs text-muted-foreground">Merchant<input name="merchantSearch" list="organize-merchants" value={merchant} onChange={event=>{draftRevision.current++;setMerchant(event.target.value);}} maxLength={100} placeholder="Keep current" className={field} /></label>
+   <datalist id="organize-categories">{categories.map(target=><option key={target.id} value={target.name} />)}</datalist>
+   <datalist id="organize-merchants">{merchants.map(target=><option key={target.id} value={target.name} />)}</datalist>
+   <button disabled={pending||providerBusy||!rows.length||(merchantValue==='keep'&&categoryValue==='keep')} className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Preparing…':'Preview changes'}</button>
+   <button type="button" disabled={providerBusy||pending||!rows.length} onClick={requestSuggestions} className="min-h-10 text-sm text-muted-foreground underline disabled:opacity-40">{providerBusy?'Asking AI…':'Suggest with AI'}</button>
+   {created&&<p className="basis-full text-xs text-muted-foreground">New {created} will be created.</p>}
+   {assistance&&<p role="status" className="basis-full text-sm">{assistance}</p>}
+   {state.error&&<p role="alert" className="basis-full text-sm text-red-700 dark:text-red-300">{state.error}</p>}
+  </div>
+  <ul className="divide-y divide-border">{items.map(({row,proposal})=>{const hint=suggestion(proposal).filter(Boolean).join(' · ');
+   return <li key={row.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+    <input type="checkbox" aria-label={'Select '+row.description} checked={selected.includes(row.id)} onChange={event=>toggle([row.id],event.target.checked)} />
+    <span className="font-mono text-xs text-muted-foreground">{row.posted_on}</span>
+    <a className="min-w-0 flex-1 truncate hover:underline" href={'/money/transactions?transaction='+row.id}>{row.description}</a>
+    {proposal.financialReviewRequired&&<span className="text-xs text-muted-foreground">Check amount in Transactions</span>}
+    {hint&&<button type="button" onClick={()=>applySuggestion(proposal)} title="Select similar entries and use this suggestion" className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground">{hint}</button>}
+    <span className="font-mono">{formatMoney(row.amount_minor,row.currency_code,locale)}</span>
+   </li>;})}</ul>
+ </form>;
 }
 export function ApprovalForm({reviewId,canSaveRule}:{reviewId:string;canSaveRule:boolean}) {
  const [state,action,pending]=useActionState(applyReview,{});
  return <form action={action} className="mt-4 space-y-3">
   <input type="hidden" name="reviewId" value={reviewId} />
-  <label className="flex gap-2 text-sm"><input type="checkbox" name="confirmed" value="true" required />I reviewed these exact entries and approve the merchant/category changes.</label>
-  {canSaveRule&&<label className="flex gap-2 text-sm"><input type="checkbox" name="saveRule" value="true" />Save a rule so future entries with this description are suggested the same way.</label>}
+  <label className="flex gap-2 text-sm"><input type="checkbox" name="confirmed" value="true" required />I reviewed these entries and approve the changes.</label>
+  {canSaveRule&&<label className="flex gap-2 text-sm"><input type="checkbox" name="saveRule" value="true" />Suggest the same for future entries with this description.</label>}
   {state.error&&<p role="alert" className="text-sm text-red-700 dark:text-red-300">{state.error}</p>}
-  <button disabled={pending} className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Applying…':'Approve organization'}</button>
+  <button disabled={pending} className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Applying…':'Approve'}</button>
  </form>;
 }
 export function UndoReviewForm({reviewId,rows}:{reviewId:string;rows:{id:string;version:number}[]}) {
  const [state,action,pending]=useActionState(undoReview,{});
  return <form action={action} className="mt-3"><input type="hidden" name="reviewId" value={reviewId} /><input type="hidden" name="rows" value={JSON.stringify(rows)} />
   {state.error&&<p role="alert" className="mb-2 text-sm text-red-700 dark:text-red-300">{state.error}</p>}
-  <button disabled={pending} className="text-sm underline disabled:opacity-40">{pending?'Undoing…':'Undo organization batch and its saved rule'}</button>
+  <button disabled={pending} className="text-sm underline disabled:opacity-40">{pending?'Undoing…':'Undo this batch'}</button>
  </form>;
 }
