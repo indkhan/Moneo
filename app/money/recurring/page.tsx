@@ -48,7 +48,7 @@ export default async function RecurringPage() {
         <nav aria-label="Money sections" className="flex gap-4 text-sm text-muted-foreground"><Link className="hover:text-foreground" href="/money/transactions">Transactions</Link><Link className="hover:text-foreground" href="/money/accounts">Accounts</Link><Link className="hover:text-foreground" href="/money/wealth">Wealth</Link></nav>
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Recurring payments</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Bills, subscriptions and income you confirmed, plus patterns found in your history. Nothing changes your forecast until you confirm it.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Confirmed bills, subscriptions and income. Suggestions below only reach your forecast once you confirm them.</p>
         </div>
       </header>
       {accountsError && <p role="alert">Could not load accounts: {accountsError.message}</p>}
@@ -63,22 +63,20 @@ export default async function RecurringPage() {
           </div>)}</dl>}
         </div>
         {schedulesError ? <p role="alert">Could not load confirmed schedules: {schedulesError.message}</p> : schedules.length ? <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table className="w-full min-w-[640px] text-left text-sm">
+          <table className="w-full min-w-[480px] text-left text-sm">
             <thead className="border-b border-border text-xs text-muted-foreground"><tr>
-              <th className="px-4 py-2.5 font-medium">Next</th><th className="px-3 py-2.5 font-medium">Name</th><th className="px-3 py-2.5 font-medium">Cadence</th>
-              <th className="px-3 py-2.5 font-medium">Account</th><th className="px-3 py-2.5 text-right font-medium">Amount</th><th className="px-4 py-2.5 text-right font-medium">Per month</th>
+              <th className="px-4 py-2.5 font-medium">Name</th><th className="px-3 py-2.5 font-medium">Cadence</th><th className="px-3 py-2.5 font-medium">Next</th>
+              <th className="px-4 py-2.5 text-right font-medium">Amount</th>
             </tr></thead>
             <tbody className="divide-y divide-border">{schedules.map(item => <tr key={item.id} className={item.next ? "" : "text-muted-foreground"}>
-              <td className="whitespace-nowrap px-4 py-2.5 font-mono">{item.next ?? "Ended"}</td>
-              <td className="px-3 py-2.5"><Link href="/plan" className="font-medium hover:underline">{item.name}</Link>{item.source === "user" && <span className="ml-2 text-xs text-muted-foreground">added in Plan</span>}</td>
+              <td className="px-4 py-2.5"><Link href="/plan" className="font-medium hover:underline">{item.name}</Link><span className="ml-2 text-xs text-muted-foreground">{item.account_id ? names[item.account_id] ?? "Unknown account" : "No account"}</span></td>
               <td className="px-3 py-2.5 capitalize">{item.cadence}</td>
-              <td className="px-3 py-2.5 text-muted-foreground">{item.account_id ? names[item.account_id] ?? "Unknown account" : "No account"}</td>
-              <td className={`whitespace-nowrap px-3 py-2.5 text-right font-mono tabular-nums ${item.amount > 0n ? "text-emerald-700 dark:text-emerald-400" : ""}`}>{money(item.amount, item.currency_code)}</td>
-              <td className="whitespace-nowrap px-4 py-2.5 text-right font-mono tabular-nums text-muted-foreground">{money(item.monthly, item.currency_code)}</td>
+              <td className="whitespace-nowrap px-3 py-2.5 font-mono">{item.next ?? "Ended"}</td>
+              <td className={`whitespace-nowrap px-4 py-2.5 text-right font-mono tabular-nums ${item.amount > 0n ? "text-emerald-700 dark:text-emerald-400" : ""}`}>{money(item.amount, item.currency_code)}</td>
             </tr>)}</tbody>
           </table>
         </div> : <p className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">No confirmed schedules yet. Confirm a detected pattern below or add one in <Link href="/plan" className="underline">Plan</Link>.</p>}
-        <p className="text-xs text-muted-foreground">Per-month amounts are exact equivalents (52 weeks or 26 fortnights a year); totals are per currency without exchange rates. Edit, pause or end a schedule in <Link href="/plan" className="underline">Plan</Link>.</p>
+        <p className="text-xs text-muted-foreground">Edit, pause or end a schedule in <Link href="/plan" className="underline">Plan</Link>. Monthly totals are per currency (52 weeks a year).</p>
       </section>
 
       <Suspense fallback={<p className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">Looking for recurring patterns in your history…</p>}>
