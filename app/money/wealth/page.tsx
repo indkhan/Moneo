@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireWorkspace } from "@/lib/auth";
@@ -63,60 +62,56 @@ export default async function WealthPage() {
   const currencies = [...totals.keys()].sort((a, b) => Number(b === workspace.display_currency) - Number(a === workspace.display_currency) || a.localeCompare(b));
   const dated = active.filter(item => !item.linked_account_id && item.as_of !== today).length;
 
-  return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
-    <header className="space-y-4">
-      <nav aria-label="Money sections" className="flex gap-4 text-sm text-muted-foreground"><Link className="hover:text-foreground" href="/money/transactions">Transactions</Link><Link className="hover:text-foreground" href="/money/accounts">Accounts</Link><Link className="hover:text-foreground" href="/money/recurring">Recurring</Link></nav>
-      <div><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Investments, assets and debts</h1>
-        <p className="mt-1 text-sm text-muted-foreground">What you own and owe, and your recorded net worth over time. Values already inside an account balance aren’t counted twice.</p></div>
-    </header>
+  return <main className="mx-auto w-full max-w-4xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
+    <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Wealth</h1>
 
-    <section aria-label="Net worth" className="grid gap-4 lg:grid-cols-2">
-      {currencies.length ? currencies.map(currency => <div key={currency} className="rounded-xl border border-border bg-card p-5">
-        <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-sm font-medium text-muted-foreground">Net worth ({currency})</h2>
-          <p className="font-mono text-2xl font-semibold tabular-nums">{formatMoney(totals.get(currency) ?? 0n, currency)}</p></div>
-        <div className="mt-3"><Sparkline width={480} height={72} className="w-full text-brand" label={`Recorded net worth in ${currency} at each month end`}
-          points={series.map(point => ({ date: point.date, value: netWorth(point).get(currency) ?? 0n }))} /></div>
-        <p className="mt-1 flex justify-between text-xs text-muted-foreground"><span>{series[0].date}</span><span>{today}</span></p>
-        <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
+    <section aria-label="Net worth" className="space-y-4">
+      {currencies.length ? currencies.map(currency => <div key={currency} className="rounded-xl border border-border bg-card p-6">
+        <h2 className="text-sm text-muted-foreground">Net worth ({currency})</h2>
+        <p className="mt-1 font-mono text-4xl font-semibold tracking-tight tabular-nums">{formatMoney(totals.get(currency) ?? 0n, currency)}</p>
+        <dl className="mt-5 grid grid-cols-3 gap-4 border-t border-border pt-4 text-sm">
           {([["Accounts", now.accounts], ["Investments & assets", now.assets], ["Debts", now.debts]] as const).map(([label, map]) => <div key={label}>
-            <dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-mono tabular-nums">{formatMoney(map.get(currency) ?? 0n, currency)}</dd></div>)}
+            <dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-0.5 font-mono tabular-nums">{formatMoney(map.get(currency) ?? 0n, currency)}</dd></div>)}
         </dl>
-      </div>) : <p className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">No recorded balances or valuations yet.</p>}
-      <p className="text-xs text-muted-foreground lg:col-span-2">Latest recorded account balance and valuation on each date, carried forward until updated. Per currency, without exchange rates; gaps between records are unknown.{dated > 0 ? ` ${dated} valuation${dated === 1 ? " is" : "s are"} dated before today and ${dated === 1 ? "is" : "are"} left out of the current forecast; update ${dated === 1 ? "it" : "them"} below.` : ""}</p>
+        <Sparkline width={480} height={56} className="mt-5 w-full text-brand" label={`Recorded net worth in ${currency} at each month end`}
+          points={series.map(point => ({ date: point.date, value: netWorth(point).get(currency) ?? 0n }))} />
+        <p className="mt-1 flex justify-between text-xs text-muted-foreground"><span>{series[0].date}</span><span>{today}</span></p>
+      </div>) : <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No recorded balances or valuations yet.</p>}
+      <p className="text-xs text-muted-foreground">Latest recorded values per currency, carried forward; no exchange rates. Values inside an account balance aren’t counted twice.{dated > 0 ? ` ${dated} valuation${dated === 1 ? " is" : "s are"} dated before today and left out of current net worth.` : ""}</p>
     </section>
 
-    <section aria-label="Add wealth" className="grid gap-3 sm:grid-cols-3">{sections.map(([kind, title]) => <details key={kind} className="rounded-xl border border-border bg-card p-4 open:sm:col-span-3"><summary className="cursor-pointer text-sm font-semibold">Add {kind === "holding" ? "investment" : kind}<span className="sr-only"> ({title})</span></summary><WealthForm kind={kind} {...choices} /></details>)}</section>
+    <section aria-label="Add wealth" className="flex flex-wrap gap-2">{sections.map(([kind, title]) => <details key={kind} className="group rounded-lg border border-border bg-card open:basis-full open:p-5"><summary className="cursor-pointer px-3 py-1.5 text-sm font-medium group-open:p-0">Add {kind === "holding" ? "investment" : kind}<span className="sr-only"> ({title})</span></summary><WealthForm kind={kind} {...choices} /></details>)}</section>
 
     {sections.map(([kind, title]) => {
       const rows = active.filter(item => item.kind === kind);
       if (!rows.length) return null;
       return <section key={kind} aria-label={title} className="space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-base font-semibold">{title} <span className="text-muted-foreground">({rows.length})</span></h2>
-          <p className="font-mono text-sm tabular-nums">{[...sum(rows)].map(([currency, amount]) => formatMoney(amount, currency)).join(" · ")}</p></div>
-        {rows.map(item => {
+        <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-base font-semibold">{title} <span className="font-normal text-muted-foreground">{rows.length}</span></h2>
+          <p className="font-mono text-sm text-muted-foreground tabular-nums">{[...sum(rows)].map(([currency, amount]) => formatMoney(amount, currency)).join(" · ")}</p></div>
+        <div className="divide-y divide-border rounded-xl border border-border bg-card">{rows.map(item => {
           const payments = (() => { try { return item.kind === "debt" && item.next_payment_on && BigInt(item.monthly_payment_minor ?? "0") > 0n ? debtPayments({ principalMinor: BigInt(item.amount_minor), annualRate: item.annual_rate_text!, monthlyPaymentMinor: BigInt(item.monthly_payment_minor!), nextPaymentOn: item.next_payment_on }, today, 365) : []; } catch { return null; } })();
-          return <article key={item.id} className="space-y-1 rounded-xl border border-border bg-card px-5 py-4">
-            <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="text-base font-semibold">{item.name}</h3>
-              <p className="font-mono text-base font-semibold tabular-nums">{formatMoney(item.amount_minor, item.currency_code)}</p></div>
-            <p className="text-sm text-muted-foreground"><span className="capitalize">{item.kind}</span> · as of {item.as_of} · {item.linked_account_id ? "Already included in linked account balance; excluded from additional net worth." : item.as_of === today ? "Standalone current manual valuation." : "Historical manual valuation; current net worth excludes it."}</p>
+          return <article key={item.id} className="space-y-2 px-5 py-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-medium">{item.name}</h3>
+              <p className="font-mono font-semibold tabular-nums">{formatMoney(item.amount_minor, item.currency_code)}</p></div>
+            <p className="text-xs text-muted-foreground">As of {item.as_of}{item.kind === "holding" ? ` · ${item.quantity_text} × ${item.currency_code} ${item.unit_price_text}` : ""}{item.kind === "debt" ? ` · ${item.annual_rate_text}% a year · ${formatMoney(item.monthly_payment_minor ?? "0", item.currency_code)}/month` : ""}{item.linked_account_id ? " · Inside an account balance" : item.as_of === today ? "" : " · Outdated, not in current net worth"}</p>
+            {item.cost_basis_minor !== null && <p className="text-xs text-muted-foreground">Cost basis {formatMoney(item.cost_basis_minor, item.currency_code)} · valuation gain/loss {formatMoney(BigInt(item.amount_minor) - BigInt(item.cost_basis_minor), item.currency_code)} (unrealized)</p>}
+            {item.kind === "debt" && (payments === null ? <p className="text-xs text-amber-700 dark:text-amber-300">Update the next repayment date and principal to project payments.</p> : payments.length > 0 && <ul className="space-y-0.5 text-xs text-muted-foreground">{payments.slice(0, 3).map(payment => <li key={payment.date}>{payment.date}: {formatMoney(payment.paymentMinor, item.currency_code)} payment, {formatMoney(payment.interestMinor, item.currency_code)} assumed interest, {formatMoney(payment.remainingMinor, item.currency_code)} left</li>)}</ul>)}
             {item.sourceCoverage && <SourceCoverageDetails coverage={item.sourceCoverage} />}
-            {item.kind === "holding" && <p className="text-sm">{item.quantity_text} units at {item.currency_code} {item.unit_price_text} each.</p>}
-            {item.cost_basis_minor !== null && <p className="text-sm">Cost basis {formatMoney(item.cost_basis_minor, item.currency_code)}; valuation gain/loss {formatMoney(BigInt(item.amount_minor) - BigInt(item.cost_basis_minor), item.currency_code)}. This is unrealized value change, without guessed cash dividends or trading history.</p>}
-            {item.kind === "debt" && <><p className="text-sm">Outstanding principal {formatMoney(item.amount_minor, item.currency_code)}; nominal annual rate {item.annual_rate_text}%; monthly repayment {formatMoney(item.monthly_payment_minor ?? "0", item.currency_code)}.</p>{payments === null ? <p className="text-sm text-amber-700 dark:text-amber-300">Update the next repayment date and outstanding principal before projecting payments.</p> : <ul className="space-y-0.5 text-sm text-muted-foreground">{payments.slice(0, 3).map(payment => <li key={payment.date}>{payment.date}: {formatMoney(payment.paymentMinor, item.currency_code)} payment, {formatMoney(payment.interestMinor, item.currency_code)} assumed interest, {formatMoney(payment.remainingMinor, item.currency_code)} remaining principal</li>)}</ul>}</>}
-            <div className="flex flex-wrap items-start gap-4 pt-1">
-              <details className="min-w-0 flex-1"><summary className="cursor-pointer text-sm underline">Edit valuation and details</summary><WealthForm kind={item.kind} item={item} {...choices} /></details>
-              <form action={removeWealthItem}><input type="hidden" name="id" value={item.id} /><input type="hidden" name="version" value={item.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><button className="text-sm text-muted-foreground underline hover:text-foreground">Remove wealth record (keep history)</button></form>
+            <div className="flex flex-wrap items-start gap-4">
+              <details className="min-w-0 flex-1"><summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">Edit valuation and details</summary><WealthForm kind={item.kind} item={item} {...choices} /></details>
+              <form action={removeWealthItem}><input type="hidden" name="id" value={item.id} /><input type="hidden" name="version" value={item.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><button aria-label="Remove wealth record (keep history)" className="text-sm text-muted-foreground hover:text-foreground">Remove</button></form>
             </div>
           </article>;
-        })}
+        })}</div>
       </section>;
     })}
     {!active.length && <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">Nothing added yet. Add an investment, asset or debt above.</p>}
 
-    <details className="rounded-xl border border-border bg-card p-5"><summary className="cursor-pointer text-base font-semibold">Wealth source history and undo</summary><ul className="mt-4 divide-y divide-border">{events.slice(0, 50).map(event => {
+    <details className="rounded-xl border border-border bg-card px-5 py-4"><summary className="cursor-pointer text-sm font-medium">Wealth source history and undo</summary><ul className="mt-3 divide-y divide-border">{events.slice(0, 50).map(event => {
       const { after, before } = event; const current = itemById.get(event.item_id);
-      return <li key={event.id} className="flex flex-wrap items-center justify-between gap-3 py-2 text-sm"><span><span className="font-medium">{after.name}</span> · {before ? formatMoney(before.amount_minor, before.currency_code) : "New manual source"} → {formatMoney(after.amount_minor, after.currency_code)} · valued {after.as_of}{after.removed_at ? " · Removed" : ""}<span className="text-muted-foreground"> · {new Date(event.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{event.undone_at ? " · Undone" : ""}</span></span>
-        {!event.undone_at && current && <form action={undoWealthEvent}><input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="version" value={current.version} /><button className="underline">Undo wealth change</button></form>}</li>;
+      return <li key={event.id} className="flex flex-wrap items-center justify-between gap-3 py-2 text-sm"><span><span className="font-medium">{after.name}</span> <span className="font-mono tabular-nums">{before ? formatMoney(before.amount_minor, before.currency_code) : "New"} → {formatMoney(after.amount_minor, after.currency_code)}</span>{after.removed_at ? " · Removed" : ""}
+        <span className="block text-xs text-muted-foreground">Valued {after.as_of} · saved {new Date(event.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{event.undone_at ? " · Undone" : ""}</span></span>
+        {!event.undone_at && current && <form action={undoWealthEvent}><input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="version" value={current.version} /><button className="text-sm text-muted-foreground hover:text-foreground">Undo wealth change</button></form>}</li>;
     })}</ul>{!events.length && <p className="mt-2 text-sm text-muted-foreground">Every add, edit and removal appears here with undo.</p>}</details>
   </main>;
 }
