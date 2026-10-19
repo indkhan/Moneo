@@ -30,7 +30,7 @@ test("dated FX transfer keeps canonical source and an included fee through guard
   const rate=form.getByRole("combobox",{name:"Dated FX evidence",exact:true}); const rateValue=await rate.locator("option").filter({hasText:source}).getAttribute("value"); await rate.selectOption(rateValue!);
   const fee=form.locator("fieldset").first(); await fee.getByRole("textbox",{name:"Fee amount",exact:true}).fill("1.00"); await fee.getByRole("textbox",{name:"Fee source evidence",exact:true}).fill("Explicit 1.00 EUR fee included in debit source");
   await expect(form.getByRole("status")).toContainText("EUR 1.00"); await form.getByRole("checkbox").check(); await form.getByRole("button",{name:"Confirm verified transfer",exact:true}).click();
-  await expect(detail.getByText("Transfer pair:",{exact:false})).toBeVisible({timeout:30_000}); await expect(detail.locator('pre[aria-label="Original source evidence"]')).toContainText('"amount_minor": "-10100"');
+  await expect(detail.locator("p",{hasText:"Transfer pair:"})).toBeVisible({timeout:30_000}); await expect(detail.locator('pre[aria-label="Original source evidence"]')).toContainText('"amount_minor": "-10100"');
   await detail.getByRole("button",{name:"Undo verified link",exact:true}).click(); await expect(detail.getByRole("heading",{name:"Verified transfer",exact:true})).toBeVisible({timeout:30_000});
   await expect(detail.locator('pre[aria-label="Original source evidence"]')).toContainText('"amount_minor": "-10100"');
   const refundDescriptions=[`Original USD purchase QA ${suffix}`,`Partial EUR refund one QA ${suffix}`,`Partial EUR refund two QA ${suffix}`]; const refundUrls:string[]=[];
@@ -47,7 +47,7 @@ test("dated FX transfer keeps canonical source and an included fee through guard
     const originals=refundForm.getByRole("combobox",{name:"Refund original",exact:true}); const originalValue=await originals.locator("option").filter({hasText:refundDescriptions[0]}).getAttribute("value"); await originals.selectOption(originalValue!);
     await refundForm.getByRole("combobox",{name:"Dated FX evidence",exact:true}).selectOption(rateValue!); await expect(refundForm.getByRole("status")).toContainText("USD 55.00");
     await refundForm.getByRole("checkbox").check(); await refundForm.getByRole("button",{name:"Confirm verified refund",exact:true}).click();
-    await expect(detail.getByText("Refund of:",{exact:false})).toBeVisible({timeout:30_000}); await expect(detail.locator('pre[aria-label="Original source evidence"]')).toContainText('"currency_code": "EUR"');
+    await expect(detail.locator("p",{hasText:"Refund of:"})).toBeVisible({timeout:30_000}); await expect(detail.locator('pre[aria-label="Original source evidence"]')).toContainText('"currency_code": "EUR"');
   }
   await page.goto(refundUrls[0]); await expect(detail.getByText(refundDescriptions[1],{exact:false})).toBeVisible(); await expect(detail.getByText(refundDescriptions[2],{exact:false})).toBeVisible();
   for(const url of refundUrls.slice(1)) {
