@@ -9,6 +9,7 @@ import type { AgentProposalView, AgentRunView, AgentTaskView } from "@/lib/ai/ag
 import { formatMoney } from "@/lib/finance/format";
 import { decideAgentProposals } from "@/app/ai/agents/actions";
 import { AskAbout } from "./ask-about";
+import { TeamFlow } from "./team-flow";
 
 const ACTIVE = new Set(["queued", "running"]);
 const WAVE_LABELS = ["Analysts · in parallel", "Builders · read the analysts' results", "Writer · after the lead merges"];
@@ -129,6 +130,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       {active && <button type="button" onClick={() => void control("cancel")} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"><Square className="size-3.5" aria-hidden="true" />Stop</button>}
       {(run.status === "canceled" || run.status === "failed") && <button type="button" onClick={() => void control("resume")} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"><Play className="size-3.5" aria-hidden="true" />Resume</button>}
     </header>
+    {run.tasks.length > 0 && <TeamFlow statuses={Object.fromEntries(run.tasks.map(task => [task.agent, task.status]))} finished={run.status === "completed"} />}
     {run.error && <p role="alert" className="rounded-lg bg-danger-soft p-3 text-sm text-danger">{run.error}</p>}
 
     {lead && <section aria-label="Lead agent" className="rounded-xl border border-border bg-card p-4">
