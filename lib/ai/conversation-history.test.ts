@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadConversationHistory, loadThreads } from "./conversation-history";
+import { loadConversation, loadConversationHistory, loadThreads } from "./conversation-history";
 
 const workspace = "owned";
 const rows = Array.from({ length: 1000 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, workspace_id: workspace, conversation_id: "00000000-0000-4000-8000-000000000000", title: `Thread ${i}`, content: `Message ${i}`, created_at: "2026-01-01T00:00:00+00:00" }));
@@ -80,4 +80,37 @@ it("searches live titles and message text with escaped wildcards", async () => {
   expect(calls.filter(call => call[1] === "ilike").map(call => call[2][1])).toEqual(["%100\\%\\_rent_%", "%100\\%\\_rent_%"]);
   expect(calls.filter(call => call[0] === "conversations" && call[1] === "is")).toHaveLength(2);
   expect(calls.find(call => call[1] === "in")?.[2]).toEqual(["id", ["b"]]);
+});
+
+describe("saved answer activity", () => {
+  it("joins each answer to its owned chat request's plan and tool calls", async () => {
+    const conversation = "00000000-0000-4000-8000-000000000001";
+    const tables: Record<string, Record<string, unknown>[]> = {
+      conversations: [{ id: conversation, workspace_id: workspace, title: "T", created_at: "2026-01-01T00:00:00+00:00" }],
+      messages: [
+        { id: "m1", workspace_id: workspace, conversation_id: conversation, role: "user", content: "Q", created_at: "2026-01-01T00:00:01+00:00", reply_to: null },
+        { id: "m2", workspace_id: workspace, conversation_id: conversation, role: "assistant", content: "A", created_at: "2026-01-01T00:00:02+00:00", reply_to: "r1" },
+        { id: "m3", workspace_id: workspace, conversation_id: conversation, role: "assistant", content: "B", created_at: "2026-01-01T00:00:03+00:00", reply_to: "r2" },
+      ],
+      chat_requests: [
+        { id: "r1", workspace_id: workspace, tool_calls: [{ name: "plan_investigation", input: { steps: ["Check spending"] }, output: "" }, { name: "accounts_list", input: {}, output: "[]" }] },
+        { id: "r2", workspace_id: "other", tool_calls: [{ name: "accounts_list", input: {}, output: "secret" }] },
+      ],
+    };
+    const fake = { from(table: string) {
+      let data = [...tables[table]];
+      const query = {
+        select: () => query, is: () => query, order: () => query, limit: () => query,
+        eq: (key: string, value: string) => { data = data.filter(row => row[key] === value); return query; },
+        in: (key: string, values: string[]) => { data = data.filter(row => values.includes(row[key] as string)); return query; },
+        maybeSingle: async () => ({ data: data[0] ?? null, error: null }),
+        then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(resolve),
+      }; return query;
+    } };
+    const { messages } = await loadConversation(fake as never, workspace, conversation);
+    const answer = messages.find(row => row.id === "m2");
+    expect(answer).toMatchObject({ plan: ["Check spending"], tools: [{ name: "accounts_list", state: "done", input: {}, output: "[]" }] });
+    expect(answer).not.toHaveProperty("reply_to");
+    expect(messages.find(row => row.id === "m3")).not.toHaveProperty("tools");
+  });
 });

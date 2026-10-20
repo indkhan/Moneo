@@ -29,7 +29,7 @@ const AiMessage = dynamic(() => import("./ai-message").then(module => module.AiM
   loading: () => <div className="h-5 w-2/3 animate-pulse rounded bg-muted" aria-hidden="true" />,
 });
 
-export type ChatItem = HistoryMessage & { tools?: (string | ToolStep)[]; plan?: string[]; followUps?: FollowUp[] };
+export type ChatItem = Omit<HistoryMessage, "tools"> & { tools?: (string | ToolStep)[]; plan?: string[]; followUps?: FollowUp[] };
 export type PendingExchange = { question: string; tools: ToolStep[]; answer?: string; streaming?: boolean; plan?: string[]; steers?: string[] };
 
 /** Message list shared by the AI page and the Ask Moneo panel. */
