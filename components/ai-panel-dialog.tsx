@@ -73,7 +73,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     void sendMessage(question);
   }
 
-  async function sendMessage(question: string) {
+  async function sendMessage(question: string, queued = false) {
     if (busy || loading || historyError) return;
     const id = conversationId ?? crypto.randomUUID();
     setConversationId(id);
@@ -81,7 +81,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     const selectionGeneration = generation.current;
     let live: PendingExchange = { question, tools: [] };
     setPending(live);
-    setQuestion("");
+    if (!queued) setQuestion("");
     const result = await send({ conversationId: id, message: question, context }, event => { live = applyChatEvent(live, withSteers(event)); setPending(live); });
     setPending(null);
     if (result && selectionGeneration === generation.current) {
@@ -92,10 +92,16 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
       setAbout(null);
       // The AI page keeps its own client state; refresh it only when it is the page behind the panel.
       if (pathname === "/ai") { router.push(`/ai?conversation=${id}`); router.refresh(); }
-    } else if (!result) setQuestion(current => current || question);
+    } else if (!result && !queued) setQuestion(current => current || question);
   }
 
-  const { queue, enqueue, remove, steer, withSteers } = useChatQueue(chat, message => void sendMessage(message));
+  // A queued message that fails goes back to the queue, so the composer keeps what the user is typing.
+  function startQueued(message: string) {
+    if (busy || loading || historyError) return false;
+    void sendMessage(message, true);
+    return true;
+  }
+  const { queue, enqueue, remove, steer, withSteers, canSteer } = useChatQueue(chat, conversationId ?? "", startQueued);
 
   return <dialog ref={dialog} id="moneo-ai-panel" aria-label="AI assistant" onCancel={onClose} className="fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-none w-full max-w-md border-l border-border bg-background p-0 text-foreground shadow-2xl backdrop:bg-black/30">
     <div className="flex h-full flex-col">
@@ -113,7 +119,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
       </div>
       <div className="px-3 pb-3">
         {about && <p className="mb-2 flex items-center gap-2 px-2 text-xs text-muted-foreground">About: <span className="min-w-0 truncate rounded bg-muted px-1.5 py-0.5 text-foreground">{about.label}</span><button type="button" onClick={() => setAbout(null)} aria-label="Remove context" className="hover:text-foreground"><X className="size-3" aria-hidden="true" /></button></p>}
-        <ChatQueue items={queue} canSteer={busy} onSteer={item => void steer(item)} onRemove={remove} />
+        <ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} />
         <ChatComposer compact id="panel-question" label="Question" value={question} onChange={setQuestion} onSubmit={ask} onStop={() => void cancel()} busy={busy} disabled={loading || !!historyError} placeholder="Ask about this page…" busyText="Request running · waiting for response" />
         {error && <p role="alert" className="mt-2 px-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
         {status === "canceled" && <p role="status" className="mt-2 px-2 text-sm text-muted-foreground">Canceled. Completed edits remain in transaction history.</p>}

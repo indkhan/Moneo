@@ -34,20 +34,26 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, o
     void sendMessage(message);
   }
 
-  async function sendMessage(message: string) {
+  async function sendMessage(message: string, queued = false) {
     if (busy) return;
     onStart?.(conversationId, message);
-    setMessage("");
+    if (!queued) setMessage("");
     const result = await send({ conversationId, message }, streamed => onEvent?.(conversationId, withSteers(streamed)));
     if (result) {
       selectConversation(selectionKey, conversationId);
-    } else setMessage(current => current || message);
+    } else if (!queued) setMessage(current => current || message);
     onDone?.(conversationId, message, result);
   }
 
-  const { queue, enqueue, remove, steer, withSteers } = useChatQueue(chat, message => void sendMessage(message));
+  // A queued message that fails goes back to the queue, so the composer keeps what the user is typing.
+  function startQueued(next: string) {
+    if (busy) return false;
+    void sendMessage(next, true);
+    return true;
+  }
+  const { queue, enqueue, remove, steer, withSteers, canSteer } = useChatQueue(chat, conversationId, startQueued);
 
-  const composer = <><ChatQueue items={queue} canSteer={busy} onSteer={item => void steer(item)} onRemove={remove} /><ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder="Ask anything about your money" busyText="Waiting for a response…" /></>;
+  const composer = <><ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} /><ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder="Ask anything about your money" busyText="Waiting for a response…" /></>;
   const notices = <>{error && <p role="alert" className="mt-2 px-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
     {status === "canceled" && <p role="status" className="mt-2 px-3 text-sm text-muted-foreground">Canceled. Previously completed edits remain in transaction history.</p>}</>;
 
