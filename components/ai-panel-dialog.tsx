@@ -71,17 +71,17 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     const context = { path: window.location.pathname + window.location.search, ...(about ? { about } : {}) };
     const selectionGeneration = generation.current;
     setPending({ question, tools: [] });
+    setQuestion("");
     const result = await send({ conversationId: id, message: question, context }, event => setPending(current => current && applyChatEvent(current, event)));
     setPending(null);
     if (result && selectionGeneration === generation.current) {
       selectConversation(selectionKey, id);
       const now = new Date().toISOString();
       setHistory(current => [...current, { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now }, { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: result.toolsUsed, followUps: result.followUps }]);
-      setQuestion(current => current === question ? "" : current);
       setAbout(null);
       // The AI page keeps its own client state; refresh it only when it is the page behind the panel.
       if (pathname === "/ai") { router.push(`/ai?conversation=${id}`); router.refresh(); }
-    }
+    } else if (!result) setQuestion(current => current || question);
   }
 
   return <dialog ref={dialog} id="moneo-ai-panel" aria-label="AI assistant" onCancel={onClose} className="fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-none w-full max-w-md border-l border-border bg-background p-0 text-foreground shadow-2xl backdrop:bg-black/30">

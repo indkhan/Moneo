@@ -28,11 +28,11 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, o
     event.preventDefault();
     if (!message.trim() || busy) return;
     onStart?.(conversationId, message);
+    setMessage("");
     const result = await send({ conversationId, message }, streamed => onEvent?.(conversationId, streamed));
     if (result) {
       selectConversation(selectionKey, conversationId);
-      setMessage(current => current === message ? "" : current);
-    }
+    } else setMessage(current => current || message);
     onDone?.(conversationId, message, result);
   }
 
