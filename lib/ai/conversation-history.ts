@@ -2,7 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
 const cursorSchema = z.object({ created_at: z.iso.datetime({ offset: true }), id: z.uuid() });
-export type HistoryMessage = { id: string; role: string; content: string; created_at: string };
+export type HistoryMessage = { id: string; role: string; content: string; created_at: string; plan?: string[]; tools?: SavedToolStep[] };
+export type SavedToolStep = { name: string; state: "done"; input?: unknown; output?: string };
 export type HistoryThread = { id: string; title: string; created_at: string };
 const THREAD_PAGE = 30;
 const MESSAGE_PAGE = 100;
@@ -48,7 +49,7 @@ export async function loadThreads(supabase: SupabaseClient, workspace: string, t
 export async function loadConversation(supabase: SupabaseClient, workspace: string, id: string, messagesBefore?: string) {
   const mc = before(messagesBefore);
   if (!z.uuid().safeParse(id).success) throw new Error("Conversation unavailable");
-  let mq = supabase.from("messages").select("id,role,content,created_at").eq("workspace_id", workspace).eq("conversation_id", id).order("created_at", { ascending: false }).order("id", { ascending: false });
+  let mq = supabase.from("messages").select("id,role,content,created_at,reply_to").eq("workspace_id", workspace).eq("conversation_id", id).order("created_at", { ascending: false }).order("id", { ascending: false });
   if (mc) mq = mq.or(`created_at.lt.${mc.created_at},and(created_at.eq.${mc.created_at},id.lt.${mc.id})`);
   const [conversation, page] = await Promise.all([
     supabase.from("conversations").select("id,title,created_at").eq("workspace_id", workspace).eq("id", id).is("deleted_at", null).maybeSingle(),
@@ -57,9 +58,30 @@ export async function loadConversation(supabase: SupabaseClient, workspace: stri
   if (conversation.error) throw new Error("Could not load conversation. Try again.");
   if (!conversation.data) throw new Error("Conversation unavailable. It may be missing or belong to another workspace.");
   if (page.error) throw new Error("Could not load messages. Try again.");
-  const messages = (page.data ?? []).slice(0, MESSAGE_PAGE) as HistoryMessage[];
-  const messagesCursor = (page.data?.length ?? 0) > MESSAGE_PAGE ? cursor(messages[messages.length - 1]) : null;
+  const rows = (page.data ?? []).slice(0, MESSAGE_PAGE) as (HistoryMessage & { reply_to?: string | null })[];
+  const messagesCursor = (page.data?.length ?? 0) > MESSAGE_PAGE ? cursor(rows[rows.length - 1]) : null;
+  const activity = await savedActivity(supabase, workspace, rows.flatMap(row => row.role === "assistant" && row.reply_to ? [row.reply_to] : []));
+  const messages = rows.map(({ reply_to, ...message }) => ({ ...message, ...(reply_to ? activity.get(reply_to) : undefined) }));
   return { selected: conversation.data as HistoryThread, messages: messages.reverse(), messagesCursor };
+}
+
+const savedCall = z.object({ name: z.string(), input: z.unknown().optional(), output: z.string().optional() });
+const planSteps = z.object({ steps: z.array(z.string()) });
+
+/** Each answer's saved plan and tool calls from its owned chat request; missing or malformed activity is just omitted. */
+async function savedActivity(supabase: SupabaseClient, workspace: string, requestIds: string[]) {
+  const activity = new Map<string, { plan?: string[]; tools?: SavedToolStep[] }>();
+  if (!requestIds.length) return activity;
+  const { data, error } = await supabase.from("chat_requests").select("id,tool_calls").eq("workspace_id", workspace).in("id", requestIds);
+  if (error) return activity;
+  for (const row of (data ?? []) as { id: string; tool_calls: unknown }[]) {
+    const calls = z.array(savedCall).safeParse(row.tool_calls);
+    if (!calls.success) continue;
+    const plan = calls.data.flatMap(call => call.name === "plan_investigation" ? [planSteps.safeParse(call.input)] : []).find(parsed => parsed.success)?.data?.steps;
+    const tools = calls.data.filter(call => call.name !== "plan_investigation").map(call => ({ name: call.name, state: "done" as const, input: call.input, output: call.output }));
+    activity.set(row.id, { ...(plan ? { plan } : {}), ...(tools.length ? { tools } : {}) });
+  }
+  return activity;
 }
 
 export async function loadConversationHistory(supabase: SupabaseClient, workspace: string, requested?: string, threadsBefore?: string, messagesBefore?: string) {

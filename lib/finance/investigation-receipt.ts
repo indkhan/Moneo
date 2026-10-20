@@ -1,13 +1,16 @@
 import type { AiDataScope } from "@/lib/settings";
 import type { EvidenceReceipt } from "./evidence-receipts";
 import { createEvidenceReceipt, evidenceFingerprint, type EvidenceReceiptInput } from "./evidence-receipts";
+import { sourceCoverageNeedsReview, type SourceCoverage } from "./source-coverage";
 import { investigate, type InvestigationSpec, type InvestigationRow, type InvestigationContext } from "./investigation";
 export const INVESTIGATION_CALCULATION_VERSION = "investigation-v1-canonical-fx-allocation";
 export function investigationReceipt(dataset: { spec: InvestigationSpec; rows: InvestigationRow[]; context: InvestigationContext; sourceRevision: string }, scopes: AiDataScope[]): EvidenceReceipt {
   const spec = { ...dataset.spec, page: { size: 25, period: "both" as const } };
   const result = investigate(spec, dataset.rows, dataset.context, { retainSupport: true });
   const records = result.retainedRecords ?? [];
-  const qualifiers: EvidenceReceiptInput["metrics"][number]["qualifiers"] = ["partial_coverage"];
+  const qualifiers: EvidenceReceiptInput["metrics"][number]["qualifiers"] = [];
+  const coverage = dataset.context.sourceCoverage as { current?: SourceCoverage; comparison?: SourceCoverage | null } | undefined;
+  if ([coverage?.current, coverage?.comparison].some(item => item && sourceCoverageNeedsReview(item))) qualifiers.push("partial_coverage");
   if (result.coverage.classificationExcluded) qualifiers.push("partial_classification");
   if (result.coverage.unresolvedIncluded) qualifiers.push("unresolved_included");
   const limitations: NonNullable<EvidenceReceiptInput["limitations"]> = (result.reporting?.exclusions ?? [])

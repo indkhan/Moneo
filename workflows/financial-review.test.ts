@@ -111,14 +111,13 @@ it("freezes scheduled reviews to their completed cadence period rather than a ne
   expect(saved.value.p_evidence).toMatchObject({period: {from: "2026-09-28", to: "2026-10-04"}, reviewInvestigation: {request: {output: "report", query: {comparison: {from: "2026-09-21", to: "2026-09-27"}}}}});
   expect(fixture.writes.some(write => write.table === "reserve_financial_investigation_synthesis")).toBe(true);
 });
-it("never publishes invented provider amounts or source links as a dated review", async () => {
+it("saves the model's Markdown review as written", async () => {
   fixture.scheduled = false;
-  vi.mocked(generateText).mockResolvedValueOnce({ text: "You spent EUR 999999.00 [source](/money/transactions?transaction=missing)" } as never);
+  vi.mocked(generateText).mockResolvedValueOnce({ text: "## September\n\nYou spent **EUR 12.00**." } as never);
   await financialReview("job", "workspace");
   const saved = fixture.writes.find(write => write.table === "finish_financial_review")!;
-  expect(saved.value.p_body).not.toContain("999999");
-  expect(saved.value.p_body).not.toContain("transaction=missing");
-  expect(saved.value.p_body).toContain("Unsupported sections were removed");
+  expect(saved.value.p_body).toContain("## September\n\nYou spent **EUR 12.00**.");
+  expect(vi.mocked(generateText).mock.calls[0][0].system).toContain("Markdown");
 });
 it("accepts atomic cancellation during final save without separately completing a job", async () => {
   fixture.scheduled = false; fixture.finishStatus = "canceled";

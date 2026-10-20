@@ -15,3 +15,12 @@ it("shows the investigation plan while tools run and one-click next steps after 
   expect(done).toContain("Break this down by merchant</button>");
   expect(done).toContain('href="/ai/agents"');
 });
+
+it("renders streamed answer text progressively and only shows saving once the answer is final", () => {
+  let pending = applyChatEvent({ question: "Spending?", tools: [] }, { type: "delta", text: "You spent " });
+  pending = applyChatEvent(pending, { type: "delta", text: "**EUR 12.00**" });
+  const streaming = renderToStaticMarkup(<ChatMessages messages={[]} pending={pending} />);
+  expect(streaming).toContain("You spent **EUR 12.00**");
+  expect(streaming).not.toContain("Saving to history");
+  expect(renderToStaticMarkup(<ChatMessages messages={[]} pending={applyChatEvent(pending, { type: "answer", answer: "You spent **EUR 12.00**" })} />)).toContain("Saving to history");
+});

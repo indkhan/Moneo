@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
+import { Component, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 
 // Loaded on the client only, so echarts never ships in the server render or blocks first paint.
@@ -91,4 +91,33 @@ export function ForecastChart({ days, obligations, currency, label, compare }: {
       ],
     }} />
   </div>;
+}
+
+const SERIES_COLORS = ["#2a6fdb", "#e07b39", "#3aa676", "#c94f6d", "#8a63d2", "#c9a227", "#2bb3c0", "#7a8699", "#d16ba5", "#5c9e31", "#b5651d", "#4b5bb5"];
+
+/** Parses a model-written ```chart block: any ECharts option object, or null when it is not one. */
+export function parseChartOption(source: string): Record<string, unknown> | null {
+  try {
+    const value: unknown = JSON.parse(source);
+    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  } catch { return null; }
+}
+
+/** Shows `fallback` instead of a chart that ECharts fails to render. */
+export class ChartBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() { return this.state.failed ? this.props.fallback : this.props.children; }
+}
+
+/** Renders a model-written ECharts option with theme defaults; the model's own settings win. */
+export function AnswerChart({ option }: { option: Record<string, unknown> }) {
+  const colors = useThemeColors();
+  const themed = { color: SERIES_COLORS, backgroundColor: "transparent", textStyle: { color: colors.muted }, tooltip: {}, ...option };
+  const title = (option.title as { text?: unknown } | undefined)?.text;
+  return <figure className="ai-chart my-4 min-w-0 max-w-full rounded-xl border border-border bg-card p-4">
+    <div role="img" aria-label={typeof title === "string" ? title : "Chart"}>
+      <ReactECharts option={themed} notMerge style={{ width: "100%", height: 320 }} />
+    </div>
+  </figure>;
 }

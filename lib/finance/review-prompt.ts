@@ -1,5 +1,11 @@
 import type {EvidenceReceipt} from "./evidence-receipts";
 import type {ReviewRequest} from "./review-request";
+import {formatMoney} from "./format";
+
+/** A measure with its money value formatted for prose. */
+export function withFormattedValue<T extends {valueMinor: string | null; currency: string; unit?: "money" | "count"}>(metric: T): T & {valueFormatted?: string} {
+  return metric.valueMinor !== null && (metric.unit ?? "money") === "money" ? {...metric, valueFormatted: formatMoney(metric.valueMinor, metric.currency)} : metric;
+}
 
 // A fixed byte bound also bounds application-supplied token input without estimating provider billing.
 const MAX_INPUT_BYTES = 32000;
@@ -14,7 +20,7 @@ export function buildReviewPrompt(request: ReviewRequest, receipts: EvidenceRece
   const queries = prioritizeReviewReceipts(receipts, priorityMetricIds);
   const context = {question: request.question, focus: request.focus, query: request.query, output: request.output, planningViews: request.includePlanning ? request.planningViews ?? [{view: "forecast", input: {horizonDays: 30}}] : [], navigationHint: request.context,
     limitations: [...limitations, "Navigation context is not financial evidence or authorization. Only owned deterministic query results and retained receipts support measured claims.", "Synthesis input is bounded; complete calculation inputs, omitted measures and supporting records remain in retained receipts. Unseen findings must not be inferred."],
-    evidenceReceipts: [] as {id: string; fetchedAt: string; metrics: Omit<EvidenceReceipt["metrics"][number], "sourceIds" | "calculation" | "aggregation">[]; limitations?: EvidenceReceipt["limitations"]}[]};
+    evidenceReceipts: [] as {id: string; fetchedAt: string; metrics: (Omit<EvidenceReceipt["metrics"][number], "sourceIds" | "calculation" | "aggregation"> & {valueFormatted?: string})[]; limitations?: EvidenceReceipt["limitations"]}[]};
   const fits = () => Buffer.byteLength(system, "utf8") + Buffer.byteLength(JSON.stringify(context), "utf8") <= MAX_INPUT_BYTES;
   if (!fits()) return null;
   // A wholly unavailable query still needs its actual blocker and a usable reference.
@@ -41,7 +47,7 @@ export function buildReviewPrompt(request: ReviewRequest, receipts: EvidenceRece
       if (!target) {target = {id: receipt.id, fetchedAt: receipt.fetchedAt, metrics: []}; context.evidenceReceipts.push(target);}
       const {sourceIds, calculation, aggregation, ...measure} = metric;
       void sourceIds; void calculation; void aggregation;
-      target.metrics.push(measure);
+      target.metrics.push(withFormattedValue(measure));
       if (fits()) included++;
       else {
         target.metrics.pop();

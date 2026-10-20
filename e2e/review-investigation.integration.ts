@@ -67,7 +67,7 @@ for (const mode of ["checkpoint-lost-once", "followup-unavailable", "deadline-fo
       expect(saved.saves).toBe(1); expect(saved.runs).toHaveLength(1);
       expect(saved.ledger).toEqual(owned.ledger);
       expect(saved.analysis.body).toContain("Large decline");
-      expect(saved.analysis.body).toContain("Evidence trail");
+      expect(saved.analysis.body).toContain("/ai/evidence/");
       if (mode === "checkpoint-lost-once") expect(saved.lostCheckpoint).toBe(true);
       if (mode === "followup-unavailable") expect(saved.review_progress.queries.some((query: {status: string}) => query.status === "unavailable")).toBe(true);
       if (mode === "deadline-followup") {expect(saved.attempts.provider).toBe(0); expect(saved.readAborted).toBe(true); expect(saved.analysis.body).toContain("time budget");}

@@ -40,7 +40,7 @@ it("captures exact full investigation support rather than the first tool display
   expect(receipts[0].sources[0].record).toMatchObject({ id: row.id, parentId: row.parentId });
   const scenario = await captureToolEvidence("finance_scenario", { query: spec, overrides: [{ id: row.id, amountMinor: "-30" }] }, {}, context, service);
   expect(scenario).toHaveLength(2);
-  expect(scenario[1].metrics[0]).toMatchObject({ valueMinor: "30", qualifiers: ["partial_coverage", "assumption"] });
+  expect(scenario[1].metrics[0]).toMatchObject({ valueMinor: "30", qualifiers: ["assumption"] });
   expect(scenario[0].sources[0].record).toMatchObject({ amountMinor: "-10" });
 });
 it("retains account calculation source records without returning those private rows as provider tool output", async () => {

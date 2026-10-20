@@ -4,7 +4,7 @@ import type { requireWorkspace } from "@/lib/auth";
 import { settingsSchema } from "@/lib/settings";
 import { getBalances } from "./tools";
 import { buildReviewEvidence } from "./review";
-import { providerFinancialAnswer, toolResultReceipt } from "./tool-evidence";
+import { toolResultReceipt } from "./tool-evidence";
 
 const workspaceId = "00000000-0000-4000-8000-000000000001";
 const now = "2026-10-01T12:00:00Z";
@@ -33,10 +33,6 @@ it.each(["manual", "import:00000000-0000-4000-8000-000000000002:row:7", "unknown
       expect(metric.qualifiers).toContain("dated_snapshot");
       expect(metric.qualifiers.includes("manual_evidence")).toBe(provenance === "manual");
       expect(metric.period).toEqual({ from: "2026-10-01", to: "2026-10-01" });
-      const answer = providerFinancialAnswer(JSON.stringify({ claims: [{ operation: "metric", operands: [{ receiptId: receipt.id, metricId: id }], valueMinor: "500", currency: "EUR", periods: [metric.period], qualifiers: metric.qualifiers }], interpretation: [] }), [receipt], workspaceId);
-      expect(answer.accepted).toHaveLength(1);
-      expect(answer.body.includes("Manual evidence")).toBe(provenance === "manual");
-      expect(answer.body).toContain("Dated snapshot");
     }
   }
   if (!("calculationEvidence" in direct[0])) throw new Error("Trusted balance loader omitted original snapshot evidence");

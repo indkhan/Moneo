@@ -823,6 +823,7 @@ export const chatRequests = pgTable("chat_requests", {
   allowedCategory: text("allowed_category"),
   actionResult: jsonb("action_result"),
   usage: jsonb("usage"),
+  toolCalls: jsonb("tool_calls"),
   answer: text("answer"),
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -830,6 +831,19 @@ export const chatRequests = pgTable("chat_requests", {
 }, (table) => [
   index("chat_requests_workspace_created").on(table.workspaceId, table.createdAt),
   check("chat_requests_status_check", sql`${table.status} in ('running','completed','failed','canceled')`),
+]);
+
+export const chatSteers = pgTable("chat_steers", {
+  id: uuid("id").primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  chatRequestId: uuid("chat_request_id").notNull().references(() => chatRequests.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`clock_timestamp()`).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+}, (table) => [
+  index("chat_steers_pending").on(table.chatRequestId, table.createdAt).where(sql`${table.consumedAt} is null and ${table.closedAt} is null`),
+  check("chat_steers_content_check", sql`length(btrim(${table.content})) between 1 and 4000`),
 ]);
 
 export const manualTransactionEntries = pgTable("manual_transaction_entries", {
