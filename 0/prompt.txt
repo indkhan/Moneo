@@ -1,0 +1,13 @@
+threre is a bug with the signup and signin in any way can you checkk it out and tell me where and what the problme is
+
+---
+
+can you apply those migration and all
+
+---
+
+when you are doing the recheck of signin pages and all see this The sign-in link could not be verified. Request a new link and try again.
+
+---
+
+Fix /auth/dev so it creates the user when the email doesn't exist yet, then commit.
