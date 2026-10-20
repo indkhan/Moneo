@@ -3,9 +3,9 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { usageLabel, type ReportedUsage } from "@/lib/ai/usage";
 
-const FILTERS = { all: "All", attention: "Needs attention", imports: "Imports", analyses: "Analyses", tools: "Tools", chats: "Chats" } as const;
+const FILTERS = { all: "All", attention: "Needs attention", imports: "Imports", analyses: "Analyses", chats: "Chats" } as const;
 type Filter = keyof typeof FILTERS;
-type Kind = "imports" | "analyses" | "tools" | "chats";
+type Kind = "imports" | "analyses" | "chats";
 type Item = { key: string; kind: Kind; at: string; badge: string; title: string; detail: string; href: string; attention: boolean; quiet?: boolean };
 
 const words = (value: string) => { const text = value.replaceAll("_", " "); return text[0].toUpperCase() + text.slice(1); };
@@ -21,22 +21,17 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const wants = (kind: Kind) => filter === "all" || filter === "attention" || filter === kind;
   const none = Promise.resolve({ data: null, error: null });
 
-  const [imports, jobs, saved, artifacts, versions, conversations, requests, generations] = await Promise.all([
+  const [imports, jobs, saved, conversations, requests] = await Promise.all([
     wants("imports") ? supabase.from("imports").select("id, filename, status, total_rows, new_rows, matched_rows, review_rows, classification_review_rows, rejected_rows, error, created_at")
       .eq("workspace_id", workspace.id).neq("status", "undone").order("created_at", { ascending: false }).limit(20) : none,
     wants("analyses") ? supabase.from("background_jobs").select("id, status, stage, error, created_at, updated_at")
       .eq("workspace_id", workspace.id).eq("kind", "financial_review").order("created_at", { ascending: false }).limit(20) : none,
     wants("analyses") ? supabase.from("saved_analyses").select("job_id, title").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20) : none,
-    wants("tools") ? supabase.from("artifacts").select("id, kind, name, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20) : none,
-    wants("tools") ? supabase.from("artifact_versions").select("artifact_id, version, status").eq("workspace_id", workspace.id).eq("status", "validated").order("created_at", { ascending: false }).limit(50) : none,
     wants("chats") ? supabase.from("conversations").select("id, title, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20) : none,
     wants("chats") ? supabase.from("chat_requests").select("id, conversation_id, status, error, usage, updated_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30) : none,
-    wants("tools") ? supabase.from("artifact_generation_requests").select("id, purpose, description, status, error, usage, updated_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30) : none,
   ]);
-  const errors = [imports, jobs, saved, artifacts, versions, conversations, requests, generations].map(result => result.error).filter(Boolean);
+  const errors = [imports, jobs, saved, conversations, requests].map(result => result.error).filter(Boolean);
   const titles = new Map((saved.data ?? []).map(row => [row.job_id, row.title]));
-  const latestVersion = new Map<string, number>();
-  for (const row of versions.data ?? []) latestVersion.set(row.artifact_id, Math.max(row.version, latestVersion.get(row.artifact_id) ?? 0));
 
   const items: Item[] = [
     ...(imports.data ?? []).map(row => {
@@ -48,12 +43,6 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
     ...(jobs.data ?? []).map(row => ({ key: `analysis:${row.id}`, kind: "analyses" as const, at: row.updated_at ?? row.created_at, badge: "Analysis",
       title: titles.get(row.id) ?? "Deep Analysis", detail: row.status === "failed" ? truncate(row.error) || "Failed" : row.status === "completed" ? "Completed" : words(row.stage),
       href: `/ai/activity/${row.id}`, attention: row.status === "failed" })),
-    ...(artifacts.data ?? []).map(row => ({ key: `artifact:${row.id}`, kind: "tools" as const, at: row.created_at, badge: "Saved tool", title: row.name,
-      detail: `${row.kind.replaceAll("_", " ")}${latestVersion.get(row.id) ? ` v${latestVersion.get(row.id)}` : ""}`, href: `/ai/library/${row.id}`, attention: false })),
-    ...(generations.data ?? []).map(row => ({ key: `generation:${row.id}`, kind: "tools" as const, at: row.updated_at, badge: "Generation",
-      title: `${row.purpose === "calculator" ? "Calculator draft" : "Tool proposal"} ${row.status}`,
-      detail: [truncate(row.description, 120), row.usage ? usageLabel(row.usage as ReportedUsage) : "", row.status === "failed" ? truncate(row.error) : ""].filter(Boolean).join(" · "),
-      href: `/ai/activity/generation/${row.id}`, attention: row.status === "failed" })),
     ...(conversations.data ?? []).map(row => ({ key: `conversation:${row.id}`, kind: "chats" as const, at: row.created_at, badge: "Conversation", title: row.title,
       detail: "AI chat thread", href: `/ai?conversation=${row.id}`, attention: false })),
     // Successful replies are noise in the combined feed; they stay under Chats.
@@ -69,7 +58,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   return <main className="mx-auto w-full max-w-4xl space-y-6 px-4 py-8 sm:px-8 lg:py-10">
     <header>
       <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Activity</h1>
-      <p className="mt-2 text-sm text-muted-foreground">Imports, analyses, saved tools and chats in one feed. Failures and rows waiting for you are under Needs attention.</p>
+      <p className="mt-2 text-sm text-muted-foreground">Imports, analyses and chats in one feed. Failures and rows waiting for you are under Needs attention.</p>
     </header>
     <nav aria-label="Activity filters" className="flex flex-wrap gap-2">{Object.entries(FILTERS).map(([key, label]) =>
       <Link key={key} href={key === "all" ? "/ai/activity" : `/ai/activity?filter=${key}`} aria-current={filter === key ? "page" : undefined}

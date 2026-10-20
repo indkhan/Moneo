@@ -201,18 +201,18 @@ with check (public.owns_workspace(workspace_id) and actor_id = (select auth.uid(
 ));
 
 insert into storage.buckets (id, name, public)
-values ('imports', 'imports', false), ('artifacts', 'artifacts', false)
+values ('imports', 'imports', false)
 on conflict (id) do update set public = false;
 
 create policy private_finance_files on storage.objects for all to authenticated
 using (
-  bucket_id in ('imports', 'artifacts') and exists (
+  bucket_id = 'imports' and exists (
     select 1 from public.workspaces
     where owner_id = (select auth.uid()) and id::text = (storage.foldername(objects.name))[1]
   )
 )
 with check (
-  bucket_id in ('imports', 'artifacts') and exists (
+  bucket_id = 'imports' and exists (
     select 1 from public.workspaces
     where owner_id = (select auth.uid()) and id::text = (storage.foldername(objects.name))[1]
   )

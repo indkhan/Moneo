@@ -15,7 +15,7 @@ begin
   end if;
   if exists(select 1 from unnest(array['timezone','locale','theme','summary_cadence','summary_time']) key where jsonb_typeof(p_preferences->key) is distinct from 'string')
     or jsonb_typeof(p_preferences->'ai_models') is distinct from 'object'
-    or exists(select 1 from jsonb_each(p_preferences->'ai_models') model where model.key not in ('chat','review','artifacts','agents','imports','organize') or jsonb_typeof(model.value)<>'string' or length(model.value#>>'{}') not between 1 and 200)
+    or exists(select 1 from jsonb_each(p_preferences->'ai_models') model where model.key not in ('chat','review','agents','imports','organize') or jsonb_typeof(model.value)<>'string' or length(model.value#>>'{}') not between 1 and 200)
     or jsonb_typeof(p_preferences->'ai_data_scopes') is distinct from 'array'
     or jsonb_typeof(p_preferences->'muted_insight_types') is distinct from 'array' then
     raise exception 'Invalid preference field types' using errcode='22023';

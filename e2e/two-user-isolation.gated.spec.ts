@@ -20,7 +20,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
   const runId = randomUUID(), recoveryPath = `.qa/isolation-${runId}.json`;
   mkdirSync(".qa", { recursive: true });
   const account = randomUUID(), transaction = randomUUID(), imported = randomUUID(), source = randomUUID(), job = randomUUID(), savedView = randomUUID();
-  let artifact: string | undefined, storagePath: string | undefined;
+  let storagePath: string | undefined;
   const secret = `Synthetic private ${randomUUID()}`;
   try {
     const sessions = [];
@@ -52,15 +52,11 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
       await tx`insert into public.source_transactions(id,workspace_id,import_id,row_number,original_row,status) values(${source},${workspace},${imported},2,${tx.json({ description: secret })},'review')`;
       await tx`insert into public.background_jobs(id,workspace_id,kind) values(${job},${workspace},'financial_review')`;
       await tx`insert into public.transaction_views(id,workspace_id,name) values(${savedView},${workspace},${secret})`;
-      await tx`select set_config('request.jwt.claim.sub',${users[0]},true)`;
-      await tx.unsafe("set local role authenticated");
-      [{ id: artifact }] = await tx`select (public.create_trusted_artifact('custom_tracker',${secret})).id`;
     });
     const [owner, foreign] = contexts;
     expect((await owner.request.get(`/api/imports/${imported}`)).status()).toBe(200);
-    expect((await owner.request.get(`/api/artifacts/${artifact}/versions`)).status()).toBe(200);
     expect((await owner.request.get(`/api/analysis/${job}`)).status()).toBe(200);
-    for (const path of [`/api/imports/${imported}`, `/api/artifacts/${artifact}/versions`, `/api/analysis/${job}`]) expect((await foreign.request.get(path)).status()).toBe(404);
+    for (const path of [`/api/imports/${imported}`, `/api/analysis/${job}`]) expect((await foreign.request.get(path)).status()).toBe(404);
     expect((await foreign.request.post(`/api/imports/${imported}/review`, { data: { sourceId: source, action: "reject" } })).status()).toBe(404);
     expect((await foreign.request.delete(`/api/analysis/${job}`)).status()).toBe(404);
     expect((await db`select status,cancel_requested from public.background_jobs where id=${job}`)[0]).toMatchObject({ status: "queued", cancel_requested: false });
@@ -68,7 +64,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     expect((await sessions[0].storage.from("imports").download(storagePath)).error).toBeNull();
     expect((await sessions[1].storage.from("imports").download(storagePath)).error).not.toBeNull();
     const stranger = await foreign.newPage();
-    for (const path of [`/import/${imported}/review`, `/ai/library/${artifact}`, `/ai/activity/${job}`]) {
+    for (const path of [`/import/${imported}/review`, `/ai/activity/${job}`]) {
       const response = await stranger.goto(path);
       // loading.tsx may stream headers before the owned-resource lookup finishes.
       expect([200, 404]).toContain(response?.status());
@@ -162,10 +158,6 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
       await tx`delete from public.transaction_views where workspace_id=${workspace}`;
       await tx`delete from public.saved_analyses where workspace_id=${workspace}`;
       await tx`delete from public.background_jobs where workspace_id=${workspace}`;
-      await tx`update public.artifacts set active_version_id=null where workspace_id=${workspace}`;
-      await tx`delete from public.artifact_state where workspace_id=${workspace}`;
-      await tx`delete from public.artifact_versions where workspace_id=${workspace}`;
-      await tx`delete from public.artifacts where workspace_id=${workspace}`;
       await tx`delete from public.source_transactions where workspace_id=${workspace}`;
       await tx`delete from public.imports where workspace_id=${workspace}`;
       await tx`delete from public.transactions where workspace_id=${workspace}`;

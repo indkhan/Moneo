@@ -184,7 +184,6 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     </nav>
     {!results && threadsCursor && <button type="button" disabled={busy} onClick={() => void olderThreads()} className="mt-2 block px-3 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50">Older conversations</button>}
     <div className="mt-6 space-y-0.5 border-t border-border pt-4 text-sm text-muted-foreground">
-      <Link href="/ai/library" className="block rounded-lg px-3 py-2 hover:bg-muted hover:text-foreground">Saved tools and analyses</Link>
       <Link href="/ai/activity" className="block rounded-lg px-3 py-2 hover:bg-muted hover:text-foreground">Activity</Link>
       <Link href="/notifications" className="block rounded-lg px-3 py-2 hover:bg-muted hover:text-foreground">Notifications</Link>
     </div>

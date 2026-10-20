@@ -18,7 +18,6 @@ Use npm (`package-lock.json` is authoritative).
 - `app/` — App Router UI, route handlers, server actions
 - `lib/finance/` — deterministic financial logic
 - `lib/ai/` — model/provider behavior
-- `lib/artifacts/` — generated-tool sandbox/runtime
 - `lib/schema.ts` + `supabase/migrations/` — database schema
 - `workflows/` — durable background jobs
 - `e2e/` — Playwright flows
@@ -30,7 +29,6 @@ Use npm (`package-lock.json` is authoritative).
 - Financial truth comes from application code/data, not AI guesses. Keep money in integer minor units/`bigint` and currencies explicit.
 - Preserve source records, correction/history, and undo semantics when changing financial data flows.
 - For schema changes, add a new ordered migration and keep `lib/schema.ts` aligned. Do not rewrite applied migrations.
-- Preserve artifact isolation/validation; do not weaken sandbox or timeout boundaries.
 - for each thing break it down and for each thing make a commit directly if a big task make multiple commits
 
 ## Validation
@@ -45,7 +43,7 @@ Signed-in E2E uses one persistent QA user (login in the git-ignored `.env` as `E
 ## Context
  
  
-Read only what the task needs: `plan.md` for product behavior, `.env.example` for environment names, and `e2e/README.md` for browser-test setup.
+Read only what the task needs: `.env.example` for environment names, and `e2e/README.md` for browser-test setup.
 
 
 <!-- BEGIN:nextjs-agent-rules -->

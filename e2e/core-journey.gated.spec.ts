@@ -1,7 +1,7 @@
 // Partial live-backend journey — CREDENTIAL-GATED, skipped without auth state.
 //
 // Covers login state, import completion, transaction visibility, real chat,
-// goal creation, artifact creation/pinning, and overlapping re-import.
+// goal creation, and overlapping re-import.
 // It does not yet prove transaction correction or scenario changes.
 //
 // Why gated: every step after login needs a real Supabase project, an
@@ -14,7 +14,7 @@
 //   e2e/.auth.json). See e2e/README.md §2 for the login-and-save steps.
 // A skip is reported as skipped — never as a pass.
 //
-// File mapping and artifact proposals are mocked; import, chat, planning,
+// File mapping is mocked; import, chat, planning,
 // and automatic first review use the live backend and configured free model.
 import * as fs from "node:fs";
 import { test, expect } from "@playwright/test";
@@ -36,7 +36,7 @@ const CAN_RUN =
 test.describe("partial core journey (gated: real Supabase, selected AI mocks)", () => {
   test.skip(!CAN_RUN, gatedSkipReason());
 
-  test("authenticate → import → home → ask → goal → mocked analysis → pin artifact → re-import", async ({
+  test("authenticate → import → home → ask → goal → mocked analysis → re-import", async ({
     page,
   }) => {
     // Two durable imports and a live free-provider request each retain their own bounds.
@@ -44,7 +44,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
 
     // Mock ONLY the AI-proposing inspect (no-mapping POST). Correction
     // previews carry an explicit mapping and go to the real backend, which
-    // is deterministic (no LLM). Artifact-proposal / analysis-start are canned.
+    // is deterministic (no LLM). Analysis-start is canned.
     await page.route("**/api/imports/inspect", async (route) => {
       const contentType = route.request().headers()["content-type"] ?? "";
       if (
@@ -196,40 +196,6 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
       await expect(page.getByText("Mocked deterministic review")).toBeVisible();
     });
 
-    await test.step("create and pin a suggested artifact", async () => {
-      await page.route("**/api/artifacts/generate", async (route) => {
-        const body = route.request().postDataJSON?.() as
-          | Record<string, unknown>
-          | undefined;
-        if (body && body.confirm === true) {
-          await route.continue();
-        } else {
-          await route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify({
-              kind: "spending_explorer",
-              name: "E2E Spending Explorer",
-              rationale: "Deterministic mock proposal; no LLM quota used.",
-            }),
-          });
-        }
-      });
-      await page.goto("/ai/library");
-      await page.getByLabel("What should the tool help with?").fill(
-        "compare dining spending this month",
-      );
-      await page.getByRole("button", { name: "Suggest a tool" }).click();
-      await expect(page.getByRole("textbox", { name: "Suggested name" })).toHaveValue("E2E Spending Explorer");
-      await page
-        .getByRole("button", { name: /Continue.*Create this tool/ })
-        .click();
-      await expect(page).toHaveURL(/\/ai\/library\/[0-9a-f-]{36}$/);
-      await expect(page.getByRole("heading", { name: "E2E Spending Explorer" })).toBeVisible();
-      await page.getByRole("button", { name: "Pin to Home" }).click();
-      await expect(page.getByRole("button", { name: "Unpin from Home" })).toBeVisible();
-    });
-
     await test.step("submit newer overlapping data", async () => {
       await page.goto("/import");
       await expect(page.getByLabel("Financial statement files")).toBeEnabled();
@@ -251,7 +217,6 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
         page.getByRole("heading", { name: "Home" }),
       ).toBeVisible();
       await expect(page.getByRole("region", { name: "Recent transactions" }).getByRole("link", { name: "All 4", exact: true })).toBeVisible();
-      await expect(page.getByRole("link", { name: /E2E Spending Explorer/ }).first()).toBeVisible();
     });
 
   });

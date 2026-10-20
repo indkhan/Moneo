@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import { BUILTIN_WIDGETS, dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
 import { saveDashboard } from "../dashboard-actions";
@@ -18,19 +17,11 @@ const sectionNav = [
 ] as const;
 
 async function loadDashboard({ supabase, workspace }: Workspace) {
-  const [layout, pins] = await Promise.all([
-    supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle(),
-    supabase.from("dashboard_items").select("artifact_id, position").eq("workspace_id", workspace.id).order("position"),
-  ]);
-  for (const error of [layout.error, pins.error]) if (error) throw error;
-  const artifacts = pins.data?.length ? await supabase.from("artifacts")
-    .select("id, name").eq("workspace_id", workspace.id).in("id", pins.data.map(pin => pin.artifact_id))
-    : { data: [], error: null };
-  if (artifacts.error) throw artifacts.error;
+  const layout = await supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle();
+  if (layout.error) throw layout.error;
   const parsedLayout = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
-  const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null, (pins.data ?? []).map(pin => pin.artifact_id));
-  return { version: layout.data?.version ?? 0, ordered, choices: [...new Set([...ordered, ...Object.keys(BUILTIN_WIDGETS)])],
-    pinnedById: new Map(artifacts.data?.map(artifact => [artifact.id, artifact])) };
+  const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null);
+  return { version: layout.data?.version ?? 0, ordered, choices: [...new Set([...ordered, ...Object.keys(BUILTIN_WIDGETS)])] };
 }
 
 async function loadRuns({ supabase, workspace }: Workspace): Promise<SummaryRun[] | null> {
@@ -59,7 +50,7 @@ export default async function SettingsPage() {
       <div className="min-w-0 space-y-8">
         <SettingsForm settings={settings} currency={workspace.display_currency} />
         <div id="relevance" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={4} />}><InsightSettings /></Suspense></div>
-        <details id="home" className={card}><summary className="cursor-pointer text-base font-semibold">Customize Home</summary><form action={saveDashboard} className="mt-4 space-y-4"><input type="hidden" name="version" value={dashboard.version} />{dashboard.choices.map((key, index) => <div key={key} className="flex flex-wrap items-center gap-3 border-b border-border pb-3 last:border-0"><label className="flex flex-1 items-center gap-2 text-sm"><input type="checkbox" name="enabled" value={key} defaultChecked={dashboard.ordered.includes(key)} disabled={key.startsWith("tool:")} />{key.startsWith("tool:") && <input type="hidden" name="enabled" value={key} />}{Object.hasOwn(BUILTIN_WIDGETS, key) ? BUILTIN_WIDGETS[key as keyof typeof BUILTIN_WIDGETS] : dashboard.pinnedById.get(key.slice(5))?.name}</label><label className="flex items-center gap-2 text-sm">Position<input type="number" name={`position:${key}`} min="1" max="50" defaultValue={dashboard.ordered.includes(key) ? dashboard.ordered.indexOf(key) + 1 : index + 1} className="min-h-10 w-20 rounded-lg border border-border bg-card px-3 py-2 text-sm" /></label></div>)}<button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Save dashboard</button><p className="text-sm text-muted-foreground">Pin or unpin tools in the <Link href="/ai/library" className="underline">Library</Link>. Lower positions appear first.</p></form></details>
+        <details id="home" className={card}><summary className="cursor-pointer text-base font-semibold">Customize Home</summary><form action={saveDashboard} className="mt-4 space-y-4"><input type="hidden" name="version" value={dashboard.version} />{dashboard.choices.map((key, index) => <div key={key} className="flex flex-wrap items-center gap-3 border-b border-border pb-3 last:border-0"><label className="flex flex-1 items-center gap-2 text-sm"><input type="checkbox" name="enabled" value={key} defaultChecked={dashboard.ordered.includes(key)} />{BUILTIN_WIDGETS[key as keyof typeof BUILTIN_WIDGETS]}</label><label className="flex items-center gap-2 text-sm">Position<input type="number" name={`position:${key}`} min="1" max="50" defaultValue={dashboard.ordered.includes(key) ? dashboard.ordered.indexOf(key) + 1 : index + 1} className="min-h-10 w-20 rounded-lg border border-border bg-card px-3 py-2 text-sm" /></label></div>)}<button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Save dashboard</button><p className="text-sm text-muted-foreground">Lower positions appear first.</p></form></details>
         <div id="banks" className="scroll-mt-20"><ConnectedBanks /></div>
         <section id="summaries" className={card}><h2 className="text-base font-semibold">Scheduled summaries</h2>
           <p className="mt-1 text-sm text-muted-foreground">Recent summary runs. Change the schedule under Insights and summaries.</p>

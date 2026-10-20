@@ -58,6 +58,4 @@ The browser tests include a live-backend journey that skips until its prerequisi
 
 ## Project notes
 
-- [Product plan](plan.md)
-- [Architecture and stack](stack.md)
 - [End-to-end test setup and coverage](e2e/README.md)

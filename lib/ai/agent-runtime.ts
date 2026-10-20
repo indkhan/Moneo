@@ -9,7 +9,7 @@ import { detectRecurring } from "@/lib/finance/recurring";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { mergeOrganizationSuggestions, organizationProposals, organizationRuleSchema, type OrganizationProposal, type OrganizationRow } from "@/lib/import/organization";
 import { monthlyEquivalent } from "@/app/money/recurring/series";
-import { AGENTS, WAVES, anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, planRun, recurringProposals, toolProposals, verifiedBriefing,
+import { AGENTS, WAVES, anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, planRun, recurringProposals, verifiedBriefing,
   daysBefore, payloadSchemas, reviewed, type AgentId, type BriefingFacts, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
 
 // Server-only agent runtime. Agents read through the service role, so every
@@ -245,16 +245,6 @@ async function forecaster(context: Context) {
   return { proposals, summary };
 }
 
-async function toolsmith(context: Context) {
-  const { db, workspace, runId } = context;
-  await report(context, { type: "step", text: "Choosing tools that fit what the team found" });
-  const [found, income] = await Promise.all([runProposals(db, runId, workspace.id),
-    db.from("transactions").select("id").eq("workspace_id", workspace.id).eq("status", "posted").eq("kind", "ordinary").gt("amount_minor", 0).gte("posted_on", daysBefore(context.today, 60)).limit(1)]);
-  const proposals = toolProposals(found, (checked(income) as unknown[]).length > 0, workspace.display_currency, workspace.locale);
-  await report(context, { type: "tool", text: `library templates: ${proposals.map(item => item.payload.template).join(", ") || "none"}` });
-  return { proposals, summary: `${proposals.length} tools proposed; each is validated in the QuickJS sandbox when you accept it` };
-}
-
 async function writer(context: Context) {
   const { db, workspace, runId } = context;
   await report(context, { type: "step", text: "Collecting verified facts from every agent" });
@@ -265,7 +255,7 @@ async function writer(context: Context) {
   const facts: BriefingFacts = {
     headline: summaries.map(task => `${AGENTS[task.agent].name}: ${task.summary}`),
     findings: found.filter(item => item.kind === "finding").sort((a, b) => b.confidence - a.confidence).slice(0, 6).map(item => item.title),
-    actions: ([["categorize", "organization changes"], ["recurring", "recurring schedules"], ["budget", "category limits"], ["tool", "tools"]] as const)
+    actions: ([["categorize", "organization changes"], ["recurring", "recurring schedules"], ["budget", "category limits"]] as const)
       .filter(([kind]) => count(kind)).map(([kind, label]) => `${count(kind)} ${label}`),
   };
   let briefing = deterministicBriefing(facts);
@@ -279,7 +269,7 @@ async function writer(context: Context) {
   return { proposals: [], summary: verified ? "Briefing written by the model and checked against the facts" : "Deterministic briefing written from the facts" };
 }
 
-const RUNNERS: Record<Exclude<AgentId, "lead">, (context: Context) => Promise<{ proposals: Proposal[]; summary: string }>> = { categorizer, recurring, anomaly, budget, forecaster, toolsmith, writer };
+const RUNNERS: Record<Exclude<AgentId, "lead">, (context: Context) => Promise<{ proposals: Proposal[]; summary: string }>> = { categorizer, recurring, anomaly, budget, forecaster, writer };
 
 // ── Steps called by the durable workflow ─────────────────────────────────────
 /** Registers the workflow, profiles the data and writes the lead's plan. Resumes keep finished tasks. */

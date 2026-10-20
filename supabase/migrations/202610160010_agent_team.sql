@@ -39,7 +39,7 @@ create table public.agent_tasks (
   summary text,
   started_at timestamptz,
   finished_at timestamptz,
-  constraint agent_tasks_agent_check check (agent in ('lead','categorizer','recurring','anomaly','forecaster','budget','writer','toolsmith')),
+  constraint agent_tasks_agent_check check (agent in ('lead','categorizer','recurring','anomaly','forecaster','budget','writer')),
   constraint agent_tasks_status_check check (status in ('pending','running','done','failed','skipped','canceled')),
   constraint agent_tasks_events_check check (jsonb_typeof(events)='array' and jsonb_array_length(events)<=60),
   constraint agent_tasks_run_agent_key unique (run_id, agent)
@@ -62,7 +62,7 @@ create table public.agent_proposals (
   result jsonb,
   decided_at timestamptz,
   created_at timestamptz not null default now(),
-  constraint agent_proposals_kind_check check (kind in ('categorize','recurring','budget','tool','finding')),
+  constraint agent_proposals_kind_check check (kind in ('categorize','recurring','budget','finding')),
   constraint agent_proposals_status_check check (status in ('proposed','applying','accepted','rejected','failed')),
   constraint agent_proposals_confidence_check check (confidence between 0 and 100),
   constraint agent_proposals_title_check check (char_length(title) between 1 and 200),

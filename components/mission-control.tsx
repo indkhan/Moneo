@@ -13,7 +13,7 @@ import { TeamFlow } from "./team-flow";
 
 const ACTIVE = new Set(["queued", "running"]);
 const WAVE_LABELS = ["Analysts · in parallel", "Builders · read the analysts' results", "Writer · after the lead merges"];
-const KIND_LABELS: Record<ProposalKind, string> = { finding: "Findings", categorize: "Merchants and categories", recurring: "Recurring schedules", budget: "Category limits", tool: "Tools" };
+const KIND_LABELS: Record<ProposalKind, string> = { finding: "Findings", categorize: "Merchants and categories", recurring: "Recurring schedules", budget: "Category limits" };
 const STATUS_TONE: Record<string, string> = {
   running: "bg-brand/10 text-brand", queued: "bg-muted text-muted-foreground", pending: "bg-muted text-muted-foreground", done: "bg-success-soft text-success", completed: "bg-success-soft text-success",
   failed: "bg-danger-soft text-danger", canceled: "bg-muted text-muted-foreground", skipped: "bg-muted text-muted-foreground",

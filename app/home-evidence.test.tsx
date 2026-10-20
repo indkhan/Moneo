@@ -38,11 +38,10 @@ it("starts independent dashboard queries while balance evidence is still loading
   const started = [...fixture.started];
   release();
   await page;
-  expect(started).toEqual(expect.arrayContaining(["fx_rates", "dashboard_items", "dashboard_layouts", "goals", "goal_allocations"]));
+  expect(started).toEqual(expect.arrayContaining(["fx_rates", "dashboard_layouts", "goals", "goal_allocations"]));
 });
 
-// Pinned artifacts are embedded in the dashboard_items read, so its failure covers them too.
-it.each(["fx_rates", "dashboard_items"])("reports %s failures instead of silently showing incomplete dashboard data", async table => {
+it.each(["fx_rates", "dashboard_layouts"])("reports %s failures instead of silently showing incomplete dashboard data", async table => {
   fixture.errorTable = table;
   await expect(Home()).rejects.toThrow(`${table} unavailable`);
 });

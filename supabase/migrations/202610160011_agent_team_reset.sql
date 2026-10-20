@@ -14,20 +14,14 @@ begin
   delete from public.agent_tasks where workspace_id=ws;
   delete from public.agent_runs where workspace_id=ws;
 
-  -- AI conversations, reviews and saved tools.
+  -- AI conversations, reviews.
   delete from public.saved_analyses where workspace_id=ws;
   delete from public.summary_runs where workspace_id=ws;
   delete from public.background_jobs where workspace_id=ws;
   delete from public.chat_requests where workspace_id=ws;
   delete from public.messages where workspace_id=ws;
   delete from public.conversations where workspace_id=ws;
-  delete from public.dashboard_items where workspace_id=ws;
   delete from public.dashboard_layouts where workspace_id=ws;
-  delete from public.artifact_state where workspace_id=ws;
-  delete from public.artifact_generation_requests where workspace_id=ws;
-  update public.artifacts set active_version_id=null where workspace_id=ws and active_version_id is not null;
-  delete from public.artifact_versions where workspace_id=ws;
-  delete from public.artifacts where workspace_id=ws;
 
   -- Preferences, views and settings.
   delete from public.insight_dismissals where workspace_id=ws;

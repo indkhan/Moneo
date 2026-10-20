@@ -9,7 +9,6 @@ export type AiDataScope = typeof AI_DATA_SCOPES[number];
 export const AI_AGENTS = {
   chat: { label: "Chat assistant", model: "gpt-6.1-sol" },
   review: { label: "Financial review", model: "gpt-6.1-sol" },
-  artifacts: { label: "Tool builder", model: "gpt-6.1-sol" },
   agents: { label: "Agent team", model: "gpt-6-luna" },
   imports: { label: "Import mapping", model: "gpt-6-luna" },
   organize: { label: "Organization suggestions", model: "gpt-6-luna" },

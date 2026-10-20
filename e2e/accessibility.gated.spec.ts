@@ -28,7 +28,7 @@ test("core screens fit mobile and the contextual assistant supports keyboard dis
   await expect(page.getByRole("status")).toContainText("Preferences saved");
   try {
   expect((await db.from("accounts").insert({ id: accountId, workspace_id: workspace!.id, name: accountName, currency_code: "EUR", type: "checking" })).error).toBeNull();
-  for (const route of ["/", "/money/transactions", "/money/accounts", "/money/wealth", "/import", "/settings", "/ai", "/ai/library"]) {
+  for (const route of ["/", "/money/transactions", "/money/accounts", "/money/wealth", "/import", "/settings", "/ai"]) {
     await page.goto(route);
     await expect(page).not.toHaveURL(/login/);
     await expect(page.locator("h1").first()).toBeVisible();

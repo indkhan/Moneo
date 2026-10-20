@@ -18,13 +18,12 @@ export const AGENTS = {
   anomaly: { name: "Anomaly hunter", role: "Finds duplicates, fees, unusual charges and price increases", scopes: ["transactions"] },
   budget: { name: "Budget coach", role: "Proposes monthly category limits from real history", scopes: ["transactions", "planning"] },
   forecaster: { name: "Cash-flow forecaster", role: "Projects cash and flags shortfalls", scopes: ["accounts", "transactions", "planning"] },
-  toolsmith: { name: "Toolsmith", role: "Builds tailored tools through the sandboxed artifact pipeline", scopes: ["transactions"] },
   writer: { name: "Insight writer", role: "Writes the briefing from verified findings", scopes: [] },
 } as const satisfies Record<string, { name: string; role: string; scopes: AiDataScope[] }>;
 export type AgentId = keyof typeof AGENTS;
 export const AGENT_IDS = Object.keys(AGENTS) as AgentId[];
 /** Agents in the same wave run in parallel; later waves read earlier proposals. */
-export const WAVES: AgentId[][] = [["categorizer", "recurring", "anomaly", "budget"], ["forecaster", "toolsmith"], ["writer"]];
+export const WAVES: AgentId[][] = [["categorizer", "recurring", "anomaly", "budget"], ["forecaster"], ["writer"]];
 
 const versioned = z.object({ id: z.uuid(), version: z.number().int().min(0).max(2147483647) }).strict();
 export const payloadSchemas = {
@@ -33,8 +32,6 @@ export const payloadSchemas = {
   recurring: z.object({ accountId: z.uuid(), label: z.string().trim().min(1).max(200), cadence: z.enum(recurringCadences), currencyCode: z.string().regex(/^[A-Z]{3}$/),
     evidence: z.array(versioned).min(3).max(1000), runAnchorId: z.uuid(), evidenceLimited: z.boolean() }).strict(),
   budget: z.object({ categoryId: z.uuid(), currencyCode: z.string().regex(/^[A-Z]{3}$/), limitMinor: z.string().regex(/^[1-9]\d{0,17}$/) }).strict(),
-  tool: z.object({ template: z.enum(["subscription-audit", "savings-rate", "budget-tracker"]), name: z.string().trim().min(1).max(120),
-    params: z.record(z.string(), z.number().finite()) }).strict(),
   finding: z.object({ severity: z.enum(["high", "medium", "low"]), transactionIds: z.array(z.uuid()).max(50) }).strict(),
 };
 export type ProposalKind = keyof typeof payloadSchemas;
@@ -243,29 +240,6 @@ export function budgetProposals(rows: LedgerRow[], categories: Map<string, strin
   return result.sort((a, b) => Number(BigInt(b.payload.limitMinor) - BigInt(a.payload.limitMinor))).slice(0, 12);
 }
 
-// ── Toolsmith ────────────────────────────────────────────────────────────────
-export function toolProposals(proposals: Proposal[], hasIncome: boolean, currency: string, locale?: string): Proposal<"tool">[] {
-  const recurring = proposals.filter(item => item.kind === "recurring");
-  const budgets = proposals.filter((item): item is Proposal<"budget"> => item.kind === "budget" && item.payload.currencyCode === currency);
-  const tools: Proposal<"tool">[] = [];
-  if (recurring.length >= 2) tools.push({ agent: "toolsmith", kind: "tool", conflictKey: "tool:subscription-audit", title: "Subscription audit",
-    detail: `A saved report of merchants that charge you month after month, built because the Recurring detective found ${recurring.length} candidates.`,
-    evidence: { facts: [{ label: "Recurring candidates", value: String(recurring.length) }], transactions: [], links: [{ label: "Library", href: "/ai/library" }] },
-    payload: { template: "subscription-audit", name: "Subscription audit", params: { minMonths: 2 } }, confidence: 70, notes: [] });
-  if (budgets.length) {
-    const total = budgets.reduce((sum, item) => sum + BigInt(item.payload.limitMinor), 0n);
-    if (total <= 100_000_000_000n) tools.push({ agent: "toolsmith", kind: "tool", conflictKey: "tool:budget-tracker", title: `Budget tracker preset to ${formatMoney(total, currency, locale)}`,
-      detail: `Tracks this month against the sum of the Budget coach's ${budgets.length} proposed limits.`,
-      evidence: { facts: [{ label: "Monthly budget", value: formatMoney(total, currency, locale) }], transactions: [], links: [{ label: "Library", href: "/ai/library" }] },
-      payload: { template: "budget-tracker", name: "Agent budget tracker", params: { monthlyBudgetMinor: Number(total) } }, confidence: 65, notes: [] });
-  }
-  if (hasIncome) tools.push({ agent: "toolsmith", kind: "tool", conflictKey: "tool:savings-rate", title: "Savings-rate dashboard",
-    detail: "This month's savings rate from real income and spending, with the spending limit that reaches a 20% target.",
-    evidence: { facts: [{ label: "Target", value: "20%" }], transactions: [], links: [{ label: "Library", href: "/ai/library" }] },
-    payload: { template: "savings-rate", name: "Savings rate", params: { targetRatePercent: 20 } }, confidence: 60, notes: [] });
-  return tools;
-}
-
 // ── Lead: merge and resolve conflicts ────────────────────────────────────────
 /** Deduplicates proposals and resolves cross-agent conflicts; returns the decisions it made. */
 export function mergeProposals(input: Proposal[]): { proposals: Proposal[]; resolutions: string[] } {
@@ -306,7 +280,7 @@ export function mergeProposals(input: Proposal[]): { proposals: Proposal[]; reso
       }
     }
   }
-  const order: ProposalKind[] = ["finding", "categorize", "recurring", "budget", "tool"];
+  const order: ProposalKind[] = ["finding", "categorize", "recurring", "budget"];
   proposals.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || b.confidence - a.confidence);
   return { proposals, resolutions };
 }

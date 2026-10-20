@@ -21,7 +21,7 @@ import { AgentBriefing } from "./agent-briefing";
 import { AskAbout } from "@/components/ask-about";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
-import { ArrowRight, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 
 const WIDE = new Set(["overview", "spending", "accounts"]);
 
@@ -47,19 +47,18 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   // Start the streamed sections' reads now (memoized); their Suspense boundaries pick up the same promises.
   loadInsightEvidence(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
   loadHomeSpending(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
-  const [balanceEvidence, projection, wealthItems, rates, pinnedItems, layout, goals, allocations, sourceMetadata] = await Promise.all([
+  const [balanceEvidence, projection, wealthItems, rates, layout, goals, allocations, sourceMetadata] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
     wealthPromise,
     supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
       .eq("workspace_id", workspace.id).eq("to_currency", displayCurrency).order("rate_date", { ascending: false }).order("created_at", { ascending: false }),
-    supabase.from("dashboard_items").select("artifact_id, position, artifacts(id, name, kind, updated_at)").eq("workspace_id", workspace.id).eq("artifacts.workspace_id", workspace.id).order("position"),
     supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle(),
     supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date").eq("workspace_id", workspace.id).eq("status", "active").order("priority").limit(10),
     supabase.from("goal_allocations").select("goal_id, account_id, amount_minor::text").eq("workspace_id", workspace.id),
     sourceMetadataPromise,
   ]);
-  for (const error of [rates.error, pinnedItems.error, layout.error, goals.error, allocations.error]) if (error) throw error;
+  for (const error of [rates.error, layout.error, goals.error, allocations.error]) if (error) throw error;
   const accounts = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone, sourceMetadata).filter(account => !account.archived_at);
   const accountNames = new Map(accounts.map(account => [account.id, account.name]));
   const fxRates = rates.data ?? [];
@@ -90,11 +89,9 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const upcoming = (projection.input?.events ?? []).filter(event => event.expectedMinor < 0n && event.source !== "estimated").sort((a, b) => a.date.localeCompare(b.date));
   const upcomingMinor = upcoming.reduce((sum, event) => sum + event.expectedMinor, 0n);
   const available = projection.available;
-  const pins = pinnedItems.data as { artifact_id: string; artifacts: { id: string; name: string; kind: string; updated_at: string } | null }[] | null;
-  const pinnedArtifacts = new Map((pins ?? []).flatMap(pin => pin.artifacts ? [[`tool:${pin.artifacts.id}` as string, pin.artifacts] as const] : []));
   const parsedLayout = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
   if (parsedLayout && !parsedLayout.success) throw new Error("Dashboard preferences are invalid; review them in Settings");
-  const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null, (pins ?? []).map(pin => pin.artifact_id));
+  const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null);
   const sectionProps = { db: supabase, workspaceId: workspace.id, currency: displayCurrency, today, locale };
 
   const widgets: Record<string, ReactNode> = {
@@ -152,21 +149,6 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     </Suspense>,
   };
 
-  // Consecutive pinned tools share one row of tiles.
-  const rows: { key: string; wide: boolean; node: ReactNode }[] = [];
-  for (let index = 0; index < ordered.length; index++) {
-    const key = ordered[index];
-    if (!key.startsWith("tool:")) { rows.push({ key, wide: WIDE.has(key), node: widgets[key] }); continue; }
-    const tools = [];
-    while (index < ordered.length && ordered[index].startsWith("tool:")) { const tool = pinnedArtifacts.get(ordered[index]); if (tool) tools.push(tool); index++; }
-    index--;
-    if (tools.length) rows.push({ key, wide: true, node: <section aria-label="Pinned tools" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{tools.map(tool => <Link key={tool.id} href={`/ai/library/${tool.id}`} className="group flex min-w-0 flex-col justify-between gap-3 rounded-xl border border-border bg-card p-4 hover:border-brand">
-      <span className="text-xs font-medium capitalize text-muted-foreground">{tool.kind.replaceAll("_", " ")}</span>
-      <span className="flex items-center justify-between gap-2 font-semibold"><span className="truncate">{tool.name}</span><ArrowRight size={15} className="shrink-0 text-brand transition-transform group-hover:translate-x-1" /></span>
-      <span className="text-xs text-muted-foreground">{tool.updated_at ? `Updated ${tool.updated_at.slice(0, 10)} · ` : ""}Opens with current data</span>
-    </Link>)}</section> });
-  }
-
   return (
     <main className="mx-auto w-full max-w-7xl space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -178,7 +160,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
       </header>
       <Suspense fallback={null}><AgentBriefing db={supabase} workspaceId={workspace.id} /></Suspense>
       <div className="grid gap-4 lg:grid-cols-2">
-        {rows.map(row => <div key={row.key} className={row.wide ? "min-w-0 lg:col-span-2" : "min-w-0"}>{row.node}</div>)}
+        {ordered.map(key => <div key={key} className={WIDE.has(key) ? "min-w-0 lg:col-span-2" : "min-w-0"}>{widgets[key]}</div>)}
       </div>
     </main>
   );
