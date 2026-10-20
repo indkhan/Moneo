@@ -20,6 +20,7 @@ import { FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/fi
 import { answerChart, withAnswerChart } from "@/lib/ai/answer-chart";
 import type { ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import { chatFollowUps, planInput } from "@/lib/ai/follow-ups";
+import { toolOutputPreview } from "@/lib/ai/tool-output";
 
 const inputSchema = z.object({
   conversationId: z.uuid(),
@@ -106,8 +107,7 @@ export async function POST(request: Request) {
         let output: unknown;
         try { output = await execute(input, options); }
         catch (cause) { emit({ type: "tool", id: options?.toolCallId, name, state: "failed" }); throw cause; }
-        const shown = JSON.stringify(output, null, 2) ?? "";
-        emit({ type: "tool", id: options?.toolCallId, name, state: "done", output: shown.length > 8000 ? `${shown.slice(0, 8000)}\n… (truncated)` : shown });
+        emit({ type: "tool", id: options?.toolCallId, name, state: "done", output: toolOutputPreview(output) });
         const latest = await requireWorkspace();
         if (latest.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
         if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Financial evidence service is not configured");
