@@ -9,7 +9,7 @@ begin
   loop execute format('drop function %s', fn); end loop;
 end $$;
 
-drop table public.dashboard_items, public.artifact_generation_requests, public.artifact_state, public.artifact_versions, public.artifacts cascade;
+drop table if exists public.dashboard_items, public.artifact_generation_requests, public.artifact_state, public.artifact_versions, public.artifacts cascade;
 
 -- Saved Home layouts drop pinned-tool keys; per-agent model choices drop the tool builder.
 update public.dashboard_layouts set items=array(select item from unnest(items) with ordinality as entry(item,position) where item not like 'tool:%' order by position)

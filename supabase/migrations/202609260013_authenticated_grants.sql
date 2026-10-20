@@ -13,18 +13,14 @@ grant select on public.workspaces, public.accounts, public.balance_snapshots,
   public.transaction_sources, public.correction_events,
   public.goals, public.goal_allocations, public.financial_assumptions,
   public.scenarios, public.scenario_overrides,
-  public.artifacts, public.artifact_versions, public.artifact_state,
-  public.dashboard_items, public.conversations, public.messages,
+  public.conversations, public.messages,
   public.fx_rates to authenticated;
 
 grant insert on public.accounts, public.balance_snapshots,
   public.imports, public.goals, public.financial_assumptions,
   public.scenarios, public.scenario_overrides,
-  public.dashboard_items, public.conversations, public.messages,
+  public.conversations, public.messages,
   public.fx_rates to authenticated;
 
 grant update (display_currency) on public.workspaces to authenticated;
 grant update (status, error) on public.imports to authenticated;
-grant update (state, version, updated_at) on public.artifact_state to authenticated;
-grant update on public.dashboard_items to authenticated;
-grant delete on public.dashboard_items to authenticated;
