@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { selectConversation } from "@/lib/ai/selected-conversation";
 import { useChatRequest, type ChatAnswer, type ChatStreamEvent } from "@/lib/ai/use-chat-request";
+import { useChatQueue } from "@/lib/ai/use-chat-queue";
 import { ChatComposer } from "@/components/chat-composer";
+import { ChatQueue } from "@/components/chat-queue";
 import { DRAFT_EVENT } from "@/components/chat-messages";
 
 const suggestions = ["What changed in my spending last month?", "Where did most of my money go this month?", "Find my largest transactions", "Create a spending chart"];
@@ -17,26 +19,35 @@ export type ChatFormEvents = {
 // The composer keeps its key when a new chat is first saved, so a draft typed during the answer stays put.
 export function ChatForm({ conversationId, selectionKey, empty = false, scope, onStart, onEvent, onDone }: { conversationId: string; selectionKey: string; isNewConversation?: boolean; empty?: boolean; scope?: React.ReactNode } & ChatFormEvents) {
   const [message, setMessage] = useState("");
-  const { send, cancel, busy, error, status } = useChatRequest();
+  const chat = useChatRequest();
+  const { send, cancel, busy, error, status } = chat;
   useEffect(() => {
     const draft = (event: Event) => { const detail = (event as CustomEvent<{ prompt?: string; compact: boolean }>).detail; if (!detail.compact && detail.prompt) { setMessage(detail.prompt); document.getElementById("question")?.focus(); } };
     window.addEventListener(DRAFT_EVENT, draft);
     return () => window.removeEventListener(DRAFT_EVENT, draft);
   }, []);
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
+  function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!message.trim() || busy) return;
+    if (!message.trim()) return;
+    if (busy) { enqueue(message); setMessage(""); return; }
+    void sendMessage(message);
+  }
+
+  async function sendMessage(message: string) {
+    if (busy) return;
     onStart?.(conversationId, message);
     setMessage("");
-    const result = await send({ conversationId, message }, streamed => onEvent?.(conversationId, streamed));
+    const result = await send({ conversationId, message }, streamed => onEvent?.(conversationId, withSteers(streamed)));
     if (result) {
       selectConversation(selectionKey, conversationId);
     } else setMessage(current => current || message);
     onDone?.(conversationId, message, result);
   }
 
-  const composer = <ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder="Ask anything about your money" busyText="Waiting for a response…" />;
+  const { queue, enqueue, remove, steer, withSteers } = useChatQueue(chat, message => void sendMessage(message));
+
+  const composer = <><ChatQueue items={queue} canSteer={busy} onSteer={item => void steer(item)} onRemove={remove} /><ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder="Ask anything about your money" busyText="Waiting for a response…" /></>;
   const notices = <>{error && <p role="alert" className="mt-2 px-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
     {status === "canceled" && <p role="status" className="mt-2 px-3 text-sm text-muted-foreground">Canceled. Previously completed edits remain in transaction history.</p>}</>;
 
