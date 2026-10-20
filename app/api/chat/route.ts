@@ -135,7 +135,7 @@ export async function POST(request: Request) {
     // The visible plan is not financial evidence; it only tells the user what the model will check.
     let modelFollowUps: string[] = [];
     const planTool = { plan_investigation: tool({ description: "Optional: show the user 2-5 short steps you will take for a multi-part question, and up to 3 follow-up questions they might ask next. Returns nothing.",
-      inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }) };
+      inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); toolCalls.push({ name: "plan_investigation", input, output: "" }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }) };
     const result = streamText({
       model,
       abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
