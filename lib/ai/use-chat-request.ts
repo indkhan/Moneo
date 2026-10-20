@@ -9,6 +9,7 @@ export type ChatStreamEvent =
   | { type: "tool"; id?: string; name: string; state: "running" | "done" | "failed"; input?: unknown; output?: string }
   | { type: "plan"; steps: string[] }
   | { type: "steered"; steers: { id: string; content: string }[] }
+  | { type: "delta"; text: string }
   | ({ type: "answer" } & ChatAnswer)
   | { type: "result"; status: number; body: unknown };
 

@@ -30,7 +30,7 @@ const AiMessage = dynamic(() => import("./ai-message").then(module => module.AiM
 });
 
 export type ChatItem = HistoryMessage & { tools?: (string | ToolStep)[]; plan?: string[]; followUps?: FollowUp[] };
-export type PendingExchange = { question: string; tools: ToolStep[]; answer?: string; plan?: string[]; steers?: string[] };
+export type PendingExchange = { question: string; tools: ToolStep[]; answer?: string; streaming?: boolean; plan?: string[]; steers?: string[] };
 
 /** Message list shared by the AI page and the Ask Moneo panel. */
 export function ChatMessages({ messages, pending, compact = false }: { messages: ChatItem[]; pending?: PendingExchange | null; compact?: boolean }) {
@@ -45,14 +45,15 @@ export function ChatMessages({ messages, pending, compact = false }: { messages:
     {pending && <article className={compact ? "space-y-6" : "space-y-8"}>
       <p className={bubble}>{pending.question}</p>
       {pending.steers?.map((steer, index) => <p key={index} className={bubble}>{steer}</p>)}
-      {assistant(<>{pending.plan && <Plan steps={pending.plan} done={Boolean(pending.answer)} />}<AiToolActivity tools={pending.tools} />{pending.answer ? <><AiMessage content={pending.answer} /><p role="status" className="mt-2 text-xs text-muted-foreground">Saving to history…</p></>
+      {assistant(<>{pending.plan && <Plan steps={pending.plan} done={Boolean(pending.answer)} />}<AiToolActivity tools={pending.tools} />{pending.answer ? <><AiMessage content={pending.answer} />{!pending.streaming && <p role="status" className="mt-2 text-xs text-muted-foreground">Saving to history…</p>}</>
         : <p role="status" className="flex items-center gap-2 py-1 text-sm text-muted-foreground"><span className="flex gap-1" aria-hidden="true">{[0, 150, 300].map(delay => <span key={delay} className="size-1.5 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: `${delay}ms` }} />)}</span>{pending.tools.length ? "Working with your data…" : "Thinking…"}</p>}</>)}
     </article>}
   </div>;
 }
 
 /** Applies one stream event to the pending exchange. */
-export function applyChatEvent(pending: PendingExchange, event: { type: string; id?: string; name?: string; state?: ToolStep["state"]; input?: unknown; output?: string; answer?: string; steps?: string[]; steers?: { id: string; content: string }[] }): PendingExchange {
+export function applyChatEvent(pending: PendingExchange, event: { type: string; id?: string; name?: string; state?: ToolStep["state"]; input?: unknown; output?: string; answer?: string; text?: string; steps?: string[]; steers?: { id: string; content: string }[] }): PendingExchange {
+  if (event.type === "delta" && event.text) return { ...pending, answer: (pending.answer ?? "") + event.text, streaming: true };
   if (event.type === "tool" && event.name && event.state) {
     const step: ToolStep = { id: event.id, name: event.name, state: event.state, ...(event.input !== undefined && { input: event.input }), ...(event.output !== undefined && { output: event.output }) };
     const index = pending.tools.findIndex(tool => event.id ? tool.id === event.id : tool.name === event.name && tool.state === "running");
@@ -60,6 +61,6 @@ export function applyChatEvent(pending: PendingExchange, event: { type: string; 
   }
   if (event.type === "steered" && event.steers?.length) return { ...pending, steers: [...pending.steers ?? [], ...event.steers.map(steer => steer.content)] };
   if (event.type === "plan" && event.steps) return { ...pending, plan: event.steps };
-  if (event.type === "answer" && event.answer) return { ...pending, answer: event.answer };
+  if (event.type === "answer" && event.answer) return { ...pending, answer: event.answer, streaming: false };
   return pending;
 }

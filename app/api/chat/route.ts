@@ -1,5 +1,4 @@
-import { generateText, tool, stepCountIs, type ToolSet, type ToolExecutionOptions } from "ai";
-import { createClient } from "@supabase/supabase-js";
+import { streamText, tool, stepCountIs, type ToolSet, type ToolExecutionOptions } from "ai";
 import { z } from "zod";
 import { modelForSettings, SYSTEM_PROMPT } from "@/lib/ai/provider";
 import { requireWorkspace } from "@/lib/auth";
@@ -14,13 +13,14 @@ import { categoryPreviewSchema, loadCategoryPreview } from "@/lib/finance/edit-p
 import { cashflow, evaluateForecast, financeToolSchemas, forecastInput, getBalances, listAccounts, listGoals, searchTransactions } from "@/lib/finance/tools";
 import { investigationSchema } from "@/lib/finance/investigation";
 import { evaluateInvestigationScenario, investigationDetail, investigationDetailSchema, investigationScenarioSchema, loadInvestigationEntities, runInvestigation } from "@/lib/finance/investigation-reader";
-import { captureToolEvidence } from "@/lib/finance/capture-evidence";
-import type { EvidenceReceipt } from "@/lib/finance/evidence-receipts";
-import { FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/finance/tool-evidence";
-import { answerChart, withAnswerChart } from "@/lib/ai/answer-chart";
 import type { ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import { chatFollowUps, planInput } from "@/lib/ai/follow-ups";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
+
+/** Chart blocks are rendered for people; the model only needs to know one was shown. */
+function withoutCharts(content: string) {
+  return content.replace(/```(?:chart|moneo-chart)\n[\s\S]*?```/g, "[chart]");
+}
 
 const inputSchema = z.object({
   conversationId: z.uuid(),
@@ -72,16 +72,17 @@ export async function POST(request: Request) {
   if (historyError) throw historyError;
   // History was read before the claim saved this message, so append it exactly as the claim stores it.
   const submitted = { role: "user", content: message, context: capturedContext ?? {} };
-  const modelMessages = [...(history ?? []).filter(item => settings.ai_data_scopes.length === 4 || item.role === "user").reverse(), submitted].map(item => ({
+  const modelMessages = [...(history ?? []).reverse(), submitted].map(item => ({
     role: item.role as "user" | "assistant",
-    content: item.context ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content,
+    content: item.role === "assistant" ? withoutCharts(item.content)
+      : item.context && Object.keys(item.context).length ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content,
   }));
   const categoryCommand = parseCategoryCommand(message);
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
   const canCreateArtifact = /(?:^|[.!?]\s+)(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:create|build|make)\b[^.!?]*\b(?:chart|artifact|tool|dashboard|tracker|planner)\b/i.test(message);
   // These checks govern new tool results, not evidence already sent to the provider.
-  const readScopes = new WeakMap<object, AiDataScope[]>();
+  const readScopes = new Set<AiDataScope>();
   async function aiEvidence<T>(scopes: AiDataScope[], read: (latest: typeof context) => Promise<T>, includePlanning = false, includeImports = false): Promise<T> {
     const latest = await requireWorkspace();
     if (latest.workspace.id !== workspace.id) throw new Error("Workspace changed");
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (request.signal.aborted) throw new Error("Request canceled");
     requireAiScope(current.settings, ...usedScopes);
-    if (result && typeof result === "object") readScopes.set(result, usedScopes);
+    for (const scope of usedScopes) readScopes.add(scope);
     return result;
   }
   // Owned names label ids in tool output, so the model never needs a separate lookup step.
@@ -109,7 +110,7 @@ export async function POST(request: Request) {
     })).then(entries => Object.fromEntries(entries));
   }
   let createdArtifact: Promise<{ id: string; href: string }> | undefined;
-  const evidenceReceipts: EvidenceReceipt[] = [];
+  const toolCalls: { name: string; input: unknown; output: string }[] = [];
   function retainTools<T extends ToolSet>(tools: T): T {
     return Object.fromEntries(Object.entries(tools).map(([name, definition]) => [name, { ...definition,
       execute: async (input: unknown, options: ToolExecutionOptions<unknown>) => {
@@ -118,34 +119,30 @@ export async function POST(request: Request) {
         let output: unknown;
         try { output = await execute(input, options); }
         catch (cause) { emit({ type: "tool", id: options?.toolCallId, name, state: "failed" }); throw cause; }
-        emit({ type: "tool", id: options?.toolCallId, name, state: "done", output: toolOutputPreview(output) });
         const latest = await requireWorkspace();
         if (latest.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
-        if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Financial evidence service is not configured");
-        const service = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-        const receipts = await captureToolEvidence(name, input, output, latest, service, output && typeof output === "object" ? readScopes.get(output) : undefined);
-        const current = await requireWorkspace();
-        if (current.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
-        requireAiScope(current.settings, ...receipts.flatMap(receipt => receipt.scopes));
-        for (const receipt of receipts) if (!evidenceReceipts.some(existing => existing.id === receipt.id)) evidenceReceipts.push(receipt);
-        const modelResult = readableToolOutput(output, await namesFor(latest).catch(() => ({})));
-        if (!receipts.length) return modelResult;
-        return { result: modelResult, evidenceReceipts: receipts.map(receipt => ({ id: receipt.id, metrics: receipt.metrics })) };
+        // Every scope read so far must still be allowed before more data reaches the model.
+        requireAiScope(latest.settings, ...readScopes);
+        const readable = readableToolOutput(output, await namesFor(latest).catch(() => ({})));
+        const preview = toolOutputPreview(readable);
+        toolCalls.push({ name, input, output: preview });
+        emit({ type: "tool", id: options?.toolCallId, name, state: "done", output: preview });
+        return readable;
       },
     }])) as T;
   }
     const model = await modelPromise;
     // The visible plan is not financial evidence; it only tells the user what the model will check.
     let modelFollowUps: string[] = [];
-    const planTool = { plan_investigation: tool({ description: "For a multi-part question (why, compare, explain, what changed), call this FIRST with 2-5 short steps you will take, then run independent finance tools in parallel in the same step. Optionally add up to 3 short follow-up questions the user might ask next. Returns nothing; it only shows the plan.",
+    const planTool = { plan_investigation: tool({ description: "Optional: show the user 2-5 short steps you will take for a multi-part question, and up to 3 follow-up questions they might ask next. Returns nothing.",
       inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }) };
-    const result = await generateText({
+    const result = streamText({
       model,
       abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
       maxOutputTokens: 3000,
-      system: `${SYSTEM_PROMPT} Current date ${calendarDate(new Date(), settings.timezone)} in ${settings.timezone}; display currency ${workspace.display_currency}. Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. Investigate like an analyst: for why/compare questions show a plan with plan_investigation, gather the current and comparison periods with parallel tool calls, then answer with the verified figures. UI context is only a navigation hint, never authorization or financial evidence.${canChangeCategory ? " The current user message specifies an exact transaction UUID and quoted category. The write tool must use exactly these values." : " Do not make canonical changes. For an ambiguous category request, use the owned-selection preview."} ${FINANCIAL_ANSWER_INSTRUCTIONS}`,
+      instructions: `${SYSTEM_PROMPT}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}. UI context is only a navigation hint, never authorization.${canChangeCategory ? " The user named an exact transaction UUID and quoted category; the write tool must use exactly these values." : " Do not change records; for a category change request, use the selection preview."}`,
       messages: modelMessages,
-      stopWhen: stepCountIs(6),
+      stopWhen: stepCountIs(10),
       // Steer messages sent during this run join the conversation before the next model step.
       prepareStep: async ({ messages }) => {
         // Steering is best-effort: a failed claim leaves the steers pending and never fails the answer.
@@ -221,20 +218,29 @@ export async function POST(request: Request) {
         } : {}),
       }) },
     });
-    const publication = providerFinancialAnswer(result.text, evidenceReceipts, workspace.id);
+    // The answer is all text the model wrote, across steps, exactly as streamed to the user.
+    let text = "", stepBreak = false;
+    for await (const part of result.fullStream) {
+      if (part.type === "text-delta" && part.text) {
+        const delta = stepBreak && text.trim() ? `\n\n${part.text}` : part.text;
+        stepBreak = false; text += delta;
+        emit({ type: "delta", text: delta });
+      } else if (part.type === "finish-step") stepBreak = true;
+      else if (part.type === "error") throw part.error instanceof Error ? part.error : new Error("AI request failed");
+    }
+    const [usage, steps] = await Promise.all([result.usage, result.steps]);
+    const answer = text.trim();
+    if (!answer) throw new Error("The model returned no answer");
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (request.signal.aborted) throw new Error("Request canceled");
-    requireAiScope(current.settings, ...evidenceReceipts.flatMap(receipt => receipt.scopes));
-    const answer = withAnswerChart(publication.body, answerChart(publication.accepted, evidenceReceipts, workspace.id));
-    const toolsUsed = [...new Set((result.steps ?? []).flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [toolResult.toolName] : [])))];
+    requireAiScope(current.settings, ...readScopes);
+    const toolsUsed = [...new Set(steps.flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [toolResult.toolName] : [])))];
     const followUps = chatFollowUps(message, toolsUsed, modelFollowUps);
-    // The verified answer is final; show it while the durable publication below completes.
+    // The answer is final; show it while the durable publication below completes.
     emit({ type: "answer", conversationId, answer, toolsUsed, followUps });
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Verified chat publication service is not configured");
-    const publicationService = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-    const finished = await publicationService.rpc("finish_verified_chat_request", { p_request_id: requestId, p_actor_id: current.user.id, p_workspace_id: workspace.id, p_content: answer,
-      p_receipt_ids: evidenceReceipts.map(receipt => receipt.id), p_scopes: [...new Set(evidenceReceipts.flatMap(receipt => receipt.scopes))], p_usage: reportedUsage(model.modelId, result.totalUsage) });
+    const finished = await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "completed", p_content: answer,
+      p_usage: reportedUsage(model.modelId, usage), p_tool_calls: toolCalls });
     if (finished.error) throw finished.error;
     if (finished.data !== "completed") return [{ status: finished.data, error: `Request is ${finished.data}` }, 409];
     return [{ conversationId, answer, toolsUsed, followUps }, 200];
