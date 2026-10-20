@@ -832,6 +832,18 @@ export const chatRequests = pgTable("chat_requests", {
   check("chat_requests_status_check", sql`${table.status} in ('running','completed','failed','canceled')`),
 ]);
 
+export const chatSteers = pgTable("chat_steers", {
+  id: uuid("id").primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  chatRequestId: uuid("chat_request_id").notNull().references(() => chatRequests.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+}, (table) => [
+  index("chat_steers_pending").on(table.chatRequestId, table.createdAt).where(sql`${table.consumedAt} is null`),
+  check("chat_steers_content_check", sql`length(btrim(${table.content})) between 1 and 4000`),
+]);
+
 export const manualTransactionEntries = pgTable("manual_transaction_entries", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
