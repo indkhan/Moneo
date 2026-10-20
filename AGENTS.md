@@ -29,6 +29,7 @@ Use npm (`package-lock.json` is authoritative).
 - Financial truth comes from application code/data, not AI guesses. Keep money in integer minor units/`bigint` and currencies explicit.
 - Preserve source records, correction/history, and undo semantics when changing financial data flows.
 - For schema changes, add a new ordered migration and keep `lib/schema.ts` aligned. Do not rewrite applied migrations.
+- Supabase CLI isn't linked: run it via `npx supabase ... --db-url "$SUPABASE_DB_URL"` (from `.env`), e.g. `npx supabase migration repair --db-url "$SUPABASE_DB_URL" --status reverted <versions>`.
 - for each thing break it down and for each thing make a commit directly if a big task make multiple commits
 
 ## Validation
