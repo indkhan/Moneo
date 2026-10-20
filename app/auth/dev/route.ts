@@ -19,6 +19,8 @@ export async function POST(request: Request) {
   const email = z.string().email().safeParse((await request.formData()).get("email"));
   if (!email.success) return NextResponse.redirect(new URL("/login?error=sign-in", origin), 303);
   const admin = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+  // magiclink links only exist for known users; an "already registered" error here is fine.
+  await admin.auth.admin.createUser({ email: email.data, email_confirm: true });
   const { data, error } = await admin.auth.admin.generateLink({ type: "magiclink", email: email.data });
   if (!error) {
     const supabase = await createClient();
