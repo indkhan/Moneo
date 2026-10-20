@@ -61,7 +61,7 @@ main select { min-width: 0; max-width: 100%; }
 
 html[data-theme="dark"] .bg-brand.text-white { color: var(--color-primary-foreground); }
 
-.ai-markdown { min-width: 0; overflow-wrap: anywhere; font-size: 15px; line-height: 1.75; }
+.ai-markdown { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: 15px; line-height: 1.75; }
 .ai-markdown > :first-child { margin-top: 0; }
 .ai-markdown p { margin-block: 12px; white-space: pre-wrap; }
 .ai-markdown h1,.ai-markdown h2,.ai-markdown h3 { font-size: 18px; font-weight: 600; line-height: 1.4; margin-block: 24px 10px; letter-spacing: -.4px; }

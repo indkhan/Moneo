@@ -24,7 +24,7 @@ export function AiToolActivity({ tools }: { tools: (string | ToolStep)[] }) {
       {running && <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />}{running ? `Using ${count}…` : `Used ${count}`}
       <ChevronRight className="size-4 transition-transform group-open:rotate-90" aria-hidden="true" />
     </summary>
-    <ul className="mt-1 space-y-1 border-l-2 border-border pl-3">{steps.map((step, index) => <li key={step.id ?? `${step.name}-${index}`} className="flex items-center gap-1.5">
+    <ul className="mt-1 min-w-0 space-y-1 [overflow-wrap:anywhere] border-l-2 border-border pl-3">{steps.map((step, index) => <li key={step.id ?? `${step.name}-${index}`} className="flex min-w-0 items-center gap-1.5 [&>svg]:shrink-0">
       {step.state === "running" ? <LoaderCircle className="size-3.5 animate-spin" aria-label="Running" /> : step.state === "failed" ? <X className="size-3.5 text-red-600 dark:text-red-400" aria-label="Failed" /> : <Check className="size-3.5" aria-label="Done" />}
       {labels[step.name] ?? step.name}</li>)}</ul>
   </details>;
