@@ -823,6 +823,7 @@ export const chatRequests = pgTable("chat_requests", {
   allowedCategory: text("allowed_category"),
   actionResult: jsonb("action_result"),
   usage: jsonb("usage"),
+  toolCalls: jsonb("tool_calls"),
   answer: text("answer"),
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
