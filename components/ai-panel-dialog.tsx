@@ -70,14 +70,15 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     setConversationId(id);
     const context = { path: window.location.pathname + window.location.search, ...(about ? { about } : {}) };
     const selectionGeneration = generation.current;
-    setPending({ question, tools: [] });
+    let live: PendingExchange = { question, tools: [] };
+    setPending(live);
     setQuestion("");
-    const result = await send({ conversationId: id, message: question, context }, event => setPending(current => current && applyChatEvent(current, event)));
+    const result = await send({ conversationId: id, message: question, context }, event => { live = applyChatEvent(live, event); setPending(live); });
     setPending(null);
     if (result && selectionGeneration === generation.current) {
       selectConversation(selectionKey, id);
       const now = new Date().toISOString();
-      setHistory(current => [...current, { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now }, { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: result.toolsUsed, followUps: result.followUps }]);
+      setHistory(current => [...current, { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now }, { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: live.tools.length ? live.tools : result.toolsUsed, plan: live.plan, followUps: result.followUps }]);
       setAbout(null);
       // The AI page keeps its own client state; refresh it only when it is the page behind the panel.
       if (pathname === "/ai") { router.push(`/ai?conversation=${id}`); router.refresh(); }

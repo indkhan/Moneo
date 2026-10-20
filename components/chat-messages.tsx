@@ -5,7 +5,7 @@ import { AiToolActivity, type ToolStep } from "./ai-tool-activity";
 import type { HistoryMessage } from "@/lib/ai/conversation-history";
 import type { FollowUp } from "@/lib/ai/follow-ups";
 import Link from "next/link";
-import { ListChecks, LoaderCircle } from "lucide-react";
+import { ChevronRight, ListChecks, LoaderCircle } from "lucide-react";
 
 export const DRAFT_EVENT = "moneo-chat-draft";
 /** One-click next steps: prompts fill the composer (the user still sends), links navigate. */
@@ -16,11 +16,12 @@ function FollowUps({ items, compact }: { items: FollowUp[]; compact: boolean }) 
     ? <Link key={item.label} href={item.href} className={chip}>{item.label} →</Link>
     : <button key={item.label} type="button" className={chip} onClick={() => window.dispatchEvent(new CustomEvent(DRAFT_EVENT, { detail: { prompt: item.prompt, compact } }))}>{item.label}</button>)}</div>;
 }
-function Plan({ steps, done }: { steps: string[]; done: boolean }) {
-  return <div className="my-2 rounded-lg border border-border p-3 text-sm">
-    <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">{done ? <ListChecks className="size-3.5" aria-hidden="true" /> : <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />}Investigation plan</p>
+/** The plan stays open while answering; finished answers keep it collapsed. */
+function Plan({ steps, done, collapsed = false }: { steps: string[]; done: boolean; collapsed?: boolean }) {
+  return <details open={!collapsed || undefined} className="group my-2 rounded-lg border border-border p-3 text-sm">
+    <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">{done ? <ListChecks className="size-3.5" aria-hidden="true" /> : <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />}Investigation plan<ChevronRight className="size-3.5 transition-transform group-open:rotate-90" aria-hidden="true" /></summary>
     <ol className="mt-1 list-decimal space-y-0.5 pl-5">{steps.map(step => <li key={step}>{step}</li>)}</ol>
-  </div>;
+  </details>;
 }
 
 // The markdown renderer is the heaviest client code here; split it out of the page bundle.
@@ -28,7 +29,7 @@ const AiMessage = dynamic(() => import("./ai-message").then(module => module.AiM
   loading: () => <div className="h-5 w-2/3 animate-pulse rounded bg-muted" aria-hidden="true" />,
 });
 
-export type ChatItem = HistoryMessage & { tools?: string[]; followUps?: FollowUp[] };
+export type ChatItem = HistoryMessage & { tools?: (string | ToolStep)[]; plan?: string[]; followUps?: FollowUp[] };
 export type PendingExchange = { question: string; tools: ToolStep[]; answer?: string; plan?: string[] };
 
 /** Message list shared by the AI page and the Ask Moneo panel. */
@@ -39,7 +40,7 @@ export function ChatMessages({ messages, pending, compact = false }: { messages:
   return <div className={`min-w-0 max-w-full ${compact ? "space-y-6" : "space-y-8"}`} aria-live="polite">
     {messages.map(item => <article key={item.id}>
       <time className="sr-only" dateTime={item.created_at}>{item.created_at}</time>
-      {item.role === "user" ? <p className={bubble}>{item.content}</p> : assistant(<><AiToolActivity tools={item.tools ?? []} /><AiMessage content={item.content} />{item === messages.at(-1) && !pending && <FollowUps items={item.followUps ?? []} compact={compact} />}</>)}
+      {item.role === "user" ? <p className={bubble}>{item.content}</p> : assistant(<>{item.plan && <Plan steps={item.plan} done collapsed />}<AiToolActivity tools={item.tools ?? []} /><AiMessage content={item.content} />{item === messages.at(-1) && !pending && <FollowUps items={item.followUps ?? []} compact={compact} />}</>)}
     </article>)}
     {pending && <article className={compact ? "space-y-6" : "space-y-8"}>
       <p className={bubble}>{pending.question}</p>
@@ -50,11 +51,11 @@ export function ChatMessages({ messages, pending, compact = false }: { messages:
 }
 
 /** Applies one stream event to the pending exchange. */
-export function applyChatEvent(pending: PendingExchange, event: { type: string; id?: string; name?: string; state?: ToolStep["state"]; answer?: string; steps?: string[] }): PendingExchange {
+export function applyChatEvent(pending: PendingExchange, event: { type: string; id?: string; name?: string; state?: ToolStep["state"]; input?: unknown; output?: string; answer?: string; steps?: string[] }): PendingExchange {
   if (event.type === "tool" && event.name && event.state) {
-    const step = { id: event.id, name: event.name, state: event.state };
+    const step: ToolStep = { id: event.id, name: event.name, state: event.state, ...(event.input !== undefined && { input: event.input }), ...(event.output !== undefined && { output: event.output }) };
     const index = pending.tools.findIndex(tool => event.id ? tool.id === event.id : tool.name === event.name && tool.state === "running");
-    return { ...pending, tools: index < 0 ? [...pending.tools, step] : pending.tools.map((tool, i) => i === index ? step : tool) };
+    return { ...pending, tools: index < 0 ? [...pending.tools, step] : pending.tools.map((tool, i) => i === index ? { ...tool, ...step } : tool) };
   }
   if (event.type === "plan" && event.steps) return { ...pending, plan: event.steps };
   if (event.type === "answer" && event.answer) return { ...pending, answer: event.answer };

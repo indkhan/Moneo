@@ -132,16 +132,24 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     } catch (cause) { setNotice((cause as Error).message); }
   }
 
-  function onStart(id: string, question: string) { setPending(current => ({ ...current, [id]: { question, tools: [] } })); }
-  function onEvent(id: string, event: ChatStreamEvent) { setPending(current => current[id] ? { ...current, [id]: applyChatEvent(current[id], event) } : current); }
+  // Mirrors each pending exchange so the finished answer can keep its plan and tool calls.
+  const live = useRef<Record<string, PendingExchange>>({});
+  function onStart(id: string, question: string) { live.current[id] = { question, tools: [] }; setPending(current => ({ ...current, [id]: live.current[id] })); }
+  function onEvent(id: string, event: ChatStreamEvent) {
+    if (!live.current[id]) return;
+    const next = live.current[id] = applyChatEvent(live.current[id], event);
+    setPending(current => current[id] ? { ...current, [id]: next } : current);
+  }
   function onDone(id: string, question: string, result: ChatAnswer | null) {
+    const finished = live.current[id];
+    delete live.current[id];
     setPending(current => omit(current, id));
     if (!result) return;
     const now = new Date().toISOString();
     const conversation = { id, title: question.trim().slice(0, 80), created_at: now };
     const exchange: ChatItem[] = [
       { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now },
-      { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: result.toolsUsed, followUps: result.followUps },
+      { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: finished?.tools.length ? finished.tools : result.toolsUsed, plan: finished?.plan, followUps: result.followUps },
     ];
     setEntries(current => ({ ...current, [id]: current[id] ? { ...current[id], messages: [...current[id].messages, ...exchange] } : { conversation, messages: exchange, cursor: null } }));
     setThreads(current => current.some(thread => thread.id === id) ? current : [conversation, ...current]);
