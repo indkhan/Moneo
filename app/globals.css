@@ -81,5 +81,3 @@ html[data-theme="dark"] .bg-brand.text-white { color: var(--color-primary-foregr
 .ai-table td,.ai-table th { padding: 9px; border-bottom: 1px solid var(--color-border); text-align: left; }
 .ai-table th { color: var(--color-muted-foreground); background: var(--color-muted); font-weight: 500; }
 .ai-table td:last-child,.ai-table th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
-.ai-markdown .ai-artifact-link { display: inline-flex; max-width: 100%; flex-direction: column; border: 1px solid var(--color-border); background: var(--color-accent); padding: 14px 18px; border-radius: 8px; margin-block: 6px; text-decoration: none; font-weight: 600; }
-.ai-artifact-label { font: 10px/1.8 var(--font-mono); font-weight: 400; color: var(--color-muted-foreground); }

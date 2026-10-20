@@ -86,21 +86,6 @@ it("binds review navigation hints and read policy to actual submission rather th
   await tools.reviews_start.execute({context: {page: "forged"}, allowedScopes: ["imports"]});
   expect(startFinancialReview).toHaveBeenLastCalledWith(expect.anything(), "workspace", requestId, requestId, expect.objectContaining({context: visible, allowedScopes: DEFAULT_SETTINGS.ai_data_scopes}));
 });
-it("creates a trusted chart only for an explicit artifact request and reuses it within the request", async () => {
-  await POST(request("Can you create a monthly spending chart?"));
-  const context = await requireWorkspace();
-  vi.mocked(context.supabase.rpc).mockResolvedValueOnce({ data: { id: requestId }, error: null } as never);
-  const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, { execute: (input: unknown) => Promise<unknown> }>;
-  const input = { kind: "spending_explorer", name: "Monthly spending" };
-  const results = await Promise.all([tools.artifacts_create.execute(input), tools.artifacts_create.execute(input)]);
-  expect(results).toEqual([{ id: requestId, href: `/ai/library/${requestId}` }, { id: requestId, href: `/ai/library/${requestId}` }]);
-  expect(context.supabase.rpc).toHaveBeenCalledWith("create_trusted_artifact", { p_kind: input.kind, p_name: input.name });
-  expect(vi.mocked(context.supabase.rpc).mock.calls.filter(call => call[0] === "create_trusted_artifact")).toHaveLength(1);
-});
-it("artifact questions do not expose a creation tool", async () => {
-  await POST(request("How do I create a spending chart?"));
-  expect(vi.mocked(generateText).mock.calls[0][0].tools).not.toHaveProperty("artifacts_create");
-});
 it("offers import status separately from financial balance freshness and respects import scope", async () => {
   await POST(request("Have my imports completed?"));
   expect(vi.mocked(generateText).mock.calls[0][0].tools).toHaveProperty("imports_status");
@@ -132,11 +117,11 @@ it("shows the model's plan as a stream event and returns follow-ups without trea
 
 it("returns only completed tool names from actual model steps, without leaking tool inputs or results", async () => {
   vi.mocked(generateText).mockResolvedValueOnce({ text: "Done", steps: [
-    { toolResults: [{ toolName: "transactions_search", output: { private: "record" } }, { toolName: "artifacts_create" }] },
+    { toolResults: [{ toolName: "transactions_search", output: { private: "record" } }, { toolName: "accounts_list" }] },
     { toolResults: [undefined, { toolName: "transactions_search" }] },
   ] } as never);
   const result = await (await POST(request("Create a spending chart"))).json();
-  expect(result.toolsUsed).toEqual(["transactions_search", "artifacts_create"]);
+  expect(result.toolsUsed).toEqual(["transactions_search", "accounts_list"]);
   expect(JSON.stringify(result)).not.toContain("private");
 });
 

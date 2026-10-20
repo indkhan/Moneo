@@ -9,7 +9,6 @@ import { investigationReceipt } from "./investigation-receipt";
 import { getBalances } from "./tools";
 import { retainToolSourceSupport } from "./tool-source-support";
 const scopesByTool: Record<string, AiDataScope[]> = {
-  artifacts_create: [],
   accounts_list: ["accounts"], accounts_getBalances: ["accounts"], analytics_cashflow: ["transactions"], transactions_search: ["transactions"], goals_list: ["planning"],
   forecast_evaluate: ["accounts", "transactions", "planning"], finance_investigate: ["accounts", "transactions"], finance_entities: ["accounts", "transactions"], finance_detail: ["accounts", "transactions"], finance_scenario: ["accounts", "transactions"],
   reviews_investigate: ["accounts", "transactions"], reviews_start: ["accounts", "transactions"], imports_status: ["imports"], transactions_previewCategory: ["transactions"], transactions_setCategory: ["transactions"],

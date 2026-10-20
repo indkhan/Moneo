@@ -6,7 +6,6 @@ import { loadFinancialReviewEvidence } from "./review-loader";
 import { compareReviewEvidence, reviewFreshness } from "./review-freshness";
 import { requireWorkspace } from "@/lib/auth";
 import { settingsSchema } from "@/lib/settings";
-import { buildCalculatorSnapshot } from "@/lib/artifacts/snapshot";
 
 const fixture = vi.hoisted(() => ({ rate: "1", snapshotVersion: 1, revision: 1, revisionTable: "", reads: [] as string[] }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({
@@ -99,12 +98,4 @@ it.each([["accounts", false], ["accounts", true], ["goals", true], ["spending_pl
   expect(current.accounts).toEqual(first.accounts);
   expect(current.netWorth).toEqual(first.netWorth);
   expect(compareReviewEvidence(saved, current).status).toBe("stale");
-});
-
-it("retains forecast originals and source revisions in native calculator snapshots", async () => {
-  const first = (await buildCalculatorSnapshot("artifact", "trip_planner", { costMinor: 0n })).snapshot;
-  fixture.rate = "1.01";
-  const changed = (await buildCalculatorSnapshot("artifact", "trip_planner", { costMinor: 0n })).snapshot;
-  expect(first).toMatchObject({ calculationEvidence: { source: { balances: { snapshots: [{ currency_code: "USD", version: 1 }] } } }, sourceVersion: expect.any(String) });
-  expect(toolSourceVersion(first)).not.toBe(toolSourceVersion(changed));
 });

@@ -105,7 +105,7 @@ function resetForm(confirmation: string) {
 }
 
 function resetWorkspaceWith(rpc: ReturnType<typeof vi.fn>, files: string[] = []) {
-  const remaining = new Map([["imports", files.map(name => ({ name }))], ["artifacts", []]]);
+  const remaining = new Map([["imports", files.map(name => ({ name }))]])
   const remove = vi.fn(async (paths: string[]) => ({ data: paths, error: null }));
   const from = (bucket: string) => ({
     list: async () => ({ data: remaining.get(bucket) ?? [], error: null }),

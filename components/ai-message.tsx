@@ -17,11 +17,11 @@ const appLinks: Plugin<[], Root> = () => tree => {
       const node = child as { type: string; value?: string; children?: unknown[] };
       if (["code", "inlineCode", "link", "image"].includes(node.type)) return [node];
       if (node.type !== "text") { visit(node); return [node]; }
-      const pattern = /\/ai\/library\/[0-9a-f-]{36}|\/money\/transactions\?[\w=&%.-]+/gi;
+      const pattern = /\/money\/transactions\?[\w=&%.-]+/gi;
       const parts: unknown[] = []; let start = 0;
       for (const match of (node.value ?? "").matchAll(pattern)) {
         parts.push({ type: "text", value: node.value!.slice(start, match.index) });
-        const label = match[0].startsWith("/ai/") ? "Open saved tool" : /[?&]transaction=/.test(match[0]) ? "Open transaction and Undo" : "Open matching transactions";
+        const label = /[?&]transaction=/.test(match[0]) ? "Open transaction and Undo" : "Open matching transactions";
         parts.push({ type: "link", url: match[0], children: [{ type: "text", value: label }] });
         start = match.index + match[0].length;
       }
@@ -53,11 +53,8 @@ export function AiMessage({ content }: { content: string }) {
     table: ({ children }) => <div className="ai-table"><table>{children}</table></div>,
     a: ({ href, children }) => {
       if (!href) return <span>{children}</span>;
-      const artifact = /^\/ai\/library\/[0-9a-f-]{36}$/.test(href);
       // App paths navigate client-side; anything else opens in a new tab.
-      if (href.startsWith("/") && !href.startsWith("//")) return <Link href={href} className={artifact ? "ai-artifact-link" : undefined}>
-        {artifact && <span className="ai-artifact-label">Saved tool / open workspace ↗</span>}{children}
-      </Link>;
+      if (href.startsWith("/") && !href.startsWith("//")) return <Link href={href}>{children}</Link>;
       // External links are shown as text only; answers never link off the app.
       return <span>{children}</span>;
     },

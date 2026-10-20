@@ -48,7 +48,7 @@ export async function resetAllData(_previous: { error?: string }, form: FormData
     if (!z.literal("RESET").safeParse(form.get("confirmation")).success) return { error: "Type RESET to confirm" };
     // Storage RLS is keyed to the current workspace folder, so files go first while it is still ours.
     // ponytail: a failed reset after this leaves rows pointing at removed files; retrying the reset clears them.
-    for (const bucket of ["imports", "artifacts"]) {
+    for (const bucket of ["imports"]) {
       for (;;) {
         const listed = await supabase.storage.from(bucket).list(workspace.id, { limit: 1000 });
         if (listed.error) throw listed.error;
