@@ -102,11 +102,12 @@ export async function POST(request: Request) {
     return Object.fromEntries(Object.entries(tools).map(([name, definition]) => [name, { ...definition,
       execute: async (input: unknown, options: ToolExecutionOptions<unknown>) => {
         const execute = definition.execute as (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>;
-        emit({ type: "tool", id: options?.toolCallId, name, state: "running" });
+        emit({ type: "tool", id: options?.toolCallId, name, state: "running", input });
         let output: unknown;
         try { output = await execute(input, options); }
         catch (cause) { emit({ type: "tool", id: options?.toolCallId, name, state: "failed" }); throw cause; }
-        emit({ type: "tool", id: options?.toolCallId, name, state: "done" });
+        const shown = JSON.stringify(output, null, 2) ?? "";
+        emit({ type: "tool", id: options?.toolCallId, name, state: "done", output: shown.length > 8000 ? `${shown.slice(0, 8000)}\n… (truncated)` : shown });
         const latest = await requireWorkspace();
         if (latest.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
         if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Financial evidence service is not configured");

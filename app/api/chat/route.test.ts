@@ -324,7 +324,7 @@ it("streams tool progress and the verified answer before durable publication fin
   const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
   let text = "";
   while (!text.includes('"type":"answer"')) text += (await reader.read()).value ?? "";
-  expect(text).toContain('{"type":"tool","id":"call","name":"accounts_list","state":"running"}');
+  expect(text).toContain('{"type":"tool","id":"call","name":"accounts_list","state":"running","input":{}}');
   expect(text).toContain('"state":"done"');
   expect(text).not.toContain('"type":"result"');
   await vi.waitFor(() => expect(publish).toBeTypeOf("function"));
