@@ -48,36 +48,18 @@ test("saved review stays historical while balance corrections and scopes change 
     await expect(page.getByText(`Saved ${new Date(savedAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}`, { exact: false })).toBeVisible();
     await expect(page.getByText(/Evidence current:/)).toBeVisible();
     await expect(page.locator("article")).toContainText(body);
-    await page.goto("/ai/library");
-    const create = page.locator("form").filter({ has: page.getByLabel("Custom Comparison", { exact: true }) });
-    await create.getByLabel("Custom Comparison", { exact: true }).fill("Live cash evidence");
-    await create.getByRole("button", { name: "Create", exact: true }).click();
-    await page.waitForURL(/\/ai\/library\/[0-9a-f-]{36}$/);
-    const toolUrl = page.url();
-    const editor = page.getByRole("region", { name: "Edit calculator version" });
-    await editor.locator(".cm-content").fill('input => { const cash = input.snapshot.balances?.[0]?.balance?.amount_minor; return cash ? { numbers: { cash } } : { unavailable: input.snapshot.unavailable || "No dated balance" }; }');
-    await editor.getByLabel("Manifest (JSON)").fill(JSON.stringify({ kind: "custom_comparison", runtime: "quickjs-calculator-v1", sdk: ["balances"], params: {}, renderer: "trusted" }));
-    await editor.getByRole("button", { name: "Save new version", exact: true }).click();
-    const output = page.getByRole("region", { name: "Generated calculator output" });
-    await expect(output.locator("dd")).toHaveText("100000", { timeout: 20_000 });
     await db`insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance) values(${workspace.id},${account},90000,'EUR',${correctedDate},'manual')`;
     expect(await status()).toBe("stale");
-    await page.goto(toolUrl);
-    await expect(output.locator("dd")).toHaveText("90000", { timeout: 20_000 });
     await page.goto(`/ai/activity/${job}`);
     await expect(page.getByText(/Evidence stale:/)).toBeVisible();
     await expect(page.locator("article")).toContainText(body);
     await db`insert into public.workspace_settings(workspace_id,ai_data_scopes) values(${workspace.id},'{}') on conflict(workspace_id) do update set ai_data_scopes='{}'`;
     expect(await status()).toBe("unknown");
-    await page.goto(toolUrl);
-    await expect(output).toContainText("AI access to accounts is disabled in Settings", { timeout: 20_000 });
-    await expect(output.locator("dd")).toHaveCount(0);
     expect((await db`select body,evidence from public.saved_analyses where job_id=${job}`)[0]).toEqual({ body, evidence });
   } finally {
     await context.close().catch(() => {});
     await db.begin(async tx => {
-      await tx`update public.artifacts set active_version_id=null where workspace_id=${workspace.id}`;
-      for (const table of ["artifact_state", "artifact_versions", "artifacts", "saved_analyses", "background_jobs", "balance_snapshots", "accounts"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace.id}`;
+      for (const table of ["saved_analyses", "background_jobs", "balance_snapshots", "accounts"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace.id}`;
       await tx`delete from public.workspaces where id=${workspace.id} and owner_id=${user}`;
     });
     expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();

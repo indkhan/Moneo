@@ -6,7 +6,7 @@ const state = e2eStorageStatePath();
 if (state) test.use({ storageState: state });
 test.skip(!hasSupabaseEnv() || !state, gatedSkipReason());
 
-test("Evidence room handles rich replies, artifacts, cancellation and modal keyboard behavior", async ({ page }) => {
+test("Evidence room handles rich replies, cancellation and modal keyboard behavior", async ({ page }) => {
   const hydrationErrors: string[] = [];
   page.on("console", message => { if (/hydrat/i.test(message.text())) hydrationErrors.push(message.text()); });
   const base = process.env.E2E_BASE_URL ?? "http://localhost:3000";
@@ -56,7 +56,7 @@ test("Evidence room handles rich replies, artifacts, cancellation and modal keyb
   const dialog = page.getByRole("dialog", { name: "AI assistant" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Close AI assistant" })).toBeFocused();
-  const reply = '## Finance lookup\n\n**EUR 420**\n\n| Category | Amount |\n| --- | --- |\n| Dining | EUR 420 |\n\n```sql\nSELECT amount_minor FROM transactions;\n```\n\n[Source](https://example.com/evidence)\n\n/ai/library/00000000-0000-4000-8000-000000000001';
+  const reply = '## Finance lookup\n\n**EUR 420**\n\n| Category | Amount |\n| --- | --- |\n| Dining | EUR 420 |\n\n```sql\nSELECT amount_minor FROM transactions;\n```\n\n[Source](https://example.com/evidence)\n\n/money/transactions?transaction=00000000-0000-4000-8000-000000000001';
   await page.route("**/api/chat", route => {
     const payload = route.request().postDataJSON();
     persistedConversation = payload.conversationId;
@@ -72,7 +72,7 @@ test("Evidence room handles rich replies, artifacts, cancellation and modal keyb
   await expect(dialog.getByRole("heading", { name: "Finance lookup" })).toBeVisible();
   await expect(dialog.locator("table")).toContainText("Dining");
   await expect(dialog.locator("code.language-sql")).toContainText("SELECT amount_minor");
-  await expect(dialog.getByRole("link", { name: /Open saved tool/ })).toHaveAttribute("href", /\/ai\/library\//);
+  await expect(dialog.getByRole("link", { name: /Open transaction and Undo/ })).toHaveAttribute("href", /\/money\/transactions\?transaction=/);
   await dialog.getByText("Used 2 tools", { exact: true }).click();
   await expect(dialog.getByRole("listitem").filter({ hasText: "Search transactions" })).toBeVisible();
   // The rich reply and its tool activity are asserted; release the held
@@ -92,14 +92,6 @@ test("Evidence room handles rich replies, artifacts, cancellation and modal keyb
   await page.screenshot({ path: ".qa/evidence-room-page-mobile.png", fullPage: true });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.screenshot({ path: ".qa/evidence-room-page-desktop.png", fullPage: true });
-  if (conversation) {
-    const artifact = page.locator("main").getByRole("link", { name: /Open saved tool/ });
-    await expect(artifact).toBeVisible();
-    await artifact.click();
-    await expect(page).toHaveURL(/\/ai\/library\/[0-9a-f-]{36}$/);
-    await expect(page.getByRole("heading", { name: "QA spending explorer", exact: true })).toBeVisible();
-    await page.goto(`${base}/ai?conversation=${conversation}`);
-  }
   // The reopened dialog loads the served owned history without error, so the
   // second Send stays enabled for the cancellation half below.
   await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();

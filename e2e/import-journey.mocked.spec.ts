@@ -4,7 +4,7 @@
 // Why this slice: CSV/XLSX import with AI-proposed mapping → Preview →
 // Continue / Correct / Cancel (§4–§5) is the highest-priority, highest-risk
 // step of the whole loop. Everything downstream (Home, transactions, goals,
-// forecasts, artifacts, re-import) depends on it, and the finance unit tests
+// forecasts, re-import) depends on it, and the finance unit tests
 // already cover minor-unit math but not the browser flow.
 //
 // Strategy: fully mock the AI/backend boundary with page.route fulfilments
