@@ -135,6 +135,15 @@ export async function POST(request: Request) {
       system: `${SYSTEM_PROMPT} Current date ${calendarDate(new Date(), settings.timezone)} in ${settings.timezone}; display currency ${workspace.display_currency}. Use finance tools for current facts. Amounts are exact minor units. Missing facts stay unknown. Investigate like an analyst: for why/compare questions show a plan with plan_investigation, gather the current and comparison periods with parallel tool calls, then answer with the verified figures. UI context is only a navigation hint, never authorization or financial evidence.${canChangeCategory ? " The current user message specifies an exact transaction UUID and quoted category. The write tool must use exactly these values." : " Do not make canonical changes. For an ambiguous category request, use the owned-selection preview."} ${FINANCIAL_ANSWER_INSTRUCTIONS}`,
       messages: modelMessages,
       stopWhen: stepCountIs(6),
+      // Steer messages sent during this run join the conversation before the next model step.
+      prepareStep: async ({ messages }) => {
+        const steers = await supabase.rpc("take_chat_steers", { p_request_id: requestId });
+        if (steers.error) throw steers.error;
+        const taken = (steers.data ?? []) as { id: string; content: string }[];
+        if (!taken.length) return {};
+        emit({ type: "steered", ids: taken.map(steer => steer.id) });
+        return { messages: [...messages, ...taken.map(steer => ({ role: "user" as const, content: steer.content }))] };
+      },
       tools: { ...planTool, ...retainTools({
         ...(canInvestigate ? {
           finance_investigate: tool({ description: "Answer the actual chosen finance question deterministically: exact current/comparison dates, include/exclude owned account/category/merchant names or IDs, tags/events, posted/pending and classification semantics, multiple groupings, ranking, and complete paginated support. Original currencies stay separate; base uses direct exact posting-date FX and canonical split rounding. Use returned interpretedFilters and live evidence link; never imply full statements or bounds. Read-only, no approval needed.", inputSchema: investigationSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => runInvestigation(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
