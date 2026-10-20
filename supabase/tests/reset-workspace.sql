@@ -27,7 +27,7 @@ begin
   foreach target_table in array array['accounts','balance_snapshots','data_sources','imports','source_transactions','categories','merchants',
     'transactions','pending_hold_resolutions','transaction_sources','correction_events','goals','goal_allocations','financial_assumptions','scenarios','scenario_overrides',
     'forecast_runs','background_jobs','saved_analyses','conversations','messages',
-    'recurring_series','recurring_series_transactions','recurring_occurrence_settlements','fx_rates','spending_plans','transaction_views','planning_events','chat_requests','manual_transaction_entries','transaction_batches','workspace_settings','dashboard_layouts','transaction_split_sets','transaction_splits','summary_runs','goal_events','wealth_items','wealth_events','goal_reservation_events','forecast_preferences','forecast_preference_events','money_metadata_events','spending_plan_limits','scenario_events','transaction_links','transaction_link_fees','insight_preferences','insight_dismissals','import_control_events','import_staging','organization_rules','organization_reviews'] loop
+    'recurring_series','recurring_series_transactions','recurring_occurrence_settlements','fx_rates','spending_plans','transaction_views','planning_events','chat_requests','chat_steers','manual_transaction_entries','transaction_batches','workspace_settings','dashboard_layouts','transaction_split_sets','transaction_splits','summary_runs','goal_events','wealth_items','wealth_events','goal_reservation_events','forecast_preferences','forecast_preference_events','money_metadata_events','spending_plan_limits','scenario_events','transaction_links','transaction_link_fees','insight_preferences','insight_dismissals','import_control_events','import_staging','organization_rules','organization_reviews'] loop
     -- The same fixture also verifies older private upgrade baselines.
     if target_table in ('organization_rules','organization_reviews') and to_regclass(format('%I.%I',app_schema,target_table)) is null then continue; end if;
     data := jsonb_build_object('id',md5(target_table||seed_ws)::uuid,'workspace_id',seed_ws,'name','Synthetic foreign',
@@ -54,6 +54,7 @@ begin
       'status', case target_table when 'source_transactions' then 'review' when 'imports' then 'completed' when 'background_jobs' then 'completed'
         when 'chat_requests' then 'running' when 'recurring_series' then 'pending' when 'goals' then 'active' else 'posted' end);
     if target_table='pending_hold_resolutions' then data := data || jsonb_build_object('pending_transaction_id',md5('transactions'||seed_ws)::uuid,'released_minor','100','operation','cancel','input','{}'::jsonb,'receipt','{}'::jsonb,'note','Synthetic foreign hold'); end if;
+    if target_table='chat_steers' then data := data || jsonb_build_object('chat_request_id',md5('chat_requests'||seed_ws)::uuid); end if;
     if target_table='balance_snapshots' then data := data - 'source_transaction_id'; end if;
     if target_table='dashboard_layouts' then data := data || '{"items":[]}'::jsonb; end if;
     if target_table='transaction_splits' then data := data || jsonb_build_object('parent_transaction_id',md5('transactions'||seed_ws)::uuid,'split_set_id',md5('transaction_split_sets'||seed_ws)::uuid,'ordinal',1); end if;
@@ -115,7 +116,8 @@ begin
   if not exists(select 1 from public.workspaces where id=fresh and name='My finances' and display_currency='EUR') then raise exception 'Fresh workspace must match signup defaults'; end if;
   if exists(select 1 from public.transaction_sources s join public.transactions t on t.id=s.transaction_id where t.workspace_id in (workspace_a,fresh)) then raise exception 'transaction_sources survived reset'; end if;
   for target_table in select key from jsonb_each(before_b) loop
-    execute format('select count(*) from %I.%I where workspace_id in ($1,$2)',app_schema,target_table) into total using workspace_a, fresh;
+    -- A fresh workspace is seeded with default categories, like signup.
+    execute format('select count(*) from %I.%I where workspace_id=$1 or (workspace_id=$2 and $3<>''categories'')',app_schema,target_table) into total using workspace_a, fresh, target_table;
     if total<>0 then raise exception 'Reset left % rows in %',total,target_table; end if;
     execute format('select count(*) from %I.%I where workspace_id=$1',app_schema,target_table) into total using workspace_b;
     if total<>(before_b->>target_table)::integer then raise exception 'Reset changed another workspace in %',target_table; end if;
