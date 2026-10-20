@@ -1,6 +1,16 @@
 import Link from "next/link";
 import { formatMoney } from "@/lib/finance/format";
-import { answerChartSchema } from "@/lib/ai/answer-chart";
+import { z } from "zod";
+
+// Older answers carry app-written ```moneo-chart blocks; they keep rendering.
+const answerChartSchema = z.object({
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  rows: z.array(z.object({
+    label: z.string().min(1).max(240),
+    valueMinor: z.string().regex(/^-?(?:0|[1-9]\d{0,79})$/),
+    href: z.string().max(500).regex(/^\/money\/transactions\?[\w=&%.-]*$/).optional(),
+  }).strict()).min(2).max(20),
+}).strict();
 
 /** Inline bars for an app-written `moneo-chart` block; exact amounts stay as text beside each bar. */
 export function ChatChart({ source }: { source: string }) {

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { toolResultReceipt, providerFinancialAnswer } from "./tool-evidence";
+import { toolResultReceipt } from "./tool-evidence";
 import { buildPlanningReview, buildReviewEvidence, reviewNetWorth } from "./review";
 import { resolveBalances } from "./balances";
 import { wealthEvidence } from "./wealth";
@@ -17,10 +17,6 @@ it.each(["manual", "manual reviewed"])("discloses %s provenance when publishing 
     for (const id of ids) {
       const metric = receipt.metrics.find(metric => metric.id === id)!;
       expect(metric).toMatchObject({ valueMinor: "500", period: { from: "2026-10-01", to: "2026-10-01" }, qualifiers: expect.arrayContaining(["manual_evidence", "dated_snapshot"]) });
-      const answer = providerFinancialAnswer(JSON.stringify({ claims: [{ operation: "metric", operands: [{ receiptId: receipt.id, metricId: id }], valueMinor: metric.valueMinor, currency: metric.currency, periods: [metric.period], qualifiers: metric.qualifiers }], interpretation: [] }), [receipt], context.workspaceId);
-      expect(answer.accepted).toHaveLength(1);
-      expect(answer.body).toContain("Manual evidence");
-      expect(answer.body).toContain("Dated snapshot");
     }
   }
 });
@@ -30,10 +26,6 @@ it("requires aggregate net worth to disclose its own currency's included manual 
   const receipt = toolResultReceipt("reviews_investigate", {}, result, context, ["accounts", "planning"]);
   const metric = receipt.metrics.find(metric => metric.id === "netWorth.EUR")!;
   expect(metric.qualifiers).toContain("manual_evidence");
-  const standalone = (qualifiers: typeof metric.qualifiers) => providerFinancialAnswer(JSON.stringify({ claims: [{ operation: "metric", operands: [{ receiptId: receipt.id, metricId: metric.id }], valueMinor: "1500", currency: "EUR", periods: [metric.period], sourceIds: metric.sourceIds, qualifiers }], interpretation: [] }), [receipt], context.workspaceId);
-  expect(standalone(metric.qualifiers).accepted).toHaveLength(1);
-  expect(standalone(metric.qualifiers).body).toContain("Manual evidence");
-  expect(standalone(metric.qualifiers.filter(qualifier => qualifier !== "manual_evidence")).body).toContain("Unsupported sections were removed");
   expect(receipt.metrics.find(metric => metric.id === "netWorth.USD")?.qualifiers).not.toContain("manual_evidence");
   expect(receipt.metrics.find(metric => metric.id === "accountBalanceTotals.EUR")?.qualifiers).not.toContain("manual_evidence");
 });
@@ -51,10 +43,6 @@ it("discloses the real goal remainder's manual savings date and target assumptio
   expect(target.qualifiers).toContain("assumption");
   expect(target.qualifiers).not.toContain("manual_evidence");
   expect(target.period).toEqual({ from: "2026-07-01", to: "2026-09-30" });
-  const body = providerFinancialAnswer("Current savings prove your goal", [receipt], context.workspaceId).body;
-  expect(body).toContain("2026-01-01");
-  expect(body).toContain("Dated snapshot");
-  expect(body).not.toContain("Current savings prove");
 });
 it("retains every query input/result and derives only exact typed monetary facts", () => {
   const result = { from: "2026-09-01", to: "2026-09-30", currencyCode: "EUR", spendingMinor: "9007199254740993", sourceCoverage: { financialCompleteness: "unknown" }, evidence: { partial: true, excludedReviewRows: 2 } };
@@ -74,10 +62,6 @@ it("keeps an ambiguous JPY snapshot separate from the EUR account currency", () 
   const snapshot = receipt.metrics.find(metric => metric.label === "Dated recorded balance")!;
   expect(snapshot).toMatchObject({ currency: "JPY", valueMinor: "100", qualifiers: expect.arrayContaining(["ambiguous_evidence", "dated_snapshot"]) });
   expect(snapshot.qualifiers).not.toContain("manual_evidence");
-  const published = providerFinancialAnswer("EUR 1.00 available", [receipt], context.workspaceId).body;
-  expect(published).toContain("JPY 100");
-  expect(published).not.toContain("EUR 1.00");
-  expect(published).toContain("Ambiguous balance evidence");
 });
 it("uses actual balance clocks, workspace calendar dates and manual wealth dates rather than review ranges", () => {
   const review = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-07-01", to: "2026-09-30" }, accounts: [{ currencyCode: "EUR", balanceMinor: "10", snapshotBalanceMinor: "20", snapshotCurrencyCode: "EUR", evaluatedAt: "2026-10-01T22:30:00Z", asOf: "2026-09-01T22:30:00Z" }], planning: { wealth: { included: [{ currencyCode: "EUR", amountMinor: "30", asOf: "2026-08-05", provenance: "manual valuation" }] }, goals: [{ currency: "EUR", recordedSavedMinor: "40", savedAsOf: "2026-08-06" }] } }, { ...context, timezone: "Europe/Berlin" }, ["accounts", "transactions", "planning"]);
@@ -89,35 +73,21 @@ it("uses actual balance clocks, workspace calendar dates and manual wealth dates
   expect(snake.metrics.find(metric => metric.label === "Booked balance")?.period).toEqual({ from: "2026-10-02", to: "2026-10-02" });
   expect(snake.metrics.find(metric => metric.label === "Dated recorded balance")?.period).toEqual({ from: "2026-09-01", to: "2026-09-01" });
 });
-it("rejects canonical parents summed with effective components but permits disjoint postings", () => {
+it("labels effective components separately from their canonical parent", () => {
   const result = [{ id: "parent", amountBasis: "canonical_parent", amount_minor: "-100", currency_code: "EUR", posted_on: "2026-10-07", effectiveRows: [{ id: "component", parent_transaction_id: "parent", amount_minor: "-100", currency_code: "EUR" }] }, { id: "other", amountBasis: "canonical_parent", amount_minor: "-50", currency_code: "EUR", posted_on: "2026-10-07" }];
   const receipt = toolResultReceipt("transactions_search", {}, result, context, ["transactions"]);
-  const sum = (indices: number[], valueMinor: string) => providerFinancialAnswer(JSON.stringify({ claims: [{ operation: "sum", operands: indices.map(index => ({ receiptId: receipt.id, metricId: receipt.metrics[index].id })), valueMinor, currency: "EUR", periods: indices.map(index => receipt.metrics[index].period), qualifiers: [...new Set(indices.flatMap(index => receipt.metrics[index].qualifiers))] }], interpretation: [] }), [receipt], context.workspaceId);
-  expect(sum([0, 1], "-200").accepted.some(claim => claim.operation === "sum")).toBe(false);
-  expect(sum([0, 1], "-200").body).toContain("Unsupported sections were removed");
-  expect(sum([0, 2], "-150").accepted).toHaveLength(1);
   expect(receipt.metrics[1].label).toContain("component");
-});
-it("rejects repeated contributions across independently retained cashflow queries", () => {
-  const first = toolResultReceipt("analytics_cashflow", { query: "first" }, { from: "2026-10-07", to: "2026-10-07", currencyCode: "EUR", spendingMinor: "100", calculationEvidence: { rows: [{ id: "component", parent_transaction_id: "parent" }] } }, context, ["transactions"]);
-  const second = toolResultReceipt("analytics_cashflow", { query: "second" }, { from: "2026-10-07", to: "2026-10-07", currencyCode: "EUR", spendingMinor: "100", calculationEvidence: { rows: [{ id: "component", parent_transaction_id: "parent" }] } }, context, ["transactions"]);
-  const answer = providerFinancialAnswer(JSON.stringify({ claims: [{ operation: "sum", operands: [first, second].map(receipt => ({ receiptId: receipt.id, metricId: receipt.metrics[0].id })), valueMinor: "200", currency: "EUR", periods: [first.metrics[0].period, second.metrics[0].period], qualifiers: ["partial_coverage"] }], interpretation: [] }), [first, second], context.workspaceId);
-  expect(answer.accepted.some(claim => claim.operation === "sum")).toBe(false);
-  expect(answer.body).toContain("Unsupported sections were removed");
 });
 it("distinguishes effective detail records from their canonical parent", () => {
   const receipt = toolResultReceipt("finance_detail", {}, { transaction: { id: "parent", amount_minor: "-100", currency_code: "EUR", posted_on: "2026-10-07" }, effectiveRows: [{ id: "component", parentId: "parent", amountMinor: "-100", currency: "EUR", date: "2026-10-07" }] }, context, ["transactions"]);
   expect(receipt.metrics[1].label).toContain("component");
   expect(receipt.metrics[1].aggregation?.parents).toEqual(["parent"]);
 });
-it("explains retained unavailable inputs without accepting provider assertions", () => {
+it("retains unavailable inputs as receipt limitations", () => {
   const receipt = toolResultReceipt("forecast_evaluate", {}, { status: "unavailable", missingInputs: ["Current booked balance for Checking is unavailable", "Current booked balance for Checking is unavailable"] }, context, ["accounts", "planning"]);
-  const answer = providerFinancialAnswer("Checking has EUR999999", [receipt], context.workspaceId);
-  expect(answer.body).toContain("Current booked balance for Checking is unavailable");
-  expect(answer.body).toContain("assumptions");
-  expect(answer.body).not.toContain("999999");
+  expect(receipt.limitations?.map(limit => limit.message)).toEqual(["Current booked balance for Checking is unavailable"]);
   const cashflow = toolResultReceipt("analytics_cashflow", {}, { unavailable: "Some transactions require currency conversion" }, context, ["transactions"]);
-  expect(providerFinancialAnswer("Everything is complete", [cashflow], context.workspaceId).body).toContain("Some transactions require currency conversion");
+  expect(cashflow.limitations?.[0].message).toBe("Some transactions require currency conversion");
 });
 it("retains forward review forecast horizons and limiting dates", () => {
   const receipt = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-07-10", to: "2026-10-07" }, planning: { forecast: { evaluatedOn: "2026-10-07", horizonDays: 90, currency: "EUR", available: { status: "available", amountMinor: "100", limitingDate: "2026-11-01" } } } }, context, ["accounts", "transactions", "planning"]);
@@ -130,18 +100,6 @@ it("keeps direct review cashflow and typed budget classification exclusions on z
   expect(receipt.metrics).toHaveLength(4);
   for (const metric of receipt.metrics) expect(metric.qualifiers).toContain("partial_classification");
   expect(receipt.metrics.find(metric => metric.label === "Booked budget spending")?.qualifiers).toContain("partial_budget");
-  const body = providerFinancialAnswer("Spending is certainly zero", [receipt], context.workspaceId).body;
-  expect(body).toContain("neither upper nor lower bounds");
-  expect(body).toContain("Partial budget");
-  expect(body).not.toContain("certainly zero");
-});
-it("malformed provider prose visibly falls back to supported financial measures and never publishes invented links", () => {
-  const receipt = toolResultReceipt("analytics_cashflow", {}, { from: "2026-09-01", to: "2026-09-30", currencyCode: "EUR", spendingMinor: "25" }, context, ["transactions"]);
-  const result = providerFinancialAnswer("EUR 999999.00 [proof](/made-up)", [receipt], context.workspaceId);
-  expect(result.body).toContain("EUR 0.25");
-  expect(result.body).toContain("Unsupported sections were removed");
-  expect(result.body).not.toContain("999999");
-  expect(result.body).not.toContain("made-up");
 });
 it("exposes per-currency review totals without inventing a display-currency net worth", () => {
   const receipt = toolResultReceipt("reviews_investigate", {}, { period: { from: "2026-09-01", to: "2026-09-30" }, cashflow: { EUR: { spendingMinor: "10" }, USD: { incomeMinor: "20" } }, netWorth: { EUR: "30", USD: null } }, context, ["accounts", "transactions"]);
@@ -155,28 +113,4 @@ it("retains forecast horizons, budget month scopes and dated manual savings inst
   expect(review.metrics.find(metric => metric.label === "Dated recorded savings")).toMatchObject({ valueMinor: "30", period: { from: "2026-08-05", to: "2026-08-05" }, qualifiers: expect.arrayContaining(["manual_evidence", "dated_snapshot"]) });
   const future = toolResultReceipt("reviews_investigate", {}, { budgets: [{ currency: "EUR", month: "2026-11", limitMinor: "30" }] }, context, ["planning"]);
   expect(future.metrics[0]).toMatchObject({ period: { from: "2026-11-01", to: "2026-11-30" }, qualifiers: expect.arrayContaining(["assumption"]) });
-});
-
-it("renders actual action and import statuses without accepting provider prose or hrefs", () => {
-  const created = toolResultReceipt("artifacts_create", {}, { id: "00000000-0000-4000-8000-000000000002", href: "/invented" }, context, []);
-  expect(providerFinancialAnswer('{"claims":[],"interpretation":[]}', [created], context.workspaceId).body).toContain("/ai/library/00000000-0000-4000-8000-000000000002");
-  const imports = toolResultReceipt("imports_status", {}, { imports: [{ id: "00000000-0000-4000-8000-000000000003", status: "completed", total_rows: 20, classification_review_rows: 2 }] }, context, ["imports"]);
-  const body = providerFinancialAnswer("Your finances are complete EUR 999999", [imports], context.workspaceId).body;
-  expect(body).toContain("Recorded processing status: completed");
-  expect(body).toContain("2 rows need classification review");
-  expect(body).not.toContain("999999");
-});
-it("acknowledges actual category corrections and reconstructs only the exact owned confirmation link", () => {
-  const transactionId = "00000000-0000-4000-8000-000000000002", categoryId = "00000000-0000-4000-8000-000000000003";
-  const updated = toolResultReceipt("transactions_setCategory", { transactionId, category: "Food" }, { status: "updated", category: "Food", transactionUrl: `/money/transactions?transaction=${transactionId}` }, context, ["transactions"]);
-  const body = providerFinancialAnswer('{"claims":[],"interpretation":[]}', [updated], context.workspaceId).body;
-  expect(body).toContain("Updated the selected transaction category");
-  expect(body).toContain(`[Open transaction and Undo](/money/transactions?transaction=${transactionId})`);
-  const preview = toolResultReceipt("transactions_previewCategory", { transactionIds: [transactionId], categoryId }, { rows: [{ id: transactionId }], category: { id: categoryId }, href: "/invented" }, context, ["transactions"]);
-  const previewBody = providerFinancialAnswer('{"claims":[],"interpretation":[]}', [preview], context.workspaceId).body;
-  expect(previewBody).toContain(`/ai/actions/preview?ids=${transactionId}&category=${categoryId}`);
-  expect(previewBody).toContain("Preview only");
-  expect(previewBody).not.toContain("/invented");
-  const foreign = toolResultReceipt("transactions_previewCategory", { transactionIds: [transactionId], categoryId }, { rows: [{ id: categoryId }], category: { id: categoryId } }, context, ["transactions"]);
-  expect(providerFinancialAnswer('{"claims":[],"interpretation":[]}', [foreign], context.workspaceId).body).not.toContain("/ai/actions/preview");
 });

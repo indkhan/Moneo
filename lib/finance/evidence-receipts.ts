@@ -3,7 +3,31 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AI_DATA_SCOPES } from "@/lib/settings";
 import { minorDigits } from "./fx";
-import type { FinancialEvidenceReceipt } from "./verified-claims";
+
+export type FinancialEvidenceReceipt = {
+  id: string; workspaceId: string; fetchedAt: string; calculationVersion: string; sourceVersion: string;
+  query: unknown;
+  limitations?: { id: string; kind: "missing_input" | "unavailable" | "partial"; message: string; nextStep: "assumptions" | "supporting_records" }[];
+  sources: { id: string; type: string; version: string; href: string }[];
+  metrics: { id: string; label: string; valueMinor: string | null; currency: string; unit?: "money" | "count"; period: { from: string; to: string }; qualifiers: string[]; sourceIds: string[]; calculation: string; aggregation?: { kind: string; ids: string[]; parents: string[]; canonicalParents: string[] } }[];
+};
+const qualifications: Record<string, string> = {
+  partial_classification: "Partial classification: unresolved rows are excluded; totals may rise or fall and are neither upper nor lower bounds.",
+  partial_coverage: "Partial coverage: the records do not establish complete financial activity for this period.",
+  partial_budget: "Partial budget: accepted-record spending does not establish a complete or reconciled budget remainder. Retained target, rollover, source or classification limitations require review; totals may change in either direction.",
+  unresolved_included: "Unresolved classifications are included as source evidence, not confirmed spending.",
+  dated_snapshot: "Dated snapshot: this measures retained evidence, not a live balance.",
+  assumption: "Assumption: this projection is conditional and is not a probability or established outcome.",
+  manual_evidence: "Manual evidence: a dated recorded value, not a verified current balance.",
+  ambiguous_evidence: "Ambiguous balance evidence: this recorded source value does not establish an account balance. Resolve conflicting currencies, dates or source boundaries before relying on it.",
+  virtual_reservation: "Virtual reservation: an earmark, not money moved or spent.",
+  source_posting: "Recorded source posting: this is the canonical parent amount; effective allocations and verified fees determine financial totals. Do not add the parent to its components.",
+};
+export function financialQualificationText(code: string) { return qualifications[code] ?? "Evidence qualification unavailable; treat this result as uncertain."; }
+export function financialMetricHref(receiptId: string, metricId: string) {
+  return `/ai/evidence/${encodeURIComponent(receiptId)}?metric=${encodeURIComponent(metricId)}`;
+}
+
 
 const sourceSchema = z.object({ id: z.string().min(1).max(200), type: z.enum(["transaction", "account", "goal", "budget", "wealth", "assumption", "snapshot", "calculation"]),
   entityId: z.uuid().optional(), version: z.string().min(1).max(200), record: z.json() }).strict();

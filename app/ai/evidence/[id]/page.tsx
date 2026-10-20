@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { readEvidenceView } from "@/lib/finance/evidence-view";
 import { formatMoney } from "@/lib/finance/format";
-import { financialMetricHref, financialQualificationText } from "@/lib/finance/verified-claims";
+import { financialMetricHref, financialQualificationText } from "@/lib/finance/evidence-receipts";
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ metric?: string; sourcePage?: string; metricPage?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { redirect("/login"); }
