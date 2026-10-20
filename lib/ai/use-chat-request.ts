@@ -8,7 +8,7 @@ export type ChatStreamEvent =
   | { type: "started" }
   | { type: "tool"; id?: string; name: string; state: "running" | "done" | "failed"; input?: unknown; output?: string }
   | { type: "plan"; steps: string[] }
-  | { type: "steered"; ids: string[] }
+  | { type: "steered"; ids: string[]; messages?: string[] }
   | ({ type: "answer" } & ChatAnswer)
   | { type: "result"; status: number; body: unknown };
 
@@ -78,5 +78,7 @@ export function useChatRequest() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not cancel; try again"); }
   }
 
-  return { send, cancel, status, error, busy: status === "running" };
+  /** The in-flight request, which steer messages target. */
+  const requestId = () => active.current?.requestId ?? null;
+  return { send, cancel, requestId, status, error, busy: status === "running" };
 }
