@@ -1,8 +1,5 @@
 import type { requireWorkspace } from "@/lib/auth";
-import { calendarDate } from "@/lib/finance/calendar";
 import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
-import { libraryTemplate } from "@/lib/artifacts/library-templates";
-import { saveCandidateVersion } from "@/lib/artifacts/save-version";
 import { payloadSchemas, type ProposalKind } from "@/lib/ai/agent-team";
 
 // Accepting a proposal calls the SAME audited RPCs a person uses by hand, as
@@ -45,24 +42,6 @@ export async function applyProposal(context: Context, proposal: StoredProposal):
       if (error?.code === "23505") throw new Error("A limit already exists for this category and currency");
       if (error) throw new Error(error.message);
       return { href: "/plan/spending", undo: "Turn the limit off in Plan → Spending" };
-    }
-    case "tool": {
-      const payload = payloadSchemas.tool.parse(proposal.payload);
-      const template = libraryTemplate(payload.template);
-      if (!template?.build) throw new Error("Unknown template");
-      const { data, error } = await supabase.rpc("create_trusted_artifact", { p_kind: template.kind, p_name: payload.name });
-      if (error || !data) throw new Error(error?.message ?? "Tool creation failed");
-      const { source, manifest } = template.build(calendarDate(new Date(), workspace.timezone));
-      const params = manifest.params as Record<string, { default: number; min?: number; max?: number }>;
-      for (const [name, value] of Object.entries(payload.params)) {
-        const definition = params[name];
-        if (definition && value >= (definition.min ?? -Infinity) && value <= (definition.max ?? Infinity)) params[name] = { ...definition, default: value };
-      }
-      // The template's code goes through the same validated sandbox save as any edit.
-      const saved = await saveCandidateVersion({ supabase, workspaceId: workspace.id, actorId: context.user.id,
-        artifact: { id: data.id, kind: template.kind, permissions: data.permissions }, source, manifest, expectedActiveVersionId: data.active_version_id });
-      if (saved.configured && (saved.status !== "validated" || saved.error)) throw new Error("The tool did not pass sandbox validation");
-      return { artifactId: data.id, href: `/ai/library/${data.id}` };
     }
     case "finding":
       payloadSchemas.finding.parse(proposal.payload);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { organizationProposals } from "@/lib/import/organization";
 import { detectRecurring } from "@/lib/finance/recurring";
-import { anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, payloadSchemas, planRun, recurringProposals, toolProposals, verifiedBriefing, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
+import { anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, payloadSchemas, planRun, recurringProposals, verifiedBriefing, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const account = id(900);
@@ -105,11 +105,6 @@ describe("lead merge", () => {
     expect(proposals.find(item => item.kind === "budget")).toMatchObject({ confidence: 60, notes: [expect.stringContaining("2 rows")] });
     expect(resolutions.length).toBeGreaterThanOrEqual(4);
     expect(proposals.map(item => item.kind)).toEqual(["finding", "finding", "categorize", "recurring", "budget"]);
-  });
-  it("toolsmith tailors tools to what the other agents found", () => {
-    const tools = toolProposals([recurring, { ...recurring, conflictKey: "recurring:y" }, budget], true, "EUR");
-    expect(tools.map(tool => tool.payload.template)).toEqual(["subscription-audit", "budget-tracker", "savings-rate"]);
-    expect(tools[1].payload.params).toEqual({ monthlyBudgetMinor: 21000 });
   });
 });
 

@@ -1,11 +1,9 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { applyProposal, decideProposals } from "@/lib/ai/agent-apply";
 import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
-import { saveCandidateVersion } from "@/lib/artifacts/save-version";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 vi.mock("@/lib/import/organization-loader", () => ({ loadOrganizationSuggestions: vi.fn() }));
-vi.mock("@/lib/artifacts/save-version", () => ({ saveCandidateVersion: vi.fn(async () => ({ configured: true, status: "validated", error: null })) }));
 
 type Call = { kind: "rpc" | "update" | "insert"; name: string; args: unknown; filters: unknown[][] };
 function fakeContext(options: { rpc?: Record<string, { data?: unknown; error?: { message: string; code?: string } | null }>; claim?: unknown; insertError?: { message: string; code?: string } } = {}) {
@@ -61,17 +59,6 @@ it("creates a category limit in exact minor units and rejects invalid payloads",
   await applyProposal(context, { id: id(5), kind: "budget", payload: { categoryId: id(60), currencyCode: "EUR", limitMinor: "21000" } });
   expect(calls.find(call => call.kind === "insert")).toMatchObject({ name: "spending_plans", args: { category_id: id(60), currency_code: "EUR", limit_minor: "21000", enabled: true } });
   await expect(applyProposal(context, { id: id(5), kind: "budget", payload: { categoryId: id(60), currencyCode: "EUR", limitMinor: "12.50" } })).rejects.toThrow();
-});
-
-it("builds tools through the validated sandbox save with tailored defaults", async () => {
-  const { context } = fakeContext({ rpc: { create_trusted_artifact: { data: { id: id(80), permissions: [], active_version_id: null }, error: null } } });
-  const result = await applyProposal(context, { id: id(5), kind: "tool", payload: { template: "budget-tracker", name: "Agent budget", params: { monthlyBudgetMinor: 21000, unknown: 3 } } });
-  const manifest = vi.mocked(saveCandidateVersion).mock.calls[0][0].manifest as { params: Record<string, { default: number }> };
-  expect(manifest.params.monthlyBudgetMinor.default).toBe(21000);
-  expect(manifest.params).not.toHaveProperty("unknown");
-  expect(result.href).toBe(`/ai/library/${id(80)}`);
-  vi.mocked(saveCandidateVersion).mockResolvedValueOnce({ configured: true, status: "failed", error: null } as never);
-  await expect(applyProposal(context, { id: id(5), kind: "tool", payload: { template: "savings-rate", name: "Rate", params: {} } })).rejects.toThrow("sandbox");
 });
 
 it("claims before applying, records failures, and rejecting writes nothing canonical", async () => {

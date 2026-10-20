@@ -5,7 +5,7 @@ import { finishRun, mergeRun, runAgent, startRun } from "@/lib/ai/agent-runtime"
 const calls = vi.hoisted(() => [] as string[]);
 vi.mock("workflow", async original => ({ ...await original<typeof import("workflow")>(), getWorkflowMetadata: () => ({ workflowRunId: "wf" }) }));
 vi.mock("@/lib/ai/agent-runtime", () => ({
-  startRun: vi.fn(async () => [["categorizer", "recurring"], ["toolsmith"], ["writer"]]),
+  startRun: vi.fn(async () => [["categorizer", "recurring"], ["forecaster"], ["writer"]]),
   runAgent: vi.fn(async (_run: string, _ws: string, agent: string) => { calls.push(`start:${agent}`); await new Promise(resolve => setTimeout(resolve, agent === "categorizer" ? 10 : 1)); calls.push(`end:${agent}`); return "done"; }),
   mergeRun: vi.fn(async () => { calls.push("merge"); return true; }),
   autoApplyRun: vi.fn(async () => { calls.push("auto"); }),
@@ -18,7 +18,7 @@ it("runs a wave in parallel, merges and auto-applies before the writer and finis
   expect(startRun).toHaveBeenCalledWith("run", "ws", "wf");
   // Both analysts start before the slower one ends: same wave, parallel steps.
   expect(calls.slice(0, 2).sort()).toEqual(["start:categorizer", "start:recurring"]);
-  expect(calls.indexOf("start:toolsmith")).toBeGreaterThan(calls.indexOf("end:categorizer"));
+  expect(calls.indexOf("start:forecaster")).toBeGreaterThan(calls.indexOf("end:categorizer"));
   expect(calls.slice(-5)).toEqual(["merge", "auto", "start:writer", "end:writer", "finish"]);
 });
 
@@ -43,6 +43,6 @@ it("does nothing for an inactive run and records unexpected failures", async () 
 it("a failed agent does not stop the rest of the team", async () => {
   vi.mocked(runAgent).mockImplementation(async (_run, _ws, agent) => { calls.push(agent); return agent === "categorizer" ? "failed" : "done"; });
   await agentTeam("run", "ws");
-  expect(calls).toEqual(["categorizer", "recurring", "toolsmith", "merge", "auto", "writer", "finish"]);
+  expect(calls).toEqual(["categorizer", "recurring", "forecaster", "merge", "auto", "writer", "finish"]);
   expect(mergeRun).toHaveBeenCalled();
 });
