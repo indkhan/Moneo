@@ -2,6 +2,7 @@ import { createEvidenceReceipt, evidenceFingerprint, type EvidenceReceipt, type 
 import type { AiDataScope } from "@/lib/settings";
 import { escapeMarkdown, publishFinancialClaims } from "./verified-claims";
 import { calendarDate } from "./calendar";
+import { sourceCoverageNeedsReview, type SourceCoverage } from "./source-coverage";
 import { z } from "zod";
 export const TOOL_CALCULATION_VERSION = "finance-tools-v1-exact-evidence";
 const labels: Record<string, string> = {
@@ -51,6 +52,9 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
         : dated ? { from: dated, to: dated } : inherited.period;
     const qualifiers = [...inherited.qualifiers];
     if ((row.status === "ambiguous" || row.balanceStatus === "ambiguous") && !qualifiers.includes("ambiguous_evidence")) qualifiers.push("ambiguous_evidence");
+    // Coverage is flagged only when the recorded sources actually show gaps.
+    const sources = object(row.sourceCoverage);
+    if (Object.keys(sources).length && sourceCoverageNeedsReview(sources as SourceCoverage) && !qualifiers.includes("partial_coverage")) qualifiers.push("partial_coverage");
     const coverage = object(row.evidence);
     const classificationCount = object(object(row.sourceCoverage).exclusions).classification;
     if (([coverage.excludedReviewRows, row.excludedReviewRows, classificationCount].some(count => typeof count === "number" && count > 0) || row.classificationPartial === true) && !qualifiers.includes("partial_classification")) qualifiers.push("partial_classification");
@@ -100,7 +104,7 @@ export function toolResultReceipt(name: string, input: unknown, result: unknown,
       } else if (key !== "calculationEvidence" && key !== "queryInvestigation" && key !== "investigation") walk(child, [...path, key], { currency: /^[A-Z]{3}$/.test(key) ? key : currency, period, qualifiers });
     }
   }
-  walk(result, [], { period: { from: today, to: today }, qualifiers: ["partial_coverage"] });
+  walk(result, [], { period: { from: today, to: today }, qualifiers: [] });
   return createEvidenceReceipt({ workspaceId: context.workspaceId, fetchedAt: context.fetchedAt, calculationVersion: TOOL_CALCULATION_VERSION, sourceVersion, scopes,
     query: json({ kind: "tool", toolName: name, input, result }), sources: [{ id: sourceId, type: "calculation", version: sourceVersion, record: json(result) }], metrics, ...(limitations.length ? { limitations: [...new Map(limitations.map(limit => [limit.id, limit])).values()] } : {}) });
 }

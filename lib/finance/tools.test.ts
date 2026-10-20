@@ -31,7 +31,7 @@ it("keeps non-AI finance reads usable with no AI scopes and exact canonical/effe
   fixture.tables.length = 0;
   expect(await cashflow({ from: "2026-10-01", to: "2026-10-02", currencyCode: "EUR" })).toMatchObject({
     spendingMinor: "9007199254740993", evidence: { transactionCount: 3, includedTransactionCount: 2, partial: true,
-      limitation: "Excluded classifications are unknown; these partial totals are not upper or lower bounds." },
+      limitation: "Some rows await classification review and are excluded." },
     calculationEvidence: { rows: [expect.objectContaining({ amount_minor: "-9007199254740000" }), expect.objectContaining({ amount_minor: "-993" }), expect.objectContaining({ review_reasons: ["source_transfer"] })] },
   });
   expect(await searchTransactions({ query: "receipt" })).toMatchObject([{ id: "parent", amount_minor: "-9007199254740993", amountBasis: "canonical_parent", effectiveRows: [] }]);

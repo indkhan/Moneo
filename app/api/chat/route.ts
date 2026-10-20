@@ -20,7 +20,7 @@ import { FINANCIAL_ANSWER_INSTRUCTIONS, providerFinancialAnswer } from "@/lib/fi
 import { answerChart, withAnswerChart } from "@/lib/ai/answer-chart";
 import type { ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import { chatFollowUps, planInput } from "@/lib/ai/follow-ups";
-import { toolOutputPreview } from "@/lib/ai/tool-output";
+import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
 
 const inputSchema = z.object({
   conversationId: z.uuid(),
@@ -97,6 +97,17 @@ export async function POST(request: Request) {
     if (result && typeof result === "object") readScopes.set(result, usedScopes);
     return result;
   }
+  // Owned names label ids in tool output, so the model never needs a separate lookup step.
+  let entityNames: Promise<EntityNames> | undefined;
+  function namesFor(latest: typeof context): Promise<EntityNames> {
+    return entityNames ??= Promise.all((["account", "category", "merchant"] as const).map(async dimension => {
+      if (!latest.settings.ai_data_scopes.includes(dimension === "account" ? "accounts" : "transactions")) return [dimension, new Map<string, string>()] as const;
+      const table = dimension === "account" ? "accounts" : dimension === "category" ? "categories" : "merchants";
+      const { data, error } = await latest.supabase.from(table).select("id, name").eq("workspace_id", workspace.id).limit(5000);
+      if (error) throw error;
+      return [dimension, new Map((data ?? []).map((row: { id: string; name: string }) => [row.id, row.name]))] as const;
+    })).then(entries => Object.fromEntries(entries));
+  }
   let createdArtifact: Promise<{ id: string; href: string }> | undefined;
   const evidenceReceipts: EvidenceReceipt[] = [];
   function retainTools<T extends ToolSet>(tools: T): T {
@@ -117,8 +128,8 @@ export async function POST(request: Request) {
         if (current.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
         requireAiScope(current.settings, ...receipts.flatMap(receipt => receipt.scopes));
         for (const receipt of receipts) if (!evidenceReceipts.some(existing => existing.id === receipt.id)) evidenceReceipts.push(receipt);
-        if (!receipts.length) return output;
-        const modelResult = output && typeof output === "object" && !Array.isArray(output) ? Object.fromEntries(Object.entries(output).filter(([key]) => key !== "calculationEvidence")) : output;
+        const modelResult = readableToolOutput(output, await namesFor(latest).catch(() => ({})));
+        if (!receipts.length) return modelResult;
         return { result: modelResult, evidenceReceipts: receipts.map(receipt => ({ id: receipt.id, metrics: receipt.metrics })) };
       },
     }])) as T;
@@ -148,7 +159,7 @@ export async function POST(request: Request) {
       tools: { ...planTool, ...retainTools({
         ...(canInvestigate ? {
           finance_investigate: tool({ description: "Answer the actual chosen finance question deterministically: exact current/comparison dates, include/exclude owned account/category/merchant names or IDs, tags/events, posted/pending and classification semantics, multiple groupings, ranking, and complete paginated support. Original currencies stay separate; base uses direct exact posting-date FX and canonical split rounding. Use returned interpretedFilters and live evidence link; never imply full statements or bounds. Read-only, no approval needed.", inputSchema: investigationSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => runInvestigation(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
-          finance_entities: tool({ description: "Resolve names using the owned accounts, categories and merchants. Ambiguous names require selecting an existing ID; never invent an ID.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], latest => loadInvestigationEntities(latest)) }),
+          finance_entities: tool({ description: "Optional: list owned account, category and merchant names with ids, tags and events. Other tools already accept names and label ids with names.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], latest => loadInvestigationEntities(latest)) }),
           finance_detail: tool({ description: "Read an owned canonical transaction with its effective split/fee components, or a recurring series with complete paginated source transactions. Classification warnings remain explicit.", inputSchema: investigationDetailSchema, execute: input => aiEvidence(input.kind === "recurring" ? ["accounts", "transactions", "planning"] : ["accounts", "transactions"], latest => investigationDetail(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
           finance_scenario: tool({ description: "Compare the same investigation against at most 100 hypothetical effective-record amount/date/category overrides. Read-only; canonical ledger, sources, balances and recurrence remain unchanged. Use exact minor-unit strings and owned effective IDs.", inputSchema: investigationScenarioSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => evaluateInvestigationScenario(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
         } : {}),
@@ -159,7 +170,7 @@ export async function POST(request: Request) {
               .select("id, filename, status, total_rows, new_rows, matched_rows, review_rows, classification_review_rows, rejected_rows, error")
               .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30);
             if (error) throw error;
-            return { imports: data ?? [], limitation: "Latest 30 recorded imports; status does not prove complete financial coverage. Classification review means the financial kind is unresolved, not merely a missing category. Excluded rows can include income, spending, refunds or transfers; totals may rise or fall. Missing categories alone do not exclude cashflow rows. Bulk category changes do not resolve financial kind." };
+            return { imports: data ?? [] };
           }),
         }) } : {}),
         ...(canCreateArtifact ? { artifacts_create: tool({
@@ -190,7 +201,7 @@ export async function POST(request: Request) {
         ...(settings.ai_data_scopes.includes("accounts") ? { accounts_list: tool({ description: "List the user's accounts", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => listAccounts(latest)) }),
         accounts_getBalances: tool({ description: "Get dated balances, provenance and source coverage", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => getBalances(latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { analytics_cashflow: tool({ description: "Exact accepted posted income/spending with source coverage. Choose view base for direct exact posting-date FX and per-canonical-posting half-away rounding, or original for separate currency subtotals. Omitted view preserves single-currency accounting. Conversion completeness does not prove statement completeness; partial totals are not bounds. Missing rates return incomplete evidence, never guessed money.", inputSchema: financeToolSchemas.periodInput, execute: input => aiEvidence(["transactions"], latest => cashflow(input, latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }),
-        transactions_search: tool({ description: "Search up to 20 transactions", inputSchema: z.object({ query: z.string().min(1).max(100) }), execute: input => aiEvidence(["transactions"], latest => searchTransactions(input, latest)) }) } : {}),
+        transactions_search: tool({ description: "Find transactions, newest first. Filter by description text, posted date range (from/to), absolute amount range in minor units, and limit (default 20, max 50).", inputSchema: financeToolSchemas.searchInput, execute: input => aiEvidence(["transactions"], latest => searchTransactions(input, latest)) }) } : {}),
         ...(settings.ai_data_scopes.includes("planning") ? { goals_list: tool({ description: "List the user's goals", inputSchema: z.object({}), execute: () => aiEvidence(["planning"], latest => listGoals(latest)) }) } : {}),
         ...(settings.ai_data_scopes.includes("planning") && settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions") ? { forecast_evaluate: tool({ description: "Deterministic account headroom and dated funding shortfalls with source coverage. Choose accountId for available to spend; aggregate cash requires explicit funding. Cases are assumptions, not probabilities", inputSchema: forecastInput, execute: input => aiEvidence(["accounts", "transactions", "planning"], latest => evaluateForecast(input, latest), false, true) }) } : {}),
         ...(canChangeCategory ? {

@@ -12,7 +12,13 @@ export {forecastInput} from "./forecast-schema";
 type FinanceContext = Awaited<ReturnType<typeof requireWorkspace>>;
 
 const periodInput = z.object({ from: z.iso.date(), to: z.iso.date(), currencyCode: z.string().regex(/^[A-Z]{3}$/), view: z.enum(["original", "base"]).optional(), accountIds: z.array(z.uuid()).max(100).optional() });
-const searchInput = z.object({ query: z.string().min(1).max(100) });
+const minorAmount = z.string().regex(/^\d{1,18}$/);
+const searchInput = z.object({
+  query: z.string().trim().min(1).max(100).optional(),
+  from: z.iso.date().optional(), to: z.iso.date().optional(),
+  minAmountMinor: minorAmount.optional(), maxAmountMinor: minorAmount.optional(),
+  limit: z.number().int().min(1).max(50).default(20),
+}).strict();
 export async function listAccounts(context?: FinanceContext) {
   const { supabase, workspace } = context ?? await requireWorkspace();
   const { data, error } = await supabase.from("accounts").select("id, name, type, currency_code, version")
@@ -68,17 +74,25 @@ export async function cashflow(input: unknown, context?: FinanceContext, canRead
     evidence: { transactionCount: rows.length, excludedPendingAndTransfers: true,
       includedTransactionCount: rows.filter(row => row.status === "posted" && row.kind !== "transfer" && !row.review_reasons?.length).length,
       excludedReviewRows: total.excludedReviewRows ?? 0, partial: total.partial ?? false,
-      ...(total.partial ? { limitation: "Excluded classifications are unknown; these partial totals are not upper or lower bounds." } : {}) },
+      ...(total.partial ? { limitation: "Some rows await classification review and are excluded." } : {}) },
   } : { unavailable: "Some transactions require currency conversion", from, to, currencyCode, sourceCoverage, calculationEvidence: { rows } };
 }
 
 export async function searchTransactions(input: unknown, context?: FinanceContext) {
-  const { query } = searchInput.parse(input);
+  const { query, from, to, minAmountMinor, maxAmountMinor, limit } = searchInput.parse(input);
   const { supabase, workspace } = context ?? await requireWorkspace();
-  const { data, error } = await supabase.from("transactions")
-    .select("id, account_id, posted_on, description, amount_minor::text, currency_code, status, kind, review_reasons, version")
-    .eq("workspace_id", workspace.id).ilike("description", `%${query.replace(/[%_]/g, "\\$&")}%`)
-    .order("posted_on", { ascending: false }).limit(20);
+  let request = supabase.from("transactions")
+    .select("id, account_id, category_id, merchant_id, posted_on, description, amount_minor::text, currency_code, status, kind, review_reasons, version")
+    .eq("workspace_id", workspace.id);
+  if (query) request = request.ilike("description", `%${query.replace(/[%_]/g, "\\$&")}%`);
+  if (from) request = request.gte("posted_on", from);
+  if (to) request = request.lte("posted_on", to);
+  // Amount bounds apply to the absolute amount, so spending (negative) and income match alike.
+  if (minAmountMinor || maxAmountMinor) {
+    const low = minAmountMinor ?? "0", high = maxAmountMinor ?? "999999999999999999";
+    request = request.or(`and(amount_minor.gte.${low},amount_minor.lte.${high}),and(amount_minor.gte.-${high},amount_minor.lte.-${low})`);
+  }
+  const { data, error } = await request.order("posted_on", { ascending: false }).limit(limit);
   if (error) throw error;
   const parents = data ?? [];
   type EffectiveSearchRow = { id: string; parent_transaction_id: string; amount_minor: string; currency_code: string; status: string; kind: string; review_reasons: string[] };
@@ -98,7 +112,7 @@ export async function searchTransactions(input: unknown, context?: FinanceContex
     return { ...row, review_reasons: row.review_reasons ?? [], classificationStatus: unresolved ? "unresolved" : "resolved",
       financialKind: unresolved ? null : row.kind, confirmedSpending: !unresolved && row.status === "posted" && row.kind === "ordinary" && BigInt(row.amount_minor) < 0n,
       amountBasis: "canonical_parent", effectiveRows: components,
-      allocationSemantics: "The parent amount is a recorded source posting. Deterministic totals use effective allocations and verified fee components; do not add the parent to its components.",
+      allocationSemantics: "Parent amount; effectiveRows are its split components (do not add both).",
       link: `/money/transactions?transaction=${row.id}` };
   });
 }

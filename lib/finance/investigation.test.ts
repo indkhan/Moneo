@@ -37,7 +37,7 @@ describe("deterministic investigations", () => {
     expect(result.groups.find(g => g.currency === "EUR")?.currentMinor).toBe("75");
     expect(result.groups.find(g => g.currency === "USD")?.currentMinor).toBe("200");
     expect(result.coverage).toMatchObject({ classificationExcluded: 1, pendingExcluded: 1, transferExcluded: 1, partial: true });
-    expect(result.coverage.limitation).toContain("not upper or lower bounds");
+    expect(result.coverage.limitation).toContain("totals cover included rows only");
     expect(result.records.items.find(r => r.id === "split2")?.link).toContain("transaction=split1");
   });
   it("validates dates, ownership resolution and ambiguity without fabricating identifiers", () => {

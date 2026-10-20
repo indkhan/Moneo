@@ -61,12 +61,12 @@ it("retains every query input/result and derives only exact typed monetary facts
   const receipt = toolResultReceipt("analytics_cashflow", { from: result.from, to: result.to, currencyCode: "EUR" }, result, context, ["transactions"]);
   expect(receipt.query.result).toEqual(result);
   expect(receipt.query.input).toEqual({ from: result.from, to: result.to, currencyCode: "EUR" });
-  expect(receipt.metrics).toContainEqual(expect.objectContaining({ label: "Spending", valueMinor: result.spendingMinor, period: { from: result.from, to: result.to }, qualifiers: ["partial_coverage", "partial_classification"] }));
+  expect(receipt.metrics).toContainEqual(expect.objectContaining({ label: "Spending", valueMinor: result.spendingMinor, period: { from: result.from, to: result.to }, qualifiers: ["partial_classification"] }));
   expect(receipt.sources[0].record).toEqual(result);
 });
 it("preserves unresolved source posting uncertainty without calling its amount spending", () => {
   const receipt = toolResultReceipt("transactions_search", { query: "transfer" }, [{ id: "00000000-0000-4000-8000-000000000002", posted_on: "2026-09-01", amount_minor: "-25", currency_code: "EUR", kind: "ordinary", classificationStatus: "unresolved", review_reasons: ["source_transfer"], effectiveRows: [] }], context, ["transactions"]);
-  expect(receipt.metrics[0]).toMatchObject({ label: "Recorded source posting", qualifiers: ["partial_coverage", "unresolved_included", "source_posting"] });
+  expect(receipt.metrics[0]).toMatchObject({ label: "Recorded source posting", qualifiers: ["unresolved_included", "source_posting"] });
   expect(receipt.metrics[0].label).not.toBe("Spending");
 });
 it("keeps an ambiguous JPY snapshot separate from the EUR account currency", () => {
