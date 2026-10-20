@@ -837,10 +837,11 @@ export const chatSteers = pgTable("chat_steers", {
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   chatRequestId: uuid("chat_request_id").notNull().references(() => chatRequests.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`clock_timestamp()`).notNull(),
   consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
 }, (table) => [
-  index("chat_steers_pending").on(table.chatRequestId, table.createdAt).where(sql`${table.consumedAt} is null`),
+  index("chat_steers_pending").on(table.chatRequestId, table.createdAt).where(sql`${table.consumedAt} is null and ${table.closedAt} is null`),
   check("chat_steers_content_check", sql`length(btrim(${table.content})) between 1 and 4000`),
 ]);
 
