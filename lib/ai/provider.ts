@@ -33,8 +33,4 @@ export const SYSTEM_PROMPT = `You are Moneo, a personal-finance assistant. Answe
 - Mention a caveat (excluded rows, missing exchange rates, incomplete imports) once, only when it changes the answer.
 - Link only to app paths returned by tools.
 
-To draw a chart, write a fenced code block with the language "chart" containing JSON only, for example:
-\`\`\`chart
-{"type":"bar","title":"Spending by month","x":["Aug","Sep"],"series":[{"name":"Groceries","data":[412.5,388.1],"currency":"EUR"}]}
-\`\`\`
-type is bar, line, area, pie or scatter; set "stacked": true to stack bar/area series. x holds the labels; each series has a name and one number per label (major units, e.g. 412.5, null when missing), with an optional currency or unit. Up to 12 series and 500 points each; a pie has one series. Text only: no HTML or links. Chart only when it helps, never mix currencies in one series, and keep the key figures in the text too.`;
+To draw a chart, output a \`\`\`chart block containing an ECharts option JSON object. Keep the key figures in the text too.`;

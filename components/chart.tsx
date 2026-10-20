@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
+import { Component, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import { chartValue, type ChartSpec } from "@/lib/ai/chart-spec";
 
 // Loaded on the client only, so echarts never ships in the server render or blocks first paint.
 const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
@@ -96,26 +95,29 @@ export function ForecastChart({ days, obligations, currency, label, compare }: {
 
 const SERIES_COLORS = ["#2a6fdb", "#e07b39", "#3aa676", "#c94f6d", "#8a63d2", "#c9a227", "#2bb3c0", "#7a8699", "#d16ba5", "#5c9e31", "#b5651d", "#4b5bb5"];
 
-/** Renders a validated model-written chart. Tooltips use rich text, so labels never render as HTML. */
-export function AnswerChart({ spec }: { spec: ChartSpec }) {
+/** Parses a model-written ```chart block: any ECharts option object, or null when it is not one. */
+export function parseChartOption(source: string): Record<string, unknown> | null {
+  try {
+    const value: unknown = JSON.parse(source);
+    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  } catch { return null; }
+}
+
+/** Shows `fallback` instead of a chart that ECharts fails to render. */
+export class ChartBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() { return this.state.failed ? this.props.fallback : this.props.children; }
+}
+
+/** Renders a model-written ECharts option with theme defaults; the model's own settings win. */
+export function AnswerChart({ option }: { option: Record<string, unknown> }) {
   const colors = useThemeColors();
-  const axis = { axisLine: { lineStyle: { color: colors.border } }, axisLabel: { color: colors.muted }, splitLine: { lineStyle: { color: colors.border } } };
-  const labels = spec.x ?? spec.series[0].data.map((_, index) => String(index + 1));
-  const option = spec.type === "pie"
-    ? { color: SERIES_COLORS, tooltip: { trigger: "item", renderMode: "richText", formatter: (item: { name: string; value: number; percent: number }) => `${item.name}: ${chartValue(item.value, spec.series[0])} (${item.percent}%)` },
-      series: [{ type: "pie", radius: ["40%", "70%"], label: { color: colors.muted }, data: labels.map((name, index) => ({ name: String(name), value: spec.series[0].data[index] })) }] }
-    : { color: SERIES_COLORS, grid: { left: 8, right: 16, top: spec.series.length > 1 ? 36 : 16, bottom: 8, containLabel: true },
-      legend: spec.series.length > 1 ? { textStyle: { color: colors.muted } } : undefined,
-      tooltip: { trigger: spec.type === "scatter" ? "item" : "axis", renderMode: "richText", valueFormatter: (value: number) => chartValue(value, spec.series.length === 1 ? spec.series[0] : {}) },
-      xAxis: { type: "category", data: labels.map(String), boundaryGap: spec.type === "bar" || spec.type === "scatter", ...axis },
-      yAxis: { type: "value", ...axis },
-      series: spec.series.map(item => ({ name: item.name, data: item.data, type: spec.type === "area" ? "line" : spec.type,
-        ...(spec.stacked ? { stack: "total" } : {}), ...(spec.type === "area" ? { areaStyle: { opacity: 0.2 } } : {}),
-        ...(spec.type === "line" || spec.type === "area" ? { showSymbol: item.data.length < 40 } : {}), ...(spec.type === "bar" ? { barMaxWidth: 28 } : {}) })) };
+  const themed = { color: SERIES_COLORS, backgroundColor: "transparent", textStyle: { color: colors.muted }, tooltip: {}, ...option };
+  const title = (option.title as { text?: unknown } | undefined)?.text;
   return <figure className="ai-chart my-4 min-w-0 max-w-full rounded-xl border border-border bg-card p-4">
-    {spec.title && <figcaption className="mb-2 text-sm font-medium">{spec.title}</figcaption>}
-    <div role="img" aria-label={spec.title ?? `${spec.type} chart of ${spec.series.map(item => item.name).join(", ")}`}>
-      <ReactECharts option={option} style={{ height: 280 }} />
+    <div role="img" aria-label={typeof title === "string" ? title : "Chart"}>
+      <ReactECharts option={themed} notMerge style={{ width: "100%", height: 320 }} />
     </div>
   </figure>;
 }

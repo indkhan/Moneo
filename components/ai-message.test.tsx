@@ -33,13 +33,13 @@ it("keeps untrusted model output inert, including image tracking and unsafe link
 });
 
 it("renders model chart blocks, falls back to code when invalid and never links off the app", () => {
-  const spec = { type: "bar", title: "Spending by month", x: ["Aug", "Sep"], series: [{ name: "Food", data: [1, 2], currency: "EUR" }] };
+  const spec = { title: { text: "Spending by month" }, xAxis: { type: "category", data: ["Aug", "Sep"] }, yAxis: {}, series: [{ type: "bar", data: [1, 2] }] };
   const html = renderToStaticMarkup(<AiMessage content={`\`\`\`chart\n${JSON.stringify(spec)}\n\`\`\`\n\n[site](https://example.com) and [tx](/money/transactions)`} />);
   expect(html).toContain("ai-chart");
   expect(html).toContain("Spending by month");
   expect(html).not.toContain("example.com");
   expect(html).toContain('href="/money/transactions"');
-  const invalid = renderToStaticMarkup(<AiMessage content={'```chart\n{"type":"radar"}\n```'} />);
+  const invalid = renderToStaticMarkup(<AiMessage content={'```chart\n{"type": not json\n```'} />);
   expect(invalid).not.toContain("ai-chart");
   expect(invalid).toContain("ai-code");
 });

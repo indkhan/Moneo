@@ -7,8 +7,7 @@ import remarkGfm from "remark-gfm";
 import type { Plugin } from "unified";
 import type { Root } from "mdast";
 import { ChatChart } from "./chat-chart";
-import { AnswerChart } from "./chart";
-import { parseChartSpec } from "@/lib/ai/chart-spec";
+import { AnswerChart, ChartBoundary, parseChartOption } from "./chart";
 
 // Only link known application paths in text nodes, never inside SQL/code blocks.
 const appLinks: Plugin<[], Root> = () => tree => {
@@ -46,9 +45,9 @@ export function AiMessage({ content }: { content: string }) {
     pre: ({ children }) => {
       const code = isValidElement<{ className?: string; children?: unknown }>(children) ? children.props : null;
       if (code?.className?.includes("language-moneo-chart") && typeof code.children === "string") return <ChatChart source={code.children} />;
-      // A chart that does not validate stays visible as its source code.
-      const chart = /\blanguage-chart\b/.test(code?.className ?? "") && typeof code?.children === "string" ? parseChartSpec(code.children) : null;
-      if (chart) return <AnswerChart spec={chart} />;
+      // A chart that fails to parse or render stays visible as its source code.
+      const chart = /\blanguage-chart\b/.test(code?.className ?? "") && typeof code?.children === "string" ? parseChartOption(code.children) : null;
+      if (chart) return <ChartBoundary fallback={<CodeBlock>{children}</CodeBlock>}><AnswerChart option={chart} /></ChartBoundary>;
       return <CodeBlock>{children}</CodeBlock>;
     },
     table: ({ children }) => <div className="ai-table"><table>{children}</table></div>,
