@@ -8,7 +8,7 @@ export type ChatStreamEvent =
   | { type: "started" }
   | { type: "tool"; id?: string; name: string; state: "running" | "done" | "failed"; input?: unknown; output?: string }
   | { type: "plan"; steps: string[] }
-  | { type: "steered"; ids: string[]; messages?: string[] }
+  | { type: "steered"; steers: { id: string; content: string }[] }
   | ({ type: "answer" } & ChatAnswer)
   | { type: "result"; status: number; body: unknown };
 
@@ -35,11 +35,13 @@ export function useChatRequest() {
   const active = useRef<{ requestId: string; controller: AbortController } | null>(null);
   const [status, setStatus] = useState<"idle" | "running" | "completed" | "failed" | "canceled">("idle");
   const [error, setError] = useState("");
+  const [conversationId, setConversationId] = useState<string | null>(null);
 
   async function send(payload: { conversationId: string; message: string; context?: Record<string, unknown> }, onEvent?: (event: ChatStreamEvent) => void) {
     if (active.current) return null;
     const run = { requestId: crypto.randomUUID(), controller: new AbortController() };
     active.current = run;
+    setConversationId(payload.conversationId);
     setStatus("running");
     setError("");
     try {
@@ -80,5 +82,5 @@ export function useChatRequest() {
 
   /** The in-flight request, which steer messages target. */
   const requestId = () => active.current?.requestId ?? null;
-  return { send, cancel, requestId, status, error, busy: status === "running" };
+  return { send, cancel, requestId, status, error, busy: status === "running", conversationId };
 }

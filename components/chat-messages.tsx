@@ -52,13 +52,13 @@ export function ChatMessages({ messages, pending, compact = false }: { messages:
 }
 
 /** Applies one stream event to the pending exchange. */
-export function applyChatEvent(pending: PendingExchange, event: { type: string; id?: string; name?: string; state?: ToolStep["state"]; input?: unknown; output?: string; answer?: string; steps?: string[]; messages?: string[] }): PendingExchange {
+export function applyChatEvent(pending: PendingExchange, event: { type: string; id?: string; name?: string; state?: ToolStep["state"]; input?: unknown; output?: string; answer?: string; steps?: string[]; steers?: { id: string; content: string }[] }): PendingExchange {
   if (event.type === "tool" && event.name && event.state) {
     const step: ToolStep = { id: event.id, name: event.name, state: event.state, ...(event.input !== undefined && { input: event.input }), ...(event.output !== undefined && { output: event.output }) };
     const index = pending.tools.findIndex(tool => event.id ? tool.id === event.id : tool.name === event.name && tool.state === "running");
     return { ...pending, tools: index < 0 ? [...pending.tools, step] : pending.tools.map((tool, i) => i === index ? { ...tool, ...step } : tool) };
   }
-  if (event.type === "steered" && event.messages?.length) return { ...pending, steers: [...pending.steers ?? [], ...event.messages] };
+  if (event.type === "steered" && event.steers?.length) return { ...pending, steers: [...pending.steers ?? [], ...event.steers.map(steer => steer.content)] };
   if (event.type === "plan" && event.steps) return { ...pending, plan: event.steps };
   if (event.type === "answer" && event.answer) return { ...pending, answer: event.answer };
   return pending;

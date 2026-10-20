@@ -137,11 +137,12 @@ export async function POST(request: Request) {
       stopWhen: stepCountIs(6),
       // Steer messages sent during this run join the conversation before the next model step.
       prepareStep: async ({ messages }) => {
-        const steers = await supabase.rpc("take_chat_steers", { p_request_id: requestId });
-        if (steers.error) throw steers.error;
+        // Steering is best-effort: a failed claim leaves the steers pending and never fails the answer.
+        const steers = await Promise.resolve(supabase.rpc("take_chat_steers", { p_request_id: requestId })).catch(error => ({ data: null, error }));
+        if (steers.error) { console.error("take_chat_steers failed", steers.error); return {}; }
         const taken = (steers.data ?? []) as { id: string; content: string }[];
         if (!taken.length) return {};
-        emit({ type: "steered", ids: taken.map(steer => steer.id) });
+        emit({ type: "steered", steers: taken });
         return { messages: [...messages, ...taken.map(steer => ({ role: "user" as const, content: steer.content }))] };
       },
       tools: { ...planTool, ...retainTools({
