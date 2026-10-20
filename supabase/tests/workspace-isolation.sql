@@ -17,7 +17,6 @@ declare
   foreign_goal uuid;
   foreign_import uuid;
   foreign_source uuid;
-  foreign_artifact uuid;
   foreign_assumption uuid;
   foreign_plan uuid;
   foreign_event uuid;
@@ -30,8 +29,8 @@ begin
   -- Each table gets a real foreign record so an empty-table pass cannot hide missing RLS.
   foreach target_table in array array['accounts','balance_snapshots','data_sources','imports','source_transactions','categories','merchants',
     'transactions','pending_hold_resolutions','transaction_sources','correction_events','goals','goal_allocations','financial_assumptions','scenarios','scenario_overrides',
-    'forecast_runs','background_jobs','saved_analyses','artifacts','artifact_versions','artifact_state','dashboard_items','conversations','messages',
-    'recurring_series','recurring_series_transactions','recurring_occurrence_settlements','fx_rates','spending_plans','transaction_views','planning_events','chat_requests','manual_transaction_entries','transaction_batches','workspace_settings','dashboard_layouts','transaction_split_sets','transaction_splits','summary_runs','goal_events','wealth_items','wealth_events','goal_reservation_events','forecast_preferences','forecast_preference_events','money_metadata_events','spending_plan_limits','artifact_generation_requests','scenario_events','transaction_links','transaction_link_fees','insight_preferences','insight_dismissals','import_control_events','import_staging','organization_rules','organization_reviews'] loop
+    'forecast_runs','background_jobs','saved_analyses','conversations','messages',
+    'recurring_series','recurring_series_transactions','recurring_occurrence_settlements','fx_rates','spending_plans','transaction_views','planning_events','chat_requests','manual_transaction_entries','transaction_batches','workspace_settings','dashboard_layouts','transaction_split_sets','transaction_splits','summary_runs','goal_events','wealth_items','wealth_events','goal_reservation_events','forecast_preferences','forecast_preference_events','money_metadata_events','spending_plan_limits','scenario_events','transaction_links','transaction_link_fees','insight_preferences','insight_dismissals','import_control_events','import_staging','organization_rules','organization_reviews'] loop
     -- The same fixture also verifies older private upgrade baselines.
     if target_table in ('organization_rules','organization_reviews') and to_regclass(format('%I.%I',app_schema,target_table)) is null then continue; end if;
     data := jsonb_build_object('id',md5(target_table||workspace_b)::uuid,'workspace_id',workspace_b,'name','Synthetic foreign',
@@ -47,24 +46,22 @@ begin
       'assumption_id',md5('financial_assumptions'||workspace_b)::uuid,'amount_delta_minor','0',
       'horizon_start','2026-10-01','horizon_end','2026-10-31','inputs','{}'::jsonb,'result','{}'::jsonb) || jsonb_build_object(
       'job_id',md5('background_jobs'||workspace_b)::uuid,'title','Synthetic foreign','body','Synthetic foreign','evidence','{}'::jsonb,
-      'artifact_id',md5('artifacts'||workspace_b)::uuid,'version',1,'manifest','{}'::jsonb,'state','{}'::jsonb,
+      'version',1,
       'conversation_id',md5('conversations'||workspace_b)::uuid,'role','user','content','Synthetic foreign','message','Synthetic foreign',
       'label','Synthetic foreign','normalized_label','synthetic foreign','amount_min_minor','100','amount_max_minor','100','occurrences',3,
       'series_id',md5('recurring_series'||workspace_b)::uuid,'from_currency','EUR','to_currency','USD','rate_text','1.1','rate_date','2026-10-01',
       'request_id',md5('request'||target_table||workspace_b)::uuid,'original_record','{}'::jsonb,'selection','[]'::jsonb,'patch','{}'::jsonb,
       'limit_minor','10000','entity_type','assumption','entity_id',md5('financial_assumptions'||workspace_b)::uuid);
     data := data || jsonb_build_object('kind', case target_table when 'data_sources' then 'file' when 'financial_assumptions' then 'income'
-      when 'background_jobs' then 'financial_review' when 'artifacts' then 'spending_explorer' else 'ordinary' end,
+      when 'background_jobs' then 'financial_review' else 'ordinary' end,
       'status', case target_table when 'source_transactions' then 'review' when 'imports' then 'completed' when 'background_jobs' then 'completed'
-        when 'chat_requests' then 'running' when 'artifact_versions' then 'validated' when 'recurring_series' then 'pending' when 'goals' then 'active' else 'posted' end);
-    if target_table='artifact_versions' then data := data || '{"source":"return {};"}'::jsonb; end if;
+        when 'chat_requests' then 'running' when 'recurring_series' then 'pending' when 'goals' then 'active' else 'posted' end);
     if target_table='pending_hold_resolutions' then data := data || jsonb_build_object('pending_transaction_id',md5('transactions'||workspace_b)::uuid,'released_minor','100','operation','cancel','input','{}'::jsonb,'receipt','{}'::jsonb,'note','Synthetic foreign hold'); end if;
     if target_table='balance_snapshots' then data := data - 'source_transaction_id'; end if;
     if target_table='dashboard_layouts' then data := data || '{"items":[]}'::jsonb; end if;
     if target_table='transaction_splits' then data := data || jsonb_build_object('parent_transaction_id',md5('transactions'||workspace_b)::uuid,'split_set_id',md5('transaction_split_sets'||workspace_b)::uuid,'ordinal',1); end if;
     if target_table='summary_runs' then data := data || '{"period_start":"2026-10-01"}'::jsonb; end if;
     if target_table='spending_plan_limits' then data := data || jsonb_build_object('plan_id',md5('spending_plans'||workspace_b)::uuid,'enabled',true,'effective_month','2026-10-01','version',99); end if;
-    if target_table='artifact_generation_requests' then data := data || jsonb_build_object('purpose','calculator','description','Synthetic request','status','running','result',null); end if;
     if target_table='insight_dismissals' then data := data || jsonb_build_object('evidence_key',repeat('a',64),'insight_type','data_quality'); end if;
     if target_table='import_staging' then data := data || jsonb_build_object('stage_version',1,'rows','[]'::jsonb,'route_accounts','{}'::jsonb); end if;
     if target_table='import_control_events' then data := data || jsonb_build_object('action','cancel'); end if;
@@ -98,7 +95,6 @@ begin
   foreign_goal := md5('goals'||workspace_b)::uuid;
   foreign_import := md5('imports'||workspace_b)::uuid;
   foreign_source := md5('source_transactions'||workspace_b)::uuid;
-  foreign_artifact := md5('artifacts'||workspace_b)::uuid;
   foreign_assumption := md5('financial_assumptions'||workspace_b)::uuid;
   foreign_plan := md5('spending_plans'||workspace_b)::uuid;
   foreign_event := md5('planning_events'||workspace_b)::uuid;
@@ -142,11 +138,6 @@ begin
     format('select public.prepare_import_route(%L,%L,1,%L,%L,%L,%L,1)',foreign_import,workspace_b,foreign_account,gen_random_uuid(),'Synthetic foreign','EUR'),
     format('select public.ingest_import_row(%L,%L,1,%L,%L::jsonb)',foreign_import,workspace_b,foreign_account,'{}'),
     format('select public.finish_import_run(%L,%L,1)',foreign_import,workspace_b),
-    format('select public.rename_trusted_artifact(%L,%L)',foreign_artifact,'Attempted foreign change'),
-    format('select public.rename_trusted_artifact(%L,%L,null)',foreign_artifact,'Attempted foreign change'),
-    format('select public.restore_trusted_artifact_version(%L,%L,null)',foreign_artifact,gen_random_uuid()),
-    format('select public.save_generated_artifact_version(%L,%L,%L::jsonb,%L,null)',foreign_artifact,'return {};','{"kind":"spending_explorer","runtime":"quickjs-calculator-v1","sdk":[]}','validated'),
-    format('select public.save_generated_artifact_version(%L,%L,%L::jsonb,%L,null,null)',foreign_artifact,'return {};','{"kind":"spending_explorer","runtime":"quickjs-calculator-v1","sdk":[]}','validated'),
     format('select public.confirm_recurring_series(%L,%L,%L,%L,100,100,3,90,array[%L,%L,%L]::uuid[])',foreign_account,'Synthetic foreign','monthly','EUR',foreign_transaction,gen_random_uuid(),gen_random_uuid()),
     format('select public.decline_recurring_series(%L,%L,%L,%L,100,100,3,90,array[%L,%L,%L]::uuid[])',foreign_account,'Synthetic foreign','monthly','EUR',foreign_transaction,gen_random_uuid(),gen_random_uuid()),
     format('select public.record_recurring_occurrence(%L,1,%L,%L,0,true)',foreign_assumption,'2026-10-01',foreign_transaction),
@@ -181,9 +172,6 @@ begin
     format('select public.undo_money_metadata(%L,1,%L)',md5('money_metadata_events'||workspace_b)::uuid,gen_random_uuid()),
     format('select public.edit_scenario_record(%L,%L,1,%L::jsonb,%L)','scenario',md5('scenarios'||workspace_b)::uuid,'{"name":"Foreign"}',gen_random_uuid()),
     format('select public.undo_scenario_record(%L,1)',md5('scenario_events'||workspace_b)::uuid),
-    format('select public.begin_artifact_generation(%L,%L,%L,%L)',gen_random_uuid(),'calculator','Synthetic request',foreign_artifact),
-    format('select public.finish_artifact_generation(%L,%L,%L::jsonb)',md5('artifact_generation_requests'||workspace_b)::uuid,'completed','{}'),
-    format('select public.cancel_artifact_generation(%L)',md5('artifact_generation_requests'||workspace_b)::uuid),
     format('select public.link_transactions(%L,%L,0,%L,0,null,%L::jsonb,%L)','transfer',foreign_transaction,gen_random_uuid(),'[]',gen_random_uuid()),
     format('select public.undo_transaction_link(%L,%L::jsonb)',md5('transaction_links'||workspace_b)::uuid,'[]'),
     format('select public.finish_financial_review(%L,%L,%L,%L,%L::jsonb,false)',md5('background_jobs'||workspace_b)::uuid,workspace_b,'Synthetic','Synthetic','{}'),

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, pgSchema, uuid, text, timestamp, date, bigint, integer, jsonb, boolean, uniqueIndex, unique, index, check, foreignKey, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, pgSchema, uuid, text, timestamp, date, bigint, integer, jsonb, boolean, uniqueIndex, unique, index, check, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 export const dashboardLayouts = pgTable("dashboard_layouts", {
   workspaceId: uuid("workspace_id").primaryKey().references((): AnyPgColumn => workspaces.id, { onDelete: "cascade" }),
@@ -546,53 +546,6 @@ export const savedAnalyses = pgTable("saved_analyses", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-export const artifacts = pgTable("artifacts", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
-  kind: text("kind").notNull(),
-  name: text("name").notNull(),
-  activeVersionId: uuid("active_version_id"),
-  permissions: jsonb("permissions").notNull().default([]),
-  createdByConversationId: uuid("created_by_conversation_id"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  foreignKey({ name: "artifacts_active_version_fk", columns: [table.activeVersionId], foreignColumns: [artifactVersions.id] }),
-  check("artifacts_kind_check", sql`${table.kind} in ('spending_explorer','trip_planner','goal_tracker','custom_planner','custom_tracker','custom_report','custom_comparison')`),
-]);
-
-export const artifactVersions = pgTable("artifact_versions", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
-  artifactId: uuid("artifact_id").notNull().references((): AnyPgColumn => artifacts.id),
-  version: integer("version").notNull(),
-  source: text("source").notNull(),
-  manifest: jsonb("manifest").notNull(),
-  status: text("status").notNull(),
-  error: text("error"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  unique("artifact_versions_number_unique").on(table.artifactId, table.version),
-  check("artifact_versions_version_check", sql`${table.version} > 0`),
-  check("artifact_versions_status_check", sql`${table.status} in ('validated', 'failed')`),
-]);
-
-export const artifactState = pgTable("artifact_state", {
-  artifactId: uuid("artifact_id").primaryKey().references(() => artifacts.id),
-  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
-  state: jsonb("state").notNull().default({}),
-  version: integer("version").notNull().default(0),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
-
-export const dashboardItems = pgTable("dashboard_items", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
-  artifactId: uuid("artifact_id").notNull().references(() => artifacts.id),
-  position: integer("position").notNull().default(0),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [unique("dashboard_items_artifact_unique").on(table.workspaceId, table.artifactId)]);
-
 export const conversations = pgTable("conversations", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
@@ -723,21 +676,6 @@ export const spendingPlanLimits = pgTable("spending_plan_limits", {
 }, table => [unique("spending_plan_limits_workspace_id_plan_id_version_key").on(table.workspaceId,table.planId,table.version),
   check("spending_plan_limits_limit_minor_check",sql`${table.limitMinor}>0`), check("spending_plan_limits_version_check",sql`${table.version}>0`),
   check("spending_plan_limits_effective_month_check",sql`extract(day from ${table.effectiveMonth})=1`)]);
-
-export const artifactGenerationRequests = pgTable("artifact_generation_requests", {
-  id: uuid("id").primaryKey(), workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
-  artifactId: uuid("artifact_id").references(() => artifacts.id, { onDelete: "cascade" }), purpose: text("purpose").notNull(), description: text("description").notNull(),
-  status: text("status").notNull().default("queued"), result: jsonb("result"), error: text("error"), usage: jsonb("usage"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-}, table => [index("artifact_generation_requests_workspace_created_idx").on(table.workspaceId,table.createdAt.desc()),
-  check("artifact_generation_requests_purpose_check",sql`${table.purpose} in ('proposal','calculator')`),
-  check("artifact_generation_requests_description_check",sql`length(btrim(${table.description})) between 1 and 500`),
-  check("artifact_generation_requests_status_check",sql`${table.status} in ('queued','running','completed','failed','canceled')`),
-  check("artifact_generation_requests_result_check",sql`${table.result} is null or (jsonb_typeof(${table.result})='object' and octet_length(${table.result}::text)<=65536)`),
-  check("artifact_generation_requests_error_check",sql`${table.error} is null or length(${table.error})<=2000`),
-  check("artifact_generation_requests_usage_check",sql`${table.usage} is null or (jsonb_typeof(${table.usage})='object' and octet_length(${table.usage}::text)<=2000)`),
-  check("artifact_generation_requests_check",sql`(${table.purpose}='calculator' and ${table.artifactId} is not null) or (${table.purpose}='proposal' and ${table.artifactId} is null)`),
-  check("artifact_generation_requests_check1",sql`(${table.status}='completed' and ${table.result} is not null and ${table.error} is null) or (${table.status}<>'completed' and ${table.result} is null)`)]);
 
 export const insightPreferences = pgTable("insight_preferences", {
   workspaceId: uuid("workspace_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }), importantOnly: boolean("important_only").notNull().default(true),
@@ -964,7 +902,7 @@ export const agentTasks = pgTable("agent_tasks", {
   finishedAt: timestamp("finished_at", { withTimezone: true }),
 }, table => [
   unique("agent_tasks_run_agent_key").on(table.runId, table.agent),
-  check("agent_tasks_agent_check", sql`${table.agent} in ('lead','categorizer','recurring','anomaly','forecaster','budget','writer','toolsmith')`),
+  check("agent_tasks_agent_check", sql`${table.agent} in ('lead','categorizer','recurring','anomaly','forecaster','budget','writer')`),
   check("agent_tasks_status_check", sql`${table.status} in ('pending','running','done','failed','skipped','canceled')`),
   check("agent_tasks_events_check", sql`jsonb_typeof(${table.events})='array' and jsonb_array_length(${table.events})<=60`),
 ]);
@@ -989,7 +927,7 @@ export const agentProposals = pgTable("agent_proposals", {
 }, table => [
   unique("agent_proposals_run_conflict_key").on(table.runId, table.conflictKey),
   index("agent_proposals_workspace_status").on(table.workspaceId, table.status),
-  check("agent_proposals_kind_check", sql`${table.kind} in ('categorize','recurring','budget','tool','finding')`),
+  check("agent_proposals_kind_check", sql`${table.kind} in ('categorize','recurring','budget','finding')`),
   check("agent_proposals_status_check", sql`${table.status} in ('proposed','applying','accepted','rejected','failed')`),
   check("agent_proposals_confidence_check", sql`${table.confidence} between 0 and 100`),
   check("agent_proposals_title_check", sql`char_length(${table.title}) between 1 and 200`),
