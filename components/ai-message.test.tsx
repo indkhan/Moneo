@@ -31,3 +31,15 @@ it("keeps untrusted model output inert, including image tracking and unsafe link
   expect(html).not.toContain("<img");
   expect(html).not.toContain("Open saved tool");
 });
+
+it("renders model chart blocks, falls back to code when invalid and never links off the app", () => {
+  const spec = { type: "bar", title: "Spending by month", x: ["Aug", "Sep"], series: [{ name: "Food", data: [1, 2], currency: "EUR" }] };
+  const html = renderToStaticMarkup(<AiMessage content={`\`\`\`chart\n${JSON.stringify(spec)}\n\`\`\`\n\n[site](https://example.com) and [tx](/money/transactions)`} />);
+  expect(html).toContain("ai-chart");
+  expect(html).toContain("Spending by month");
+  expect(html).not.toContain("example.com");
+  expect(html).toContain('href="/money/transactions"');
+  const invalid = renderToStaticMarkup(<AiMessage content={'```chart\n{"type":"radar"}\n```'} />);
+  expect(invalid).not.toContain("ai-chart");
+  expect(invalid).toContain("ai-code");
+});

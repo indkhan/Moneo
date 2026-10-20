@@ -7,6 +7,8 @@ import remarkGfm from "remark-gfm";
 import type { Plugin } from "unified";
 import type { Root } from "mdast";
 import { ChatChart } from "./chat-chart";
+import { AnswerChart } from "./chart";
+import { parseChartSpec } from "@/lib/ai/chart-spec";
 
 // Only link known application paths in text nodes, never inside SQL/code blocks.
 const appLinks: Plugin<[], Root> = () => tree => {
@@ -44,6 +46,9 @@ export function AiMessage({ content }: { content: string }) {
     pre: ({ children }) => {
       const code = isValidElement<{ className?: string; children?: unknown }>(children) ? children.props : null;
       if (code?.className?.includes("language-moneo-chart") && typeof code.children === "string") return <ChatChart source={code.children} />;
+      // A chart that does not validate stays visible as its source code.
+      const chart = /\blanguage-chart\b/.test(code?.className ?? "") && typeof code?.children === "string" ? parseChartSpec(code.children) : null;
+      if (chart) return <AnswerChart spec={chart} />;
       return <CodeBlock>{children}</CodeBlock>;
     },
     table: ({ children }) => <div className="ai-table"><table>{children}</table></div>,
@@ -54,7 +59,8 @@ export function AiMessage({ content }: { content: string }) {
       if (href.startsWith("/") && !href.startsWith("//")) return <Link href={href} className={artifact ? "ai-artifact-link" : undefined}>
         {artifact && <span className="ai-artifact-label">Saved tool / open workspace ↗</span>}{children}
       </Link>;
-      return <a href={href} {...(/^https?:\/\//i.test(href) ? { target: "_blank", rel: "noopener noreferrer" } : {})}>{children}</a>;
+      // External links are shown as text only; answers never link off the app.
+      return <span>{children}</span>;
     },
   }}>{content}</Markdown></div>;
 }
