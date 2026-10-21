@@ -1,0 +1,13 @@
+Okay, so the thing is, we do not have anything for artifact now, so we have to build it from the ground up. It should be that all the previous artifacts are there in a new section called artifacts, but they just store the artifact. You cannot create artifact from there. You create artifact directly from the chat. In the chat itself, you honestly, I'm not so sure. What do you think? Should the artifact be there from the chat itself, or the artifact page itself? Chat is for normal talking and normal chat and all. And if you want a real full-fledged artifact, you go to the artifact section and then build it there. And this artifact could be basically you like Claude artifact or something that it creates a HTML page with JavaScript and all, or different kind of pages with the data that you want. For example, if I ask it, you know, what if I do this, then it creates, like, using your old data and all of that, it creates a nice HTML view with, like, a different option for you to choose in the view itself as you want, whenever you want, because it's a sorted artifact. So yeah, that's the idea. Now you have to come up with a plan to have it. How will you do it? It should be architecturally clean. And nice, and simple, but the industry standards industry uses these things. And also look at how do we have the agents and the chat now as well. And later we also need to add in the chat that if some user asks for creating an artifact, we tell him that okay, open the artifact page with this prompt as per what he asked us to build
+
+---
+
+Okay, leave the last one. We don't want that. That looks shit. It did not work how I wanted it to work at all. Try to think of it from a new perspective. Look at how Claude does artifact. Look at the thing that we are building. And then using all of that, how do you suggest an artifact look? And how should it work? In a really simple and concise word so that I can read through them and then I can tell you what are my opinion on it. You don't have to think about what was implemented before. Just think what would be the best for us
+
+---
+
+sounds really good. Another thing is, what do you mean by artifact that change your data? They are view only. What do you mean by that statement? And then the before part, how are you going to have it? Like the architecture-wise, the implementation-wise, how are we going to have it? In
+
+---
+
+Yes, sounds really good. Implemented. Just one small point. There should also be this possibility of having only the artifact on the screen that's all, other than that sounds really good. Implemented.
