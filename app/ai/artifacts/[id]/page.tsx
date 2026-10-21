@@ -23,7 +23,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   // Saved queries rerun on every open, so the page always shows today's data.
   const queries = artifactQueriesSchema.safeParse(current.queries);
   const data = await runArtifactQueries(queries.success ? queries.data : [], context);
-  const frame = <iframe title={artifact.data.title} sandbox="allow-scripts" srcDoc={artifactDocument(current.html, data)} className="size-full border-0 bg-white" />;
+  const frame = <iframe title={artifact.data.title} sandbox="allow-scripts" srcDoc={artifactDocument(current.html, data)} className="size-full border-0" />;
   const at = (version: number, fullScreen = !!full) => `/ai/artifacts/${id}?v=${version}${fullScreen ? "&full=1" : ""}`;
 
   if (full) return <div className="fixed inset-0 z-50 bg-background">
@@ -51,13 +51,13 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
     </aside>
     <section aria-label="Artifact" className="flex min-h-[70dvh] flex-col overflow-hidden rounded-xl border border-border">
       <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-1.5 text-xs">
-        <span className="inline-flex items-center gap-1">
+        <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap">
           {current.version > 1 ? <Link href={at(current.version - 1)} aria-label="Previous version" className="rounded p-1 hover:bg-muted"><ChevronLeft className="size-3.5" /></Link> : <span className="p-1 opacity-30"><ChevronLeft className="size-3.5" /></span>}
           v{current.version} of {latest}
           {current.version < latest ? <Link href={at(current.version + 1)} aria-label="Next version" className="rounded p-1 hover:bg-muted"><ChevronRight className="size-3.5" /></Link> : <span className="p-1 opacity-30"><ChevronRight className="size-3.5" /></span>}
         </span>
-        <span className="text-muted-foreground">Live data · read-only · what-ifs are estimates</span>
-        <Link href={at(current.version, true)} className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted"><Maximize2 className="size-3.5" aria-hidden="true" />Full screen</Link>
+        <span className="hidden truncate text-muted-foreground xl:inline">Live data · read-only · what-ifs are estimates</span>
+        <Link href={at(current.version, true)} className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded px-2 py-1 hover:bg-muted"><Maximize2 className="size-3.5" aria-hidden="true" />Full screen</Link>
       </div>
       <div className="min-h-0 flex-1">{frame}</div>
     </section>

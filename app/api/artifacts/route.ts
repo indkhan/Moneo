@@ -56,12 +56,14 @@ export async function POST(request: Request) {
     execute: async input => { saved = input; return { saved: true }; },
   });
 
-  const model = await modelForSettings(settings, "artifacts");
   const history = previous.slice().reverse().map(version => `v${version.version}: ${version.prompt}`).join("\n");
   const prompt = latest
     ? `Earlier requests:\n${history}\n\nCurrent queries:\n${JSON.stringify(latest.queries)}\n\nCurrent HTML:\n${latest.html}\n\nChange it: ${message}`
     : message;
+  // Until an artifact model is chosen in Settings, artifacts use the chat model.
+  let model: Awaited<ReturnType<typeof modelForSettings>>;
   try {
+    model = await modelForSettings(settings, settings.ai_models.artifacts ? "artifacts" : "chat");
     await generateText({
       model, prompt, tools: { ...dataTools, save_artifact },
       instructions: `${INSTRUCTIONS}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}.`,
