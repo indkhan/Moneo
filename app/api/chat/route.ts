@@ -133,7 +133,10 @@ export async function POST(request: Request) {
     // The visible plan is not financial evidence; it only tells the user what the model will check.
     let modelFollowUps: string[] = [];
     const planTool = { plan_investigation: tool({ description: "Optional: show the user 2-5 short steps you will take for a multi-part question, and up to 3 follow-up questions they might ask next. Returns nothing.",
-      inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); toolCalls.push({ name: "plan_investigation", input, output: "" }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }) };
+      inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); toolCalls.push({ name: "plan_investigation", input, output: "" }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }),
+      // Artifacts are built on their own page; chat only hands the request over.
+      suggest_artifact: tool({ description: "When the user asks for an interactive page, calculator, simulator, dashboard or what-if view, call this with a clear build request and give them the returned link. Do not build pages in chat.",
+        inputSchema: z.object({ prompt: z.string().trim().min(1).max(1500) }).strict(), execute: async ({ prompt }) => ({ href: `/ai/artifacts?prompt=${encodeURIComponent(prompt)}` }) }) };
     const result = streamText({
       model,
       abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
