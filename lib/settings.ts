@@ -12,6 +12,7 @@ export const AI_AGENTS = {
   agents: { label: "Agent team", model: "gpt-6-luna" },
   imports: { label: "Import mapping", model: "gpt-6-luna" },
   organize: { label: "Organization suggestions", model: "gpt-6-luna" },
+  artifacts: { label: "Artifact builder", model: "gpt-6.1-sol" },
 } as const;
 export type AiAgent = keyof typeof AI_AGENTS;
 export const AI_AGENT_KEYS = Object.keys(AI_AGENTS) as AiAgent[];

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Suspense, use, useEffect, useState, useSyncExternalStore } from "react";
 import {
   ArrowLeftRight, Bell, Bot, ChartLine, ChartPie, Coins, House, Landmark, ListChecks, Menu, MessageSquare,
-  PanelLeftClose, PanelLeftOpen, Repeat, Search, SearchCheck, Settings, Tags, TrendingUp, Upload, type LucideIcon,
+  PanelLeftClose, PanelLeftOpen, Repeat, Search, SearchCheck, Settings, Sparkles, Tags, TrendingUp, Upload, type LucideIcon,
 } from "lucide-react";
 import { AiPanel } from "@/components/ai-panel";
 import { CommandPalette, Kbd, Modal, ShortcutHelp, type Command } from "@/components/command-palette";
@@ -36,6 +36,7 @@ const sections: { title: string; items: NavItem[] }[] = [
   { title: "AI", items: [
     { label: "Chat", href: "/ai", icon: MessageSquare, go: "c" },
     { label: "Agents", href: "/ai/agents", icon: Bot, go: "m" },
+    { label: "Artifacts", href: "/ai/artifacts", icon: Sparkles },
     { label: "Activity", href: "/ai/activity", icon: ListChecks },
   ] },
   { title: "Data", items: [{ label: "Import", href: "/import", icon: Upload, go: "i" }] },

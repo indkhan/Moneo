@@ -573,6 +573,32 @@ export const messages = pgTable("messages", {
   check("messages_role_check", sql`${table.role} in ('user', 'assistant')`),
 ]);
 
+export const artifacts = pgTable("artifacts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => [
+  index("artifacts_workspace_live").on(table.workspaceId, table.updatedAt.desc()).where(sql`${table.deletedAt} is null`),
+  check("artifacts_title_check", sql`length(btrim(${table.title})) between 1 and 120`),
+]);
+
+export const artifactVersions = pgTable("artifact_versions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  artifactId: uuid("artifact_id").notNull().references(() => artifacts.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  prompt: text("prompt").notNull(),
+  html: text("html").notNull(),
+  queries: jsonb("queries").notNull().default([]),
+  model: text("model"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  unique("artifact_versions_artifact_id_version_key").on(table.artifactId, table.version),
+]);
+
 export const recurringSeries = pgTable("recurring_series", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
