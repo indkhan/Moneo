@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>baus25zmh</task-id>
+<tool-use-id>toolu_01YJAn9h3RjkJBYuadiVyAdu</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--codebases-Moneo\5f007a6e-273a-4f89-85b5-8e346f995259\tasks\baus25zmh.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /c/codebases/Moneo; git stash list | head -2; git worktree add -q ../moneo-base 5be3b62 2&gt;&amp;1 | tail -1; cd ../moneo-base &amp;&amp; cp -r ../Moneo/node_modules . 2&gt;/dev/null; npx vitest run lib/import/progress.test.ts lib/import/batch-workflow.test.ts 2&gt;&amp;1 | grep -E "Tests "" completed (exit code 0)</summary>
+</task-notification>
