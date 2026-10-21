@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M5FW0ZF33AC2AT3QA2VDMZ91",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "app/ai/artifacts/[id]/page.tsx",
+    "app/ai/artifacts/actions.ts",
+    "app/ai/artifacts/artifact-prompt.tsx",
+    "app/ai/artifacts/page.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 58,
+    "cache_creation_tokens": 134524,
+    "cache_read_tokens": 3075934,
+    "output_tokens": 22464,
+    "api_call_count": 29
+  }
+}
