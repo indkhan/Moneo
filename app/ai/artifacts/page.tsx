@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
+import { artifactExamples } from "@/lib/ai/artifact-examples";
 import { ArtifactPrompt } from "./artifact-prompt";
 
 export default async function ArtifactsPage({ searchParams }: { searchParams: Promise<{ prompt?: string }> }) {
@@ -17,7 +18,15 @@ export default async function ArtifactsPage({ searchParams }: { searchParams: Pr
       <p className="text-sm text-muted-foreground">Interactive pages built from your real data. They refresh every time you open them and never change your records.</p>
     </header>
     <section aria-label="New artifact" className="rounded-xl border border-border bg-card p-4">
-      <ArtifactPrompt defaultValue={prompt?.slice(0, 4000)} placeholder="Describe what to build, e.g. “What if my rent goes up €300 — how does my monthly budget look?”" />
+      <ArtifactPrompt key={prompt} defaultValue={prompt?.slice(0, 4000)} placeholder="Describe what to build, e.g. “What if my rent goes up €300 — how does my monthly budget look?”" />
+    </section>
+    <section aria-label="Examples" className="grid gap-3">
+      <h2 className="text-sm font-medium text-muted-foreground">Start from an example</h2>
+      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{artifactExamples.map(example => <li key={example.title}>
+        <Link href={`/ai/artifacts?prompt=${encodeURIComponent(example.prompt)}`} scroll={false} className="block h-full rounded-xl border border-border bg-card p-4 hover:bg-muted">
+          <span className="block font-medium">{example.title}</span>
+          <span className="mt-1 block text-xs text-muted-foreground">{example.summary}</span>
+        </Link></li>)}</ul>
     </section>
     {error ? <p role="alert">Could not load artifacts.</p> : !data.length ? <p className="text-sm text-muted-foreground">No artifacts yet.</p> :
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{data.map(artifact => <li key={artifact.id}>
