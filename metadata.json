@@ -1,0 +1,69 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M5TH7NJHJSEAXK32QK4K4WWV",
+  "strategy": "manual-commit",
+  "branch": "claude/frontend-design-impl-fc1fb7",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/ai/actions/preview/page.tsx",
+    "app/ai/activity/[id]/page.tsx",
+    "app/ai/activity/page.tsx",
+    "app/ai/agents/page.tsx",
+    "app/ai/artifacts/[id]/page.tsx",
+    "app/ai/artifacts/page.tsx",
+    "app/ai/evidence/[id]/page.tsx",
+    "app/globals.css",
+    "app/import/[id]/review/page.tsx",
+    "app/import/page.tsx",
+    "app/login/page.tsx",
+    "app/money/accounts/page.tsx",
+    "app/money/investigations/page.tsx",
+    "app/money/organization/page.tsx",
+    "app/money/recurring/page.tsx",
+    "app/money/transactions/page.tsx",
+    "app/money/views/panel.tsx",
+    "app/money/wealth/page.tsx",
+    "app/page.tsx",
+    "app/plan/currency/page.tsx",
+    "app/plan/page.tsx",
+    "app/plan/spending/page.tsx",
+    "app/privacy/page.tsx",
+    "app/reset-password/page.tsx",
+    "app/settings/page.tsx",
+    "app/terms/page.tsx",
+    "components/app-shell.tsx",
+    "components/command-palette.tsx",
+    "components/mission-control.tsx",
+    "components/team-flow.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 44,
+    "cache_creation_tokens": 134005,
+    "cache_read_tokens": 2861284,
+    "output_tokens": 12978,
+    "api_call_count": 22
+  },
+  "redaction": {
+    "replacements": 0,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
