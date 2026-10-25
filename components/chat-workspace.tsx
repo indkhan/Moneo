@@ -161,10 +161,11 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   const title = entry?.conversation.title ?? threads.find(thread => thread.id === selectedId)?.title ?? (selectedId ? "" : "New chat");
   const list = results ?? threads;
   const sidebar = (prefix: string) => <>
-    <Link href={href("new")} onClick={event => open(event, null)} className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted"><Plus className="size-4" aria-hidden="true" />New chat</Link>
+    <Link href={href("new")} onClick={event => open(event, null)} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-medium text-primary-foreground hover:opacity-90"><Plus className="size-4" aria-hidden="true" />New chat</Link>
     <label className="relative mt-3 block"><span className="sr-only">Search chats</span><Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground" aria-hidden="true" />
       <input id={`${prefix}-search`} type="search" value={query} onChange={event => { setQuery(event.target.value); if (!event.target.value.trim()) setResults(null); }} maxLength={100} placeholder="Search chats" className="w-full rounded-lg border border-border bg-background py-2 pr-2 pl-8 text-sm focus:border-muted-foreground/40 focus:outline-none" /></label>
-    <nav aria-label="Conversations" className="mt-3 space-y-0.5">
+    <p className="eyebrow mt-5 px-2.5 pb-1.5">Conversations</p>
+    <nav aria-label="Conversations" className="space-y-0.5">
       {results && !results.length && <p className="px-3 py-2 text-sm text-muted-foreground">No chats match “{query.trim()}”.</p>}
       {list.map(thread => editing === thread.id
         ? <form key={thread.id} onSubmit={event => void rename(event, thread)} className="flex items-center gap-1 px-1 py-0.5">
@@ -173,18 +174,18 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
           <button aria-label="Save title" className="rounded-md p-1.5 hover:bg-muted"><Check className="size-4" aria-hidden="true" /></button>
           <button type="button" aria-label="Cancel rename" onClick={() => setEditing(null)} className="rounded-md p-1.5 hover:bg-muted"><X className="size-4" aria-hidden="true" /></button>
         </form>
-        : <div key={thread.id} className={`group flex items-center rounded-lg ${selectedId === thread.id ? "bg-muted" : "hover:bg-muted"}`}>
+        : <div key={thread.id} className={`group flex items-center rounded-[10px] ${selectedId === thread.id ? "bg-muted" : "hover:bg-muted/60"}`}>
           <Link href={href(thread.id)} prefetch={false} onClick={event => open(event, thread.id)} onPointerEnter={() => load(thread.id)} onFocus={() => load(thread.id)} aria-current={selectedId === thread.id ? "page" : undefined}
-            className={`min-w-0 flex-1 truncate px-3 py-2 text-sm ${selectedId === thread.id ? "font-medium text-foreground" : "text-muted-foreground group-hover:text-foreground"}`}>{thread.title}{pending[thread.id] && <span className="sr-only"> (answering)</span>}</Link>
+            className={`min-w-0 flex-1 truncate px-2.5 py-2.5 text-[13px] ${selectedId === thread.id ? "text-foreground" : "text-foreground/85 group-hover:text-foreground"}`}>{thread.title}{pending[thread.id] && <span className="sr-only"> (answering)</span>}</Link>
           <span className="flex shrink-0 pr-1 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
             <button type="button" onClick={() => setEditing(thread.id)} aria-label={`Rename ${thread.title}`} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground"><Pencil className="size-3.5" aria-hidden="true" /></button>
-            <button type="button" onClick={() => void remove(thread)} aria-label={`Delete ${thread.title}`} className="rounded-md p-1.5 text-muted-foreground hover:text-red-600"><Trash2 className="size-3.5" aria-hidden="true" /></button>
+            <button type="button" onClick={() => void remove(thread)} aria-label={`Delete ${thread.title}`} className="rounded-md p-1.5 text-muted-foreground hover:text-danger"><Trash2 className="size-3.5" aria-hidden="true" /></button>
           </span>
         </div>)}
     </nav>
     {!results && threadsCursor && <button type="button" disabled={busy} onClick={() => void olderThreads()} className="mt-2 block px-3 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50">Older conversations</button>}
     <div className="mt-6 space-y-0.5 border-t border-border pt-4 text-sm text-muted-foreground">
-      <Link href="/ai/activity" className="block rounded-lg px-3 py-2 hover:bg-muted hover:text-foreground">Activity</Link>
+      <Link href="/ai/activity" className="block rounded-lg px-3 py-2 hover:bg-muted hover:text-foreground">Activity log</Link>
       <Link href="/notifications" className="block rounded-lg px-3 py-2 hover:bg-muted hover:text-foreground">Notifications</Link>
     </div>
   </>;
@@ -192,16 +193,16 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   const empty = !entry?.messages.length && !active;
   const unavailable = selectedId && !entry ? errors[selectedId] : undefined;
 
-  return <main className="flex min-h-[calc(100dvh-3.5rem)]">
+  return <main className="flex min-h-[calc(100dvh-4.75rem)]">
     <ConversationSelection selectionKey={selectionKey} id={selectedId ?? "new"} />
-    <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-64 shrink-0 overflow-y-auto border-r border-border bg-card/60 p-3 lg:block">{sidebar("desktop")}</aside>
+    <aside className="sticky top-19 hidden h-[calc(100dvh-4.75rem)] w-72 shrink-0 overflow-y-auto border-r border-border px-4 py-6 lg:block">{sidebar("desktop")}</aside>
     <section className="flex min-w-0 flex-1 flex-col">
-      <div className="relative flex items-center gap-2 px-4 py-2.5">
+      <div className="relative flex items-center gap-2 border-b border-border px-4 py-4 sm:px-8">
         <details ref={menu} className="lg:hidden"><summary className={summary} aria-label="Show conversations"><Menu className="size-4" aria-hidden="true" /></summary><div className="absolute inset-x-4 top-full z-20 max-h-[70dvh] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-lg">{sidebar("mobile")}</div></details>
-        <h1 className="min-w-0 flex-1 truncate text-sm font-medium">{title}</h1>
+        <h1 className="min-w-0 flex-1 truncate font-display text-2xl font-semibold tracking-tight">{title}</h1>
         <details onToggle={event => { if (event.currentTarget.open) setReviewOpen(true); }}><summary className={summary}><Sparkles className="size-4" aria-hidden="true" />Run a deep review</summary><div className="absolute inset-x-4 top-full z-20 mx-auto max-h-[75dvh] max-w-3xl overflow-y-auto rounded-2xl border border-border bg-card shadow-lg">{reviewOpen && <AnalysisPanel locale={locale} timezone={timezone} />}</div></details>
       </div>
-      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4">
+      <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col px-4 sm:px-8">
         {notice && <p role="alert" className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">{notice}<button type="button" onClick={() => setNotice("")} aria-label="Dismiss" className="text-muted-foreground hover:text-foreground"><X className="size-4" aria-hidden="true" /></button></p>}
         {unavailable ? <div className="py-10"><h2 className="font-semibold">Conversation unavailable</h2><p role="alert" className="mt-1 text-sm">{unavailable}</p><Link href={href("new")} onClick={event => open(event, null)} className="mt-3 inline-block text-sm underline">New conversation</Link></div>
           : selectedId && !entry ? <div className="space-y-6 py-6" role="status" aria-label="Loading conversation">{[0, 1].map(row => <div key={row} className="space-y-3"><div className="ml-auto h-9 w-1/2 animate-pulse rounded-3xl bg-muted" /><div className="h-4 w-5/6 animate-pulse rounded bg-muted" /><div className="h-4 w-2/3 animate-pulse rounded bg-muted" /></div>)}</div>

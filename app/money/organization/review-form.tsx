@@ -64,7 +64,7 @@ export function OrganizationQueue({items,merchants,categories,requestId,locale}:
    <button type="button" disabled={providerBusy||pending||!rows.length} onClick={requestSuggestions} className="min-h-10 text-sm text-muted-foreground underline disabled:opacity-40">{providerBusy?'Asking AI…':'Suggest with AI'}</button>
    {created&&<p className="basis-full text-xs text-muted-foreground">New {created} will be created.</p>}
    {assistance&&<p role="status" className="basis-full text-sm">{assistance}</p>}
-   {state.error&&<p role="alert" className="basis-full text-sm text-red-700 dark:text-red-300">{state.error}</p>}
+   {state.error&&<p role="alert" className="basis-full text-sm text-danger">{state.error}</p>}
   </div>
   <ul className="divide-y divide-border">{items.map(({row,proposal})=>{const hint=suggestion(proposal).filter(Boolean).join(' · ');
    return <li key={row.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
@@ -83,14 +83,14 @@ export function ApprovalForm({reviewId,canSaveRule}:{reviewId:string;canSaveRule
   <input type="hidden" name="reviewId" value={reviewId} />
   <label className="flex gap-2 text-sm"><input type="checkbox" name="confirmed" value="true" required />I reviewed these entries and approve the changes.</label>
   {canSaveRule&&<label className="flex gap-2 text-sm"><input type="checkbox" name="saveRule" value="true" />Suggest the same for future entries with this description.</label>}
-  {state.error&&<p role="alert" className="text-sm text-red-700 dark:text-red-300">{state.error}</p>}
+  {state.error&&<p role="alert" className="text-sm text-danger">{state.error}</p>}
   <button disabled={pending} className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Applying…':'Approve'}</button>
  </form>;
 }
 export function UndoReviewForm({reviewId,rows}:{reviewId:string;rows:{id:string;version:number}[]}) {
  const [state,action,pending]=useActionState(undoReview,{});
  return <form action={action} className="mt-3"><input type="hidden" name="reviewId" value={reviewId} /><input type="hidden" name="rows" value={JSON.stringify(rows)} />
-  {state.error&&<p role="alert" className="mb-2 text-sm text-red-700 dark:text-red-300">{state.error}</p>}
+  {state.error&&<p role="alert" className="mb-2 text-sm text-danger">{state.error}</p>}
   <button disabled={pending} className="text-sm underline disabled:opacity-40">{pending?'Undoing…':'Undo this batch'}</button>
  </form>;
 }

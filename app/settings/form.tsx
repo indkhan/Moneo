@@ -38,8 +38,8 @@ export function SettingsForm({ settings, currency }: { settings: WorkspaceSettin
       <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1.5 text-sm font-medium">In-app summary preference<select className={input} name="summary_cadence" defaultValue={settings.summary_cadence}><option value="none">Off</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label><label className={label}>Preferred local time<input className={input} type="time" name="summary_time" defaultValue={settings.summary_time} required /></label></div>
       <p className={help}>Summaries appear in Activity and may arrive up to a day late.</p>
     </fieldset>
-    {state.error && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900">{state.error}</p>}
-    {state.saved && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">Preferences saved.</p>}
+    {state.error && <p role="alert" className="rounded-lg border border-danger/40 bg-danger-soft p-3 text-sm text-danger">{state.error}</p>}
+    {state.saved && <p role="status" className="text-sm text-success">Preferences saved.</p>}
     <button disabled={pending} className="min-h-10 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60">{pending ? "Saving…" : "Save preferences"}</button>
   </form>;
 }

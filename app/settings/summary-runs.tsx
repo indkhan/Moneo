@@ -35,10 +35,10 @@ export function SummaryRuns({ initial }: { initial: SummaryRun[] }) {
     {!runs.length && <p className="text-sm text-muted-foreground">No scheduled summaries yet.</p>}
     {runs.map(run => <div key={run.id} className="flex flex-wrap items-start justify-between gap-3 py-3 text-sm first:pt-0">
       <div><p className="font-medium capitalize">{run.cadence} · from {run.period_start}</p><p className="text-muted-foreground capitalize">{run.status} · {run.stage.replaceAll("_", " ")}</p>
-        {run.error && <p className="text-red-700">{run.error}</p>}
+        {run.error && <p className="text-danger">{run.error}</p>}
         {run.status === "completed" && <Link className="underline" href={`/ai/activity/${run.job_id}`}>Read summary</Link>}</div>
       {["queued", "running"].includes(run.status) && <button className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted" disabled={run.stage === "stopping"} onClick={() => stop(run.job_id)}>{run.stage === "stopping" ? "Stopping…" : "Stop summary"}</button>}
     </div>)}
-    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-sm text-danger">{error}</p>}
   </div>;
 }

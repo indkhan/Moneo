@@ -21,7 +21,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const href = (extra: Record<string, string>) => `/ai/evidence/${id}?${new URLSearchParams({ ...(metric ? { metric: metric.id } : {}), ...extra })}`;
   return <main className="mx-auto max-w-5xl space-y-6 px-5 py-8 lg:px-8">
     <Link href="/ai" className="text-sm underline">AI and saved reviews</Link>
-    <header><p className="text-xs font-semibold uppercase tracking-widest text-brand">Retained financial evidence</p><h1 className="mt-2 text-2xl font-semibold">Calculation and supporting records</h1>
+    <header><p className="eyebrow">Retained financial evidence</p><h1 className="mt-2 page-title">Calculation and supporting records</h1>
       <p className="mt-2 text-sm text-muted-foreground">Captured <time dateTime={receipt.fetchedAt}>{receipt.fetchedAt}</time>. This original dated result remains available when source records change.</p></header>
     <div role="status" className="rounded-lg border border-border bg-card p-4"><strong className="capitalize">Evidence {freshness.status}</strong><p className="mt-1 text-sm">{freshness.reason}</p></div>
     {metric ? <section className="rounded-lg border border-border bg-card p-5"><h2 className="text-lg font-semibold">{metric.label}</h2><p className="mt-3 text-xl font-semibold">{amount(metric)}</p>

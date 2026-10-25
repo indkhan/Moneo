@@ -88,7 +88,7 @@ export async function DetectedPatterns({ supabase, workspace, names }: { supabas
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{series.label}</h3>
         <span className="rounded bg-muted px-2 py-0.5 text-xs capitalize">{series.cadence}</span>
-        {status === "confirmed" && <span className="rounded bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Confirmed{assumption?.confirmed && assumption.enabled && !assumption.removed_at ? " · used in forecast" : " · review schedule in Plan"}</span>}
+        {status === "confirmed" && <span className="rounded bg-success-soft px-2 py-0.5 text-xs text-success">Confirmed{assumption?.confirmed && assumption.enabled && !assumption.removed_at ? " · used in forecast" : " · review schedule in Plan"}</span>}
         {status === "dismissed" && <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">Dismissed</span>}
         <span className="font-mono text-sm tabular-nums">{formatMoney(series.amountMinMinor, series.currencyCode)}{series.amountMinMinor !== series.amountMaxMinor && <> to {formatMoney(series.amountMaxMinor, series.currencyCode)}</>}</span>
         <div className="flex gap-2">
@@ -110,14 +110,14 @@ export async function DetectedPatterns({ supabase, workspace, names }: { supabas
   };
 
   return <>
-    {invalidated.length > 0 && <section aria-label="Recurring source changes" className="rounded-xl border border-amber-500 p-5"><h2 className="text-base font-semibold">Confirmed source evidence changed</h2><p className="mt-2 text-sm">Inferred assumptions are disabled when their transaction evidence is reclassified. Intentional user assumptions are retained. Undo the source correction to restore unchanged inference, or review a new valid pattern before confirming it.</p><ul className="mt-3 space-y-3">{invalidated.map(series => <li key={series.id} className="text-sm"><p>{series.label} · {names[series.account_id] ?? "Account"}</p><div className="flex flex-wrap gap-3">{((series.evidence_baseline ?? []) as { id: string; posted_on: string }[]).map(source => <Link key={source.id} href={`/money/transactions?transaction=${source.id}`} className="underline">Source {source.posted_on}</Link>)}<Link href="/plan" className="underline">Review assumption in Plan</Link></div></li>)}</ul></section>}
+    {invalidated.length > 0 && <section aria-label="Recurring source changes" className="rounded-xl border border-warning/40 p-5"><h2 className="text-sm font-medium">Confirmed source evidence changed</h2><p className="mt-2 text-sm">Inferred assumptions are disabled when their transaction evidence is reclassified. Intentional user assumptions are retained. Undo the source correction to restore unchanged inference, or review a new valid pattern before confirming it.</p><ul className="mt-3 space-y-3">{invalidated.map(series => <li key={series.id} className="text-sm"><p>{series.label} · {names[series.account_id] ?? "Account"}</p><div className="flex flex-wrap gap-3">{((series.evidence_baseline ?? []) as { id: string; posted_on: string }[]).map(source => <Link key={source.id} href={`/money/transactions?transaction=${source.id}`} className="underline">Source {source.posted_on}</Link>)}<Link href="/plan" className="underline">Review assumption in Plan</Link></div></li>)}</ul></section>}
     {storedError && <p role="alert">Could not load review state: {storedError.message}</p>}
     {queryError && <p role="alert">Could not load transactions: {queryError}</p>}
     {detectError && <p role="alert">Could not detect patterns: {detectError}</p>}
 
     <section aria-label="Detected patterns" className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-base font-semibold">Suggestions {pending.length ? <span className="text-muted-foreground">({pending.length})</span> : null}</h2>
+        <h2 className="text-sm font-medium">Suggestions {pending.length ? <span className="text-muted-foreground">({pending.length})</span> : null}</h2>
         <p className="text-xs text-muted-foreground">{observedFrom ? `Based on posted transactions from ${observedFrom} to ${observedTo}.` : "No posted transactions to analyze yet."}</p>
       </div>
       {truncated && <p className="text-xs text-muted-foreground">History limit reached. All postings on or before {cutoff} were excluded to retain complete posting dates. Older patterns may be absent.</p>}
@@ -127,7 +127,7 @@ export async function DetectedPatterns({ supabase, workspace, names }: { supabas
     </section>
 
     {reviewed.length > 0 && <section aria-label="Reviewed patterns" className="space-y-3">
-      <h2 className="text-base font-semibold">Reviewed <span className="text-muted-foreground">({reviewed.length})</span></h2>
+      <h2 className="text-sm font-medium">Reviewed <span className="text-muted-foreground">({reviewed.length})</span></h2>
       {reviewed.map(card)}
     </section>}
   </>;

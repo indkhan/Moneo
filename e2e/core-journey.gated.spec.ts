@@ -71,7 +71,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
       await page.goto("/");
       await expect(page).not.toHaveURL(/\/login/);
       await expect(
-        page.getByRole("heading", { name: "Home" }),
+        page.getByRole("heading", { name: "Overview" }),
       ).toBeVisible();
     });
 
@@ -109,7 +109,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
     await test.step("view Home with trusted metrics", async () => {
       await page.goto("/");
       await expect(
-        page.getByRole("heading", { name: "Home" }),
+        page.getByRole("heading", { name: "Overview" }),
       ).toBeVisible();
       await expect(page.getByText("Net worth", { exact: true })).toBeVisible();
       await expect(page.getByRole("region", { name: "Recent transactions" }).getByRole("link", { name: "All 2", exact: true })).toBeVisible();
@@ -214,7 +214,7 @@ test.describe("partial core journey (gated: real Supabase, selected AI mocks)", 
       await expect(newerImport).toContainText(/2 new.*1 for review/);
       await page.goto("/");
       await expect(
-        page.getByRole("heading", { name: "Home" }),
+        page.getByRole("heading", { name: "Overview" }),
       ).toBeVisible();
       await expect(page.getByRole("region", { name: "Recent transactions" }).getByRole("link", { name: "All 4", exact: true })).toBeVisible();
     });

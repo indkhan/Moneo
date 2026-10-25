@@ -32,7 +32,7 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
         <Link href="/ai/activity" className="text-sm underline">
           ← Activity
         </Link>
-        <p role="alert" className="mt-4 text-red-700">
+        <p role="alert" className="mt-4 text-danger">
           Could not load this analysis: {truncate(jobError.message, 200)}
         </p>
       </main>
@@ -57,20 +57,20 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
       <Link href="/ai/activity" className="text-sm underline">
         ← Activity
       </Link>
-      <p className="mt-5 text-xs font-semibold uppercase tracking-widest text-brand">
+      <p className="mt-5 eyebrow">
         Deep Analysis · {job.status.replaceAll("_", " ")}
       </p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{analysis?.title ?? "Financial review"}</h1>
+      <h1 className="mt-2 page-title">{analysis?.title ?? "Financial review"}</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Started {new Date(job.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })} · updated {new Date(job.updated_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}
       </p>
       {job.error && (
-        <p role="alert" className="mt-4 rounded-xl border border-border bg-card p-4 shadow-sm text-sm text-red-700">
+        <p role="alert" className="mt-4 rounded-xl border border-border bg-card p-4 shadow-sm text-sm text-danger">
           {truncate(job.error, 500)}
         </p>
       )}
       {analysisError && (
-        <p role="alert" className="mt-4 text-sm text-red-700">
+        <p role="alert" className="mt-4 text-sm text-danger">
           Could not load the saved review: {truncate(analysisError.message, 200)}
         </p>
       )}

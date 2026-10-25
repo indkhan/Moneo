@@ -55,21 +55,22 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const day = (iso: string) => new Date(iso).toLocaleDateString(workspace.locale, { timeZone: workspace.timezone, dateStyle: "medium" });
   const groups = visible.reduce((map, item) => map.set(day(item.at), [...(map.get(day(item.at)) ?? []), item]), new Map<string, Item[]>());
 
-  return <main className="mx-auto w-full max-w-4xl space-y-6 px-4 py-8 sm:px-8 lg:py-10">
-    <header>
-      <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Activity</h1>
+  return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 sm:px-8 lg:py-8">
+    <header className="flex flex-col gap-1">
+      <p className="eyebrow">Imports · analyses · chats</p>
+      <h1 className="page-title">Activity log</h1>
       <p className="mt-2 text-sm text-muted-foreground">Imports, analyses and chats in one feed. Failures and rows waiting for you are under Needs attention.</p>
     </header>
     <nav aria-label="Activity filters" className="flex flex-wrap gap-2">{Object.entries(FILTERS).map(([key, label]) =>
       <Link key={key} href={key === "all" ? "/ai/activity" : `/ai/activity?filter=${key}`} aria-current={filter === key ? "page" : undefined}
         className={`rounded-full border px-3 py-1.5 text-sm ${filter === key ? "border-brand bg-brand text-white" : "border-border bg-card hover:bg-muted"}`}>{label}</Link>)}</nav>
-    {errors.length > 0 && <p role="alert" className="rounded-xl border border-border bg-card p-4 text-sm text-red-700 dark:text-red-300">Could not load part of this activity: {truncate(errors[0]?.message ?? "Unavailable")}</p>}
+    {errors.length > 0 && <p role="alert" className="rounded-xl border border-border bg-card p-4 text-sm text-danger">Could not load part of this activity: {truncate(errors[0]?.message ?? "Unavailable")}</p>}
     {!errors.length && !visible.length && <p className="text-muted-foreground">{filter === "attention" ? "Nothing needs your attention." : <>No activity yet. <Link className="underline" href="/import">Import a statement</Link> or run a review from <Link className="underline" href="/ai">AI</Link>.</>}</p>}
     {[...groups].map(([label, entries]) => <section key={label} aria-label={label} className="space-y-2">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h2>
+      <h2 className="eyebrow">{label}</h2>
       <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">{entries.map(item =>
         <li key={item.key}><Link href={item.href} className="flex items-start gap-3 px-5 py-4 hover:bg-muted/50">
-          <span aria-hidden className={`mt-1.5 size-2 shrink-0 rounded-full ${item.attention ? "bg-amber-500" : "bg-border"}`} />
+          <span aria-hidden className={`mt-1.5 size-2 shrink-0 rounded-full ${item.attention ? "bg-warning" : "bg-border"}`} />
           <span className="min-w-0 flex-1">
             <span className="flex flex-wrap items-baseline justify-between gap-x-3"><span className="truncate font-medium">{item.title}</span>
               <span className="text-xs text-muted-foreground">{item.badge} · {new Date(item.at).toLocaleTimeString(workspace.locale, { timeZone: workspace.timezone, timeStyle: "short" })}</span></span>

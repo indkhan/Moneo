@@ -28,8 +28,8 @@ export default function ResetPasswordPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-5 py-12">
-      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold tracking-tight">Set a new password</h1>
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-8">
+        <h1 className="page-title">Set a new password</h1>
         <form onSubmit={save} className="mt-6 space-y-3">
           <label className="block text-sm font-medium" htmlFor="password">New password</label>
           <input id="password" type="password" autoComplete="new-password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} className="min-h-10 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20" />

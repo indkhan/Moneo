@@ -52,14 +52,14 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
     { id: "description", header: "Description", cell: ({ row }) => <span className="flex min-w-0 items-center gap-2">
       <Link className="truncate font-medium text-foreground hover:text-brand hover:underline" href={href(row.original.id)} scroll={false}>{row.original.description}</Link>
       {row.original.kind !== "ordinary" || row.original.status !== "posted" ? <span className="shrink-0 text-[11px] text-muted-foreground">{[row.original.kind !== "ordinary" && kindLabel(row.original.kind), row.original.status !== "posted" && statusLabel(row.original.status)].filter(Boolean).join(" · ")}</span> : null}
-      {row.original.review_reasons?.length ? <span title="Needs review" className="shrink-0 rounded bg-amber-100 px-1.5 text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-200">Review</span> : null}
+      {row.original.review_reasons?.length ? <span title="Needs review" className="shrink-0 rounded-[5px] border border-warning px-1.5 font-mono text-[11px] text-warning">review</span> : null}
       {row.original.tags?.map(tag => <span key={tag} className="hidden shrink-0 rounded bg-muted px-1.5 text-[11px] text-muted-foreground lg:inline">{tag}</span>)}
     </span> },
     { id: "category", header: "Category", cell: ({ row }) => <span className="text-muted-foreground">{row.original.category_id ? categoryNames[row.original.category_id] ?? "Unknown" : "Uncategorized"}</span> },
     { id: "merchant", header: "Merchant", cell: ({ row }) => <span className="text-muted-foreground">{row.original.merchant_id ? merchantNames[row.original.merchant_id] ?? "Unknown" : "—"}</span> },
     { id: "account", header: "Account", cell: ({ row }) => <span className="text-muted-foreground">{accountNames[row.original.account_id] ?? "Unknown"}</span> },
     { id: "amount", header: () => <Link className="hover:text-brand" aria-label={`Sort by amount (currently ${sortName})`} href={sortHrefs.amount} scroll={false}>Amount {arrow("amount")}</Link>,
-      cell: ({ row }) => <span className={`font-mono font-medium tabular-nums ${BigInt(row.original.amount_minor) > 0n ? "text-emerald-700 dark:text-emerald-400" : ""}`}>{signed(row.original.amount_minor, row.original.currency_code, locale)}</span> },
+      cell: ({ row }) => <span className={`font-mono font-medium tabular-nums ${BigInt(row.original.amount_minor) > 0n ? "text-success" : ""}`}>{signed(row.original.amount_minor, row.original.currency_code, locale)}</span> },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [rows, selected, allSelected, sort, sortHrefs, categoryNames, merchantNames, accountNames, locale, query]);
 
@@ -86,11 +86,11 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
   const tableRows = table.getRowModel().rows;
   const targets = rows.filter(row => selected.includes(row.id));
   return <>
-    <div className="overflow-auto rounded-xl border border-border bg-card [max-height:calc(100dvh-12rem)]">
+    <div className="overflow-auto rounded-[18px] border border-border bg-card [max-height:calc(100dvh-12rem)]">
       <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left text-sm">
-        <thead className="sticky top-0 z-10 bg-card text-xs text-muted-foreground">
+        <thead className="sticky top-0 z-10 bg-card font-mono text-[11px] uppercase tracking-[0.06em] text-subtle">
           {table.getHeaderGroups().map(group => <tr key={group.id}>{group.headers.map(header =>
-            <th key={header.id} scope="col" className={`whitespace-nowrap border-b border-border px-3 py-2.5 font-medium ${header.column.id === "amount" ? "text-right" : ""} ${header.column.id === "select" ? "w-8" : ""}`}>{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr>)}
+            <th key={header.id} scope="col" className={`whitespace-nowrap border-b border-border px-3 py-3.5 font-normal ${header.column.id === "amount" ? "text-right" : ""} ${header.column.id === "select" ? "w-8" : ""}`}>{flexRender(header.column.columnDef.header, header.getContext())}</th>)}</tr>)}
         </thead>
         <tbody ref={body}>
           {tableRows.map((row, index) => {
@@ -99,12 +99,12 @@ export function LedgerTable({ rows, accountNames, categories, merchants, query, 
             const summary = key ? groups?.summaries[key] : undefined;
             return <Fragment key={row.id}>
               {header && <tr><th colSpan={columns.length} scope="rowgroup" className="border-b border-border bg-card px-3 pb-1.5 pt-4 text-left">
-                <span className="text-sm font-semibold">{groups.labels[key] ?? key}</span>
+                <span className="text-sm font-medium">{groups.labels[key] ?? key}</span>
                 {summary && <span className="ml-3 text-xs font-normal text-muted-foreground">{summary.count} {summary.count === 1 ? "transaction" : "transactions"} · <span className="font-mono">{Object.entries(summary.totals).map(([currency, minor]) => signed(minor, currency, locale)).join(" · ")}</span></span>}
               </th></tr>}
               <tr data-index={index} data-active={index === active || undefined} onClick={() => setActive(index)}
-                className={`${index === active ? "bg-brand/10" : "hover:bg-muted"} ${row.original.id === openId ? "outline outline-1 -outline-offset-1 outline-brand" : ""}`}>
-                {row.getAllCells().map(cell => <td key={cell.id} className={`max-w-xs whitespace-nowrap border-b border-border px-3 py-1.5 ${cell.column.id === "amount" ? "text-right" : ""}`}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}
+                className={`${index === active ? "bg-muted" : "hover:bg-muted/60"} ${row.original.id === openId ? "outline outline-1 -outline-offset-1 outline-brand" : ""}`}>
+                {row.getAllCells().map(cell => <td key={cell.id} className={`max-w-xs whitespace-nowrap border-b border-border px-3 py-3.5 ${cell.column.id === "amount" ? "text-right" : ""}`}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}
               </tr>
             </Fragment>;
           })}

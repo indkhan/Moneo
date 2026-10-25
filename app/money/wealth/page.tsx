@@ -62,8 +62,8 @@ export default async function WealthPage() {
   const currencies = [...totals.keys()].sort((a, b) => Number(b === workspace.display_currency) - Number(a === workspace.display_currency) || a.localeCompare(b));
   const dated = active.filter(item => !item.linked_account_id && item.as_of !== today).length;
 
-  return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
-    <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Wealth</h1>
+  return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
+    <header className="flex flex-col gap-1"><p className="eyebrow">Investments · assets · debts</p><h1 className="page-title">Wealth</h1></header>
 
     <section aria-label="Net worth" className="space-y-4">
       {currencies.length ? currencies.map(currency => <div key={currency} className="rounded-xl border border-border bg-card p-6">
@@ -86,7 +86,7 @@ export default async function WealthPage() {
       const rows = active.filter(item => item.kind === kind);
       if (!rows.length) return null;
       return <section key={kind} aria-label={title} className="space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-base font-semibold">{title} <span className="font-normal text-muted-foreground">{rows.length}</span></h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-sm font-medium">{title} <span className="font-normal text-muted-foreground">{rows.length}</span></h2>
           <p className="font-mono text-sm text-muted-foreground tabular-nums">{[...sum(rows)].map(([currency, amount]) => formatMoney(amount, currency)).join(" · ")}</p></div>
         <div className="divide-y divide-border rounded-xl border border-border bg-card">{rows.map(item => {
           const payments = (() => { try { return item.kind === "debt" && item.next_payment_on && BigInt(item.monthly_payment_minor ?? "0") > 0n ? debtPayments({ principalMinor: BigInt(item.amount_minor), annualRate: item.annual_rate_text!, monthlyPaymentMinor: BigInt(item.monthly_payment_minor!), nextPaymentOn: item.next_payment_on }, today, 365) : []; } catch { return null; } })();
@@ -95,7 +95,7 @@ export default async function WealthPage() {
               <p className="font-mono font-semibold tabular-nums">{formatMoney(item.amount_minor, item.currency_code)}</p></div>
             <p className="text-xs text-muted-foreground">As of {item.as_of}{item.kind === "holding" ? ` · ${item.quantity_text} × ${item.currency_code} ${item.unit_price_text}` : ""}{item.kind === "debt" ? ` · ${item.annual_rate_text}% a year · ${formatMoney(item.monthly_payment_minor ?? "0", item.currency_code)}/month` : ""}{item.linked_account_id ? " · Inside an account balance" : item.as_of === today ? "" : " · Outdated, not in current net worth"}</p>
             {item.cost_basis_minor !== null && <p className="text-xs text-muted-foreground">Cost basis {formatMoney(item.cost_basis_minor, item.currency_code)} · valuation gain/loss {formatMoney(BigInt(item.amount_minor) - BigInt(item.cost_basis_minor), item.currency_code)} (unrealized)</p>}
-            {item.kind === "debt" && (payments === null ? <p className="text-xs text-amber-700 dark:text-amber-300">Update the next repayment date and principal to project payments.</p> : payments.length > 0 && <ul className="space-y-0.5 text-xs text-muted-foreground">{payments.slice(0, 3).map(payment => <li key={payment.date}>{payment.date}: {formatMoney(payment.paymentMinor, item.currency_code)} payment, {formatMoney(payment.interestMinor, item.currency_code)} assumed interest, {formatMoney(payment.remainingMinor, item.currency_code)} left</li>)}</ul>)}
+            {item.kind === "debt" && (payments === null ? <p className="text-xs text-warning">Update the next repayment date and principal to project payments.</p> : payments.length > 0 && <ul className="space-y-0.5 text-xs text-muted-foreground">{payments.slice(0, 3).map(payment => <li key={payment.date}>{payment.date}: {formatMoney(payment.paymentMinor, item.currency_code)} payment, {formatMoney(payment.interestMinor, item.currency_code)} assumed interest, {formatMoney(payment.remainingMinor, item.currency_code)} left</li>)}</ul>)}
             {item.sourceCoverage && <SourceCoverageDetails coverage={item.sourceCoverage} />}
             <div className="flex flex-wrap items-start gap-4">
               <details className="min-w-0 flex-1"><summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">Edit valuation and details</summary><WealthForm kind={item.kind} item={item} {...choices} /></details>

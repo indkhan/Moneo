@@ -11,5 +11,5 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
   if (!id.success) notFound();
   const run = await loadAgentRun(context.supabase, context.workspace.id, id.data);
   if (!run) notFound();
-  return <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-8 lg:py-8"><MissionControl initial={run} locale={context.workspace.locale} /></main>;
+  return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8"><MissionControl initial={run} locale={context.workspace.locale} /></main>;
 }

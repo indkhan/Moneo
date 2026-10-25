@@ -17,7 +17,7 @@ export async function OccurrenceReview({ supabase, workspace, accountNames }: { 
   const inputClass = "min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm";
   return <section aria-label="Occurrence reconciliation" className="space-y-3">
     <div>
-      <h2 className="text-base font-semibold">Match a payment to a schedule</h2>
+      <h2 className="text-sm font-medium">Match a payment to a schedule</h2>
       <p className="mt-1 text-xs text-muted-foreground">Pick the transaction that paid a scheduled date. Nothing is matched automatically; undo a match before replacing it.</p>
     </div>
     <form action={associateOccurrence} className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-2">

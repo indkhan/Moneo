@@ -85,17 +85,17 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
   });
   const needsReview = rows.filter(row => row.status === "posted" && row.reviewReasons?.length).length;
 
-  return <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 text-foreground sm:px-8 lg:py-10">
+  return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 text-foreground sm:px-8 lg:py-8">
     <header className="flex flex-wrap items-end justify-between gap-4">
-      <div><Link href="/plan" className="text-sm text-muted-foreground hover:text-foreground">← Plan</Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Spending limits</h1>
+      <div><p className="eyebrow"><Link href="/plan" className="hover:text-foreground">Plan</Link> · {month}</p>
+        <h1 className="mt-1 page-title">Spending limits</h1>
         <p className="mt-2 text-sm text-muted-foreground">Monthly category limits for {month}. Counts posted spending minus refunds; transfers, pending items and income are left out.</p></div>
       <form method="get" className="flex flex-wrap items-end gap-2"><label className="grid gap-1 text-xs font-medium text-muted-foreground">Calendar month<input type="month" name="month" defaultValue={month} required className={field} /></label><button className={button}>View month</button></form>
     </header>
     {month !== currentMonth && <p className="text-sm text-muted-foreground">Viewing a past month. Edits apply to the current month ({currentMonth}).</p>}
-    {needsReview > 0 && <p role="status" className="text-sm text-amber-700 dark:text-amber-300">Some spending is not counted yet: {needsReview} transactions need review. <Link href="/import" className="underline">Review imports</Link></p>}
+    {needsReview > 0 && <p role="status" className="text-sm text-warning">Some spending is not counted yet: {needsReview} transactions need review. <Link href="/import" className="underline">Review imports</Link></p>}
     <section className={card} aria-labelledby="limits-heading">
-      <h2 id="limits-heading" className="text-base font-semibold">Category limits</h2>
+      <h2 id="limits-heading" className="text-sm font-medium">Category limits</h2>
       {!progress.length && <p className="text-muted-foreground">No spending limits yet. Set one below.</p>}
       <ul className="divide-y divide-border">{progress.map(plan => {
         const money = (amount: bigint) => formatMoney(amount, plan.currency_code, workspace.locale);
@@ -130,7 +130,7 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
       })}</ul>
     </section>
     {!!categories.length && <section className={card} aria-labelledby="new-limit-heading">
-      <h2 id="new-limit-heading" className="text-base font-semibold">Set a monthly limit</h2>
+      <h2 id="new-limit-heading" className="text-sm font-medium">Set a monthly limit</h2>
       <form action={saveSpendingPlan} className="flex flex-wrap items-end gap-3">
         <label className="grid gap-1 text-sm font-medium">Category<select name="categoryId" aria-label="Category" className={field}>{categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label className="grid gap-1 text-sm">Currency<input name="currency" defaultValue={workspace.display_currency} required maxLength={3} aria-label="Currency code" className={field + " w-20"} /></label>

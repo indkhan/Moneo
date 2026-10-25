@@ -7,14 +7,14 @@ export function ExpenditureSummary({ report, locale, accountId, coverage, title 
   const money = (amount: string, currency: string) => formatMoney(amount, currency, locale);
   const href = (view: "base" | "original") => viewHref?.(view) ?? `/?${new URLSearchParams({ spendingView: view, ...(accountId ? { account: accountId } : {}) })}`;
   return <div className="space-y-4 rounded-xl border border-border bg-card p-6">
-    <h2 className="text-base font-semibold">{title}</h2>
+    <h2 className="text-sm font-medium">{title}</h2>
     <nav aria-label="Spending currency view" className="flex flex-wrap gap-4 text-sm">
       <Link href={href("base")} aria-current={report.view === "base" ? "page" : undefined} className="text-brand underline">Base currency ({report.currencyCode})</Link>
       <Link href={href("original")} aria-current={report.view === "original" ? "page" : undefined} className="text-brand underline">Original currencies</Link>
     </nav>
-    {report.view === "base" && (report.totals ? <p className="font-mono text-2xl font-semibold">{money(report.totals.spendingMinor, report.currencyCode)}</p> : <div className="space-y-2"><p className="font-semibold text-amber-700">Incomplete base-currency report</p><p className="text-sm">Available converted subtotal: {money(report.availableTotals.spendingMinor, report.currencyCode)}</p><p className="text-sm text-muted-foreground">{report.limitation}</p></div>)}
+    {report.view === "base" && (report.totals ? <p className="font-mono text-2xl font-semibold">{money(report.totals.spendingMinor, report.currencyCode)}</p> : <div className="space-y-2"><p className="font-semibold text-warning">Incomplete base-currency report</p><p className="text-sm">Available converted subtotal: {money(report.availableTotals.spendingMinor, report.currencyCode)}</p><p className="text-sm text-muted-foreground">{report.limitation}</p></div>)}
     <p className="text-sm text-muted-foreground">{report.from} to {report.to}. Refunds are subtracted; pending items and transfers are left out.</p>
-    {report.view === "original" && report.status === "incomplete" && <p className="text-sm text-amber-700">Incomplete: {report.limitation}</p>}
+    {report.view === "original" && report.status === "incomplete" && <p className="text-sm text-warning">Incomplete: {report.limitation}</p>}
     <ul aria-label="Original currency spending subtotals" className="space-y-1 text-sm">{Object.entries(report.perCurrency).map(([currency, totals]) => <li key={currency}>{currency}: {money(totals.spendingMinor, currency)} original spending</li>)}</ul>
     {!Object.keys(report.perCurrency).length && <p className="text-sm text-muted-foreground">No reviewed posted spending or income in this period.</p>}
     {coverage}

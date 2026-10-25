@@ -7,11 +7,11 @@ export function HomeLiquidity({ liquidity, accountId, names, locale, coverage }:
   liquidity: ReturnType<typeof accountLiquidity>; accountId?: string; names: Map<string, string>; locale?: string; coverage?: ReactNode;
 }) {
   const card = "min-w-0 space-y-4 rounded-xl border border-border bg-card p-5";
-  if (liquidity.status === "unavailable") return <div className={card}><h2 className="text-base font-semibold">Spending headroom</h2><p className="text-sm text-muted-foreground">Not available yet.</p><ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{describeMissingInputs(liquidity.missingInputs, names).map(item => <li key={item}>{item}</li>)}</ul>{coverage}<Link href="/plan" className="inline-block text-sm font-medium text-brand hover:underline">Open plan</Link></div>;
+  if (liquidity.status === "unavailable") return <div className={card}><h2 className="text-sm font-medium">Spending headroom</h2><p className="text-sm text-muted-foreground">Not available yet.</p><ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{describeMissingInputs(liquidity.missingInputs, names).map(item => <li key={item}>{item}</li>)}</ul>{coverage}<Link href="/plan" className="inline-block text-sm font-medium text-brand hover:underline">Open plan</Link></div>;
   const selected = liquidity.accounts.find(account => account.accountId === accountId);
   const money = (amount: bigint) => formatMoney(amount, liquidity.currencyCode, locale);
   return <div className={card}>
-    <h2 className="text-base font-semibold">Aggregate headroom</h2>
+    <h2 className="text-sm font-medium">Aggregate headroom</h2>
     <div>
       <p className="font-mono text-2xl font-semibold">{money(liquidity.aggregate.amountMinor)}</p>
       <p className="mt-1 text-sm text-muted-foreground">Workspace buffer: {money(liquidity.workspaceBufferMinor)}, kept once across all accounts. Spending from one account is limited by both account liquidity and aggregate headroom.</p>

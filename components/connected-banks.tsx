@@ -155,16 +155,16 @@ export function ConnectedBanks() {
 
   return <section aria-labelledby="connected-banks" className="scroll-mt-20 space-y-4 rounded-xl border border-border bg-card p-6">
     <div>
-      <h2 id="connected-banks" className="text-base font-semibold">Connected banks</h2>
+      <h2 id="connected-banks" className="text-sm font-medium">Connected banks</h2>
       <p className="mt-1 text-sm text-muted-foreground">Sync booked transactions and balances through Enable Banking. Each sync is an ordinary import you can review and undo.</p>
     </div>
     {message && <p role="status" className="text-sm text-foreground">{message}</p>}
-    {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
+    {error && <p role="alert" className="text-sm text-danger">{error}</p>}
     {!data ? <p className="text-sm text-muted-foreground">Loading…</p> : <>
       {data.connections.length > 0 && <ul className="space-y-3">{data.connections.map(connection => {
         const consent = consentState(connection);
         return <li key={connection.id} className="space-y-3 rounded-lg border border-border p-4">
-          {consent && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          {consent && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-sm text-warning">
             <span>{consent === "expired" ? "Bank consent has ended. Reconnect to keep syncing." : `Bank consent ends ${date(connection.valid_until)}. Reconnect to keep syncing.`}</span>
             <Button size="sm" disabled={!!busy || !data.configured} onClick={() => void connect(connection.aspsp_name, connection.aspsp_country)}>Reconnect</Button>
           </div>}
@@ -189,7 +189,7 @@ export function ConnectedBanks() {
             const summary = syncSummary(connection);
             return summary && <p className="text-sm text-muted-foreground">{summary.text}{summary.href && <> <Link href={summary.href} className="text-brand underline-offset-4 hover:underline">Review rows</Link></>}</p>;
           })()}
-          {connection.last_error && <p className="text-sm text-amber-700 dark:text-amber-300">{connection.last_error}</p>}
+          {connection.last_error && <p className="text-sm text-warning">{connection.last_error}</p>}
           <ul className="divide-y divide-border text-sm">{connection.accounts.map(account => <li key={account.provider_account_uid} className="flex justify-between gap-3 py-1.5">
             <span className="truncate">{account.account_name}</span>
             <span className="shrink-0 text-muted-foreground">{account.currency_code} · {account.last_booked_on ? `through ${account.last_booked_on}` : "not synced yet"}</span>

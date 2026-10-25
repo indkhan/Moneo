@@ -1,31 +1,43 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* One token set: light-dark() picks the value from color-scheme, which data-theme sets below.
-   "system" follows the OS in CSS, so there is no light flash before ThemePreference runs. */
+   "system" follows the OS in CSS, so there is no light flash before ThemePreference runs.
+   Dark is the primary look: graphite ground, lime for money and actions, violet for anything the AI did. */
 @theme {
-  --font-sans: "Inter", Arial, sans-serif;
-  --font-mono: "JetBrains Mono", Consolas, monospace;
-  --radius-lg: 0.625rem;
-  --color-background: light-dark(#f6f7f9, #0e0f12);
-  --color-card: light-dark(#ffffff, #16181d);
-  --color-foreground: light-dark(#16181d, #e7e9ee);
-  --color-muted: light-dark(#eff1f4, #1f2228);
-  --color-muted-foreground: light-dark(#5b6270, #9ca3af);
-  --color-border: light-dark(#e2e5ea, #2b2f37);
-  --color-primary: light-dark(#16181d, #e7e9ee);
-  --color-primary-foreground: light-dark(#ffffff, #16181d);
-  --color-accent: light-dark(#eaecf1, #252830);
-  --color-accent-foreground: light-dark(#16181d, #e7e9ee);
-  --color-brand: light-dark(#4353d6, #8e9cff);
-  --color-sidebar: light-dark(#fbfbfc, #121317);
-  --color-success: light-dark(#067647, #4ade80);
-  --color-success-soft: light-dark(#ecfdf3, #0f2a1c);
-  --color-warning: light-dark(#a74b06, #fbbf24);
-  --color-warning-soft: light-dark(#fffaeb, #2b2108);
-  --color-danger: light-dark(#b42318, #f87171);
-  --color-danger-soft: light-dark(#fef3f2, #2e1414);
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, Consolas, monospace;
+  --font-display: "Bricolage Grotesque", "Geist", sans-serif;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+  --color-background: light-dark(#f4f3ee, #0f1011);
+  --color-card: light-dark(#ffffff, #16171a);
+  --color-foreground: light-dark(#141413, #eeece6);
+  --color-muted: light-dark(#ecebe5, #1d1e22);
+  --color-muted-foreground: light-dark(#5c5d58, #a3a39e);
+  --color-subtle: light-dark(#6b6c66, #85867f);
+  --color-border: light-dark(#e2e0d8, #24262a);
+  --color-input: light-dark(#d6d4cc, #2a2c30);
+  --color-primary: light-dark(#141413, #cbf26b);
+  --color-primary-foreground: light-dark(#ffffff, #0f1011);
+  --color-accent: light-dark(#ecebe5, #1d1e22);
+  --color-accent-foreground: light-dark(#141413, #eeece6);
+  --color-brand: light-dark(#4a6400, #cbf26b);
+  --color-lime: #cbf26b;
+  --color-ai: light-dark(#5b45c9, #b8a6ff);
+  --color-ai-soft: light-dark(#f1eeff, #1a1922);
+  --color-ai-border: light-dark(#d6cffb, #3d3760);
+  --color-chart-out: light-dark(#a9aaa3, #5b5d62);
+  --color-sidebar: light-dark(#f4f3ee, #0f1011);
+  --color-success: light-dark(#3f6b00, #cbf26b);
+  --color-success-soft: light-dark(#f0f7dc, #1c2410);
+  --color-warning: light-dark(#a8441c, #ff9a76);
+  --color-warning-soft: light-dark(#fff1ea, #2a1b14);
+  --color-danger: light-dark(#b42318, #ff7a6b);
+  --color-danger-soft: light-dark(#fef3f2, #2e1614);
 
   /* Status shades pages already use follow the theme instead of a fixed palette. */
   --color-red-700: var(--color-danger);
@@ -47,7 +59,43 @@
 :root[data-theme="dark"] { color-scheme: dark; }
 
 body {
-  font-feature-settings: "cv11", "ss01";
+  font-feature-settings: "ss01";
+}
+
+/* Shared type from the design: display page titles, mono eyebrows and big display figures. */
+@utility page-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(2rem, 1.5rem + 1.6vw, 2.75rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+@utility eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-subtle);
+}
+@utility display-figure {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+/* Evidence and AI provenance chips. */
+@utility ai-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--color-ai-border);
+  border-radius: 6px;
+  background: var(--color-ai-soft);
+  color: var(--color-ai);
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
 
 :focus-visible {
@@ -59,7 +107,7 @@ fieldset { min-width: 0; }
 main { overflow-wrap: anywhere; }
 main select { min-width: 0; max-width: 100%; }
 
-html[data-theme="dark"] .bg-brand.text-white { color: var(--color-primary-foreground); }
+.bg-brand.text-white { color: var(--color-primary-foreground); }
 
 .ai-markdown { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: 15px; line-height: 1.75; }
 .ai-markdown > :first-child { margin-top: 0; }
@@ -69,13 +117,13 @@ html[data-theme="dark"] .bg-brand.text-white { color: var(--color-primary-foregr
 .ai-markdown ul,.ai-markdown ol { padding-left: 22px; margin-block: 12px; }
 .ai-markdown ul { list-style: disc; }.ai-markdown ol { list-style: decimal; }
 .ai-markdown a { color: var(--color-brand); text-decoration: underline; text-underline-offset: 3px; }
-.ai-markdown blockquote { margin-block: 16px; border-left: 3px solid var(--color-brand); background: var(--color-accent); padding: 8px 16px; }
+.ai-markdown blockquote { margin-block: 16px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-card); padding: 10px 16px; }
 .ai-markdown hr { border-color: var(--color-border); margin-block: 18px; }
 .ai-markdown :not(pre) > code { font: 12px var(--font-mono); background: var(--color-muted); padding: 2px 5px; border-radius: 4px; }
-.ai-code { border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden; margin-block: 16px; }
+.ai-code { border: 1px solid var(--color-border); border-radius: 12px; overflow: hidden; margin-block: 16px; }
 .ai-code-header { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; background: var(--color-muted); color: var(--color-muted-foreground); font: 10px/1.6 var(--font-mono); }
 .ai-code-header button { color: var(--color-brand); cursor: pointer; }
-.ai-code pre { background: #101b29; color: #d7e7fc; padding: 16px; overflow-x: auto; font: 12px/1.75 var(--font-mono); }
+.ai-code pre { background: #0f1011; color: #d6d4ce; padding: 16px; overflow-x: auto; font: 12px/1.75 var(--font-mono); }
 .ai-table { overflow-x: auto; margin-block: 16px; }
 .ai-table table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .ai-table td,.ai-table th { padding: 9px; border-bottom: 1px solid var(--color-border); text-align: left; }

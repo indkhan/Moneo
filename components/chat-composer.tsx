@@ -5,8 +5,8 @@ export function ChatComposer({ id, label, value, onChange, onSubmit, onStop, bus
   id: string; label: string; value: string; onChange: (value: string) => void; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onStop: () => void; busy: boolean; disabled?: boolean; placeholder: string; compact?: boolean; busyText: string;
 }) {
-  const button = `flex items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90 ${compact ? "size-8" : "size-9"}`;
-  return <form onSubmit={onSubmit} className="rounded-3xl border border-border bg-card p-2 shadow-sm transition-colors focus-within:border-muted-foreground/60">
+  const button = `flex items-center justify-center rounded-xl bg-primary text-primary-foreground hover:opacity-90 ${compact ? "size-9" : "size-11"}`;
+  return <form onSubmit={onSubmit} className="rounded-2xl border border-input bg-card p-2.5 transition-colors focus-within:border-muted-foreground/60">
     <label htmlFor={id} className="sr-only">{label}</label>
     <textarea id={id} value={value} onChange={event => onChange(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
       maxLength={4000} rows={1} placeholder={placeholder} className={`block w-full resize-none bg-transparent [field-sizing:content] outline-none! ${compact ? "max-h-48 min-h-10 px-2.5 py-2 text-sm" : "max-h-60 min-h-12 px-3 py-2.5 text-[15px]"}`} />

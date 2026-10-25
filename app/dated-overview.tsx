@@ -13,8 +13,8 @@ export function DatedOverview({accounts, wealth, today, locale}: {
     currency: value.currencyCode})));
   const totals = new Map<string, bigint>();
   for (const observation of observations) totals.set(observation.currency, (totals.get(observation.currency) ?? 0n) + observation.amount);
-  return <details className="rounded-xl border border-border bg-card px-4 py-3 text-sm">
-    <summary className="cursor-pointer font-medium text-brand">Recorded net worth by currency</summary>
+  return <details className="border-t border-border pt-3 text-sm">
+    <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">Recorded net worth by currency</summary>
     <ul className="mt-3 space-y-1">{[...totals].map(([currency, amount]) => <li key={currency} className="font-mono font-semibold">{formatMoney(amount, currency, locale)}</li>)}</ul>
     <ul className="mt-3 divide-y divide-border">{observations.map(row => <li key={row.id} className="flex justify-between gap-3 py-2"><span className="truncate">{row.name}</span><span className="shrink-0 font-mono">{formatMoney(row.amount, row.currency, locale)}</span></li>)}</ul>
   </details>;
