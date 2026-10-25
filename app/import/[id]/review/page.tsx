@@ -45,7 +45,7 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
 
   return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
     <Link href="/import" className="text-sm underline">← Import history</Link>
-    <div><p className="text-xs font-semibold uppercase tracking-widest text-brand">Money / Import review</p><h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Review: {imported.filename}</h1><p className="mt-2 text-sm text-muted-foreground">{imported.review_rows} unclear rows are left out of your totals until you decide.</p></div>
+    <div><p className="eyebrow">Money / Import review</p><h1 className="mt-2 page-title">Review: {imported.filename}</h1><p className="mt-2 text-sm text-muted-foreground">{imported.review_rows} unclear rows are left out of your totals until you decide.</p></div>
     {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">Could not load review rows: {error.message}</p>}
     {!error && !rows?.length && <p className="text-sm text-muted-foreground">No rows awaiting review.</p>}
     {rows?.map((row) => {

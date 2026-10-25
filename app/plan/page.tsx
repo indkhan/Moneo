@@ -60,7 +60,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   return <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 text-foreground sm:px-8 lg:py-10">
     {!requestedHorizon.success && <p role="alert">Choose a whole forecast horizon from 1 to 365 days. Showing 30 days.</p>}
     <header className="flex flex-wrap items-end justify-between gap-4">
-      <div><p className="font-mono text-xs font-medium uppercase tracking-[0.16em] text-brand">Financial planning</p><h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Plan</h1><p className="mt-2 text-sm text-muted-foreground">Where your cash is heading, what is due, and what your goals need.</p></div>
+      <div><p className="eyebrow">Financial planning</p><h1 className="mt-2 page-title">Plan</h1><p className="mt-2 text-sm text-muted-foreground">Where your cash is heading, what is due, and what your goals need.</p></div>
       <nav aria-label="Planning tools" className="flex flex-wrap gap-2"><Link href="/plan/spending" className={pill}>Spending limits <ArrowRight className="size-4" /></Link><Link href="/plan/currency" className={pill}>Currency <ArrowRight className="size-4" /></Link></nav>
     </header>
     <Suspense><ForecastPreferenceEditor preferences={projection.preferences} version={projection.preferencesVersion} accounts={activeAccounts} today={today} /></Suspense>

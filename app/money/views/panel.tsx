@@ -22,7 +22,7 @@ export function SavedViewsPanel({ views, activeViewId, activeViewName, saveDefau
   const filterInputs = Object.entries(saveDefaults).map(([name, value]) => value !== undefined ? <input key={name} type="hidden" name={name} value={value} /> : null);
   const identity = (view: SavedViewRow) => <><input type="hidden" name="viewId" value={view.id} /><input type="hidden" name="version" value={view.version} /><input type="hidden" name="requestId" value={randomUUID()} /></>;
   return <section aria-label="Saved views" className="space-y-3 text-sm">
-    <div className="flex items-baseline justify-between"><h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Saved views</h2>
+    <div className="flex items-baseline justify-between"><h2 className="eyebrow">Saved views</h2>
       {activeViewId ? <Link className="text-xs text-muted-foreground underline" href="/money/transactions">Clear</Link> : null}</div>
     <ul className="space-y-0.5">
       <li><Link href="/money/transactions" className={`block rounded-lg px-2.5 py-1.5 ${activeViewId ? "hover:bg-muted" : "bg-muted font-medium"}`}>All transactions</Link></li>

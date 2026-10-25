@@ -94,7 +94,7 @@ function NavLink({ item, current, collapsed, shell, onNavigate }: { item: NavIte
 
 function NavSections({ current, collapsed, shell, onNavigate }: { current?: NavItem; collapsed?: boolean; shell: Promise<ShellData>; onNavigate?: () => void }) {
   return sections.map(section => <div key={section.title} className="space-y-0.5">
-    <p className={cn("px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground", collapsed && "sr-only")}>{section.title}</p>
+    <p className={cn("px-2.5 pb-1 eyebrow", collapsed && "sr-only")}>{section.title}</p>
     {section.items.map(item => <NavLink key={item.href} item={item} current={current} collapsed={collapsed} shell={shell} onNavigate={onNavigate} />)}
   </div>);
 }

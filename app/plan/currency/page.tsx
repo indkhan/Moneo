@@ -32,7 +32,7 @@ export default async function CurrencyPage() {
     <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 text-foreground sm:px-8 lg:py-10">
       <header>
         <Link href="/plan" className="text-sm text-muted-foreground">← Plan</Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Currency</h1>
+        <h1 className="mt-2 page-title">Currency</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Choose how amounts are shown. Your original transactions and balances are never changed.
         </p>

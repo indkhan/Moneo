@@ -14,7 +14,7 @@ export default async function ArtifactsPage({ searchParams }: { searchParams: Pr
   const date = new Intl.DateTimeFormat(workspace.locale, { dateStyle: "medium", timeZone: workspace.timezone });
   return <main className="mx-auto grid max-w-5xl gap-8 p-4 sm:p-8">
     <header className="grid gap-1">
-      <h1 className="text-2xl font-semibold">Artifacts</h1>
+      <h1 className="page-title">Artifacts</h1>
       <p className="text-sm text-muted-foreground">Interactive pages built from your real data. They refresh every time you open them and never change your records.</p>
     </header>
     <section aria-label="New artifact" className="rounded-xl border border-border bg-card p-4">

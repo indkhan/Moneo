@@ -326,7 +326,7 @@ export default function ImportPage() {
 
   return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
     <header className="space-y-5">
-      <div><p className="text-xs font-semibold uppercase tracking-widest text-brand">Money / Import</p><h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Import financial data</h1><p className="mt-2 text-sm text-muted-foreground">Drop CSV or XLSX statements. Only rows that need a decision are shown, and every import can be undone.</p></div>
+      <div><p className="eyebrow">Money / Import</p><h1 className="mt-2 page-title">Import financial data</h1><p className="mt-2 text-sm text-muted-foreground">Drop CSV or XLSX statements. Only rows that need a decision are shown, and every import can be undone.</p></div>
       <ol className="flex flex-wrap gap-x-6 gap-y-2 text-sm" aria-label="Import steps">{STEPS.map((label, i) =>
         <li key={label} aria-current={i === step ? "step" : undefined} className={`flex items-center gap-2 ${i === step ? "font-medium text-foreground" : i < step ? "text-foreground" : "text-muted-foreground"}`}>
           <span className={`grid size-6 place-items-center rounded-full text-xs ${i === step ? "bg-brand text-white" : i < step ? "bg-muted text-brand" : "border border-border"}`}>{i < step ? "✓" : i + 1}</span>{label}
@@ -471,7 +471,7 @@ export default function ImportPage() {
       {error === HISTORY_UNAVAILABLE && <button type="button" className="text-sm underline" onClick={() => void loadHistory()}>Reload history</button>}
       {!visibleHistory.length && error !== HISTORY_UNAVAILABLE && <p className="text-sm text-muted-foreground">No imports yet.</p>}
       {[...days].map(([label, items]) => <div key={label} className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h3>
+        <h3 className="eyebrow">{label}</h3>
         <ol className="space-y-3 border-l border-border pl-5">{items.map((item) => {
           const processed = item.new_rows + item.matched_rows + item.review_rows + item.rejected_rows;
           const recent = confirmedIds.includes(item.id);

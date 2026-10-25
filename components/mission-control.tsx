@@ -126,7 +126,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
   return <div className="space-y-6">
     <header className="flex flex-wrap items-center gap-3">
       <div className="mr-auto min-w-0">
-        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight"><Bot className="size-6 text-brand" aria-hidden="true" />Agent team {pill(run.status)}</h1>
+        <h1 className="flex items-center gap-2 page-title"><Bot className="size-6 text-brand" aria-hidden="true" />Agent team {pill(run.status)}</h1>
         <p className="text-sm text-muted-foreground">{run.trigger === "import" ? "Started when your import finished" : "Started manually"} · {new Date(run.created_at).toLocaleString(locale)} · {model}</p>
       </div>
       {active && <button type="button" onClick={() => void control("cancel")} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"><Square className="size-3.5" aria-hidden="true" />Stop</button>}
@@ -143,7 +143,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
     {WAVES.map((wave, index) => {
       const tasks = wave.map(agent => byAgent.get(agent)).filter((task): task is AgentTaskView => Boolean(task));
       return tasks.length > 0 && <section key={index} aria-label={WAVE_LABELS[index]} className="space-y-2">
-        <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Wave {index + 1} · {WAVE_LABELS[index]}</h2>
+        <h2 className="eyebrow">Wave {index + 1} · {WAVE_LABELS[index]}</h2>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{tasks.map(task => <AgentCard key={task.agent} task={task} />)}</div>
       </section>;
     })}
@@ -178,7 +178,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       <p className="text-xs text-muted-foreground">{reviewable ? "Nothing changes until you accept. Accepted changes use the same audited actions as the rest of Moneo, so history and Undo keep working." : "Proposals stream in as agents work. Review opens when the team finishes."}</p>
       {notice && <p role="status" className="text-sm">{notice}</p>}
       {kinds.map(kind => <div key={kind} className="space-y-2">
-        <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{KIND_LABELS[kind]}</h3>
+        <h3 className="eyebrow">{KIND_LABELS[kind]}</h3>
         <ul className="space-y-2">{manual.filter(item => item.kind === kind).map(item => {
           const decidable = reviewable && (item.status === "proposed" || item.status === "failed");
           return <li key={item.id} className="rounded-xl border border-border bg-card p-3">

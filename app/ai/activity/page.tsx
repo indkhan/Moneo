@@ -57,7 +57,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
 
   return <main className="mx-auto w-full max-w-4xl space-y-6 px-4 py-8 sm:px-8 lg:py-10">
     <header>
-      <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Activity</h1>
+      <h1 className="page-title">Activity</h1>
       <p className="mt-2 text-sm text-muted-foreground">Imports, analyses and chats in one feed. Failures and rows waiting for you are under Needs attention.</p>
     </header>
     <nav aria-label="Activity filters" className="flex flex-wrap gap-2">{Object.entries(FILTERS).map(([key, label]) =>
@@ -66,7 +66,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
     {errors.length > 0 && <p role="alert" className="rounded-xl border border-border bg-card p-4 text-sm text-red-700 dark:text-red-300">Could not load part of this activity: {truncate(errors[0]?.message ?? "Unavailable")}</p>}
     {!errors.length && !visible.length && <p className="text-muted-foreground">{filter === "attention" ? "Nothing needs your attention." : <>No activity yet. <Link className="underline" href="/import">Import a statement</Link> or run a review from <Link className="underline" href="/ai">AI</Link>.</>}</p>}
     {[...groups].map(([label, entries]) => <section key={label} aria-label={label} className="space-y-2">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h2>
+      <h2 className="eyebrow">{label}</h2>
       <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">{entries.map(item =>
         <li key={item.key}><Link href={item.href} className="flex items-start gap-3 px-5 py-4 hover:bg-muted/50">
           <span aria-hidden className={`mt-1.5 size-2 shrink-0 rounded-full ${item.attention ? "bg-amber-500" : "bg-border"}`} />

@@ -69,7 +69,7 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
     </div>
     <ul id={listId} role="listbox" aria-label="Commands" className="min-h-0 flex-1 overflow-y-auto p-2">
       {results.map((command, index) => <li key={command.id} role="presentation">
-        {(index === 0 || results[index - 1].group !== command.group) && <p role="presentation" className="px-2 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{command.group}</p>}
+        {(index === 0 || results[index - 1].group !== command.group) && <p role="presentation" className="px-2 pb-1 pt-3 eyebrow">{command.group}</p>}
         <div id={`${listId}-${index}`} role="option" aria-selected={index === selected} onMouseMove={() => setActive(index)} onClick={() => run(command)}
           className={cn("flex cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm", index === selected && "bg-accent text-accent-foreground")}>
           <span className="truncate">{command.label}</span>

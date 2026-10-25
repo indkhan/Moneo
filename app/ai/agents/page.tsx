@@ -21,7 +21,7 @@ export default async function AgentRunsPage({ searchParams }: { searchParams: Pr
   for (const row of counts.data ?? []) open.set(row.run_id, (open.get(row.run_id) ?? 0) + 1);
   return <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-8 lg:py-8">
     <header className="flex flex-wrap items-center gap-3">
-      <div className="mr-auto"><h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight"><Bot className="size-6 text-brand" aria-hidden="true" />Agent team</h1>
+      <div className="mr-auto"><h1 className="flex items-center gap-2 page-title"><Bot className="size-6 text-brand" aria-hidden="true" />Agent team</h1>
         <p className="text-sm text-muted-foreground">Specialised agents analyse your data after every import. They only propose; you decide.</p></div>
       <StartAgentRun />
     </header>

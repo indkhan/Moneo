@@ -152,7 +152,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="text-2xl font-semibold tracking-tight">Home</h1><p className="text-sm text-muted-foreground">As of {today} · {displayCurrency}</p></div>
+        <div><h1 className="page-title">Home</h1><p className="text-sm text-muted-foreground">As of {today} · {displayCurrency}</p></div>
         <div className="flex items-center gap-2">
           <Link href="/settings" className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted">Customize</Link>
           <Link href="/import" className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"><Plus size={15} /> Import statement</Link>

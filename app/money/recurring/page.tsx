@@ -46,7 +46,7 @@ export default async function RecurringPage() {
     <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 text-foreground sm:px-8 lg:py-10">
       <header className="space-y-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Recurring payments</h1>
+          <h1 className="page-title">Recurring payments</h1>
           <p className="mt-1 text-sm text-muted-foreground">Confirmed bills, subscriptions and income. Suggestions below only reach your forecast once you confirm them.</p>
         </div>
       </header>

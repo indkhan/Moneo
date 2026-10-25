@@ -47,7 +47,7 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
  const patchCategory=review&&Object.hasOwn(review.patch,'category_id')?categoryName(review.patch.category_id)??'uncategorized':undefined;
  const card='rounded-xl border border-border bg-card p-6';
  return <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 text-foreground sm:px-8 lg:py-10">
-  <header><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Money</p><h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Organize spending</h1>
+  <header><p className="eyebrow">Money</p><h1 className="mt-1 page-title">Organize spending</h1>
    <p className="mt-2 text-sm text-muted-foreground">Select entries, pick a category, preview, approve. Every batch can be undone.</p></header>
   {reviewId&&!review&&<p role="alert" className="text-sm">This review is no longer available.</p>}
   {review&&<section aria-label="Organization impact preview" className={card}>

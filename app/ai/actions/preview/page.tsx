@@ -14,12 +14,12 @@ export default async function ActionPreview({ searchParams }: { searchParams: Pr
     const input = categoryPreviewSchema.parse({ transactionIds: (params.ids ?? "").split(","), categoryId: params.category });
     preview = await loadCategoryPreview(supabase, workspace.id, input.transactionIds, input.categoryId);
   } catch {
-    return <main className="mx-auto max-w-3xl p-6"><h1 className="text-2xl font-semibold">Action preview unavailable</h1><p className="mt-3">The exact selection, category or permission is unavailable. Select entries in Money to review changes.</p><Link href="/money/transactions" className="mt-3 inline-block underline">Open transactions</Link></main>;
+    return <main className="mx-auto max-w-3xl p-6"><h1 className="page-title">Action preview unavailable</h1><p className="mt-3">The exact selection, category or permission is unavailable. Select entries in Money to review changes.</p><Link href="/money/transactions" className="mt-3 inline-block underline">Open transactions</Link></main>;
   }
   const categoryIds = [...new Set([preview.category.id, ...preview.rows.flatMap(row => row.category_id ? [row.category_id] : [])])];
   const categories = await supabase.from("categories").select("id, name").eq("workspace_id", workspace.id).in("id", categoryIds);
   if (categories.error) throw categories.error;
-  return <main className="mx-auto max-w-3xl space-y-5 p-6"><h1 className="text-2xl font-semibold">Review proposed category changes</h1>
+  return <main className="mx-auto max-w-3xl space-y-5 p-6"><h1 className="page-title">Review proposed category changes</h1>
     <p>Set {preview.rows.length} selected transactions to {preview.category.name}. Check each entry and preview its current category before applying.</p>
     <p className="text-sm">Selected amounts: {Object.entries(preview.totals).map(([currency, amount]) => formatMoney(amount, currency, workspace.locale)).join(" · ")}. Separate currencies remain separate.</p>
     <p className="text-sm text-muted-foreground">{preview.warning}</p>

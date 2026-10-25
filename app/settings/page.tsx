@@ -40,7 +40,7 @@ export default async function SettingsPage() {
   const { user, workspace, settings } = context;
   const [dashboard, runs] = await Promise.all([loadDashboard(context), loadRuns(context)]);
   return <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-8 lg:py-10">
-    <div><h1 className="text-2xl font-semibold tracking-tight">Settings</h1><p className="mt-1 break-words text-sm text-muted-foreground">Your private workspace · {user.email ?? "Signed in"}</p></div>
+    <div><h1 className="page-title">Settings</h1><p className="mt-1 break-words text-sm text-muted-foreground">Your private workspace · {user.email ?? "Signed in"}</p></div>
     <div className="mt-8 grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)]">
       <nav aria-label="Settings sections" className="lg:sticky lg:top-20 lg:self-start">
         <ul className="flex flex-wrap gap-1 lg:flex-col">{sectionNav.map(([id, label]) => <li key={id}>

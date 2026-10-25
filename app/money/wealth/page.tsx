@@ -63,7 +63,7 @@ export default async function WealthPage() {
   const dated = active.filter(item => !item.linked_account_id && item.as_of !== today).length;
 
   return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
-    <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Wealth</h1>
+    <h1 className="page-title">Wealth</h1>
 
     <section aria-label="Net worth" className="space-y-4">
       {currencies.length ? currencies.map(currency => <div key={currency} className="rounded-xl border border-border bg-card p-6">

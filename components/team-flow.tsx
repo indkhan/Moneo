@@ -24,7 +24,7 @@ const Arrow = ({ label, live = true, lit }: { label?: string; live?: boolean; li
   <div className={`size-0 border-x-4 border-t-[6px] border-x-transparent ${lit ? "border-t-success" : "border-t-brand/60"}`} /></div>;
 
 const Step = ({ n, title, children }: { n: number; title: string; children: React.ReactNode }) => <li className="flex w-full flex-col items-center gap-2">
-  <span className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground"><span className="flex size-5 items-center justify-center rounded-full bg-brand text-[11px] text-white">{n}</span>{title}</span>
+  <span className="flex items-center gap-2 eyebrow"><span className="flex size-5 items-center justify-center rounded-full bg-brand text-[11px] text-white">{n}</span>{title}</span>
   {children}</li>;
 
 /** The run as a flowchart. Pass live task statuses to light up what is running; omit them for the static overview. */

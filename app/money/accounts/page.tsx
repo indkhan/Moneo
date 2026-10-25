@@ -115,7 +115,7 @@ export default async function AccountsPage() {
   return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
     <header className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Accounts</h1>
+        <h1 className="page-title">Accounts</h1>
         <details className="group relative">
           <summary className="min-h-9 cursor-pointer list-none rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">Add account</summary>
           <form action={addAccount} className="absolute right-0 z-10 mt-2 grid w-72 gap-3 rounded-xl border border-border bg-card p-4 shadow-lg">

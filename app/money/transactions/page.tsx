@@ -39,7 +39,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const activeView = viewRow ? { id: viewRow.id as string, name: viewRow.name as string } : null;
   const viewRows = (savedViews ?? []).map(view => ({ id: view.id, name: view.name, created_at: view.created_at, version: view.version }));
   const header = <header className="flex flex-wrap items-end justify-between gap-4">
-    <div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Money</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">Transactions</h1></div>
+    <div><p className="eyebrow">Money</p><h1 className="mt-1 page-title">Transactions</h1></div>
     <nav aria-label="Money sections" className="flex flex-wrap gap-1 text-sm">
       <Link href="/money/organization" className="rounded-lg px-3 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">Organize spending</Link>
       <Link href="/import" className="rounded-lg bg-primary px-3 py-1.5 font-medium text-primary-foreground hover:opacity-90">Import statement</Link>
