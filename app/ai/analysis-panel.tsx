@@ -87,13 +87,13 @@ export function AnalysisPanel({ locale, timezone }: { locale: string; timezone: 
       <button type="submit" disabled={busy} className="justify-self-start rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">{busy ? "Starting…" : "Run review"}</button>
     </form>
     {jobs.length > 1 && <label className="mt-4 block text-sm">Saved reviews<select aria-label="Saved reviews" value={jobId ?? ""} onChange={event => { setReview(null); setJobId(event.target.value); }} className="ml-2 rounded-lg border border-border bg-background p-2">{jobs.map(job => <option key={job.id} value={job.id}>{label(job.status)} · review {job.id.slice(0, 4)}</option>)}</select></label>}
-    {error && <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
+    {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
     {review && <div className="mt-4"><p role="status" className="text-sm">{review.cancel_requested && ["queued", "running"].includes(review.status) ? "Stop requested. Waiting for active work to finish stopping." : label(review.status)}</p>
       {review.review_request && <p className="mt-2 text-sm">{review.review_request.question} · {review.review_request.query.period.from} through {review.review_request.query.period.to}</p>}
       {review.review_progress && <div className="mt-2 text-sm text-muted-foreground"><p>Evidence checks {review.review_progress.queries.length}/{review.review_progress.request.budget.maxQueries} · Supporting records {review.review_progress.supportRecords}/{review.review_progress.request.budget.maxSupportRecords}</p>
         {review.review_progress.limitations.map((limitation, index) => <p key={index}>{limitation}</p>)}
       </div>}
-      {review.error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{review.error}</p>}
+      {review.error && <p role="alert" className="text-sm text-danger">{review.error}</p>}
       {["queued", "running"].includes(review.status) && !review.cancel_requested && <button onClick={cancel} className="mt-2 text-sm underline">Stop</button>}
       {review.status === "canceled" && <p className="mt-2 text-sm text-muted-foreground">{review.stage === "cancellation_unconfirmed" ? "Stop requested. The runtime ended, but request termination could not be confirmed." : "Application work stopped."} Completed edits remain in history. A provider may already have processed submitted data.</p>}
       {review.analysis && <p className="mt-3 text-sm text-muted-foreground">Saved {new Date(review.analysis.created_at).toLocaleString(locale, { timeZone: timezone })} · Data {label(review.analysis.freshness.status).toLowerCase()}: {review.analysis.freshness.reason}</p>}

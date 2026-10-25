@@ -93,7 +93,7 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
       <form method="get" className="flex flex-wrap items-end gap-2"><label className="grid gap-1 text-xs font-medium text-muted-foreground">Calendar month<input type="month" name="month" defaultValue={month} required className={field} /></label><button className={button}>View month</button></form>
     </header>
     {month !== currentMonth && <p className="text-sm text-muted-foreground">Viewing a past month. Edits apply to the current month ({currentMonth}).</p>}
-    {needsReview > 0 && <p role="status" className="text-sm text-amber-700 dark:text-amber-300">Some spending is not counted yet: {needsReview} transactions need review. <Link href="/import" className="underline">Review imports</Link></p>}
+    {needsReview > 0 && <p role="status" className="text-sm text-warning">Some spending is not counted yet: {needsReview} transactions need review. <Link href="/import" className="underline">Review imports</Link></p>}
     <section className={card} aria-labelledby="limits-heading">
       <h2 id="limits-heading" className="text-sm font-medium">Category limits</h2>
       {!progress.length && <p className="text-muted-foreground">No spending limits yet. Set one below.</p>}

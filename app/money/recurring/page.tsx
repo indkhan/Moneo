@@ -57,7 +57,7 @@ export default async function RecurringPage() {
           <h2 className="text-sm font-medium">Bills and subscriptions</h2>
           {totals.size > 0 && <dl className="flex flex-wrap gap-x-6 gap-y-1 text-right text-sm">{[...totals].map(([currency, total]) => <div key={currency} className="grid">
             <dt className="text-xs text-muted-foreground">Per month ({currency})</dt>
-            <dd className="font-mono font-semibold tabular-nums">{money(total.out, currency)}{total.in > 0n && <span className="ml-2 text-emerald-700 dark:text-emerald-400">+{money(total.in, currency)} in</span>}</dd>
+            <dd className="font-mono font-semibold tabular-nums">{money(total.out, currency)}{total.in > 0n && <span className="ml-2 text-success">+{money(total.in, currency)} in</span>}</dd>
             <dd className="text-xs text-muted-foreground">Next {UPCOMING_DAYS} days: {money(total.upcoming, currency)}</dd>
           </div>)}</dl>}
         </div>
@@ -71,7 +71,7 @@ export default async function RecurringPage() {
               <td className="px-4 py-2.5"><Link href="/plan" className="font-medium hover:underline">{item.name}</Link><span className="ml-2 text-xs text-muted-foreground">{item.account_id ? names[item.account_id] ?? "Unknown account" : "No account"}</span></td>
               <td className="px-3 py-2.5 capitalize">{item.cadence}</td>
               <td className="whitespace-nowrap px-3 py-2.5 font-mono">{item.next ?? "Ended"}</td>
-              <td className={`whitespace-nowrap px-4 py-2.5 text-right font-mono tabular-nums ${item.amount > 0n ? "text-emerald-700 dark:text-emerald-400" : ""}`}>{money(item.amount, item.currency_code)}</td>
+              <td className={`whitespace-nowrap px-4 py-2.5 text-right font-mono tabular-nums ${item.amount > 0n ? "text-success" : ""}`}>{money(item.amount, item.currency_code)}</td>
             </tr>)}</tbody>
           </table>
         </div> : <p className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">No confirmed schedules yet. Confirm a detected pattern below or add one in <Link href="/plan" className="underline">Plan</Link>.</p>}

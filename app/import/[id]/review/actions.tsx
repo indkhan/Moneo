@@ -45,7 +45,7 @@ export function ReviewActions({ importId, sourceId, frozenId = null, frozenName,
     </label>}
     <button className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50" type="button" disabled={busy || (unavailable && !destinationId)} onClick={() => void decide("accept")}>Accept as new</button>
     <button className="min-h-10 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" type="button" disabled={busy} onClick={() => void decide("reject")}>Reject</button>
-    {error && <p role="alert" className="w-full text-sm text-red-700 dark:text-red-300">{error}</p>}
+    {error && <p role="alert" className="w-full text-sm text-danger">{error}</p>}
   </div>;
 }
 
@@ -77,6 +77,6 @@ export function ClassificationActions({ importId, transactionId, version, reason
       <p className="text-muted-foreground">Unknown or separate fees stay under review. <a className="underline" href={`/money/transactions?transaction=${transactionId}`}>Open the transaction to link or inspect it</a></p>
     </>}
     <button type="button" className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50" disabled={busy} onClick={() => void submit()}>{eventId ? "Undo classification review" : "Confirm reviewed meaning"}</button>
-    {error && <p role="alert" className="text-red-700 dark:text-red-300">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
   </div>;
 }

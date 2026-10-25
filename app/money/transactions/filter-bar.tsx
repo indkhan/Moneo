@@ -10,7 +10,7 @@ import { calendarDate } from "@/lib/finance/calendar";
 type Named = { id: string; name: string };
 export type FilterValues = Partial<Record<"q" | "from" | "to" | "account" | "category" | "merchant" | "status" | "kind" | "direction" | "tag" | "event" | "minAmount" | "maxAmount" | "sort" | "group", string>>;
 
-const control = "min-h-9 w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm";
+const control = "min-h-10 w-full rounded-[10px] border border-input bg-card px-3 py-2 text-[13px]";
 
 /**
  * Compact filter bar. Everything lives in the URL; amounts are typed as
@@ -55,7 +55,7 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
   return <div className="space-y-2">
   <form onSubmit={ask} role="search" aria-label="Describe transactions" className="flex gap-2">
     <input name="ask" maxLength={200} placeholder="Ask, e.g. coffee over 5 last month" aria-label="Describe what to find" className={`${control} flex-1`} />
-    <button className="min-h-9 whitespace-nowrap rounded-lg border border-border px-3 text-sm hover:bg-muted">Find</button>
+    <button className="min-h-10 whitespace-nowrap rounded-[10px] border border-input px-3 text-[13px] hover:bg-muted">Find</button>
   </form>
   <form onSubmit={submit} role="search" aria-label="Filter transactions" className="space-y-2">
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -66,8 +66,8 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
       <select name="category" defaultValue={values.category ?? ""} aria-label="Category" className={control}><option value="">All categories</option><option value="none">Uncategorized</option>{categories.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
       <select name="merchant" defaultValue={values.merchant ?? ""} aria-label="Merchant" className={control}><option value="">All merchants</option><option value="none">Unknown</option>{merchants.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
       <div className="flex gap-2 lg:col-span-2 lg:justify-end">
-        <button type="button" aria-expanded={more} onClick={() => setMore(!more)} className="min-h-9 whitespace-nowrap rounded-lg border border-border px-3 text-sm hover:bg-muted">{more ? "Fewer" : "More"}</button>
-        <button className="min-h-9 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90">Apply filters</button>
+        <button type="button" aria-expanded={more} onClick={() => setMore(!more)} className="min-h-10 whitespace-nowrap rounded-[10px] border border-input px-3 text-[13px] hover:bg-muted">{more ? "Fewer" : "More"}</button>
+        <button className="min-h-10 whitespace-nowrap rounded-[10px] bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90">Apply filters</button>
       </div>
     </div>
     <div hidden={!more} className="grid gap-2 sm:grid-cols-3 lg:grid-cols-7">
@@ -80,7 +80,7 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
       <input name="event" defaultValue={values.event} placeholder="Trip / event group" aria-label="Filter by spending group" maxLength={120} className={control} />
     </div>
     {more && <p className="text-xs text-muted-foreground">Amounts are signed: -50 to -10 finds purchases between 10 and 50.</p>}
-    {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
+    {error && <p role="alert" className="text-sm text-danger">{error}</p>}
   </form>
   </div>;
 }

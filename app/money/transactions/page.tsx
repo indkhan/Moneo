@@ -38,12 +38,13 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   ]);
   const activeView = viewRow ? { id: viewRow.id as string, name: viewRow.name as string } : null;
   const viewRows = (savedViews ?? []).map(view => ({ id: view.id, name: view.name, created_at: view.created_at, version: view.version }));
-  const header = <header className="flex flex-wrap items-end justify-between gap-4">
-    <div><p className="eyebrow">Money</p><h1 className="mt-1 page-title">Transactions</h1></div>
-    <nav aria-label="Money sections" className="flex flex-wrap gap-1 text-sm">
-      <Link href="/money/organization" className="rounded-lg px-3 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">Organize spending</Link>
-      <Link href="/import" className="rounded-lg bg-primary px-3 py-1.5 font-medium text-primary-foreground hover:opacity-90">Import statement</Link>
-    </nav>
+  const activeCount = (accounts ?? []).filter(account => !account.archived_at).length;
+  const header = (count?: number | null) => <header className="flex flex-wrap items-end justify-between gap-4">
+    <div className="flex flex-col gap-1"><p className="eyebrow">{count != null ? `${count.toLocaleString(workspace.locale)} ${count === 1 ? "transaction" : "transactions"} · ` : ""}{activeCount} {activeCount === 1 ? "account" : "accounts"}</p><h1 className="page-title">Transactions</h1></div>
+    <div className="flex flex-wrap gap-2 text-[13px]">
+      <Link href="/import" className="inline-flex h-11 items-center rounded-xl border border-input px-4 hover:bg-muted">Import CSV / Excel</Link>
+      <a href="#add-transaction" className="inline-flex h-11 items-center rounded-xl bg-primary px-4 font-medium text-primary-foreground hover:opacity-90">Add transaction</a>
+    </div>
   </header>;
 
   // An invalid persisted scope never reaches the ledger query: no rows or
@@ -51,10 +52,10 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   // saving is disabled so the broadened scope cannot be re-saved.
   const scopeError = viewRow ? invalidStoredViewScope(viewRow.filters as unknown) : null;
   if (scopeError && activeView) {
-    return <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 text-foreground sm:px-8 lg:py-10">
-      {header}
+    return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 text-foreground sm:px-8 lg:py-8">
+      {header()}
       <section aria-label="Invalid saved view" className="rounded-xl border border-border bg-card p-6">
-        <p role="alert" className="text-sm text-red-700 dark:text-red-300">{scopeError}</p>
+        <p role="alert" className="text-sm text-danger">{scopeError}</p>
         <p className="mt-2 text-sm text-muted-foreground">Set the tag and spending group with normal filters, save a corrected view, then delete this broken view below.</p>
         <Link className="mt-3 inline-block underline" href="/money/transactions">Back to normal filters</Link>
       </section>
@@ -127,14 +128,12 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const filterValues = Object.fromEntries(shareable);
   const activeAccounts = (accounts ?? []).filter(account => !account.archived_at);
 
-  return <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 text-foreground sm:px-8 lg:py-10">
-    {header}
+  return <main className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-6 text-foreground sm:px-8 lg:py-8">
+    {header(filters.cursor ? null : count)}
     {viewId && !activeView ? <p role="alert" className="text-sm">Saved view not found. Showing normal filters.</p> : null}
+    <SavedViewsPanel views={viewRows} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} />
     <div className="grid gap-6">
-      <aside className="order-2 space-y-6">
-        <SavedViewsPanel views={viewRows} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} />
-      </aside>
-      <div className="order-1 min-w-0 space-y-4">
+      <div className="min-w-0 space-y-4">
         <FilterBar key={shareable.toString()} values={filterValues} accounts={accounts ?? []} categories={categories ?? []} merchants={merchants ?? []} displayCurrency={workspace.display_currency} timezone={workspace.timezone} />
         <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
           <ul aria-label="Active filters" className="flex flex-wrap items-center gap-1.5">
@@ -162,8 +161,8 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
           {next ? <Link className="underline" href={withParams(viewBase, { cursor: next })}>Next page</Link> : null}
           <p className="ml-auto hidden text-xs text-muted-foreground sm:block"><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>Enter</kbd> open · <kbd>x</kbd> select · <kbd>/</kbd> search · <kbd>Esc</kbd> close</p>
         </div>
-        <details className="rounded-xl border border-border bg-card p-4">
-          <summary className="cursor-pointer text-sm font-semibold">Add a manual transaction</summary>
+        <details id="add-transaction" className="scroll-mt-24 rounded-xl border border-border bg-card p-5">
+          <summary className="cursor-pointer text-sm font-medium">Add a manual transaction</summary>
           {!activeAccounts.length ? <p className="mt-3 text-sm text-muted-foreground">Add or restore an active account before entering a transaction.</p> : <form action={createManualTransaction} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 [&_input]:min-h-10 [&_input]:rounded-lg [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:px-3 [&_input]:text-sm [&_select]:min-h-10 [&_select]:rounded-lg [&_select]:border [&_select]:border-border [&_select]:bg-card [&_select]:px-3 [&_select]:text-sm">
             <input type="hidden" name="requestId" value={crypto.randomUUID()} />
             <label className="grid gap-1 text-sm">Account<select name="accountId" required>{activeAccounts.map(account => <option key={account.id} value={account.id}>{account.name} ({account.currency_code})</option>)}</select></label>
@@ -173,7 +172,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             <label className="grid gap-1 text-sm">Status<select name="status" defaultValue="posted"><option value="posted">Posted</option><option value="pending">Pending</option></select></label>
             <label className="grid gap-1 text-sm">Category<select name="categoryId"><option value="">Uncategorized</option>{categories?.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
             <label className="grid gap-1 text-sm">Note<input name="note" maxLength={2000} /></label>
-            <button className="min-h-10 self-end rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white">Add transaction</button>
+            <button className="min-h-10 self-end rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Add transaction</button>
           </form>}
         </details>
         <Suspense fallback={<p className="text-sm text-muted-foreground">Loading batch history…</p>}>

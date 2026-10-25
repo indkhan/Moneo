@@ -26,7 +26,7 @@ export function ChatChart({ source }: { source: string }) {
       const label = row.href ? <Link href={row.href} className="hover:underline" title="Open matching transactions">{row.label}</Link> : row.label;
       return <li key={row.label} className="grid grid-cols-[minmax(0,1fr)] gap-1 text-sm">
         <div className="flex items-baseline justify-between gap-3"><span className="min-w-0 [overflow-wrap:anywhere]">{label}</span><span className="shrink-0 font-medium tabular-nums">{formatMoney(row.valueMinor, currency)}</span></div>
-        <div className="h-2 rounded-full bg-muted" aria-hidden="true"><div className={`h-2 rounded-full ${BigInt(row.valueMinor) < 0n ? "bg-red-500/70" : "bg-primary"}`} style={{ width: `${Math.max(width, 1)}%` }} /></div>
+        <div className="h-2 rounded-full bg-muted" aria-hidden="true"><div className={`h-2 rounded-full ${BigInt(row.valueMinor) < 0n ? "bg-danger" : "bg-primary"}`} style={{ width: `${Math.max(width, 1)}%` }} /></div>
       </li>;
     })}</ul>
     <figcaption className="mt-3 text-xs text-muted-foreground">Bars compare verified measures above. Select a label to open the matching transactions.</figcaption>

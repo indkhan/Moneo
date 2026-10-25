@@ -43,7 +43,7 @@ export async function MonthSpendingKpi({ db, workspaceId, currency, today, local
   const change = thisMonth.spendingMinor - lastMonthToDate.spendingMinor;
   const percent = lastMonthToDate.spendingMinor > 0n ? Number(sign(change) * 100n / lastMonthToDate.spendingMinor) : null;
   return <Kpi label="Spent this month" href="/plan/spending" action="Plans">
-    <p className="mt-1 font-mono text-xl">{formatMoney(thisMonth.spendingMinor, currency, locale)}{thisMonth.partial && <span className="ml-2 align-middle text-xs font-normal text-amber-700">Partial</span>}</p>
+    <p className="mt-1 font-mono text-xl">{formatMoney(thisMonth.spendingMinor, currency, locale)}{thisMonth.partial && <span className="ml-2 align-middle text-xs font-normal text-warning">Partial</span>}</p>
     <p className="mt-1 text-xs text-muted-foreground">vs {formatMoney(lastMonthToDate.spendingMinor, currency, locale)} by this day last month{lastMonthToDate.partial ? " (partial)" : ""}{percent !== null && change !== 0n ? ` · ${change > 0n ? "up" : "down"} ${percent}%` : ""}</p>
   </Kpi>;
 }
@@ -78,7 +78,7 @@ export async function SpendingPanel({ db, workspaceId, currency, today, locale, 
     {header}
     <p className="mt-1 text-xs text-muted-foreground">Last six months in {currency}. Refunds are subtracted; pending items, transfers and items needing review are left out.</p>
     <div className="mt-3"><TrendChart height={200} months={bars.map(row => row.month)} labels={bars.map(row => month.format(new Date(`${row.from}T00:00:00Z`)))} values={bars.map(row => Number(row.spendingMinor) / scale)} /></div>
-    {partial && <p className="mt-2 text-xs text-amber-700">* Partial: some rows need review or an exchange rate for their posting date.</p>}
+    {partial && <p className="mt-2 text-xs text-warning">* Partial: some rows need review or an exchange rate for their posting date.</p>}
     <div className="mt-4 grid gap-6 md:grid-cols-2">
       <TopList title={`Top categories ${label}`} groups={selected.categories} names={data.categoryNames} param="category" from={selected.from} to={selected.to} currency={currency} locale={locale} unknown="Uncategorized" />
       <TopList title={`Top merchants ${label}`} groups={selected.merchants} names={data.merchantNames} param="merchant" from={selected.from} to={selected.to} currency={currency} locale={locale} unknown="Unknown merchant" />

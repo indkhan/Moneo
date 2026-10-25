@@ -11,7 +11,7 @@ const quiet = "min-h-9 rounded-lg px-2.5 py-1.5 text-sm font-medium text-muted-f
 const Hidden = ({ account, requestId }: { account: Account; requestId: string }) => <>
   <input type="hidden" name="accountId" value={account.id} /><input type="hidden" name="version" value={account.version} /><input type="hidden" name="requestId" value={requestId} />
 </>;
-const ErrorText = ({ error }: { error?: string }) => error ? <p role="alert" className="w-full text-sm text-red-700 dark:text-red-300">{error}</p> : null;
+const ErrorText = ({ error }: { error?: string }) => error ? <p role="alert" className="w-full text-sm text-danger">{error}</p> : null;
 
 // Inline rename/type: the name looks like text until focused. Archive keeps all history.
 export function AccountForm({ account, requestId }: { account: Account; requestId: string }) {

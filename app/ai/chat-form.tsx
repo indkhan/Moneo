@@ -54,7 +54,7 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, o
   const { queue, enqueue, remove, steer, withSteers, canSteer } = useChatQueue(chat, conversationId, startQueued);
 
   const composer = <><ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} /><ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder="Ask anything about your money" busyText="Waiting for a response…" /></>;
-  const notices = <>{error && <p role="alert" className="mt-2 px-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
+  const notices = <>{error && <p role="alert" className="mt-2 px-3 text-sm text-danger">{error}</p>}
     {status === "canceled" && <p role="status" className="mt-2 px-3 text-sm text-muted-foreground">Canceled. Previously completed edits remain in transaction history.</p>}</>;
 
   if (empty) return <div className="flex flex-1 flex-col justify-center py-10">

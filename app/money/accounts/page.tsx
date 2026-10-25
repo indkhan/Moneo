@@ -86,7 +86,7 @@ export default async function AccountsPage() {
           <Sparkline points={trend} label={`${account.name} recorded balance, last ${TREND_DAYS} days`} />
           <div className="min-w-36 text-right">
             <p className="font-mono text-base font-semibold tabular-nums">{amount === null ? "—" : formatMoney(amount, account.currency_code, locale)}</p>
-            {account.balance.status === "ambiguous" ? null : <p className={`text-xs ${account.balance.status === "missing" ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`}>
+            {account.balance.status === "ambiguous" ? null : <p className={`text-xs ${account.balance.status === "missing" ? "text-warning" : "text-muted-foreground"}`}>
               {label}{asOf ? ` · as of ${asOf}` : ""}</p>}
           </div>
         </div>

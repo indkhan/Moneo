@@ -19,7 +19,7 @@ export default function TermsPage() {
         <div className="rounded-2xl border border-border bg-card p-8 shadow-sm">
           <p className="eyebrow">Terms</p>
           <h1 className="mt-2 page-title">Terms of use</h1>
-          <p className="mt-3 rounded-lg border border-amber-700/30 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          <p className="mt-3 rounded-lg border border-warning/40 bg-warning-soft px-3 py-2 text-sm text-warning">
             Moneo is not launched yet and is still being built. These draft terms will be finalized before launch.
           </p>
           <div className="mt-6 space-y-5 text-sm leading-relaxed text-muted-foreground">

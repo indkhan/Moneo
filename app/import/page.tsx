@@ -61,7 +61,7 @@ function SourceRowReview({ row, mapping, onDecision }: { row: { rowNumber: numbe
     if (column) mappedColumns.push(column);
   }
   const correction = parserReview ? { ...changes, ...Object.fromEntries(mappedColumns.map(column => [column, values[column] ?? ""])) } : changes;
-  return <article className="space-y-4 rounded-lg border border-amber-300 bg-card p-4 text-sm dark:border-amber-800">
+  return <article className="space-y-4 rounded-lg border border-warning/40 bg-card p-4 text-sm">
     <div><h3 className="font-medium">Source row {row.rowNumber}</h3><p className="text-muted-foreground">{row.message.replace(/^Row \d+: /, "")}</p></div>
     {parserReview && <p>This row has a different number of cells than the headers. Check each cell against the original row before correcting it.</p>}
     <div className="grid gap-3 sm:grid-cols-3">{Object.keys(row.sourceRow).filter(column => !column.startsWith("__moneo_csv_")).map(column => <label key={column} className="grid gap-1 font-medium">{column}<input aria-label={`Source row ${row.rowNumber} ${column}`} className={input} value={values[column]} onChange={event => setValues({ ...values, [column]: event.target.value })} /></label>)}</div>
@@ -351,7 +351,7 @@ export default function ImportPage() {
     </label>
 
     {busy && <p role="status" className="text-sm text-muted-foreground">{interpreting ? `Reading ${file?.name ?? "statement"}…` : "Working…"}{interpreting && <button type="button" className="ml-3 underline" onClick={clearFiles}>Cancel interpretation</button>}</p>}
-    {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
+    {error && <p role="alert" className="text-sm text-danger">{error}</p>}
 
     {file && inspection && <section className="space-y-6 rounded-xl border border-border bg-card p-6" aria-label="Statement review">
       <div className="space-y-1">
@@ -363,7 +363,7 @@ export default function ImportPage() {
         onEdit={() => { setMapping(null); setEditorOpen(false); setStale(false); setRowsReviewed(false); setInspection(previous => previous ? {...previous,preview:null} : null); }}
         onPreview={scope => void inspect(file, undefined, scope)} />}
       {inspection.aiError && <p className="text-sm text-muted-foreground">Automatic interpretation unavailable. Choose the columns below.</p>}
-      {inspection.previewError && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{inspection.previewError}</p>}
+      {inspection.previewError && <p role="alert" className="text-sm text-danger">{inspection.previewError}</p>}
 
       {result && <div className="space-y-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
@@ -395,7 +395,7 @@ export default function ImportPage() {
               <option value="decimal-comma">1.234,56</option>
             </select>
           </label>
-          {result?.timestampReviewRequired && <div className="space-y-2 rounded-lg border border-amber-300 p-3 text-sm dark:border-amber-800">
+          {result?.timestampReviewRequired && <div className="space-y-2 rounded-lg border border-warning/40 p-3 text-sm">
             <p>The file has times without a timezone. A wrong one can shift dates and balance order.</p>
             <label className="grid gap-1.5 font-medium">Source timestamp timezone<input className={input} value={mapping.timestampTimezone ?? ""} onChange={event => edit({ timestampTimezone: event.target.value, timestampTimezoneConfirmed: false })} /></label>
             <label className="flex gap-2"><input type="checkbox" checked={mapping.timestampTimezoneConfirmed ?? false} onChange={event => setMapping({ ...mapping, timestampTimezoneConfirmed: event.target.checked })} />This timezone matches the statement.</label>
@@ -421,7 +421,7 @@ export default function ImportPage() {
         {!!decisions.length && <label className="flex gap-2 text-sm"><input type="checkbox" checked={rowsReviewed} onChange={event => setRowsReviewed(event.target.checked)} />I checked the corrections and exclusions against the original file.</label>}
       </section>}
 
-      {inspection.warnings?.map(warning => <p key={warning} className="text-sm text-amber-700 dark:text-amber-300">{warning}</p>)}
+      {inspection.warnings?.map(warning => <p key={warning} className="text-sm text-warning">{warning}</p>)}
 
       {result && <div className="space-y-2">
         <h3 className="text-sm font-semibold">Mapping preview</h3>
@@ -429,7 +429,7 @@ export default function ImportPage() {
           {result.examples.slice(0, 10).map((row, i) => <tr key={i} className="border-t border-border">
             <td className="whitespace-nowrap tabular-nums text-muted-foreground">{row.postedOn}</td>
             <td className="max-w-0"><span title={row.description} className="line-clamp-2 break-words">{row.description}</span></td>
-            <td className={`whitespace-nowrap text-right tabular-nums font-medium ${BigInt(row.amountMinor) < 0n ? "text-foreground" : "text-emerald-700 dark:text-emerald-400"}`}>{formatMinor(row.amountMinor, row.currencyCode)}</td>
+            <td className={`whitespace-nowrap text-right tabular-nums font-medium ${BigInt(row.amountMinor) < 0n ? "text-foreground" : "text-success"}`}>{formatMinor(row.amountMinor, row.currencyCode)}</td>
             <td><span className="inline-block rounded-full bg-muted px-2 py-0.5 text-xs capitalize">{row.status ?? "posted"}</span></td>
             <td className="truncate" title={row.merchant ?? ""}>{row.merchant ?? "—"}</td>
             <td className="truncate" title={row.category ?? ""}>{row.category ?? "Uncategorized"}</td>
@@ -476,7 +476,7 @@ export default function ImportPage() {
           const processed = item.new_rows + item.matched_rows + item.review_rows + item.rejected_rows;
           const recent = confirmedIds.includes(item.id);
           return <li key={item.id} className="relative">
-            <span aria-hidden className={`absolute -left-[26px] top-6 size-2.5 rounded-full ring-4 ring-background ${item.status === "failed" ? "bg-red-600" : active(item.status) ? "bg-amber-500" : item.status === "canceled" ? "bg-muted-foreground" : "bg-brand"}`} />
+            <span aria-hidden className={`absolute -left-[26px] top-6 size-2.5 rounded-full ring-4 ring-background ${item.status === "failed" ? "bg-danger" : active(item.status) ? "bg-warning" : item.status === "canceled" ? "bg-muted-foreground" : "bg-brand"}`} />
             <article className={`space-y-3 rounded-xl border bg-card p-5 ${recent ? "border-brand" : "border-border"}`}>
               <div className="flex flex-wrap items-center justify-between gap-2"><strong className="truncate">{item.filename}</strong>
                 <span className="flex items-center gap-3 text-xs text-muted-foreground">{new Date(item.created_at).toLocaleTimeString(undefined, { timeStyle: "short" })}<span role="status" className="rounded-lg bg-muted px-2.5 py-1 font-medium capitalize text-brand">{item.status}</span></span></div>
@@ -484,7 +484,7 @@ export default function ImportPage() {
                 <p className="text-xs text-muted-foreground">{item.status === "queued" ? "Waiting to start" : `${Math.min(processed, item.total_rows)} of ${item.total_rows} processed`}. You can leave this page; the import keeps running.</p></div>}
               <p className="text-sm text-muted-foreground">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows} for review · {item.rejected_rows} rejected · {item.total_rows} total</p>
               {recent && item.status === "completed" && <p className="text-sm">{item.review_rows || item.classification_review_rows ? "Imported. A few rows need your decision before totals are complete." : "Imported. Nothing needs review. Undo is available if anything looks wrong."}</p>}
-              {item.error && <p className="text-sm text-red-700 dark:text-red-300">{item.error}</p>}
+              {item.error && <p className="text-sm text-danger">{item.error}</p>}
               {item.status === "canceled" && <p className="text-sm text-muted-foreground">Stopped. Rows already imported are kept, and resuming will not duplicate them.</p>}
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm"><Link className="underline" href={`/import/${item.id}/review`}>Review rows and source coverage{item.classification_review_rows ? ` · ${item.classification_review_rows} to categorize` : ""}</Link>
                 <Link className="underline" href={`/money/organization?import=${item.id}`}>Organize imported spending</Link>

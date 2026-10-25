@@ -21,38 +21,36 @@ export function SavedViewsPanel({ views, activeViewId, activeViewName, saveDefau
 }) {
   const filterInputs = Object.entries(saveDefaults).map(([name, value]) => value !== undefined ? <input key={name} type="hidden" name={name} value={value} /> : null);
   const identity = (view: SavedViewRow) => <><input type="hidden" name="viewId" value={view.id} /><input type="hidden" name="version" value={view.version} /><input type="hidden" name="requestId" value={randomUUID()} /></>;
-  return <section aria-label="Saved views" className="space-y-3 text-sm">
-    <div className="flex items-baseline justify-between"><h2 className="eyebrow">Saved views</h2>
-      {activeViewId ? <Link className="text-xs text-muted-foreground underline" href="/money/transactions">Clear</Link> : null}</div>
-    <ul className="space-y-0.5">
-      <li><Link href="/money/transactions" className={`block rounded-lg px-2.5 py-1.5 ${activeViewId ? "hover:bg-muted" : "bg-muted font-medium"}`}>All transactions</Link></li>
-      {views.map(view => <li key={view.id} className="group">
-        <div className={`flex items-center justify-between rounded-lg ${view.id === activeViewId ? "bg-muted font-medium" : "hover:bg-muted"}`}>
-          <Link className="block min-w-0 flex-1 truncate px-2.5 py-1.5" href={`/money/transactions?view=${view.id}`} aria-current={view.id === activeViewId ? "page" : undefined}>{view.name}</Link>
+  const tab = (active: boolean) => `flex h-9 items-center rounded-[10px] px-3.5 text-[13px] ${active ? "bg-foreground font-medium text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`;
+  return <section aria-label="Saved views" className="space-y-2 text-sm">
+    <div className="flex flex-wrap items-center gap-1.5 border-b border-border pb-3">
+      <h2 className="sr-only">Saved views</h2>
+      <Link href="/money/transactions" className={tab(!activeViewId)}>All transactions</Link>
+      {views.map(view => <Link key={view.id} className={`${tab(view.id === activeViewId)} max-w-56 truncate`} href={`/money/transactions?view=${view.id}`} aria-current={view.id === activeViewId ? "page" : undefined}>{view.name}</Link>)}
+      {!disableSave ? <form action={saveTransactionView} className="ml-auto flex items-center gap-1.5">{filterInputs}
+        <input name="name" required maxLength={80} placeholder="Name this view, e.g. Restaurants over €20" aria-label="Saved view name" className="h-9 w-64 max-w-full rounded-[10px] border border-dashed border-input bg-transparent px-3 text-[13px] placeholder:text-muted-foreground" />
+        <button className="h-9 rounded-[10px] border border-input px-3 text-[13px] hover:bg-muted">Save view</button>
+      </form> : null}
+    </div>
+    <div className="flex flex-wrap items-start gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      {!views.length ? <p>No saved views yet. Filter the ledger, then save it here.</p> : null}
+      {activeViewId && activeViewName ? <p>Showing <strong className="text-foreground">{activeViewName}</strong>. <Link className="underline" href="/money/transactions">Clear</Link></p> : null}
+      {views.map(view => <details key={view.id}>
+        <summary className="cursor-pointer py-0.5 hover:text-foreground">Manage {view.name}</summary>
+        <div className="mt-1 space-y-2 rounded-xl border border-border bg-card p-3">
+          <form action={renameTransactionView} className="flex gap-1.5">{identity(view)}
+            <input name="name" defaultValue={view.name} aria-label={`Rename saved view ${view.name}`} maxLength={80} required className="min-w-0 flex-1 rounded-md border border-input bg-card px-2 py-1 text-foreground" />
+            <button className="rounded-md border border-input px-2 hover:bg-muted">Rename</button>
+          </form>
+          {!disableSave ? <form action={updateTransactionViewFilters}>{identity(view)}{filterInputs}
+            <button aria-label={`Update filters for saved view ${view.name}`} className="underline hover:text-foreground">Use current filters</button>
+          </form> : null}
+          <form action={deleteTransactionView}>{identity(view)}
+            <button aria-label={`Delete saved view ${view.name}`} className="underline hover:text-danger">Delete</button>
+          </form>
         </div>
-        <details className="px-2.5 text-xs text-muted-foreground">
-          <summary className="cursor-pointer py-0.5 hover:text-foreground">Manage {view.name}</summary>
-          <div className="space-y-2 py-2">
-            <form action={renameTransactionView} className="flex gap-1.5">{identity(view)}
-              <input name="name" defaultValue={view.name} aria-label={`Rename saved view ${view.name}`} maxLength={80} required className="min-w-0 flex-1 rounded border border-border bg-card px-2 py-1 text-foreground" />
-              <button className="rounded border border-border px-2 hover:bg-muted">Rename</button>
-            </form>
-            {!disableSave ? <form action={updateTransactionViewFilters}>{identity(view)}{filterInputs}
-              <button aria-label={`Update filters for saved view ${view.name}`} className="underline hover:text-foreground">Use current filters</button>
-            </form> : null}
-            <form action={deleteTransactionView}>{identity(view)}
-              <button aria-label={`Delete saved view ${view.name}`} className="underline hover:text-red-700 dark:hover:text-red-300">Delete</button>
-            </form>
-          </div>
-        </details>
-      </li>)}
-    </ul>
-    {!views.length ? <p className="px-2.5 text-xs text-muted-foreground">No saved views yet. Filter the ledger, then save it here.</p> : null}
-    {activeViewId && activeViewName ? <p className="px-2.5 text-xs text-muted-foreground">Showing <strong className="text-foreground">{activeViewName}</strong>.</p> : null}
-    {!disableSave ? <form action={saveTransactionView} className="space-y-1.5 border-t border-border pt-3">{filterInputs}
-      <input name="name" required maxLength={80} placeholder="e.g. Restaurants over €20" aria-label="Saved view name" className="w-full rounded-lg border border-border bg-card px-2.5 py-1.5" />
-      <button className="w-full rounded-lg border border-border px-3 py-1.5 font-medium hover:bg-muted">Save view</button>
-    </form> : null}
-    <Link className="block px-2.5 text-xs text-muted-foreground underline" href="/money/accounts">Undo view changes</Link>
+      </details>)}
+      <Link className="ml-auto underline" href="/money/accounts">Undo view changes</Link>
+    </div>
   </section>;
 }

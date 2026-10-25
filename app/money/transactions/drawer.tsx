@@ -78,14 +78,14 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
     <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-6 py-3">{close}<span className="text-xs text-muted-foreground">Esc to close · j/k to move</span></div>
     <div className="space-y-6 p-6">
       <header>
-        <h2 className="text-xl font-semibold">{selected.description}</h2>
-        <p className={`mt-2 font-mono text-2xl font-semibold tabular-nums ${amount > 0n ? "text-emerald-700 dark:text-emerald-400" : ""}`}>{money(amount, selected.currency_code)}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{selected.posted_on} · {accountNames[selected.account_id] ?? "Unknown account"} · {statusLabel(selected.status)} · {kindLabel(selected.kind)}</p>
+        <p className="font-mono text-[11px] text-subtle">{selected.posted_on} · {accountNames[selected.account_id] ?? "Unknown account"} · {statusLabel(selected.status)} · {kindLabel(selected.kind)}</p>
+        <h2 className="mt-1.5 font-display text-[28px] font-semibold leading-tight tracking-tight">{selected.description}</h2>
+        <p className={`mt-1 font-mono text-[26px] tabular-nums ${amount > 0n ? "text-success" : ""}`}>{money(amount, selected.currency_code)}</p>
         <p className="mt-2 flex flex-wrap gap-3"><AskAbout question="Explain this transaction: is it normal for me, is it recurring, and how does it compare with similar ones?" about={{ kind: "transaction", id: selected.id, label: `${selected.posted_on} · ${selected.description.slice(0, 60)}` }} /></p>
         {(selected.tags?.length || selected.event_name) ? <p className="mt-1 text-sm text-muted-foreground">{selected.tags?.length ? `Tags: ${selected.tags.join(", ")}` : ""}{selected.tags?.length && selected.event_name ? " · " : ""}{selected.event_name ? `Group: ${selected.event_name}` : ""}</p> : null}
       </header>
 
-      {selected.review_reasons?.length ? <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+      {selected.review_reasons?.length ? <div role="alert" className="rounded-lg border border-warning/40 bg-warning-soft p-3 text-sm text-warning">
         <p>Check this before relying on it for spending: {selected.review_reasons.map(reviewReasonLabel).join("; ")}.</p>
         {originals.map(original => <Link key={`${original.import_id}-${original.row_number}`} href={`/import/${original.import_id}/review`} className="mr-3 underline">Review import row {original.row_number}</Link>)}
       </div> : null}
@@ -100,7 +100,7 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
         {splitSet.data ? <p className="text-xs text-muted-foreground">Undo the split to change the category.</p> : <p className="text-xs text-muted-foreground">Type a new name to create a category.</p>}
         <label className="block text-sm">Merchant<select name="merchant" defaultValue={selected.merchant_id ?? ""} className={field}><option value="">Unknown merchant</option>{merchants.map(merchant => <option key={merchant.id} value={merchant.id}>{merchant.name}</option>)}</select></label>
         <label className="block text-sm">Note<textarea name="note" defaultValue={selected.note ?? ""} maxLength={2000} rows={2} className={field} /></label>
-        <button className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">Save correction</button>
+        <button className="rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90">Save correction</button>
         <p className="text-xs text-muted-foreground">Each change is recorded below and can be undone.</p>
       </form>
 

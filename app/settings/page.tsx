@@ -44,7 +44,7 @@ export default async function SettingsPage() {
     <div className="mt-8 grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)]">
       <nav aria-label="Settings sections" className="lg:sticky lg:top-20 lg:self-start">
         <ul className="flex flex-wrap gap-1 lg:flex-col">{sectionNav.map(([id, label]) => <li key={id}>
-          <a href={`#${id}`} className={`block rounded-md px-2.5 py-1.5 text-sm hover:bg-muted hover:text-foreground ${id === "danger" ? "text-red-700" : "text-muted-foreground"}`}>{label}</a>
+          <a href={`#${id}`} className={`block rounded-md px-2.5 py-1.5 text-sm hover:bg-muted hover:text-foreground ${id === "danger" ? "text-danger" : "text-muted-foreground"}`}>{label}</a>
         </li>)}</ul>
       </nav>
       <div className="min-w-0 space-y-8">
@@ -55,8 +55,8 @@ export default async function SettingsPage() {
         <section id="summaries" className={card}><h2 className="text-sm font-medium">Scheduled summaries</h2>
           <p className="mt-1 text-sm text-muted-foreground">Recent summary runs. Change the schedule under Insights and summaries.</p>
           <details className="mt-2 text-sm text-muted-foreground"><summary className="cursor-pointer">More details</summary><p className="mt-2">Weekly summaries are due on Monday and monthly ones on the first, in your timezone and at your preferred time. A daily check starts due summaries, so they can arrive a day late. Turn summaries off to stop future runs, or stop an active run below.</p></details>
-          {!process.env.CRON_SECRET && <p className="mt-3 text-sm text-amber-700">Automatic scheduling needs to be configured on the deployment. Your preference is saved.</p>}
-          {runs ? <SummaryRuns initial={runs} /> : <p role="alert" className="mt-3 text-sm text-red-700">Scheduled status is unavailable. Try again later.</p>}
+          {!process.env.CRON_SECRET && <p className="mt-3 text-sm text-warning">Automatic scheduling needs to be configured on the deployment. Your preference is saved.</p>}
+          {runs ? <SummaryRuns initial={runs} /> : <p role="alert" className="mt-3 text-sm text-danger">Scheduled status is unavailable. Try again later.</p>}
           <p className="mt-4 text-sm text-muted-foreground">Finished summaries appear in Activity. If one fails, run a new review from AI.</p>
         </section>
         <section id="usage" className={card}><h2 className="text-sm font-medium">AI usage</h2><p className="mt-1 text-sm text-muted-foreground">Usage appears in Activity when the provider reports it. Missing figures are shown as unknown, not zero.</p></section>

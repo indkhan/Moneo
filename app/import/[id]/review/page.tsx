@@ -46,7 +46,7 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
   return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
     <Link href="/import" className="text-sm underline">← Import history</Link>
     <div><p className="eyebrow">Money / Import review</p><h1 className="mt-2 page-title">Review: {imported.filename}</h1><p className="mt-2 text-sm text-muted-foreground">{imported.review_rows} unclear rows are left out of your totals until you decide.</p></div>
-    {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">Could not load review rows: {error.message}</p>}
+    {error && <p role="alert" className="text-sm text-danger">Could not load review rows: {error.message}</p>}
     {!error && !rows?.length && <p className="text-sm text-muted-foreground">No rows awaiting review.</p>}
     {rows?.map((row) => {
       const normalized = row.normalized_row as { accountId?: string | null; row?: { currencyCode: string; status: string } } | null;
@@ -75,7 +75,7 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
     <section className="space-y-4" aria-label="Source coverage and reviewed interpretation">
       <h2 className="text-sm font-medium">Source coverage</h2>
       <p className="text-sm text-muted-foreground">{imported.new_rows + imported.matched_rows} accepted · {imported.rejected_rows} excluded · {imported.review_rows} unresolved · {imported.total_rows} original observations</p>
-      {decisionRows?.error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">Could not load reviewed source evidence.</p>}
+      {decisionRows?.error && <p role="alert" className="text-sm text-danger">Could not load reviewed source evidence.</p>}
       {decisionRows?.data?.map(row => {
         const decision = decisions.find(item => item.rowNumber === row.row_number)!;
         return <article key={row.id} className="space-y-3 rounded-lg border border-border p-4 text-sm"><h3 className="font-medium capitalize">Source row {row.row_number} · {decision.action === "exclude" ? "Excluded" : "Corrected"} · {row.status.replaceAll("_", " ")}</h3>
@@ -88,7 +88,7 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
     <section className="space-y-4" aria-label="Financial classification review">
       <h2 className="text-sm font-medium">Financial meaning</h2>
       <p className="text-sm text-muted-foreground">{imported.classification_review_rows} rows still need a category. Their amounts are already in your balances, but income and spending totals are incomplete until you review them.</p>
-      {classifications.error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">Could not load classifications: {classifications.error.message}</p>}
+      {classifications.error && <p role="alert" className="text-sm text-danger">Could not load classifications: {classifications.error.message}</p>}
       {classifications.data?.map(transaction => <article className="space-y-3 rounded-xl border border-border bg-card p-6" key={transaction.id}>
         <h3 className="text-base font-semibold">{transaction.description} · {formatMoney(transaction.amount_minor, transaction.currency_code)}</h3>
         <p className="text-sm text-muted-foreground">Needs review: {transaction.review_reasons.map((reason: string) => reason.replaceAll("_", " ")).join(", ")}</p>
@@ -98,7 +98,7 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
       {classifications.data?.length === 100 && <p className="text-sm text-muted-foreground">Showing the first 100 unresolved transactions. More appear as these are reviewed.</p>}
     </section>
     <section className="space-y-4" aria-label="Classification history"><h2 className="text-sm font-medium">Recent classification history</h2>
-      {reviewHistory.error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">Could not load review history.</p>}
+      {reviewHistory.error && <p role="alert" className="text-sm text-danger">Could not load review history.</p>}
       {reviewHistory.data?.map(event => {
         const transaction = event.transactions as unknown as { version: number };
         return <article className="space-y-3 rounded-lg border border-border p-4 text-sm" key={event.id}><p>Reviewed {new Date(event.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{event.undone ? " · undone" : ""}</p>

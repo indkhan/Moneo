@@ -29,7 +29,7 @@ export function toolSummary(input: unknown): string {
 const block = "mt-1 max-h-60 max-w-full overflow-auto whitespace-pre rounded-md bg-muted p-2 font-mono text-[11px] text-foreground";
 
 function Step({ step }: { step: ToolStep }) {
-  const icon = step.state === "running" ? <LoaderCircle className="size-3.5 animate-spin" aria-label="Running" /> : step.state === "failed" ? <X className="size-3.5 text-red-600 dark:text-red-400" aria-label="Failed" /> : <Check className="size-3.5" aria-label="Done" />;
+  const icon = step.state === "running" ? <LoaderCircle className="size-3.5 animate-spin" aria-label="Running" /> : step.state === "failed" ? <X className="size-3.5 text-danger" aria-label="Failed" /> : <Check className="size-3.5" aria-label="Done" />;
   const summary = toolSummary(step.input);
   const line = <span className="flex min-w-0 items-center gap-1.5 [&>svg]:shrink-0">{icon}<span className="truncate">{labels[step.name] ?? step.name}{summary && <span className="opacity-75"> · {summary}</span>}</span></span>;
   if (step.input === undefined && step.output === undefined) return <li className="min-w-0">{line}</li>;
