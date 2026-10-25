@@ -1,0 +1,72 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M5THSFHGQN8SQXC79PMDDR0V",
+  "strategy": "manual-commit",
+  "branch": "claude/frontend-design-impl-fc1fb7",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/account-liquidity-summary.tsx",
+    "app/agent-briefing.tsx",
+    "app/ai/agents/page.tsx",
+    "app/ai/analysis-panel.tsx",
+    "app/dated-overview.tsx",
+    "app/expenditure-summary.tsx",
+    "app/home-sections.tsx",
+    "app/import/[id]/review/page.tsx",
+    "app/import/page.tsx",
+    "app/insights/panel.tsx",
+    "app/money/investigations/page.tsx",
+    "app/money/organization/page.tsx",
+    "app/money/recurring/detected.tsx",
+    "app/money/recurring/occurrences.tsx",
+    "app/money/recurring/page.tsx",
+    "app/money/wealth/page.tsx",
+    "app/page.tsx",
+    "app/plan/currency/page.tsx",
+    "app/plan/goals.tsx",
+    "app/plan/page.tsx",
+    "app/plan/preferences.tsx",
+    "app/plan/spending/page.tsx",
+    "app/plan/what-if.tsx",
+    "app/privacy/page.tsx",
+    "app/settings/insights-form.tsx",
+    "app/settings/page.tsx",
+    "app/settings/reset.tsx",
+    "app/terms/page.tsx",
+    "components/chart.tsx",
+    "components/command-palette.tsx",
+    "components/connected-banks.tsx",
+    "components/mission-control.tsx",
+    "e2e/core-journey.gated.spec.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 58,
+    "cache_creation_tokens": 46301,
+    "cache_read_tokens": 6752969,
+    "output_tokens": 19443,
+    "api_call_count": 29
+  },
+  "redaction": {
+    "replacements": 13,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 13,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}

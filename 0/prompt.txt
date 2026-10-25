@@ -1,0 +1,13 @@
+<pasted_content id="da44">
+Implement this design in this codebase:
+https://claude.ai/code/artifact/1fed8601-cb95-4739-9d2f-041eafbcbdef
+
+Read the design's files from that link. Match how it looks, using this codebase's own components and conventions.
+
+i have opened it in a worktree already you continue and make the frontend as per that design, and for the other pages which were not in this design 
+do them later.
+1. Looking at the design, make our current frontend look like it. If you have to customize the backend, that's fine as well. The final product should have all the functionality that it has right now, and they should be working while it looks like the things that I have shown.
+2. Once all of that is done, continue with the pages which are not there in the design and make them look like the rest of the website as well.
+
+if any question ask me
+</pasted_content id="da44">
