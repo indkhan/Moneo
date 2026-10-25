@@ -1,0 +1,11 @@
+In the home view it does not show net worth why does it not even tho bank is connected make it that if bank or banks connected just show the net worth don’t show review dated thing and same for by currency make it work
+
+---
+
+<task-notification>
+<task-id>bmekt0ue1</task-id>
+<tool-use-id>toolu_01MBvepdEyckWmJdTX5r8bVk</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--codebases-Moneo\65edfc6b-8dbc-4455-ad71-9ed64d74b684\tasks\bmekt0ue1.output</output-file>
+<status>completed</status>
+<summary>Background command "sed -n 1,10p lib/finance/balances.ts; grep -rn "Conflicting snapshots\|evidenced financial order" --include=*.ts --include=*.tsx . | grep -v node_modules" completed (exit code 0)</summary>
+</task-notification>
