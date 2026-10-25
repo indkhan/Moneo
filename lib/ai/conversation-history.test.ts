@@ -18,11 +18,11 @@ function client(fail: boolean | "selected" | "messages" = false) {
   } };
 }
 describe("saved conversation history", () => {
-  it("directly loads the 100th thread and newest of 1000 tied messages", async () => {
+  it("directly loads the 100th thread and newest 30 of 1000 tied messages", async () => {
     const result = await loadConversationHistory(client() as never, workspace, rows[0].id);
     expect(result.selected?.id).toBe(rows[0].id);
     expect(result.messages.at(-1)?.content).toBe("Message 999");
-    expect(result.messages[0].content).toBe("Message 900");
+    expect(result.messages[0].content).toBe("Message 970");
     expect(result.messagesCursor).toBeTruthy();
     expect(result.threads).toHaveLength(30);
   });
@@ -45,7 +45,7 @@ describe("saved conversation history", () => {
       const next = await loadConversationHistory(client() as never, workspace, "00000000-0000-4000-8000-000000000000", first.threadsCursor!, first.messagesCursor!);
       expect(next.threads.some(row => row.id === arrival.id)).toBe(false);
       expect(next.messages.some(row => row.id === arrival.id)).toBe(false);
-      expect(next.messages).toHaveLength(100);
+      expect(next.messages).toHaveLength(30);
       const newest = await loadConversationHistory(client() as never, workspace, "00000000-0000-4000-8000-000000000000");
       expect(newest.messages.at(-1)?.id).toBe(arrival.id);
     } finally { rows.shift(); }
@@ -95,7 +95,7 @@ describe("saved answer activity", () => {
         { id: "m3", workspace_id: workspace, conversation_id: conversation, role: "assistant", content: "B", created_at: "2026-01-01T00:00:03+00:00", reply_to: "r2" },
       ],
       chat_requests: [
-        { id: "r1", workspace_id: workspace, tool_calls: [{ name: "plan_investigation", input: { steps: ["Check spending"] }, output: "" }, { name: "accounts_list", input: {}, output: "[]" }] },
+        { id: "r1", workspace_id: workspace, tool_calls: [{ name: "plan_investigation", input: { steps: ["Check spending"] }, output: "" }, { name: "accounts_list", input: {}, output: "[]" }, { name: "transactions_search", input: {}, output: "x".repeat(50_000) }] },
         { id: "r2", workspace_id: "other", tool_calls: [{ name: "accounts_list", input: {}, output: "secret" }] },
       ],
     };
@@ -111,7 +111,8 @@ describe("saved answer activity", () => {
     } };
     const { messages } = await loadConversation(fake as never, workspace, conversation);
     const answer = messages.find(row => row.id === "m2");
-    expect(answer).toMatchObject({ plan: ["Check spending"], tools: [{ name: "accounts_list", state: "done", input: {}, output: "[]" }] });
+    expect(answer).toMatchObject({ plan: ["Check spending"], tools: [{ name: "accounts_list", state: "done", input: {}, output: "[]" }, { name: "transactions_search" }] });
+    expect(answer?.tools?.[1].output).toHaveLength(2000 + "\n… (truncated)".length);
     expect(answer).not.toHaveProperty("reply_to");
     expect(messages.find(row => row.id === "m3")).not.toHaveProperty("tools");
   });

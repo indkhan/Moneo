@@ -6,7 +6,11 @@ export type HistoryMessage = { id: string; role: string; content: string; create
 export type SavedToolStep = { name: string; state: "done"; input?: unknown; output?: string };
 export type HistoryThread = { id: string; title: string; created_at: string };
 const THREAD_PAGE = 30;
-const MESSAGE_PAGE = 100;
+// Small first page: older messages load on demand, so opening a long chat stays fast.
+const MESSAGE_PAGE = 30;
+// Saved tool outputs can be tens of KB each; history shows a preview, the full record stays in chat_requests.
+const OUTPUT_PREVIEW = 2000;
+const preview = (output?: string) => output && output.length > OUTPUT_PREVIEW ? `${output.slice(0, OUTPUT_PREVIEW)}\n… (truncated)` : output;
 export const conversationTitleSchema = z.string().trim().min(1).max(120);
 
 function before(value?: string) {
@@ -78,7 +82,7 @@ async function savedActivity(supabase: SupabaseClient, workspace: string, reques
     const calls = z.array(savedCall).safeParse(row.tool_calls);
     if (!calls.success) continue;
     const plan = calls.data.flatMap(call => call.name === "plan_investigation" ? [planSteps.safeParse(call.input)] : []).find(parsed => parsed.success)?.data?.steps;
-    const tools = calls.data.filter(call => call.name !== "plan_investigation").map(call => ({ name: call.name, state: "done" as const, input: call.input, output: call.output }));
+    const tools = calls.data.filter(call => call.name !== "plan_investigation").map(call => ({ name: call.name, state: "done" as const, input: call.input, output: preview(call.output) }));
     activity.set(row.id, { ...(plan ? { plan } : {}), ...(tools.length ? { tools } : {}) });
   }
   return activity;
