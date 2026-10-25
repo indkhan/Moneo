@@ -2,12 +2,12 @@ import { z } from "zod";
 import { parseManualAmount } from "@/app/money/transactions/input";
 import type { scheduleCadences } from "@/lib/finance/cadences";
 
-export const field = "min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-brand focus:ring-2 focus:ring-brand/15";
+export const field = "min-h-10 rounded-[10px] border border-input bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-brand focus:ring-2 focus:ring-brand/15";
 export const stackedField = "mt-1 w-full " + field;
-export const button = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90";
+export const button = "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-[13px] font-medium text-primary-foreground hover:opacity-90";
 export const linkButton = "text-sm font-medium text-brand hover:underline";
-export const card = "space-y-4 rounded-xl border border-border bg-card p-6";
-export const eyebrow = "font-mono text-xs uppercase tracking-widest text-muted-foreground";
+export const card = "space-y-5 rounded-xl border border-border bg-card p-6 sm:p-7";
+export const eyebrow = "eyebrow";
 
 export const cadenceLabels: Record<(typeof scheduleCadences)[number], string> = {
   once: "Once", daily: "Daily", weekly: "Weekly", biweekly: "Every two weeks", monthly: "Monthly", quarterly: "Quarterly", yearly: "Yearly",

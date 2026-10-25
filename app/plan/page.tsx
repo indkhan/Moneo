@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import { z } from "zod";
 import { redirect } from "next/navigation";
-import { ArrowRight, CalendarDays } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import { requireWorkspace } from "@/lib/auth";
 import { evaluatePlan } from "@/lib/finance/model";
 import { calendarDate } from "@/lib/finance/calendar";
@@ -19,7 +18,7 @@ import { WhatIfSection } from "./what-if";
 import { AssumptionList } from "./assumptions";
 import { button, card, eyebrow, field } from "./ui";
 
-const pill = "inline-flex items-center gap-1 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted";
+const pill = "inline-flex h-11 items-center gap-1 rounded-xl border border-input px-4 text-[13px] font-medium hover:bg-muted";
 
 export default async function PlanPage({ searchParams }: { searchParams: Promise<LiquidityParams> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -57,11 +56,11 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const currency = workspace.display_currency;
   const input = realProjection.input;
 
-  return <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 text-foreground sm:px-8 lg:py-10">
+  return <main className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-6 text-foreground sm:px-8 lg:py-8">
     {!requestedHorizon.success && <p role="alert">Choose a whole forecast horizon from 1 to 365 days. Showing 30 days.</p>}
     <header className="flex flex-wrap items-end justify-between gap-4">
-      <div><p className="eyebrow">Financial planning</p><h1 className="mt-2 page-title">Plan</h1><p className="mt-2 text-sm text-muted-foreground">Where your cash is heading, what is due, and what your goals need.</p></div>
-      <nav aria-label="Planning tools" className="flex flex-wrap gap-2"><Link href="/plan/spending" className={pill}>Spending limits <ArrowRight className="size-4" /></Link><Link href="/plan/currency" className={pill}>Currency <ArrowRight className="size-4" /></Link></nav>
+      <div className="flex flex-col gap-1"><p className="eyebrow">Forecast · {horizon} days · display currency {currency}</p><h1 className="page-title">Plan</h1><p className="mt-1 text-sm text-muted-foreground">Where your cash is heading, what is due, and what your goals need.</p></div>
+      <nav aria-label="Planning tools" className="flex flex-wrap gap-2"><a href="#history-heading" className={pill}>History</a><a href="#what-if" className={`${pill} border-transparent bg-primary text-primary-foreground hover:bg-primary hover:opacity-90`}>New scenario</a></nav>
     </header>
     <Suspense><ForecastPreferenceEditor preferences={projection.preferences} version={projection.preferencesVersion} accounts={activeAccounts} today={today} /></Suspense>
     <section className={card} aria-labelledby="forecast-heading">
@@ -78,7 +77,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
       <Suspense fallback={<p className="text-sm text-muted-foreground">Loading sources…</p>}><ModelSources db={supabase} workspace={workspace} /></Suspense>
       <AssumptionList assumptions={assumptions ?? []} error={assumptionsError?.message} accounts={activeAccounts} names={accountNames} locale={workspace.locale} today={today} />
     </section>
-    <section aria-labelledby="history-heading" className="space-y-3"><h2 id="history-heading" className="text-sm font-semibold text-muted-foreground">History and undo</h2>
+    <section aria-labelledby="history-heading" className="space-y-3"><h2 id="history-heading" className="scroll-mt-24 font-display text-2xl font-semibold tracking-tight">History and undo</h2>
       <Suspense fallback={<p className="text-sm text-muted-foreground">Loading history…</p>}>
         <GoalPlanHistory goals={goals ?? []} />
         <ReservationHistory goals={goals ?? []} allocations={allocations ?? []} />
