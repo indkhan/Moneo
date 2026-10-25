@@ -24,7 +24,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
   // "Ask about this" drafts the question and attaches what it is about; the user still sends it.
   const [about, setAbout] = useState<AskSeed["about"] | null>(null);
   const [seenSeed, setSeenSeed] = useState<number | null>(null);
-  if (seed && seed.nonce !== seenSeed) { setSeenSeed(seed.nonce); setQuestion(seed.question); setAbout(seed.about); }
+  if (seed && seed.nonce !== seenSeed) { setSeenSeed(seed.nonce); setQuestion(seed.question); setAbout(seed.about ?? null); }
   const [pending, setPending] = useState<PendingExchange | null>(null);
   const [history, setHistory] = useState<ChatItem[]>([]);
   const [older, setOlder] = useState<string | null>(null);

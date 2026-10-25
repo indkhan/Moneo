@@ -8,9 +8,9 @@ vi.mock("@/components/ai-panel", () => ({ AiPanel: () => <button>Ask Moneo</butt
 const { AppShell, activeItem } = await import("./app-shell");
 
 it("marks the most specific nav item active", () => {
-  expect(activeItem("/")?.label).toBe("Home");
-  expect(activeItem("/ai/activity/123")?.label).toBe("Activity");
-  expect(activeItem("/ai/evidence/9")?.label).toBe("Chat");
+  expect(activeItem("/")?.label).toBe("Overview");
+  expect(activeItem("/ai/activity/123")?.label).toBe("Run log");
+  expect(activeItem("/ai/evidence/9")?.label).toBe("Ask");
   expect(activeItem("/plan/spending")?.label).toBe("Spending");
   expect(activeItem("/import/abc/review")?.label).toBe("Import");
   expect(activeItem("/planner")).toBeUndefined();
@@ -25,11 +25,12 @@ it("filters commands by every typed word", () => {
   expect(filterCommands(commands, "zzz")).toEqual([]);
 });
 
-it("renders the sectioned desktop and mobile navigation, and skips the frame on login", () => {
+it("renders the rail, section tabs and mobile navigation, and skips the frame on login", () => {
   const html = renderToStaticMarkup(<AppShell shell={Promise.resolve(null)}><h1>Page</h1></AppShell>);
   expect(html).toContain('aria-label="Main"');
   expect(html).toContain('aria-label="Main mobile"');
   expect(html).toMatch(/aria-current="page"[^>]*href="\/money\/transactions"/);
+  expect(html).toContain('aria-label="Activity"');
   expect(html).toContain("Skip to content");
   path.current = "/login";
   expect(renderToStaticMarkup(<AppShell shell={Promise.resolve(null)}><h1>Page</h1></AppShell>)).toBe("<h1>Page</h1>");
