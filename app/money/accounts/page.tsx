@@ -89,7 +89,6 @@ export default async function AccountsPage() {
         </div>
       </div>
       {account.balance.status === "stale" ? <p className="mt-2 px-2 text-xs text-muted-foreground">Last recorded balance plus later activity; update it to confirm.</p> : null}
-      {account.balance.status === "ambiguous" ? <p className="mt-2 px-2 text-xs text-amber-700 dark:text-amber-300">{account.balance.warnings.join("; ")}</p> : null}
       {suggestion ? <div className="mt-2 px-2"><RenameSuggestion account={{ id: account.id, name: account.name, type: account.type ?? "checking", version: account.version ?? 1, archived_at: account.archived_at ?? null }} suggestion={suggestion} requestId={randomUUID()} /></div> : null}
       {!account.archived_at ? <details className="mt-2 px-2 text-sm" open={account.balance.status === "missing" && active.length === 1}>
         <summary className="cursor-pointer text-xs font-medium text-brand">Update balance</summary>
