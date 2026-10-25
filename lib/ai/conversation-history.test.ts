@@ -52,6 +52,8 @@ describe("saved conversation history", () => {
   });
   it("explicit New does not select a saved thread and malformed cursors fail", async () => {
     expect((await loadConversationHistory(client() as never, workspace, "new")).selected).toBeNull();
+    const fresh = await loadConversationHistory(client() as never, workspace);
+    expect(fresh.selected).toBeNull(); expect(fresh.messages).toEqual([]); expect(fresh.threads).toHaveLength(30);
     await expect(loadConversationHistory(client() as never, workspace, "new", "bad")).rejects.toThrow("Invalid history cursor");
   });
   it("never replaces a missing or foreign requested thread with New", async () => {

@@ -1,8 +1,9 @@
 "use client";
 import { useEffect } from "react";
 
+/** Session cookie: the open chat resumes in this browser session only; a new session starts on an empty chat. */
 export function selectConversation(key: string, id: string, notify = true) {
-  document.cookie = `${key}=${encodeURIComponent(id)}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
+  document.cookie = `${key}=${encodeURIComponent(id)}; Path=/; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
   if (notify) window.dispatchEvent(new Event("moneo-conversation-change"));
 }
 

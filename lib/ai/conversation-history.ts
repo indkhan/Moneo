@@ -89,8 +89,8 @@ export async function loadConversationHistory(supabase: SupabaseClient, workspac
   if (requested && requested !== "new" && !z.uuid().safeParse(requested).success) throw new Error("Conversation unavailable");
   const explicit = requested && requested !== "new" ? loadConversation(supabase, workspace, requested, messagesBefore) : null;
   explicit?.catch(() => {});
+  // Nothing selected this session means a fresh chat; old threads stay one click away in the list.
   const { threads, threadsCursor } = await loadThreads(supabase, workspace, threadsBefore);
-  const fallback = !requested && threads[0] ? loadConversation(supabase, workspace, threads[0].id, messagesBefore) : null;
-  const conversation = await (explicit ?? fallback);
+  const conversation = await explicit;
   return { threads, threadsCursor, selected: conversation?.selected ?? null, messages: conversation?.messages ?? [], messagesCursor: conversation?.messagesCursor ?? null };
 }
