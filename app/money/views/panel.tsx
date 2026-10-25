@@ -27,9 +27,9 @@ export function SavedViewsPanel({ views, activeViewId, activeViewName, saveDefau
       <h2 className="sr-only">Saved views</h2>
       <Link href="/money/transactions" className={tab(!activeViewId)}>All transactions</Link>
       {views.map(view => <Link key={view.id} className={`${tab(view.id === activeViewId)} max-w-56 truncate`} href={`/money/transactions?view=${view.id}`} aria-current={view.id === activeViewId ? "page" : undefined}>{view.name}</Link>)}
-      {!disableSave ? <form action={saveTransactionView} className="ml-auto flex items-center gap-1.5">{filterInputs}
-        <input name="name" required maxLength={80} placeholder="Name this view, e.g. Restaurants over €20" aria-label="Saved view name" className="h-9 w-64 max-w-full rounded-[10px] border border-dashed border-input bg-transparent px-3 text-[13px] placeholder:text-muted-foreground" />
-        <button className="h-9 rounded-[10px] border border-input px-3 text-[13px] hover:bg-muted">Save view</button>
+      {!disableSave ? <form action={saveTransactionView} className="flex w-full items-center gap-1.5 sm:ml-auto sm:w-auto">{filterInputs}
+        <input name="name" required maxLength={80} placeholder="Name this view, e.g. Restaurants over €20" aria-label="Saved view name" className="h-9 min-w-0 flex-1 rounded-[10px] border border-dashed sm:w-64 sm:flex-none border-input bg-transparent px-3 text-[13px] placeholder:text-muted-foreground" />
+        <button className="h-9 shrink-0 whitespace-nowrap rounded-[10px] border border-input px-3 text-[13px] hover:bg-muted">Save view</button>
       </form> : null}
     </div>
     <div className="flex flex-wrap items-start gap-x-4 gap-y-1 text-xs text-muted-foreground">
