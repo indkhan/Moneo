@@ -24,27 +24,27 @@ export default function PrivacyPage() {
           </p>
           <div className="mt-6 space-y-5 text-sm leading-relaxed text-muted-foreground">
             <section>
-              <h2 className="text-base font-semibold text-foreground">What Moneo is</h2>
+              <h2 className="text-sm font-medium text-foreground">What Moneo is</h2>
               <p className="mt-1">Moneo is a personal-finance workspace for understanding your money, planning decisions, and building reusable tools with AI. You start with CSV/Excel imports and manual entries.</p>
             </section>
             <section>
-              <h2 className="text-base font-semibold text-foreground">Data you provide</h2>
+              <h2 className="text-sm font-medium text-foreground">Data you provide</h2>
               <p className="mt-1">Your email for sign-in, and any financial data you import or enter: accounts, transactions, balances, goals, budgets, and AI conversations.</p>
             </section>
             <section>
-              <h2 className="text-base font-semibold text-foreground">How your data is used</h2>
+              <h2 className="text-sm font-medium text-foreground">How your data is used</h2>
               <p className="mt-1">Only to run your private workspace: show balances and forecasts, run calculations from application code, and answer your AI questions. Financial calculations come from application code, not AI guesses.</p>
             </section>
             <section>
-              <h2 className="text-base font-semibold text-foreground">AI and third parties</h2>
+              <h2 className="text-sm font-medium text-foreground">AI and third parties</h2>
               <p className="mt-1">When you use AI features, the minimum needed context is sent to the model provider (OpenAI or OpenRouter, depending on the model you choose) and to hosting/database providers (Supabase) to store your workspace. Bank connections, when added later, bring data in only — they never move money.</p>
             </section>
             <section>
-              <h2 className="text-base font-semibold text-foreground">What we do not do</h2>
+              <h2 className="text-sm font-medium text-foreground">What we do not do</h2>
               <p className="mt-1">No selling your data, no advertising use, no public sharing of your workspace. Original records are preserved with history and undo.</p>
             </section>
             <section>
-              <h2 className="text-base font-semibold text-foreground">Your control</h2>
+              <h2 className="text-sm font-medium text-foreground">Your control</h2>
               <p className="mt-1">You can review and correct your data in the app, manage AI access in settings, and request deletion of your workspace. Contact details will be published here before launch.</p>
             </section>
             <p className="text-xs">Last updated: October 2026 · This is a pre-launch draft, not legal advice.</p>

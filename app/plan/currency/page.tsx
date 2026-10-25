@@ -40,7 +40,7 @@ export default async function CurrencyPage() {
       </header>
 
       <section className="rounded-xl border border-border bg-card p-6">
-        <h2 className="text-base font-semibold">Display currency</h2>
+        <h2 className="text-sm font-medium">Display currency</h2>
         <p className="mt-1 text-sm text-muted-foreground">Currently {workspace.display_currency}. Enter a 3-letter currency code.</p>
         <form action={setDisplayCurrency} className="mt-4 flex flex-wrap items-end gap-3">
           <label className="grid gap-1 text-sm font-medium">Currency
@@ -51,7 +51,7 @@ export default async function CurrencyPage() {
       </section>
 
       <section className="rounded-xl border border-border bg-card p-6">
-        <h2 className="text-base font-semibold">Manual FX rate</h2>
+        <h2 className="text-sm font-medium">Manual FX rate</h2>
         <p className="mt-1 text-sm text-muted-foreground">How many units of the second currency you get for 1 unit of the first.</p>
         <datalist id="currency-codes">{currencies.map((code) => <option key={code} value={code} />)}</datalist>
         <form action={addFxRate} className="mt-4 flex flex-wrap items-end gap-3">
@@ -75,7 +75,7 @@ export default async function CurrencyPage() {
       </section>
 
       <section className="rounded-xl border border-border bg-card p-6">
-        <h2 className="text-base font-semibold">Saved rates</h2>
+        <h2 className="text-sm font-medium">Saved rates</h2>
         {rates?.length === 100 && <p className="mt-1 text-sm text-muted-foreground">Showing the latest 100 rates.</p>}
         {!rates?.length && <p className="mt-3 text-muted-foreground">No FX rates yet. Add one above to enable conversion.</p>}
         <ul className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -88,7 +88,7 @@ export default async function CurrencyPage() {
       </section>
 
       <section className="rounded-xl border border-border bg-card p-6">
-        <h2 className="text-base font-semibold">Accounts</h2>
+        <h2 className="text-sm font-medium">Accounts</h2>
         <ul className="mt-4 grid gap-3 sm:grid-cols-2">
           {accounts?.map((account) => (
             <li key={account.id} className="rounded-lg border border-border bg-muted/35 p-3 text-sm">{account.name}: {account.currency_code}</li>

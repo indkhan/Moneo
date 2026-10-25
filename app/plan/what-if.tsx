@@ -43,7 +43,7 @@ export function WhatIfSection({ scenarios, selected, href, real, scenario, accou
 }) {
   const tab = (active: boolean) => active ? "rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground" : "rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted";
   return <section className={card} aria-labelledby="what-if-heading">
-    <div><p className={eyebrow}>What if</p><h2 id="what-if-heading" className="mt-1 text-base font-semibold">What-if scenarios</h2><p className="mt-1 text-sm text-muted-foreground">Try a change side by side with your real plan. Nothing here touches real accounts.</p></div>
+    <div><p className={eyebrow}>What if</p><h2 id="what-if-heading" className="mt-1 text-sm font-medium">What-if scenarios</h2><p className="mt-1 text-sm text-muted-foreground">Try a change side by side with your real plan. Nothing here touches real accounts.</p></div>
     <nav aria-label="Scenarios" className="flex flex-wrap gap-2"><Link href={href()} className={tab(!selected)}>Real plan</Link>{scenarios.map(item => <Link key={item.id} href={href(item.id)} className={tab(item.id === selected?.id)}>{item.name}</Link>)}</nav>
     {selected ? <>
       <Comparison real={real} scenario={scenario} name={selected.name} currency={currency} locale={locale} horizon={horizon} />

@@ -109,7 +109,7 @@ async function loadInsights({ db, workspaceId, currency, today, settings, projec
 export async function ImportantInsights(props: InsightPanelProps) {
   let insights: Awaited<ReturnType<typeof loadInsights>> | null = null;
   try { insights = await loadInsights(props); } catch { insights = null; }
-  const header = <div className="flex items-baseline justify-between gap-2"><h2 className="text-base font-semibold">Important insights</h2><Link href="/settings" className="text-sm text-muted-foreground hover:text-foreground hover:underline">Customize</Link></div>;
+  const header = <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">Important insights</h2><Link href="/settings" className="text-sm text-muted-foreground hover:text-foreground hover:underline">Customize</Link></div>;
   if (insights === null) return <section className={card}>{header}<p role="alert" className="mt-3 text-sm">Insights are unavailable right now. Your totals elsewhere are not affected.</p><Link href="/import" className="mt-3 inline-block text-sm font-medium text-brand hover:underline">Review imports</Link></section>;
   return <section className={card}>{header}
     <ul className="mt-2 divide-y divide-border">

@@ -84,7 +84,7 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
 export function ShortcutHelp({ open, onClose, shortcuts }: { open: boolean; onClose: () => void; shortcuts: { keys: string[]; label: string }[] }) {
   return <Modal open={open} onClose={onClose} label="Keyboard shortcuts" className="inset-0 size-full items-center justify-center px-4">
     <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl">
-      <div className="mb-3 flex items-center justify-between"><h2 className="text-base font-semibold">Keyboard shortcuts</h2>
+      <div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-medium">Keyboard shortcuts</h2>
         <button type="button" autoFocus onClick={onClose} aria-label="Close keyboard shortcuts" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" /></button></div>
       <dl className="divide-y divide-border text-sm">{shortcuts.map(({ keys, label }) => <div key={label} className="flex items-center justify-between gap-4 py-2">
         <dt className="text-muted-foreground">{label}</dt><dd className="flex shrink-0 gap-1">{keys.map(key => <Kbd key={key}>{key}</Kbd>)}</dd>

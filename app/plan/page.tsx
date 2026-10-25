@@ -65,7 +65,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
     </header>
     <Suspense><ForecastPreferenceEditor preferences={projection.preferences} version={projection.preferencesVersion} accounts={activeAccounts} today={today} /></Suspense>
     <section className={card} aria-labelledby="forecast-heading">
-      <div className="flex flex-wrap items-end justify-between gap-4"><div><p className={eyebrow}>Projection{selectedScenario ? ` · ${selectedScenario.name}` : ""}</p><h2 id="forecast-heading" className="mt-1 text-base font-semibold">Liquid balance horizon</h2></div>
+      <div className="flex flex-wrap items-end justify-between gap-4"><div><p className={eyebrow}>Projection{selectedScenario ? ` · ${selectedScenario.name}` : ""}</p><h2 id="forecast-heading" className="mt-1 text-sm font-medium">Liquid balance horizon</h2></div>
         <form method="get" className="flex flex-wrap items-end gap-2"><label className="grid gap-1 text-xs font-medium text-muted-foreground">Horizon in days <input name="horizon" type="number" min="1" max="365" defaultValue={horizon} className={field + " w-24 font-mono"} /></label>{Object.entries(liquidityParams).filter(([key, value]) => key !== "horizon" && value !== undefined).map(([key, value]) => <input key={key} type="hidden" name={key} value={value} />)}<button className={button}><CalendarDays className="size-4" />Update</button></form></div>
       {projection.forecast.status === "available" && <ForecastView days={projection.forecast.days} events={[...input.events, ...(input.scenarioEvents ?? [])]} currency={input.currencyCode} locale={workspace.locale} names={accountNames}
         compare={scenarioId && baseline.forecast.status === "available" ? { name: "Real plan", days: baseline.forecast.days } : undefined} />}
@@ -74,7 +74,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
     </section>
     <WhatIfSection scenarios={scenarios ?? []} selected={selectedScenario} href={scenarioHref} real={baseline} scenario={projection} accounts={activeAccounts} currency={currency} locale={workspace.locale} today={today} horizon={horizon} />
     <GoalsSection goals={goals ?? []} allocations={allocations ?? []} accounts={accounts ?? []} currency={currency} locale={workspace.locale} today={today} />
-    <section className={card} aria-labelledby="financial-model"><div><p className={eyebrow}>Inputs</p><h2 id="financial-model" className="mt-1 text-base font-semibold">Financial model</h2><p className="mt-1 text-sm text-muted-foreground">Income and expenses that shape your forecast. Positive amounts add cash; negative amounts spend it.</p></div>
+    <section className={card} aria-labelledby="financial-model"><div><p className={eyebrow}>Inputs</p><h2 id="financial-model" className="mt-1 text-sm font-medium">Financial model</h2><p className="mt-1 text-sm text-muted-foreground">Income and expenses that shape your forecast. Positive amounts add cash; negative amounts spend it.</p></div>
       <Suspense fallback={<p className="text-sm text-muted-foreground">Loading sources…</p>}><ModelSources db={supabase} workspace={workspace} /></Suspense>
       <AssumptionList assumptions={assumptions ?? []} error={assumptionsError?.message} accounts={activeAccounts} names={accountNames} locale={workspace.locale} today={today} />
     </section>

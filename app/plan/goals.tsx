@@ -50,7 +50,7 @@ function GoalCard({ goal, allocations, accounts, locale, today }: { goal: Goal; 
 export function GoalsSection({ goals, allocations, accounts, currency, locale, today }: { goals: Goal[]; allocations: Allocation[]; accounts: Account[]; currency: string; locale?: string; today: string }) {
   const monthly = goals.filter(goal => goal.status === "active" && goal.currency_code === currency).reduce((sum, goal) => sum + BigInt(goal.planned_monthly_minor), 0n);
   return <section className={card} aria-labelledby="goals-heading">
-    <div className="flex flex-wrap items-end justify-between gap-3"><div><p className={eyebrow}>Reservations</p><h2 id="goals-heading" className="mt-1 text-base font-semibold">Goals</h2></div>
+    <div className="flex flex-wrap items-end justify-between gap-3"><div><p className={eyebrow}>Reservations</p><h2 id="goals-heading" className="mt-1 text-sm font-medium">Goals</h2></div>
       <p className="text-sm text-muted-foreground">Planned {formatMoney(monthly, currency, locale)} monthly in {currency}</p></div>
     <p className="text-sm text-muted-foreground">A goal only sets money aside once you reserve cash for it.</p>
     {goals.length ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{goals.map(goal => <GoalCard key={goal.id} goal={goal} allocations={allocations.filter(item => item.goal_id === goal.id)} accounts={accounts} locale={locale} today={today} />)}</div>

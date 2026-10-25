@@ -95,7 +95,7 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
     {month !== currentMonth && <p className="text-sm text-muted-foreground">Viewing a past month. Edits apply to the current month ({currentMonth}).</p>}
     {needsReview > 0 && <p role="status" className="text-sm text-amber-700 dark:text-amber-300">Some spending is not counted yet: {needsReview} transactions need review. <Link href="/import" className="underline">Review imports</Link></p>}
     <section className={card} aria-labelledby="limits-heading">
-      <h2 id="limits-heading" className="text-base font-semibold">Category limits</h2>
+      <h2 id="limits-heading" className="text-sm font-medium">Category limits</h2>
       {!progress.length && <p className="text-muted-foreground">No spending limits yet. Set one below.</p>}
       <ul className="divide-y divide-border">{progress.map(plan => {
         const money = (amount: bigint) => formatMoney(amount, plan.currency_code, workspace.locale);
@@ -130,7 +130,7 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
       })}</ul>
     </section>
     {!!categories.length && <section className={card} aria-labelledby="new-limit-heading">
-      <h2 id="new-limit-heading" className="text-base font-semibold">Set a monthly limit</h2>
+      <h2 id="new-limit-heading" className="text-sm font-medium">Set a monthly limit</h2>
       <form action={saveSpendingPlan} className="flex flex-wrap items-end gap-3">
         <label className="grid gap-1 text-sm font-medium">Category<select name="categoryId" aria-label="Category" className={field}>{categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label className="grid gap-1 text-sm">Currency<input name="currency" defaultValue={workspace.display_currency} required maxLength={3} aria-label="Currency code" className={field + " w-20"} /></label>

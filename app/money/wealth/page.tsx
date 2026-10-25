@@ -86,7 +86,7 @@ export default async function WealthPage() {
       const rows = active.filter(item => item.kind === kind);
       if (!rows.length) return null;
       return <section key={kind} aria-label={title} className="space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-base font-semibold">{title} <span className="font-normal text-muted-foreground">{rows.length}</span></h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-sm font-medium">{title} <span className="font-normal text-muted-foreground">{rows.length}</span></h2>
           <p className="font-mono text-sm text-muted-foreground tabular-nums">{[...sum(rows)].map(([currency, amount]) => formatMoney(amount, currency)).join(" · ")}</p></div>
         <div className="divide-y divide-border rounded-xl border border-border bg-card">{rows.map(item => {
           const payments = (() => { try { return item.kind === "debt" && item.next_payment_on && BigInt(item.monthly_payment_minor ?? "0") > 0n ? debtPayments({ principalMinor: BigInt(item.amount_minor), annualRate: item.annual_rate_text!, monthlyPaymentMinor: BigInt(item.monthly_payment_minor!), nextPaymentOn: item.next_payment_on }, today, 365) : []; } catch { return null; } })();

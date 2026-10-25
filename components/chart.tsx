@@ -12,15 +12,23 @@ function subscribeTheme(onChange: () => void) {
   return () => observer.disconnect();
 }
 
+/** Resolves a color token to a concrete color; tokens are light-dark() pairs, which ECharts cannot parse. */
+function token(name: string, fallback: string) {
+  if (typeof document === "undefined") return fallback;
+  const probe = document.createElement("span");
+  probe.style.color = `var(${name})`;
+  document.body.appendChild(probe);
+  const color = getComputedStyle(probe).color;
+  probe.remove();
+  return color || fallback;
+}
+
 // Chart colors follow the app's CSS tokens, including the dark theme.
 function useThemeColors() {
   const theme = useSyncExternalStore(subscribeTheme, () => document.documentElement.dataset.theme ?? "light", () => "light");
   return useMemo(() => {
-    const fallback = theme === "dark" ? { brand: "#83b3ff", muted: "#b1c0d5", border: "#3a4a62" } : { brand: "#0051d5", muted: "#57677c", border: "#dce5f2" };
-    if (typeof document === "undefined") return fallback;
-    const style = getComputedStyle(document.documentElement);
-    const read = (name: string, value: string) => style.getPropertyValue(name).trim() || value;
-    return { brand: read("--color-brand", fallback.brand), muted: read("--color-muted-foreground", fallback.muted), border: read("--color-border", fallback.border) };
+    const fallback = theme === "dark" ? { brand: "#cbf26b", muted: "#a3a39e", border: "#24262a" } : { brand: "#4a6400", muted: "#5c5d58", border: "#e2e0d8" };
+    return { brand: token("--color-brand", fallback.brand), muted: token("--color-muted-foreground", fallback.muted), border: token("--color-border", fallback.border) };
   }, [theme]);
 }
 
@@ -34,7 +42,7 @@ export function SpendingChart({ values, labels, type = "bar", height = 280, aria
   onSelect?: (index: number) => void;
 }) {
   const colors = useThemeColors();
-  const axis = { axisLine: { lineStyle: { color: colors.border } }, axisLabel: { color: colors.muted }, splitLine: { lineStyle: { color: colors.border } } };
+  const axis = { axisLine: { lineStyle: { color: colors.border } }, axisLabel: { color: colors.muted }, splitLine: { lineStyle: { color: colors.border, type: "dashed" } } };
   return (
     <div role={ariaLabel ? "img" : undefined} aria-label={ariaLabel}>
       <ReactECharts
@@ -44,7 +52,7 @@ export function SpendingChart({ values, labels, type = "bar", height = 280, aria
           tooltip: { trigger: "axis", ...(formatValue ? { valueFormatter: formatValue } : {}) },
           xAxis: { type: "category", data: labels ?? values.map((_, i) => `W${i + 1}`), ...axis },
           yAxis: { type: "value", ...axis, ...(formatValue ? { axisLabel: { color: colors.muted, formatter: formatValue } } : {}) },
-          series: [{ type, data: values, ...(type === "line" ? { smooth: true, showSymbol: false, areaStyle: { opacity: 0.12 } } : { barMaxWidth: 28, itemStyle: { borderRadius: [4, 4, 0, 0] } }) }],
+          series: [{ type, data: values, ...(type === "line" ? { smooth: true, showSymbol: false, areaStyle: { opacity: 0.12 } } : { barMaxWidth: 28, itemStyle: { borderRadius: [4, 4, 4, 4] } }) }],
         }}
         style={{ height, cursor: onSelect ? "pointer" : undefined }}
         onEvents={onSelect ? { click: (event: { dataIndex: number }) => onSelect(event.dataIndex) } : undefined}
@@ -56,18 +64,13 @@ export function SpendingChart({ values, labels, type = "bar", height = 280, aria
 type ForecastChartDay = { date: string; expected: number; conservative: number; optimistic: number };
 type ForecastChartObligation = { date: string; name: string; amount: string };
 
-function token(name: string, fallback: string) {
-  if (typeof document === "undefined") return fallback;
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-}
-
 // Approximate chart coordinates (major units as numbers); exact amounts are rendered by the caller.
 export function ForecastChart({ days, obligations, currency, label, compare }: {
   days: ForecastChartDay[]; obligations: ForecastChartObligation[]; currency: string; label: string;
   /** Optional second expected line, e.g. the real plan while a what-if scenario is shown. */
   compare?: { name: string; values: number[] };
 }) {
-  const brand = token("--color-brand", "#0051d5"), muted = token("--color-muted-foreground", "#57677c"), border = token("--color-border", "#dce5f2");
+  const brand = token("--color-brand", "#cbf26b"), muted = token("--color-muted-foreground", "#a3a39e"), border = token("--color-border", "#24262a");
   const expectedOn = new Map(days.map(day => [day.date, day.expected]));
   return <div role="img" aria-label={label}>
     <ReactECharts style={{ height: 260 }} option={{
@@ -93,7 +96,8 @@ export function ForecastChart({ days, obligations, currency, label, compare }: {
   </div>;
 }
 
-const SERIES_COLORS = ["#2a6fdb", "#e07b39", "#3aa676", "#c94f6d", "#8a63d2", "#c9a227", "#2bb3c0", "#7a8699", "#d16ba5", "#5c9e31", "#b5651d", "#4b5bb5"];
+// Lime, violet and coral lead, as in the app; the rest stay distinguishable in both themes.
+const SERIES_COLORS = ["#a6cf3f", "#9b87f5", "#f2875f", "#7a8699", "#4fb3bf", "#d9a93a", "#d16ba5", "#5c9e31", "#b5651d", "#4b5bb5", "#c94f6d", "#2a6fdb"];
 
 /** Parses a model-written ```chart block: any ECharts option object, or null when it is not one. */
 export function parseChartOption(source: string): Record<string, unknown> | null {

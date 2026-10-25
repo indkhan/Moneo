@@ -355,7 +355,7 @@ export default function ImportPage() {
 
     {file && inspection && <section className="space-y-6 rounded-xl border border-border bg-card p-6" aria-label="Statement review">
       <div className="space-y-1">
-        <h2 className="truncate text-base font-semibold text-foreground" title={`${file.name} (${index + 1} of ${files.length})`}>{file.name} <span className="font-normal text-muted-foreground">({index + 1} of {files.length})</span></h2>
+        <h2 className="truncate text-sm font-medium text-foreground" title={`${file.name} (${index + 1} of ${files.length})`}>{file.name} <span className="font-normal text-muted-foreground">({index + 1} of {files.length})</span></h2>
         {files.length > 1 && <p className="text-sm text-muted-foreground">Next: {files.slice(index + 1).map(item => item.name).join(", ") || "none"}</p>}
         <p className="text-sm text-muted-foreground">{inspection.format ? `Recognized ${inspection.format} statement` : inspection.interpretation === "proposed" ? "Columns proposed automatically. Check the preview." : inspection.interpretation === "reviewed" ? "Your reviewed mapping" : "Unrecognized layout"} · {extension}</p>
       </div>
@@ -467,7 +467,7 @@ export default function ImportPage() {
     </section>}
 
     <section className="space-y-4" aria-label="Import history">
-      <h2 className="text-base font-semibold text-foreground">Import history</h2>
+      <h2 className="text-sm font-medium text-foreground">Import history</h2>
       {error === HISTORY_UNAVAILABLE && <button type="button" className="text-sm underline" onClick={() => void loadHistory()}>Reload history</button>}
       {!visibleHistory.length && error !== HISTORY_UNAVAILABLE && <p className="text-sm text-muted-foreground">No imports yet.</p>}
       {[...days].map(([label, items]) => <div key={label} className="space-y-3">

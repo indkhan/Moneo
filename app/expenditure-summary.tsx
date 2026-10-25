@@ -7,7 +7,7 @@ export function ExpenditureSummary({ report, locale, accountId, coverage, title 
   const money = (amount: string, currency: string) => formatMoney(amount, currency, locale);
   const href = (view: "base" | "original") => viewHref?.(view) ?? `/?${new URLSearchParams({ spendingView: view, ...(accountId ? { account: accountId } : {}) })}`;
   return <div className="space-y-4 rounded-xl border border-border bg-card p-6">
-    <h2 className="text-base font-semibold">{title}</h2>
+    <h2 className="text-sm font-medium">{title}</h2>
     <nav aria-label="Spending currency view" className="flex flex-wrap gap-4 text-sm">
       <Link href={href("base")} aria-current={report.view === "base" ? "page" : undefined} className="text-brand underline">Base currency ({report.currencyCode})</Link>
       <Link href={href("original")} aria-current={report.view === "original" ? "page" : undefined} className="text-brand underline">Original currencies</Link>

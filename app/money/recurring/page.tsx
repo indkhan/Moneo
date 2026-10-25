@@ -54,7 +54,7 @@ export default async function RecurringPage() {
 
       <section aria-label="Bills and subscriptions" className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <h2 className="text-base font-semibold">Bills and subscriptions</h2>
+          <h2 className="text-sm font-medium">Bills and subscriptions</h2>
           {totals.size > 0 && <dl className="flex flex-wrap gap-x-6 gap-y-1 text-right text-sm">{[...totals].map(([currency, total]) => <div key={currency} className="grid">
             <dt className="text-xs text-muted-foreground">Per month ({currency})</dt>
             <dd className="font-mono font-semibold tabular-nums">{money(total.out, currency)}{total.in > 0n && <span className="ml-2 text-emerald-700 dark:text-emerald-400">+{money(total.in, currency)} in</span>}</dd>

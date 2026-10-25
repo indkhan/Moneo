@@ -155,7 +155,7 @@ export function ConnectedBanks() {
 
   return <section aria-labelledby="connected-banks" className="scroll-mt-20 space-y-4 rounded-xl border border-border bg-card p-6">
     <div>
-      <h2 id="connected-banks" className="text-base font-semibold">Connected banks</h2>
+      <h2 id="connected-banks" className="text-sm font-medium">Connected banks</h2>
       <p className="mt-1 text-sm text-muted-foreground">Sync booked transactions and balances through Enable Banking. Each sync is an ordinary import you can review and undo.</p>
     </div>
     {message && <p role="status" className="text-sm text-foreground">{message}</p>}

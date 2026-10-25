@@ -68,7 +68,7 @@ export function AnalysisPanel({ locale, timezone }: { locale: string; timezone: 
       : { ...current, status: data.status, stage: data.status })); }
   }
 
-  return <section className="p-5 sm:p-6"><h2 className="text-base font-semibold text-foreground">Deep Financial Analysis</h2>
+  return <section className="p-5 sm:p-6"><h2 className="text-sm font-medium text-foreground">Deep Financial Analysis</h2>
     <p className="mt-1 text-sm text-muted-foreground">Run a saved review of your finances for a period you choose.</p>
     <form onSubmit={start} className="mt-4 grid gap-3">
       <label className="grid gap-1 text-sm">What would you like to investigate?<textarea name="question" required maxLength={2000} defaultValue="Review my finances" className="rounded-lg border border-border bg-background p-2" /></label>

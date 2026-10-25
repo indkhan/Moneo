@@ -28,7 +28,7 @@ export default async function AgentRunsPage({ searchParams }: { searchParams: Pr
     {importId.success && <p role="status" className="rounded-lg bg-muted p-3 text-sm">The team starts as soon as that import&apos;s rows are in. <Link href={`/ai/agents?import=${importId.data}`} className="underline">Check again</Link></p>}
     <TeamFlow />
     <section aria-label="Runs" className="space-y-2">
-      <h2 className="text-base font-semibold">Runs</h2>
+      <h2 className="text-sm font-medium">Runs</h2>
       {runs.error && <p role="alert">Could not load runs: {runs.error.message}</p>}
       {!runs.data?.length && <p className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">No runs yet. <Link href="/import" className="underline">Import a statement</Link> or start one above.</p>}
       <ul className="divide-y divide-border rounded-xl border border-border bg-card">{(runs.data ?? []).map(run => <li key={run.id}><Link href={`/ai/agents/${run.id}`} className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-muted">

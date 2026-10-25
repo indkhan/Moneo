@@ -9,13 +9,20 @@ import { TrendChart } from "./home-trend-chart";
 
 type SectionProps = { db: SupabaseClient; workspaceId: string; currency: string; today: string; locale: string };
 
-export const card = "min-w-0 rounded-xl border border-border bg-card p-5";
+export const card = "min-w-0 rounded-xl border border-border bg-card p-6 sm:p-7";
 
+/** One figure inside a card; stacked Kpis are divided by a hairline, as in the design. */
 export function Kpi({ label, href, action, children }: { label: string; href?: string; action?: string; children: ReactNode }) {
-  return <div className="min-w-0 rounded-xl border border-border bg-card p-4">
-    <div className="flex items-baseline justify-between gap-2"><p className="text-sm font-medium text-muted-foreground">{label}</p>{href && <Link href={href} className="text-xs font-medium text-brand hover:underline">{action ?? "Details"}</Link>}</div>
+  return <div className="min-w-0 border-t border-border pt-4 first:border-t-0 first:pt-0">
+    <div className="flex items-baseline justify-between gap-2"><p className="text-sm text-muted-foreground">{label}</p>{href && <Link href={href} className="text-xs font-medium text-brand hover:underline">{action ?? "Details"}</Link>}</div>
     {children}
   </div>;
+}
+
+/** A formatted amount with its minor units dimmed, like the design's hero figures. */
+export function Figure({ value, digits, className }: { value: string; digits: number; className?: string }) {
+  const match = digits > 0 ? value.match(new RegExp(`^(.*\\d)([.,]\\d{${digits}})(\\D*)$`)) : null;
+  return <p className={className}>{match ? <>{match[1]}<span className="text-[0.5em] tracking-tight text-subtle">{match[2]}</span>{match[3]}</> : value}</p>;
 }
 
 export function KpiFallback({ label }: { label: string }) {
@@ -23,7 +30,7 @@ export function KpiFallback({ label }: { label: string }) {
 }
 
 export function SectionFallback({ title }: { title: string }) {
-  return <section aria-busy="true" className={card}><h2 className="text-base font-semibold">{title}</h2><p role="status" className="mt-3 text-sm text-muted-foreground">Loading…</p></section>;
+  return <section aria-busy="true" className={card}><h2 className="text-sm font-medium">{title}</h2><p role="status" className="mt-3 text-sm text-muted-foreground">Loading…</p></section>;
 }
 
 const sign = (amount: bigint) => amount < 0n ? -amount : amount;
@@ -36,7 +43,7 @@ export async function MonthSpendingKpi({ db, workspaceId, currency, today, local
   const change = thisMonth.spendingMinor - lastMonthToDate.spendingMinor;
   const percent = lastMonthToDate.spendingMinor > 0n ? Number(sign(change) * 100n / lastMonthToDate.spendingMinor) : null;
   return <Kpi label="Spent this month" href="/plan/spending" action="Plans">
-    <p className="mt-1 font-mono text-2xl font-semibold tracking-tight">{formatMoney(thisMonth.spendingMinor, currency, locale)}{thisMonth.partial && <span className="ml-2 align-middle text-xs font-normal text-amber-700">Partial</span>}</p>
+    <p className="mt-1 font-mono text-xl">{formatMoney(thisMonth.spendingMinor, currency, locale)}{thisMonth.partial && <span className="ml-2 align-middle text-xs font-normal text-amber-700">Partial</span>}</p>
     <p className="mt-1 text-xs text-muted-foreground">vs {formatMoney(lastMonthToDate.spendingMinor, currency, locale)} by this day last month{lastMonthToDate.partial ? " (partial)" : ""}{percent !== null && change !== 0n ? ` · ${change > 0n ? "up" : "down"} ${percent}%` : ""}</p>
   </Kpi>;
 }
@@ -59,7 +66,7 @@ function TopList({ title, groups, names, param, from, to, currency, locale, unkn
 export async function SpendingPanel({ db, workspaceId, currency, today, locale, month: selectedMonth }: SectionProps & { month?: string }) {
   let data;
   try { data = await loadHomeSpending(db, workspaceId, currency, today); } catch { data = null; }
-  const header = <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-base font-semibold">Spending</h2><span className="flex items-center gap-3"><AskAbout question="Why did my spending change over the last six months? Which categories and merchants drove it?" about={{ kind: "chart", label: "Six-month spending trend" }} /><Link href="/money/transactions?direction=outflow" className="text-sm font-medium text-brand hover:underline">All spending</Link></span></div>;
+  const header = <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-sm font-medium">Spending</h2><span className="flex items-center gap-3"><AskAbout question="Why did my spending change over the last six months? Which categories and merchants drove it?" about={{ kind: "chart", label: "Six-month spending trend" }} /><Link href="/money/transactions?direction=outflow" className="text-sm font-medium text-brand hover:underline">All spending</Link></span></div>;
   if (!data) return <section aria-label="Spending" className={card}>{header}<p role="alert" className="mt-3 text-sm">Spending is unavailable right now. Your balances are not affected.</p></section>;
   const month = new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" });
   const scale = 10 ** minorDigits(currency);
@@ -84,7 +91,7 @@ export async function RecentTransactions({ db, workspaceId, locale, names }: Omi
     .eq("workspace_id", workspaceId).order("posted_on", { ascending: false }).order("id").limit(8);
   const rows = (data ?? []) as { id: string; posted_on: string; description: string | null; amount_minor: string; currency_code: string; status: string; account_id: string; review_reasons: string[] | null }[];
   return <section aria-label="Recent transactions" className={card}>
-    <div className="flex items-baseline justify-between gap-2"><h2 className="text-base font-semibold">Recent transactions</h2><Link href="/money/transactions" className="text-sm font-medium text-brand hover:underline">All {count ?? 0}</Link></div>
+    <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">Recent transactions</h2><Link href="/money/transactions" className="text-sm font-medium text-brand hover:underline">All {count ?? 0}</Link></div>
     {error ? <p role="alert" className="mt-3 text-sm">Recent transactions are unavailable right now.</p>
       : rows.length ? <ul className="mt-2 divide-y divide-border">{rows.map(row => <li key={row.id}>
         <Link href={`/money/transactions?transaction=${row.id}`} className="flex items-center gap-3 py-2 text-sm hover:bg-muted">

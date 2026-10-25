@@ -24,23 +24,23 @@ export default function TermsPage() {
           </p>
           <div className="mt-6 space-y-5 text-sm leading-relaxed text-muted-foreground">
             <section>
-              <h2 className="text-base font-semibold text-foreground">The service</h2>
+              <h2 className="text-sm font-medium text-foreground">The service</h2>
               <p className="mt-1">Moneo provides a private workspace to track accounts, transactions, goals, and plans, with optional AI assistance. Features may change or break during building.</p>
             </section>
             <section>
-              <h2 className="text-base font-semibold text-foreground">Your responsibilities</h2>
+              <h2 className="text-sm font-medium text-foreground">Your responsibilities</h2>
               <p className="mt-1">Provide accurate information, keep your sign-in link private, and only import data you have the right to use. You remain responsible for your financial decisions.</p>
             </section>
             <section>
-              <h2 className="text-base font-semibold text-foreground">No financial advice or money movement</h2>
+              <h2 className="text-sm font-medium text-foreground">No financial advice or money movement</h2>
               <p className="mt-1">Moneo shows calculations, forecasts, and AI suggestions for information only — not financial advice. Moneo never moves money: no payments, transfers, or trading. Future bank connections import data only.</p>
             </section>
             <section>
-              <h2 className="text-base font-semibold text-foreground">AI output</h2>
+              <h2 className="text-sm font-medium text-foreground">AI output</h2>
               <p className="mt-1">AI can make mistakes. Forecasts expose assumptions and missing information — check important figures against your source records before acting.</p>
             </section>
             <section>
-              <h2 className="text-base font-semibold text-foreground">Availability and changes</h2>
+              <h2 className="text-sm font-medium text-foreground">Availability and changes</h2>
               <p className="mt-1">As a pre-launch app, Moneo may be unavailable, reset test data, or change features at any time. Final limits, pricing, and support terms will be published at launch.</p>
             </section>
             <p className="text-xs">Last updated: October 2026 · This is a pre-launch draft, not legal advice.</p>

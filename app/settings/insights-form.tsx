@@ -7,7 +7,7 @@ import { formatInputAmount } from "@/lib/finance/format";
 export function InsightsForm({ preferences, dismissedCount }: { preferences: InsightPreferences; dismissedCount: number }) {
   const [state, action, pending] = useActionState(saveInsightPreferences, {});
   const field = "min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm font-normal";
-  return <section className="rounded-xl border border-border bg-card p-6"><h2 className="text-base font-semibold">Insight relevance</h2>
+  return <section className="rounded-xl border border-border bg-card p-6"><h2 className="text-sm font-medium">Insight relevance</h2>
     <p className="mt-1 text-sm text-muted-foreground">Choose which insights are worth showing. They are calculated in the app; no AI provider receives your data for them.</p>
     <form action={action} className="mt-4 grid gap-3 sm:grid-cols-2">
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="importantOnly" defaultChecked={preferences.important_only} />Important insights only</label>

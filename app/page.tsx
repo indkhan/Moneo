@@ -3,14 +3,14 @@ import { HomeLiquidity } from "./account-liquidity-summary";
 import { DatedOverview } from "./dated-overview";
 import { ManualBalanceForm } from "./manual-balance-form";
 import { ImportantInsights, loadInsightEvidence } from "./insights/panel";
-import { Kpi, KpiFallback, MonthSpendingKpi, RecentTransactions, SectionFallback, SpendingPanel, card } from "./home-sections";
+import { Figure, Kpi, KpiFallback, MonthSpendingKpi, RecentTransactions, SectionFallback, SpendingPanel, card } from "./home-sections";
 import { Suspense, type ReactNode } from "react";
 import { dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
 import { loadHomeSpending } from "@/lib/finance/dashboard-spending";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { getSupabaseConfig } from "@/lib/env";
-import { convertFx } from "@/lib/finance/fx";
+import { convertFx, minorDigits } from "@/lib/finance/fx";
 import { createAccount } from "./actions";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
@@ -21,9 +21,11 @@ import { AgentBriefing } from "./agent-briefing";
 import { AskAbout } from "@/components/ask-about";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
-import { Plus } from "lucide-react";
+import { LayoutGrid, Plus, Sparkle } from "lucide-react";
 
-const WIDE = new Set(["overview", "spending", "accounts"]);
+// The design pairs a wide card with a narrow one; dense flow fills the gaps whatever order the layout picks.
+const FULL = new Set(["overview"]);
+const WIDE = new Set(["spending", "accounts", "insights", "recent"]);
 
 export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string; month?: string }> } = {}) {
   const params = await searchParams;
@@ -67,11 +69,17 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const missingInputs: string[] = [];
   let netWorthMinor = 0n;
   let convertedCount = 0;
-  const addConverted = (amountMinor: bigint, from: string, asOf: string, source: string, name: string) => {
+  // Split by sign for the hero: positive accounts, positive valuations, and everything owed.
+  const parts = { cash: 0n, assets: 0n, debts: 0n };
+  const addConverted = (amountMinor: bigint, from: string, asOf: string, source: string, name: string, part: "cash" | "assets") => {
     const rate = from === displayCurrency ? undefined : fxRates.find(row => row.from_currency === from && String(row.rate_date).slice(0, 10) <= asOf);
     try {
       const result = convertFx({ amountMinor, from, to: displayCurrency, rate: rate?.rate_text, source: rate?.source ?? source, date: rate ? String(rate.rate_date).slice(0, 10) : asOf });
-      if (result.status === "available") { netWorthMinor += result.converted.amountMinor; convertedCount += 1; }
+      if (result.status === "available") {
+        const converted = result.converted.amountMinor;
+        netWorthMinor += converted; convertedCount += 1;
+        parts[converted < 0n ? "debts" : part] += converted;
+      }
       else missingInputs.push(...result.missingInputs.map(input => `${input} for ${name}`));
     } catch {
       missingInputs.push(`rate:${from}->${displayCurrency} for ${name}`);
@@ -80,11 +88,11 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   for (const account of accounts) {
     const { balance } = account;
     if (balance.amount_minor === null) { missingInputs.push(`balance:${account.name}`); continue; }
-    addConverted(BigInt(balance.amount_minor), balance.currency_code, calendarDate(balance.as_of!, workspace.timezone), balance.provenance || "balance", account.name);
+    addConverted(BigInt(balance.amount_minor), balance.currency_code, calendarDate(balance.as_of!, workspace.timezone), balance.provenance || "balance", account.name, "cash");
   }
   const valuations = wealthEvidence(wealthItems, today);
   missingInputs.push(...valuations.missingInputs);
-  for (const valuation of valuations.included) addConverted(valuation.amountMinor, valuation.currencyCode, valuation.asOf, valuation.provenance, valuation.name);
+  for (const valuation of valuations.included) addConverted(valuation.amountMinor, valuation.currencyCode, valuation.asOf, valuation.provenance, valuation.name, "assets");
 
   const upcoming = (projection.input?.events ?? []).filter(event => event.expectedMinor < 0n && event.source !== "estimated").sort((a, b) => a.date.localeCompare(b.date));
   const upcomingMinor = upcoming.reduce((sum, event) => sum + event.expectedMinor, 0n);
@@ -95,32 +103,46 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const sectionProps = { db: supabase, workspaceId: workspace.id, currency: displayCurrency, today, locale };
 
   const widgets: Record<string, ReactNode> = {
-    overview: <section aria-label="Overview" className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi label="Net worth" href="/plan/currency" action={displayCurrency}>
-          {!accounts.length && !wealthItems.length ? <p className="mt-2 text-sm text-muted-foreground">Add an account to see your net worth.</p>
-            : convertedCount > 0 ? <p className="mt-1 font-mono text-2xl font-semibold tracking-tight">{money(netWorthMinor, displayCurrency)}{missingInputs.length > 0 && <span className="ml-2 align-middle text-xs font-normal text-amber-700">Partial</span>}</p>
-            : <p className="mt-2 text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
-          {missingInputs.length > 0 ? <details className="mt-1 text-xs text-muted-foreground"><summary className="cursor-pointer text-brand">{convertedCount > 0 ? "Some balances or rates are missing" : "See what is missing"}</summary><ul className="mt-2 list-disc space-y-1 pl-4">{describeMissingInputs(missingInputs).map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>
-            : convertedCount > 0 && <p className="mt-1 text-xs text-muted-foreground">Includes debts and valuations.</p>}
-        </Kpi>
-        <Kpi label="Cash available" href="/plan" action="Forecast">
-          {available?.status === "available" ? <><p className="mt-1 font-mono text-2xl font-semibold tracking-tight">{money(available.amountMinor, displayCurrency)}</p><p className="mt-1 text-xs text-muted-foreground">After upcoming payments and your buffer · lowest on {available.limitingDate}</p></>
-            : <p className="mt-2 text-sm text-muted-foreground">Add a balance for each spending account to see this.</p>}
-        </Kpi>
+    overview: <section aria-label="Overview" className="grid gap-4 lg:grid-cols-3">
+      <div className={`${card} flex flex-col gap-5 lg:col-span-2`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5"><h2 className="text-sm font-medium">Net worth</h2>
+            {convertedCount > 0 && <span className="rounded-md border border-dashed border-input px-2 py-0.5 font-mono text-[11px] text-muted-foreground">traced · {accounts.length} accounts · {valuations.included.length} valuations</span>}</div>
+          <Link href="/plan/currency" className="rounded-lg border border-input px-2.5 py-1 font-mono text-xs text-muted-foreground hover:text-foreground">{displayCurrency}</Link>
+        </div>
+        {!accounts.length && !wealthItems.length ? <p className="text-sm text-muted-foreground">Add an account to see your net worth.</p>
+          : convertedCount > 0 ? <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><Figure value={money(netWorthMinor, displayCurrency)} digits={minorDigits(displayCurrency)} className="display-figure text-5xl sm:text-7xl" />{missingInputs.length > 0 && <span className="font-mono text-xs text-warning">Partial</span>}</div>
+          : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
+        {missingInputs.length > 0 ? <details className="text-xs text-muted-foreground"><summary className="cursor-pointer text-brand">{convertedCount > 0 ? "Some balances or rates are missing" : "See what is missing"}</summary><ul className="mt-2 list-disc space-y-1 pl-4">{describeMissingInputs(missingInputs).map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>
+          : convertedCount > 0 && <p className="-mt-2 text-xs text-muted-foreground">Includes debts and valuations.</p>}
+        {convertedCount > 0 && <dl className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] bg-border sm:grid-cols-3">
+          {([["Cash & accounts", parts.cash, "/money/accounts"], ["Assets", parts.assets, "/money/wealth"], ["Debts", parts.debts, "/money/wealth"]] as const).map(([label, amount, href]) =>
+            <div key={label} className="bg-card"><Link href={href} className="flex flex-col gap-1 px-4 py-3.5 hover:bg-muted"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-mono">{money(amount, displayCurrency)}</dd></Link></div>)}
+        </dl>}
+        <DatedOverview accounts={accounts} wealth={wealthItems} today={today} locale={locale} />
+      </div>
+      <div className={`${card} flex flex-col gap-4`}>
+        <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">This month</h2><span className="font-mono text-[11px] text-subtle">day {Number(today.slice(8, 10))} / {new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).getUTCDate()}</span></div>
         <Suspense fallback={<KpiFallback label="Spent this month" />}><MonthSpendingKpi {...sectionProps} /></Suspense>
         <Kpi label="Upcoming payments" href="/money/recurring" action="Recurring">
-          {upcoming.length ? <><p className="mt-1 font-mono text-2xl font-semibold tracking-tight">{money(-upcomingMinor, displayCurrency)}</p><p className="mt-1 truncate text-xs text-muted-foreground">{upcoming.length} confirmed in 30 days · next {upcoming[0].name ?? "payment"} on {upcoming[0].date}</p></>
-            : <p className="mt-2 text-sm text-muted-foreground">No confirmed payments in the next 30 days.</p>}
+          {upcoming.length ? <><p className="mt-1 font-mono text-xl">{money(-upcomingMinor, displayCurrency)}</p><p className="mt-1 truncate text-xs text-muted-foreground">{upcoming.length} confirmed in 30 days · next {upcoming[0].name ?? "payment"} on {upcoming[0].date}</p></>
+            : <p className="mt-1 text-sm text-muted-foreground">No confirmed payments in the next 30 days.</p>}
         </Kpi>
+        <Kpi label="Cash available" href="/plan" action="Forecast">
+          {available?.status === "available" ? <><p className="display-figure mt-1 text-[32px]">{money(available.amountMinor, displayCurrency)}</p><p className="mt-1 text-xs text-muted-foreground">After upcoming payments and your buffer</p></>
+            : <p className="mt-1 text-sm text-muted-foreground">Add a balance for each spending account to see this.</p>}
+        </Kpi>
+        {available?.status === "available" && <div className="mt-auto flex flex-col gap-1.5 rounded-[14px] border border-ai-border bg-ai-soft p-3.5">
+          <p className="flex items-center gap-2 text-xs text-ai"><Sparkle className="size-3.5 fill-current" aria-hidden="true" />Cash-flow forecast</p>
+          <p className="text-[13px]">Lowest point on <span className="font-mono">{available.limitingDate}</span>. <Link href="/plan" className="text-brand hover:underline">See forecast</Link></p>
+        </div>}
       </div>
-      <DatedOverview accounts={accounts} wealth={wealthItems} today={today} locale={locale} />
     </section>,
     spending: <Suspense fallback={<SectionFallback title="Spending" />}><SpendingPanel {...sectionProps} month={typeof params?.month === "string" ? params.month : undefined} /></Suspense>,
     recent: <Suspense fallback={<SectionFallback title="Recent transactions" />}><RecentTransactions db={supabase} workspaceId={workspace.id} locale={locale} names={accountNames} /></Suspense>,
     planning: projection.liquidity && <section aria-label="Available funds"><HomeLiquidity liquidity={projection.liquidity} accountId={accountId} names={accountNames} locale={locale} coverage={<SourceCoverageDetails coverage={projection.sourceCoverage} />} /></section>,
     accounts: <section aria-labelledby="home-accounts" className={card}>
-      <div className="flex items-baseline justify-between gap-2"><h2 id="home-accounts" className="text-base font-semibold">Accounts</h2><span className="text-sm text-muted-foreground">{accounts.length} total</span></div>
+      <div className="flex items-baseline justify-between gap-2"><h2 id="home-accounts" className="text-sm font-medium">Accounts</h2><span className="text-sm text-muted-foreground">{accounts.length} total</span></div>
       {!accounts.length && <p className="mt-3 text-sm text-muted-foreground">No accounts yet. <Link className="text-brand underline" href="/import">Import a statement</Link> or add one below.</p>}
       <ul className="mt-2 divide-y divide-border">{accounts.map(account => { const { balance } = account; return <li key={account.id}><article className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5">
         <div className="min-w-0 flex-1"><h3 className="truncate text-sm font-medium">{account.name}</h3><p className="truncate text-xs text-muted-foreground"><span className="capitalize">{account.type}</span> · {balance.as_of ? `As of ${calendarDate(balance.as_of, workspace.timezone)} · ${balance.status.replaceAll("_", " ")}` : "Add a dated balance"}</p></div>
@@ -133,13 +155,13 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
       <form action={createAccount} className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3"><input name="name" required maxLength={120} placeholder="New account name" aria-label="Account name" className="min-h-9 min-w-36 flex-1 rounded-lg border border-border bg-card px-3 py-1.5 text-sm" /><select name="type" aria-label="Account type" className="min-h-9 rounded-lg border border-border bg-card px-2 py-1.5 text-sm"><option value="checking">Checking</option><option value="savings">Savings</option><option value="cash">Cash</option><option value="credit">Credit</option><option value="investment">Investment</option><option value="wallet">Wallet</option><option value="other">Other</option></select><input name="currency" defaultValue={displayCurrency} maxLength={3} aria-label="Currency code" className="min-h-9 w-16 rounded-lg border border-border bg-card px-2 py-1.5 text-sm" /><button className="inline-flex min-h-9 items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"><Plus size={14} /> Add account</button></form>
     </section>,
     upcoming: <section className={card}>
-      <div className="flex items-baseline justify-between gap-2"><h2 className="text-base font-semibold">Upcoming payments</h2><Link href="/money/recurring" className="text-sm font-medium text-brand hover:underline">Recurring</Link></div>
+      <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">Upcoming payments</h2><Link href="/money/recurring" className="text-sm font-medium text-brand hover:underline">Recurring</Link></div>
       <p className="mt-1 text-xs text-muted-foreground">Confirmed payments over the next 30 days, in {displayCurrency}.</p>
       {upcoming.length ? <ul className="mt-2 divide-y divide-border">{upcoming.slice(0, 8).map((event, index) => <li key={`${event.accountId}:${event.date}:${index}`} className="flex items-center gap-3 py-2 text-sm"><span className="w-20 shrink-0 font-mono text-xs text-muted-foreground">{event.date}</span><span className="min-w-0 flex-1 truncate">{event.name ?? "Confirmed payment"} <span className="text-xs text-muted-foreground">· {accountNames.get(event.accountId) ?? "Account"}</span></span><span className="shrink-0 font-mono">{money(event.expectedMinor, displayCurrency)}</span></li>)}</ul>
         : <p className="mt-3 text-sm text-muted-foreground">No confirmed payments in this forecast.</p>}
     </section>,
     goals: <section className={card}>
-      <div className="flex items-baseline justify-between gap-2"><h2 className="text-base font-semibold">Goals</h2><Link href="/plan" className="text-sm font-medium text-brand hover:underline">Plan</Link></div>
+      <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">Goals</h2><Link href="/plan" className="text-sm font-medium text-brand hover:underline">Plan</Link></div>
       <p className="mt-1 text-xs text-muted-foreground">Reserving money for a goal does not move it.</p>
       <ul className="mt-2 divide-y divide-border">{(goals.data ?? []).map(goal => { const reservations = (allocations.data ?? []).filter(row => row.goal_id === goal.id); const comparable = reservations.every(row => accounts.find(account => account.id === row.account_id)?.currency_code === goal.currency_code); const reserved = reservations.reduce((sum, row) => sum + BigInt(row.amount_minor), 0n); return <li key={goal.id} className="py-2 text-sm"><Link href="/plan" className="font-medium hover:underline">{goal.name}</Link><p className="text-xs text-muted-foreground">{comparable ? money(reserved, goal.currency_code) : "Reservation conversion required"} reserved of {money(goal.target_minor, goal.currency_code)}{goal.target_date ? ` · target ${goal.target_date}` : ""}</p></li>; })}</ul>
       {!goals.data?.length && <p className="mt-3 text-sm text-muted-foreground">No goals yet. <Link href="/plan" className="underline">Create a goal</Link>.</p>}
@@ -150,17 +172,17 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   };
 
   return (
-    <main className="mx-auto w-full max-w-7xl space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="page-title">Home</h1><p className="text-sm text-muted-foreground">As of {today} · {displayCurrency}</p></div>
-        <div className="flex items-center gap-2">
-          <Link href="/settings" className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted">Customize</Link>
-          <Link href="/import" className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"><Plus size={15} /> Import statement</Link>
+    <main className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
+      <header className="mb-2 flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-1"><p className="eyebrow">{new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))} · {displayCurrency}</p><h1 className="page-title">Overview</h1></div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/settings" className="inline-flex h-11 items-center gap-2 rounded-xl border border-input px-4 text-[13px] hover:bg-muted"><LayoutGrid className="size-4" strokeWidth={1.6} aria-hidden="true" />Edit layout</Link>
+          <Link href="/import" className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Plus size={15} /> Import statement</Link>
         </div>
       </header>
       <Suspense fallback={null}><AgentBriefing db={supabase} workspaceId={workspace.id} /></Suspense>
-      <div className="grid gap-4 lg:grid-cols-2">
-        {ordered.map(key => <div key={key} className={WIDE.has(key) ? "min-w-0 lg:col-span-2" : "min-w-0"}>{widgets[key]}</div>)}
+      <div className="grid grid-flow-dense gap-4 lg:grid-cols-3">
+        {ordered.map(key => <div key={key} className={FULL.has(key) ? "min-w-0 lg:col-span-3" : WIDE.has(key) ? "min-w-0 lg:col-span-2" : "min-w-0"}>{widgets[key]}</div>)}
       </div>
     </main>
   );

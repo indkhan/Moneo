@@ -150,13 +150,13 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
     {!run.tasks.length && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" aria-hidden="true" />The lead is planning the work…</p>}
 
     {run.briefing && <section aria-label="Briefing" className="rounded-xl border border-brand/40 bg-card p-5">
-      <h2 className="flex items-center gap-2 text-base font-semibold"><Sparkles className="size-4 text-brand" aria-hidden="true" />Briefing</h2>
+      <h2 className="flex items-center gap-2 text-sm font-medium"><Sparkles className="size-4 text-brand" aria-hidden="true" />Briefing</h2>
       <div className="mt-2 space-y-2 text-sm leading-relaxed">{run.briefing.split(/\n{2,}/).map(paragraph => <p key={paragraph}>{paragraph}</p>)}</div>
       <p className="mt-2 text-xs text-muted-foreground">Every figure comes from application code; the writer is only allowed to repeat them.</p>
     </section>}
 
     {decided.length > 0 && <section aria-labelledby="decided-heading" className="space-y-2">
-      <h2 id="decided-heading" className="text-base font-semibold">Decided automatically <span className="text-muted-foreground">({decided.length})</span></h2>
+      <h2 id="decided-heading" className="text-sm font-medium">Decided automatically <span className="text-muted-foreground">({decided.length})</span></h2>
       <p className="text-xs text-muted-foreground">The Categorizer applied these itself. Each one is an audited batch; open it to check the rows or Undo.</p>
       <ul className="space-y-2">{decided.map(item => <li key={item.id} className="rounded-xl border border-border bg-card p-3">
         <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{item.title}</p>{pill(item.status, "applied")}</div>
@@ -168,7 +168,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
 
     <section aria-labelledby="review-heading" className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 id="review-heading" className="mr-auto text-base font-semibold">Review <span className="text-muted-foreground">({open.length} open of {manual.length})</span></h2>
+        <h2 id="review-heading" className="mr-auto text-sm font-medium">Review <span className="text-muted-foreground">({open.length} open of {manual.length})</span></h2>
         {reviewable && open.length > 0 && <>
           <button type="button" onClick={() => setSelected(selected.size === open.length ? new Set() : new Set(open.map(item => item.id)))} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">{selected.size === open.length ? "Clear selection" : "Select all"}</button>
           <button type="button" disabled={pending || !selected.size} onClick={() => decide([...selected], "reject")} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">Reject selected</button>

@@ -51,7 +51,7 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
    <p className="mt-2 text-sm text-muted-foreground">Select entries, pick a category, preview, approve. Every batch can be undone.</p></header>
   {reviewId&&!review&&<p role="alert" className="text-sm">This review is no longer available.</p>}
   {review&&<section aria-label="Organization impact preview" className={card}>
-   <h2 className="text-base font-semibold">{batch.data?.undone?'Undone':review.status==='applied'?'Applied':review.status==='dismissed'?'Dismissed':'Review changes'}</h2>
+   <h2 className="text-sm font-medium">{batch.data?.undone?'Undone':review.status==='applied'?'Applied':review.status==='dismissed'?'Dismissed':'Review changes'}</h2>
    <p className="mt-1 text-sm text-muted-foreground">{snapshots.length} {snapshots.length===1?'entry':'entries'} · Total {Object.entries(totals).map(([currency,minor])=>formatMoney(minor,currency,workspace.locale)).join('; ')} · Only merchant and category change.</p>
    <ul className="mt-3 divide-y divide-border text-sm">{snapshots.map(row=>{
     const beforeMerchant=merchantName(row.merchant_id)??'unassigned';
@@ -63,7 +63,7 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
    {review.batch_id&&!batch.data?.undone&&currentRows.data.length===snapshots.length&&<UndoReviewForm reviewId={review.id} rows={versionedRows.parse(currentRows.data)} />}
   </section>}
   <section aria-label="Organization suggestions" className="space-y-3">
-   <h2 className="text-base font-semibold">{items.length?`${items.length}${queueRows.length>50?'+':''} to organize`:'Everything here is organized'}</h2>
+   <h2 className="text-sm font-medium">{items.length?`${items.length}${queueRows.length>50?'+':''} to organize`:'Everything here is organized'}</h2>
    {items.length>0&&<OrganizationQueue key={items.map(item=>item.row.id+':'+item.row.version).join(',')} items={items} merchants={merchants.data} categories={categories.data} requestId={crypto.randomUUID()} locale={workspace.locale} />}
    {next&&<Link className="inline-block text-sm underline" href={'/money/organization?'+next}>Older entries</Link>}
    <p className="text-xs text-muted-foreground">Suggestions compare up to 2,000 recent posted entries and 200 rules. For one-off fixes use <Link className="underline" href="/money/transactions">Manual correction in Transactions</Link>.</p>
