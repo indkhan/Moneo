@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M5THFFQRBDJKN1XW1BJX4392",
+  "strategy": "manual-commit",
+  "branch": "claude/frontend-design-impl-fc1fb7",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "components/ai-panel-dialog.tsx",
+    "components/ai-panel.tsx",
+    "components/app-shell.test.tsx",
+    "components/app-shell.tsx",
+    "components/ask-about.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 32,
+    "cache_creation_tokens": 24394,
+    "cache_read_tokens": 3075183,
+    "output_tokens": 16339,
+    "api_call_count": 16
+  },
+  "redaction": {
+    "replacements": 6,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 6,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
