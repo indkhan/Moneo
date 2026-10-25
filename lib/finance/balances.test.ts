@@ -54,6 +54,11 @@ describe("evidenced account balances", () => {
     expect(resolveBalances(accounts, [tied, snapshot], [], now)[0].balance?.status).toBe("ambiguous");
     expect(resolveBalances(accounts, [{ ...snapshot, as_of: "2026-10-02T00:00:00Z" }], [], now)[0].balance?.status).toBe("missing");
   });
+  it("lets display views settle same-moment ties with the most recently recorded balance", () => {
+    const older = { ...snapshot, id: "older", created_at: "2026-09-30T10:00:00Z" }, newer = { ...snapshot, id: "newer", amount_minor: "11000", created_at: "2026-09-30T11:00:00Z" };
+    for (const order of [[older, newer], [newer, older]]) expect(resolveBalances(accounts, order, [], now, undefined, undefined, { preferLatestRecorded: true })[0].balance)
+      .toMatchObject({ amount_minor: "11000", snapshot_amount_minor: "11000", snapshot_valid: true, warnings: expect.arrayContaining([expect.stringContaining("most recently recorded")]) });
+  });
   it("treats same-day date-only rows as included and refuses unsafe numeric database values", () => {
     const today = { ...snapshot, as_of: "2026-10-01T08:00:00Z" };
     expect(resolveBalances(accounts, [today], [], now)[0].balance?.amount_minor).toBe("10000");
