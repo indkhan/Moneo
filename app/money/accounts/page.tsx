@@ -28,12 +28,15 @@ function describeEvent(event: MetaEvent) {
 
 export default async function AccountsPage() {
   const { supabase, workspace } = await requireWorkspace();
-  const [evidence, { data: history, error: historyError }, { data: views, error: viewsError }] = await Promise.all([
+  const [evidence, { data: history, error: historyError }, { data: views, error: viewsError }, { data: bankAccounts, error: bankError }] = await Promise.all([
     loadBalanceEvidence(supabase, workspace.id),
     supabase.from("money_metadata_events").select("id,entity_type,entity_id,before,after,created_at,undone_at,undo_of").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30),
     supabase.from("transaction_views").select("id,version").eq("workspace_id", workspace.id),
+    supabase.from("bank_connection_accounts").select("account_name,currency_code").eq("workspace_id", workspace.id),
   ]);
-  if (historyError || viewsError) throw new Error("Could not load account and saved view history");
+  if (historyError || viewsError || bankError) throw new Error("Could not load account and saved view history");
+  // A bank sync imports into the account with the bank's name and currency, so those accounts take their balance from the sync.
+  const synced = new Set((bankAccounts ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
   const { timezone: timeZone, locale } = workspace;
   const today = calendarDate(evidence.asOf, timeZone);
   const trendFrom = calendarDate(new Date(Date.parse(evidence.asOf) - TREND_DAYS * 86400000), timeZone);
@@ -83,15 +86,14 @@ export default async function AccountsPage() {
           <Sparkline points={trend} label={`${account.name} recorded balance, last ${TREND_DAYS} days`} />
           <div className="min-w-36 text-right">
             <p className="font-mono text-base font-semibold tabular-nums">{amount === null ? "—" : formatMoney(amount, account.currency_code, locale)}</p>
-            <p className={`text-xs ${account.balance.status === "ambiguous" || account.balance.status === "missing" ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`}>
-              {label}{asOf ? ` · as of ${asOf}` : ""}</p>
+            {account.balance.status === "ambiguous" ? null : <p className={`text-xs ${account.balance.status === "missing" ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`}>
+              {label}{asOf ? ` · as of ${asOf}` : ""}</p>}
           </div>
         </div>
       </div>
       {account.balance.status === "stale" ? <p className="mt-2 px-2 text-xs text-muted-foreground">Last recorded balance plus later activity; update it to confirm.</p> : null}
-      {account.balance.status === "ambiguous" ? <p className="mt-2 px-2 text-xs text-amber-700 dark:text-amber-300">{account.balance.warnings.join("; ")}</p> : null}
       {suggestion ? <div className="mt-2 px-2"><RenameSuggestion account={{ id: account.id, name: account.name, type: account.type ?? "checking", version: account.version ?? 1, archived_at: account.archived_at ?? null }} suggestion={suggestion} requestId={randomUUID()} /></div> : null}
-      {!account.archived_at ? <details className="mt-2 px-2 text-sm" open={account.balance.status === "missing" && active.length === 1}>
+      {!account.archived_at && !synced.has(JSON.stringify([account.name, account.currency_code])) ? <details className="mt-2 px-2 text-sm" open={account.balance.status === "missing" && active.length === 1}>
         <summary className="cursor-pointer text-xs font-medium text-brand">Update balance</summary>
         <div className="mt-3 space-y-3">
           <BalanceForm accountId={account.id} name={account.name} currency={account.currency_code} today={today} requestId={randomUUID()}
