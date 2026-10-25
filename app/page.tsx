@@ -61,7 +61,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     sourceMetadataPromise,
   ]);
   for (const error of [rates.error, layout.error, goals.error, allocations.error]) if (error) throw error;
-  const accounts = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone, sourceMetadata).filter(account => !account.archived_at);
+  const accounts = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone, sourceMetadata, { preferLatestRecorded: true }).filter(account => !account.archived_at);
   const accountNames = new Map(accounts.map(account => [account.id, account.name]));
   const fxRates = rates.data ?? [];
 
@@ -111,9 +111,9 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
           <Link href="/plan/currency" className="rounded-lg border border-input px-2.5 py-1 font-mono text-xs text-muted-foreground hover:text-foreground">{displayCurrency}</Link>
         </div>
         {!accounts.length && !wealthItems.length ? <p className="text-sm text-muted-foreground">Add an account to see your net worth.</p>
-          : convertedCount > 0 ? <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><Figure value={money(netWorthMinor, displayCurrency)} digits={minorDigits(displayCurrency)} className="display-figure text-5xl sm:text-7xl" />{missingInputs.length > 0 && <span className="font-mono text-xs text-warning">Partial</span>}</div>
+          : convertedCount > 0 ? <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><Figure value={money(netWorthMinor, displayCurrency)} digits={minorDigits(displayCurrency)} className="display-figure text-5xl sm:text-7xl" />{missingInputs.length > 0 && <span className="font-mono text-xs text-warning" title={describeMissingInputs(missingInputs).join("; ")}>Partial</span>}</div>
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
-        {missingInputs.length > 0 ? <details className="text-xs text-muted-foreground"><summary className="cursor-pointer text-brand">{convertedCount > 0 ? "Some balances or rates are missing" : "See what is missing"}</summary><ul className="mt-2 list-disc space-y-1 pl-4">{describeMissingInputs(missingInputs).map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>
+        {convertedCount === 0 && missingInputs.length > 0 ? <details className="text-xs text-muted-foreground"><summary className="cursor-pointer text-brand">See what is missing</summary><ul className="mt-2 list-disc space-y-1 pl-4">{describeMissingInputs(missingInputs).map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>
           : convertedCount > 0 && <p className="-mt-2 text-xs text-muted-foreground">Includes debts and valuations.</p>}
         {convertedCount > 0 && <dl className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] bg-border sm:grid-cols-3">
           {([["Cash & accounts", parts.cash, "/money/accounts"], ["Assets", parts.assets, "/money/wealth"], ["Debts", parts.debts, "/money/wealth"]] as const).map(([label, amount, href]) =>
