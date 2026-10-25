@@ -52,8 +52,8 @@ export default async function InvestigationPage({ searchParams }: { searchParams
     { label: "Last 3 months vs previous 3", from: shift(monthStart, -3), to: endOfMonth(lastMonth), comparisonFrom: shift(monthStart, -6), comparisonTo: endOfMonth(shift(monthStart, -4)) },
     { label: "This year vs last", from: `${today.slice(0, 4)}-01-01`, to: today, comparisonFrom: `${Number(today.slice(0, 4)) - 1}-01-01`, comparisonTo: shift(today, -12) },
   ];
-  return <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-8 lg:py-10">
-    <header><h1 className="page-title">Investigate your money</h1><p className="mt-1 text-sm text-muted-foreground">Compare two periods and open the transactions behind each change.</p></header>
+  return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 sm:px-8 lg:py-8">
+    <header className="flex flex-col gap-1"><p className="eyebrow">Money · compare periods</p><h1 className="page-title">Investigate your money</h1><p className="mt-1 text-sm text-muted-foreground">Compare two periods and open the transactions behind each change.</p></header>
     <nav aria-label="Quick comparisons" className="flex flex-wrap gap-2">{presets.map(preset => {
       const { label, ...dates } = preset;
       return <Link key={label} href={`/money/investigations?${new URLSearchParams({ ...dates, groupBy: "category" })}`} className="rounded-full border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted">{label}</Link>;

@@ -112,12 +112,12 @@ export default async function AccountsPage() {
     </article>;
   };
 
-  return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
+  return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <h1 className="page-title">Accounts</h1>
+        <div className="flex flex-col gap-1"><p className="eyebrow">Money · balances and sources</p><h1 className="page-title">Accounts</h1></div>
         <details className="group relative">
-          <summary className="min-h-9 cursor-pointer list-none rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">Add account</summary>
+          <summary className="inline-flex h-11 cursor-pointer list-none items-center rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90">Add account</summary>
           <form action={addAccount} className="absolute right-0 z-10 mt-2 grid w-72 gap-3 rounded-xl border border-border bg-card p-4 shadow-lg">
             <label className="grid gap-1 text-sm">Name<input name="name" className={field} maxLength={120} required /></label>
             <div className="flex gap-3">

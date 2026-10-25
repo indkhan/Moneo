@@ -28,7 +28,7 @@ export default function ResetPasswordPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-5 py-12">
-      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-sm">
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-8">
         <h1 className="page-title">Set a new password</h1>
         <form onSubmit={save} className="mt-6 space-y-3">
           <label className="block text-sm font-medium" htmlFor="password">New password</label>

@@ -29,10 +29,10 @@ export default async function CurrencyPage() {
   const today = calendarDate(new Date(), workspace.timezone);
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 text-foreground sm:px-8 lg:py-10">
+    <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 text-foreground sm:px-8 lg:py-8">
       <header>
-        <Link href="/plan" className="text-sm text-muted-foreground">← Plan</Link>
-        <h1 className="mt-2 page-title">Currency</h1>
+        <p className="eyebrow"><Link href="/plan" className="hover:text-foreground">Plan</Link> · display and exchange rates</p>
+        <h1 className="mt-1 page-title">Currency</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Choose how amounts are shown. Your original transactions and balances are never changed.
         </p>

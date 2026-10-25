@@ -43,9 +43,10 @@ export default async function RecurringPage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 text-foreground sm:px-8 lg:py-10">
+    <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 text-foreground sm:px-8 lg:py-8">
       <header className="space-y-4">
-        <div>
+        <div className="flex flex-col gap-1">
+          <p className="eyebrow">Money · bills, subscriptions, income</p>
           <h1 className="page-title">Recurring payments</h1>
           <p className="mt-1 text-sm text-muted-foreground">Confirmed bills, subscriptions and income. Suggestions below only reach your forecast once you confirm them.</p>
         </div>

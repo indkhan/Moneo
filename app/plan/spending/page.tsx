@@ -85,10 +85,10 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
   });
   const needsReview = rows.filter(row => row.status === "posted" && row.reviewReasons?.length).length;
 
-  return <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 text-foreground sm:px-8 lg:py-10">
+  return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 text-foreground sm:px-8 lg:py-8">
     <header className="flex flex-wrap items-end justify-between gap-4">
-      <div><Link href="/plan" className="text-sm text-muted-foreground hover:text-foreground">← Plan</Link>
-        <h1 className="mt-2 page-title">Spending limits</h1>
+      <div><p className="eyebrow"><Link href="/plan" className="hover:text-foreground">Plan</Link> · {month}</p>
+        <h1 className="mt-1 page-title">Spending limits</h1>
         <p className="mt-2 text-sm text-muted-foreground">Monthly category limits for {month}. Counts posted spending minus refunds; transfers, pending items and income are left out.</p></div>
       <form method="get" className="flex flex-wrap items-end gap-2"><label className="grid gap-1 text-xs font-medium text-muted-foreground">Calendar month<input type="month" name="month" defaultValue={month} required className={field} /></label><button className={button}>View month</button></form>
     </header>

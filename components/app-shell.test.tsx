@@ -9,7 +9,7 @@ const { AppShell, activeItem } = await import("./app-shell");
 
 it("marks the most specific nav item active", () => {
   expect(activeItem("/")?.label).toBe("Overview");
-  expect(activeItem("/ai/activity/123")?.label).toBe("Run log");
+  expect(activeItem("/ai/activity/123")?.label).toBe("Activity log");
   expect(activeItem("/ai/evidence/9")?.label).toBe("Ask");
   expect(activeItem("/plan/spending")?.label).toBe("Spending");
   expect(activeItem("/import/abc/review")?.label).toBe("Import");

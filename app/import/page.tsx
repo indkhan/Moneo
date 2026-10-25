@@ -324,9 +324,9 @@ export default function ImportPage() {
   }, new Map<string, ImportStatus[]>());
   const extension = file?.name.toLowerCase().endsWith(".xlsx") ? "Excel workbook" : "CSV";
 
-  return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
+  return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="space-y-5">
-      <div><p className="eyebrow">Money / Import</p><h1 className="mt-2 page-title">Import financial data</h1><p className="mt-2 text-sm text-muted-foreground">Drop CSV or XLSX statements. Only rows that need a decision are shown, and every import can be undone.</p></div>
+      <div><p className="eyebrow">Money · Import</p><h1 className="mt-2 page-title">Import financial data</h1><p className="mt-2 text-sm text-muted-foreground">Drop CSV or XLSX statements. Only rows that need a decision are shown, and every import can be undone.</p></div>
       <ol className="flex flex-wrap gap-x-6 gap-y-2 text-sm" aria-label="Import steps">{STEPS.map((label, i) =>
         <li key={label} aria-current={i === step ? "step" : undefined} className={`flex items-center gap-2 ${i === step ? "font-medium text-foreground" : i < step ? "text-foreground" : "text-muted-foreground"}`}>
           <span className={`grid size-6 place-items-center rounded-full text-xs ${i === step ? "bg-brand text-white" : i < step ? "bg-muted text-brand" : "border border-border"}`}>{i < step ? "✓" : i + 1}</span>{label}

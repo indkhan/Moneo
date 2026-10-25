@@ -55,9 +55,10 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const day = (iso: string) => new Date(iso).toLocaleDateString(workspace.locale, { timeZone: workspace.timezone, dateStyle: "medium" });
   const groups = visible.reduce((map, item) => map.set(day(item.at), [...(map.get(day(item.at)) ?? []), item]), new Map<string, Item[]>());
 
-  return <main className="mx-auto w-full max-w-4xl space-y-6 px-4 py-8 sm:px-8 lg:py-10">
-    <header>
-      <h1 className="page-title">Activity</h1>
+  return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 sm:px-8 lg:py-8">
+    <header className="flex flex-col gap-1">
+      <p className="eyebrow">Imports · analyses · chats</p>
+      <h1 className="page-title">Activity log</h1>
       <p className="mt-2 text-sm text-muted-foreground">Imports, analyses and chats in one feed. Failures and rows waiting for you are under Needs attention.</p>
     </header>
     <nav aria-label="Activity filters" className="flex flex-wrap gap-2">{Object.entries(FILTERS).map(([key, label]) =>

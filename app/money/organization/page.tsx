@@ -46,7 +46,7 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
  const patchMerchant=review?(review.merchant_name??(Object.hasOwn(review.patch,'merchant_id')?merchantName(review.patch.merchant_id)??'no merchant':undefined)):undefined;
  const patchCategory=review&&Object.hasOwn(review.patch,'category_id')?categoryName(review.patch.category_id)??'uncategorized':undefined;
  const card='rounded-xl border border-border bg-card p-6';
- return <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 text-foreground sm:px-8 lg:py-10">
+ return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 text-foreground sm:px-8 lg:py-8">
   <header><p className="eyebrow">Money</p><h1 className="mt-1 page-title">Organize spending</h1>
    <p className="mt-2 text-sm text-muted-foreground">Select entries, pick a category, preview, approve. Every batch can be undone.</p></header>
   {reviewId&&!review&&<p role="alert" className="text-sm">This review is no longer available.</p>}

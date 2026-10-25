@@ -36,7 +36,7 @@ const rail: RailItem[] = [
   { label: "Ask", href: "/ai", icon: MessageSquare, go: "c" },
   { label: "Agents", href: "/ai/agents", icon: Network, items: [
     { label: "Agent team", href: "/ai/agents", icon: Network, go: "m" },
-    { label: "Run log", href: "/ai/activity", icon: ListChecks },
+    { label: "Activity log", href: "/ai/activity", icon: ListChecks },
   ] },
   { label: "Artifacts", href: "/ai/artifacts", icon: Layers },
 ];

@@ -36,7 +36,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
     <aside className="flex min-h-0 flex-col gap-4">
       <div>
         <Link href="/ai/artifacts" className="text-xs text-muted-foreground hover:underline">← Artifacts</Link>
-        <h1 className="mt-1 page-title">{artifact.data.title}</h1>
+        <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight">{artifact.data.title}</h1>
       </div>
       <ol aria-label="Versions" className="grid min-h-0 flex-1 content-start gap-2 overflow-y-auto">
         {versions.data.map(item => <li key={item.version}>

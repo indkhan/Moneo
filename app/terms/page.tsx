@@ -12,11 +12,11 @@ export default function TermsPage() {
       <div className="w-full max-w-2xl">
         <div className="mb-6 flex items-center gap-3">
           <Link href="/" className="flex items-center gap-2.5" aria-label="Moneo home">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">M</span>
-            <span className="text-base font-semibold tracking-tight">Moneo</span>
+            <span className="flex size-8 items-center justify-center rounded-[10px] bg-lime font-display text-lg font-bold tracking-tighter text-[#0f1011]">m</span>
+            <span className="font-display text-base font-semibold tracking-tight">Moneo</span>
           </Link>
         </div>
-        <div className="rounded-2xl border border-border bg-card p-8 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-8">
           <p className="eyebrow">Terms</p>
           <h1 className="mt-2 page-title">Terms of use</h1>
           <p className="mt-3 rounded-lg border border-warning/40 bg-warning-soft px-3 py-2 text-sm text-warning">

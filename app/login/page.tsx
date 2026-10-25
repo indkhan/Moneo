@@ -69,8 +69,8 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-5 py-12">
-      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-sm">
-        <div className="mb-8 flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-lg bg-primary text-lg font-bold text-primary-foreground">M</span><span className="text-lg font-semibold tracking-tight">Moneo</span></div>
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-8">
+        <div className="mb-8 flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-lime font-display text-[22px] font-bold tracking-tighter text-[#0f1011]">m</span><span className="font-display text-lg font-semibold tracking-tight">Moneo</span></div>
         <p className="eyebrow">Your workspace</p>
         <h1 className="mt-2 page-title">{copy[mode].title}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{copy[mode].hint}</p>

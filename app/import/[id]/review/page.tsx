@@ -43,9 +43,9 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
       .contains("after", { operation: "classification_review" }).order("created_at", { ascending: false }).limit(20),
   ]);
 
-  return <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-8 lg:py-10">
+  return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
     <Link href="/import" className="text-sm underline">← Import history</Link>
-    <div><p className="eyebrow">Money / Import review</p><h1 className="mt-2 page-title">Review: {imported.filename}</h1><p className="mt-2 text-sm text-muted-foreground">{imported.review_rows} unclear rows are left out of your totals until you decide.</p></div>
+    <div><p className="eyebrow">Money · Import review</p><h1 className="mt-2 page-title">Review: {imported.filename}</h1><p className="mt-2 text-sm text-muted-foreground">{imported.review_rows} unclear rows are left out of your totals until you decide.</p></div>
     {error && <p role="alert" className="text-sm text-danger">Could not load review rows: {error.message}</p>}
     {!error && !rows?.length && <p className="text-sm text-muted-foreground">No rows awaiting review.</p>}
     {rows?.map((row) => {
