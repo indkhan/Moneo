@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bot, Check, ChevronRight, CircleDashed, CircleSlash, Info, LoaderCircle, Play, Sparkles, Square, Wrench, X } from "lucide-react";
+import { Check, ChevronRight, CircleDashed, CircleSlash, Info, LoaderCircle, Play, Sparkles, Square, Wrench, X } from "lucide-react";
 import { AGENTS, WAVES, type AgentId, type ProposalKind } from "@/lib/ai/agent-team";
 import type { AgentProposalView, AgentRunView, AgentTaskView } from "@/lib/ai/agent-state";
 import { formatMoney } from "@/lib/finance/format";
@@ -38,10 +38,10 @@ function duration(task: AgentTaskView) {
 
 function AgentCard({ task }: { task: AgentTaskView }) {
   const meta = AGENTS[task.agent];
-  return <article aria-label={meta.name} className={`flex min-w-0 flex-col rounded-xl border bg-card p-4 ${task.status === "running" ? "border-brand shadow-[0_0_0_3px] shadow-brand/10" : "border-border"}`}>
+  return <article aria-label={meta.name} className={`flex min-w-0 flex-col rounded-xl border bg-card p-4 ${task.status === "running" ? "border-ai shadow-[0_0_0_3px] shadow-ai/15" : "border-border"}`}>
     <header className="flex items-start gap-2">
       <StatusIcon status={task.status} />
-      <div className="min-w-0 flex-1"><h3 className="text-sm font-semibold">{meta.name}</h3><p className="text-xs text-muted-foreground">{meta.role}</p></div>
+      <div className="min-w-0 flex-1"><h3 className="text-sm font-medium">{meta.name}</h3><p className="text-xs text-muted-foreground">{meta.role}</p></div>
       {pill(task.status)}
     </header>
     {task.step && task.status !== "done" && <p className="mt-2 text-sm" aria-live="polite">{task.step}</p>}
@@ -126,7 +126,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
   return <div className="space-y-6">
     <header className="flex flex-wrap items-center gap-3">
       <div className="mr-auto min-w-0">
-        <h1 className="flex items-center gap-2 page-title"><Bot className="size-6 text-brand" aria-hidden="true" />Agent team {pill(run.status)}</h1>
+        <h1 className="flex flex-wrap items-center gap-3 page-title">Agent team {pill(run.status)}</h1>
         <p className="text-sm text-muted-foreground">{run.trigger === "import" ? "Started when your import finished" : "Started manually"} · {new Date(run.created_at).toLocaleString(locale)} · {model}</p>
       </div>
       {active && <button type="button" onClick={() => void control("cancel")} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"><Square className="size-3.5" aria-hidden="true" />Stop</button>}
@@ -135,8 +135,8 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
     {run.tasks.length > 0 && <TeamFlow statuses={Object.fromEntries(run.tasks.map(task => [task.agent, task.status]))} finished={run.status === "completed"} />}
     {run.error && <p role="alert" className="rounded-lg bg-danger-soft p-3 text-sm text-danger">{run.error}</p>}
 
-    {lead && <section aria-label="Lead agent" className="rounded-xl border border-border bg-card p-4">
-      <div className="flex items-center gap-2"><StatusIcon status={lead.status} /><h2 className="text-sm font-semibold">Lead</h2><span className="text-xs text-muted-foreground">{lead.summary ?? lead.step}</span></div>
+    {lead && <section aria-label="Lead agent" className="rounded-xl border border-ai-border bg-ai-soft p-5">
+      <div className="flex items-center gap-2"><StatusIcon status={lead.status} /><h2 className="text-sm font-medium text-ai">Lead</h2><span className="text-xs text-muted-foreground">{lead.summary ?? lead.step}</span></div>
       <ol className="mt-2 grid gap-x-6 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2">{lead.events.slice(-8).map((event, index) => <li key={`${event.at}-${index}`} className="flex gap-1.5"><ChevronRight className="mt-0.5 size-3 shrink-0" aria-hidden="true" />{event.text}</li>)}</ol>
     </section>}
 
@@ -149,16 +149,16 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
     })}
     {!run.tasks.length && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" aria-hidden="true" />The lead is planning the work…</p>}
 
-    {run.briefing && <section aria-label="Briefing" className="rounded-xl border border-brand/40 bg-card p-5">
-      <h2 className="flex items-center gap-2 text-sm font-medium"><Sparkles className="size-4 text-brand" aria-hidden="true" />Briefing</h2>
-      <div className="mt-2 space-y-2 text-sm leading-relaxed">{run.briefing.split(/\n{2,}/).map(paragraph => <p key={paragraph}>{paragraph}</p>)}</div>
+    {run.briefing && <section aria-label="Briefing" className="rounded-xl border border-border bg-card p-6 sm:p-7">
+      <h2 className="flex items-center gap-2 text-sm font-medium"><Sparkles className="size-4 text-ai" aria-hidden="true" />Briefing</h2>
+      <div className="mt-3 space-y-2 text-[15px] leading-relaxed text-pretty">{run.briefing.split(/\n{2,}/).map(paragraph => <p key={paragraph}>{paragraph}</p>)}</div>
       <p className="mt-2 text-xs text-muted-foreground">Every figure comes from application code; the writer is only allowed to repeat them.</p>
     </section>}
 
     {decided.length > 0 && <section aria-labelledby="decided-heading" className="space-y-2">
       <h2 id="decided-heading" className="text-sm font-medium">Decided automatically <span className="text-muted-foreground">({decided.length})</span></h2>
       <p className="text-xs text-muted-foreground">The Categorizer applied these itself. Each one is an audited batch; open it to check the rows or Undo.</p>
-      <ul className="space-y-2">{decided.map(item => <li key={item.id} className="rounded-xl border border-border bg-card p-3">
+      <ul className="space-y-2">{decided.map(item => <li key={item.id} className="rounded-2xl border border-border bg-card px-5 py-4">
         <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{item.title}</p>{pill(item.status, "applied")}</div>
         <p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
         {item.result?.href && <p className="mt-1 text-xs"><Link href={item.result.href} className="text-brand underline">Open · Undo</Link></p>}
@@ -168,11 +168,11 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
 
     <section aria-labelledby="review-heading" className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 id="review-heading" className="mr-auto text-sm font-medium">Review <span className="text-muted-foreground">({open.length} open of {manual.length})</span></h2>
+        <h2 id="review-heading" className="mr-auto font-display text-2xl font-semibold tracking-tight">Review <span className="font-sans text-sm font-normal text-muted-foreground">({open.length} open of {manual.length})</span></h2>
         {reviewable && open.length > 0 && <>
-          <button type="button" onClick={() => setSelected(selected.size === open.length ? new Set() : new Set(open.map(item => item.id)))} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">{selected.size === open.length ? "Clear selection" : "Select all"}</button>
-          <button type="button" disabled={pending || !selected.size} onClick={() => decide([...selected], "reject")} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50">Reject selected</button>
-          <button type="button" disabled={pending || !selected.size} onClick={() => decide([...selected], "accept")} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">{pending ? "Applying…" : `Accept selected (${selected.size})`}</button>
+          <button type="button" onClick={() => setSelected(selected.size === open.length ? new Set() : new Set(open.map(item => item.id)))} className="h-10 rounded-[10px] border border-input px-3.5 text-[13px] hover:bg-muted">{selected.size === open.length ? "Clear selection" : "Select all"}</button>
+          <button type="button" disabled={pending || !selected.size} onClick={() => decide([...selected], "reject")} className="h-10 rounded-[10px] border border-input px-3.5 text-[13px] hover:bg-muted disabled:opacity-50">Reject selected</button>
+          <button type="button" disabled={pending || !selected.size} onClick={() => decide([...selected], "accept")} className="h-10 rounded-[10px] bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">{pending ? "Applying…" : `Accept selected (${selected.size})`}</button>
         </>}
       </div>
       <p className="text-xs text-muted-foreground">{reviewable ? "Nothing changes until you accept. Accepted changes use the same audited actions as the rest of Moneo, so history and Undo keep working." : "Proposals stream in as agents work. Review opens when the team finishes."}</p>
@@ -181,23 +181,24 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
         <h3 className="eyebrow">{KIND_LABELS[kind]}</h3>
         <ul className="space-y-2">{manual.filter(item => item.kind === kind).map(item => {
           const decidable = reviewable && (item.status === "proposed" || item.status === "failed");
-          return <li key={item.id} className="rounded-xl border border-border bg-card p-3">
+          return <li key={item.id} className={`rounded-2xl border bg-card px-5 py-[18px] ${item.status === "accepted" ? "border-brand/40" : "border-border"} ${item.status === "rejected" ? "opacity-60" : ""}`}>
             <div className="flex items-start gap-3">
               <input type="checkbox" aria-label={`Select ${item.title}`} disabled={!decidable} checked={selected.has(item.id)} onChange={() => toggle(item.id)} className="mt-1 size-4" />
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{item.title}</p><span className="text-xs text-muted-foreground">{AGENTS[item.agent as AgentId]?.name}</span>
+                <p className="mb-1.5 font-mono text-[11px] uppercase text-ai">{AGENTS[item.agent as AgentId]?.name}</p>
+                <div className="flex flex-wrap items-center gap-2"><p className="text-[15px] font-medium">{item.title}</p>
                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title="Heuristic confidence, not a probability"><span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted"><span className="block h-full bg-brand" style={{ width: `${item.confidence}%` }} /></span>{item.confidence}</span>
                   {item.status !== "proposed" && pill(item.status)}</div>
-                <p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
+                <p className="mt-1 text-[13px] text-muted-foreground text-pretty">{item.detail}</p>
                 {item.notes.map(note => <p key={note} className="mt-1 text-xs text-warning">Lead: {note}</p>)}
                 {item.status === "failed" && item.result?.error && <p className="mt-1 text-xs text-danger">{item.result.error}</p>}
                 {item.status === "accepted" && item.result?.href && <p className="mt-1 text-xs"><Link href={item.result.href} className="text-brand underline">Open</Link>{item.result.undo && <span className="text-muted-foreground"> · {item.result.undo}</span>}</p>}
                 <EvidenceView proposal={item} locale={locale} />
                 <AskAbout label="Ask why" question={`The ${AGENTS[item.agent as AgentId]?.name ?? "agent"} proposed “${item.title}”. Check the underlying transactions and tell me whether I should accept it.`} about={{ kind: "agent_proposal", id: item.id, label: item.title.slice(0, 80) }} className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" />
               </div>
-              {decidable && <div className="flex shrink-0 gap-1">
-                <button type="button" disabled={pending} onClick={() => decide([item.id], "reject")} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">Reject</button>
-                <button type="button" disabled={pending} onClick={() => decide([item.id], "accept")} className="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90">{kind === "finding" ? "Mark reviewed" : "Accept"}</button>
+              {decidable && <div className="flex shrink-0 gap-1.5">
+                <button type="button" disabled={pending} onClick={() => decide([item.id], "reject")} className="h-11 rounded-xl border border-input px-4 text-[13px] hover:bg-muted">Reject</button>
+                <button type="button" disabled={pending} onClick={() => decide([item.id], "accept")} className="h-11 rounded-xl bg-foreground px-[18px] text-[13px] font-medium text-background hover:opacity-90">{kind === "finding" ? "Mark reviewed" : "Accept"}</button>
               </div>}
             </div>
           </li>;
