@@ -58,7 +58,7 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, o
     {status === "canceled" && <p role="status" className="mt-2 px-3 text-sm text-muted-foreground">Canceled. Previously completed edits remain in transaction history.</p>}</>;
 
   if (empty) return <div className="flex flex-1 flex-col justify-center py-10">
-    <h2 className="text-center text-2xl font-semibold tracking-tight sm:text-3xl">How can I help with your money today?</h2>
+    <h2 className="text-center font-display text-3xl font-semibold tracking-tight sm:text-4xl">How can I help with your money today?</h2>
     <div className="mt-8">{composer}{notices}</div>
     <div className="mt-4 flex flex-wrap justify-center gap-2">{suggestions.map(prompt => <button key={prompt} type="button" onClick={() => { setMessage(prompt); document.getElementById("question")?.focus(); }} className="rounded-full border border-border px-3.5 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">{prompt}</button>)}</div>
     {scope}
