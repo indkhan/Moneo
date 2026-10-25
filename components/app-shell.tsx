@@ -171,7 +171,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
         {collapsed && <button type="button" onClick={() => setSidebarCollapsed(false)} aria-label="Expand sidebar" title="Expand sidebar ( [ )" className="flex w-full justify-center rounded-md py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><PanelLeftOpen className="size-4" /></button>}
       </div>
     </aside>
-    <div className={cn("min-w-0 pb-16 lg:pb-0", collapsed ? "lg:pl-14" : "lg:pl-60")}>
+    <div className={cn("min-w-0 pb-16 lg:pb-0 lg:transition-[padding] lg:[html[data-ai-panel]_&]:pr-112", collapsed ? "lg:pl-14" : "lg:pl-60")}>
       <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border bg-background/90 px-4 backdrop-blur sm:px-6 lg:px-8">
         <p className="flex min-w-0 items-center gap-1.5 truncate text-sm">
           {section && <span className="hidden text-muted-foreground sm:inline">{section} /</span>}

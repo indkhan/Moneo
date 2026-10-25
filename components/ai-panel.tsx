@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { ASK_EVENT, type AskSeed } from "./ask-about";
 import { Sparkles } from "lucide-react";
 
@@ -19,8 +20,14 @@ export function AiPanel() {
     window.addEventListener(ASK_EVENT, listener);
     return () => window.removeEventListener(ASK_EVENT, listener);
   }, []);
+  // Lets the app shell make room for the open panel on wide screens.
+  useEffect(() => {
+    document.documentElement.toggleAttribute("data-ai-panel", open);
+    return () => document.documentElement.removeAttribute("data-ai-panel");
+  }, [open]);
   return <>
     <button type="button" onClick={() => { setLoaded(true); setOpen(!open); }} aria-expanded={open} aria-haspopup="dialog" aria-controls={loaded ? "moneo-ai-panel" : undefined} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90"><Sparkles className="size-4" aria-hidden="true" />Ask Moneo</button>
-    {loaded && <AiPanelDialog open={open} seed={seed} onClose={() => setOpen(false)} />}
+    {/* Portaled: the sticky header's backdrop blur would otherwise confine the fixed panel. */}
+    {loaded && createPortal(<AiPanelDialog open={open} seed={seed} onClose={() => setOpen(false)} />, document.body)}
   </>;
 }

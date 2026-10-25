@@ -13,9 +13,10 @@ import { selectConversation } from "@/lib/ai/selected-conversation";
 import type { AskSeed } from "./ask-about";
 
 export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose: () => void; seed?: (AskSeed & { nonce: number }) | null }) {
+  // Non-modal: the page behind stays usable while the panel is open.
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    if (open) dialog.current?.showModal();
+    if (open) dialog.current?.show();
     else dialog.current?.close();
   }, [open]);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -57,7 +58,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     window.addEventListener("moneo-conversation-change", changed);
     const counter = generation;
     return () => { window.clearTimeout(timer); ++counter.current; window.removeEventListener("moneo-conversation-change", changed); };
-  }, [open, pathname, load]);
+  }, [open, load]);
   const chat = useChatRequest();
   const { send, cancel, busy, error, status } = chat;
   useEffect(() => {
@@ -103,7 +104,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
   }
   const { queue, enqueue, remove, steer, withSteers, canSteer } = useChatQueue(chat, conversationId ?? "", startQueued);
 
-  return <dialog ref={dialog} id="moneo-ai-panel" aria-label="AI assistant" onCancel={onClose} className="fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-none w-full max-w-md border-l border-border bg-background p-0 text-foreground shadow-2xl backdrop:bg-black/30">
+  return <dialog ref={dialog} id="moneo-ai-panel" aria-label="AI assistant" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); onClose(); } }} className="fixed inset-y-0 right-0 left-auto z-40 m-0 h-dvh max-h-none w-full max-w-md border-l border-border bg-background p-0 text-foreground shadow-xl">
     <div className="flex h-full flex-col">
       <header className="flex flex-row-reverse items-center gap-1 border-b border-border px-3 py-2.5">
         <button type="button" onClick={onClose} aria-label="Close AI assistant" className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" aria-hidden="true" /></button>
