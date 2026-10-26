@@ -6,7 +6,7 @@ import Home from "./page";
 const live = "11111111-1111-4111-8111-111111111111", deleted = "22222222-2222-4222-8222-222222222222";
 vi.mock("@/lib/env", () => ({ getSupabaseConfig: () => ({ status: "configured" }) }));
 vi.mock("@/lib/finance/model", () => ({ evaluatePlanForWorkspace: async () => ({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), input: null, available: null, liquidity: null }) }));
-vi.mock("./insights/panel", () => ({ ImportantInsights: () => null, loadInsightEvidence: async () => ({}) }));
+vi.mock("./insights/panel", () => ({ WeeklyBriefing: () => null, loadInsightEvidence: async () => ({}) }));
 vi.mock("./agent-briefing", () => ({ AgentBriefing: () => null }));
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("@/lib/finance/dashboard-spending", () => ({ loadHomeSpending: async () => ({}) }));

@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import Home from "./page";
 vi.mock("./agent-briefing", () => ({ AgentBriefing: () => null }));
-vi.mock("./insights/panel", () => ({ ImportantInsights: () => null, loadInsightEvidence: async () => ({}) }));
+vi.mock("./insights/panel", () => ({ WeeklyBriefing: () => null, loadInsightEvidence: async () => ({}) }));
 const fixture = vi.hoisted(() => ({ started: [] as string[], errorTable: "", balanceGate: null as Promise<void> | null }));
 beforeEach(() => { fixture.started = []; fixture.errorTable = ""; fixture.balanceGate = null; });
 
