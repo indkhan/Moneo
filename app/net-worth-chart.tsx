@@ -28,8 +28,8 @@ export function NetWorthChart({ points, label }: { points: NetWorthPoint[]; labe
     {shown && <>
       <span aria-hidden="true" className="pointer-events-none absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card bg-brand shadow"
         style={{ left: `${(x(active!) / WIDTH) * 100}%`, top: `${(y(shown.y) / HEIGHT) * 100}%` }} />
-      <div role="status" className="pointer-events-none absolute -top-2 z-10 -translate-y-full rounded-lg border border-border bg-card px-3 py-2 shadow-lg"
-        style={{ left: `clamp(0px, calc(${(x(active!) / WIDTH) * 100}% - 4.5rem), calc(100% - 9rem))` }}>
+      <div role="status" className="pointer-events-none absolute z-10 rounded-lg border border-border bg-card px-3 py-2 shadow-lg"
+        style={{ left: `clamp(0px, calc(${(x(active!) / WIDTH) * 100}% - 4.5rem), calc(100% - 9rem))`, top: `max(0px, calc(${(y(shown.y) / HEIGHT) * 100}% - 4.75rem))` }}>
         <p className="whitespace-nowrap font-mono text-sm font-semibold">{shown.amount}</p>
         <p className="whitespace-nowrap text-[11px] text-muted-foreground">{shown.label}</p>
       </div>
