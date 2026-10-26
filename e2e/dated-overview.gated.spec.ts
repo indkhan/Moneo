@@ -85,7 +85,7 @@ test("dated observations remain visible and explicit booked confirmation reloads
     try {
       await context?.close().catch(() => {});
       if (user) {const owned = await admin.auth.admin.getUserById(user); expect(owned.error).toBeNull(); expect(owned.data.user?.user_metadata).toMatchObject({qa_test: "mne012", run_id: run});}
-      const tables = ["wealth_events", "wealth_items", "balance_snapshots", "transactions", "accounts", "workspace_settings"];
+      const tables = ["wealth_events", "wealth_items", "balance_snapshots", "transactions", "categories", "accounts", "workspace_settings"];
       if (workspace) await db.begin(async tx => {
         expect((await tx`select owner_id from public.workspaces where id=${workspace!}`)[0]?.owner_id).toBe(user);
         for (const table of tables) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;

@@ -15,7 +15,7 @@ test("manual exact entries, reviewed bulk tags, batch undo and manual source res
   await adder.locator("summary").click();
   await adder.getByLabel("Name", { exact: true }).fill(account);
   await adder.getByRole("button", { name: "Add account", exact: true }).click();
-  await expect(page.getByRole("heading", { name: account })).toBeVisible();
+  await expect(page.locator(`input[name="name"][value="${account}"]`)).toBeVisible({ timeout: 30_000 });
   await page.goto("/money/transactions");
   for (const [index, description] of descriptions.entries()) {
     await page.getByText("Add a manual transaction", { exact: true }).click();

@@ -151,6 +151,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
       await tx`delete from public.imports where workspace_id=${workspace}`;
       await tx`delete from public.transactions where workspace_id=${workspace}`;
       await tx`delete from public.accounts where workspace_id=${workspace}`;
+      await tx`delete from public.categories where workspace_id=${workspace}`;
       await tx`delete from public.workspaces where id=${workspace} and owner_id in ${tx(users)}`;
     });
     for (const user of users) expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();

@@ -42,7 +42,7 @@ test("dated assets and signed debt repayment assumptions preserve source history
   await adder.getByLabel("Name", { exact: true }).fill(account);
   await adder.getByLabel("Currency", { exact: true }).fill("EUR");
   await adder.getByRole("button", { name: "Add account", exact: true }).click();
-  await expect(page.getByRole("heading", { name: account, exact: true })).toBeVisible();
+  await expect(page.locator(`input[name="name"][value="${account}"]`)).toBeVisible({ timeout: 30_000 });
   await page.goto("/money/wealth");
   const assetName = `Manual asset QA ${suffix}`;
   await page.locator("summary").filter({ hasText: /^Add asset / }).click();

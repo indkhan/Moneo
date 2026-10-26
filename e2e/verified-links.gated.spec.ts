@@ -12,7 +12,7 @@ test("dated FX transfer keeps canonical source and an included fee through guard
     await adder.getByLabel("Name", { exact: true }).fill(account);
     await adder.getByLabel("Currency", { exact: true }).fill(index ? "USD" : "EUR");
     await adder.getByRole("button", { name: "Add account", exact: true }).click();
-    await expect(page.getByRole("heading",{name:account,exact:true})).toBeVisible({timeout:30_000});
+    await expect(page.locator(`input[name="name"][value="${account}"]`)).toBeVisible({ timeout: 30_000 });
   }
   await page.goto("/plan/currency");
   await page.getByRole("combobox",{name:"From currency",exact:true}).fill("EUR"); await page.getByRole("combobox",{name:"To currency",exact:true}).fill("USD");
