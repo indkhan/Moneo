@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M5WWXWP2T77GQR10W937JYNA",
+  "session_id": "79613d46-55ab-4211-acc2-f13d015da36b",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-26T20:02:51.8277051Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "lib/finance/dashboard-spending.test.ts",
+    "lib/finance/dashboard-spending.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-haiku-5-5",
+  "turn_id": "e987885b2302",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 44,
+    "cache_creation_tokens": 50232,
+    "cache_read_tokens": 1167557,
+    "output_tokens": 17876,
+    "api_call_count": 23
+  },
+  "redaction": {
+    "replacements": 0,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 1
+  }
+}

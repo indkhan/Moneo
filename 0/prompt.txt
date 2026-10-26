@@ -1,0 +1,11 @@
+the graph in the overview can you make it fully like as per mouse right now only the end of the month of each can i go it hsould be i could go to any date and it it shows for that day amount and also show which account how much 
+
+first tell me is it simple to do and how to do in consice
+
+---
+
+sure lets go with that and remove the things about account name do it in the simples t way possible for the range sure the 6 months and sure lets go with tooltip data
+
+---
+
+no so the basic idea is that only show the thing about amount and date no account name or id or anything just simple day and amount
