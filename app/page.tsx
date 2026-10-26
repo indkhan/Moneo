@@ -18,6 +18,7 @@ import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { SourceCoverageDetails } from "./source-coverage";
 import { AgentBriefing } from "./agent-briefing";
 import { HomeBudgets } from "./home-budgets";
+import { HomeHistory } from "./home-history";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
@@ -25,7 +26,7 @@ import { Sparkline } from "./money/accounts/sparkline";
 import { LayoutGrid, Sparkle } from "lucide-react";
 
 // Six columns: a wide card pairs with a narrow one and half cards pair up; dense flow fills the gaps whatever order the layout picks.
-const FULL = new Set(["overview"]);
+const FULL = new Set(["overview", "history"]);
 const WIDE = new Set(["spending", "insights", "recent"]);
 const HALF = new Set(["accounts", "agents"]);
 const span = (key: string) => FULL.has(key) ? "lg:col-span-6" : WIDE.has(key) || artifactIdFromKey(key) ? "lg:col-span-4" : HALF.has(key) ? "lg:col-span-3" : "lg:col-span-2";
@@ -190,6 +191,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         <span className="shrink-0 font-mono text-sm">{money(event.expectedMinor, displayCurrency)}</span></li>)}</ul>
         : <p className="mt-3 text-sm text-muted-foreground">No confirmed payments in the next {projection.input?.horizonDays ?? 30} days.</p>}
     </section>,
+    history: <Suspense fallback={null}><HomeHistory db={supabase} workspaceId={workspace.id} locale={locale} timeZone={workspace.timezone} names={accountNames} /></Suspense>,
     budgets: <Suspense fallback={<SectionFallback title="Budgets" />}><HomeBudgets {...sectionProps} /></Suspense>,
     goals: <section className={card}>
       <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">Goals</h2><Link href="/plan" className="text-sm font-medium text-brand hover:underline">Plan</Link></div>

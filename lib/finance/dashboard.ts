@@ -2,9 +2,9 @@ import { z } from "zod";
 
 // Keys are stored in saved layouts; never rename one. Key order is the order offered in Settings.
 export const BUILTIN_WIDGETS = { overview: "Overview", insights: "Weekly briefing", upcoming: "Coming up", spending: "Cash flow over six months, with where money came from and went",
-  budgets: "Budgets", accounts: "Accounts", agents: "Agent team", recent: "Recent transactions", planning: "Available funds by account", goals: "Goals" };
+  budgets: "Budgets", accounts: "Accounts", agents: "Agent team", history: "History of recent changes", recent: "Recent transactions", planning: "Available funds by account", goals: "Goals" };
 // Home without a saved layout; the rest stay available in Settings.
-const DEFAULT_WIDGETS = ["overview", "insights", "upcoming", "spending", "budgets", "accounts", "agents"];
+const DEFAULT_WIDGETS = ["overview", "insights", "upcoming", "spending", "budgets", "accounts", "agents", "history"];
 // Artifacts pinned to Home are stored as "artifact:<uuid>" next to the built-in keys.
 const ARTIFACT_KEY = /^artifact:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 const isWidgetKey = (key: string) => Object.hasOwn(BUILTIN_WIDGETS, key) || ARTIFACT_KEY.test(key);
