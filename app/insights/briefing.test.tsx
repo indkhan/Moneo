@@ -33,7 +33,7 @@ it("shows big findings in checked AI wording, falling back to the computed text 
   ];
   fixture.wording = new Map([["a".repeat(64), "Your main account dips to -€88.00 around 3 Nov."], ["b".repeat(64), "Eating out is 32% over budget."]]);
   const html = renderToStaticMarkup(await WeeklyBriefing(props));
-  for (const text of ["Weekly briefing", "Insight writer · from 2 verified findings", "Your main account dips to -€88.00 around 3 Nov.", "Eating out budget pressure. €198.00 spent against €150.00 allowance in 2026-10, including supported rollover.", "E1 · forecast", "E2 · budget", "Dismiss all", "Mute type"]) expect(html).toContain(text);
+  for (const text of ["Weekly briefing", "Insight writer · from 2 verified findings", "Your main account dips to -€88.00 around 3 Nov.", "Eating out budget pressure: €198.00 spent against €150.00 allowance in October, including supported rollover.", "E1 · forecast", "E2 · budget", "Dismiss all", "Mute type"]) expect(html).toContain(text);
   expect(html).not.toContain("32%");
   expect(html).not.toContain("Rent is upcoming");
 });

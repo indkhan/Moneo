@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import type { Insight } from "@/lib/finance/insights";
-import { briefingFindings, keepsFacts, plainWording } from "./briefing";
+import { briefingFindings, keepsFacts, plainWording, readableDates } from "./briefing";
 
 const finding = { title: "Groceries spending increased", detail: "€412.00 in 2026-10-01–2026-10-25, compared with €349.00 in 2026-09-01–2026-09-25. Equal-length booked periods." };
 
@@ -16,5 +16,6 @@ it("keeps only important findings worth a briefing and has a plain fallback", ()
   const insight = (type: Insight["type"], priority: Insight["priority"] = "important") => ({ ...finding, key: type, type, priority }) as Insight;
   expect(briefingFindings([insight("data_quality"), insight("upcoming_obligations"), insight("budget_pressure"), insight("goal_progress", "context"), insight("cash_shortfall")]).map(item => item.type))
     .toEqual(["budget_pressure", "cash_shortfall"]);
-  expect(plainWording(finding)).toBe("Groceries spending increased. €412.00 in 2026-10-01–2026-10-25, compared with €349.00 in 2026-09-01–2026-09-25.");
+  expect(plainWording(finding)).toBe("Groceries spending increased: €412.00 in 1–25 Oct, compared with €349.00 in 1–25 Sept.");
+  expect(readableDates("EUR 9.00 in 2026-09-28–2026-10-03 and 2026-11-03, against the allowance in 2026-10.")).toBe("EUR 9.00 in 28 Sept–3 Oct and 3 Nov, against the allowance in October.");
 });

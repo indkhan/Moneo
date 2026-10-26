@@ -156,7 +156,7 @@ export async function WeeklyBriefing(props: InsightPanelProps) {
     <ul className="mt-4 divide-y divide-border border-t border-border">{findings.map((finding, index) => <li key={finding.key} className="grid gap-x-6 gap-y-2 py-4 sm:grid-cols-[8rem_1fr]">
       <p className={`font-mono text-[11px] uppercase tracking-wide ${finding.type === "cash_shortfall" ? "text-warning" : "text-muted-foreground"}`}>{LABELS[finding.type]?.[0] ?? finding.type}</p>
       <div className="min-w-0">
-        <p className="text-[15px] leading-relaxed text-pretty" title={finding.detail}>{sentences.get(finding.key) ?? plainWording(finding)}</p>
+        <p className="text-[15px] leading-relaxed text-pretty" title={finding.detail}>{sentences.get(finding.key) ?? plainWording(finding, props.settings.locale)}</p>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <Link href={finding.href} className="ai-chip font-mono">E{index + 1} · {LABELS[finding.type]?.[1] ?? "evidence"}</Link>
           {finding.move && <Link href={`/plan?${new URLSearchParams({ account: finding.move.toAccountId, fundingFrom: finding.move.fromAccountId, fundingDate: finding.move.date, funding: formatInputAmount(finding.move.amountMinor, props.currency) })}#account-headroom`}

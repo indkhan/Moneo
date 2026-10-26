@@ -15,8 +15,20 @@ export function keepsFacts(finding: Pick<Insight, "title" | "detail">, sentence:
   return sentence.trim().length > 0 && sentence.length <= 400 && numbers(sentence).every(value => source.has(value));
 }
 
-/** The code-written fallback: the title plus the first sentence of the detail. */
-export const plainWording = (finding: Pick<Insight, "title" | "detail">) => `${finding.title}. ${finding.detail.split(/(?<=\.)\s/)[0]}`;
+const ISO_DAY = /(\d{4})-(\d{2})-(\d{2})/.source;
+/** Writes ISO dates the way people read them: "1–26 Oct", "5 Sep–3 Oct", "3 Nov", and "October" for a bare month. */
+export function readableDates(text: string, locale = "en-GB") {
+  const at = (year: string, month: string, date = "01") => new Date(Date.UTC(+year, +month - 1, +date));
+  const short = (value: Date) => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(value);
+  return text
+    .replace(new RegExp(`${ISO_DAY}\\s*[–-]\\s*${ISO_DAY}`, "g"), (_, y1, m1, d1, y2, m2, d2) =>
+      y1 === y2 && m1 === m2 ? `${+d1}–${short(at(y2, m2, d2))}` : `${short(at(y1, m1, d1))}–${short(at(y2, m2, d2))}`)
+    .replace(new RegExp(ISO_DAY, "g"), (_, year, month, date) => short(at(year, month, date)))
+    .replace(/\b(\d{4})-(\d{2})\b/g, (_, year, month) => new Intl.DateTimeFormat(locale, { month: "long", timeZone: "UTC" }).format(at(year, month)));
+}
+
+/** The code-written fallback: the title plus the first sentence of the detail, with readable dates. */
+export const plainWording = (finding: Pick<Insight, "title" | "detail">, locale?: string) => readableDates(`${finding.title}: ${finding.detail.split(/(?<=\.)\s/)[0]}`, locale);
 
 /** Asks the model for friendlier wording; any sentence that alters a number is dropped by the caller's keepsFacts check. */
 export async function rephraseFindings(model: LanguageModel, findings: Pick<Insight, "key" | "type" | "title" | "detail">[]) {
