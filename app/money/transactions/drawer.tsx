@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireWorkspace } from "@/lib/auth";
 import { formatMoney } from "@/lib/finance/format";
-import { applyCategoryToSimilar, clearLink, markRefund, quickEditTransaction, undoCorrection, undoTransactionSplits, undoVerifiedLink } from "./actions";
+import { applyCategoryToSimilar, clearLink, markOwnAccountTransfer, markRefund, quickEditTransaction, undoCorrection, undoTransactionSplits, undoVerifiedLink } from "./actions";
 import { SplitEditor } from "./split-editor";
 import { AskAbout } from "@/components/ask-about";
 import { VerifiedLinkEditor, type LinkPosting } from "./verified-link-editor";
@@ -52,15 +52,17 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
   const transferQuery = () => { let q = candidateBase().neq("account_id", selected.account_id); q = amount < 0n ? q.gt("amount_minor", 0) : q.lt("amount_minor", 0); if (linkSearch) q = q.ilike("description", `%${escapeLike(linkSearch)}%`); return q.order("posted_on", { ascending: false }).order("id").limit(100); };
   const refundQuery = () => { let q = candidateBase().eq("review_reasons", "{}").lte("posted_on", selected.posted_on).lt("amount_minor", 0); if (linkSearch) q = q.ilike("description", `%${escapeLike(linkSearch)}%`); return q.order("posted_on", { ascending: false }).order("id").limit(100); };
   const none = { data: null, error: null };
-  const [splitRows, counterpart, refundOriginal, fees, transferCandidates, refundCandidates] = await Promise.all([
+  const canMarkOwnTransfer = canLinkTransfer && !splitSet.data && amount !== 0n && (selected.review_reasons ?? []).every((reason: string) => reason === "source_transfer");
+  const [splitRows, counterpart, refundOriginal, fees, transferCandidates, refundCandidates, untrackedOwn] = await Promise.all([
     splitSet.data ? supabase.from("transaction_splits").select("id, amount_minor::text, category_id, note, ordinal").eq("workspace_id", ws).eq("split_set_id", splitSet.data.id).order("ordinal") : none,
     selected.transfer_id ? supabase.from("transactions").select("id, description, posted_on, version, currency_code").eq("workspace_id", ws).eq("id", selected.transfer_id).maybeSingle() : none,
     selected.refund_of_id ? supabase.from("transactions").select("id, description, posted_on").eq("workspace_id", ws).eq("id", selected.refund_of_id).maybeSingle() : none,
     receipt.data ? supabase.from("transaction_link_fees").select("transaction_id, fee_minor::text, treatment, note").eq("workspace_id", ws).eq("link_id", receipt.data.id) : none,
     canLinkTransfer ? transferQuery() : none,
     canLinkRefund ? refundQuery() : none,
+    canMarkOwnTransfer ? supabase.from("own_account_identifiers").select("id, label").eq("workspace_id", ws).is("account_id", null).order("label") : none,
   ]);
-  for (const result of [splitRows, fees, transferCandidates, refundCandidates]) if (result.error) throw result.error;
+  for (const result of [splitRows, fees, transferCandidates, refundCandidates, untrackedOwn]) if (result.error) throw result.error;
   const similar = splitSet.data ? [] : (await similarRows(supabase, ws, selected)).rows;
 
   const categoryNames = Object.fromEntries(categories.map(row => [row.id, row.name]));
@@ -71,6 +73,8 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
   const hidden = (name: string, value: string | number) => <input type="hidden" name={name} value={value} />;
   const categoryName = selected.category_id ? categoryNames[selected.category_id] ?? "" : "";
   const latestUndoable = history.data?.findIndex(item => !item.undone) ?? -1;
+  const ownAccountTransfer = selected.kind === "transfer" && !selected.transfer_id
+    ? history.data?.find(item => !item.undone && (item.after as { operation?: string }).operation === "own_account_transfer") : undefined;
   const originals = (sources.data ?? []).flatMap(source => [source.source_transactions].flat().filter(Boolean)) as { import_id: string; row_number: number }[];
   const canSplit = selected.kind === "ordinary" && selected.status === "posted" && !selected.review_reasons?.length && !selected.transfer_id && !selected.refund_of_id && !inboundRefunds.data?.length && !inboundTransfer.data?.length;
 
@@ -122,6 +126,7 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
         <h3 className="font-medium">Transfer or refund</h3>
         <p className="text-sm text-muted-foreground">Transfers don’t count as income or spending. Refunds reduce spending in the month they arrive. Links can be undone from the history below.</p>
         {counterpart.data && <p className="text-sm">Transfer pair: <Link className="underline" href={open(counterpart.data.id)}>{counterpart.data.description} · {counterpart.data.posted_on}</Link></p>}
+        {ownAccountTransfer && <p className="text-sm">Transfer {amount < 0n ? "to" : "from"} your own account {String((ownAccountTransfer.after as { own_account?: string }).own_account ?? "")}, which Moneo doesn’t track.</p>}
         {refundOriginal.data && <p className="text-sm">Refund of: <Link className="underline" href={open(refundOriginal.data.id)}>{refundOriginal.data.description} · {refundOriginal.data.posted_on}</Link></p>}
         {inboundRefunds.data?.length ? <div className="text-sm"><p className="text-muted-foreground">Refunds of this transaction:</p><ul className="mt-1 space-y-1">{inboundRefunds.data.map(item => <li key={item.id}><Link className="underline" href={open(item.id)}>{item.description} · {item.posted_on}</Link></li>)}</ul></div> : null}
         {inboundTransfer.data?.filter(item => item.id !== counterpart.data?.id).map(item => <p key={item.id} className="text-sm text-muted-foreground">Also linked here as a transfer: {item.description} · {item.posted_on}</p>)}
@@ -134,6 +139,9 @@ export async function TransactionDrawer({ id, query, linkSearch, accountNames, c
           </div> : <>
             <form method="get" className="flex flex-wrap items-end gap-2">{hidden("transaction", selected.id)}<label className="text-sm">Find the other side by description<input name="linkSearch" defaultValue={linkSearch} maxLength={200} className={field} /></label><button className="rounded-lg border border-border px-3 py-2 text-sm">Search</button></form>
             {canLinkTransfer && <VerifiedLinkEditor locale={workspace.locale} operation="transfer" primary={selected} candidates={(transferCandidates.data ?? []) as LinkPosting[]} rates={rates.data ?? []} categories={categories} query={query} />}
+            {untrackedOwn.data?.length ? <form action={markOwnAccountTransfer} className="flex flex-wrap items-end gap-2">{hidden("id", selected.id)}{hidden("version", selected.version)}{hidden("query", query)}
+              <label className="text-sm">{amount < 0n ? "Moved to" : "Moved from"} my own account Moneo doesn’t track<select name="identifierId" required className={field}>{untrackedOwn.data.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+              <button className="rounded-lg border border-border px-3 py-2 text-sm">Mark as transfer</button></form> : null}
             {canLinkRefund && <><VerifiedLinkEditor locale={workspace.locale} operation="refund" primary={selected} candidates={(refundCandidates.data ?? []) as LinkPosting[]} rates={rates.data ?? []} categories={categories} query={query} />
               <form action={markRefund}>{hidden("id", selected.id)}{hidden("version", selected.version)}{hidden("query", query)}<button className="text-sm underline">Mark as a refund without linking a purchase</button></form></>}
           </>}

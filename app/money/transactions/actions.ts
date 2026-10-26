@@ -76,6 +76,8 @@ export async function undoCorrection(form: FormData) {
   const procedure = operation === "metadata" ? "undo_transaction_metadata" : operation === "classification_review" ? "undo_transaction_classification" : "undo_transaction_correction";
   const { error } = operation === "verified_link"
     ? await supabase.rpc("undo_transaction_link", { p_link_id:z.uuid().parse((event.after as { link_id?:string }).link_id), p_rows:versionedRows.max(2).parse(JSON.parse(z.string().max(500).parse(form.get("rows")))) })
+    : operation === "own_account_transfer"
+    ? await supabase.rpc("undo_own_account_transfer", { p_event_id: eventId, p_expected_version: version })
     : operation === "split"
     ? await supabase.rpc("undo_transaction_splits", { p_set_id: z.uuid().parse((event.after as { split_set_id?: string }).split_set_id), p_expected_version: version })
     : await supabase.rpc(procedure, { p_event_id: eventId, p_expected_version: version });
@@ -205,6 +207,16 @@ export async function markRefund(form: FormData) {
     p_expected_version: version,
     p_original_id: originalId,
   });
+  if (error) throw new Error(error.message);
+  revalidatePath("/", "layout");
+  redirect(`${returnPath(form)}&transaction=${id}`);
+}
+
+// One leg moved to or from an own account Moneo doesn't track: a transfer without a pair.
+export async function markOwnAccountTransfer(form: FormData) {
+  const { supabase } = await requireWorkspace();
+  const { id, version } = linkInput(form);
+  const { error } = await supabase.rpc("mark_own_account_transfer", { p_transaction_id: id, p_expected_version: version, p_identifier_id: z.uuid().parse(form.get("identifierId")) });
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout");
   redirect(`${returnPath(form)}&transaction=${id}`);
