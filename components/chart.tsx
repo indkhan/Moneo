@@ -62,17 +62,20 @@ export function SpendingChart({ values, labels, type = "bar", height = 280, aria
 }
 
 /** Money in vs money out per month; `flow` shows one side only. Bars are major units for pixel scale only. */
-export function CashFlowChart({ labels, income, spending, flow, selected, height = 240, formatValue, onSelect }: {
-  labels: string[]; income: number[]; spending: number[]; flow?: "in" | "out"; selected?: number; height?: number;
+export function CashFlowChart({ labels, income, spending, flow, selected, picked, height = 240, formatValue, onSelect }: {
+  labels: string[]; income: number[]; spending: number[]; flow?: "in" | "out"; selected?: number; picked?: "in" | "out"; height?: number;
   formatValue?: (value: number) => string; onSelect?: (index: number, flow: "in" | "out") => void;
 }) {
   const colors = useThemeColors();
   const bar = { type: "bar", barMaxWidth: 28, barGap: "20%", itemStyle: { borderRadius: [4, 4, 0, 0] } };
   // With a month picked, the other months fade so the breakdown below clearly belongs to it.
   const points = (values: number[]) => values.map((value, index) => selected === undefined || index === selected ? value : { value, itemStyle: { opacity: 0.35 } });
+  // The dashed line marks the picked month on the side (in or out) that was clicked.
+  const marker = (side: "in" | "out") => selected !== undefined && picked === side
+    ? { markLine: { symbol: "none", silent: true, label: { show: false }, lineStyle: { type: "dashed", color: colors.muted, width: 1.5 }, data: [{ xAxis: labels[selected] }] } } : {};
   const series = [
-    ...(flow !== "out" ? [{ ...bar, name: "In", data: points(income), itemStyle: { ...bar.itemStyle, color: colors.brand } }] : []),
-    ...(flow !== "in" ? [{ ...bar, name: "Out", data: points(spending), itemStyle: { ...bar.itemStyle, color: colors.out } }] : []),
+    ...(flow !== "out" ? [{ ...bar, name: "In", data: points(income), itemStyle: { ...bar.itemStyle, color: colors.brand }, ...marker("in") }] : []),
+    ...(flow !== "in" ? [{ ...bar, name: "Out", data: points(spending), itemStyle: { ...bar.itemStyle, color: colors.out }, ...marker("out") }] : []),
   ];
   return <div role="img" aria-label="Money in and out for each of the last six months">
     <ReactECharts
