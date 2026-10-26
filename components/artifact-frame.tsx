@@ -39,3 +39,21 @@ export function ArtifactFrame({ src, title, fit = false, loading, className, sty
   return <iframe ref={frame} title={title} sandbox="allow-scripts" loading={loading} src={`${src}${src.includes("?") ? "&" : "?"}theme=${theme}`}
     className={`border-0 ${className ?? ""}`} style={{ colorScheme: theme, ...sized }} />;
 }
+
+const THUMB_WIDTH = 800, THUMB_HEIGHT = 500;
+
+/** A scaled-down, non-interactive live preview; it only loads once scrolled near the viewport. */
+export function ArtifactThumbnail({ src, title }: { src: string; title: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0);
+  useEffect(() => {
+    const element = box.current!;
+    const observer = new ResizeObserver(() => setScale(element.clientWidth / THUMB_WIDTH));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return <div ref={box} inert className="pointer-events-none relative aspect-[8/5] overflow-hidden bg-background">
+    {scale > 0 && <ArtifactFrame src={src} title={`Preview of ${title}`} loading="lazy" className="absolute left-0 top-0 origin-top-left"
+      style={{ width: THUMB_WIDTH, height: THUMB_HEIGHT, transform: `scale(${scale})` }} />}
+  </div>;
+}
