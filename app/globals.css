@@ -31,6 +31,8 @@
   --color-ai-soft: light-dark(#f1eeff, #1a1922);
   --color-ai-border: light-dark(#d6cffb, #3d3760);
   --color-chart-out: light-dark(#a9aaa3, #5b5d62);
+  --color-chart-input: light-dark(#2a78d6, #3987e5);
+  --color-chart-output: light-dark(#eb6834, #d95926);
   --color-sidebar: light-dark(#f4f3ee, #0f1011);
   --color-success: light-dark(#3f6b00, #cbf26b);
   --color-success-soft: light-dark(#f0f7dc, #1c2410);
