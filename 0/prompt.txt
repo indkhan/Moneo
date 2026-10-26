@@ -1,0 +1,17 @@
+<task-notification>
+<task-id>b0ehwdcrm</task-id>
+<tool-use-id>toolu_01QYXjv6UJAHnAYQzMN1cRFi</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-f7d1f40e\e5b80c3c-c10f-4f51-8168-d0ed86f83e7b\tasks\b0ehwdcrm.output</output-file>
+<status>failed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo/t3-f7d1f40e; npx next dev -p 3001 &gt; .qa-dev.log 2&gt;&amp;1" failed with exit code 1</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bime8cmyc</task-id>
+<tool-use-id>toolu_01N6QSEvjDoAZiVKDctYLuBQ</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-f7d1f40e\e5b80c3c-c10f-4f51-8168-d0ed86f83e7b\tasks\bime8cmyc.output</output-file>
+<status>failed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo/t3-f7d1f40e; npx next dev -p 3017 &gt; .qa/dev.log 2&gt;&amp;1" failed with exit code 1</summary>
+</task-notification>
