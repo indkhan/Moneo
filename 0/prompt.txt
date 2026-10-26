@@ -1,0 +1,16 @@
+when i open the sidebar or something it tries to load the old convo also for when i open chat it shows the last convo it shold be that if it is in the same session then sure but if it is not loaded that means it not in this session then shwo the thing for no chat like the plain view 
+
+for the ai sidebbar and chat itself and also , if am in sidebar it does not allow me to use the normal applicaiton it should be that both are seperate things it is there but while the sidebar is open i can use the normal applicatin as well and the sidebar is there as well and it gets removed if i close it but it being or not beign there does not stop me from using the main applicaiton and vice versa 
+
+plus loaded old convo and in the same thread old this is very slow 
+search web think about it and all and make it optimized 
+
+for these things if subagents needed then use that or do them one by one as per you like 
+
+then make a pr towards main saying these things are fixed and in the body of the pr start witha  short summary of how much more optimized you made it like before it took this much time now this much to open old convo and also for the other things that they are done and working as i said 
+
+if any question during the implementation then ask me
+
+---
+
+you can update it the entire cli or just skip it
