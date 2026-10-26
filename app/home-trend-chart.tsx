@@ -8,7 +8,7 @@ const Chart = dynamic(() => import("@/components/chart").then(module => module.C
 });
 
 // Clicking a bar sets ?month= and ?flow= so the server re-renders that month's breakdown.
-export function TrendChart({ months, ...props }: { months: string[]; labels: string[]; income: number[]; spending: number[]; flow?: "in" | "out"; height: number }) {
+export function TrendChart({ months, ...props }: { months: string[]; labels: string[]; income: number[]; spending: number[]; flow?: "in" | "out"; selected?: number; height: number }) {
   const router = useRouter(), pathname = usePathname(), params = useSearchParams();
   return <Chart {...props} onSelect={(index, flow) => {
     const next = new URLSearchParams(params);

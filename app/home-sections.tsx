@@ -73,13 +73,16 @@ function TopList({ title, groups, metric, names, param, from, to, currency, loca
 export async function CashFlowPanel({ db, workspaceId, currency, today, locale, search = {} }: SectionProps & { search?: Search }) {
   let data;
   try { data = await loadHomeSpending(db, workspaceId, currency, today); } catch { data = null; }
-  const flow = flowOf(search.flow);
-  const legend = ([["in", "In", "bg-brand"], ["out", "Out", "bg-chart-out"]] as const).map(([key, label, swatch]) =>
-    <Link key={key} href={flowHref(search, { flow: flow === key ? undefined : key })} scroll={false} aria-pressed={flow === key}
-      className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs hover:bg-muted ${flow === key ? "bg-muted text-foreground" : flow ? "text-subtle" : "text-muted-foreground"}`}>
-      <span aria-hidden="true" className={`size-2 rounded-sm ${swatch} ${flow && flow !== key ? "opacity-40" : ""}`} />{label}</Link>);
+  // `show` is which bars are drawn and changes only from these buttons; `flow` is which breakdown is open below.
+  const show = flowOf(search.show), flow = flowOf(search.flow);
+  const legend = <span role="group" aria-label="Show" className="inline-flex rounded-lg border border-border p-0.5">
+    {([[undefined, "Both", null], ["in", "In", "bg-brand"], ["out", "Out", "bg-chart-out"]] as const).map(([key, label, swatch]) =>
+      <Link key={label} href={flowHref(search, { show: key, flow: key ?? flow })} scroll={false} aria-pressed={show === key}
+        className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs ${show === key ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+        {swatch && <span aria-hidden="true" className={`size-2 rounded-sm ${swatch}`} />}{label}</Link>)}
+  </span>;
   const header = <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-medium">Cash flow · 6 months</h2>
-    <span className="flex items-center gap-1">{legend}<AskAbout question="How did my money in and out change over the last six months? What drove it?" about={{ kind: "chart", label: "Six-month cash flow" }} /></span></div>;
+    <span className="flex items-center gap-2">{legend}<AskAbout question="How did my money in and out change over the last six months? What drove it?" about={{ kind: "chart", label: "Six-month cash flow" }} /></span></div>;
   if (!data) return <section id="cash-flow" aria-label="Cash flow" className={card}>{header}<p role="alert" className="mt-3 text-sm">Cash flow is unavailable right now. Your balances are not affected.</p></section>;
   const scale = 10 ** minorDigits(currency);
   const selected = data.months.find(row => row.month === search.month) ?? data.months[data.months.length - 1];
@@ -87,7 +90,7 @@ export async function CashFlowPanel({ db, workspaceId, currency, today, locale, 
   const lists = { currency, locale, from: selected.from, to: selected.to };
   return <section id="cash-flow" aria-label="Cash flow" className={card}>
     {header}
-    <div className="mt-4"><TrendChart height={240} flow={flow} months={data.trend.map(row => row.month)} labels={data.trend.map(row => monthName(row.from, locale, "short"))}
+    <div className="mt-4"><TrendChart height={240} flow={show} selected={flow ? data.months.indexOf(selected) : undefined} months={data.trend.map(row => row.month)} labels={data.trend.map(row => monthName(row.from, locale, "short"))}
       income={data.trend.map(row => Number(row.incomeMinor) / scale)} spending={data.trend.map(row => Number(row.spendingMinor) / scale)} /></div>
     {flow === "in" && <div className="mt-5 grid gap-6 border-t border-border pt-5 md:grid-cols-2">
       <TopList title={`Where money came from ${when}`} groups={selected.incomeMerchants} metric="incomeMinor" names={data.merchantNames} param="merchant" unknown="Unknown source" {...lists} />

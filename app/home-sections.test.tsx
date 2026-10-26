@@ -22,14 +22,18 @@ it("shows both sides by default and only the picked side's breakdown, linked to 
   expect(both).toContain('data-chart="May,Jun,Jul,Aug,Sep,Oct"');
   expect(both).not.toContain("Top categories");
   expect(both).not.toContain("Where money came from");
-  expect(both).toContain('href="?flow=in#cash-flow"');
+  expect(both).toContain('href="?show=in&amp;flow=in#cash-flow"');
 
   const spending = renderToStaticMarkup(await CashFlowPanel({ ...props, search: { flow: "out" } }));
-  expect(spending).toContain('data-flow="out"');
+  // A picked breakdown never hides the other bars; only the Show buttons do.
+  expect(spending).not.toContain('data-flow="out"');
   expect(spending).toContain("Top categories in October");
   expect(spending).toContain("/money/transactions?category=food&amp;from=2026-10-01&amp;to=2026-10-16&amp;direction=outflow");
   expect(spending).toContain("merchant=none");
-  expect(spending).toContain('href="?#cash-flow"');
+  expect(spending).toContain('href="?flow=out#cash-flow"');
+  const onlyOut = renderToStaticMarkup(await CashFlowPanel({ ...props, search: { show: "out", flow: "out" } }));
+  expect(onlyOut).toContain('data-flow="out"');
+  expect(onlyOut).toContain("Top categories in October");
 
   const september = renderToStaticMarkup(await CashFlowPanel({ ...props, search: { flow: "out", month: "2026-09" } }));
   expect(september).toContain("Top merchants in September");
