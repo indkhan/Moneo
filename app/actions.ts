@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { parseManualAmount } from "@/app/money/transactions/input";
-import { minorDigits } from "@/lib/finance/fx";
 import { calendarDate } from "@/lib/finance/calendar";
 
 export async function setManualBalance(form: FormData) {
