@@ -22,11 +22,13 @@ import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
 import { Sparkline } from "./money/accounts/sparkline";
-import { LayoutGrid, Plus, Sparkle } from "lucide-react";
+import { LayoutGrid, Sparkle } from "lucide-react";
 
-// The design pairs a wide card with a narrow one; dense flow fills the gaps whatever order the layout picks.
+// Six columns: a wide card pairs with a narrow one and half cards pair up; dense flow fills the gaps whatever order the layout picks.
 const FULL = new Set(["overview"]);
-const WIDE = new Set(["spending", "accounts", "insights", "recent"]);
+const WIDE = new Set(["spending", "insights", "recent"]);
+const HALF = new Set(["accounts", "agents"]);
+const span = (key: string) => FULL.has(key) ? "lg:col-span-6" : WIDE.has(key) || artifactIdFromKey(key) ? "lg:col-span-4" : HALF.has(key) ? "lg:col-span-3" : "lg:col-span-2";
 
 export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string; month?: string; flow?: string }> } = {}) {
   const params = await searchParams;
@@ -195,6 +197,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
       <ul className="mt-2 divide-y divide-border">{(goals.data ?? []).map(goal => { const reservations = (allocations.data ?? []).filter(row => row.goal_id === goal.id); const comparable = reservations.every(row => accounts.find(account => account.id === row.account_id)?.currency_code === goal.currency_code); const reserved = reservations.reduce((sum, row) => sum + BigInt(row.amount_minor), 0n); return <li key={goal.id} className="py-2 text-sm"><Link href="/plan" className="font-medium hover:underline">{goal.name}</Link><p className="text-xs text-muted-foreground">{comparable ? money(reserved, goal.currency_code) : "Reservation conversion required"} reserved of {money(goal.target_minor, goal.currency_code)}{goal.target_date ? ` · target ${goal.target_date}` : ""}</p></li>; })}</ul>
       {!goals.data?.length && <p className="mt-3 text-sm text-muted-foreground">No goals yet. <Link href="/plan" className="underline">Create a goal</Link>.</p>}
     </section>,
+    agents: <Suspense fallback={<SectionFallback title="Agent team" />}><AgentBriefing db={supabase} workspaceId={workspace.id} /></Suspense>,
     insights: <Suspense fallback={<SectionFallback title="Weekly briefing" />}>
       <WeeklyBriefing db={supabase} workspaceId={workspace.id} currency={displayCurrency} today={today} settings={context.settings} projection={projection} missingInputs={missingInputs} names={accountNames} wealth={wealthItems} />
     </Suspense>,
@@ -203,15 +206,11 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   return (
     <main className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
       <header className="mb-2 flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1"><p className="eyebrow">{new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))} · {displayCurrency}</p><h1 className="page-title">Overview</h1></div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href="/settings" className="inline-flex h-11 items-center gap-2 rounded-xl border border-input px-4 text-[13px] hover:bg-muted"><LayoutGrid className="size-4" strokeWidth={1.6} aria-hidden="true" />Edit layout</Link>
-          <Link href="/import" className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Plus size={15} /> Import statement</Link>
-        </div>
+        <div className="flex flex-col gap-1"><p className="eyebrow">{new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))} · {new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))}</p><h1 className="page-title">Overview</h1></div>
+        <Link href="/settings#home" className="inline-flex h-11 items-center gap-2 rounded-xl border border-input px-4 text-[13px] hover:bg-muted"><LayoutGrid className="size-4" strokeWidth={1.6} aria-hidden="true" />Edit layout</Link>
       </header>
-      <Suspense fallback={null}><AgentBriefing db={supabase} workspaceId={workspace.id} /></Suspense>
-      <div className="grid grid-flow-dense gap-4 lg:grid-cols-3">
-        {ordered.map(key => <div key={key} className={FULL.has(key) ? "min-w-0 lg:col-span-3" : WIDE.has(key) || artifactIdFromKey(key) ? "min-w-0 lg:col-span-2" : "min-w-0"}>{widgets[key]}</div>)}
+      <div className="grid grid-flow-dense gap-4 lg:grid-cols-6">
+        {ordered.map(key => <div key={key} className={`min-w-0 ${span(key)} [&>section]:h-full`}>{widgets[key]}</div>)}
       </div>
     </main>
   );
