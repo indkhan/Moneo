@@ -1,0 +1,16 @@
+ok so the thing is i have lets say debt or money that i gave others that i will be getting from them later that should be there which is there in the applicaiton 
+
+but the problme is that it is there in the way that i need to manually enter the things can you make it that it does it in the chat from both full chat and also from sidebar chat 
+
+that i tell it yooo can you add that i gave 500 eur to mohammed and then it proposes it and then it still has it in my networth and all and another thing is that it sees if there was money sent to me from mohammed that ammount of close to that amount when agents sees it it shows it as well and then i can review it and update it and all and vice versa as well if i took debt i can open chat and tell it and then this that 
+
+
+this should not be directly added it should show in ui itself and htne i select yes or no and then it adds it 
+
+
+lets talk about how to implement it in the simplest way possible and the nicest 
+if there are things which has options then give me the options and then i will choose
+
+---
+
+yes do it and once done open a pr towards main
