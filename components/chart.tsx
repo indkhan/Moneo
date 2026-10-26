@@ -4,7 +4,9 @@ import { Component, useMemo, useSyncExternalStore, type ReactNode } from "react"
 import dynamic from "next/dynamic";
 
 // Loaded on the client only, so echarts never ships in the server render or blocks first paint.
-export const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
+// App charts use a trimmed echarts (bar, line, scatter); answer charts may use any type, so they load the full build.
+export const ReactECharts = dynamic(() => import("./echarts-lean"), { ssr: false });
+const FullECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
 
 function subscribeTheme(onChange: () => void) {
   const observer = new MutationObserver(onChange);
@@ -153,7 +155,7 @@ export function AnswerChart({ option }: { option: Record<string, unknown> }) {
   const title = (option.title as { text?: unknown } | undefined)?.text;
   return <figure className="ai-chart my-4 min-w-0 max-w-full rounded-xl border border-border bg-card p-4">
     <div role="img" aria-label={typeof title === "string" ? title : "Chart"}>
-      <ReactECharts option={themed} notMerge style={{ width: "100%", height: 320 }} />
+      <FullECharts option={themed} notMerge style={{ width: "100%", height: 320 }} />
     </div>
   </figure>;
 }
