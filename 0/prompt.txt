@@ -1,0 +1,27 @@
+<task-notification>
+<task-id>bj8bsm3xf</task-id>
+<tool-use-id>toolu_01EFaorLpnTbnh84B9cv1npu</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-3714a934\85e9150a-7842-44c7-986d-eda6365a23fe\tasks\bj8bsm3xf.output</output-file>
+<status>completed</status>
+<summary>Background command "Run baseline benchmark again" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bs15s1yq1</task-id>
+<tool-use-id>toolu_01L9rMFXiKRJzGynGSGztD7o</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-3714a934\85e9150a-7842-44c7-986d-eda6365a23fe\tasks\bs15s1yq1.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for baseline results file" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b53jmx99x</task-id>
+<tool-use-id>toolu_01PFhtSMP2aA8Nr6WnFKXneW</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-3714a934\85e9150a-7842-44c7-986d-eda6365a23fe\tasks\b53jmx99x.output</output-file>
+<status>failed</status>
+<summary>Background command "Start production server on port 3217" failed with exit code 127</summary>
+</task-notification>
