@@ -75,19 +75,28 @@ export const loadInsightEvidence = cache(async (db: SupabaseClient, workspaceId:
     return { preferences, budgets, categories, goals, recurring, limits, dismissals, canonical, sourceMetadata, first, transactions, recurringEvidence };
 });
 
+type InsightEvidence = Awaited<ReturnType<typeof loadInsightEvidence>>;
+/** This month's progress for every enabled budget, shared by Home's Budgets card and the budget insights. */
+export function budgetsThisMonth({ budgets, categories, limits, transactions, sourceMetadata }: InsightEvidence, today: string) {
+  const spendingRows = transactions.map(row => ({ amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code, status: row.status, kind: row.kind, reviewReasons: row.review_reasons, postedOn: row.posted_on, categoryId: row.category_id,
+    ...(row.refund_of_id ? { refundOfCategoryId: row.refund_category_id ?? null } : {}) }));
+  return budgets.filter(budget => budget.enabled).map(budget => {
+    const sourceCoverage = buildSourceCoverage({ from: budget.rollover ? budget.rollover_from : `${today.slice(0, 7)}-01`, to: today, currencyCode: budget.currency_code }, transactions, sourceMetadata?.imports, sourceMetadata?.sources);
+    const progress = budgetProgress(spendingRows, budget.category_id, budget.currency_code, today.slice(0, 7), BigInt(budget.limit_minor), budget.rollover ? { startsMonth: budget.rollover_from.slice(0, 7), history: limits.filter(limit => limit.plan_id === budget.id) } : undefined, sourceCoverage);
+    return { budget, name: categories.find(category => category.id === budget.category_id)?.name ?? "Category", progress, sourceCoverage };
+  });
+}
+
 async function loadInsights({ db, workspaceId, currency, today, settings, projection, missingInputs, names, wealth }: InsightPanelProps) {
-    const { preferences, budgets, categories, goals, recurring, limits, dismissals, canonical, sourceMetadata, first, transactions, recurringEvidence } = await loadInsightEvidence(db, workspaceId, currency, today);
+    const evidence = await loadInsightEvidence(db, workspaceId, currency, today);
+    const { preferences, categories, goals, recurring, dismissals, canonical, sourceMetadata, first, transactions, recurringEvidence } = evidence;
     const sourceCoverage = buildSourceCoverage({ from: first, to: today }, transactions, sourceMetadata?.imports, sourceMetadata?.sources);
     const warnings = describeMissingInputs([...missingInputs, ...(projection.input.missingInputs ?? [])], names);
     if (transactions.some(row => row.status === "posted" && row.review_reasons?.length)) warnings.push("Some financial classifications need review; comparisons omit uncertain rows");
-    const spendingRows = transactions.map(row => ({ amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code, status: row.status, kind: row.kind, reviewReasons: row.review_reasons, postedOn: row.posted_on, categoryId: row.category_id,
-      ...(row.refund_of_id ? { refundOfCategoryId: row.refund_category_id ?? null } : {}) }));
     const budgetEvidence: InsightInput["budgets"] = [];
-    for (const budget of budgets.filter(budget => budget.enabled)) {
-      const budgetCoverage = buildSourceCoverage({ from: budget.rollover ? budget.rollover_from : `${today.slice(0, 7)}-01`, to: today, currencyCode: budget.currency_code }, transactions, sourceMetadata?.imports, sourceMetadata?.sources);
-      const progress = budgetProgress(spendingRows, budget.category_id, budget.currency_code, today.slice(0, 7), BigInt(budget.limit_minor), budget.rollover ? { startsMonth: budget.rollover_from.slice(0, 7), history: limits.filter(limit => limit.plan_id === budget.id) } : undefined, budgetCoverage);
+    for (const { budget, name, progress, sourceCoverage: budgetCoverage } of budgetsThisMonth(evidence, today)) {
       if (progress.allowanceMinor === null) { if (progress.limitation) warnings.push(progress.limitation); continue; }
-      budgetEvidence.push({ id: budget.id, name: categories.find(category => category.id === budget.category_id)?.name ?? "Category", currency: budget.currency_code,
+      budgetEvidence.push({ id: budget.id, name, currency: budget.currency_code,
         spentMinor: progress.spentMinor.toString(), allowanceMinor: progress.allowanceMinor.toString(), partial: progress.partial, sourceCoverage: budgetCoverage });
     }
     const events = projection.input.events.filter(event => event.source !== "estimated" && event.expectedMinor < 0n);

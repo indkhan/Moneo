@@ -18,6 +18,7 @@ import { describeMissingInputs, formatMoney } from "@/lib/finance/format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { SourceCoverageDetails } from "./source-coverage";
 import { AgentBriefing } from "./agent-briefing";
+import { HomeBudgets } from "./home-budgets";
 import { AskAbout } from "@/components/ask-about";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
@@ -182,6 +183,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         <span className="shrink-0 font-mono text-sm">{money(event.expectedMinor, displayCurrency)}</span></li>)}</ul>
         : <p className="mt-3 text-sm text-muted-foreground">No confirmed payments in the next {projection.input?.horizonDays ?? 30} days.</p>}
     </section>,
+    budgets: <Suspense fallback={<SectionFallback title="Budgets" />}><HomeBudgets {...sectionProps} /></Suspense>,
     goals: <section className={card}>
       <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">Goals</h2><Link href="/plan" className="text-sm font-medium text-brand hover:underline">Plan</Link></div>
       <p className="mt-1 text-xs text-muted-foreground">Reserving money for a goal does not move it.</p>
