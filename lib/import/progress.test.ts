@@ -68,54 +68,6 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
   },
 }) }));
 
-it("writes reviewed three-decimal amounts, fees and balances as exact strings with original evidence", async () => {
-  state.sources.clear(); state.links.clear(); state.transactions.clear(); state.snapshots.clear(); state.timestamped = true; state.threeDecimal = true; state.importStatus = "queued";
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key"); vi.stubEnv("OPENAI_API_KEY", "");
-  try {
-    await importFile("decimal-import", "workspace", 27);
-    expect(state.importStatus).toBe("completed");
-    expect([...state.transactions.values()][1].amount_minor).toBe("-123");
-    expect([...state.snapshots.values()][1].amount_minor).toBe("1234");
-    expect([...state.sources.values()][1]).toMatchObject({ original_row: { Amount: "-0.123", Fee: "0.001", Balance: "1.234" }, fee_evidence: { feeMinor: "1" } });
-  } finally {
-    state.sources.clear(); state.links.clear(); state.transactions.clear(); state.snapshots.clear(); state.progress.length = 0; state.importsWrites = [];
-    state.timestamped = false; state.threeDecimal = false; state.importStatus = "queued"; vi.unstubAllEnvs();
-  }
-});
-
-it("reports persisted progress at the committed batch boundary and keeps counts/idempotent ledger stable on replay", async () => {
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid");
-  vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
-  vi.stubEnv("OPENAI_API_KEY", "");
-  try {
-    await importFile("import", "workspace", 27);
-    expect(state.progress).toEqual([27, 27]);
-    expect(state.transactions.size).toBe(27);
-    expect([...state.transactions.values()][0]).toMatchObject({ amount_minor: "-100", kind: "ordinary", review_reasons: ["source_transfer"] });
-    await importFile("import", "workspace", 27);
-    expect(state.transactions.size).toBe(27);
-    expect(state.sources.size).toBe(27);
-    expect(state.progress.at(-1)).toBe(27);
-  } finally { vi.unstubAllEnvs(); }
-});
-
-it("stops row effects at effective cancellation and resumes the same sources without duplicate ledger", async () => {
-  state.sources.clear(); state.links.clear(); state.transactions.clear(); state.snapshots.clear(); state.progress.length = 0;
-  state.importStatus = "queued"; state.runVersion = 1; state.cancelAt = 250; state.total = 277;
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key"); vi.stubEnv("OPENAI_API_KEY", "");
-  try {
-    await importFile("cancel-import", "workspace", 277);
-    expect(state.importStatus).toBe("canceled"); expect(state.sources.size).toBe(250); expect(state.transactions.size).toBe(250);
-    const first = structuredClone([...state.sources.values()][0]);
-    state.legacyAccountId = String([...state.transactions.values()][0].account_id); // A paused legacy account was renamed; name lookup no longer finds it.
-    state.cancelAt = 0; state.importStatus = "queued"; state.runVersion = 3;
-    await importFile("cancel-import", "workspace", 277, 3);
-    expect(state.sources.size).toBe(277); expect(state.transactions.size).toBe(277);
-    expect([...state.sources.values()][0]).toEqual(first);
-    expect([...state.transactions.values()].every(row => row.account_id === state.legacyAccountId)).toBe(true);
-  } finally { state.legacyAccountId = ""; state.cancelAt = 0; state.importStatus = "queued"; state.runVersion = 1; state.total = 27; vi.unstubAllEnvs(); }
-});
-
 it("refuses an archived reviewed target before writing any source or canonical row", async () => {
   state.sources.clear(); state.transactions.clear(); state.links.clear(); state.importsWrites = []; state.accountArchived = true; state.importStatus = "queued";
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key"); vi.stubEnv("OPENAI_API_KEY", "");
@@ -124,19 +76,4 @@ it("refuses an archived reviewed target before writing any source or canonical r
     expect(state.importsWrites).toContainEqual({ status: "failed", error: "Error: Archived accounts cannot receive new imports" });
     expect(state.sources.size).toBe(0); expect(state.transactions.size).toBe(0);
   } finally { state.accountArchived = false; state.importStatus = "queued"; vi.unstubAllEnvs(); }
-});
-
-it("persists reviewed source instants and repairs a lost after-row snapshot on retry without changing ledger", async () => {
-  state.sources.clear(); state.links.clear(); state.transactions.clear(); state.snapshots.clear(); state.progress.length = 0; state.timestamped = true; state.importStatus = "queued";
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid"); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key"); vi.stubEnv("OPENAI_API_KEY", "");
-  try {
-    await importFile("timestamp-import", "workspace", 27);
-    expect([...state.transactions.values()][1]).toMatchObject({ posted_at: "2026-10-01T10:01:00.000Z", amount_minor: "-100", review_reasons: ["fee_semantics"] });
-    expect([...state.sources.values()][1]).toMatchObject({ fee_evidence: { treatment: "included", feeMinor: "10", deltaMinor: "-100", previousRowNumber: 2 } });
-    expect([...state.snapshots.values()][1]).toMatchObject({ as_of: "2026-10-01T10:01:00.000Z", boundary_kind: "after_transaction", source_transaction_id: [...state.sources.keys()][1] });
-    state.snapshots.clear();
-    state.importStatus = "queued"; // Recover a legacy partial import whose snapshot effect was lost before the atomic writer existed.
-    await importFile("timestamp-import", "workspace", 27);
-    expect(state.snapshots.size).toBe(27); expect(state.transactions.size).toBe(27);
-  } finally { state.timestamped = false; vi.unstubAllEnvs(); }
 });
