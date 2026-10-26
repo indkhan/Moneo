@@ -931,7 +931,7 @@ export const agentRuns = pgTable("agent_runs", {
 
 export const agentTasks = pgTable("agent_tasks", {
   id: uuid("id").defaultRandom().primaryKey(),
-  runId: uuid("run_id").notNull().references(() => agentRuns.id, { onDelete: "cascade" }),
+  runId: uuid("run_id").references(() => agentRuns.id, { onDelete: "cascade" }),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   agent: text("agent").notNull(),
   position: integer("position").notNull().default(0),
@@ -950,7 +950,7 @@ export const agentTasks = pgTable("agent_tasks", {
 
 export const agentProposals = pgTable("agent_proposals", {
   id: uuid("id").defaultRandom().primaryKey(),
-  runId: uuid("run_id").notNull().references(() => agentRuns.id, { onDelete: "cascade" }),
+  runId: uuid("run_id").references(() => agentRuns.id, { onDelete: "cascade" }),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   agent: text("agent").notNull(),
   kind: text("kind").notNull(),
@@ -968,7 +968,8 @@ export const agentProposals = pgTable("agent_proposals", {
 }, table => [
   unique("agent_proposals_run_conflict_key").on(table.runId, table.conflictKey),
   index("agent_proposals_workspace_status").on(table.workspaceId, table.status),
-  check("agent_proposals_kind_check", sql`${table.kind} in ('categorize','recurring','budget','finding')`),
+  uniqueIndex("agent_proposals_standalone_conflict_key").on(table.workspaceId, table.conflictKey).where(sql`${table.runId} is null`),
+  check("agent_proposals_kind_check", sql`${table.kind} in ('categorize','recurring','budget','finding','iou_create','iou_settle')`),
   check("agent_proposals_status_check", sql`${table.status} in ('proposed','applying','accepted','rejected','failed')`),
   check("agent_proposals_confidence_check", sql`${table.confidence} between 0 and 100`),
   check("agent_proposals_title_check", sql`char_length(${table.title}) between 1 and 200`),
