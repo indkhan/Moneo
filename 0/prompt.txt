@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bpk83o80o</task-id>
+<tool-use-id>toolu_019Lo9wC6ZniWDN8vUr9WBjo</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--codebases-Moneo\5bdd9f63-beee-4c1a-91bf-671a2f1463f5\tasks\bpk83o80o.output</output-file>
+<status>failed</status>
+<summary>Background command "Start dev server on port 3100 for review" failed with exit code 1</summary>
+</task-notification>
