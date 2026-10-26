@@ -1,0 +1,9 @@
+can you check all the open pr and then tell me which all can be merged to main ???
+
+---
+
+Sure go through it and merge all the pr
+
+---
+
+Can you remove those 14 tests so that it doesn’t always fail and then push to main

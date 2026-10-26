@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M5WVPVMNQXGHSD9WY7KEH65H",
+  "session_id": "dfc02c26-6023-4d0f-9e0a-7b2bdf717195",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-26T19:41:32.2807057Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "lib/ai/agent-runtime.test.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-haiku-5-5",
+  "turn_id": "0f014f4565c9",
+  "checkpoint_transcript_start": 329,
+  "transcript_lines_at_start": 329,
+  "compact_transcript_start": 43,
+  "token_usage": {
+    "input_tokens": 22,
+    "cache_creation_tokens": 26237,
+    "cache_read_tokens": 819744,
+    "output_tokens": 8261,
+    "api_call_count": 11
+  },
+  "redaction": {
+    "replacements": 4,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 4,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 2
+  }
+}
