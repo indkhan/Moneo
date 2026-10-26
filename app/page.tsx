@@ -197,7 +197,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
       <ul className="mt-2 divide-y divide-border">{(goals.data ?? []).map(goal => { const reservations = (allocations.data ?? []).filter(row => row.goal_id === goal.id); const comparable = reservations.every(row => accounts.find(account => account.id === row.account_id)?.currency_code === goal.currency_code); const reserved = reservations.reduce((sum, row) => sum + BigInt(row.amount_minor), 0n); return <li key={goal.id} className="py-2 text-sm"><Link href="/plan" className="font-medium hover:underline">{goal.name}</Link><p className="text-xs text-muted-foreground">{comparable ? money(reserved, goal.currency_code) : "Reservation conversion required"} reserved of {money(goal.target_minor, goal.currency_code)}{goal.target_date ? ` · target ${goal.target_date}` : ""}</p></li>; })}</ul>
       {!goals.data?.length && <p className="mt-3 text-sm text-muted-foreground">No goals yet. <Link href="/plan" className="underline">Create a goal</Link>.</p>}
     </section>,
-    agents: <Suspense fallback={<SectionFallback title="Agent team" />}><AgentBriefing db={supabase} workspaceId={workspace.id} /></Suspense>,
+    agents: <Suspense fallback={<SectionFallback title="Agent team" />}><AgentBriefing db={supabase} workspaceId={workspace.id} timeZone={workspace.timezone} /></Suspense>,
     insights: <Suspense fallback={<SectionFallback title="Weekly briefing" />}>
       <WeeklyBriefing db={supabase} workspaceId={workspace.id} currency={displayCurrency} today={today} settings={context.settings} projection={projection} missingInputs={missingInputs} names={accountNames} wealth={wealthItems} />
     </Suspense>,
