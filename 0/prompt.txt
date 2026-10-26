@@ -1,0 +1,32 @@
+i want to have some examples artifact generate of few examples and they should be that they can be connected for the user account 
+
+think of a few good idea that could be a nice artifact we need atlest 3 examples with a nice clean and colourful ui not all colors but few use /awesome-design-md  skill to tell it to make the design once we decide of 3 of the artifact examples
+/awesome-design-md  skill to tell it to make the design once we decide of 3 of the artifact examples
+
+---
+
+make a pr towards main
+
+---
+
+if the problem is entire then skip it
+
+---
+
+<task-notification>
+<task-id>b20fno6c8</task-id>
+<tool-use-id>toolu_01SCkWtuMkuXH2mRkFHPL4jX</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-bbb9ebda\08bfa13d-ee97-4231-9a69-23965b34901a\tasks\b20fno6c8.output</output-file>
+<status>failed</status>
+<summary>Background command "Confirm test totals and commit" failed with exit code 143</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bht775kn3</task-id>
+<tool-use-id>toolu_01G5X3gthirEQ9XchvfvsiG9</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-bbb9ebda\08bfa13d-ee97-4231-9a69-23965b34901a\tasks\bht775kn3.output</output-file>
+<status>failed</status>
+<summary>Background command "Branch, commit, push, open PR" failed with exit code 1</summary>
+</task-notification>
