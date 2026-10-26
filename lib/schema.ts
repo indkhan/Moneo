@@ -176,6 +176,21 @@ export const bankConnectionAccounts = pgTable("bank_connection_accounts", {
   check("bank_connection_accounts_account_name_check", sql`char_length(${table.accountName}) between 1 and 100`),
 ]);
 
+// IBANs of the owner's own accounts (202610260001): money moved between them is a transfer.
+// account_id null names an own account that Moneo does not track.
+export const ownAccountIdentifiers = pgTable("own_account_identifiers", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  accountId: uuid("account_id").references(() => accounts.id, { onDelete: "cascade" }),
+  iban: text("iban").notNull(),
+  label: text("label").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+  unique("own_account_identifiers_workspace_id_iban_key").on(table.workspaceId, table.iban),
+  check("own_account_identifiers_iban_check", sql`${table.iban} ~ '^[A-Z]{2}[0-9]{2}[A-Z0-9]{8,30}$'`),
+  check("own_account_identifiers_label_check", sql`char_length(btrim(${table.label})) between 1 and 120`),
+]);
+
 export const importControlEvents = pgTable("import_control_events", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
