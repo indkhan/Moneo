@@ -1,0 +1,16 @@
+I like the artifact that it generates and all of that. There are three things I want:
+The artifact, which is already generated, should have a way to delete it from the front view itself.
+The artifact should have an overview on the main artifact page itself that not only shows the name of that specific artifact but also shows a bit of it.
+There should be a button that lets you add that specific artifact to your dashboard itself. Let's talk about it. How do we implement it in the simplest and nicest way possible?
+
+
+There is one thing I am not sure adding artifact to home view if we should have something else for adding to Home Screen and not artifact which looks like other widget or we should have that artifact as it is but if u need to add to Home Screen it creates it for u the widget thing itself which is like the other things in the overview let’s think about it 
+
+
+Research about all of it and then plan it and then tell me what is the best way to do it 
+
+If there are things which has multiple option then at the end show me the different options and I will choose from it don’t choose something important for me and when u give me that give me options with pros and. Cons and also give ur recommendation
+
+---
+
+All as per recommendation implement it and then make a pr towards main and in the pr includes video of that these things and see page being heavier does not make the page open very slow keep that in mind as well
