@@ -1,0 +1,34 @@
+ok the ui looks good 2 problems firstly the account has money from before why does it show from when i synced it to this moneo can it  not get all the previous transaction i am looking at my data one [Image: image.png; ref=image_171631c0-0aa9-4704-b9cb-fd35ce16da06] 
+
+another problem is in the weekly breefing i think the paraphraser is not there as the weekly breefing looks fucked as it has the data and time and all [Image: image.png; ref=image_bc0ccbcb-4783-4eae-ac0c-8b0a6b2dad08] ask me or tell me or fix it
+
+<t3_context version="1">
+<context kind="image" id="image_171631c0-0aa9-4704-b9cb-fd35ce16da06">
+name: image.png
+mimeType: image/png
+sizeBytes: 46559
+attachmentId: 8cd6ba4b-5c3c-4460-8ced-14c6366b1f77-a5212add-761d-45a4-9df4-17473245f9bc
+</context>
+<context kind="image" id="image_bc0ccbcb-4783-4eae-ac0c-8b0a6b2dad08">
+name: image.png
+mimeType: image/png
+sizeBytes: 40365
+attachmentId: 8cd6ba4b-5c3c-4460-8ced-14c6366b1f77-3ecb24a9-d262-4df7-95d0-de1aa4b2c982
+</context>
+</t3_context>
+
+[Attached image "image.png" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\8cd6ba4b-5c3c-4460-8ced-14c6366b1f77-a5212add-761d-45a4-9df4-17473245f9bc.png]
+
+[Attached image "image.png" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\8cd6ba4b-5c3c-4460-8ced-14c6366b1f77-3ecb24a9-d262-4df7-95d0-de1aa4b2c982.png]
+
+---
+
+a few other things is that in networth can you make it that it shows the exact amount and the date you take your mouse at in the line like a really nice ui 
+
+and in the cash flow 6 months it has in out it shoud also be together as once you choose one you cant go back and it should be that if you select one of the in or out it should not hide the other thing while showing that month for in or out 
+
+it only stops showing in or out if the user itself chooses in or out at the top
+
+---
+
+Continue where you left off.
