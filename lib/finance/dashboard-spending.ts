@@ -2,6 +2,7 @@ import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { expenditurePosting, reportExpenditure, type ExpenditureRate } from "@/lib/finance/expenditure";
 import { loadExpenditureRates } from "@/lib/finance/expenditure-rates";
+import { allPages } from "@/lib/all-pages";
 
 export type SpendingRow = Parameters<typeof expenditurePosting>[0] & { category_id: string | null; merchant_id: string | null };
 type Total = { incomeMinor: bigint; spendingMinor: bigint; partial: boolean };
@@ -53,16 +54,11 @@ export const loadHomeSpending = cache(async (db: SupabaseClient, workspaceId: st
   const [year, month] = today.split("-").map(Number);
   const from = day(year, month - MONTHS, 1);
   async function loadRows() {
-    const rows: SpendingRow[] = [];
-    for (let offset = 0; ; offset += 1000) {
-      const { data, error } = await db.from("effective_transactions")
-        .select("id, parent_transaction_id, account_id, posted_on, version, amount_minor::text, currency_code, status, kind, review_reasons, category_id, merchant_id")
-        .eq("workspace_id", workspaceId).gte("posted_on", from).lte("posted_on", today).order("id").range(offset, offset + 999);
-      if (error) throw error;
-      rows.push(...(data ?? []) as unknown as SpendingRow[]);
-      if (rows.length > ROW_LIMIT) throw new Error("Spending history exceeds the Home summary limit");
-      if (!data || data.length < 1000) return rows;
-    }
+    const rows = await allPages<SpendingRow>((start, end, count) => db.from("effective_transactions")
+      .select("id, parent_transaction_id, account_id, posted_on, version, amount_minor::text, currency_code, status, kind, review_reasons, category_id, merchant_id", count ? { count } : undefined)
+      .eq("workspace_id", workspaceId).gte("posted_on", from).lte("posted_on", today).order("id").range(start, end), 1000);
+    if (rows.length > ROW_LIMIT) throw new Error("Spending history exceeds the Home summary limit");
+    return rows;
   }
   const [rows, rates] = await Promise.all([loadRows(), loadExpenditureRates(db, workspaceId, { currencyCode, from, to: today })]);
   const summary = summarizeSpending(rows, rates, currencyCode, today);
