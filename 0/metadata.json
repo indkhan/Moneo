@@ -1,0 +1,75 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M5WEHVVG4DB0RVA4B6JFF65T",
+  "session_id": "3fdd9367-5e9a-4ec6-b926-7eb18d7e5801",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-26T15:51:37.4742161Z",
+  "branch": "settings-ai-usage-chart",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "lib/ai/usage.test.ts",
+    "lib/ai/usage.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-haiku-5-5",
+  "turn_id": "f31a81671d19",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 36,
+    "cache_creation_tokens": 57543,
+    "cache_read_tokens": 920592,
+    "output_tokens": 18923,
+    "api_call_count": 18
+  },
+  "redaction": {
+    "replacements": 0,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01LEiyH6SBHyXbu7JRhpAxHR",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "dataviz"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "f31a81671d19",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 102,
+        "end": 103,
+        "entry_ids": [
+          "499e877a-ba5b-4ab6-b243-c3411f37c084"
+        ],
+        "tool_use_id": "toolu_01LEiyH6SBHyXbu7JRhpAxHR"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01LEiyH6SBHyXbu7JRhpAxHR"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: dataviz",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 2
+  }
+}

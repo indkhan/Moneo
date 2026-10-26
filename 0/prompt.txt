@@ -1,0 +1,12 @@
+can you in the settings see if it is possible to see amount of tokens used and which model is it first tell me is it simple and without degrading the speed and time of the website so check those things and then lets talk about how will we show in the settings ui
+
+---
+
+can we have the per model summary kinda thing but not summary but actually a graph lets talk about what will make sense cuz text is boring i want to have a nice graph for it
+
+---
+
+1. recommendation 
+2. 2 keep per model bars
+3. have view , 7 day view , 30 day view and then all time 
+do these things in a worktree and then make a pr towards main with this it should be there in the setting page
