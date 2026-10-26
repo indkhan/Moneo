@@ -8,7 +8,8 @@ import {
   Network, Repeat, Search, SearchCheck, SlidersHorizontal, Tags, Target, TrendingUp, Upload, type LucideIcon,
 } from "lucide-react";
 import { AiPanel } from "@/components/ai-panel";
-import { CommandPalette, Modal, ShortcutHelp, type Command } from "@/components/command-palette";
+import { ASK_EVENT, type AskSeed } from "@/components/ask-about";
+import { CommandPalette, Kbd, Modal, ShortcutHelp, type Command } from "@/components/command-palette";
 import { cn } from "@/lib/utils";
 
 /** Streamed from the root layout; null when signed out or the lookup failed. */
@@ -92,7 +93,7 @@ function MenuLink({ item, current, shell, onNavigate }: { item: NavItem; current
 }
 
 // Accounts arrive with the streamed shell data; until then the palette lists pages and actions.
-function AccountCommands({ shell, base, ...props }: { shell: Promise<ShellData>; base: Command[]; open: boolean; onClose: () => void }) {
+function AccountCommands({ shell, base, ...props }: { shell: Promise<ShellData>; base: Command[]; open: boolean; onClose: () => void; onAsk: (question: string) => void }) {
   const router = useRouter();
   const accounts: Command[] = (use(shell)?.accounts ?? []).map(account => ({ id: `account:${account.id}`, label: account.name, group: "Accounts", keywords: "account transactions",
     run: () => router.push(`/money/transactions?account=${encodeURIComponent(account.id)}`) }));
@@ -134,7 +135,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
     ...allItems.map(item => ({ id: item.href, label: item.label, group: "Pages", keywords: railFor(item)?.label,
       hint: item.go && `G ${item.go.toUpperCase()}`, run: () => router.push(item.href) })),
   ];
-  const paletteProps = { open: palette, onClose: () => setPalette(false) };
+  const paletteProps = { open: palette, onClose: () => setPalette(false), onAsk: (question: string) => window.dispatchEvent(new CustomEvent<AskSeed>(ASK_EVENT, { detail: { question } })) };
 
   return <div className="min-h-screen bg-background">
     <a href="#main-content" className="sr-only z-50 rounded bg-card p-3 text-sm underline focus:not-sr-only focus:fixed focus:left-3 focus:top-3">Skip to content</a>
@@ -148,9 +149,12 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
     <div className="min-w-0 pb-16 lg:pb-0 lg:pl-22 lg:transition-[padding] lg:[html[data-ai-panel]_&]:pr-112">
       <header className="sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur">
         <div className="flex h-19 items-center gap-3 px-4 sm:px-6 lg:px-8">
-          <AiPanel onPalette={() => setPalette(true)} />
+          <button type="button" onClick={() => setPalette(true)} aria-label="Search or ask Moneo" className="flex h-11 min-w-0 max-w-[620px] flex-1 items-center gap-2.5 rounded-xl border border-input bg-card px-3.5 text-left text-sm text-muted-foreground hover:text-foreground">
+            <Search className="size-4 shrink-0" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">Search pages, accounts or ask Moneo…</span>
+            <span className="hidden gap-0.5 sm:flex" aria-hidden="true"><Kbd>⌘</Kbd><Kbd>K</Kbd></span>
+          </button>
           <div className="ml-auto flex items-center gap-2">
-            <button type="button" onClick={() => setPalette(true)} aria-label="Open command palette" className="flex size-10 items-center justify-center rounded-xl border border-input text-muted-foreground hover:text-foreground lg:hidden"><Search className="size-[18px]" aria-hidden="true" /></button>
+            <AiPanel />
             <Link href={notificationsItem.href} aria-label="Notifications" aria-current={current === notificationsItem ? "page" : undefined}
               className={cn("flex size-10 items-center justify-center rounded-xl border border-input hover:bg-muted", current === notificationsItem && "bg-muted")}><Bell className="size-[18px]" strokeWidth={1.6} aria-hidden="true" /></Link>
             <Link href={settingsItem.href} aria-label="Settings" className="flex size-10 items-center justify-center rounded-full bg-input text-muted-foreground hover:text-foreground lg:hidden"><SlidersHorizontal className="size-[18px]" aria-hidden="true" /></Link>

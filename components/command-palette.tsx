@@ -34,18 +34,21 @@ export function Modal({ open, onClose, label, className, children }: { open: boo
   </dialog>;
 }
 
-export function CommandPalette({ open, onClose, commands }: { open: boolean; onClose: () => void; commands: Command[] }) {
+export function CommandPalette({ open, onClose, commands, onAsk }: { open: boolean; onClose: () => void; commands: Command[]; onAsk?: (question: string) => void }) {
   return <Modal open={open} onClose={onClose} label="Command palette" className="inset-0 size-full items-start justify-center px-4 pt-[12vh]">
-    <PaletteBody commands={commands} onClose={onClose} />
+    <PaletteBody commands={commands} onClose={onClose} onAsk={onAsk} />
   </Modal>;
 }
 
 // Mounted only while open, so the query and selection reset each time.
-function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () => void }) {
+function PaletteBody({ commands, onClose, onAsk }: { commands: Command[]; onClose: () => void; onAsk?: (question: string) => void }) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const listId = useId();
-  const results = filterCommands(commands, query);
+  const question = query.trim();
+  // Whatever is typed can always be sent to the assistant, so it is the last row.
+  const asking: Command[] = onAsk && question ? [{ id: "ask-moneo", label: `Ask Moneo “${question}”`, group: "Ask Moneo", run: () => onAsk(question) }] : [];
+  const results = [...filterCommands(commands, query), ...asking];
   const selected = Math.min(active, Math.max(results.length - 1, 0));
   const run = (command: Command | undefined) => { if (!command) return; onClose(); command.run(); };
 
