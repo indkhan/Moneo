@@ -112,6 +112,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     .map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n }));
   const monthChange = trend.at(-1)!.value - trend.at(-2)!.value, monthBase = trend.at(-2)!.value;
   const dayMonth = (date: string) => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
+  const dateTile = (date: string) => { const at = new Date(`${date}T00:00:00Z`); return { month: new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" }).format(at), day: date.slice(8, 10) }; };
   const monthLabel = (date: string) => new Intl.DateTimeFormat(locale, { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
 
   const upcoming = (projection.input?.events ?? []).filter(event => event.expectedMinor < 0n && event.source !== "estimated").sort((a, b) => a.date.localeCompare(b.date));
@@ -172,11 +173,14 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
       </article></li>; })}</ul>
       <form action={createAccount} className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3"><input name="name" required maxLength={120} placeholder="New account name" aria-label="Account name" className="min-h-9 min-w-36 flex-1 rounded-lg border border-border bg-card px-3 py-1.5 text-sm" /><select name="type" aria-label="Account type" className="min-h-9 rounded-lg border border-border bg-card px-2 py-1.5 text-sm"><option value="checking">Checking</option><option value="savings">Savings</option><option value="cash">Cash</option><option value="credit">Credit</option><option value="investment">Investment</option><option value="wallet">Wallet</option><option value="other">Other</option></select><input name="currency" defaultValue={displayCurrency} maxLength={3} aria-label="Currency code" className="min-h-9 w-16 rounded-lg border border-border bg-card px-2 py-1.5 text-sm" /><button className="inline-flex min-h-9 items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"><Plus size={14} /> Add account</button></form>
     </section>,
-    upcoming: <section className={card}>
-      <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">Upcoming payments</h2><Link href="/money/recurring" className="text-sm font-medium text-brand hover:underline">Recurring</Link></div>
-      <p className="mt-1 text-xs text-muted-foreground">Confirmed payments over the next 30 days, in {displayCurrency}.</p>
-      {upcoming.length ? <ul className="mt-2 divide-y divide-border">{upcoming.slice(0, 8).map((event, index) => <li key={`${event.accountId}:${event.date}:${index}`} className="flex items-center gap-3 py-2 text-sm"><span className="w-20 shrink-0 font-mono text-xs text-muted-foreground">{event.date}</span><span className="min-w-0 flex-1 truncate">{event.name ?? "Confirmed payment"} <span className="text-xs text-muted-foreground">Â· {accountNames.get(event.accountId) ?? "Account"}</span></span><span className="shrink-0 font-mono">{money(event.expectedMinor, displayCurrency)}</span></li>)}</ul>
-        : <p className="mt-3 text-sm text-muted-foreground">No confirmed payments in this forecast.</p>}
+    upcoming: <section aria-labelledby="home-upcoming" className={card}>
+      <div className="flex items-baseline justify-between gap-2"><h2 id="home-upcoming" className="text-sm font-medium"><Link href="/money/recurring" className="hover:underline">Coming up</Link></h2>
+        {upcoming.length > 0 && <span className="font-mono text-[11px] text-subtle">{money(-upcomingMinor, displayCurrency)} · {projection.input?.horizonDays ?? 30} days</span>}</div>
+      {upcoming.length ? <ul className="mt-3 divide-y divide-border">{upcoming.slice(0, 6).map((event, index) => <li key={`${event.accountId}:${event.date}:${index}`} className="flex items-center gap-3 py-3">
+        <span className="flex w-10 shrink-0 flex-col items-center rounded-lg border border-border py-1 leading-none"><span className="font-mono text-[9px] uppercase text-subtle">{dateTile(event.date).month}</span><span className="mt-0.5 font-mono text-[15px] font-semibold">{dateTile(event.date).day}</span></span>
+        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{event.name ?? "Confirmed payment"}</span><span className="block truncate text-xs text-muted-foreground">{event.source === "debt" ? "Loan payment" : "Recurring"} · {accountNames.get(event.accountId) ?? "Account"}</span></span>
+        <span className="shrink-0 font-mono text-sm">{money(event.expectedMinor, displayCurrency)}</span></li>)}</ul>
+        : <p className="mt-3 text-sm text-muted-foreground">No confirmed payments in the next {projection.input?.horizonDays ?? 30} days.</p>}
     </section>,
     goals: <section className={card}>
       <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">Goals</h2><Link href="/plan" className="text-sm font-medium text-brand hover:underline">Plan</Link></div>
