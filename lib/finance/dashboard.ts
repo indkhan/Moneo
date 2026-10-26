@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 // Key order is the default Home order. Keys are stored in saved layouts; never rename one.
-export const BUILTIN_WIDGETS = { overview: "Overview", spending: "Spending trend, categories and merchants", recent: "Recent transactions", insights: "Important insights",
+export const BUILTIN_WIDGETS = { overview: "Overview", spending: "Cash flow over six months, with where money came from and went", recent: "Recent transactions", insights: "Important insights",
   upcoming: "Upcoming payments", planning: "Available funds by account", accounts: "Accounts", goals: "Goals" };
 // Artifacts pinned to Home are stored as "artifact:<uuid>" next to the built-in keys.
 const ARTIFACT_KEY = /^artifact:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;

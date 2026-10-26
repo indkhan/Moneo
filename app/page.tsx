@@ -2,7 +2,7 @@ import Link from "next/link";
 import { HomeLiquidity } from "./account-liquidity-summary";
 import { ManualBalanceForm } from "./manual-balance-form";
 import { ImportantInsights, loadInsightEvidence } from "./insights/panel";
-import { Figure, Kpi, KpiFallback, MonthSpendingKpi, RecentTransactions, SectionFallback, SpendingPanel, card } from "./home-sections";
+import { CashFlowPanel, Figure, MonthCashFlow, RecentTransactions, SectionFallback, card } from "./home-sections";
 import { Suspense, type ReactNode } from "react";
 import { artifactIdFromKey, dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
 import { ArtifactFrame } from "@/components/artifact-frame";
@@ -29,7 +29,7 @@ import { LayoutGrid, Plus, Sparkle } from "lucide-react";
 const FULL = new Set(["overview"]);
 const WIDE = new Set(["spending", "accounts", "insights", "recent"]);
 
-export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string; month?: string }> } = {}) {
+export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string; month?: string; flow?: string }> } = {}) {
   const params = await searchParams;
   const accountId = typeof params?.account === "string" ? params.account : undefined;
   const supabaseConfig = getSupabaseConfig();
@@ -111,6 +111,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     snapshots: balanceEvidence.snapshots, valuations: valuationHistory(wealthEvents, allWealth), removedOn: removedOn(allWealth, workspace.timezone) })
     .map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n }));
   const monthChange = trend.at(-1)!.value - trend.at(-2)!.value, monthBase = trend.at(-2)!.value;
+  const dayMonth = (date: string) => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
   const monthLabel = (date: string) => new Intl.DateTimeFormat(locale, { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
 
   const upcoming = (projection.input?.events ?? []).filter(event => event.expectedMinor < 0n && event.source !== "estimated").sort((a, b) => a.date.localeCompare(b.date));
@@ -122,6 +123,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   // A deleted artifact simply drops off Home; its key is cleaned up the next time the layout is saved.
   const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null).filter(key => { const id = artifactIdFromKey(key); return !id || pinnedTitles.has(id); });
   const sectionProps = { db: supabase, workspaceId: workspace.id, currency: displayCurrency, today, locale };
+  const search = { account: accountId, month: typeof params?.month === "string" ? params.month : undefined, flow: typeof params?.flow === "string" ? params.flow : undefined };
 
   const widgets: Record<string, ReactNode> = {
     ...Object.fromEntries([...pinnedTitles].map(([id, title]) => [`artifact:${id}`, <section key={id} aria-label={title} className={`${card} flex flex-col gap-3`}>
@@ -147,24 +149,14 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
             <div key={label} className="bg-card"><Link href={href} className="flex flex-col gap-1 px-4 py-3.5 hover:bg-muted"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-mono">{money(amount, displayCurrency)}</dd></Link></div>)}
         </dl>}
       </div>
-      <div className={`${card} flex flex-col gap-4`}>
-        <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">This month</h2><span className="font-mono text-[11px] text-subtle">day {Number(today.slice(8, 10))} / {new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).getUTCDate()}</span></div>
-        <Suspense fallback={<KpiFallback label="Spent this month" />}><MonthSpendingKpi {...sectionProps} /></Suspense>
-        <Kpi label="Upcoming payments" href="/money/recurring" action="Recurring">
-          {upcoming.length ? <><p className="mt-1 font-mono text-xl">{money(-upcomingMinor, displayCurrency)}</p><p className="mt-1 truncate text-xs text-muted-foreground">{upcoming.length} confirmed in 30 days Â· next {upcoming[0].name ?? "payment"} on {upcoming[0].date}</p></>
-            : <p className="mt-1 text-sm text-muted-foreground">No confirmed payments in the next 30 days.</p>}
-        </Kpi>
-        <Kpi label="Cash available" href="/plan" action="Forecast">
-          {available?.status === "available" ? <><p className="display-figure mt-1 text-[32px]">{money(available.amountMinor, displayCurrency)}</p><p className="mt-1 text-xs text-muted-foreground">After upcoming payments and your buffer</p></>
-            : <p className="mt-1 text-sm text-muted-foreground">Add a balance for each spending account to see this.</p>}
-        </Kpi>
-        {available?.status === "available" && <div className="mt-auto flex flex-col gap-1.5 rounded-[14px] border border-ai-border bg-ai-soft p-3.5">
-          <p className="flex items-center gap-2 text-xs text-ai"><Sparkle className="size-3.5 fill-current" aria-hidden="true" />Cash-flow forecast</p>
-          <p className="text-[13px]">Lowest point on <span className="font-mono">{available.limitingDate}</span>. <Link href="/plan" className="text-brand hover:underline">See forecast</Link></p>
-        </div>}
-      </div>
+      <Suspense fallback={<SectionFallback title="This month" />}><MonthCashFlow {...sectionProps} search={search}>
+        {available?.status === "available" && <Link href="/plan" className="mt-auto flex flex-col gap-1.5 rounded-[14px] border border-ai-border bg-ai-soft p-3.5 hover:border-ai">
+          <p className="flex items-center gap-2 text-xs text-ai"><Sparkle className="size-3.5 fill-current" aria-hidden="true" />Cash-flow forecaster</p>
+          <p className="text-[13px]">Lowest point after your buffer: <span className={`font-mono ${available.amountMinor < 0n ? "text-warning" : ""}`}>{money(available.amountMinor, displayCurrency)}</span> on {dayMonth(available.limitingDate)}.</p>
+        </Link>}
+      </MonthCashFlow></Suspense>
     </section>,
-    spending: <Suspense fallback={<SectionFallback title="Spending" />}><SpendingPanel {...sectionProps} month={typeof params?.month === "string" ? params.month : undefined} /></Suspense>,
+    spending: <Suspense fallback={<SectionFallback title="Cash flow · 6 months" />}><CashFlowPanel {...sectionProps} search={search} /></Suspense>,
     recent: <Suspense fallback={<SectionFallback title="Recent transactions" />}><RecentTransactions db={supabase} workspaceId={workspace.id} locale={locale} names={accountNames} /></Suspense>,
     planning: projection.liquidity && <section aria-label="Available funds"><HomeLiquidity liquidity={projection.liquidity} accountId={accountId} names={accountNames} locale={locale} coverage={<SourceCoverageDetails coverage={projection.sourceCoverage} />} /></section>,
     accounts: <section aria-labelledby="home-accounts" className={card}>

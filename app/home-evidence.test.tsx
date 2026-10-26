@@ -25,7 +25,7 @@ it("shows a missing balance without inventing an epoch date or provenance", asyn
   expect(html).toContain("Balance unknown");
   expect(html).toContain("Add a dated balance");
   expect(html).toContain("<summary class=\"cursor-pointer text-xs font-medium text-brand hover:underline\">Update balance</summary>");
-  for (const text of ["Net worth", "Cash available", "Spent this month", "Upcoming payments"]) expect(html).toContain(text);
+  for (const text of ["Net worth", "Upcoming payments"]) expect(html).toContain(text);
   expect(html).not.toContain("1970");
   expect(html).not.toContain("null · as of");
 });
