@@ -4,7 +4,7 @@ import { Component, useMemo, useSyncExternalStore, type ReactNode } from "react"
 import dynamic from "next/dynamic";
 
 // Loaded on the client only, so echarts never ships in the server render or blocks first paint.
-const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
+export const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
 
 function subscribeTheme(onChange: () => void) {
   const observer = new MutationObserver(onChange);
@@ -24,11 +24,11 @@ function token(name: string, fallback: string) {
 }
 
 // Chart colors follow the app's CSS tokens, including the dark theme.
-function useThemeColors() {
+export function useThemeColors() {
   const theme = useSyncExternalStore(subscribeTheme, () => document.documentElement.dataset.theme ?? "light", () => "light");
   return useMemo(() => {
-    const fallback = theme === "dark" ? { brand: "#cbf26b", muted: "#a3a39e", border: "#24262a" } : { brand: "#4a6400", muted: "#5c5d58", border: "#e2e0d8" };
-    return { brand: token("--color-brand", fallback.brand), muted: token("--color-muted-foreground", fallback.muted), border: token("--color-border", fallback.border) };
+    const fallback = theme === "dark" ? { brand: "#cbf26b", muted: "#a3a39e", border: "#24262a", card: "#16171a", input: "#3987e5", output: "#d95926" } : { brand: "#4a6400", muted: "#5c5d58", border: "#e2e0d8", card: "#ffffff", input: "#2a78d6", output: "#eb6834" };
+    return { brand: token("--color-brand", fallback.brand), muted: token("--color-muted-foreground", fallback.muted), border: token("--color-border", fallback.border), card: token("--color-card", fallback.card), input: token("--color-chart-input", fallback.input), output: token("--color-chart-output", fallback.output) };
   }, [theme]);
 }
 
