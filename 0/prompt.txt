@@ -1,0 +1,10 @@
+one thing this applciaiton needs to know about is the multiple accounts that a user has so 
+one thing it should not do is the me sending money from one account of mine to another account of mine that should not be shown as a money in or out cancel it dont show in the thing as cashflow or this month cashflow or anything 
+
+basically it should be that the application knows whose account it is 
+
+for this change in the whole applicaiton what all do we need to change
+
+---
+
+implement it and then create a pr towards main
