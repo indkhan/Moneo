@@ -29,7 +29,22 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   // Opaque saved-view id (?view=<uuid>): filter JSON is loaded from
   // workspace-scoped storage, so search terms and ids never appear in the link.
   const viewId = parseViewId(params.view);
-  const [{ data: accounts }, { data: categories }, { data: merchants }, { data: savedViews }, { data: viewRow }] = await Promise.all([
+  const urlFilters = parseTransactionParams(params);
+  const loadLedger = (filters: ParsedTransactionParams) => {
+    const table = ledgerTable(filters);
+    const { column, ascending } = SORT_ORDER[filters.sort];
+    let query = scopeLedger(supabase.from(table).select("id, version, posted_on, description, amount_minor::text, currency_code, status, kind, account_id, category_id, merchant_id, tags, event_name, review_reasons", { count: "exact" })
+      .eq("workspace_id", workspace.id), filters).order(column, { ascending }).order("id", { ascending }).limit(PAGE_SIZE + 1);
+    if (filters.cursor) query = query.or(cursorClause(filters.sort, filters.cursor));
+    return Promise.all([
+      query,
+      filters.group ? scopeLedger(supabase.from(table).select("category_id, merchant_id, posted_on, amount_minor::text, currency_code").eq("workspace_id", workspace.id), filters)
+        .order("posted_on", { ascending: false }).order("id").limit(GROUP_SCAN_LIMIT) : Promise.resolve(null),
+    ]);
+  };
+  // Without a saved view the ledger depends only on the URL, so it loads alongside the lookups below.
+  const urlLedger = viewId ? null : loadLedger(urlFilters);
+  const [{ data: accounts },{ data: categories }, { data: merchants }, { data: savedViews }, { data: viewRow }] = await Promise.all([
     supabase.from("accounts").select("id, name, currency_code, archived_at").eq("workspace_id", workspace.id).order("name"),
     supabase.from("categories").select("id, name").eq("workspace_id", workspace.id).order("name"),
     supabase.from("merchants").select("id, name").eq("workspace_id", workspace.id).order("name"),
@@ -63,7 +78,6 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     </main>;
   }
 
-  const urlFilters = parseTransactionParams(params);
   let filters: ParsedTransactionParams = urlFilters;
   if (activeView) {
     const saved = savedViewToParams(parseStoredFilters(viewRow!.filters as unknown));
@@ -72,16 +86,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     const { cursor } = parseTransactionParams({ cursor: params.cursor, sort: saved.sort });
     filters = { ...saved, ...(cursor ? { cursor } : {}), ...(urlFilters.transactionId ? { transactionId: urlFilters.transactionId } : {}), ...(urlFilters.group ? { group: urlFilters.group } : {}) };
   }
-  const table = ledgerTable(filters);
-  const { column, ascending } = SORT_ORDER[filters.sort];
-  let query = scopeLedger(supabase.from(table).select("id, version, posted_on, description, amount_minor::text, currency_code, status, kind, account_id, category_id, merchant_id, tags, event_name, review_reasons", { count: "exact" })
-    .eq("workspace_id", workspace.id), filters).order(column, { ascending }).order("id", { ascending }).limit(PAGE_SIZE + 1);
-  if (filters.cursor) query = query.or(cursorClause(filters.sort, filters.cursor));
-  const [{ data, error, count }, grouped] = await Promise.all([
-    query,
-    filters.group ? scopeLedger(supabase.from(table).select("category_id, merchant_id, posted_on, amount_minor::text, currency_code").eq("workspace_id", workspace.id), filters)
-      .order("posted_on", { ascending: false }).order("id").limit(GROUP_SCAN_LIMIT) : Promise.resolve(null),
-  ]);
+  const [{ data, error, count }, grouped] = await (urlLedger ?? loadLedger(filters));
   if (grouped?.error) throw grouped.error;
   const pageRows = (data ?? []).slice(0, PAGE_SIZE) as LedgerRow[];
   const next = data && data.length > PAGE_SIZE ? nextCursorForRow(pageRows[PAGE_SIZE - 1], filters.sort) : null;
