@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M5WXQQ856DRYBKP926B6TADJ",
+  "session_id": "6998e6aa-5f07-4eec-9b74-8763fca70fc5",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-26T20:16:57.8540026Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/money/wealth/net-worth.test.ts",
+    "app/money/wealth/net-worth.ts",
+    "app/page.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-haiku-5-5",
+  "turn_id": "91a79b1e903e",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 16,
+    "cache_creation_tokens": 38672,
+    "cache_read_tokens": 370930,
+    "output_tokens": 5539,
+    "api_call_count": 8
+  },
+  "redaction": {
+    "replacements": 0,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}

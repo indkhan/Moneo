@@ -1,0 +1,17 @@
+the graph in the overview can you make it fully like as per mouse right now only the end of the month of each can i go it hsould be i could go to any date and it it shows for that day net worth amount
+
+
+first tell me is it simple to do and how to do in consice [Image: image.png; ref=image_20426365-5bf1-436d-9516-7ac3060bfb78] 
+
+tell me the simplest and easiest way to do which will also have it in a way such that loading the page is not slow it is fast
+
+<t3_context version="1">
+<context kind="image" id="image_20426365-5bf1-436d-9516-7ac3060bfb78">
+name: image.png
+mimeType: image/png
+sizeBytes: 36161
+attachmentId: 7c02ff60-2524-47e8-bee3-7bf016012854-34f698b7-accf-4843-bac1-db637a0529fa
+</context>
+</t3_context>
+
+[Attached image "image.png" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\7c02ff60-2524-47e8-bee3-7bf016012854-34f698b7-accf-4843-bac1-db637a0529fa.png]
