@@ -35,12 +35,15 @@ export default async function InvestigationPage({ searchParams }: { searchParams
   let spec: InvestigationSpec | undefined;
   let result: Awaited<ReturnType<typeof runInvestigation>> | undefined;
   let error: string | undefined;
-  const [entities, params] = await Promise.all([loadInvestigationEntities(context), searchParams]);
+  // One entities read serves both this page's labels and the investigation itself.
+  const entitiesRead = loadInvestigationEntities(context);
+  const params = await searchParams;
   try {
     spec = parseInvestigationParams(params, { from: monthStart, to: today });
-    result = await runInvestigation(spec, context);
+    result = await runInvestigation(spec, context, { entities: entitiesRead });
     spec = { ...result.interpretedFilters, page: spec.page };
   } catch (e) { error = e instanceof Error ? e.message : "Investigation unavailable"; }
+  const entities = await entitiesRead;
   const names = new Map([entities.accounts, entities.categories, entities.merchants].flat().map(e => [e.id, e.name]));
   const display = (key: string, value: unknown) => Array.isArray(value) ? value.join(", ") || "No tags" : value === null ? "Unassigned"
     : key === "kind" ? kindLabel(String(value)) : key === "status" ? statusLabel(String(value)) : names.get(String(value)) ?? String(value);
