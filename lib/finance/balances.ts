@@ -97,7 +97,6 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
       balance.status = boundaryDate === today ? "current" : "stale";
       // Older balance plus recorded later activity is still the best known balance; status keeps it labelled.
       balance.amount_minor = estimate.toString();
-      if (balance.status === "stale") balance.warnings.push("Dated balance plus recorded later activity; completeness through today is unverified");
     } catch (error) {
       balance.status = "ambiguous";
       balance.estimated_amount_minor = null;
