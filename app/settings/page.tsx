@@ -8,6 +8,8 @@ import { SettingsForm } from "./form";
 import { SummaryRuns, type SummaryRun } from "./summary-runs";
 import { ResetData } from "./reset";
 import { ConnectedBanks } from "@/components/connected-banks";
+import { AiUsage } from "./ai-usage";
+import { parseUsageWindow } from "@/lib/ai/usage";
 
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 const card = "scroll-mt-20 rounded-xl border border-border bg-card p-6";
@@ -41,8 +43,9 @@ async function loadRuns({ supabase, workspace }: Workspace): Promise<SummaryRun[
   });
 }
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ usage?: string }> }) {
   const context = await requireWorkspace();
+  const usageWindow = parseUsageWindow((await searchParams).usage);
   const { user, workspace, settings } = context;
   const [dashboard, runs] = await Promise.all([loadDashboard(context), loadRuns(context)]);
   return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
@@ -65,7 +68,7 @@ export default async function SettingsPage() {
           {runs ? <SummaryRuns initial={runs} /> : <p role="alert" className="mt-3 text-sm text-danger">Scheduled status is unavailable. Try again later.</p>}
           <p className="mt-4 text-sm text-muted-foreground">Finished summaries appear in Activity. If one fails, run a new review from AI.</p>
         </section>
-        <section id="usage" className={card}><h2 className="text-sm font-medium">AI usage</h2><p className="mt-1 text-sm text-muted-foreground">Usage appears in Activity when the provider reports it. Missing figures are shown as unknown, not zero.</p></section>
+        <section id="usage" className={card}><h2 className="text-sm font-medium">AI usage</h2><p className="mt-1 text-sm text-muted-foreground">Tokens used by AI chat, per model. Requests the provider did not report are left out, not counted as zero.</p><Suspense fallback={<SkeletonCard lines={4} />}><AiUsage window={usageWindow} /></Suspense></section>
         <div id="danger" className="scroll-mt-20"><ResetData /></div>
       </div>
     </div>
