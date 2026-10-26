@@ -27,8 +27,8 @@ function token(name: string, fallback: string) {
 export function useThemeColors() {
   const theme = useSyncExternalStore(subscribeTheme, () => document.documentElement.dataset.theme ?? "light", () => "light");
   return useMemo(() => {
-    const fallback = theme === "dark" ? { brand: "#cbf26b", muted: "#a3a39e", border: "#24262a", card: "#16171a", input: "#3987e5", output: "#d95926" } : { brand: "#4a6400", muted: "#5c5d58", border: "#e2e0d8", card: "#ffffff", input: "#2a78d6", output: "#eb6834" };
-    return { brand: token("--color-brand", fallback.brand), muted: token("--color-muted-foreground", fallback.muted), border: token("--color-border", fallback.border), card: token("--color-card", fallback.card), input: token("--color-chart-input", fallback.input), output: token("--color-chart-output", fallback.output) };
+    const fallback = theme === "dark" ? { brand: "#cbf26b", muted: "#a3a39e", border: "#24262a", card: "#16171a", input: "#3987e5", output: "#d95926", out: "#5b5d62" } : { brand: "#4a6400", muted: "#5c5d58", border: "#e2e0d8", card: "#ffffff", input: "#2a78d6", output: "#eb6834", out: "#a9aaa3" };
+    return { brand: token("--color-brand", fallback.brand), muted: token("--color-muted-foreground", fallback.muted), border: token("--color-border", fallback.border), card: token("--color-card", fallback.card), input: token("--color-chart-input", fallback.input), output: token("--color-chart-output", fallback.output), out: token("--color-chart-out", fallback.out) };
   }, [theme]);
 }
 
@@ -61,7 +61,36 @@ export function SpendingChart({ values, labels, type = "bar", height = 280, aria
   );
 }
 
-type ForecastChartDay = { date: string; expected: number; conservative: number; optimistic: number };
+/** Money in vs money out per month; `flow` shows one side only. Bars are major units for pixel scale only. */
+export function CashFlowChart({ labels, income, spending, flow, selected, height = 240, formatValue, onSelect }: {
+  labels: string[]; income: number[]; spending: number[]; flow?: "in" | "out"; selected?: number; height?: number;
+  formatValue?: (value: number) => string; onSelect?: (index: number, flow: "in" | "out") => void;
+}) {
+  const colors = useThemeColors();
+  const bar = { type: "bar", barMaxWidth: 28, barGap: "20%", itemStyle: { borderRadius: [4, 4, 0, 0] } };
+  // With a month picked, the other months fade so the breakdown below clearly belongs to it.
+  const points = (values: number[]) => values.map((value, index) => selected === undefined || index === selected ? value : { value, itemStyle: { opacity: 0.35 } });
+  const series = [
+    ...(flow !== "out" ? [{ ...bar, name: "In", data: points(income), itemStyle: { ...bar.itemStyle, color: colors.brand } }] : []),
+    ...(flow !== "in" ? [{ ...bar, name: "Out", data: points(spending), itemStyle: { ...bar.itemStyle, color: colors.out } }] : []),
+  ];
+  return <div role="img" aria-label="Money in and out for each of the last six months">
+    <ReactECharts
+      notMerge
+      option={{
+        grid: { left: 0, right: 0, top: 8, bottom: 0, containLabel: true },
+        tooltip: { trigger: "axis", ...(formatValue ? { valueFormatter: formatValue } : {}) },
+        xAxis: { type: "category", data: labels, axisLine: { lineStyle: { color: colors.border } }, axisTick: { show: false }, axisLabel: { color: colors.muted, fontFamily: "monospace" } },
+        yAxis: { type: "value", axisLabel: { show: false }, splitLine: { lineStyle: { color: colors.border, type: "dashed" } } },
+        series,
+      }}
+      style={{ height, cursor: onSelect ? "pointer" : undefined }}
+      onEvents={onSelect ? { click: (event: { dataIndex: number; seriesName: string }) => onSelect(event.dataIndex, event.seriesName === "In" ? "in" : "out") } : undefined}
+    />
+  </div>;
+}
+
+type ForecastChartDay ={ date: string; expected: number; conservative: number; optimistic: number };
 type ForecastChartObligation = { date: string; name: string; amount: string };
 
 // Approximate chart coordinates (major units as numbers); exact amounts are rendered by the caller.

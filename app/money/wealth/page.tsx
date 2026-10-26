@@ -8,11 +8,10 @@ import { SourceCoverageDetails } from "@/app/source-coverage";
 import { Sparkline } from "@/app/money/accounts/sparkline";
 import { WealthForm } from "./form";
 import { removeWealthItem, undoWealthEvent } from "./actions";
-import { monthEnds, netWorth, netWorthSeries } from "./net-worth";
+import { loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./net-worth";
 
 const MONTHS = 12;
 const sections = [["holding", "Investments"], ["asset", "Assets"], ["debt", "Debts"]] as const;
-type WealthEvent = { id: string; item_id: string; before: WealthItem | null; after: WealthItem; created_at: string; undone_at: string | null };
 
 async function all<T>(query: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>): Promise<T[]> {
   const rows: T[] = [];
@@ -42,7 +41,7 @@ export default async function WealthPage() {
     supabase.from("accounts").select("id, name, type, currency_code, archived_at").eq("workspace_id", workspace.id).order("name"),
     supabase.from("financial_assumptions").select("id, name, amount_minor::text, currency_code, starts_on").eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).eq("cadence", "monthly").is("removed_at", null).order("name"),
     supabase.from("transactions").select("id, description, amount_minor::text, currency_code, posted_on").eq("workspace_id", workspace.id).eq("status", "pending").order("posted_on", { ascending: false }).limit(100),
-    all<WealthEvent>((from, to) => db.from("wealth_events").select("id, item_id, before, after, created_at, undone_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).order("id").range(from, to)),
+    loadWealthEvents(db, workspace.id),
     all<{ account_id: string; amount_minor: string; currency_code: string; as_of: string; undone_at: string | null }>((from, to) => db.from("balance_snapshots").select("account_id, amount_minor::text, currency_code, as_of, undone_at").eq("workspace_id", workspace.id).order("id").range(from, to)),
   ]);
   for (const result of [accounts, assumptions, pending]) if (result.error) throw result.error;
@@ -51,12 +50,9 @@ export default async function WealthPage() {
     pending: (pending.data ?? []).map(item => ({ id: item.id, label: `${item.description} · ${formatMoney(item.amount_minor, item.currency_code)} · ${item.posted_on}` })), today, currency: workspace.display_currency };
   const itemById = new Map(items.map(item => [item.id, item]));
 
-  // Valuation history = every non-undone saved version of each item, plus the current row.
-  const valuations = [...events.filter(event => !event.undone_at && !event.after.removed_at).map(event => ({ ...event.after, item_id: event.item_id, created_at: event.created_at, amount_minor: String(event.after.amount_minor) })),
-    ...items.map(item => ({ ...item, item_id: item.id, created_at: "9999-12-31" }))];
   const series = netWorthSeries({ dates: monthEnds(today, MONTHS), timeZone: workspace.timezone,
-    accountIds: new Set((accounts.data ?? []).filter(account => !account.archived_at).map(account => account.id)), snapshots, valuations,
-    removedOn: new Map(items.filter(item => item.removed_at).map(item => [item.id, calendarDate(item.removed_at!, workspace.timezone)])) });
+    accountIds: new Set((accounts.data ?? []).filter(account => !account.archived_at).map(account => account.id)), snapshots, valuations: valuationHistory(events, items),
+    removedOn: removedOn(items, workspace.timezone) });
   const now = series.at(-1)!;
   const totals = netWorth(now);
   const currencies = [...totals.keys()].sort((a, b) => Number(b === workspace.display_currency) - Number(a === workspace.display_currency) || a.localeCompare(b));

@@ -114,15 +114,10 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     expect(await stopped.json()).toEqual({ status: "cancel_requested" });
     // This fixture has no worker: a persisted request does not acknowledge termination.
     expect((await db`select status,stage,cancel_requested from public.background_jobs where id=${job}`)[0]).toMatchObject({ status: "queued", stage: "cancel_requested", cancel_requested: true });
-    await page.goto("/");
-    const inbox = page.locator("section").filter({ has: page.getByRole("heading", { name: "Important insights", exact: true }) });
-    const dismissForm = inbox.locator("form").filter({ has: page.locator('input[name="type"][value="data_quality"]') }).first();
-    await expect(dismissForm.getByRole("button")).toBeVisible();
-    const evidenceKey = await dismissForm.locator('input[name="key"]').inputValue();
-    await dismissForm.getByRole("button").click();
+    // Home's briefing only shows big findings, which this fixture has none of; the owner dismisses through RLS directly.
+    const evidenceKey = "a".repeat(64);
+    expect((await sessions[0].from("insight_dismissals").insert({ workspace_id: workspace, evidence_key: evidenceKey, insight_type: "data_quality" })).error).toBeNull();
     await expect.poll(async () => (await db`select evidence_key from public.insight_dismissals where workspace_id=${workspace} and evidence_key=${evidenceKey}`).length).toBe(1);
-    await page.reload();
-    await expect(inbox.locator(`input[name="key"][value="${evidenceKey}"]`)).toHaveCount(0);
     const foreignDismissals = await sessions[1].from("insight_dismissals").select("evidence_key").eq("workspace_id", workspace);
     expect(foreignDismissals.error).toBeNull();
     expect(foreignDismissals.data).toEqual([]);
@@ -136,20 +131,14 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     expect((await db`select minimum_change_minor::text,upcoming_days,max_items from public.insight_preferences where workspace_id=${workspace}`)[0]).toMatchObject({ minimum_change_minor: "9007199254740993", upcoming_days: 30, max_items: 20 });
     await page.getByRole("button", { name: "Restore 1 dismissed insights", exact: true }).click();
     await expect.poll(async () => (await db`select evidence_key from public.insight_dismissals where workspace_id=${workspace}`).length).toBe(0);
-    await page.goto("/");
-    await expect(inbox.locator(`input[name="key"][value="${evidenceKey}"]`)).toHaveCount(1);
     await page.goto("/settings");
     await page.getByLabel("Mute data quality", { exact: true }).check();
     await page.getByRole("button", { name: "Save preferences", exact: true }).click();
     await expect.poll(async () => (await db`select muted_insight_types as muted from public.workspace_settings where workspace_id=${workspace}`)[0]?.muted ?? []).toContain("data_quality");
-    await page.goto("/");
-    await expect(inbox.locator('input[name="type"][value="data_quality"]')).toHaveCount(0);
     await page.goto("/settings");
     await page.getByLabel("Mute data quality", { exact: true }).uncheck();
     await page.getByRole("button", { name: "Save preferences", exact: true }).click();
     await expect.poll(async () => (await db`select muted_insight_types as muted from public.workspace_settings where workspace_id=${workspace}`)[0]?.muted ?? ["data_quality"]).not.toContain("data_quality");
-    await page.goto("/");
-    await expect(inbox.locator(`input[name="key"][value="${evidenceKey}"]`)).toHaveCount(1);
   } finally {
     for (const context of contexts) await context.close();
     if (storagePath) expect((await admin.storage.from("imports").remove([storagePath])).error).toBeNull();
@@ -162,6 +151,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
       await tx`delete from public.imports where workspace_id=${workspace}`;
       await tx`delete from public.transactions where workspace_id=${workspace}`;
       await tx`delete from public.accounts where workspace_id=${workspace}`;
+      await tx`delete from public.categories where workspace_id=${workspace}`;
       await tx`delete from public.workspaces where id=${workspace} and owner_id in ${tx(users)}`;
     });
     for (const user of users) expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();

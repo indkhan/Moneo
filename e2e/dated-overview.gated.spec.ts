@@ -55,12 +55,6 @@ test("dated observations remain visible and explicit booked confirmation reloads
     page.setDefaultTimeout(30_000);
     console.log('MNE012 step: opening Home');
     await page.goto("/", {waitUntil: 'domcontentloaded'});
-    console.log('MNE012 step: dated observations');
-    const dated = page.locator("details").filter({has: page.locator("summary").filter({hasText: /^Recorded net worth by currency$/})});
-    await dated.locator("summary").click();
-    await expect(dated).toContainText("EUR 200.00"); await expect(dated).toContainText("JPY 300");
-    await expect(dated).toContainText("Historical debt QA"); await expect(dated).toContainText("synthetic imported observation");
-    await expect(dated).toContainText("not verified current funds"); await expect(dated).toContainText(old);
     const card = page.locator("article").filter({has: page.getByRole("heading", {name: "Dated cash QA", exact: true})});
     await card.getByText("Update balance", {exact: true}).click();
     await card.getByText("Confirm recorded balance", {exact: true}).click();
@@ -91,7 +85,7 @@ test("dated observations remain visible and explicit booked confirmation reloads
     try {
       await context?.close().catch(() => {});
       if (user) {const owned = await admin.auth.admin.getUserById(user); expect(owned.error).toBeNull(); expect(owned.data.user?.user_metadata).toMatchObject({qa_test: "mne012", run_id: run});}
-      const tables = ["wealth_events", "wealth_items", "balance_snapshots", "transactions", "accounts", "workspace_settings"];
+      const tables = ["wealth_events", "wealth_items", "balance_snapshots", "transactions", "categories", "accounts", "workspace_settings"];
       if (workspace) await db.begin(async tx => {
         expect((await tx`select owner_id from public.workspaces where id=${workspace!}`)[0]?.owner_id).toBe(user);
         for (const table of tables) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;

@@ -36,11 +36,13 @@ test("fractional wealth valuation, cost basis, audited edit, removal and undo", 
 test("dated assets and signed debt repayment assumptions preserve source history", async ({ page }) => {
   test.setTimeout(120_000);
   const suffix = crypto.randomUUID().slice(0, 8); const account = `Debt payment QA ${suffix}`;
-  await page.goto("/");
-  await page.getByRole("textbox", { name: "Account name", exact: true }).fill(account);
-  await page.getByRole("textbox", { name: "Currency code", exact: true }).fill("EUR");
-  await page.getByRole("button", { name: "Add account", exact: true }).click();
-  await expect(page.getByRole("heading", { name: account, exact: true })).toBeVisible();
+  await page.goto("/money/accounts");
+  const adder = page.locator("details").filter({ has: page.locator("summary", { hasText: "Add account" }) });
+  await adder.locator("summary").click();
+  await adder.getByLabel("Name", { exact: true }).fill(account);
+  await adder.getByLabel("Currency", { exact: true }).fill("EUR");
+  await adder.getByRole("button", { name: "Add account", exact: true }).click();
+  await expect(page.locator(`input[name="name"][value="${account}"]`)).toBeVisible({ timeout: 30_000 });
   await page.goto("/money/wealth");
   const assetName = `Manual asset QA ${suffix}`;
   await page.locator("summary").filter({ hasText: /^Add asset / }).click();

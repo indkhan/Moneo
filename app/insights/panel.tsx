@@ -1,16 +1,20 @@
 import Link from "next/link";
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
+import { Sparkle } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { buildInsights, insightPreferencesSchema, defaultInsightPreferences, type InsightInput } from "@/lib/finance/insights";
-import { describeMissingInputs } from "@/lib/finance/format";
+import { accountShortfalls, buildInsights, insightPreferencesSchema, defaultInsightPreferences, type Insight, type InsightInput } from "@/lib/finance/insights";
+import { briefingFindings, keepsFacts, plainWording, rephraseFindings } from "@/lib/ai/briefing";
+import { getModel, modelIdFor } from "@/lib/ai/provider";
+import { describeMissingInputs, formatInputAmount } from "@/lib/finance/format";
 import { type ReviewTransaction } from "@/lib/finance/review";
 import { budgetProgress, type MonthlyLimit } from "@/lib/finance/spending-plans";
-import { type WorkspaceSettings } from "@/lib/settings";
+import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import type { evaluatePlan } from "@/lib/finance/model";
-import { dismissInsight } from "./actions";
+import { dismissInsight, dismissInsights, muteInsightType } from "./actions";
 import { buildSourceCoverage, loadSourceCoverageMetadata, sourceCoverageNeedsReview } from "@/lib/finance/source-coverage";
 
-const card = "min-w-0 rounded-xl border border-border bg-card p-5";
+const card = "min-w-0 rounded-xl border border-border bg-card p-6 sm:p-7";
 
 type Projection = Awaited<ReturnType<typeof evaluatePlan>>;
 type Budget = { id: string; category_id: string; currency_code: string; limit_minor: string; enabled: boolean; rollover: boolean; rollover_from: string };
@@ -75,19 +79,28 @@ export const loadInsightEvidence = cache(async (db: SupabaseClient, workspaceId:
     return { preferences, budgets, categories, goals, recurring, limits, dismissals, canonical, sourceMetadata, first, transactions, recurringEvidence };
 });
 
+type InsightEvidence = Awaited<ReturnType<typeof loadInsightEvidence>>;
+/** This month's progress for every enabled budget, shared by Home's Budgets card and the budget insights. */
+export function budgetsThisMonth({ budgets, categories, limits, transactions, sourceMetadata }: InsightEvidence, today: string) {
+  const spendingRows = transactions.map(row => ({ amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code, status: row.status, kind: row.kind, reviewReasons: row.review_reasons, postedOn: row.posted_on, categoryId: row.category_id,
+    ...(row.refund_of_id ? { refundOfCategoryId: row.refund_category_id ?? null } : {}) }));
+  return budgets.filter(budget => budget.enabled).map(budget => {
+    const sourceCoverage = buildSourceCoverage({ from: budget.rollover ? budget.rollover_from : `${today.slice(0, 7)}-01`, to: today, currencyCode: budget.currency_code }, transactions, sourceMetadata?.imports, sourceMetadata?.sources);
+    const progress = budgetProgress(spendingRows, budget.category_id, budget.currency_code, today.slice(0, 7), BigInt(budget.limit_minor), budget.rollover ? { startsMonth: budget.rollover_from.slice(0, 7), history: limits.filter(limit => limit.plan_id === budget.id) } : undefined, sourceCoverage);
+    return { budget, name: categories.find(category => category.id === budget.category_id)?.name ?? "Category", progress, sourceCoverage };
+  });
+}
+
 async function loadInsights({ db, workspaceId, currency, today, settings, projection, missingInputs, names, wealth }: InsightPanelProps) {
-    const { preferences, budgets, categories, goals, recurring, limits, dismissals, canonical, sourceMetadata, first, transactions, recurringEvidence } = await loadInsightEvidence(db, workspaceId, currency, today);
+    const evidence = await loadInsightEvidence(db, workspaceId, currency, today);
+    const { preferences, categories, goals, recurring, dismissals, canonical, sourceMetadata, first, transactions, recurringEvidence } = evidence;
     const sourceCoverage = buildSourceCoverage({ from: first, to: today }, transactions, sourceMetadata?.imports, sourceMetadata?.sources);
     const warnings = describeMissingInputs([...missingInputs, ...(projection.input.missingInputs ?? [])], names);
     if (transactions.some(row => row.status === "posted" && row.review_reasons?.length)) warnings.push("Some financial classifications need review; comparisons omit uncertain rows");
-    const spendingRows = transactions.map(row => ({ amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code, status: row.status, kind: row.kind, reviewReasons: row.review_reasons, postedOn: row.posted_on, categoryId: row.category_id,
-      ...(row.refund_of_id ? { refundOfCategoryId: row.refund_category_id ?? null } : {}) }));
     const budgetEvidence: InsightInput["budgets"] = [];
-    for (const budget of budgets.filter(budget => budget.enabled)) {
-      const budgetCoverage = buildSourceCoverage({ from: budget.rollover ? budget.rollover_from : `${today.slice(0, 7)}-01`, to: today, currencyCode: budget.currency_code }, transactions, sourceMetadata?.imports, sourceMetadata?.sources);
-      const progress = budgetProgress(spendingRows, budget.category_id, budget.currency_code, today.slice(0, 7), BigInt(budget.limit_minor), budget.rollover ? { startsMonth: budget.rollover_from.slice(0, 7), history: limits.filter(limit => limit.plan_id === budget.id) } : undefined, budgetCoverage);
+    for (const { budget, name, progress, sourceCoverage: budgetCoverage } of budgetsThisMonth(evidence, today)) {
       if (progress.allowanceMinor === null) { if (progress.limitation) warnings.push(progress.limitation); continue; }
-      budgetEvidence.push({ id: budget.id, name: categories.find(category => category.id === budget.category_id)?.name ?? "Category", currency: budget.currency_code,
+      budgetEvidence.push({ id: budget.id, name, currency: budget.currency_code,
         spentMinor: progress.spentMinor.toString(), allowanceMinor: progress.allowanceMinor.toString(), partial: progress.partial, sourceCoverage: budgetCoverage });
     }
     const events = projection.input.events.filter(event => event.source !== "estimated" && event.expectedMinor < 0n);
@@ -102,23 +115,56 @@ async function loadInsights({ db, workspaceId, currency, today, settings, projec
       goals: goals.filter(goal => goal.status === "active").map(goal => ({ id: goal.id, name: goal.name, targetMinor: goal.target_minor, savedMinor: goal.recorded_saved_minor, savedAsOf: goal.saved_as_of })),
       wealth: wealth.filter(item => !item.removed_at).map(item => ({ id: item.id, name: item.name, kind: item.kind, amountMinor: item.amount_minor, currency: item.currency_code, asOf: item.as_of })),
       missingInputs: warnings, available: projection.available.status === "available" ? { amountMinor: projection.available.amountMinor.toString(), limitingDate: projection.available.limitingDate } : null,
+      accountShortfalls: projection.liquidity?.status === "available" ? accountShortfalls(projection.liquidity.accounts, names ?? new Map()) : [],
     }, preferences, settings.muted_insight_types, dismissals.map(dismissal => dismissal.evidence_key));
     return insights;
 }
 
-export async function ImportantInsights(props: InsightPanelProps) {
-  let insights: Awaited<ReturnType<typeof loadInsights>> | null = null;
-  try { insights = await loadInsights(props); } catch { insights = null; }
-  const header = <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">Important insights</h2><Link href="/settings" className="text-sm text-muted-foreground hover:text-foreground hover:underline">Customize</Link></div>;
-  if (insights === null) return <section className={card}>{header}<p role="alert" className="mt-3 text-sm">Insights are unavailable right now. Your totals elsewhere are not affected.</p><Link href="/import" className="mt-3 inline-block text-sm font-medium text-brand hover:underline">Review imports</Link></section>;
-  return <section className={card}>{header}
-    <ul className="mt-2 divide-y divide-border">
-      {insights.map(insight => <li key={insight.key} className="flex items-start gap-3 py-2">
-        <div className="min-w-0 flex-1">
-          <Link className="block truncate text-sm font-medium hover:underline" href={insight.href}>{insight.title}</Link>
-          <p className="line-clamp-2 text-xs text-muted-foreground" title={insight.detail}><span className="capitalize">{insight.type.replaceAll("_", " ")}</span>{sourceCoverageNeedsReview(insight.sourceCoverage) ? " · sources incomplete" : ""} · {insight.detail}</p>
+const LABELS: Partial<Record<Insight["type"], [label: string, evidence: string]>> = { cash_shortfall: ["Shortfall", "forecast"], budget_pressure: ["Budget", "budget"],
+  unusual_activity: ["Unusual", "transaction"], spending_changes: ["Spending", "transactions"], recurring_changes: ["Recurring", "evidence"] };
+
+// Wording is cached per finding set: keys hash the evidence, so the model runs again only when the facts change.
+const cachedWording = unstable_cache(async (_workspaceId: string, modelId: string, findings: Pick<Insight, "key" | "type" | "title" | "detail">[]) =>
+  Object.fromEntries(await rephraseFindings(getModel(modelId), findings)), ["weekly-briefing-wording", "v2"], { revalidate: 7 * 86400 });
+
+async function wording(props: InsightPanelProps, findings: Insight[]) {
+  try {
+    requireAiScope(props.settings, "transactions", "planning");
+    const sentences = await cachedWording(props.workspaceId, modelIdFor(props.settings, "agents"), findings.map(({ key, type, title, detail }) => ({ key, type, title, detail })));
+    return new Map(findings.flatMap(finding => sentences[finding.key] && keepsFacts(finding, sentences[finding.key]) ? [[finding.key, sentences[finding.key]]] : []));
+  } catch { return new Map<string, string>(); }
+}
+
+/** Home's weekly briefing: only findings worth interrupting for, in AI wording checked against the code-computed facts. Hidden when nothing is big. */
+export async function WeeklyBriefing(props: InsightPanelProps) {
+  let findings: Insight[];
+  try { findings = briefingFindings(await loadInsights(props)); } catch { return null; }
+  if (!findings.length) return null;
+  const sentences = await wording(props, findings);
+  const types = [...new Set(findings.map(finding => finding.type))];
+  const action = "rounded-lg border border-input px-2.5 py-1 text-xs hover:bg-muted";
+  return <section aria-labelledby="home-briefing" className={card}>
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><h2 id="home-briefing" className="flex items-center gap-2 text-sm font-medium"><Sparkle className="size-3.5 fill-current text-ai" aria-hidden="true" />Weekly briefing</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">{sentences.size ? "Insight writer · " : ""}from {findings.length} verified finding{findings.length === 1 ? "" : "s"}</p></div>
+      <div className="flex items-center gap-2">
+        <details className="relative"><summary className={`${action} cursor-pointer list-none`}>Mute type</summary>
+          <div className="absolute right-0 z-10 mt-1 flex min-w-40 flex-col rounded-lg border border-border bg-card p-1 shadow-lg">{types.map(type => <form key={type} action={muteInsightType}><input type="hidden" name="type" value={type} /><button className="w-full rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted">{LABELS[type]?.[0] ?? type}</button></form>)}</div></details>
+        <form action={dismissInsights}>{findings.map(finding => <span key={finding.key}><input type="hidden" name="key" value={finding.key} /><input type="hidden" name="type" value={finding.type} /></span>)}<button className={action}>Dismiss all</button></form>
+      </div>
+    </div>
+    <ul className="mt-4 divide-y divide-border border-t border-border">{findings.map((finding, index) => <li key={finding.key} className="grid gap-x-6 gap-y-2 py-4 sm:grid-cols-[8rem_1fr]">
+      <p className={`font-mono text-[11px] uppercase tracking-wide ${finding.type === "cash_shortfall" ? "text-warning" : "text-muted-foreground"}`}>{LABELS[finding.type]?.[0] ?? finding.type}</p>
+      <div className="min-w-0">
+        <p className="text-[15px] leading-relaxed text-pretty" title={finding.detail}>{sentences.get(finding.key) ?? plainWording(finding, props.settings.locale)}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <Link href={finding.href} className="ai-chip font-mono">E{index + 1} · {LABELS[finding.type]?.[1] ?? "evidence"}</Link>
+          {finding.move && <Link href={`/plan?${new URLSearchParams({ account: finding.move.toAccountId, fundingFrom: finding.move.fromAccountId, fundingDate: finding.move.date, funding: formatInputAmount(finding.move.amountMinor, props.currency) })}#account-headroom`}
+            className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90">Preview move</Link>}
+          {sourceCoverageNeedsReview(finding.sourceCoverage) && <span className="text-xs text-muted-foreground">Sources incomplete</span>}
+          <form action={dismissInsight}><input type="hidden" name="key" value={finding.key} /><input type="hidden" name="type" value={finding.type} /><button className="text-xs text-muted-foreground hover:text-foreground hover:underline" aria-label={`Dismiss ${finding.title}`}>Dismiss</button></form>
         </div>
-        <form action={dismissInsight}><input type="hidden" name="key" value={insight.key} /><input type="hidden" name="type" value={insight.type} /><button className="rounded px-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Dismiss ${insight.title}`} title="Dismiss">×</button></form>
-      </li>)}
-    </ul>{!insights.length ? <p className="mt-3 text-sm text-muted-foreground">Nothing to flag right now.</p> : null}</section>;
+      </div>
+    </li>)}</ul>
+  </section>;
 }

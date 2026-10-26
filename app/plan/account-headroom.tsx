@@ -28,7 +28,7 @@ export function AccountHeadroom({ input, params, names, locale, result }: {
   const money = (amount: bigint) => formatMoney(amount, input.currencyCode, locale);
   const selected = liquidity.status === "available" ? liquidity.accounts.find(account => account.accountId === params.account) : undefined;
   const invalidAccount = params.account && !input.accounts.some(account => account.id === params.account);
-  return <div className="space-y-5">
+  return <div id="account-headroom" className="scroll-mt-20 space-y-5">
     <form method="get" className="flex flex-wrap items-end gap-3">
       <input type="hidden" name="horizon" value={params.horizon ?? input.horizonDays} />
       {params.scenario && <input type="hidden" name="scenario" value={params.scenario} />}

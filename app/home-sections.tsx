@@ -11,78 +11,95 @@ type SectionProps = { db: SupabaseClient; workspaceId: string; currency: string;
 
 export const card = "min-w-0 rounded-xl border border-border bg-card p-6 sm:p-7";
 
-/** One figure inside a card; stacked Kpis are divided by a hairline, as in the design. */
-export function Kpi({ label, href, action, children }: { label: string; href?: string; action?: string; children: ReactNode }) {
-  return <div className="min-w-0 border-t border-border pt-4 first:border-t-0 first:pt-0">
-    <div className="flex items-baseline justify-between gap-2"><p className="text-sm text-muted-foreground">{label}</p>{href && <Link href={href} className="text-xs font-medium text-brand hover:underline">{action ?? "Details"}</Link>}</div>
-    {children}
-  </div>;
-}
-
 /** A formatted amount with its minor units dimmed, like the design's hero figures. */
 export function Figure({ value, digits, className }: { value: string; digits: number; className?: string }) {
   const match = digits > 0 ? value.match(new RegExp(`^(.*\\d)([.,]\\d{${digits}})(\\D*)$`)) : null;
   return <p className={className}>{match ? <>{match[1]}<span className="text-[0.5em] tracking-tight text-subtle">{match[2]}</span>{match[3]}</> : value}</p>;
 }
 
-export function KpiFallback({ label }: { label: string }) {
-  return <Kpi label={label}><p role="status" className="mt-2 h-8 w-32 animate-pulse rounded bg-muted"><span className="sr-only">Loading</span></p></Kpi>;
-}
-
 export function SectionFallback({ title }: { title: string }) {
   return <section aria-busy="true" className={card}><h2 className="text-sm font-medium">{title}</h2><p role="status" className="mt-3 text-sm text-muted-foreground">Loading…</p></section>;
 }
 
-const sign = (amount: bigint) => amount < 0n ? -amount : amount;
+type Flow = "in" | "out";
+type Group = { id: string | null; incomeMinor: bigint; spendingMinor: bigint };
+type Search = Record<string, string | undefined>;
+const flowOf = (value?: string): Flow | undefined => value === "in" || value === "out" ? value : undefined;
+const monthName = (from: string, locale: string, month: "short" | "long" = "long") => new Intl.DateTimeFormat(locale, { month, timeZone: "UTC" }).format(new Date(`${from}T00:00:00Z`));
+const flowHref = (search: Search, changes: Search) => {
+  const next = new URLSearchParams(Object.entries({ ...search, ...changes }).filter((entry): entry is [string, string] => Boolean(entry[1])));
+  return `?${next}#cash-flow`;
+};
 
-export async function MonthSpendingKpi({ db, workspaceId, currency, today, locale }: SectionProps) {
+/** This month's money in, money out and what is left; In and Out open their breakdown in the six-month chart. */
+export async function MonthCashFlow({ db, workspaceId, currency, today, locale, search = {}, children }: SectionProps & { search?: Search; children?: ReactNode }) {
   let data;
   try { data = await loadHomeSpending(db, workspaceId, currency, today); } catch { data = null; }
-  if (!data) return <Kpi label="Spent this month" href="/plan/spending"><p className="mt-2 text-sm text-muted-foreground">Spending is unavailable right now.</p></Kpi>;
-  const { thisMonth, lastMonthToDate } = data;
-  const change = thisMonth.spendingMinor - lastMonthToDate.spendingMinor;
-  const percent = lastMonthToDate.spendingMinor > 0n ? Number(sign(change) * 100n / lastMonthToDate.spendingMinor) : null;
-  return <Kpi label="Spent this month" href="/plan/spending" action="Plans">
-    <p className="mt-1 font-mono text-xl">{formatMoney(thisMonth.spendingMinor, currency, locale)}{thisMonth.partial && <span className="ml-2 align-middle text-xs font-normal text-warning">Partial</span>}</p>
-    <p className="mt-1 text-xs text-muted-foreground">vs {formatMoney(lastMonthToDate.spendingMinor, currency, locale)} by this day last month{lastMonthToDate.partial ? " (partial)" : ""}{percent !== null && change !== 0n ? ` · ${change > 0n ? "up" : "down"} ${percent}%` : ""}</p>
-  </Kpi>;
+  const days = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).getUTCDate();
+  const header = <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">{monthName(today, locale)} cash flow</h2><span className="font-mono text-[11px] text-subtle">day {Number(today.slice(8, 10))} / {days}</span></div>;
+  if (!data) return <section aria-label="Cash flow this month" className={`${card} flex flex-col gap-5`}>{header}<p role="alert" className="text-sm text-muted-foreground">Cash flow is unavailable right now.</p>{children}</section>;
+  const { month, incomeMinor, spendingMinor } = data.thisMonth;
+  const left = incomeMinor - spendingMinor;
+  const outShare = incomeMinor > 0n ? Math.min(100, Number(spendingMinor * 100n / incomeMinor)) : spendingMinor > 0n ? 100 : 0;
+  const row = (flow: Flow, label: string, value: string, tone: string) => <Link href={flowHref(search, { month, flow })} scroll={false} className="-mx-2 flex items-baseline justify-between gap-3 rounded-lg px-2 py-1 hover:bg-muted">
+    <span className="text-sm text-muted-foreground">{label}</span><span className={`font-mono text-xl ${tone}`}>{value}</span></Link>;
+  return <section aria-label="Cash flow this month" className={`${card} flex flex-col gap-4`}>
+    {header}
+    {row("in", "In", `+${formatMoney(incomeMinor, currency, locale)}`, "text-brand")}
+    {row("out", "Out", formatMoney(-spendingMinor, currency, locale), "")}
+    <div aria-hidden="true" className="flex h-1.5 gap-1"><span className={`rounded-full ${left < 0n ? "bg-warning" : "bg-chart-out"}`} style={{ width: `${outShare}%` }} />{outShare < 100 && <span className="flex-1 rounded-full bg-brand" />}</div>
+    <div className="flex items-baseline justify-between gap-3 border-t border-border pt-5"><span className="text-sm text-muted-foreground">Left this month</span>
+      <Figure value={formatMoney(left, currency, locale)} digits={minorDigits(currency)} className={`display-figure text-[32px] ${left < 0n ? "text-warning" : ""}`} /></div>
+    {children}
+  </section>;
 }
 
-function TopList({ title, groups, names, param, from, to, currency, locale, unknown }: {
-  title: string; groups: { id: string | null; spendingMinor: bigint; partial: boolean }[]; names: Map<string, string>; param: "category" | "merchant"; from: string; to: string; currency: string; locale: string; unknown: string;
+function TopList({ title, groups, metric, names, param, from, to, currency, locale, unknown }: {
+  title: string; groups: Group[]; metric: "incomeMinor" | "spendingMinor"; names: Map<string, string>; param: "category" | "merchant"; from: string; to: string; currency: string; locale: string; unknown: string;
 }) {
-  const max = groups[0]?.spendingMinor ?? 0n;
+  const max = groups[0]?.[metric] ?? 0n;
   return <div className="min-w-0">
     <h3 className="text-sm font-semibold">{title}</h3>
     {groups.length ? <ul className="mt-2 space-y-1">{groups.map(group => <li key={group.id ?? "none"}>
-      <Link href={`/money/transactions?${new URLSearchParams({ [param]: group.id ?? "none", from, to, direction: "outflow" })}`} className="group block rounded-md px-2 py-1.5 hover:bg-muted">
-        <span className="flex justify-between gap-3 text-sm"><span className="truncate group-hover:underline">{group.id ? names.get(group.id) ?? unknown : unknown}</span><span className="shrink-0 font-mono">{formatMoney(group.spendingMinor, currency, locale)}{group.partial ? "*" : ""}</span></span>
-        <span aria-hidden="true" className="mt-1 block h-1 rounded-full bg-muted"><span className="block h-1 rounded-full bg-brand" style={{ width: `${max > 0n ? Number(group.spendingMinor * 100n / max) : 0}%` }} /></span>
+      <Link href={`/money/transactions?${new URLSearchParams({ [param]: group.id ?? "none", from, to, direction: metric === "incomeMinor" ? "income" : "outflow" })}`} className="group block rounded-md px-2 py-1.5 hover:bg-muted">
+        <span className="flex justify-between gap-3 text-sm"><span className="truncate group-hover:underline">{group.id ? names.get(group.id) ?? unknown : unknown}</span><span className="shrink-0 font-mono">{formatMoney(group[metric], currency, locale)}</span></span>
+        <span aria-hidden="true" className="mt-1 block h-1 rounded-full bg-muted"><span className={`block h-1 rounded-full ${metric === "incomeMinor" ? "bg-brand" : "bg-chart-out"}`} style={{ width: `${max > 0n ? Number(group[metric] * 100n / max) : 0}%` }} /></span>
       </Link>
-    </li>)}</ul> : <p className="mt-2 text-sm text-muted-foreground">No reviewed spending this month.</p>}
+    </li>)}</ul> : <p className="mt-2 text-sm text-muted-foreground">Nothing reviewed yet.</p>}
   </div>;
 }
 
-export async function SpendingPanel({ db, workspaceId, currency, today, locale, month: selectedMonth }: SectionProps & { month?: string }) {
+/** Six months of money in vs out. Picking In or Out shows only that side and where it came from or went. */
+export async function CashFlowPanel({ db, workspaceId, currency, today, locale, search = {} }: SectionProps & { search?: Search }) {
   let data;
   try { data = await loadHomeSpending(db, workspaceId, currency, today); } catch { data = null; }
-  const header = <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-sm font-medium">Spending</h2><span className="flex items-center gap-3"><AskAbout question="Why did my spending change over the last six months? Which categories and merchants drove it?" about={{ kind: "chart", label: "Six-month spending trend" }} /><Link href="/money/transactions?direction=outflow" className="text-sm font-medium text-brand hover:underline">All spending</Link></span></div>;
-  if (!data) return <section aria-label="Spending" className={card}>{header}<p role="alert" className="mt-3 text-sm">Spending is unavailable right now. Your balances are not affected.</p></section>;
-  const month = new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" });
+  // `show` is which bars are drawn and changes only from these buttons; `flow` is which breakdown is open below.
+  const show = flowOf(search.show), flow = flowOf(search.flow);
+  const legend = <span role="group" aria-label="Show" className="inline-flex rounded-lg border border-border p-0.5">
+    {([[undefined, "Both", null], ["in", "In", "bg-brand"], ["out", "Out", "bg-chart-out"]] as const).map(([key, label, swatch]) =>
+      <Link key={label} href={flowHref(search, { show: key, flow: key ?? flow })} scroll={false} aria-pressed={show === key}
+        className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs ${show === key ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+        {swatch && <span aria-hidden="true" className={`size-2 rounded-sm ${swatch}`} />}{label}</Link>)}
+  </span>;
+  const header = <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-medium">Cash flow · 6 months</h2>
+    <span className="flex items-center gap-2">{legend}<AskAbout question="How did my money in and out change over the last six months? What drove it?" about={{ kind: "chart", label: "Six-month cash flow" }} /></span></div>;
+  if (!data) return <section id="cash-flow" aria-label="Cash flow" className={card}>{header}<p role="alert" className="mt-3 text-sm">Cash flow is unavailable right now. Your balances are not affected.</p></section>;
   const scale = 10 ** minorDigits(currency);
-  const selected = data.months.find(row => row.month === selectedMonth) ?? data.months[data.months.length - 1];
-  const bars = data.trend.filter(row => row.spendingMinor > 0n);
-  const label = selected.month === data.thisMonth.month ? "this month" : `in ${new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${selected.from}T00:00:00Z`))}`;
-  const partial = data.trend.some(row => row.partial) || selected.categories.some(row => row.partial);
-  return <section aria-label="Spending" className={card}>
+  const selected = data.months.find(row => row.month === search.month) ?? data.months[data.months.length - 1];
+  const when = `in ${monthName(selected.from, locale)}`;
+  const lists = { currency, locale, from: selected.from, to: selected.to };
+  return <section id="cash-flow" aria-label="Cash flow" className={card}>
     {header}
-    <p className="mt-1 text-xs text-muted-foreground">Last six months in {currency}. Refunds are subtracted; pending items, transfers and items needing review are left out.</p>
-    <div className="mt-3"><TrendChart height={200} months={bars.map(row => row.month)} labels={bars.map(row => month.format(new Date(`${row.from}T00:00:00Z`)))} values={bars.map(row => Number(row.spendingMinor) / scale)} /></div>
-    {partial && <p className="mt-2 text-xs text-warning">* Partial: some rows need review or an exchange rate for their posting date.</p>}
-    <div className="mt-4 grid gap-6 md:grid-cols-2">
-      <TopList title={`Top categories ${label}`} groups={selected.categories} names={data.categoryNames} param="category" from={selected.from} to={selected.to} currency={currency} locale={locale} unknown="Uncategorized" />
-      <TopList title={`Top merchants ${label}`} groups={selected.merchants} names={data.merchantNames} param="merchant" from={selected.from} to={selected.to} currency={currency} locale={locale} unknown="Unknown merchant" />
-    </div>
+    <div className="mt-4"><TrendChart height={240} flow={show} selected={flow ? data.months.indexOf(selected) : undefined} months={data.trend.map(row => row.month)} labels={data.trend.map(row => monthName(row.from, locale, "short"))}
+      income={data.trend.map(row => Number(row.incomeMinor) / scale)} spending={data.trend.map(row => Number(row.spendingMinor) / scale)} /></div>
+    {flow === "in" && <div className="mt-5 grid gap-6 border-t border-border pt-5 md:grid-cols-2">
+      <TopList title={`Where money came from ${when}`} groups={selected.incomeMerchants} metric="incomeMinor" names={data.merchantNames} param="merchant" unknown="Unknown source" {...lists} />
+      <TopList title={`Income by category ${when}`} groups={selected.incomeCategories} metric="incomeMinor" names={data.categoryNames} param="category" unknown="Uncategorized" {...lists} />
+    </div>}
+    {flow === "out" && <div className="mt-5 grid gap-6 border-t border-border pt-5 md:grid-cols-2">
+      <TopList title={`Top categories ${when}`} groups={selected.categories} metric="spendingMinor" names={data.categoryNames} param="category" unknown="Uncategorized" {...lists} />
+      <TopList title={`Top merchants ${when}`} groups={selected.merchants} metric="spendingMinor" names={data.merchantNames} param="merchant" unknown="Unknown merchant" {...lists} />
+    </div>}
   </section>;
 }
 
