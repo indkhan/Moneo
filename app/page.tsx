@@ -16,10 +16,10 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { describeMissingInputs, formatMoney } from "@/lib/finance/format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { SourceCoverageDetails } from "./source-coverage";
-import { AgentBriefing } from "./agent-briefing";
+import { AgentBriefing, loadAgentBriefing } from "./agent-briefing";
 import { HomeBudgets } from "./home-budgets";
-import { HomeHistory } from "./home-history";
-import { IouReview } from "./iou-review";
+import { HomeHistory, loadHomeHistory } from "./home-history";
+import { IouReview, loadIouReview } from "./iou-review";
 import { loadPriceChanges } from "@/lib/finance/price-changes";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
@@ -56,6 +56,9 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   // Start the streamed sections' reads now (memoized); their Suspense boundaries pick up the same promises.
   loadInsightEvidence(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
   loadHomeSpending(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
+  loadHomeHistory(supabase, workspace.id).catch(() => undefined);
+  loadAgentBriefing(supabase, workspace.id).catch(() => undefined);
+  loadIouReview(supabase, workspace.id);
   const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle());
   // Pinned artifact titles chain onto the layout read, so they finish inside the slower forecast; the frames load their data themselves.
   const pinnedPromise = layoutPromise.then(async ({ data }) => {
