@@ -10,6 +10,7 @@ const fixture = vi.hoisted(() => ({ insights: [] as unknown[], wording: new Map<
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("next/cache", () => ({ unstable_cache: (fn: unknown) => fn }));
 vi.mock("./actions", () => ({ dismissInsight: "dismiss", dismissInsights: "dismiss-all", muteInsightType: "mute" }));
+vi.mock("../plan/actions", () => ({ previewMove: "preview-move" }));
 vi.mock("@/lib/ai/provider", () => ({ getModel: () => ({}), modelIdFor: () => "model" }));
 vi.mock("@/lib/ai/briefing", async original => ({ ...await original<typeof import("@/lib/ai/briefing")>(), rephraseFindings: async () => fixture.wording }));
 vi.mock("@/lib/finance/insights", async original => ({ ...await original<typeof import("@/lib/finance/insights")>(), buildInsights: () => fixture.insights }));
@@ -36,6 +37,12 @@ it("shows big findings in checked AI wording, falling back to the computed text 
   for (const text of ["Weekly briefing", "Insight writer · from 2 verified findings", "Your main account dips to -€88.00 around 3 Nov.", "Eating out budget pressure. €198.00 spent against €150.00 allowance in 2026-10, including supported rollover.", "E1 · forecast", "E2 · budget", "Dismiss all", "Mute type"]) expect(html).toContain(text);
   expect(html).not.toContain("32%");
   expect(html).not.toContain("Rent is upcoming");
+});
+
+it("offers to preview the suggested move on an account shortfall", async () => {
+  fixture.insights = [{ ...insight("d", "cash_shortfall", "N26 Main runs short", "N26 Main drops €300.00 below its protected amount around 2026-11-03."), move: { fromAccountId: "holiday", toAccountId: "main", amountMinor: "30000", date: "2026-11-03" } }];
+  const html = renderToStaticMarkup(await WeeklyBriefing(props));
+  for (const text of ["Preview move", 'name="fromAccountId" value="holiday"', 'name="amountMinor" value="30000"']) expect(html).toContain(text);
 });
 
 it("is hidden when nothing big happened", async () => {

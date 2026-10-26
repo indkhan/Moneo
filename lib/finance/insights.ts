@@ -15,7 +15,19 @@ export function defaultInsightPreferences(currency: string): InsightPreferences 
 }
 export type InsightPreferences = z.infer<typeof insightPreferencesSchema>;
 const SEVERITY: readonly (typeof INSIGHT_TYPES[number])[] = ["cash_shortfall", "upcoming_obligations", "budget_pressure", "unusual_activity", "spending_changes", "recurring_changes", "data_quality", "goal_progress", "asset_debt"];
-export type Insight = { key: string; type: typeof INSIGHT_TYPES[number]; priority: "important" | "context"; title: string; detail: string; href: string; asOf: string; sourceCoverage: SourceCoverage };
+export type Move = { fromAccountId: string; toAccountId: string; amountMinor: string; date: string };
+export type Insight = { key: string; type: typeof INSIGHT_TYPES[number]; priority: "important" | "context"; title: string; detail: string; href: string; asOf: string; sourceCoverage: SourceCoverage; move?: Move };
+export type AccountShortfall = { accountId: string; name: string; shortfallMinor: string; date: string; donor: { accountId: string; name: string; spareMinor: string } | null };
+
+/** Accounts the forecast sees running below their protections, each with the account that has the most to spare after its own protections. */
+export function accountShortfalls(accounts: { accountId: string; amountMinor: bigint; shortfallMinor: bigint; firstShortfallDate: string | null }[], names: Map<string, string>): AccountShortfall[] {
+  return accounts.filter(account => account.shortfallMinor > 0n && account.firstShortfallDate).map(account => {
+    const donor = accounts.filter(other => other.accountId !== account.accountId && other.amountMinor >= account.shortfallMinor)
+      .sort((a, b) => a.amountMinor === b.amountMinor ? 0 : a.amountMinor < b.amountMinor ? 1 : -1)[0];
+    return { accountId: account.accountId, name: names.get(account.accountId) ?? "An account", shortfallMinor: account.shortfallMinor.toString(), date: account.firstShortfallDate!,
+      donor: donor ? { accountId: donor.accountId, name: names.get(donor.accountId) ?? "another account", spareMinor: donor.amountMinor.toString() } : null };
+  });
+}
 export type InsightInput = {
   today: string; currency: string; locale?: string; transactions: (ReviewTransaction & { account_id?: string })[]; categories: { id: string; name: string }[];
   canonicalTransactions?: (ReviewTransaction & { account_id?: string })[];
@@ -27,20 +39,21 @@ export type InsightInput = {
   goals: { id: string; name: string; targetMinor: string; savedMinor: string | null; savedAsOf: string | null }[];
   wealth: { id: string; name: string; kind: string; amountMinor: string; currency: string; asOf: string }[];
   missingInputs: string[]; available: { amountMinor: string; limitingDate: string } | null;
+  accountShortfalls?: AccountShortfall[];
 };
 
 export function buildInsights(input: InsightInput, preferences: InsightPreferences, muted: readonly string[] = [], dismissedKeys: readonly string[] = []): Insight[] {
   const results: Insight[] = [];
   const coverage = input.sourceCoverage ?? buildSourceCoverage({ from: "0001-01-01", to: input.today }, input.transactions);
   const dismissed = new Set(dismissedKeys);
-  function add(type: Insight["type"], entity: string, evidence: unknown, title: string, detail: string, href: string, priority: Insight["priority"] = "important") {
+  function add(type: Insight["type"], entity: string, evidence: unknown, title: string, detail: string, href: string, priority: Insight["priority"] = "important", move?: Move) {
     if (muted.includes(type) || preferences.important_only && priority === "context") return;
     const key = createHash("sha256").update(JSON.stringify([type, entity, evidence])).digest("hex");
     if (dismissed.has(key)) return;
     const sourceCoverage = type === "budget_pressure" ? input.budgets.find(budget => budget.id === entity)?.sourceCoverage ?? coverage
       : ["cash_shortfall", "upcoming_obligations"].includes(type) ? input.forecastSourceCoverage ?? coverage
       : type === "goal_progress" || type === "asset_debt" ? buildSourceCoverage({ from: input.today, to: input.today, recordBasis: type === "goal_progress" ? "manual_goals" : "manual_wealth" }, []) : coverage;
-    results.push({ key, type, title, detail, href, priority, asOf: input.today, sourceCoverage });
+    results.push({ key, type, title, detail, href, priority, asOf: input.today, sourceCoverage, ...(move ? { move } : {}) });
   }
   const money = (amount: bigint | string, currency: string) => formatMoney(amount, currency, input.locale);
   const from = `${input.today.slice(0, 7)}-01`;
@@ -73,6 +86,12 @@ export function buildInsights(input: InsightInput, preferences: InsightPreferenc
   const lookahead = new Date(Date.parse(`${input.today}T00:00:00Z`) + preferences.upcoming_days * 86400000).toISOString().slice(0, 10);
   for (const obligation of input.obligations.filter(row => row.date >= input.today && row.date <= lookahead && BigInt(row.amountMinor) < 0n)) add("upcoming_obligations", obligation.id, [obligation.date, obligation.amountMinor, obligation.currency], `${obligation.name} is upcoming`, `${money(obligation.amountMinor, obligation.currency)} confirmed in the forecast for ${obligation.date}. Future amounts remain assumptions until posted.`, "/plan");
   if (input.available && BigInt(input.available.amountMinor) < 0n) add("cash_shortfall", "forecast", [input.available.amountMinor, input.available.limitingDate, input.currency], "Forecast cash shortfall", `${money(input.available.amountMinor, input.currency)} at the conservative limiting date ${input.available.limitingDate}. Review confirmed obligations, holds and protected funds.`, "/plan");
+  for (const short of input.accountShortfalls ?? []) {
+    const amount = money(short.shortfallMinor, input.currency);
+    add("cash_shortfall", short.accountId, [short.shortfallMinor, short.date, input.currency, short.donor?.accountId ?? null], `${short.name} runs short`,
+      `${short.name} drops ${amount} below its protected amount around ${short.date} in the conservative forecast.${short.donor ? ` Moving ${amount} from ${short.donor.name}, which has ${money(short.donor.spareMinor, input.currency)} to spare, would cover it.` : ""}`,
+      `/plan?account=${encodeURIComponent(short.accountId)}`, "important", short.donor ? { fromAccountId: short.donor.accountId, toAccountId: short.accountId, amountMinor: short.shortfallMinor, date: short.date } : undefined);
+  }
   for (const goal of input.goals) if (goal.savedMinor !== null && goal.savedAsOf !== null && goal.savedAsOf <= input.today && BigInt(goal.targetMinor) > 0n && BigInt(goal.savedMinor) * 10n >= BigInt(goal.targetMinor) * 9n) add("goal_progress", goal.id, [goal.savedMinor, goal.targetMinor, goal.savedAsOf], `${goal.name} recorded savings milestone`, `Recorded savings cover at least 90% of the target as of ${goal.savedAsOf}. Virtual reservations are separate and do not prove actual savings.`, "/plan", "context");
   for (const item of input.wealth.filter(item => item.asOf === input.today)) add("asset_debt", item.id, [item.amountMinor, item.currency, item.asOf], `${item.name} dated ${item.kind} context`, `${money(item.amountMinor, item.currency)} recorded on ${item.asOf}. Manual valuation evidence does not prove a trend or increase spendable cash.`, "/money/wealth", "context");
   for (const missing of [...new Set(input.missingInputs)].sort()) add("data_quality", missing, missing, "Financial evidence needs attention", missing, "/plan");

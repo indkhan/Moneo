@@ -3,7 +3,7 @@ import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { Sparkle } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { buildInsights, insightPreferencesSchema, defaultInsightPreferences, type Insight, type InsightInput } from "@/lib/finance/insights";
+import { accountShortfalls, buildInsights, insightPreferencesSchema, defaultInsightPreferences, type Insight, type InsightInput } from "@/lib/finance/insights";
 import { briefingFindings, keepsFacts, plainWording, rephraseFindings } from "@/lib/ai/briefing";
 import { getModel, modelIdFor } from "@/lib/ai/provider";
 import { describeMissingInputs } from "@/lib/finance/format";
@@ -12,6 +12,7 @@ import { budgetProgress, type MonthlyLimit } from "@/lib/finance/spending-plans"
 import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import type { evaluatePlan } from "@/lib/finance/model";
 import { dismissInsight, dismissInsights, muteInsightType } from "./actions";
+import { previewMove } from "../plan/actions";
 import { buildSourceCoverage, loadSourceCoverageMetadata, sourceCoverageNeedsReview } from "@/lib/finance/source-coverage";
 
 const card = "min-w-0 rounded-xl border border-border bg-card p-6 sm:p-7";
@@ -115,6 +116,7 @@ async function loadInsights({ db, workspaceId, currency, today, settings, projec
       goals: goals.filter(goal => goal.status === "active").map(goal => ({ id: goal.id, name: goal.name, targetMinor: goal.target_minor, savedMinor: goal.recorded_saved_minor, savedAsOf: goal.saved_as_of })),
       wealth: wealth.filter(item => !item.removed_at).map(item => ({ id: item.id, name: item.name, kind: item.kind, amountMinor: item.amount_minor, currency: item.currency_code, asOf: item.as_of })),
       missingInputs: warnings, available: projection.available.status === "available" ? { amountMinor: projection.available.amountMinor.toString(), limitingDate: projection.available.limitingDate } : null,
+      accountShortfalls: projection.liquidity?.status === "available" ? accountShortfalls(projection.liquidity.accounts, names ?? new Map()) : [],
     }, preferences, settings.muted_insight_types, dismissals.map(dismissal => dismissal.evidence_key));
     return insights;
 }
@@ -158,6 +160,7 @@ export async function WeeklyBriefing(props: InsightPanelProps) {
         <p className="text-[15px] leading-relaxed text-pretty" title={finding.detail}>{sentences.get(finding.key) ?? plainWording(finding)}</p>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <Link href={finding.href} className="ai-chip font-mono">E{index + 1} · {LABELS[finding.type]?.[1] ?? "evidence"}</Link>
+          {finding.move && <form action={previewMove}>{Object.entries(finding.move).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}<button className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90">Preview move</button></form>}
           {sourceCoverageNeedsReview(finding.sourceCoverage) && <span className="text-xs text-muted-foreground">Sources incomplete</span>}
           <form action={dismissInsight}><input type="hidden" name="key" value={finding.key} /><input type="hidden" name="type" value={finding.type} /><button className="text-xs text-muted-foreground hover:text-foreground hover:underline" aria-label={`Dismiss ${finding.title}`}>Dismiss</button></form>
         </div>

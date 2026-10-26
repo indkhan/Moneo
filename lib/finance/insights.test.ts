@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildInsights, defaultInsightPreferences, DEFAULT_INSIGHT_PREFERENCES, type InsightInput } from "./insights";
+import { accountShortfalls, buildInsights, defaultInsightPreferences, DEFAULT_INSIGHT_PREFERENCES, type InsightInput } from "./insights";
 import { buildSourceCoverage } from "./source-coverage";
 
 const base: InsightInput = { today: "2026-10-02", currency: "EUR", transactions: [], categories: [], budgets: [], recurring: [], obligations: [], goals: [], wealth: [], missingInputs: [], available: null };
@@ -68,4 +68,20 @@ describe("deterministic evidence-backed insights", () => {
     const first = buildInsights({ ...base, recurring: [recurring] }, DEFAULT_INSIGHT_PREFERENCES)[0];
     expect(buildInsights({ ...base, recurring: [{ ...recurring, evidence: [{ ...recurring.evidence[0], amount_minor: "-2000" }] }] }, DEFAULT_INSIGHT_PREFERENCES, [], [first.key])).toHaveLength(1);
   });
+});
+
+it("flags an account that runs short and suggests a move from the account with the most to spare", () => {
+  const names = new Map([["main", "N26 Main"], ["holiday", "Holiday reserve"], ["savings", "Savings"]]);
+  const shortfalls = accountShortfalls([
+    { accountId: "main", amountMinor: -30000n, shortfallMinor: 30000n, firstShortfallDate: "2026-11-03" },
+    { accountId: "holiday", amountMinor: 100000n, shortfallMinor: 0n, firstShortfallDate: null },
+    { accountId: "savings", amountMinor: 20000n, shortfallMinor: 0n, firstShortfallDate: null },
+  ], names);
+  expect(shortfalls).toEqual([{ accountId: "main", name: "N26 Main", shortfallMinor: "30000", date: "2026-11-03", donor: { accountId: "holiday", name: "Holiday reserve", spareMinor: "100000" } }]);
+  const [insight] = buildInsights({ ...base, locale: "en-GB", accountShortfalls: shortfalls }, DEFAULT_INSIGHT_PREFERENCES);
+  expect(insight).toMatchObject({ type: "cash_shortfall", title: "N26 Main runs short", href: "/plan?account=main",
+    move: { fromAccountId: "holiday", toAccountId: "main", amountMinor: "30000", date: "2026-11-03" } });
+  expect(insight.detail).toContain("Moving EUR 300.00 from Holiday reserve, which has EUR 1000.00 to spare, would cover it.");
+  expect(accountShortfalls([{ accountId: "main", amountMinor: -30000n, shortfallMinor: 30000n, firstShortfallDate: "2026-11-03" },
+    { accountId: "savings", amountMinor: 20000n, shortfallMinor: 0n, firstShortfallDate: null }], names)[0].donor).toBeNull();
 });
