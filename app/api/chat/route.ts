@@ -16,11 +16,12 @@ import { evaluateInvestigationScenario, investigationDetail, investigationDetail
 import type { ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import { chatFollowUps, planInput } from "@/lib/ai/follow-ups";
 import { iouInputSchema, proposeIou, proposeRepayments } from "@/lib/ai/iou-proposals";
+import { proposeTransaction, transactionInputSchema } from "@/lib/ai/transaction-proposals";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
-  return content.replace(/```(?:chart|moneo-chart)\n[\s\S]*?```/g, "[chart]").replace(/```moneo-proposal\n[\s\S]*?```/g, "[loan card shown]");
+  return content.replace(/```(?:chart|moneo-chart)\n[\s\S]*?```/g, "[chart]").replace(/```moneo-proposal\n[\s\S]*?```/g, "[proposal card shown]");
 }
 
 const inputSchema = z.object({
@@ -142,6 +143,12 @@ export async function POST(request: Request) {
           const created = await proposeIou(await requireWorkspace(), input);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with Add and Dismiss is shown to the user below your answer. Say it is waiting for their approval; do not repeat the details." };
+        } }),
+      transaction_propose: tool({ description: "The user says they spent, paid, bought, earned or received money (or an attached receipt or invoice shows it). Shows a card to add it to their transactions; nothing is saved until they accept. Call once per separate payment, with the exact amount, currency and date from the user or document.",
+        inputSchema: transactionInputSchema, execute: async input => {
+          const created = await proposeTransaction(await requireWorkspace(), input);
+          proposalCards.push(created.proposalId);
+          return { proposed: created.title, note: "A card with an account picker, Add and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
         } }),
       // Artifacts are built on their own page; chat only hands the request over.
       suggest_artifact: tool({ description: "When the user asks for an interactive page, calculator, simulator, dashboard or what-if view, call this with a clear build request and give them the returned link. Do not build pages in chat.",

@@ -3,14 +3,17 @@ import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
 import { payloadSchemas, type ProposalKind } from "@/lib/ai/agent-team";
 import { calendarDate } from "@/lib/finance/calendar";
 import { iouCreateSchema, iouRecord, iouSettleSchema, parseIouName, settledRecord } from "@/lib/finance/iou";
+import { applyTransactionProposal } from "@/lib/ai/transaction-proposals";
 
 // Accepting a proposal calls the SAME audited RPCs a person uses by hand, as
 // the signed-in owner (auth.uid()), so corrections, batches and Undo stay intact.
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
-export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle"; payload: unknown };
+export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle" | "transaction_create"; payload: unknown };
+/** Choices made on the card itself, such as the account a chat expense is paid from. */
+export type DecideOptions = { accountId?: string };
 export type Applied = { href: string; undo?: string; [key: string]: unknown };
 
-export async function applyProposal(context: Context, proposal: StoredProposal): Promise<Applied> {
+export async function applyProposal(context: Context, proposal: StoredProposal, options: DecideOptions = {}): Promise<Applied> {
   const { supabase, workspace } = context;
   switch (proposal.kind) {
     case "categorize": {
@@ -69,6 +72,8 @@ export async function applyProposal(context: Context, proposal: StoredProposal):
       if (error) throw new Error(error.message);
       return { href: "/money/wealth", undo: "Undo from the Wealth history" };
     }
+    case "transaction_create":
+      return applyTransactionProposal(context, proposal.id, proposal.payload, options.accountId);
     case "finding":
       payloadSchemas.finding.parse(proposal.payload);
       return { href: "/money/transactions", acknowledged: true };
@@ -76,7 +81,7 @@ export async function applyProposal(context: Context, proposal: StoredProposal):
 }
 
 /** Claims each proposal once, applies it, and records the outcome. Rejecting never changes data. */
-export async function decideProposals(context: Context, ids: string[], decision: "accept" | "reject") {
+export async function decideProposals(context: Context, ids: string[], decision: "accept" | "reject", options: DecideOptions = {}) {
   const { supabase, workspace } = context;
   const outcomes: { id: string; status: string; error?: string }[] = [];
   for (const id of ids) {
@@ -90,7 +95,7 @@ export async function decideProposals(context: Context, ids: string[], decision:
       .select("id, kind, payload").maybeSingle();
     if (claim.error || !claim.data) { outcomes.push({ id, status: "unchanged", ...(claim.error ? { error: claim.error.message } : {}) }); continue; }
     let result: Applied;
-    try { result = await applyProposal(context, claim.data as StoredProposal); }
+    try { result = await applyProposal(context, claim.data as StoredProposal, options); }
     catch (cause) {
       const message = (cause instanceof Error ? cause.message : String(cause)).slice(0, 500);
       await supabase.from("agent_proposals").update({ status: "failed", result: { error: message } }).eq("id", id).eq("workspace_id", workspace.id).eq("status", "applying");
