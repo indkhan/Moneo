@@ -23,7 +23,7 @@ import { IouReview } from "./iou-review";
 import { loadPriceChanges } from "@/lib/finance/price-changes";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
-import { loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
+import { dayRange, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
 import { NetWorthChart } from "./net-worth-chart";
 import { LayoutGrid, Sparkle } from "lucide-react";
 
@@ -115,8 +115,8 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   missingInputs.push(...valuations.missingInputs);
   for (const valuation of valuations.included) addConverted(valuation.amountMinor, valuation.currencyCode, valuation.asOf, valuation.provenance, valuation.name, "assets");
 
-  // Month-end net worth for the chart and the "this month" change; display currency only for now (see BACKLOG.md).
-  const trend = netWorthSeries({ dates: monthEnds(today, 12), timeZone: workspace.timezone, accountIds: new Set(accounts.map(account => account.id)),
+  // Daily net worth over the last year for the chart (hover any day) and the month-end "this month" change; display currency only for now (see BACKLOG.md).
+  const trend = netWorthSeries({ dates: dayRange(monthEnds(today, 12)[0], today), timeZone: workspace.timezone, accountIds: new Set(accounts.map(account => account.id)),
     snapshots: balanceEvidence.snapshots, valuations: valuationHistory(wealthEvents, allWealth), removedOn: removedOn(allWealth, workspace.timezone), ledger: balanceEvidence.ledger })
     .filter(point => point.known).map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n }));
   // The change needs last month's end on record; without it there is nothing to compare with.

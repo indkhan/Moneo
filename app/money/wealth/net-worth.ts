@@ -16,6 +16,13 @@ export function monthEnds(today: string, months: number): string[] {
   return [...dates, today];
 }
 
+// Every calendar day from `from` to `to`, inclusive.
+export function dayRange(from: string, to: string): string[] {
+  const dates: string[] = [];
+  for (let time = Date.parse(`${from}T00:00:00Z`), end = Date.parse(`${to}T00:00:00Z`); time <= end; time += 86400000) dates.push(new Date(time).toISOString().slice(0, 10));
+  return dates;
+}
+
 // Recorded net worth on each date: the latest recorded account balance and the latest standalone
 // valuation dated on or before it. No FX and no interpolation; values carry forward until re-recorded.
 // With a ledger, a date before an account's first recorded balance is worked back from that balance by

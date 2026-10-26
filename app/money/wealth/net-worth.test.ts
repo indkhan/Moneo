@@ -1,8 +1,12 @@
 import { expect, it } from "vitest";
-import { monthEnds, netWorth, netWorthSeries } from "./net-worth";
+import { dayRange, monthEnds, netWorth, netWorthSeries } from "./net-worth";
 
 it("lists month ends then today", () => {
   expect(monthEnds("2026-03-15", 3)).toEqual(["2025-12-31", "2026-01-31", "2026-02-28", "2026-03-15"]);
+});
+
+it("lists every day in an inclusive range", () => {
+  expect(dayRange("2026-02-27", "2026-03-02")).toEqual(["2026-02-27", "2026-02-28", "2026-03-01", "2026-03-02"]);
 });
 
 it("carries forward the latest recorded values per date without mixing currencies", () => {
