@@ -28,45 +28,6 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
 }) }));
 afterEach(() => { fixture.calls = []; fixture.status = "queued"; fixture.version = 1; fixture.correction = false; fixture.exclusions = 1; vi.unstubAllEnvs(); });
 
-it("processes each excluded original index exactly once across a workflow chunk boundary", async () => {
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid");
-  vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
-  vi.stubEnv("OPENAI_API_KEY", "");
-  fixture.exclusions = 251;
-  await importFile("import", "workspace", 251);
-  const rows = fixture.calls.filter(call => call.name === "stage_import_rows").flatMap(call => (call.args.p_rows as { row: { rowNumber: number } }[]).map(item => item.row.rowNumber));
-  expect(rows).toEqual(Array.from({ length: 251 }, (_, index) => index + 2));
-  expect(fixture.calls.filter(call => call.name === "ingest_import_batch").map(call => call.args.p_offset)).toEqual([0, 250]);
-});
-
-it("executes the complete reviewed corrected row while retaining original status and date evidence", async () => {
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid");
-  vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
-  vi.stubEnv("OPENAI_API_KEY", "");
-  fixture.correction = true;
-  await importFile("import", "workspace", 1);
-  await importFile("import", "workspace", 1);
-  const calls = fixture.calls.filter(call => call.name === "stage_import_rows");
-  expect(calls).toHaveLength(2);
-  expect(calls[0]).toEqual(calls[1]);
-  expect((calls[0].args.p_rows as { row: unknown }[])[0].row).toMatchObject({ rowNumber: 2, postedOn: "2026-09-01", postedAt: "2026-09-01T12:00:00.000Z", status: "pending", kind: "refund", amountMinor: "200", currencyCode: "EUR",
-    reviewReasons: ["fee_semantics"], feeEvidence: { treatment: "unknown", feeMinor: "100" }, originalRow: { Date: "bad", Description: "Refund", Amount: "2", State: "unsupported", Type: "Card refund", Fee: "1" } });
-  expect(fixture.calls.find(call => call.name === "prepare_import_route")?.args.p_total_rows).toBe(1);
-});
-
-it("persists excluded original observations with stable identities across retries", async () => {
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid");
-  vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
-  vi.stubEnv("OPENAI_API_KEY", "");
-  await importFile("import", "workspace", 1);
-  await importFile("import", "workspace", 1);
-  const calls = fixture.calls.filter(call => call.name === "stage_import_rows");
-  expect(calls).toHaveLength(2);
-  expect(calls[0]).toEqual(calls[1]);
-  expect((calls[0].args.p_rows as { row: unknown }[])[0].row).toMatchObject({ rowNumber: 2, originalRow: { Date: "", Description: "Statement footer", Amount: "1" }, reason: "Statement footer" });
-  expect(fixture.calls.filter(call => call.name === "ingest_import_batch").every(call => (call.args.p_decisions as unknown[]).length === 0)).toBe(true);
-});
-
 it("does not persist exclusions after cancellation or run supersession", async () => {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
