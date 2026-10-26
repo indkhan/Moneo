@@ -1,0 +1,13 @@
+how often does the weekly briefing happen 
+
+and in cashflow can you make it that you click on a especific thing right now iit shows for that month the dott line have for especific in or out as well where you make the dott line
+
+---
+
+<task-notification>
+<task-id>b3unrmwc5</task-id>
+<tool-use-id>toolu_01EhD3WfobXm4CKjMEzK98gw</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--codebases-Moneo\d5ab56fd-ee45-4519-8a5b-6b46f54568af\tasks\b3unrmwc5.output</output-file>
+<status>completed</status>
+<summary>Background command "Run related tests, lint, and typecheck" completed (exit code 0)</summary>
+</task-notification>
