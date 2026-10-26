@@ -6,13 +6,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { accountShortfalls, buildInsights, insightPreferencesSchema, defaultInsightPreferences, type Insight, type InsightInput } from "@/lib/finance/insights";
 import { briefingFindings, keepsFacts, plainWording, rephraseFindings } from "@/lib/ai/briefing";
 import { getModel, modelIdFor } from "@/lib/ai/provider";
-import { describeMissingInputs } from "@/lib/finance/format";
+import { describeMissingInputs, formatInputAmount } from "@/lib/finance/format";
 import { type ReviewTransaction } from "@/lib/finance/review";
 import { budgetProgress, type MonthlyLimit } from "@/lib/finance/spending-plans";
 import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import type { evaluatePlan } from "@/lib/finance/model";
 import { dismissInsight, dismissInsights, muteInsightType } from "./actions";
-import { previewMove } from "../plan/actions";
 import { buildSourceCoverage, loadSourceCoverageMetadata, sourceCoverageNeedsReview } from "@/lib/finance/source-coverage";
 
 const card = "min-w-0 rounded-xl border border-border bg-card p-6 sm:p-7";
@@ -160,7 +159,8 @@ export async function WeeklyBriefing(props: InsightPanelProps) {
         <p className="text-[15px] leading-relaxed text-pretty" title={finding.detail}>{sentences.get(finding.key) ?? plainWording(finding)}</p>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <Link href={finding.href} className="ai-chip font-mono">E{index + 1} · {LABELS[finding.type]?.[1] ?? "evidence"}</Link>
-          {finding.move && <form action={previewMove}>{Object.entries(finding.move).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}<button className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90">Preview move</button></form>}
+          {finding.move && <Link href={`/plan?${new URLSearchParams({ account: finding.move.toAccountId, fundingFrom: finding.move.fromAccountId, fundingDate: finding.move.date, funding: formatInputAmount(finding.move.amountMinor, props.currency) })}#account-headroom`}
+            className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90">Preview move</Link>}
           {sourceCoverageNeedsReview(finding.sourceCoverage) && <span className="text-xs text-muted-foreground">Sources incomplete</span>}
           <form action={dismissInsight}><input type="hidden" name="key" value={finding.key} /><input type="hidden" name="type" value={finding.type} /><button className="text-xs text-muted-foreground hover:text-foreground hover:underline" aria-label={`Dismiss ${finding.title}`}>Dismiss</button></form>
         </div>

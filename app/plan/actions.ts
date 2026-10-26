@@ -169,26 +169,6 @@ export async function createScenario(form: FormData) {
   redirect(`/plan?scenario=${data.id}`);
 }
 
-/** Previews moving money between two same-currency accounts as a what-if scenario; the real plan is unchanged. */
-export async function previewMove(form: FormData) {
-  const { supabase, workspace } = await requireWorkspace();
-  const from = z.uuid().parse(form.get("fromAccountId")), to = z.uuid().parse(form.get("toAccountId"));
-  const amount = BigInt(z.string().regex(/^[1-9]\d{0,17}$/).parse(form.get("amountMinor")));
-  const on = date.parse(form.get("date"));
-  const { data: accounts, error } = await supabase.from("accounts").select("id, name, currency_code").eq("workspace_id", workspace.id).in("id", [from, to]).is("archived_at", null);
-  if (error) throw error;
-  const source = accounts?.find(account => account.id === from), target = accounts?.find(account => account.id === to);
-  if (!source || !target || from === to || source.currency_code !== target.currency_code) throw new Error("Choose two different accounts in the same currency");
-  const { data: scenario, error: scenarioError } = await supabase.from("scenarios").insert({ workspace_id: workspace.id, name: `Move to ${target.name}`.slice(0, 120),
-    description: `Preview of moving money from ${source.name} to ${target.name} on ${on}` }).select("id").single();
-  if (scenarioError) throw scenarioError;
-  const move = (account_id: string, amount_delta_minor: bigint, name: string) => ({ workspace_id: workspace.id, scenario_id: scenario.id, account_id, name, amount_delta_minor: amount_delta_minor.toString(),
-    currency_code: source.currency_code, cadence: "once", starts_on: on });
-  const { error: overrideError } = await supabase.from("scenario_overrides").insert([move(from, -amount, `Move to ${target.name}`), move(to, amount, `Move from ${source.name}`)]);
-  if (overrideError) throw overrideError;
-  redirect(`/plan?scenario=${scenario.id}#what-if`);
-}
-
 export async function addScenarioEvent(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
   const scenarioId = z.uuid().parse(form.get("scenarioId"));

@@ -20,7 +20,7 @@ export async function HomeHistory({ db, workspaceId, locale, timeZone, names }: 
     ...(imports.data ?? []).map(row => ({ key: `import:${row.id}`, at: row.created_at, title: `Imported ${row.filename} · ${row.new_rows} rows`, source: "import", href: "/import" })),
     ...(balances.data ?? []).map(row => ({ key: `balance:${row.id}`, at: row.created_at, title: `Set ${names.get(row.account_id) ?? "account"} balance to ${formatMoney(row.amount_minor, row.currency_code, locale)}`, source: "manual", href: "/money/accounts" })),
     ...(wealth.data ?? []).map(row => ({ key: `wealth:${row.id}`, at: row.created_at, title: `${(row.after as { removed_at?: string | null }).removed_at ? "Removed" : "Updated"} ${(row.after as { name?: string }).name ?? "a valuation"}`, source: "manual", href: "/money/wealth" })),
-    ...(agents.data ?? []).filter(row => row.decided_at).map(row => ({ key: `agent:${row.id}`, at: row.decided_at!, title: row.title, source: "agent · approved", href: (row.result as { href?: string } | null)?.href ?? `/ai/agents/${row.run_id}` })),
+    ...(agents.data ?? []).filter(row => row.decided_at).map(row => ({ key: `agent:${row.id}`, at: row.decided_at!, title: row.title, source: "agent", href: (row.result as { href?: string } | null)?.href ?? `/ai/agents/${row.run_id}` })),
   ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 4);
   if (!changes.length) return null;
   const when = (iso: string) => new Intl.DateTimeFormat(locale, { weekday: "short", hour: "2-digit", minute: "2-digit", timeZone }).format(new Date(iso));
