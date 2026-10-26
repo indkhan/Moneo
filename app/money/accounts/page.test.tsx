@@ -1,13 +1,14 @@
 import { expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-vi.mock("./actions", () => ({ editAccount: async () => ({}), updateBalance: async () => ({}), undoBalance: async () => {}, undoMoneyMetadata: async () => {}, addAccount: async () => {} }));
+vi.mock("./actions", () => ({ editAccount: async () => ({}), updateBalance: async () => ({}), undoBalance: async () => {}, undoMoneyMetadata: async () => {}, addAccount: async () => {}, addOwnAccount: async () => {}, removeOwnAccount: async () => {}, findTransfersBetweenOwnAccounts: async () => {} }));
 const query = (data: unknown[]) => { const q = { select: () => q, eq: () => q, order: () => q, limit: () => q, then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data, error: null }).then(resolve) }; return q; };
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({
   workspace: { id: "w", locale: "en-US", timezone: "UTC", display_currency: "EUR" },
   supabase: { from: (table: string) => query(table === "money_metadata_events" ? [
     { id: "e1", entity_type: "account", entity_id: "imported", before: { name: "Old", version: 1 }, after: { name: "Checking", version: 2 }, created_at: "2026-10-01T00:00:00Z", undone_at: null, undo_of: null },
-  ] : table === "bank_connection_accounts" ? [{ account_name: "Cash jar", currency_code: "EUR" }] : []) },
+  ] : table === "bank_connection_accounts" ? [{ account_name: "Cash jar", currency_code: "EUR", iban: null }]
+    : table === "own_account_identifiers" ? [{ id: "i1", account_id: null, iban: "DE02120300000000202051", label: "Savings at DKB" }] : []) },
 }) }));
 vi.mock("@/lib/finance/balances", async original => ({ ...await original<typeof import("@/lib/finance/balances")>(), loadBalanceEvidence: async () => ({
   asOf: "2026-10-16T12:00:00Z",
@@ -38,4 +39,13 @@ it("lists balances with as-of date, trend, rename suggestion, balance update and
   expect(html).toContain("renamed “Old” → “Checking”");
   expect(html).toContain(">Undo</button>");
   expect(html.match(/Update balance/g)).toHaveLength(1);
+});
+
+it("lists own account IBANs masked and reports found transfers", async () => {
+  const { default: AccountsPage } = await import("./page");
+  const html = renderToStaticMarkup(await AccountsPage({ searchParams: Promise.resolve({ transfers: "2-1-0" }) }));
+  expect(html).toContain("Savings at DKB · ••2051");
+  expect(html).not.toContain("DE02120300000000202051");
+  expect(html).toContain("Not tracked in Moneo");
+  expect(html).toContain("Found 2 transfer pairs and 1 payment to your untracked accounts.");
 });

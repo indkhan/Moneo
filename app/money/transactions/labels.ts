@@ -15,6 +15,7 @@ const OPERATION: Record<string, string> = {
   metadata: "Organized",
   split: "Split",
   verified_link: "Linked",
+  own_account_transfer: "Transfer to your own account",
   classification_review: "Classification reviewed",
 };
 
