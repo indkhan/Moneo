@@ -55,12 +55,6 @@ test("dated observations remain visible and explicit booked confirmation reloads
     page.setDefaultTimeout(30_000);
     console.log('MNE012 step: opening Home');
     await page.goto("/", {waitUntil: 'domcontentloaded'});
-    console.log('MNE012 step: dated observations');
-    const dated = page.locator("details").filter({has: page.locator("summary").filter({hasText: /^Recorded net worth by currency$/})});
-    await dated.locator("summary").click();
-    await expect(dated).toContainText("EUR 200.00"); await expect(dated).toContainText("JPY 300");
-    await expect(dated).toContainText("Historical debt QA"); await expect(dated).toContainText("synthetic imported observation");
-    await expect(dated).toContainText("not verified current funds"); await expect(dated).toContainText(old);
     const card = page.locator("article").filter({has: page.getByRole("heading", {name: "Dated cash QA", exact: true})});
     await card.getByText("Update balance", {exact: true}).click();
     await card.getByText("Confirm recorded balance", {exact: true}).click();

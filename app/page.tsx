@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { HomeLiquidity } from "./account-liquidity-summary";
-import { DatedOverview } from "./dated-overview";
 import { ManualBalanceForm } from "./manual-balance-form";
 import { ImportantInsights, loadInsightEvidence } from "./insights/panel";
 import { Figure, Kpi, KpiFallback, MonthSpendingKpi, RecentTransactions, SectionFallback, SpendingPanel, card } from "./home-sections";
@@ -22,6 +21,8 @@ import { AgentBriefing } from "./agent-briefing";
 import { AskAbout } from "@/components/ask-about";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
+import { loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
+import { Sparkline } from "./money/accounts/sparkline";
 import { LayoutGrid, Plus, Sparkle } from "lucide-react";
 
 // The design pairs a wide card with a narrow one; dense flow fills the gaps whatever order the layout picks.
@@ -45,7 +46,8 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const money = (amount: bigint | string | number, currency: string) => formatMoney(amount, currency, locale);
   const today = calendarDate(new Date(), workspace.timezone);
   const balanceEvidencePromise = loadBalanceEvidence(supabase, workspace.id);
-  const wealthPromise = loadWealthItems(supabase, workspace.id);
+  const allWealthPromise = loadWealthItems(supabase, workspace.id, true);
+  const wealthPromise = allWealthPromise.then(items => items.filter(item => !item.removed_at));
   const sourceMetadataPromise = loadSourceCoverageMetadata(supabase, workspace.id, true);
   // Start the streamed sections' reads now (memoized); their Suspense boundaries pick up the same promises.
   loadInsightEvidence(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
@@ -56,7 +58,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     const ids = (Array.isArray(data?.items) ? data.items : []).map(artifactIdFromKey).filter(id => id !== null);
     return ids.length ? supabase.from("artifacts").select("id, title").eq("workspace_id", workspace.id).in("id", ids).is("deleted_at", null) : { data: [], error: null };
   });
-  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata] = await Promise.all([
+  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
     wealthPromise,
@@ -67,6 +69,8 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date").eq("workspace_id", workspace.id).eq("status", "active").order("priority").limit(10),
     supabase.from("goal_allocations").select("goal_id, account_id, amount_minor::text").eq("workspace_id", workspace.id),
     sourceMetadataPromise,
+    allWealthPromise,
+    loadWealthEvents(supabase, workspace.id),
   ]);
   for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error]) if (error) throw error;
   const accounts = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone, sourceMetadata, { preferLatestRecorded: true }).filter(account => !account.archived_at);
@@ -102,6 +106,13 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   missingInputs.push(...valuations.missingInputs);
   for (const valuation of valuations.included) addConverted(valuation.amountMinor, valuation.currencyCode, valuation.asOf, valuation.provenance, valuation.name, "assets");
 
+  // Month-end net worth for the chart and the "this month" change; display currency only for now (see BACKLOG.md).
+  const trend = netWorthSeries({ dates: monthEnds(today, 12), timeZone: workspace.timezone, accountIds: new Set(accounts.map(account => account.id)),
+    snapshots: balanceEvidence.snapshots, valuations: valuationHistory(wealthEvents, allWealth), removedOn: removedOn(allWealth, workspace.timezone) })
+    .map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n }));
+  const monthChange = trend.at(-1)!.value - trend.at(-2)!.value, monthBase = trend.at(-2)!.value;
+  const monthLabel = (date: string) => new Intl.DateTimeFormat(locale, { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
+
   const upcoming = (projection.input?.events ?? []).filter(event => event.expectedMinor < 0n && event.source !== "estimated").sort((a, b) => a.date.localeCompare(b.date));
   const upcomingMinor = upcoming.reduce((sum, event) => sum + event.expectedMinor, 0n);
   const available = projection.available;
@@ -125,15 +136,16 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
           <Link href="/plan/currency" className="rounded-lg border border-input px-2.5 py-1 font-mono text-xs text-muted-foreground hover:text-foreground">{displayCurrency}</Link>
         </div>
         {!accounts.length && !wealthItems.length ? <p className="text-sm text-muted-foreground">Add an account to see your net worth.</p>
-          : convertedCount > 0 ? <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><Figure value={money(netWorthMinor, displayCurrency)} digits={minorDigits(displayCurrency)} className="display-figure text-5xl sm:text-7xl" />{missingInputs.length > 0 && <span className="font-mono text-xs text-warning" title={describeMissingInputs(missingInputs).join("; ")}>Partial</span>}</div>
+          : convertedCount > 0 ? <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><Figure value={money(netWorthMinor, displayCurrency)} digits={minorDigits(displayCurrency)} className="display-figure text-5xl sm:text-7xl" />
+            {monthChange !== 0n && <span className="font-mono text-sm text-muted-foreground"><span className={monthChange > 0n ? "text-brand" : "text-warning"}>{monthChange > 0n ? "+" : ""}{money(monthChange, displayCurrency)}</span> this month{monthBase > 0n ? ` · ${monthChange > 0n ? "+" : ""}${(Number(monthChange * 1000n / monthBase) / 10).toFixed(1)}%` : ""}</span>}</div>
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
-        {convertedCount === 0 && missingInputs.length > 0 ? <details className="text-xs text-muted-foreground"><summary className="cursor-pointer text-brand">See what is missing</summary><ul className="mt-2 list-disc space-y-1 pl-4">{describeMissingInputs(missingInputs).map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>
-          : convertedCount > 0 && <p className="-mt-2 text-xs text-muted-foreground">Includes debts and valuations.</p>}
+        {convertedCount === 0 && missingInputs.length > 0 && <details className="text-xs text-muted-foreground"><summary className="cursor-pointer text-brand">See what is missing</summary><ul className="mt-2 list-disc space-y-1 pl-4">{describeMissingInputs(missingInputs).map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>}
+        {convertedCount > 0 && <div><Sparkline points={trend} area width={640} height={120} className="h-[120px] w-full text-brand" label={`Net worth in ${displayCurrency} at each month end`} />
+          <p className="mt-2 flex justify-between font-mono text-[11px] text-subtle"><span>{monthLabel(trend[0].date)}</span><span>{monthLabel(trend[6].date)}</span><span>{monthLabel(today)}</span></p></div>}
         {convertedCount > 0 && <dl className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] bg-border sm:grid-cols-3">
           {([["Cash & accounts", parts.cash, "/money/accounts"], ["Assets", parts.assets, "/money/wealth"], ["Debts", parts.debts, "/money/wealth"]] as const).map(([label, amount, href]) =>
             <div key={label} className="bg-card"><Link href={href} className="flex flex-col gap-1 px-4 py-3.5 hover:bg-muted"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-mono">{money(amount, displayCurrency)}</dd></Link></div>)}
         </dl>}
-        <DatedOverview accounts={accounts} wealth={wealthItems} today={today} locale={locale} />
       </div>
       <div className={`${card} flex flex-col gap-4`}>
         <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">This month</h2><span className="font-mono text-[11px] text-subtle">day {Number(today.slice(8, 10))} / {new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).getUTCDate()}</span></div>
