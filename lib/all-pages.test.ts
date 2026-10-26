@@ -28,6 +28,19 @@ describe("allPages", () => {
     expect(calls.slice(1).every(call => call.count === undefined)).toBe(true);
   });
 
+  it("keeps at most six page reads in flight", async () => {
+    let active = 0, peak = 0;
+    const rows = Array.from({ length: 100 }, (_, index) => index);
+    const page = async (from: number, to: number, count?: "exact") => {
+      peak = Math.max(peak, ++active);
+      await new Promise(resolve => setTimeout(resolve, 1));
+      active--;
+      return { data: rows.slice(from, to + 1), error: null, count: count ? rows.length : null };
+    };
+    expect(await allPages(page, 5)).toEqual(rows);
+    expect(peak).toBe(6);
+  });
+
   it("keeps reading while pages come back full, so rows added after the count are kept", async () => {
     const { page } = table(10, 7);
     expect(await allPages(page, 5)).toHaveLength(17);
