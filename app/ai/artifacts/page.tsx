@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { artifactExamples } from "@/lib/ai/artifact-examples";
 import { ArtifactPrompt } from "./artifact-prompt";
+import { DeleteArtifactButton } from "./delete-artifact-button";
 
 export default async function ArtifactsPage({ searchParams }: { searchParams: Promise<{ prompt?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -30,10 +31,14 @@ export default async function ArtifactsPage({ searchParams }: { searchParams: Pr
         </Link></li>)}</ul>
     </section>
     {error ? <p role="alert">Could not load artifacts.</p> : !data.length ? <p className="text-sm text-muted-foreground">No artifacts yet.</p> :
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{data.map(artifact => <li key={artifact.id}>
-        <Link href={`/ai/artifacts/${artifact.id}`} className="block h-full rounded-xl border border-border bg-card p-4 hover:bg-muted">
-          <span className="block font-medium">{artifact.title}</span>
-          <span className="mt-1 block text-xs text-muted-foreground">Updated {date.format(new Date(artifact.updated_at))}</span>
-        </Link></li>)}</ul>}
+      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{data.map(artifact => <li key={artifact.id} className="relative flex h-full flex-col rounded-xl border border-border bg-card hover:bg-muted">
+        <div className="flex items-start gap-2 p-4">
+          <div className="min-w-0 flex-1">
+            {/* The stretched link makes the whole card clickable while the delete button stays its own control. */}
+            <Link href={`/ai/artifacts/${artifact.id}`} className="block font-medium after:absolute after:inset-0 after:rounded-xl">{artifact.title}</Link>
+            <span className="mt-1 block text-xs text-muted-foreground">Updated {date.format(new Date(artifact.updated_at))}</span>
+          </div>
+          <DeleteArtifactButton id={artifact.id} title={artifact.title} label="" className="relative z-10 -m-1 p-1" />
+        </div></li>)}</ul>}
   </main>;
 }

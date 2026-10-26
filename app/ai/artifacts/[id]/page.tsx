@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
 import { requireWorkspace } from "@/lib/auth";
 import { artifactDocument, artifactQueriesSchema, runArtifactQueries } from "@/lib/ai/artifact-data";
 import { ArtifactPrompt } from "../artifact-prompt";
-import { deleteArtifact } from "../actions";
+import { DeleteArtifactButton } from "../delete-artifact-button";
 
 export default async function ArtifactPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ v?: string; full?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -45,9 +45,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
             <span className="text-xs text-muted-foreground">v{item.version}</span> {item.prompt}</Link></li>)}
       </ol>
       <ArtifactPrompt artifactId={id} placeholder="Change something, e.g. “Add a toggle for selling the car”" />
-      <form action={deleteArtifact.bind(null, id)}>
-        <button type="submit" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-danger"><Trash2 className="size-3.5" aria-hidden="true" />Delete artifact</button>
-      </form>
+      <DeleteArtifactButton id={id} title={artifact.data.title} />
     </aside>
     <section aria-label="Artifact" className="flex min-h-[70dvh] flex-col overflow-hidden rounded-xl border border-border">
       <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-1.5 text-xs">
