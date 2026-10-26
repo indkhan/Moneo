@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M5V5VRG1T9BBFKCJVS59CS42",
+  "session_id": "e5b80c3c-c10f-4f51-8168-d0ed86f83e7b",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-26T04:00:29.560228Z",
+  "branch": "t3/artifact-dashboard-actions",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/ai/artifacts/page.tsx",
+    "components/artifact-frame.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "7797e71861ab",
+  "checkpoint_transcript_start": 243,
+  "transcript_lines_at_start": 243,
+  "compact_transcript_start": 29,
+  "token_usage": {
+    "input_tokens": 4,
+    "cache_creation_tokens": 2650,
+    "cache_read_tokens": 206821,
+    "output_tokens": 1578,
+    "api_call_count": 2
+  },
+  "redaction": {
+    "replacements": 0,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 1
+  }
+}
