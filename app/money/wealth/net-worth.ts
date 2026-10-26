@@ -4,7 +4,8 @@ import type { WealthItem } from "@/lib/finance/wealth";
 
 type Snapshot = { account_id: string; amount_minor: string | number; currency_code: string; as_of: string; undone_at?: string | null };
 type Valuation = { item_id: string; created_at: string; kind: string; amount_minor: string; currency_code: string; as_of: string; linked_account_id: string | null };
-type NetWorthPoint = { date: string; accounts: Map<string, bigint>; assets: Map<string, bigint>; debts: Map<string, bigint> };
+type Posting = { account_id: string; amount_minor: string | number; currency_code: string; posted_on: string; status: string };
+type NetWorthPoint = { date: string; accounts: Map<string, bigint>; assets: Map<string, bigint>; debts: Map<string, bigint>; known: boolean };
 
 const add = (map: Map<string, bigint>, currency: string, amount: bigint) => map.set(currency, (map.get(currency) ?? 0n) + amount);
 
@@ -17,9 +18,12 @@ export function monthEnds(today: string, months: number): string[] {
 
 // Recorded net worth on each date: the latest recorded account balance and the latest standalone
 // valuation dated on or before it. No FX and no interpolation; values carry forward until re-recorded.
+// With a ledger, a date before an account's first recorded balance is worked back from that balance by
+// removing the posted transactions after the date, but only from the day before its first posting, since
+// earlier activity is not on record. `known` is false when nothing covers the date.
 // ponytail: archived accounts are left out (matching Home); include them if history must show closed accounts.
-export function netWorthSeries({ dates, timeZone, accountIds, snapshots, valuations, removedOn }: {
-  dates: string[]; timeZone: string; accountIds: Set<string>; snapshots: Snapshot[]; valuations: Valuation[]; removedOn: Map<string, string>;
+export function netWorthSeries({ dates, timeZone, accountIds, snapshots, valuations, removedOn, ledger = [] }: {
+  dates: string[]; timeZone: string; accountIds: Set<string>; snapshots: Snapshot[]; valuations: Valuation[]; removedOn: Map<string, string>; ledger?: Posting[];
 }): NetWorthPoint[] {
   const balances = snapshots.filter(row => !row.undone_at && accountIds.has(row.account_id))
     .map(row => ({ key: row.account_id, date: calendarDate(row.as_of, timeZone), at: row.as_of, amount: BigInt(row.amount_minor), currency: row.currency_code }));
@@ -34,14 +38,29 @@ export function netWorthSeries({ dates, timeZone, accountIds, snapshots, valuati
     }
     return pick.values();
   };
+  const posted = ledger.filter(row => row.status === "posted" && accountIds.has(row.account_id));
+  const firstPosted = new Map<string, string>();
+  for (const row of posted) if (!firstPosted.has(row.account_id) || row.posted_on < firstPosted.get(row.account_id)!) firstPosted.set(row.account_id, row.posted_on);
+  const dayBefore = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
   return dates.map(date => {
-    const point: NetWorthPoint = { date, accounts: new Map(), assets: new Map(), debts: new Map() };
-    for (const row of latest(balances, date)) add(point.accounts, row.currency, row.amount);
+    const point: NetWorthPoint = { date, accounts: new Map(), assets: new Map(), debts: new Map(), known: false };
+    const recorded = [...latest(balances, date)];
+    for (const row of recorded) add(point.accounts, row.currency, row.amount);
+    for (const key of accountIds) {
+      const first = firstPosted.get(key);
+      if (recorded.some(row => row.key === key) || !first || date < dayBefore(first)) continue;
+      const next = balances.filter(row => row.key === key && row.date > date).sort((a, b) => a.date.localeCompare(b.date) || a.at.localeCompare(b.at))[0];
+      if (!next) continue;
+      const after = posted.filter(row => row.account_id === key && row.currency_code === next.currency && row.posted_on > date && row.posted_on <= next.date)
+        .reduce((sum, row) => sum + BigInt(row.amount_minor), 0n);
+      add(point.accounts, next.currency, next.amount - after);
+    }
     for (const row of latest(values, date)) {
       const removed = removedOn.get(row.key);
       if (removed && removed <= date) continue;
       add(row.debt ? point.debts : point.assets, row.currency, row.amount);
     }
+    point.known = point.accounts.size + point.assets.size + point.debts.size > 0;
     return point;
   });
 }

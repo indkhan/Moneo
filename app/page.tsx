@@ -23,7 +23,7 @@ import { loadPriceChanges } from "@/lib/finance/price-changes";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
-import { Sparkline } from "./money/accounts/sparkline";
+import { NetWorthChart } from "./net-worth-chart";
 import { LayoutGrid, Sparkle } from "lucide-react";
 
 // Six columns: a wide card pairs with a narrow one and half cards pair up; dense flow fills the gaps whatever order the layout picks.
@@ -116,9 +116,12 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
 
   // Month-end net worth for the chart and the "this month" change; display currency only for now (see BACKLOG.md).
   const trend = netWorthSeries({ dates: monthEnds(today, 12), timeZone: workspace.timezone, accountIds: new Set(accounts.map(account => account.id)),
-    snapshots: balanceEvidence.snapshots, valuations: valuationHistory(wealthEvents, allWealth), removedOn: removedOn(allWealth, workspace.timezone) })
-    .map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n }));
-  const monthChange = trend.at(-1)!.value - trend.at(-2)!.value, monthBase = trend.at(-2)!.value;
+    snapshots: balanceEvidence.snapshots, valuations: valuationHistory(wealthEvents, allWealth), removedOn: removedOn(allWealth, workspace.timezone), ledger: balanceEvidence.ledger })
+    .filter(point => point.known).map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n }));
+  // The change needs last month's end on record; without it there is nothing to compare with.
+  const monthBase = trend.find(point => point.date === monthEnds(today, 1)[0])?.value ?? null;
+  const monthChange = monthBase === null ? 0n : trend.at(-1)!.value - monthBase;
+  const fullDate = (date: string) => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
   const dayMonth = (date: string) => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
   const ago = (iso: string) => {
     const minutes = Math.round((Date.parse(balanceEvidence.asOf) - Date.parse(iso)) / 60000), format = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
@@ -152,11 +155,12 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         </div>
         {!accounts.length && !wealthItems.length ? <p className="text-sm text-muted-foreground">Add an account to see your net worth.</p>
           : convertedCount > 0 ? <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><Figure value={money(netWorthMinor, displayCurrency)} digits={minorDigits(displayCurrency)} className="display-figure text-5xl sm:text-7xl" />
-            {monthChange !== 0n && <span className="font-mono text-sm text-muted-foreground"><span className={monthChange > 0n ? "text-brand" : "text-warning"}>{monthChange > 0n ? "+" : ""}{money(monthChange, displayCurrency)}</span> this month{monthBase > 0n ? ` · ${monthChange > 0n ? "+" : ""}${(Number(monthChange * 1000n / monthBase) / 10).toFixed(1)}%` : ""}</span>}</div>
+            {monthChange !== 0n && <span className="font-mono text-sm text-muted-foreground"><span className={monthChange > 0n ? "text-brand" : "text-warning"}>{monthChange > 0n ? "+" : ""}{money(monthChange, displayCurrency)}</span> this month{monthBase !== null && monthBase > 0n ? ` · ${monthChange > 0n ? "+" : ""}${(Number(monthChange * 1000n / monthBase) / 10).toFixed(1)}%` : ""}</span>}</div>
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
         {convertedCount === 0 && missingInputs.length > 0 && <details className="text-xs text-muted-foreground"><summary className="cursor-pointer text-brand">See what is missing</summary><ul className="mt-2 list-disc space-y-1 pl-4">{describeMissingInputs(missingInputs).map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>}
-        {convertedCount > 0 && <div><Sparkline points={trend} area width={640} height={120} className="h-[120px] w-full text-brand" label={`Net worth in ${displayCurrency} at each month end`} />
-          <p className="mt-2 flex justify-between font-mono text-[11px] text-subtle"><span>{monthLabel(trend[0].date)}</span><span>{monthLabel(trend[6].date)}</span><span>{monthLabel(today)}</span></p></div>}
+        {convertedCount > 0 && trend.length > 1 && <div><NetWorthChart label={`Net worth in ${displayCurrency} at each month end`}
+            points={trend.map(point => ({ date: point.date, label: point.date === today ? `Today, ${fullDate(today)}` : fullDate(point.date), amount: money(point.value, displayCurrency), y: Number(point.value) }))} />
+          <p className="mt-2 flex justify-between font-mono text-[11px] text-subtle"><span>{monthLabel(trend[0].date)}</span>{trend.length > 2 && <span>{monthLabel(trend[Math.floor(trend.length / 2)].date)}</span>}<span>{monthLabel(today)}</span></p></div>}
         {convertedCount > 0 && <dl className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] bg-border sm:grid-cols-3">
           {([["Cash & accounts", parts.cash, "/money/accounts"], ["Assets", parts.assets, "/money/wealth"], ["Debts", parts.debts, "/money/wealth"]] as const).map(([label, amount, href]) =>
             <div key={label} className="bg-card"><Link href={href} className="flex flex-col gap-1 px-4 py-3.5 hover:bg-muted"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-mono">{money(amount, displayCurrency)}</dd></Link></div>)}
