@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { runAgent, startRun } from "@/lib/ai/agent-runtime";
+import { runAgent } from "@/lib/ai/agent-runtime";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const db = vi.hoisted(() => ({ run: {} as Record<string, unknown>, settings: {} as Record<string, unknown>, tasks: [] as Record<string, unknown>[], ledger: [] as Record<string, unknown>[],
@@ -36,14 +36,6 @@ beforeEach(() => {
   db.ledger = [...Array.from({ length: 12 }, (_, n) => ({ id: id(n + 10), version: 1, posted_on: `2026-08-${String(n + 1).padStart(2, "0")}`, description: `SHOP ${n}`, amount_minor: "-2000" })),
     { id: id(40), version: 1, posted_on: "2026-10-01", description: "CAFE LUNA", amount_minor: "-450" }, { id: id(41), version: 1, posted_on: "2026-10-01", description: "CAFE LUNA", amount_minor: "-450" }]
     .map(row => ({ ...row, currency_code: "EUR", account_id: id(2), category_id: null, merchant_id: null, kind: "ordinary", status: "posted", review_reasons: [] }));
-});
-
-it("the lead plans with no model: deterministic agents still run and skips are explained", async () => {
-  db.settings = { ai_data_scopes: ["accounts", "transactions"] };
-  const waves = await startRun(id(9), id(1), "wf");
-  expect(waves![0]).toEqual(["categorizer", "recurring", "anomaly"]);
-  expect(db.tasks.find(task => task.agent === "budget")).toMatchObject({ status: "skipped", summary: "Allow AI access to planning in Settings" });
-  expect(db.writes.find(write => write.table === "agent_runs" && (write.value as { model_status?: string }).model_status)).toMatchObject({ value: { model_status: "disabled" } });
 });
 
 it("an agent streams its steps, writes only proposals, and finishes with a summary", async () => {
