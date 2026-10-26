@@ -42,3 +42,10 @@ it("renders model chart blocks, falls back to code when invalid and never links 
   expect(invalid).not.toContain("ai-chart");
   expect(invalid).toContain("ai-code");
 });
+
+it("renders a loan card for an app-written moneo-proposal block and ignores a malformed id", () => {
+  const card = renderToStaticMarkup(<AiMessage content={"```moneo-proposal\n00000000-0000-4000-8000-000000000001\n```"} />);
+  expect(card).toContain("Loading");
+  const bad = renderToStaticMarkup(<AiMessage content={"```moneo-proposal\nnot-an-id\n```"} />);
+  expect(bad).not.toContain("Loading");
+});

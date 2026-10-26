@@ -8,6 +8,7 @@ import { formatMoney } from "@/lib/finance/format";
 import { detectRecurring } from "@/lib/finance/recurring";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { mergeOrganizationSuggestions, organizationProposals, organizationRuleSchema, type OrganizationProposal, type OrganizationRow } from "@/lib/import/organization";
+import { proposeRepayments } from "@/lib/ai/iou-proposals";
 import { monthlyEquivalent } from "@/app/money/recurring/series";
 import { AGENTS, WAVES, anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, planRun, recurringProposals, verifiedBriefing,
   daysBefore, payloadSchemas, reviewed, type AgentId, type BriefingFacts, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
@@ -352,6 +353,9 @@ export async function mergeRun(runId: string, workspaceId: string) {
       checked(await db.from("agent_proposals").update({ confidence: item.confidence, notes: item.notes }).eq("run_id", runId).eq("workspace_id", workspaceId).eq("conflict_key", item.conflictKey));
   }
   for (const text of resolutions.slice(0, 10)) await report(lead, { type: "note", text });
+  // Repayments of money lent or borrowed wait for review on Home and here; a failed lookup never fails the run.
+  try { for (const found of await proposeRepayments({ supabase: db, workspace })) await report(lead, { type: "finding", text: found.title }); }
+  catch (cause) { await report(lead, { type: "note", text: `Could not check loan repayments: ${cause instanceof Error ? cause.message : String(cause)}` }); }
   await report(lead, { type: "step", text: `${proposals.length} proposals ready for review` }, { summary: `Merged ${before.length} results into ${proposals.length} proposals; ${resolutions.length} conflicts resolved` });
   return true;
 }

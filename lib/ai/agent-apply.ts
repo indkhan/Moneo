@@ -1,11 +1,13 @@
 import type { requireWorkspace } from "@/lib/auth";
 import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
 import { payloadSchemas, type ProposalKind } from "@/lib/ai/agent-team";
+import { calendarDate } from "@/lib/finance/calendar";
+import { iouCreateSchema, iouRecord, iouSettleSchema, parseIouName, settledRecord } from "@/lib/finance/iou";
 
 // Accepting a proposal calls the SAME audited RPCs a person uses by hand, as
 // the signed-in owner (auth.uid()), so corrections, batches and Undo stay intact.
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
-export type StoredProposal = { id: string; kind: ProposalKind; payload: unknown };
+export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle"; payload: unknown };
 export type Applied = { href: string; undo?: string; [key: string]: unknown };
 
 export async function applyProposal(context: Context, proposal: StoredProposal): Promise<Applied> {
@@ -42,6 +44,30 @@ export async function applyProposal(context: Context, proposal: StoredProposal):
       if (error?.code === "23505") throw new Error("A limit already exists for this category and currency");
       if (error) throw new Error(error.message);
       return { href: "/plan/spending", undo: "Turn the limit off in Plan → Spending" };
+    }
+    case "iou_create": {
+      // The proposal id is both the new item's id and the request id, so accepting twice cannot duplicate it.
+      const record = iouRecord(iouCreateSchema.parse(proposal.payload));
+      const { error } = await supabase.rpc("edit_wealth_item", { p_id: proposal.id, p_expected_version: 0, p_record: record, p_remove: false, p_request_id: proposal.id });
+      if (error) throw new Error(error.message);
+      return { href: "/money/wealth", undo: "Undo from the Wealth history" };
+    }
+    case "iou_settle": {
+      const payload = iouSettleSchema.parse(proposal.payload);
+      const [item, transaction] = await Promise.all([
+        supabase.from("wealth_items").select("id, kind, name, currency_code, amount_minor::text, as_of, version, removed_at, linked_account_id, annual_rate_text, monthly_payment_minor::text")
+          .eq("workspace_id", workspace.id).eq("id", payload.itemId).is("removed_at", null).maybeSingle(),
+        supabase.from("transactions").select("id, amount_minor::text, currency_code").eq("workspace_id", workspace.id).eq("id", payload.transactionId).maybeSingle(),
+      ]);
+      if (item.error || !item.data || !parseIouName(item.data.name)) throw new Error("This loan changed or was removed since the repayment was found");
+      const paid = transaction.data ? BigInt(transaction.data.amount_minor) : 0n;
+      const lent = item.data.kind === "asset";
+      if (transaction.data?.currency_code !== item.data.currency_code || (lent ? paid <= 0n : paid >= 0n) || BigInt(payload.appliedMinor) > (paid < 0n ? -paid : paid))
+        throw new Error("The transaction no longer matches this repayment");
+      const next = settledRecord(item.data, payload.appliedMinor, calendarDate(new Date(), workspace.timezone));
+      const { error } = await supabase.rpc("edit_wealth_item", { p_id: item.data.id, p_expected_version: item.data.version, p_record: next ?? {}, p_remove: next === null, p_request_id: proposal.id });
+      if (error) throw new Error(error.message);
+      return { href: "/money/wealth", undo: "Undo from the Wealth history" };
     }
     case "finding":
       payloadSchemas.finding.parse(proposal.payload);
