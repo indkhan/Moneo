@@ -8,6 +8,7 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { parseManualAmount } from "@/app/money/transactions/input";
 import { accountTypes } from "./naming";
 import { minorDigits } from "@/lib/finance/fx";
+import { linkOwnTransfers, normalizeIban } from "@/lib/finance/own-transfers";
 
 const version = z.coerce.number().int().min(1).max(2147483646);
 const accountType = z.enum(accountTypes);
@@ -87,4 +88,35 @@ export async function addAccount(form: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout");
   redirect("/money/accounts");
+}
+
+function transfersRedirect(result: { linked: number; marked: number; skipped: number }): never {
+  revalidatePath("/", "layout");
+  redirect(`/money/accounts?${new URLSearchParams({ transfers: `${result.linked}-${result.marked}-${result.skipped}` })}#own-accounts`);
+}
+
+// Saving an own IBAN immediately looks for the transfers it explains.
+export async function addOwnAccount(form: FormData) {
+  const { supabase, workspace } = await requireWorkspace();
+  const iban = normalizeIban(String(form.get("iban") ?? ""));
+  if (!iban) throw new Error("Enter a valid IBAN");
+  const accountId = z.union([z.uuid(), z.literal("")]).parse(form.get("accountId") ?? "") || null;
+  const { error } = await supabase.from("own_account_identifiers").insert({ workspace_id: workspace.id, iban, account_id: accountId,
+    label: z.string().trim().min(1).max(120).parse(form.get("label")) });
+  if (error) throw new Error(error.code === "23505" ? "That IBAN is already saved" : error.message);
+  transfersRedirect(await linkOwnTransfers(supabase, workspace.id));
+}
+
+// Removing an IBAN keeps transfers already linked; each can be undone from its transaction.
+export async function removeOwnAccount(form: FormData) {
+  const { supabase, workspace } = await requireWorkspace();
+  const { error } = await supabase.from("own_account_identifiers").delete().eq("workspace_id", workspace.id).eq("id", z.uuid().parse(form.get("id")));
+  if (error) throw new Error(error.message);
+  revalidatePath("/", "layout");
+  redirect("/money/accounts#own-accounts");
+}
+
+export async function findTransfersBetweenOwnAccounts() {
+  const { supabase, workspace } = await requireWorkspace();
+  transfersRedirect(await linkOwnTransfers(supabase, workspace.id));
 }

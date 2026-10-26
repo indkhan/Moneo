@@ -9,6 +9,7 @@ import { AccountForm, BalanceForm, RenameSuggestion } from "./account-form";
 import { accountTypes, suggestAccountName } from "./naming";
 import { balanceTrend, shownBalance } from "./history";
 import { Sparkline } from "./sparkline";
+import { OwnAccounts } from "./own-accounts";
 
 const field = "min-h-9 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm";
 const TREND_DAYS = 90;
@@ -26,15 +27,17 @@ function describeEvent(event: MetaEvent) {
   return `${event.entity_type === "account" ? "Account" : "Saved view"} ${String(after.name ?? before.name ?? "")}${changes.length ? `: ${changes.join(", ")}` : ""}`;
 }
 
-export default async function AccountsPage() {
+export default async function AccountsPage({ searchParams }: { searchParams?: Promise<{ transfers?: string }> } = {}) {
+  const { transfers } = (await searchParams) ?? {};
   const { supabase, workspace } = await requireWorkspace();
-  const [evidence, { data: history, error: historyError }, { data: views, error: viewsError }, { data: bankAccounts, error: bankError }] = await Promise.all([
+  const [evidence, { data: history, error: historyError }, { data: views, error: viewsError }, { data: bankAccounts, error: bankError }, { data: identifiers, error: identifierError }] = await Promise.all([
     loadBalanceEvidence(supabase, workspace.id),
     supabase.from("money_metadata_events").select("id,entity_type,entity_id,before,after,created_at,undone_at,undo_of").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30),
     supabase.from("transaction_views").select("id,version").eq("workspace_id", workspace.id),
-    supabase.from("bank_connection_accounts").select("account_name,currency_code").eq("workspace_id", workspace.id),
+    supabase.from("bank_connection_accounts").select("account_name,currency_code,iban").eq("workspace_id", workspace.id),
+    supabase.from("own_account_identifiers").select("id,account_id,iban,label").eq("workspace_id", workspace.id).order("created_at"),
   ]);
-  if (historyError || viewsError || bankError) throw new Error("Could not load account and saved view history");
+  if (historyError || viewsError || bankError || identifierError) throw new Error("Could not load account and saved view history");
   // A bank sync imports into the account with the bank's name and currency, so those accounts take their balance from the sync.
   const synced = new Set((bankAccounts ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
   const { timezone: timeZone, locale } = workspace;
@@ -135,6 +138,9 @@ export default async function AccountsPage() {
 
     {active.length ? <section className="divide-y divide-border rounded-xl border border-border bg-card" aria-label="Your accounts">{active.map(row)}</section>
       : <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No accounts yet. Use Add account or <Link className="underline" href="/import">import a statement</Link>.</p>}
+
+    <OwnAccounts identifiers={identifiers ?? []} accounts={active.map(account => ({ id: account.id, name: account.name }))} transfers={transfers}
+      banked={(bankAccounts ?? []).flatMap(item => item.iban ? [{ iban: item.iban, name: item.account_name }] : [])} />
 
     {archived.length ? <section className="space-y-2 opacity-80" aria-label="Archived accounts"><h2 className="text-sm font-medium text-muted-foreground">Archived accounts ({archived.length})</h2><div className="divide-y divide-border rounded-xl border border-border bg-card">{archived.map(row)}</div></section> : null}
 
