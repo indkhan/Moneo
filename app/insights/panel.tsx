@@ -124,7 +124,7 @@ const LABELS: Partial<Record<Insight["type"], [label: string, evidence: string]>
 
 // Wording is cached per finding set: keys hash the evidence, so the model runs again only when the facts change.
 const cachedWording = unstable_cache(async (_workspaceId: string, modelId: string, findings: Pick<Insight, "key" | "type" | "title" | "detail">[]) =>
-  Object.fromEntries(await rephraseFindings(getModel(modelId), findings)), ["weekly-briefing-wording"], { revalidate: 7 * 86400 });
+  Object.fromEntries(await rephraseFindings(getModel(modelId), findings)), ["weekly-briefing-wording", "v2"], { revalidate: 7 * 86400 });
 
 async function wording(props: InsightPanelProps, findings: Insight[]) {
   try {
