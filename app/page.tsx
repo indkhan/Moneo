@@ -146,7 +146,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         </div>
         {!accounts.length && !wealthItems.length ? <p className="text-sm text-muted-foreground">Add an account to see your net worth.</p>
           : convertedCount > 0 ? <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><Figure value={money(netWorthMinor, displayCurrency)} digits={minorDigits(displayCurrency)} className="display-figure text-5xl sm:text-7xl" />
-            {monthChange !== 0n && <span className="font-mono text-sm text-muted-foreground"><span className={monthChange > 0n ? "text-brand" : "text-warning"}>{monthChange > 0n ? "+" : ""}{money(monthChange, displayCurrency)}</span> this month{monthBase > 0n ? ` · ${monthChange > 0n ? "+" : ""}${(Number(monthChange * 1000n / monthBase) / 10).toFixed(1)}%` : ""}</span>}</div>
+            {monthChange !== 0n && <span className="font-mono text-sm text-muted-foreground"><span className={monthChange > 0n ? "text-brand" : "text-warning"}>{monthChange > 0n ? "+" : ""}{money(monthChange, displayCurrency)}</span> this month{monthBase > 0n ? ` Â· ${monthChange > 0n ? "+" : ""}${(Number(monthChange * 1000n / monthBase) / 10).toFixed(1)}%` : ""}</span>}</div>
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
         {convertedCount === 0 && missingInputs.length > 0 && <details className="text-xs text-muted-foreground"><summary className="cursor-pointer text-brand">See what is missing</summary><ul className="mt-2 list-disc space-y-1 pl-4">{describeMissingInputs(missingInputs).map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>}
         {convertedCount > 0 && <div><Sparkline points={trend} area width={640} height={120} className="h-[120px] w-full text-brand" label={`Net worth in ${displayCurrency} at each month end`} />
@@ -163,7 +163,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         </Link>}
       </MonthCashFlow></Suspense>
     </section>,
-    spending: <Suspense fallback={<SectionFallback title="Cash flow · 6 months" />}><CashFlowPanel {...sectionProps} search={search} /></Suspense>,
+    spending: <Suspense fallback={<SectionFallback title="Cash flow Â· 6 months" />}><CashFlowPanel {...sectionProps} search={search} /></Suspense>,
     recent: <Suspense fallback={<SectionFallback title="Recent transactions" />}><RecentTransactions db={supabase} workspaceId={workspace.id} locale={locale} names={accountNames} /></Suspense>,
     planning: projection.liquidity && <section aria-label="Available funds"><HomeLiquidity liquidity={projection.liquidity} accountId={accountId} names={accountNames} locale={locale} coverage={<SourceCoverageDetails coverage={projection.sourceCoverage} />} /></section>,
     accounts: <section aria-labelledby="home-accounts" className={card}>
@@ -181,10 +181,10 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     </section>,
     upcoming: <section aria-labelledby="home-upcoming" className={card}>
       <div className="flex items-baseline justify-between gap-2"><h2 id="home-upcoming" className="text-sm font-medium"><Link href="/money/recurring" className="hover:underline">Coming up</Link></h2>
-        {upcoming.length > 0 && <span className="font-mono text-[11px] text-subtle">{money(-upcomingMinor, displayCurrency)} · {projection.input?.horizonDays ?? 30} days</span>}</div>
+        {upcoming.length > 0 && <span className="font-mono text-[11px] text-subtle">{money(-upcomingMinor, displayCurrency)} Â· {projection.input?.horizonDays ?? 30} days</span>}</div>
       {upcoming.length ? <ul className="mt-3 divide-y divide-border">{upcoming.slice(0, 6).map((event, index) => <li key={`${event.accountId}:${event.date}:${index}`} className="flex items-center gap-3 py-3">
         <span className="flex w-10 shrink-0 flex-col items-center rounded-lg border border-border py-1 leading-none"><span className="font-mono text-[9px] uppercase text-subtle">{dateTile(event.date).month}</span><span className="mt-0.5 font-mono text-[15px] font-semibold">{dateTile(event.date).day}</span></span>
-        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{event.name ?? "Confirmed payment"}</span><span className="block truncate text-xs text-muted-foreground">{event.source === "debt" ? "Loan payment" : "Recurring"} · {accountNames.get(event.accountId) ?? "Account"}</span></span>
+        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{event.name ?? "Confirmed payment"}</span><span className="block truncate text-xs text-muted-foreground">{event.source === "debt" ? "Loan payment" : "Recurring"} Â· {accountNames.get(event.accountId) ?? "Account"}</span></span>
         <span className="shrink-0 font-mono text-sm">{money(event.expectedMinor, displayCurrency)}</span></li>)}</ul>
         : <p className="mt-3 text-sm text-muted-foreground">No confirmed payments in the next {projection.input?.horizonDays ?? 30} days.</p>}
     </section>,
