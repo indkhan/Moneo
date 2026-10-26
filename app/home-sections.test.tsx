@@ -19,7 +19,7 @@ const props = { db: {} as SupabaseClient, workspaceId: "w", currency: "EUR", tod
 
 it("shows both sides by default and only the picked side's breakdown, linked to filtered transactions", async () => {
   const both = renderToStaticMarkup(await CashFlowPanel(props));
-  expect(both).toMatch(/data-chart="May 1,May 2,.*,Oct 15,Oct 16"/);
+  expect(both).toContain('data-chart="May,Jun,Jul,Aug,Sep,Oct"');
   expect(both).not.toContain("Top categories");
   expect(both).not.toContain("Where money came from");
   expect(both).toContain('href="?show=in&amp;flow=in#cash-flow"');

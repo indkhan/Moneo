@@ -61,16 +61,18 @@ export function SpendingChart({ values, labels, type = "bar", height = 280, aria
   );
 }
 
-/** Money in vs money out per day; `flow` shows one side only. Bars are major units for pixel scale only. */
-export function CashFlowChart({ labels, income, spending, flow, height = 240, formatValue, onSelect }: {
-  labels: string[]; income: number[]; spending: number[]; flow?: "in" | "out"; height?: number;
+/** Money in vs money out per month; `flow` shows one side only. Bars are major units for pixel scale only. */
+export function CashFlowChart({ labels, income, spending, flow, selected, height = 240, formatValue, onSelect }: {
+  labels: string[]; income: number[]; spending: number[]; flow?: "in" | "out"; selected?: number; height?: number;
   formatValue?: (value: number) => string; onSelect?: (index: number, flow: "in" | "out") => void;
 }) {
   const colors = useThemeColors();
   const bar = { type: "bar", barMaxWidth: 28, barGap: "20%", itemStyle: { borderRadius: [4, 4, 0, 0] } };
+  // With a month picked, the other months fade so the breakdown below clearly belongs to it.
+  const points = (values: number[]) => values.map((value, index) => selected === undefined || index === selected ? value : { value, itemStyle: { opacity: 0.35 } });
   const series = [
-    ...(flow !== "out" ? [{ ...bar, name: "In", data: income, itemStyle: { ...bar.itemStyle, color: colors.brand } }] : []),
-    ...(flow !== "in" ? [{ ...bar, name: "Out", data: spending, itemStyle: { ...bar.itemStyle, color: colors.out } }] : []),
+    ...(flow !== "out" ? [{ ...bar, name: "In", data: points(income), itemStyle: { ...bar.itemStyle, color: colors.brand } }] : []),
+    ...(flow !== "in" ? [{ ...bar, name: "Out", data: points(spending), itemStyle: { ...bar.itemStyle, color: colors.out } }] : []),
   ];
   return <div role="img" aria-label="Money in and out for each of the last six months">
     <ReactECharts

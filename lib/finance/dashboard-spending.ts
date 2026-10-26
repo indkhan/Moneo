@@ -26,18 +26,6 @@ export function summarizeSpending(rows: SpendingRow[], rates: ExpenditureRate[],
     return { month: from.slice(0, 7), from, to, ...total(rows, rates, currencyCode, from, to) };
   });
   const thisMonth = trend[MONTHS - 1];
-  // Every day in the window, for the cash-flow chart's hover tooltip.
-  const byDay = new Map<string, SpendingRow[]>();
-  for (const row of rows) {
-    const group = byDay.get(row.posted_on);
-    if (group) group.push(row); else byDay.set(row.posted_on, [row]);
-  }
-  const daily = [];
-  for (let time = Date.parse(trend[0].from); ; time += 86_400_000) {
-    const date = new Date(time).toISOString().slice(0, 10);
-    if (date > today) break;
-    daily.push({ date, month: date.slice(0, 7), ...total(byDay.get(date) ?? [], rates, currencyCode, date, date) });
-  }
   // Same number of days into last month, clamped to its end (31 Mar compares with 28/29 Feb).
   const lastFrom = day(year, month - 2, 1), lastTo = min(day(year, month - 2, date), day(year, month - 1, 0));
   const lastMonthToDate = { from: lastFrom, to: lastTo, ...total(rows, rates, currencyCode, lastFrom, lastTo) };
@@ -57,7 +45,7 @@ export function summarizeSpending(rows: SpendingRow[], rates: ExpenditureRate[],
   const months = trend.map(({ month, from, to }) => ({ month, from, to, categories: top("category_id", from, to), merchants: top("merchant_id", from, to),
     incomeCategories: top("category_id", from, to, "incomeMinor"), incomeMerchants: top("merchant_id", from, to, "incomeMinor") }));
   const { categories, merchants } = months[MONTHS - 1];
-  return { currencyCode, trend, daily, thisMonth, lastMonthToDate, months, categories, merchants };
+  return { currencyCode, trend, thisMonth, lastMonthToDate, months, categories, merchants };
 }
 
 // One read of the last six months feeds the KPI tile, trend chart and top lists; memoized per request.

@@ -26,7 +26,6 @@ type Group = { id: string | null; incomeMinor: bigint; spendingMinor: bigint };
 type Search = Record<string, string | undefined>;
 const flowOf = (value?: string): Flow | undefined => value === "in" || value === "out" ? value : undefined;
 const monthName = (from: string, locale: string, month: "short" | "long" = "long") => new Intl.DateTimeFormat(locale, { month, timeZone: "UTC" }).format(new Date(`${from}T00:00:00Z`));
-const dayName = (date: string, locale: string) => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
 const flowHref = (search: Search, changes: Search) => {
   const next = new URLSearchParams(Object.entries({ ...search, ...changes }).filter((entry): entry is [string, string] => Boolean(entry[1])));
   return `?${next}#cash-flow`;
@@ -91,8 +90,8 @@ export async function CashFlowPanel({ db, workspaceId, currency, today, locale, 
   const lists = { currency, locale, from: selected.from, to: selected.to };
   return <section id="cash-flow" aria-label="Cash flow" className={card}>
     {header}
-    <div className="mt-4"><TrendChart height={240} flow={show} months={data.daily.map(row => row.month)} labels={data.daily.map(row => dayName(row.date, locale))}
-      income={data.daily.map(row => Number(row.incomeMinor) / scale)} spending={data.daily.map(row => Number(row.spendingMinor) / scale)} /></div>
+    <div className="mt-4"><TrendChart height={240} flow={show} selected={flow ? data.months.indexOf(selected) : undefined} months={data.trend.map(row => row.month)} labels={data.trend.map(row => monthName(row.from, locale, "short"))}
+      income={data.trend.map(row => Number(row.incomeMinor) / scale)} spending={data.trend.map(row => Number(row.spendingMinor) / scale)} /></div>
     {flow === "in" && <div className="mt-5 grid gap-6 border-t border-border pt-5 md:grid-cols-2">
       <TopList title={`Where money came from ${when}`} groups={selected.incomeMerchants} metric="incomeMinor" names={data.merchantNames} param="merchant" unknown="Unknown source" {...lists} />
       <TopList title={`Income by category ${when}`} groups={selected.incomeCategories} metric="incomeMinor" names={data.categoryNames} param="category" unknown="Uncategorized" {...lists} />
