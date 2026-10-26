@@ -5,7 +5,8 @@ import { ManualBalanceForm } from "./manual-balance-form";
 import { ImportantInsights, loadInsightEvidence } from "./insights/panel";
 import { Figure, Kpi, KpiFallback, MonthSpendingKpi, RecentTransactions, SectionFallback, SpendingPanel, card } from "./home-sections";
 import { Suspense, type ReactNode } from "react";
-import { dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
+import { artifactIdFromKey, dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
+import { ArtifactFrame } from "@/components/artifact-frame";
 import { loadHomeSpending } from "@/lib/finance/dashboard-spending";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
@@ -49,18 +50,25 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   // Start the streamed sections' reads now (memoized); their Suspense boundaries pick up the same promises.
   loadInsightEvidence(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
   loadHomeSpending(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
-  const [balanceEvidence, projection, wealthItems, rates, layout, goals, allocations, sourceMetadata] = await Promise.all([
+  const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle());
+  // Pinned artifact titles chain onto the layout read, so they finish inside the slower forecast; the frames load their data themselves.
+  const pinnedPromise = layoutPromise.then(async ({ data }) => {
+    const ids = (Array.isArray(data?.items) ? data.items : []).map(artifactIdFromKey).filter(id => id !== null);
+    return ids.length ? supabase.from("artifacts").select("id, title").eq("workspace_id", workspace.id).in("id", ids).is("deleted_at", null) : { data: [], error: null };
+  });
+  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
     wealthPromise,
     supabase.from("fx_rates").select("from_currency, to_currency, rate_text, rate_date, source")
       .eq("workspace_id", workspace.id).eq("to_currency", displayCurrency).order("rate_date", { ascending: false }).order("created_at", { ascending: false }),
-    supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle(),
+    layoutPromise,
+    pinnedPromise,
     supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date").eq("workspace_id", workspace.id).eq("status", "active").order("priority").limit(10),
     supabase.from("goal_allocations").select("goal_id, account_id, amount_minor::text").eq("workspace_id", workspace.id),
     sourceMetadataPromise,
   ]);
-  for (const error of [rates.error, layout.error, goals.error, allocations.error]) if (error) throw error;
+  for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error]) if (error) throw error;
   const accounts = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone, sourceMetadata, { preferLatestRecorded: true }).filter(account => !account.archived_at);
   const accountNames = new Map(accounts.map(account => [account.id, account.name]));
   const fxRates = rates.data ?? [];
@@ -99,10 +107,16 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const available = projection.available;
   const parsedLayout = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
   if (parsedLayout && !parsedLayout.success) throw new Error("Dashboard preferences are invalid; review them in Settings");
-  const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null);
+  const pinnedTitles = new Map((pinned.data ?? []).map(artifact => [artifact.id as string, artifact.title as string]));
+  // A deleted artifact simply drops off Home; its key is cleaned up the next time the layout is saved.
+  const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null).filter(key => { const id = artifactIdFromKey(key); return !id || pinnedTitles.has(id); });
   const sectionProps = { db: supabase, workspaceId: workspace.id, currency: displayCurrency, today, locale };
 
   const widgets: Record<string, ReactNode> = {
+    ...Object.fromEntries([...pinnedTitles].map(([id, title]) => [`artifact:${id}`, <section key={id} aria-label={title} className={`${card} flex flex-col gap-3`}>
+      <div className="flex items-baseline justify-between gap-2"><h2 className="truncate text-sm font-medium">{title}</h2><Link href={`/ai/artifacts/${id}`} className="shrink-0 text-sm font-medium text-brand hover:underline">Open</Link></div>
+      <ArtifactFrame src={`/ai/artifacts/${id}/frame?view=widget`} title={title} loading="lazy" fit className="w-full" />
+    </section>])),
     overview: <section aria-label="Overview" className="grid gap-4 lg:grid-cols-3">
       <div className={`${card} flex flex-col gap-5 lg:col-span-2`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -182,7 +196,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
       </header>
       <Suspense fallback={null}><AgentBriefing db={supabase} workspaceId={workspace.id} /></Suspense>
       <div className="grid grid-flow-dense gap-4 lg:grid-cols-3">
-        {ordered.map(key => <div key={key} className={FULL.has(key) ? "min-w-0 lg:col-span-3" : WIDE.has(key) ? "min-w-0 lg:col-span-2" : "min-w-0"}>{widgets[key]}</div>)}
+        {ordered.map(key => <div key={key} className={FULL.has(key) ? "min-w-0 lg:col-span-3" : WIDE.has(key) || artifactIdFromKey(key) ? "min-w-0 lg:col-span-2" : "min-w-0"}>{widgets[key]}</div>)}
       </div>
     </main>
   );

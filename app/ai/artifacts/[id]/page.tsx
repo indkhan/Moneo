@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, HousePlus, Maximize2, Minimize2 } from "lucide-react";
 import { requireWorkspace } from "@/lib/auth";
 import { ArtifactFrame } from "@/components/artifact-frame";
 import { ArtifactPrompt } from "../artifact-prompt";
 import { DeleteArtifactButton } from "../delete-artifact-button";
+import { setArtifactOnHome } from "@/app/dashboard-actions";
+import { artifactWidgetKey } from "@/lib/finance/dashboard";
 
 export default async function ArtifactPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ v?: string; full?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -12,16 +14,18 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   const { supabase, workspace } = context;
   const [{ id }, { v, full }] = await Promise.all([params, searchParams]);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const [artifact, versions] = await Promise.all([
+  const [artifact, versions, layout] = await Promise.all([
     supabase.from("artifacts").select("id, title").eq("workspace_id", workspace.id).eq("id", id).is("deleted_at", null).maybeSingle(),
     supabase.from("artifact_versions").select("version, prompt").eq("workspace_id", workspace.id).eq("artifact_id", id).order("version"),
+    supabase.from("dashboard_layouts").select("items").eq("workspace_id", workspace.id).maybeSingle(),
   ]);
-  if (artifact.error || versions.error) throw artifact.error ?? versions.error;
+  if (artifact.error || versions.error || layout.error) throw artifact.error ?? versions.error ?? layout.error;
   if (!artifact.data || !versions.data.length) notFound();
   const current = versions.data.find(item => String(item.version) === v) ?? versions.data.at(-1)!;
   const latest = versions.data.at(-1)!.version;
   // The frame reruns the saved queries on every open, so the page always shows today's data.
   const frame = <ArtifactFrame src={`/ai/artifacts/${id}/frame?v=${current.version}`} title={artifact.data.title} className="size-full" />;
+  const onHome = Array.isArray(layout.data?.items) && layout.data.items.includes(artifactWidgetKey(id));
   const at = (version: number, fullScreen = !!full) => `/ai/artifacts/${id}?v=${version}${fullScreen ? "&full=1" : ""}`;
 
   if (full) return <div className="fixed inset-0 z-50 bg-background">
@@ -53,7 +57,13 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
           {current.version < latest ? <Link href={at(current.version + 1)} aria-label="Next version" className="rounded p-1 hover:bg-muted"><ChevronRight className="size-3.5" /></Link> : <span className="p-1 opacity-30"><ChevronRight className="size-3.5" /></span>}
         </span>
         <span className="hidden truncate text-muted-foreground xl:inline">Live data · read-only · what-ifs are estimates</span>
+        <span className="inline-flex shrink-0 items-center gap-1">
+        <form action={setArtifactOnHome.bind(null, id, !onHome)}>
+          <button type="submit" aria-pressed={onHome} title={onHome ? "Remove from Home" : "Show a compact version on Home"} className="inline-flex items-center gap-1 whitespace-nowrap rounded px-2 py-1 hover:bg-muted aria-pressed:text-brand">
+            {onHome ? <Check className="size-3.5" aria-hidden="true" /> : <HousePlus className="size-3.5" aria-hidden="true" />}{onHome ? "On Home" : "Add to Home"}</button>
+        </form>
         <Link href={at(current.version, true)} className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded px-2 py-1 hover:bg-muted"><Maximize2 className="size-3.5" aria-hidden="true" />Full screen</Link>
+        </span>
       </div>
       <div className="min-h-0 flex-1">{frame}</div>
     </section>
