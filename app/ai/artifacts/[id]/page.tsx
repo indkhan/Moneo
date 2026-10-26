@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
 import { requireWorkspace } from "@/lib/auth";
-import { artifactDocument, artifactQueriesSchema, runArtifactQueries } from "@/lib/ai/artifact-data";
+import { ArtifactFrame } from "@/components/artifact-frame";
 import { ArtifactPrompt } from "../artifact-prompt";
 import { DeleteArtifactButton } from "../delete-artifact-button";
 
@@ -14,16 +14,14 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const [artifact, versions] = await Promise.all([
     supabase.from("artifacts").select("id, title").eq("workspace_id", workspace.id).eq("id", id).is("deleted_at", null).maybeSingle(),
-    supabase.from("artifact_versions").select("version, prompt, html, queries").eq("workspace_id", workspace.id).eq("artifact_id", id).order("version"),
+    supabase.from("artifact_versions").select("version, prompt").eq("workspace_id", workspace.id).eq("artifact_id", id).order("version"),
   ]);
   if (artifact.error || versions.error) throw artifact.error ?? versions.error;
   if (!artifact.data || !versions.data.length) notFound();
   const current = versions.data.find(item => String(item.version) === v) ?? versions.data.at(-1)!;
   const latest = versions.data.at(-1)!.version;
-  // Saved queries rerun on every open, so the page always shows today's data.
-  const queries = artifactQueriesSchema.safeParse(current.queries);
-  const data = await runArtifactQueries(queries.success ? queries.data : [], context);
-  const frame = <iframe title={artifact.data.title} sandbox="allow-scripts" srcDoc={artifactDocument(current.html, data)} className="size-full border-0" />;
+  // The frame reruns the saved queries on every open, so the page always shows today's data.
+  const frame = <ArtifactFrame src={`/ai/artifacts/${id}/frame?v=${current.version}`} title={artifact.data.title} className="size-full" />;
   const at = (version: number, fullScreen = !!full) => `/ai/artifacts/${id}?v=${version}${fullScreen ? "&full=1" : ""}`;
 
   if (full) return <div className="fixed inset-0 z-50 bg-background">
