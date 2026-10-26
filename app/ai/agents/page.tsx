@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { TeamFlow } from "@/components/team-flow";
 import { StartAgentRun } from "./start-run";
+import { IouReview } from "@/app/iou-review";
 
 export default async function AgentRunsPage({ searchParams }: { searchParams: Promise<{ import?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -15,7 +16,7 @@ export default async function AgentRunsPage({ searchParams }: { searchParams: Pr
     if (run.data) redirect(`/ai/agents/${run.data.id}`);
   }
   const runs = await supabase.from("agent_runs").select("id, status, trigger, created_at, briefing").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20);
-  const counts = await supabase.from("agent_proposals").select("run_id, status").eq("workspace_id", workspace.id).eq("status", "proposed").limit(1000);
+  const counts = await supabase.from("agent_proposals").select("run_id, status").eq("workspace_id", workspace.id).eq("status", "proposed").not("run_id", "is", null).limit(1000);
   const open = new Map<string, number>();
   for (const row of counts.data ?? []) open.set(row.run_id, (open.get(row.run_id) ?? 0) + 1);
   return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 sm:px-8 lg:py-8">
@@ -25,6 +26,7 @@ export default async function AgentRunsPage({ searchParams }: { searchParams: Pr
       <StartAgentRun />
     </header>
     {importId.success && <p role="status" className="rounded-lg bg-muted p-3 text-sm">The team starts as soon as that import&apos;s rows are in. <Link href={`/ai/agents?import=${importId.data}`} className="underline">Check again</Link></p>}
+    <IouReview db={supabase} workspaceId={workspace.id} />
     <TeamFlow />
     <section aria-label="Runs" className="space-y-2">
       <h2 className="font-display text-2xl font-semibold tracking-tight">Run history</h2>

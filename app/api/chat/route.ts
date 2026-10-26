@@ -15,11 +15,12 @@ import { investigationSchema } from "@/lib/finance/investigation";
 import { evaluateInvestigationScenario, investigationDetail, investigationDetailSchema, investigationScenarioSchema, loadInvestigationEntities, runInvestigation } from "@/lib/finance/investigation-reader";
 import type { ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import { chatFollowUps, planInput } from "@/lib/ai/follow-ups";
+import { iouInputSchema, proposeIou, proposeRepayments } from "@/lib/ai/iou-proposals";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
-  return content.replace(/```(?:chart|moneo-chart)\n[\s\S]*?```/g, "[chart]");
+  return content.replace(/```(?:chart|moneo-chart)\n[\s\S]*?```/g, "[chart]").replace(/```moneo-proposal\n[\s\S]*?```/g, "[loan card shown]");
 }
 
 const inputSchema = z.object({
@@ -132,8 +133,16 @@ export async function POST(request: Request) {
     const model = await modelPromise;
     // The visible plan is not financial evidence; it only tells the user what the model will check.
     let modelFollowUps: string[] = [];
+    // Loan cards are drawn by the app beside the answer, so the model cannot misquote or skip them.
+    const proposalCards: string[] = [];
     const planTool = { plan_investigation: tool({ description: "Optional: show the user 2-5 short steps you will take for a multi-part question, and up to 3 follow-up questions they might ask next. Returns nothing.",
       inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); toolCalls.push({ name: "plan_investigation", input, output: "" }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }),
+      iou_propose: tool({ description: "The user says they lent or gave money to a person, or borrowed or received money from one. Shows them a card to accept or dismiss; nothing is saved until they accept. Use the user's exact amount, person and currency.",
+        inputSchema: iouInputSchema, execute: async input => {
+          const created = await proposeIou(await requireWorkspace(), input);
+          proposalCards.push(created.proposalId);
+          return { proposed: created.title, note: "A card with Add and Dismiss is shown to the user below your answer. Say it is waiting for their approval; do not repeat the details." };
+        } }),
       // Artifacts are built on their own page; chat only hands the request over.
       suggest_artifact: tool({ description: "When the user asks for an interactive page, calculator, simulator, dashboard or what-if view, call this with a clear build request and give them the returned link. Do not build pages in chat.",
         inputSchema: z.object({ prompt: z.string().trim().min(1).max(1500) }).strict(), execute: async ({ prompt }) => ({ href: `/ai/artifacts?prompt=${encodeURIComponent(prompt)}` }) }) };
@@ -186,6 +195,12 @@ export async function POST(request: Request) {
         accounts_getBalances: tool({ description: "Get dated balances, provenance and source coverage", inputSchema: z.object({}), execute: () => aiEvidence(["accounts"], latest => getBalances(latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { analytics_cashflow: tool({ description: "Exact accepted posted income/spending with source coverage. Choose view base for direct exact posting-date FX and per-canonical-posting half-away rounding, or original for separate currency subtotals. Omitted view preserves single-currency accounting. Conversion completeness does not prove statement completeness; partial totals are not bounds. Missing rates return incomplete evidence, never guessed money.", inputSchema: financeToolSchemas.periodInput, execute: input => aiEvidence(["transactions"], latest => cashflow(input, latest, latest.settings.ai_data_scopes.includes("imports")), false, true) }),
         transactions_search: tool({ description: "Find transactions, newest first. Filter by description text, posted date range (from/to), absolute amount range in minor units, and limit (default 20, max 50).", inputSchema: financeToolSchemas.searchInput, execute: input => aiEvidence(["transactions"], latest => searchTransactions(input, latest)) }) } : {}),
+        ...(canInvestigate ? { iou_findRepayments: tool({ description: "Check recent bank transactions for repayments of money the user lent to or borrowed from people, and show each as a card to accept or dismiss. Nothing changes until they accept.", inputSchema: z.object({}).strict(),
+          execute: () => aiEvidence(["accounts", "transactions"], async latest => {
+            const found = await proposeRepayments(latest);
+            proposalCards.push(...found.map(item => item.id as string));
+            return { found: found.map(item => item.title), note: found.length ? "Cards are shown to the user below your answer." : "No new repayments found." };
+          }) }) } : {}),
         ...(settings.ai_data_scopes.includes("planning") ? { goals_list: tool({ description: "List the user's goals", inputSchema: z.object({}), execute: () => aiEvidence(["planning"], latest => listGoals(latest)) }) } : {}),
         ...(settings.ai_data_scopes.includes("planning") && settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions") ? { forecast_evaluate: tool({ description: "Deterministic account headroom and dated funding shortfalls with source coverage. Choose accountId for available to spend; aggregate cash requires explicit funding. Cases are assumptions, not probabilities", inputSchema: forecastInput, execute: input => aiEvidence(["accounts", "transactions", "planning"], latest => evaluateForecast(input, latest), false, true) }) } : {}),
         ...(canChangeCategory ? {
@@ -216,8 +231,8 @@ export async function POST(request: Request) {
       else if (part.type === "error") throw part.error instanceof Error ? part.error : new Error("AI request failed");
     }
     const [usage, steps] = await Promise.all([result.usage, result.steps]);
-    const answer = text.trim();
-    if (!answer) throw new Error("The model returned no answer");
+    if (!text.trim()) throw new Error("The model returned no answer");
+    const answer = [text.trim(), ...[...new Set(proposalCards)].map(id => "```moneo-proposal\n" + id + "\n```")].join("\n\n");
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (request.signal.aborted) throw new Error("Request canceled");
