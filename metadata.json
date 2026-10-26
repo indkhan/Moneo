@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M5WRB2WKBB294X44S2ARJY7J",
+  "strategy": "manual-commit",
+  "branch": "t3/chat-debt-proposals",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/ai/iou-actions.ts",
+    "app/iou-review.tsx",
+    "components/iou-card.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 12,
+    "cache_creation_tokens": 8236,
+    "cache_read_tokens": 749385,
+    "output_tokens": 7442,
+    "api_call_count": 6
+  },
+  "redaction": {
+    "replacements": 2,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 2,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
