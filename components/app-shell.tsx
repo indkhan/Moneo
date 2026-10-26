@@ -8,6 +8,7 @@ import {
   Network, Repeat, Search, SearchCheck, SlidersHorizontal, Tags, Target, TrendingUp, Upload, type LucideIcon,
 } from "lucide-react";
 import { AiPanel } from "@/components/ai-panel";
+import { ASK_EVENT, type AskSeed } from "@/components/ask-about";
 import { CommandPalette, Modal, ShortcutHelp, type Command } from "@/components/command-palette";
 import { cn } from "@/lib/utils";
 
@@ -92,7 +93,7 @@ function MenuLink({ item, current, shell, onNavigate }: { item: NavItem; current
 }
 
 // Accounts arrive with the streamed shell data; until then the palette lists pages and actions.
-function AccountCommands({ shell, base, ...props }: { shell: Promise<ShellData>; base: Command[]; open: boolean; onClose: () => void }) {
+function AccountCommands({ shell, base, ...props }: { shell: Promise<ShellData>; base: Command[]; open: boolean; onClose: () => void; onAsk: (question: string) => void }) {
   const router = useRouter();
   const accounts: Command[] = (use(shell)?.accounts ?? []).map(account => ({ id: `account:${account.id}`, label: account.name, group: "Accounts", keywords: "account transactions",
     run: () => router.push(`/money/transactions?account=${encodeURIComponent(account.id)}`) }));
@@ -134,7 +135,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
     ...allItems.map(item => ({ id: item.href, label: item.label, group: "Pages", keywords: railFor(item)?.label,
       hint: item.go && `G ${item.go.toUpperCase()}`, run: () => router.push(item.href) })),
   ];
-  const paletteProps = { open: palette, onClose: () => setPalette(false) };
+  const paletteProps = { open: palette, onClose: () => setPalette(false), onAsk: (question: string) => window.dispatchEvent(new CustomEvent<AskSeed>(ASK_EVENT, { detail: { question } })) };
 
   return <div className="min-h-screen bg-background">
     <a href="#main-content" className="sr-only z-50 rounded bg-card p-3 text-sm underline focus:not-sr-only focus:fixed focus:left-3 focus:top-3">Skip to content</a>
