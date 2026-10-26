@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M5WQVBPZYVTA93WF3DC31SYX",
+  "session_id": "e5626386-cc72-45d4-b440-bdef491fee10",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-26T18:34:05.5253483Z",
+  "branch": "t3/chat-debt-proposals",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "lib/ai/agent-apply-iou.test.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "9f357b6a492c",
+  "checkpoint_transcript_start": 235,
+  "transcript_lines_at_start": 235,
+  "compact_transcript_start": 29,
+  "token_usage": {
+    "input_tokens": 6,
+    "cache_creation_tokens": 6492,
+    "cache_read_tokens": 313838,
+    "output_tokens": 3569,
+    "api_call_count": 3
+  },
+  "redaction": {
+    "replacements": 0,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 1
+  }
+}
