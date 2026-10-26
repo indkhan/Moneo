@@ -38,3 +38,15 @@ it("totals income per month and ranks where it came from, leaving transfers out"
   expect(march.incomeMerchants.map(group => group.id)).toEqual(["employer", "bank"]);
   expect(march.categories.map(group => group.id)).toEqual(["food"]);
 });
+
+it("gives every day in the window its in and out totals", () => {
+  const summary = summarizeSpending([
+    row("1", "2026-03-05", "-500"),
+    row("2", "2026-03-05", "-200"),
+    row("3", "2026-03-05", "1000", { category_id: "salary", merchant_id: "employer" }),
+  ], [], "EUR", "2026-03-31");
+  expect(summary.daily).toHaveLength(182);
+  expect(summary.daily.at(0)?.date).toBe("2025-10-01");
+  expect(summary.daily.at(-1)?.date).toBe("2026-03-31");
+  expect(summary.daily.find(item => item.date === "2026-03-05")).toMatchObject({ month: "2026-03", incomeMinor: 1000n, spendingMinor: 700n });
+});
