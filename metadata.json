@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M5X4HGW0VS1MBCHHKRD7D1A9",
+  "strategy": "manual-commit",
+  "branch": "t3/application-performance-optimization",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/insights/panel.tsx",
+    "app/plan/spending/page.tsx",
+    "lib/all-pages.test.ts",
+    "lib/all-pages.ts",
+    "lib/finance/balances.ts",
+    "lib/finance/dashboard-spending.ts",
+    "lib/finance/source-coverage.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 188,
+    "cache_creation_tokens": 219806,
+    "cache_read_tokens": 14161663,
+    "output_tokens": 75886,
+    "api_call_count": 94
+  },
+  "redaction": {
+    "replacements": 100,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 152,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
