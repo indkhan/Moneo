@@ -6,9 +6,12 @@ test.skip(!hasSupabaseEnv() || !state, gatedSkipReason());
 test("current cash reservations persist and undo without claiming recorded savings", async ({ page }) => {
   test.setTimeout(90_000);
   const suffix = crypto.randomUUID().slice(0, 8), accountName = `Reservation cash ${suffix}`, goalName = `Reservation goal ${suffix}`;
+  await page.goto("/money/accounts");
+  const adder = page.locator("details").filter({ has: page.locator("summary", { hasText: "Add account" }) });
+  await adder.locator("summary").click();
+  await adder.getByLabel("Name", { exact: true }).fill(accountName);
+  await adder.getByRole("button", { name: "Add account", exact: true }).click();
   await page.goto("/");
-  await page.getByLabel("Account name", { exact: true }).fill(accountName);
-  await page.getByRole("button", { name: "Add account", exact: true }).click();
   const account = page.locator("article").filter({ has: page.getByRole("heading", { name: accountName, exact: true }) });
   await expect(account).toBeVisible({ timeout: 30_000 });
   await account.getByText("Update balance", { exact: true }).click();

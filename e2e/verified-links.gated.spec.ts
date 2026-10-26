@@ -6,9 +6,13 @@ test("dated FX transfer keeps canonical source and an included fee through guard
   test.setTimeout(180_000);
   const suffix=crypto.randomUUID().slice(0,8); const rateDate=new Date(Date.UTC(2000,0,1)+(parseInt(suffix,16)%9000)*86400000).toISOString().slice(0,10); const accounts=[`FX EUR QA ${suffix}`,`FX USD QA ${suffix}`]; const descriptions=[`FX debit QA ${suffix}`,`FX credit QA ${suffix}`]; const source=`FX link QA ${suffix}`;
   for(const [index,account] of accounts.entries()) {
-    await page.goto("/"); await page.getByRole("textbox",{name:"Account name",exact:true}).fill(account);
-    await page.getByRole("textbox",{name:"Currency code",exact:true}).fill(index?"USD":"EUR");
-    await page.getByRole("button",{name:"Add account",exact:true}).click(); await expect(page.getByRole("heading",{name:account,exact:true})).toBeVisible({timeout:30_000});
+    await page.goto("/money/accounts");
+    const adder = page.locator("details").filter({ has: page.locator("summary", { hasText: "Add account" }) });
+    await adder.locator("summary").click();
+    await adder.getByLabel("Name", { exact: true }).fill(account);
+    await adder.getByLabel("Currency", { exact: true }).fill(index ? "USD" : "EUR");
+    await adder.getByRole("button", { name: "Add account", exact: true }).click();
+    await expect(page.getByRole("heading",{name:account,exact:true})).toBeVisible({timeout:30_000});
   }
   await page.goto("/plan/currency");
   await page.getByRole("combobox",{name:"From currency",exact:true}).fill("EUR"); await page.getByRole("combobox",{name:"To currency",exact:true}).fill("USD");

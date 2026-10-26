@@ -11,7 +11,6 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { getSupabaseConfig } from "@/lib/env";
 import { convertFx, minorDigits } from "@/lib/finance/fx";
-import { createAccount } from "./actions";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
 import { describeMissingInputs, formatMoney } from "@/lib/finance/format";
@@ -19,7 +18,6 @@ import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { SourceCoverageDetails } from "./source-coverage";
 import { AgentBriefing } from "./agent-briefing";
 import { HomeBudgets } from "./home-budgets";
-import { AskAbout } from "@/components/ask-about";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
@@ -59,7 +57,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     const ids = (Array.isArray(data?.items) ? data.items : []).map(artifactIdFromKey).filter(id => id !== null);
     return ids.length ? supabase.from("artifacts").select("id, title").eq("workspace_id", workspace.id).in("id", ids).is("deleted_at", null) : { data: [], error: null };
   });
-  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents] = await Promise.all([
+  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
     wealthPromise,
@@ -72,8 +70,11 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     sourceMetadataPromise,
     allWealthPromise,
     loadWealthEvents(supabase, workspace.id),
+    supabase.from("bank_connection_accounts").select("account_name, currency_code").eq("workspace_id", workspace.id),
   ]);
-  for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error]) if (error) throw error;
+  for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error, bankAccounts.error]) if (error) throw error;
+  // A bank sync imports into the account with the bank's name and currency, as on the Accounts page.
+  const synced = new Set((bankAccounts.data ?? []).map(connected => JSON.stringify([connected.account_name, connected.currency_code])));
   const accounts = resolveBalances(balanceEvidence.accounts, balanceEvidence.snapshots, balanceEvidence.ledger, balanceEvidence.asOf, workspace.timezone, sourceMetadata, { preferLatestRecorded: true }).filter(account => !account.archived_at);
   const accountNames = new Map(accounts.map(account => [account.id, account.name]));
   const fxRates = rates.data ?? [];
@@ -113,6 +114,10 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     .map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n }));
   const monthChange = trend.at(-1)!.value - trend.at(-2)!.value, monthBase = trend.at(-2)!.value;
   const dayMonth = (date: string) => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
+  const ago = (iso: string) => {
+    const minutes = Math.round((Date.parse(balanceEvidence.asOf) - Date.parse(iso)) / 60000), format = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+    return minutes < 60 ? format.format(-Math.max(minutes, 0), "minute") : minutes < 1440 ? format.format(-Math.round(minutes / 60), "hour") : format.format(-Math.round(minutes / 1440), "day");
+  };
   const dateTile = (date: string) => { const at = new Date(`${date}T00:00:00Z`); return { month: new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" }).format(at), day: date.slice(8, 10) }; };
   const monthLabel = (date: string) => new Intl.DateTimeFormat(locale, { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
 
@@ -162,17 +167,17 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     recent: <Suspense fallback={<SectionFallback title="Recent transactions" />}><RecentTransactions db={supabase} workspaceId={workspace.id} locale={locale} names={accountNames} /></Suspense>,
     planning: projection.liquidity && <section aria-label="Available funds"><HomeLiquidity liquidity={projection.liquidity} accountId={accountId} names={accountNames} locale={locale} coverage={<SourceCoverageDetails coverage={projection.sourceCoverage} />} /></section>,
     accounts: <section aria-labelledby="home-accounts" className={card}>
-      <div className="flex items-baseline justify-between gap-2"><h2 id="home-accounts" className="text-sm font-medium">Accounts</h2><span className="text-sm text-muted-foreground">{accounts.length} total</span></div>
-      {!accounts.length && <p className="mt-3 text-sm text-muted-foreground">No accounts yet. <Link className="text-brand underline" href="/import">Import a statement</Link> or add one below.</p>}
-      <ul className="mt-2 divide-y divide-border">{accounts.map(account => { const { balance } = account; return <li key={account.id}><article className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5">
-        <div className="min-w-0 flex-1"><h3 className="truncate text-sm font-medium">{account.name}</h3><p className="truncate text-xs text-muted-foreground"><span className="capitalize">{account.type}</span> · {balance.as_of ? `As of ${calendarDate(balance.as_of, workspace.timezone)} · ${balance.status.replaceAll("_", " ")}` : "Add a dated balance"}</p></div>
-        <p className="font-mono text-sm font-semibold">{balance.snapshot_amount_minor !== null ? money(balance.snapshot_amount_minor, balance.snapshot_currency_code!) : "Balance unknown"}</p>
-        <AskAbout label="Ask" question={`How is my ${account.name} account doing? Summarise recent activity, upcoming payments and its balance trend.`} about={{ kind: "account", id: account.id, label: account.name }} />
-        <details className="open:w-full"><summary className="cursor-pointer text-xs font-medium text-brand hover:underline">Update balance</summary><div className="mt-2 rounded-lg border border-border p-3"><ManualBalanceForm account={account} snapshots={balanceEvidence.snapshots} ledger={balanceEvidence.ledger} asOf={balanceEvidence.asOf} timeZone={workspace.timezone} locale={locale} /></div></details>
+      <div className="flex flex-wrap items-center justify-between gap-2"><h2 id="home-accounts" className="text-sm font-medium"><Link href="/money/accounts" className="hover:underline">Accounts</Link></h2>
+        <div className="flex gap-2"><Link href="/import" className="rounded-lg border border-input px-2.5 py-1 text-xs hover:bg-muted">Import file</Link><Link href="/import#connected-banks" className="rounded-lg border border-input px-2.5 py-1 text-xs hover:bg-muted">Connect bank</Link></div></div>
+      {!accounts.length && <p className="mt-3 text-sm text-muted-foreground">No accounts yet. <Link className="text-brand underline" href="/import">Import a statement</Link> or <Link className="text-brand underline" href="/money/accounts">add one</Link>.</p>}
+      <ul className="mt-3 divide-y divide-border border-t border-border">{accounts.map(account => { const { balance } = account; const isSynced = synced.has(JSON.stringify([account.name, account.currency_code])); return <li key={account.id}><article className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
+        <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-semibold">{account.name.trim().charAt(0).toUpperCase()}</span>
+        <div className="min-w-0 flex-1"><h3 className="truncate text-sm font-medium">{account.name}</h3><p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground"><span className="rounded border border-input px-1 font-mono text-[9px] uppercase">{isSynced ? "Bank" : "Manual"}</span>{balance.as_of ? `${isSynced ? "synced" : "set"} ${ago(balance.as_of)}` : "Add a dated balance"}</p></div>
+        <p className="font-mono text-sm">{balance.snapshot_amount_minor !== null ? money(balance.snapshot_amount_minor, balance.snapshot_currency_code!) : "Balance unknown"}</p>
+        {!isSynced && <details className="w-full [&:not([open])]:-mt-1"><summary className="cursor-pointer text-xs font-medium text-brand hover:underline">Update balance</summary><div className="mt-2 rounded-lg border border-border p-3"><ManualBalanceForm account={account} snapshots={balanceEvidence.snapshots} ledger={balanceEvidence.ledger} asOf={balanceEvidence.asOf} timeZone={workspace.timezone} locale={locale} /></div></details>}
         {balance.warnings.length > 0 && <p className="w-full text-xs text-warning">{balance.warnings.join("; ")}</p>}
         {balance.status === "stale" && balance.estimated_amount_minor !== null && <p className="w-full text-xs text-muted-foreground">Recent activity suggests about {money(balance.estimated_amount_minor, balance.currency_code)}. Update the balance to confirm.</p>}
       </article></li>; })}</ul>
-      <form action={createAccount} className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3"><input name="name" required maxLength={120} placeholder="New account name" aria-label="Account name" className="min-h-9 min-w-36 flex-1 rounded-lg border border-border bg-card px-3 py-1.5 text-sm" /><select name="type" aria-label="Account type" className="min-h-9 rounded-lg border border-border bg-card px-2 py-1.5 text-sm"><option value="checking">Checking</option><option value="savings">Savings</option><option value="cash">Cash</option><option value="credit">Credit</option><option value="investment">Investment</option><option value="wallet">Wallet</option><option value="other">Other</option></select><input name="currency" defaultValue={displayCurrency} maxLength={3} aria-label="Currency code" className="min-h-9 w-16 rounded-lg border border-border bg-card px-2 py-1.5 text-sm" /><button className="inline-flex min-h-9 items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"><Plus size={14} /> Add account</button></form>
     </section>,
     upcoming: <section aria-labelledby="home-upcoming" className={card}>
       <div className="flex items-baseline justify-between gap-2"><h2 id="home-upcoming" className="text-sm font-medium"><Link href="/money/recurring" className="hover:underline">Coming up</Link></h2>

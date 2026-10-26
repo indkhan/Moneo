@@ -10,9 +10,11 @@ test("manual exact entries, reviewed bulk tags, batch undo and manual source res
   const suffix = crypto.randomUUID().slice(0, 8);
   const account = `Manual QA ${suffix}`;
   const descriptions = [`Manual lunch ${suffix}`, `Manual train ${suffix}`];
-  await page.goto("/");
-  await page.getByLabel("Account name", { exact: true }).fill(account);
-  await page.getByRole("button", { name: "Add account", exact: true }).click();
+  await page.goto("/money/accounts");
+  const adder = page.locator("details").filter({ has: page.locator("summary", { hasText: "Add account" }) });
+  await adder.locator("summary").click();
+  await adder.getByLabel("Name", { exact: true }).fill(account);
+  await adder.getByRole("button", { name: "Add account", exact: true }).click();
   await expect(page.getByRole("heading", { name: account })).toBeVisible();
   await page.goto("/money/transactions");
   for (const [index, description] of descriptions.entries()) {
