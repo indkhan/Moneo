@@ -23,3 +23,18 @@ it("compares month-to-date with the same days last month and ranks categories an
   expect(summary.categories.map(group => [group.id, group.spendingMinor])).toEqual([["food", 350n], ["rent", 200n]]);
   expect(summary.merchants.map(group => [group.id, group.spendingMinor])).toEqual([["shop", 350n], ["landlord", 200n]]);
 });
+
+it("totals income per month and ranks where it came from, leaving transfers out", () => {
+  const summary = summarizeSpending([
+    row("1", "2026-03-01", "300000", { category_id: "salary", merchant_id: "employer" }),
+    row("2", "2026-03-10", "5000", { category_id: "interest", merchant_id: "bank" }),
+    row("3", "2026-03-11", "90000", { kind: "transfer", category_id: null, merchant_id: null }),
+    row("4", "2026-03-12", "-2000"),
+    row("5", "2026-02-01", "300000", { category_id: "salary", merchant_id: "employer" }),
+  ], [], "EUR", "2026-03-31");
+  expect(summary.trend.slice(-2).map(month => [month.incomeMinor, month.spendingMinor])).toEqual([[300000n, 0n], [305000n, 2000n]]);
+  const march = summary.months[5];
+  expect(march.incomeCategories.map(group => [group.id, group.incomeMinor])).toEqual([["salary", 300000n], ["interest", 5000n]]);
+  expect(march.incomeMerchants.map(group => group.id)).toEqual(["employer", "bank"]);
+  expect(march.categories.map(group => group.id)).toEqual(["food"]);
+});
