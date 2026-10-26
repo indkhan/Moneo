@@ -17,11 +17,12 @@ import type { ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import { chatFollowUps, planInput } from "@/lib/ai/follow-ups";
 import { iouInputSchema, proposeIou, proposeRepayments } from "@/lib/ai/iou-proposals";
 import { proposeTransaction, transactionInputSchema } from "@/lib/ai/transaction-proposals";
+import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
-  return content.replace(/```(?:chart|moneo-chart)\n[\s\S]*?```/g, "[chart]").replace(/```moneo-proposal\n[\s\S]*?```/g, "[proposal card shown]");
+  return content.replace(/```(?:chart|moneo-chart)\n[\s\S]*?```/g, "[chart]").replace(/```moneo-(?:proposal|decision)\n[\s\S]*?```/g, "[card shown]");
 }
 
 const inputSchema = z.object({
@@ -136,6 +137,8 @@ export async function POST(request: Request) {
     let modelFollowUps: string[] = [];
     // Loan cards are drawn by the app beside the answer, so the model cannot misquote or skip them.
     const proposalCards: string[] = [];
+    // Agent-team decisions are confirmed on a card too; the model only names the ids.
+    const decisionCards: string[] = [];
     const planTool = { plan_investigation: tool({ description: "Optional: show the user 2-5 short steps you will take for a multi-part question, and up to 3 follow-up questions they might ask next. Returns nothing.",
       inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); toolCalls.push({ name: "plan_investigation", input, output: "" }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }),
       iou_propose: tool({ description: "The user says they lent or gave money to a person, or borrowed or received money from one. Shows them a card to accept or dismiss; nothing is saved until they accept. Use the user's exact amount, person and currency.",
@@ -149,6 +152,13 @@ export async function POST(request: Request) {
           const created = await proposeTransaction(await requireWorkspace(), input);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with an account picker, Add and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
+        } }),
+      agents_decide: tool({ description: "The user asks to accept, approve, mark as seen/watched, or dismiss agent-team findings. Pass the proposal ids from agents_findings. Shows one confirmation card; nothing changes until they press it.",
+        inputSchema: agentDecisionSchema, execute: async ({ ids, decision }) => {
+          const latest = await requireWorkspace();
+          const open = await openAgentProposalIds(latest.supabase, latest.workspace.id, [...new Set(ids)]);
+          if (open.length) decisionCards.push(decisionBlock(open, decision));
+          return { shown: open.length, skipped: ids.length - open.length, note: open.length ? "A confirmation card is shown below your answer; say it is waiting for them." : "None of these are open any more." };
         } }),
       // Artifacts are built on their own page; chat only hands the request over.
       suggest_artifact: tool({ description: "When the user asks for an interactive page, calculator, simulator, dashboard or what-if view, call this with a clear build request and give them the returned link. Do not build pages in chat.",
@@ -177,6 +187,8 @@ export async function POST(request: Request) {
           finance_detail: tool({ description: "Read an owned canonical transaction with its effective split/fee components, or a recurring series with complete paginated source transactions. Classification warnings remain explicit.", inputSchema: investigationDetailSchema, execute: input => aiEvidence(input.kind === "recurring" ? ["accounts", "transactions", "planning"] : ["accounts", "transactions"], latest => investigationDetail(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
           finance_scenario: tool({ description: "Compare the same investigation against at most 100 hypothetical effective-record amount/date/category overrides. Read-only; canonical ledger, sources, balances and recurrence remain unchanged. Use exact minor-unit strings and owned effective IDs.", inputSchema: investigationScenarioSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => evaluateInvestigationScenario(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
         } : {}),
+        ...(settings.ai_data_scopes.includes("transactions") ? { agents_findings: tool({ description: "Read what the agent team found in its recent runs: open proposals (categorizations, recurring bills, budgets, anomaly findings) with ids, plus each run's briefing and page link. Set includeDecided to also see accepted and dismissed ones.",
+          inputSchema: z.object({ includeDecided: z.boolean().optional() }).strict(), execute: ({ includeDecided }) => aiEvidence(["transactions"], latest => agentFindings(latest.supabase, workspace.id, { includeDecided })) }) } : {}),
         ...(settings.ai_data_scopes.includes("imports") ? { imports_status: tool({
           description: "Read recorded import workflow status and row counts. Completed means processing finished, not that all financial classifications or current balances are complete. Use this to answer whether imports are still running; do not infer status from balance freshness or filenames.",
           inputSchema: z.object({}).strict(), execute: () => aiEvidence(["imports"], async latest => {
@@ -239,7 +251,7 @@ export async function POST(request: Request) {
     }
     const [usage, steps] = await Promise.all([result.usage, result.steps]);
     if (!text.trim()) throw new Error("The model returned no answer");
-    const answer = [text.trim(), ...[...new Set(proposalCards)].map(id => "```moneo-proposal\n" + id + "\n```")].join("\n\n");
+    const answer = [text.trim(), ...[...new Set(proposalCards)].map(id => "```moneo-proposal\n" + id + "\n```"), ...new Set(decisionCards)].join("\n\n");
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (request.signal.aborted) throw new Error("Request canceled");

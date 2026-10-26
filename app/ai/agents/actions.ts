@@ -12,3 +12,12 @@ export async function decideAgentProposals(ids: string[], decision: "accept" | "
   revalidatePath("/", "layout");
   return outcomes;
 }
+
+/** Titles and current statuses for a chat decision card. */
+export async function loadAgentProposals(ids: string[]) {
+  const parsed = z.array(z.uuid()).min(1).max(100).parse(ids);
+  const { supabase, workspace } = await requireWorkspace();
+  const { data, error } = await supabase.from("agent_proposals").select("id, run_id, title, status").eq("workspace_id", workspace.id).in("id", parsed).not("run_id", "is", null);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as { id: string; run_id: string; title: string; status: string }[];
+}
