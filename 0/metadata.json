@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M5Z8C37K4PKCCSMGH6Z7EF4F",
+  "session_id": "51acfa84-a1c1-47cd-9581-1c5a0ba50492",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-27T18:01:20.0287196Z",
+  "branch": "feat/chat-balance-proposals",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/api/chat/route.test.ts",
+    "app/api/chat/route.ts",
+    "components/ai-message.test.tsx",
+    "components/ai-message.tsx",
+    "components/chart.tsx",
+    "components/chat-chart.tsx",
+    "components/echarts-lean.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-haiku-5-5",
+  "turn_id": "0fb96cc519b7",
+  "checkpoint_transcript_start": 213,
+  "transcript_lines_at_start": 213,
+  "compact_transcript_start": 22,
+  "token_usage": {
+    "input_tokens": 20,
+    "cache_creation_tokens": 41251,
+    "cache_read_tokens": 983671,
+    "output_tokens": 33259,
+    "api_call_count": 10
+  },
+  "redaction": {
+    "replacements": 2,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 2,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 1
+  }
+}
