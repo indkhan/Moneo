@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M5ZBTJ0MJ2CK31VFDEKT277S",
+  "session_id": "a21ffa5c-45b3-4cab-ab06-25fc61209bc5",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-27T19:01:41.4754887Z",
+  "branch": "feat/chat-balance-proposals",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "supabase/migrations/202610270005_balance_proposals.sql",
+    "supabase/migrations/202610270005_service_own_transfers.sql",
+    "supabase/migrations/202610280001_own_iban_transfers.sql"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-haiku-5-5",
+  "turn_id": "a54bc5fa1225",
+  "checkpoint_transcript_start": 374,
+  "transcript_lines_at_start": 374,
+  "compact_transcript_start": 38,
+  "token_usage": {
+    "input_tokens": 12,
+    "cache_creation_tokens": 13546,
+    "cache_read_tokens": 513444,
+    "output_tokens": 5104,
+    "api_call_count": 6
+  },
+  "redaction": {
+    "replacements": 5,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 5,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 3
+  }
+}
