@@ -61,6 +61,9 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     const counter = generation;
     return () => { window.clearTimeout(timer); ++counter.current; window.removeEventListener("moneo-conversation-change", changed); };
   }, [open, load]);
+  // Keep the newest answer, and any card under it, in view, as the AI page does.
+  const end = useRef<HTMLDivElement>(null);
+  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [history.length, pending]);
   const chat = useChatRequest();
   const files = useChatAttachments();
   const { send, cancel, busy, error, status } = chat;
@@ -121,6 +124,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
         {loading && <p role="status" className="text-sm text-muted-foreground">Loading conversation...</p>}
         {older && !historyError && <button type="button" disabled={loading || busy} onClick={() => void load(older)} className="mx-auto mb-4 block text-sm text-muted-foreground hover:text-foreground">Older messages</button>}
         {!historyError && <ChatMessages compact messages={history} pending={pending} />}
+        <div ref={end} />
         {!history.length && !pending && !historyError && !loading && <div className="flex h-full flex-col items-center justify-center text-center"><h3 className="text-lg font-semibold">How can I help with your money?</h3><p className="mt-1 text-sm text-muted-foreground">Ask about this page, a transaction or a balance.</p><div className="mt-5 flex flex-wrap justify-center gap-2">{["What changed in my spending last month?", "Create a spending chart"].map(prompt => <button key={prompt} type="button" onClick={() => { setQuestion(prompt); document.getElementById("panel-question")?.focus(); }} className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{prompt}</button>)}</div></div>}
       </div>
       <div className="px-3 pb-3">

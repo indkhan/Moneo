@@ -14,7 +14,11 @@ export function IouCard({ id, initial, onAccount }: { id: string; initial?: Prop
   const [account, setAccount] = useState<string>();
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
-  useEffect(() => { if (!initial) loadIouProposal(id).then(setProposal, () => setProposal(null)); }, [id, initial]);
+  const [unavailable, setUnavailable] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  // A failed load used to hide the card until the page was reloaded; it now says so and can be retried.
+  useEffect(() => { if (!initial) loadIouProposal(id).then(setProposal, () => setUnavailable(true)); }, [id, initial, attempt]);
+  if (unavailable) return <p role="alert" className="my-3 text-sm text-danger">Could not load this card. <button type="button" onClick={() => { setUnavailable(false); setAttempt(count => count + 1); }} className="underline">Try again</button></p>;
   if (proposal === undefined) return <p className="my-3 text-sm text-muted-foreground" role="status">Loading…</p>;
   if (!proposal) return null;
   const transaction = proposal.kind === "transaction_create";
