@@ -16,10 +16,10 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { describeMissingInputs, formatMoney } from "@/lib/finance/format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { SourceCoverageDetails } from "./source-coverage";
-import { AgentBriefing } from "./agent-briefing";
+import { AgentBriefing, loadAgentBriefing } from "./agent-briefing";
 import { HomeBudgets } from "./home-budgets";
-import { HomeHistory } from "./home-history";
-import { IouReview } from "./iou-review";
+import { HomeHistory, loadHomeHistory } from "./home-history";
+import { IouReview, loadIouReview } from "./iou-review";
 import { loadPriceChanges } from "@/lib/finance/price-changes";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
@@ -33,7 +33,7 @@ const WIDE = new Set(["spending", "insights", "recent"]);
 const HALF = new Set(["accounts", "agents"]);
 const span = (key: string) => FULL.has(key) ? "lg:col-span-6" : WIDE.has(key) || artifactIdFromKey(key) ? "lg:col-span-4" : HALF.has(key) ? "lg:col-span-3" : "lg:col-span-2";
 
-export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string; month?: string; flow?: string }> } = {}) {
+export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string }> } = {}) {
   const params = await searchParams;
   const accountId = typeof params?.account === "string" ? params.account : undefined;
   const supabaseConfig = getSupabaseConfig();
@@ -56,6 +56,9 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   // Start the streamed sections' reads now (memoized); their Suspense boundaries pick up the same promises.
   loadInsightEvidence(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
   loadHomeSpending(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
+  loadHomeHistory(supabase, workspace.id).catch(() => undefined);
+  loadAgentBriefing(supabase, workspace.id).catch(() => undefined);
+  loadIouReview(supabase, workspace.id);
   const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle());
   // Pinned artifact titles chain onto the layout read, so they finish inside the slower forecast; the frames load their data themselves.
   const pinnedPromise = layoutPromise.then(async ({ data }) => {
@@ -140,7 +143,6 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   // A deleted artifact simply drops off Home; its key is cleaned up the next time the layout is saved.
   const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null).filter(key => { const id = artifactIdFromKey(key); return !id || pinnedTitles.has(id); });
   const sectionProps = { db: supabase, workspaceId: workspace.id, currency: displayCurrency, today, locale };
-  const search = { account: accountId, month: typeof params?.month === "string" ? params.month : undefined, flow: typeof params?.flow === "string" ? params.flow : undefined };
 
   const widgets: Record<string, ReactNode> = {
     ...Object.fromEntries([...pinnedTitles].map(([id, title]) => [`artifact:${id}`, <section key={id} aria-label={title} className={`${card} flex flex-col gap-3`}>
@@ -167,14 +169,14 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
             <div key={label} className="bg-card"><Link href={href} className="flex flex-col gap-1 px-4 py-3.5 hover:bg-muted"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-mono">{money(amount, displayCurrency)}</dd></Link></div>)}
         </dl>}
       </div>
-      <Suspense fallback={<SectionFallback title="This month" />}><MonthCashFlow {...sectionProps} search={search}>
+      <Suspense fallback={<SectionFallback title="This month" />}><MonthCashFlow {...sectionProps}>
         {available?.status === "available" && <Link href="/plan" className="mt-auto flex flex-col gap-1.5 rounded-[14px] border border-ai-border bg-ai-soft p-3.5 hover:border-ai">
           <p className="flex items-center gap-2 text-xs text-ai"><Sparkle className="size-3.5 fill-current" aria-hidden="true" />Cash-flow forecaster</p>
           <p className="text-[13px]">Lowest point after your buffer: <span className={`font-mono ${available.amountMinor < 0n ? "text-warning" : ""}`}>{money(available.amountMinor, displayCurrency)}</span> on {dayMonth(available.limitingDate)}.</p>
         </Link>}
       </MonthCashFlow></Suspense>
     </section>,
-    spending: <Suspense fallback={<SectionFallback title="Cash flow · 6 months" />}><CashFlowPanel {...sectionProps} search={search} /></Suspense>,
+    spending: <Suspense fallback={<SectionFallback title="Cash flow · 6 months" />}><CashFlowPanel {...sectionProps} /></Suspense>,
     recent: <Suspense fallback={<SectionFallback title="Recent transactions" />}><RecentTransactions db={supabase} workspaceId={workspace.id} locale={locale} names={accountNames} /></Suspense>,
     planning: projection.liquidity && <section aria-label="Available funds"><HomeLiquidity liquidity={projection.liquidity} accountId={accountId} names={accountNames} locale={locale} coverage={<SourceCoverageDetails coverage={projection.sourceCoverage} />} /></section>,
     accounts: <section aria-labelledby="home-accounts" className={card}>

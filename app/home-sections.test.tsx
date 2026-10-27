@@ -4,6 +4,9 @@ import { expect, it, vi } from "vitest";
 import { CashFlowPanel, MonthCashFlow, RecentTransactions } from "./home-sections";
 
 vi.mock("next/link", () => ({ default: "a" }));
+let search = new URLSearchParams();
+vi.mock("next/navigation", () => ({ useSearchParams: () => search }));
+const panel = async (params: Record<string, string> = {}) => { search = new URLSearchParams(params); return renderToStaticMarkup(await CashFlowPanel(props)); };
 vi.mock("./home-trend-chart", () => ({ TrendChart: ({ labels, flow }: { labels: string[]; flow?: string }) => <div data-chart={labels.join(",")} data-flow={flow} /> }));
 vi.mock("@/lib/finance/dashboard-spending", async original => {
   const actual = await original<typeof import("@/lib/finance/dashboard-spending")>();
@@ -18,28 +21,28 @@ vi.mock("@/lib/finance/dashboard-spending", async original => {
 const props = { db: {} as SupabaseClient, workspaceId: "w", currency: "EUR", today: "2026-10-16", locale: "en" };
 
 it("shows both sides by default and only the picked side's breakdown, linked to filtered transactions", async () => {
-  const both = renderToStaticMarkup(await CashFlowPanel(props));
+  const both = await panel();
   expect(both).toContain('data-chart="May,Jun,Jul,Aug,Sep,Oct"');
   expect(both).not.toContain("Top categories");
   expect(both).not.toContain("Where money came from");
   expect(both).toContain('href="?show=in&amp;flow=in#cash-flow"');
 
-  const spending = renderToStaticMarkup(await CashFlowPanel({ ...props, search: { flow: "out" } }));
+  const spending = await panel({ flow: "out" });
   // A picked breakdown never hides the other bars; only the Show buttons do.
   expect(spending).not.toContain('data-flow="out"');
   expect(spending).toContain("Top categories in October");
   expect(spending).toContain("/money/transactions?category=food&amp;from=2026-10-01&amp;to=2026-10-16&amp;direction=outflow");
   expect(spending).toContain("merchant=none");
   expect(spending).toContain('href="?flow=out#cash-flow"');
-  const onlyOut = renderToStaticMarkup(await CashFlowPanel({ ...props, search: { show: "out", flow: "out" } }));
+  const onlyOut = await panel({ show: "out", flow: "out" });
   expect(onlyOut).toContain('data-flow="out"');
   expect(onlyOut).toContain("Top categories in October");
 
-  const september = renderToStaticMarkup(await CashFlowPanel({ ...props, search: { flow: "out", month: "2026-09" } }));
+  const september = await panel({ flow: "out", month: "2026-09" });
   expect(september).toContain("Top merchants in September");
   expect(september).toContain("merchant=shop&amp;from=2026-09-01&amp;to=2026-09-30");
 
-  const income = renderToStaticMarkup(await CashFlowPanel({ ...props, search: { flow: "in" } }));
+  const income = await panel({ flow: "in" });
   expect(income).toContain("Where money came from in October");
   expect(income).toContain("Acme GmbH");
   expect(income).toContain("merchant=employer&amp;from=2026-10-01&amp;to=2026-10-16&amp;direction=income");
@@ -47,6 +50,7 @@ it("shows both sides by default and only the picked side's breakdown, linked to 
 });
 
 it("totals this month's money in and out and what is left", async () => {
+  search = new URLSearchParams();
   const html = renderToStaticMarkup(await MonthCashFlow(props));
   for (const text of ["October cash flow", "day 16 / 31", "+EUR 2500.00", "-EUR 40.00", "Left this month", "EUR 2460"]) expect(html).toContain(text);
   expect(html).toContain('href="?month=2026-10&amp;flow=in#cash-flow"');

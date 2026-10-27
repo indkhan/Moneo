@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
+import { allPages } from "@/lib/all-pages";
 import { investigate, investigationIdentity, investigationSchema, resolveInvestigation, type InvestigationEntities, type InvestigationRow, type InvestigationSpec } from "./investigation";
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
 
@@ -9,20 +10,19 @@ const PAGE_SIZE = 500;
 const MAX_ROWS = 100_000;
 
 /** A resource bound is an explicit error, never a silently incomplete result. */
-async function allRows<T>(query: { range(from: number, to: number): PromiseLike<{ data: unknown[] | null; error: unknown }> }): Promise<T[]> {
-  const result: T[] = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const page = await query.range(offset, offset + PAGE_SIZE - 1);
-    if (page.error) throw page.error;
-    if (result.length + (page.data?.length ?? 0) > MAX_ROWS) throw new Error("Investigation exceeds 100,000 records; narrow its dates or filters");
-    result.push(...(page.data ?? []) as T[]);
-    if (!page.data || page.data.length < PAGE_SIZE) return result;
-  }
+// `query` builds a fresh ordered query for each page; `count` goes to its select.
+async function allRows<T>(query: (count?: "exact") => { range(from: number, to: number): PromiseLike<{ data: unknown[] | null; error: unknown; count?: number | null }> }): Promise<T[]> {
+  const result = await allPages<T>((from, to, count) => query(count).range(from, to), PAGE_SIZE);
+  if (result.length > MAX_ROWS) throw new Error("Investigation exceeds 100,000 records; narrow its dates or filters");
+  return result;
 }
+const counted = (count?: "exact") => count ? { count } : undefined;
 export async function loadInvestigationEntities(context?: Context): Promise<InvestigationEntities> {
   const { supabase, workspace } = context ?? await requireWorkspace();
-  const [accounts, categories, merchants] = await Promise.all(["accounts", "categories", "merchants"].map(table => allRows<{ id: string; name: string }>(supabase.from(table).select(table === "accounts" ? "id, name, version" : "id, name").eq("workspace_id", workspace.id).order("id"))));
-  const labels = await allRows<{ tags: string[]; event_name: string | null }>(supabase.from("transactions").select("tags, event_name").eq("workspace_id", workspace.id).order("id"));
+  const [accounts, categories, merchants, labels] = await Promise.all([
+    ...["accounts", "categories", "merchants"].map(table => allRows<{ id: string; name: string }>(count => supabase.from(table).select(table === "accounts" ? "id, name, version" : "id, name", counted(count)).eq("workspace_id", workspace.id).order("id"))),
+    allRows<{ tags: string[]; event_name: string | null }>(count => supabase.from("transactions").select("tags, event_name", counted(count)).eq("workspace_id", workspace.id).order("id")),
+  ]) as [{ id: string; name: string }[], { id: string; name: string }[], { id: string; name: string }[], { tags: string[]; event_name: string | null }[]];
   return { accounts, categories, merchants, labels: { tags: [...new Set(labels.flatMap(r => r.tags ?? []))].sort(), events: [...new Set(labels.flatMap(r => r.event_name ? [r.event_name] : []))].sort() } };
 }
 type LedgerRow = {
@@ -37,13 +37,15 @@ async function loadRows(context: Context, spec: InvestigationSpec, includeAll = 
   const { supabase, workspace } = context;
   const from = [spec.period.from, spec.comparison?.from].filter((v): v is string => Boolean(v)).sort()[0];
   const to = [spec.period.to, spec.comparison?.to].filter((v): v is string => Boolean(v)).sort().at(-1)!;
-  let ledger = supabase.from("effective_transactions")
-    .select("id, parent_transaction_id, account_id, category_id, merchant_id, posted_on, amount_minor::text, currency_code, status, kind, tags, event_name, review_reasons, version, description, refund_of_id")
-    .eq("workspace_id", workspace.id);
-  if (!includeAll) ledger = ledger.gte("posted_on", from).lte("posted_on", to);
+  const ledger = (count?: "exact") => {
+    const query = supabase.from("effective_transactions")
+      .select("id, parent_transaction_id, account_id, category_id, merchant_id, posted_on, amount_minor::text, currency_code, status, kind, tags, event_name, review_reasons, version, description, refund_of_id", counted(count))
+      .eq("workspace_id", workspace.id);
+    return (includeAll ? query : query.gte("posted_on", from).lte("posted_on", to)).order("id");
+  };
   const [effective, sources] = await Promise.all([
-    allRows<LedgerRow>(ledger.order("id")),
-    canReadImports ? allRows<Source>(supabase.from("source_transactions").select("id, import_id, status, review_reasons, normalized_row, fee_evidence, imports(run_version, status, undone_at), transaction_sources(transaction_id)").eq("workspace_id", workspace.id).order("id")) : [],
+    allRows<LedgerRow>(ledger),
+    canReadImports ? allRows<Source>(count => supabase.from("source_transactions").select("id, import_id, status, review_reasons, normalized_row, fee_evidence, imports(run_version, status, undone_at), transaction_sources(transaction_id)", counted(count)).eq("workspace_id", workspace.id).order("id")) : [],
   ]);
   const byParent = new Map<string, unknown[]>();
   for (const source of sources) for (const link of Array.isArray(source.transaction_sources) ? source.transaction_sources : source.transaction_sources ? [source.transaction_sources] : []) {
@@ -69,14 +71,17 @@ async function loadRows(context: Context, spec: InvestigationSpec, includeAll = 
   return rows;
 }
 
-/** Internal dataset is retained in full for evidence receipts; outward supporting access is paginated. */
-export async function loadInvestigationDataset(input: unknown, context?: Context, options: { canReadImports?: boolean; includeAll?: boolean } = {}) {
+/**
+ * Internal dataset is retained in full for evidence receipts; outward supporting access is paginated.
+ * `entities` lets a caller that already reads them (the Investigations page) share that read.
+ */
+export async function loadInvestigationDataset(input: unknown, context?: Context, options: { canReadImports?: boolean; includeAll?: boolean; entities?: Promise<InvestigationEntities> } = {}) {
   const ctx = context ?? await requireWorkspace();
-  const entities = await loadInvestigationEntities(ctx);
+  const entities = await (options.entities ?? loadInvestigationEntities(ctx));
   const spec = resolveInvestigation(input, entities);
   const canReadImports = options.canReadImports ?? true;
   const [rows, metadata, rates] = await Promise.all([loadRows(ctx, spec, options.includeAll ?? false, canReadImports), loadSourceCoverageMetadata(ctx.supabase, ctx.workspace.id, canReadImports),
-    spec.currencyPolicy.mode === "base" ? allRows<{ id: string; from_currency: string; to_currency: string; rate_text: string; rate_date: string; source: string }>(ctx.supabase.from("fx_rates").select("id, from_currency, to_currency, rate_text, rate_date, source").eq("workspace_id", ctx.workspace.id).order("id")) : []]);
+    spec.currencyPolicy.mode === "base" ? allRows<{ id: string; from_currency: string; to_currency: string; rate_text: string; rate_date: string; source: string }>(count => ctx.supabase.from("fx_rates").select("id, from_currency, to_currency, rate_text, rate_date, source", counted(count)).eq("workspace_id", ctx.workspace.id).order("id")) : []]);
   const accountIds = spec.accounts?.include?.flatMap(ref => "id" in ref ? [ref.id] : []);
   const scope = { ...(accountIds?.length ? { accountIds } : {}), ...(spec.currencyPolicy.mode === "original" && spec.currencyPolicy.currencies?.length === 1 ? { currencyCode: spec.currencyPolicy.currencies[0] } : {}) };
   const effective = rows.map(r => ({ account_id: r.accountId, posted_on: r.date, currency_code: r.currency, status: r.status, kind: r.kind, review_reasons: r.reviewReasons }));
@@ -87,7 +92,7 @@ export async function loadInvestigationDataset(input: unknown, context?: Context
     rates: rates.map(r => ({ id: r.id, fromCurrency: r.from_currency, toCurrency: r.to_currency, rateText: r.rate_text, rateDate: r.rate_date, source: r.source })) },
     sourceRevision: investigationIdentity({ rows, metadata, rates, entities }) };
 }
-export async function runInvestigation(input: unknown, context?: Context, options: { canReadImports?: boolean } = {}) {
+export async function runInvestigation(input: unknown, context?: Context, options: { canReadImports?: boolean; entities?: Promise<InvestigationEntities> } = {}) {
   const data = await loadInvestigationDataset(input, context, options);
   const result = investigate(data.spec, data.rows, data.context);
   return { ...result, sourceRevision: data.sourceRevision,
@@ -139,7 +144,7 @@ export async function investigationDetail(input: unknown, context?: Context, opt
     .eq("workspace_id", ctx.workspace.id).eq("id", args.id).maybeSingle();
   if (result.error) throw result.error;
   if (!result.data) throw new Error("Unknown owned recurring series");
-  const links = await allRows<{ transaction_id: string }>(ctx.supabase.from("recurring_series_transactions").select("transaction_id").eq("workspace_id", ctx.workspace.id).eq("series_id", args.id).order("transaction_id"));
+  const links = await allRows<{ transaction_id: string }>(count => ctx.supabase.from("recurring_series_transactions").select("transaction_id", counted(count)).eq("workspace_id", ctx.workspace.id).eq("series_id", args.id).order("transaction_id"));
   const ids = links.slice(args.offset, args.offset + args.size).map(l => l.transaction_id);
   const transactions = ids.length ? await ctx.supabase.from("transactions").select("id, posted_on, description, amount_minor::text, currency_code, status, kind, review_reasons, version")
     .eq("workspace_id", ctx.workspace.id).in("id", ids).order("posted_on").order("id") : { data: [], error: null };

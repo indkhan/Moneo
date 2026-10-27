@@ -1,5 +1,6 @@
 import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { allPages } from "@/lib/all-pages";
 
 export type CoverageScope = { from: string; to: string; currencyCode?: string; accountId?: string; accountIds?: string[]; ledgerBasis?: "cashflow" | "balance_activity"; recordBasis?: "manual_wealth" | "manual_goals" };
 type EffectiveRow = { account_id?: string; posted_on?: string; currency_code: string; status: string; kind: string; review_reasons?: string[] };
@@ -88,20 +89,8 @@ export async function loadSourceCoverage(db: SupabaseClient, workspaceId: string
 // Memoized per request: Home, its cashflow and its insights all read the same metadata.
 export const loadSourceCoverageMetadata = cache(async (db: SupabaseClient, workspaceId: string, canReadImports: boolean) => {
   if (!canReadImports) return undefined;
-  async function all<T>(table: string, columns: string): Promise<T[]> {
-    const page = async (offset: number, count?: "exact") => {
-      const result = await db.from(table).select(columns, count ? { count } : undefined).eq("workspace_id", workspaceId).order("id").range(offset, offset + 499);
-      if (result.error) throw result.error;
-      return { rows: (result.data ?? []) as T[], count: result.count };
-    };
-    // The first page's count lets the remaining pages load in parallel; the loop still
-    // reads on while pages come back full, so rows added meanwhile are not dropped.
-    const first = await page(0, "exact");
-    const rest = await Promise.all(Array.from({ length: Math.max(0, Math.ceil((first.count ?? 0) / 500) - 1) }, (_, index) => page((index + 1) * 500)));
-    const pages = [first.rows, ...rest.map(next => next.rows)];
-    while (pages.at(-1)!.length === 500) pages.push((await page(pages.length * 500)).rows);
-    return pages.flat();
-  }
+  const all = <T>(table: string, columns: string) =>
+    allPages<T>((from, to, count) => db.from(table).select(columns, count ? { count } : undefined).eq("workspace_id", workspaceId).order("id").range(from, to));
   const [imports, sources] = await Promise.all([
     all<ImportRow>("imports", "id, status, total_rows"),
     // Project only scope metadata: never source descriptions, amounts, mappings or original input.

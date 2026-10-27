@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { allPages } from "@/lib/all-pages";
 import { calendarDate } from "./calendar";
 import { buildSourceCoverage, type loadSourceCoverageMetadata } from "./source-coverage";
 
@@ -114,15 +115,8 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
 export async function loadBalanceEvidence(db: SupabaseClient, workspaceId: string, asOf = new Date().toISOString()): Promise<{
   accounts: BalanceAccount[]; snapshots: BalanceSnapshot[]; ledger: BalanceTransaction[]; asOf: string;
 }> {
-  async function rows<T>(table: string, columns: string) {
-    const result: T[] = [];
-    for (let offset = 0; ; offset += 500) {
-      const page = await db.from(table).select(columns).eq("workspace_id", workspaceId).order("id").range(offset, offset + 499);
-      if (page.error) throw page.error;
-      result.push(...(page.data ?? []) as unknown as T[]);
-      if (!page.data || page.data.length < 500) return result;
-    }
-  }
+  const rows = <T>(table: string, columns: string) =>
+    allPages<T>((from, to, count) => db.from(table).select(columns, count ? { count } : undefined).eq("workspace_id", workspaceId).order("id").range(from, to));
   const [accounts, snapshots, ledger, fees, resolutions] = await Promise.all([
     rows<BalanceAccount>("accounts", "id, name, type, currency_code, archived_at, version"),
     rows<BalanceSnapshot>("balance_snapshots", "id, account_id, amount_minor::text, currency_code, as_of, provenance, boundary_kind, source_transaction_id, covered_transactions, actor_id, undone_at, version, created_at"),

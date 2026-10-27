@@ -51,6 +51,7 @@ export const transactionSplits = pgTable("transaction_splits", {
   note: text("note").notNull().default(""),
   ordinal: integer("ordinal").notNull(),
 }, (table) => [
+  index("transaction_splits_workspace").on(table.workspaceId),
   unique("transaction_splits_split_set_id_ordinal_key").on(table.splitSetId, table.ordinal),
   check("transaction_splits_amount_minor_check", sql`${table.amountMinor} <> 0`),
   check("transaction_splits_note_check", sql`char_length(${table.note}) <= 500`),
@@ -74,7 +75,9 @@ export const accounts = pgTable("accounts", {
   version: integer("version").notNull().default(1),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("accounts_workspace").on(table.workspaceId, table.id),
+]);
 
 export const balanceSnapshots = pgTable("balance_snapshots", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -94,6 +97,7 @@ export const balanceSnapshots = pgTable("balance_snapshots", {
   undoneBy: uuid("undone_by").references(() => authUsers.id),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  index("balance_snapshots_workspace_id").on(table.workspaceId, table.id),
   check("balance_snapshots_boundary_kind_check", sql`${table.boundaryKind} in ('date_only','after_transaction','reviewed_activity') and (${table.boundaryKind} <> 'after_transaction' or ${table.sourceTransactionId} is not null) and (${table.boundaryKind} <> 'reviewed_activity' or (${table.coveredTransactions} is not null and jsonb_typeof(${table.coveredTransactions}) = 'array' and ${table.actorId} is not null))`),
   check("balance_snapshots_version_check", sql`${table.version} > 0`),
 ]);
@@ -105,7 +109,9 @@ export const dataSources = pgTable("data_sources", {
   kind: text("kind").notNull(),
   name: text("name").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("data_sources_workspace").on(table.workspaceId),
+]);
 
 export const imports = pgTable("imports", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -169,6 +175,7 @@ export const bankConnectionAccounts = pgTable("bank_connection_accounts", {
   accountName: text("account_name").notNull(),
   lastBookedOn: date("last_booked_on"),
 }, (table) => [
+  index("bank_connection_accounts_workspace").on(table.workspaceId),
   primaryKey({ columns: [table.connectionId, table.providerAccountUid] }),
   check("bank_connection_accounts_provider_account_uid_check", sql`char_length(${table.providerAccountUid}) between 1 and 200`),
   check("bank_connection_accounts_iban_check", sql`char_length(${table.iban}) <= 34`),
@@ -212,6 +219,7 @@ export const importStaging = pgTable("import_staging", {
   rows: jsonb("rows").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, table => [
+  index("import_staging_workspace").on(table.workspaceId),
   check("import_staging_stage_version_check", sql`${table.stageVersion} = 1`),
   check("import_staging_rows_check", sql`jsonb_typeof(${table.rows}) = 'array' and jsonb_array_length(${table.rows}) <= 10000 and octet_length(${table.rows}::text) <= 64000000`),
 ]);
@@ -228,6 +236,7 @@ export const sourceTransactions = pgTable("source_transactions", {
   reviewReasons: text("review_reasons").array().notNull().default(sql`'{}'::text[]`),
   status: text("status").notNull().default("new"),
 }, (table) => [
+  index("source_transactions_workspace_id").on(table.workspaceId, table.id),
   index("source_transactions_import_external_idx").using("hash", table.externalId),
   check("source_transactions_normalized_row_check", sql`${table.normalizedRow} is null or jsonb_typeof(${table.normalizedRow}) = 'object'`),
   unique("source_transactions_import_row_unique").on(table.importId, table.rowNumber),
@@ -293,6 +302,8 @@ export const transactions = pgTable("transactions", {
   version: integer("version").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  index("transactions_workspace_id").on(table.workspaceId, table.id),
+  index("transactions_workspace_posted").on(table.workspaceId, table.postedOn.desc(), table.id.desc()),
   index("transactions_import_description_idx").using("hash", table.description),
   index("transactions_merchant_id_idx").on(table.merchantId).where(sql`${table.merchantId} is not null`),
   index("transactions_account_posted_at_idx").on(table.workspaceId, table.accountId, table.postedAt).where(sql`${table.postedAt} is not null`),
@@ -345,7 +356,9 @@ export const correctionEvents = pgTable("correction_events", {
   after: jsonb("after").notNull(),
   undone: boolean("undone").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("correction_events_workspace").on(table.workspaceId),
+]);
 
 export const goals = pgTable("goals", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -396,6 +409,7 @@ export const wealthItems = pgTable("wealth_items", {
   version: integer("version").notNull().default(1), removedAt: timestamp("removed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  index("wealth_items_workspace").on(table.workspaceId),
   check("wealth_items_kind_check", sql`${table.kind} in ('holding','asset','debt')`),
   check("wealth_items_name_check", sql`char_length(${table.name}) between 1 and 120`),
   check("wealth_items_currency_code_check", sql`${table.currencyCode} ~ '^[A-Z]{3}$'`),
@@ -438,6 +452,7 @@ export const goalAllocations = pgTable("goal_allocations", {
   amountMinor: bigint("amount_minor", { mode: "bigint" }).notNull(),
   version: integer("version").notNull().default(1),
 }, (table) => [
+  index("goal_allocations_workspace").on(table.workspaceId),
   unique("goal_allocations_goal_account_unique").on(table.goalId, table.accountId),
   check("goal_allocations_amount_minor_check", sql`${table.amountMinor} >= 0`),
 ]);
@@ -472,6 +487,7 @@ export const financialAssumptions = pgTable("financial_assumptions", {
   removedAt: timestamp("removed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  index("financial_assumptions_workspace").on(table.workspaceId),
   check("financial_assumptions_cadence_check", sql`${table.cadence} in ('once', 'daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly')`),
   check("financial_assumptions_confidence_check", sql`${table.confidence} between 0 and 100`),
   check("financial_assumptions_dates", sql`${table.endsOn} is null or ${table.endsOn} >= ${table.startsOn}`),
@@ -485,7 +501,9 @@ export const scenarios = pgTable("scenarios", {
   version: integer("version").notNull().default(1),
   removedAt: timestamp("removed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("scenarios_workspace").on(table.workspaceId),
+]);
 
 export const scenarioOverrides = pgTable("scenario_overrides", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -502,6 +520,7 @@ export const scenarioOverrides = pgTable("scenario_overrides", {
   version: integer("version").notNull().default(1),
   removedAt: timestamp("removed_at", { withTimezone: true }),
 }, (table) => [
+  index("scenario_overrides_workspace").on(table.workspaceId),
   check("scenario_overrides_cadence_check", sql`${table.cadence} in ('once', 'daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly')`),
   check("scenario_overrides_dates", sql`${table.endsOn} is null or ${table.endsOn} >= ${table.startsOn}`),
 ]);
@@ -523,6 +542,7 @@ export const forecastRuns = pgTable("forecast_runs", {
   result: jsonb("result").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  index("forecast_runs_workspace").on(table.workspaceId),
   check("forecast_runs_dates", sql`${table.horizonEnd} >= ${table.horizonStart}`),
 ]);
 
@@ -559,7 +579,9 @@ export const savedAnalyses = pgTable("saved_analyses", {
   body: text("body").notNull(),
   evidence: jsonb("evidence").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("saved_analyses_workspace").on(table.workspaceId),
+]);
 
 export const conversations = pgTable("conversations", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -582,6 +604,7 @@ export const messages = pgTable("messages", {
   context: jsonb("context"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  index("messages_workspace").on(table.workspaceId),
   uniqueIndex("messages_request_unique").on(table.conversationId, table.requestId).where(sql`${table.requestId} is not null`),
   uniqueIndex("messages_reply_unique").on(table.conversationId, table.replyTo).where(sql`${table.replyTo} is not null`),
   index("messages_conversation_created").on(table.conversationId, table.createdAt),
@@ -611,6 +634,7 @@ export const artifactVersions = pgTable("artifact_versions", {
   model: text("model"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  index("artifact_versions_workspace").on(table.workspaceId),
   unique("artifact_versions_artifact_id_version_key").on(table.artifactId, table.version),
 ]);
 
@@ -648,6 +672,7 @@ export const recurringSeriesTransactions = pgTable("recurring_series_transaction
   transactionId: uuid("transaction_id").notNull().references(() => transactions.id, { onDelete: "cascade" }),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
 }, (table) => [
+  index("recurring_series_transactions_workspace").on(table.workspaceId),
   primaryKey({ columns: [table.seriesId, table.transactionId] }),
   index("recurring_series_transactions_transaction").on(table.transactionId),
 ]);
@@ -746,6 +771,7 @@ export const transactionLinkFees = pgTable("transaction_link_fees", {
   transactionId: uuid("transaction_id").notNull().references(() => transactions.id), feeMinor: bigint("fee_minor", { mode: "bigint" }).notNull(), treatment: text("treatment").notNull(),
   categoryId: uuid("category_id").references(() => categories.id), note: text("note").notNull(),
 }, table => [unique("transaction_link_fees_link_id_transaction_id_key").on(table.linkId,table.transactionId), check("transaction_link_fees_fee_minor_check",sql`${table.feeMinor}>0`),
+  index("transaction_link_fees_workspace").on(table.workspaceId),
   check("transaction_link_fees_treatment_check",sql`${table.treatment} in ('included','additional')`),check("transaction_link_fees_note_check",sql`length(btrim(${table.note})) between 1 and 500`)]);
 
 export const transactionViews = pgTable("transaction_views", {
@@ -821,6 +847,7 @@ export const chatSteers = pgTable("chat_steers", {
   consumedAt: timestamp("consumed_at", { withTimezone: true }),
   closedAt: timestamp("closed_at", { withTimezone: true }),
 }, (table) => [
+  index("chat_steers_workspace").on(table.workspaceId),
   index("chat_steers_pending").on(table.chatRequestId, table.createdAt).where(sql`${table.consumedAt} is null and ${table.closedAt} is null`),
   check("chat_steers_content_check", sql`length(btrim(${table.content})) between 1 and 4000`),
 ]);
@@ -942,6 +969,7 @@ export const agentTasks = pgTable("agent_tasks", {
   startedAt: timestamp("started_at", { withTimezone: true }),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
 }, table => [
+  index("agent_tasks_workspace").on(table.workspaceId),
   unique("agent_tasks_run_agent_key").on(table.runId, table.agent),
   check("agent_tasks_agent_check", sql`${table.agent} in ('lead','categorizer','recurring','anomaly','forecaster','budget','writer')`),
   check("agent_tasks_status_check", sql`${table.status} in ('pending','running','done','failed','skipped','canceled')`),

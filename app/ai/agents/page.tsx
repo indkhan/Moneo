@@ -15,8 +15,10 @@ export default async function AgentRunsPage({ searchParams }: { searchParams: Pr
     const run = await supabase.from("agent_runs").select("id").eq("workspace_id", workspace.id).eq("import_id", importId.data).maybeSingle();
     if (run.data) redirect(`/ai/agents/${run.data.id}`);
   }
-  const runs = await supabase.from("agent_runs").select("id, status, trigger, created_at, briefing").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20);
-  const counts = await supabase.from("agent_proposals").select("run_id, status").eq("workspace_id", workspace.id).eq("status", "proposed").not("run_id", "is", null).limit(1000);
+  const [runs, counts] = await Promise.all([
+    supabase.from("agent_runs").select("id, status, trigger, created_at, briefing").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20),
+    supabase.from("agent_proposals").select("run_id, status").eq("workspace_id", workspace.id).eq("status", "proposed").not("run_id", "is", null).limit(1000),
+  ]);
   const open = new Map<string, number>();
   for (const row of counts.data ?? []) open.set(row.run_id, (open.get(row.run_id) ?? 0) + 1);
   return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 sm:px-8 lg:py-8">

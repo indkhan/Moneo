@@ -3,6 +3,7 @@ import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { Sparkle } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { allPages } from "@/lib/all-pages";
 import { accountShortfalls, buildInsights, insightPreferencesSchema, defaultInsightPreferences, type Insight, type InsightInput } from "@/lib/finance/insights";
 import { briefingFindings, keepsFacts, plainWording, rephraseFindings } from "@/lib/ai/briefing";
 import { getModel, modelIdFor } from "@/lib/ai/provider";
@@ -29,16 +30,12 @@ type InsightPanelProps = {
 // resolves; nothing here depends on the projection. Independent reads load together.
 export const loadInsightEvidence = cache(async (db: SupabaseClient, workspaceId: string, currency: string, today: string) => {
     async function rows<T>(table: string, columns: string, start?: string): Promise<T[]> {
-      const collected: T[] = [];
-      for (let offset = 0; offset <= 10000; offset += 500) {
-        let query = db.from(table).select(columns).eq("workspace_id", workspaceId);
+      const collected = await allPages<T>((from, to, count) => {
+        let query = db.from(table).select(columns, count ? { count } : undefined).eq("workspace_id", workspaceId);
         if (start) query = query.gte("posted_on", start).lte("posted_on", today);
-        const result = await query.order(table === "insight_dismissals" ? "evidence_key" : "id").range(offset, offset + 499);
-        if (result.error) throw result.error;
-        if (offset === 10000 && result.data.length) throw new Error("Insight evidence exceeds the supported 10,000-row limit");
-        collected.push(...result.data as T[]);
-        if (result.data.length < 500) return collected;
-      }
+        return query.order(table === "insight_dismissals" ? "evidence_key" : "id").range(from, to);
+      });
+      if (collected.length > 10000) throw new Error("Insight evidence exceeds the supported 10,000-row limit");
       return collected;
     }
     async function byIds<T>(columns: string, ids: string[]) {

@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
+import { allPages } from "@/lib/all-pages";
 import { monthPrefix, nextMonthStart, budgetProgress, type MonthlyLimit, type SpendingPlanTransaction } from "@/lib/finance/spending-plans";
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { SourceCoverageDetails } from "@/app/source-coverage";
@@ -24,18 +25,12 @@ async function loadLimitHistory(supabase: Db, workspaceId: string, from: string)
 }
 
 async function loadSpending(supabase: Db, workspaceId: string, from: string, before: string) {
-  const coverageRows: Parameters<typeof buildSourceCoverage>[1] = [];
-  const rows: (SpendingPlanTransaction & { refundOfId: string | null })[] = [];
-  for (let offset = 0; ; offset += 1000) {
-    const { data, error } = await supabase.from("effective_transactions")
-      .select("account_id, amount_minor::text, currency_code, status, kind, category_id, posted_on, refund_of_id, review_reasons")
-      .eq("workspace_id", workspaceId).gte("posted_on", from).lt("posted_on", before).order("id").range(offset, offset + 999);
-    if (error) throw error;
-    coverageRows.push(...(data ?? []));
-    rows.push(...(data ?? []).map(item => ({ amountMinor: BigInt(item.amount_minor), currencyCode: item.currency_code, status: item.status, kind: item.kind, reviewReasons: item.review_reasons,
-      categoryId: item.category_id, postedOn: String(item.posted_on).slice(0, 10), refundOfId: item.refund_of_id ?? null })));
-    if (!data || data.length < 1000) break;
-  }
+  type Row = { account_id: string; amount_minor: string; currency_code: string; status: string; kind: string; category_id: string | null; posted_on: string; refund_of_id: string | null; review_reasons: string[] };
+  const coverageRows = await allPages<Row>((start, end, count) => supabase.from("effective_transactions")
+    .select("account_id, amount_minor::text, currency_code, status, kind, category_id, posted_on, refund_of_id, review_reasons", count ? { count } : undefined)
+    .eq("workspace_id", workspaceId).gte("posted_on", from).lt("posted_on", before).order("id").range(start, end), 1000);
+  const rows: (SpendingPlanTransaction & { refundOfId: string | null })[] = coverageRows.map(item => ({ amountMinor: BigInt(item.amount_minor), currencyCode: item.currency_code, status: item.status, kind: item.kind, reviewReasons: item.review_reasons,
+    categoryId: item.category_id, postedOn: String(item.posted_on).slice(0, 10), refundOfId: item.refund_of_id ?? null }));
   // Linked refunds count against the original purchase's category; batch the lookups in parallel.
   const refundIds = [...new Set(rows.flatMap(row => row.kind === "refund" && row.refundOfId ? [row.refundOfId] : []))];
   const batches = await Promise.all(Array.from({ length: Math.ceil(refundIds.length / 100) }, (_, index) =>

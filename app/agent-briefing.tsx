@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ArrowRight, Sparkle } from "lucide-react";
 import { AGENT_IDS, AGENTS } from "@/lib/ai/agent-team";
@@ -10,7 +11,8 @@ const time = (iso: string, timeZone: string) => new Intl.DateTimeFormat("en-GB",
 const duration = (from: string, to: string) => { const seconds = Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 1000)); return `${Math.floor(seconds / 60)}m ${seconds % 60}s`; };
 
 /** Home's agent team: each agent's result from the latest run, and what waits for review. */
-export async function AgentBriefing({ db, workspaceId, timeZone = "UTC" }: { db: SupabaseClient; workspaceId: string; timeZone?: string }) {
+// Memoized per request so Home can start these reads before its own data resolves.
+export const loadAgentBriefing = cache(async (db: SupabaseClient, workspaceId: string) => {
   const latest = await db.from("agent_runs").select("id, status, created_at, finished_at").eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (latest.error) return null;
   const run = latest.data;
@@ -18,6 +20,13 @@ export async function AgentBriefing({ db, workspaceId, timeZone = "UTC" }: { db:
     db.from("agent_tasks").select("agent, status, summary").eq("workspace_id", workspaceId).eq("run_id", run.id),
     db.from("agent_proposals").select("kind").eq("workspace_id", workspaceId).eq("run_id", run.id).eq("status", "proposed").limit(500),
   ]) : [null, null];
+  return { run, tasks, open };
+});
+
+export async function AgentBriefing({ db, workspaceId, timeZone = "UTC" }: { db: SupabaseClient; workspaceId: string; timeZone?: string }) {
+  const briefing = await loadAgentBriefing(db, workspaceId);
+  if (!briefing) return null;
+  const { run, tasks, open } = briefing;
   const byAgent = new Map(((tasks?.data ?? []) as Task[]).map(task => [task.agent, task]));
   const proposals = open?.data?.length ?? 0;
   const running = run && ["queued", "running"].includes(run.status);

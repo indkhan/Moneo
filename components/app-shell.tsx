@@ -10,6 +10,7 @@ import {
 import { AiPanel } from "@/components/ai-panel";
 import { ASK_EVENT, type AskSeed } from "@/components/ask-about";
 import { CommandPalette, Kbd, Modal, ShortcutHelp, type Command } from "@/components/command-palette";
+import { IntentLink } from "@/components/intent-link";
 import { cn } from "@/lib/utils";
 
 /** Streamed from the root layout; null when signed out or the lookup failed. */
@@ -75,21 +76,21 @@ function Count({ shell, hrefs, dot }: { shell: Promise<ShellData>; hrefs: string
 function RailLink({ item, active, shell }: { item: RailItem | NavItem; active: boolean; shell: Promise<ShellData> }) {
   const Icon = item.icon;
   const hrefs = "items" in item && item.items ? item.items.map(child => child.href) : [item.href];
-  return <Link href={item.href} aria-current={active ? "page" : undefined}
+  return <IntentLink href={item.href} aria-current={active ? "page" : undefined}
     className={cn("relative flex w-16 flex-col items-center gap-1.5 rounded-xl py-2.5 text-[11px] transition-colors",
       active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground")}>
     <Icon className="size-5" strokeWidth={1.6} aria-hidden="true" />{item.label}
     <Suspense><Count shell={shell} hrefs={hrefs} dot /></Suspense>
-  </Link>;
+  </IntentLink>;
 }
 
 function MenuLink({ item, current, shell, onNavigate }: { item: NavItem; current?: NavItem; shell: Promise<ShellData>; onNavigate: () => void }) {
   const Icon = item.icon;
-  return <Link href={item.href} onClick={onNavigate} aria-current={current === item ? "page" : undefined}
+  return <IntentLink href={item.href} onClick={onNavigate} aria-current={current === item ? "page" : undefined}
     className={cn("flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm", current === item ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted")}>
     <Icon className="size-4 shrink-0" aria-hidden="true" /><span className="mr-auto truncate">{item.label}</span>
     <Suspense><Count shell={shell} hrefs={[item.href]} /></Suspense>
-  </Link>;
+  </IntentLink>;
 }
 
 // Accounts arrive with the streamed shell data; until then the palette lists pages and actions.
@@ -161,19 +162,19 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
           </div>
         </div>
         {section?.items && <nav aria-label={section.label} className="flex gap-1 overflow-x-auto px-4 pb-3 sm:px-6 lg:px-8">
-          {section.items.map(item => <Link key={item.href} href={item.href} aria-current={current === item ? "page" : undefined}
+          {section.items.map(item => <IntentLink key={item.href} href={item.href} aria-current={current === item ? "page" : undefined}
             className={cn("flex h-9 shrink-0 items-center gap-2 rounded-[10px] px-3.5 text-[13px]", current === item ? "bg-foreground font-medium text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
             {item.label}<Suspense><Count shell={shell} hrefs={[item.href]} /></Suspense>
-          </Link>)}
+          </IntentLink>)}
         </nav>}
       </header>
       <div id="main-content" tabIndex={-1}>{children}</div>
     </div>
     <nav aria-label="Main mobile" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
-      {mobileTabs.map(item => <Link key={item.href} href={item.href} aria-current={section === item ? "page" : undefined}
+      {mobileTabs.map(item => <IntentLink key={item.href} href={item.href} aria-current={section === item ? "page" : undefined}
         className={cn("flex flex-col items-center gap-0.5 py-2 text-[11px]", section === item ? "font-medium text-foreground" : "text-muted-foreground")}>
         <item.icon className={cn("size-5", section === item && "text-brand")} strokeWidth={1.6} aria-hidden="true" />{item.label}
-      </Link>)}
+      </IntentLink>)}
       <button type="button" onClick={() => setMenu(true)} aria-haspopup="dialog" className="flex flex-col items-center gap-0.5 py-2 text-[11px] text-muted-foreground"><Menu className="size-5" aria-hidden="true" />More</button>
     </nav>
     <Modal open={menu} onClose={() => setMenu(false)} label="Navigation" className="inset-x-0 bottom-0 top-auto w-full lg:hidden">
