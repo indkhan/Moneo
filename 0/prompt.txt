@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bbrfni81h</task-id>
+<tool-use-id>toolu_013hpkTo6SMo8TTrVy52XGkz</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--codebases-Moneo\9bb6f0d5-d1c8-4894-a88b-1cb4dfee6d52\tasks\bbrfni81h.output</output-file>
+<status>completed</status>
+<summary>Background command "Typecheck, lint, and run AI unit tests" completed (exit code 0)</summary>
+</task-notification>
