@@ -17,6 +17,7 @@ import type { ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import { chatFollowUps, planInput } from "@/lib/ai/follow-ups";
 import { iouInputSchema, proposeIou, proposeRepayments } from "@/lib/ai/iou-proposals";
 import { proposeTransaction, transactionInputSchema } from "@/lib/ai/transaction-proposals";
+import { APP_GUIDE } from "@/lib/ai/app-guide";
 import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
 
@@ -153,6 +154,8 @@ export async function POST(request: Request) {
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with an account picker, Add and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
         } }),
+      app_help: tool({ description: "How Moneo works: its pages, what each does, and what this chat can do. Use for any question about the app itself.",
+        inputSchema: z.object({}).strict(), execute: async () => ({ guide: APP_GUIDE }) }),
       agents_decide: tool({ description: "The user asks to accept, approve, mark as seen/watched, or dismiss agent-team findings. Pass the proposal ids from agents_findings. Shows one confirmation card; nothing changes until they press it.",
         inputSchema: agentDecisionSchema, execute: async ({ ids, decision }) => {
           const latest = await requireWorkspace();
