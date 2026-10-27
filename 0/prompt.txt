@@ -1,0 +1,25 @@
+can you add that i have 115 eur in cash since the revolut bank had first transaction
+
+2026-10-27T18:37:33.788Z
+Moneo
+
+I couldn’t create the confirmation card—the app returned an error, so nothing was saved. I interpreted this as €115 cash today; if you meant the date of Revolut’s first transaction, tell me that date and I can use it instead.
+
+Let the agent team dig deeper →
+
+
+why did it fail
+
+---
+
+so if it saw i have this wallet eur that is the cash account so it should think about it and add to it no 
+
+until and unless i ask not to add to it
+
+---
+
+no i mean assume the wallet as that is the cash account if there is no cash account then create and if multiple then ask user or if one eur and another usd then take eur as the user asked for eur
+
+---
+
+and for creating that account as well ask through the proposal machanish
