@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M5XASANY3PYBS9T5EMAJN2BQ",
+  "session_id": "85e9150a-7842-44c7-986d-eda6365a23fe",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-27T00:05:02.2969722Z",
+  "branch": "t3/application-performance-optimization",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "supabase/migrations/202610270001_workspace_read_performance.sql"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "1dded3a529b5",
+  "checkpoint_transcript_start": 2064,
+  "transcript_lines_at_start": 2064,
+  "compact_transcript_start": 231,
+  "token_usage": {
+    "input_tokens": 90,
+    "cache_creation_tokens": 78859,
+    "cache_read_tokens": 18843283,
+    "output_tokens": 48650,
+    "api_call_count": 45
+  },
+  "redaction": {
+    "replacements": 100,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 152,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 2
+  }
+}

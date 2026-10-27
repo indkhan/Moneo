@@ -1,0 +1,24 @@
+<task-notification>
+<task-id>bpzrkm5qg</task-id>
+<tool-use-id>toolu_01LYKKEayYexAzHcab1bmU1k</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-3714a934\85e9150a-7842-44c7-986d-eda6365a23fe\tasks\bpzrkm5qg.output</output-file>
+<status>failed</status>
+<summary>Background command "Start production server with lean echarts" failed with exit code 127</summary>
+</task-notification>
+
+---
+
+Then apply the migrations 
+What does the industry do for this problem 
+Make them fast thing of smart ways to make it fast 
+Close the 2 other dev server to have it nice
+
+---
+
+<task-notification>
+<task-id>bui73nloz</task-id>
+<tool-use-id>toolu_01LV3Vr4Rd76D6dFhtiBwxhj</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-3714a934\85e9150a-7842-44c7-986d-eda6365a23fe\tasks\bui73nloz.output</output-file>
+<status>failed</status>
+<summary>Background command "Add indexes to schema.ts and verify" failed with exit code 127</summary>
+</task-notification>
