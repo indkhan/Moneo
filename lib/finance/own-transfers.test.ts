@@ -32,8 +32,15 @@ describe("findOwnTransfers", () => {
     expect(findOwnTransfers([row("out", "current", -100n, "2026-10-01", { ibans: [CURRENT, ELSEWHERE] })], own).single).toEqual([{ transactionId: "out", identifierId: "elsewhere-id" }]);
   });
 
-  it("leaves a lone leg to a tracked account for its other side to arrive", () => {
-    expect(findOwnTransfers([row("out", "current", -100n, "2026-10-01", { ibans: [SAVINGS] })], own)).toEqual({ pairs: [], single: [] });
+  it("marks a lone leg to a tracked own account by IBAN when its other side is not in Moneo", () => {
+    expect(findOwnTransfers([row("out", "current", -100n, "2026-10-01", { ibans: [SAVINGS] })], own).single).toEqual([{ transactionId: "out", iban: SAVINGS }]);
+  });
+
+  it("leaves a leg alone when its counterpart account holds the opposite amount nearby", () => {
+    const out = row("out", "current", -100n, "2026-10-01", { ibans: [SAVINGS] });
+    const legs = [out, row("in", "savings", 100n, "2026-10-03")];
+    expect(findOwnTransfers([out], own, legs).single).toEqual([]);
+    expect(findOwnTransfers([out], own, [out, row("late", "savings", 100n, "2026-10-09")]).single).toEqual([{ transactionId: "out", iban: SAVINGS }]);
   });
 });
 
