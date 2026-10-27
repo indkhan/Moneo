@@ -1,0 +1,13 @@
+Uh, yes, do those things for a normal phone, with in mind, having the iPhones, and add those things, and do it in a work tree, and one stand, make a PR towards men.
+
+---
+
+can you rebase it from main and then see if it working well in iphone and ipad and all check it update it but dont update something that changes the website on the laptop
+
+---
+
+i am saying dont change code of the laptop view just have the thing for the iphone 14 and ipad m1 air have as per that check as well and the ipad in horizontal mode as well it should be fine in all ios and android i just want you tto especial check on those
+
+---
+
+there is no image i did not paste anything i am just teliing you to run the mobile and tab view in different format and see it works and the problems fix them for only their view
