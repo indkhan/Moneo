@@ -17,11 +17,9 @@ describe("findOwnTransfers", () => {
     expect(result.pairs).toEqual([{ outId: "out", inId: "near" }]);
   });
 
-  it("needs a transfer statement and an unambiguous match without IBAN evidence", () => {
+  it("never pairs without IBAN evidence, even when the statement calls it a transfer", () => {
     expect(findOwnTransfers([row("out", "current", -100n), row("in", "savings", 100n)], own).pairs).toEqual([]);
-    expect(findOwnTransfers([row("out", "current", -100n, "2026-10-01", { reviewReasons: ["source_transfer"] }), row("in", "savings", 100n)], own).pairs)
-      .toEqual([{ outId: "out", inId: "in" }]);
-    expect(findOwnTransfers([row("out", "current", -100n, "2026-10-01", { reviewReasons: ["source_transfer"] }), row("a", "savings", 100n), row("b", "savings", 100n)], own).pairs).toEqual([]);
+    expect(findOwnTransfers([row("out", "current", -100n, "2026-10-01", { reviewReasons: ["source_transfer"] }), row("in", "savings", 100n, "2026-10-01", { reviewReasons: ["source_transfer"] })], own).pairs).toEqual([]);
   });
 
   it("never pairs within one account, across currencies, beyond the window or unequal amounts", () => {

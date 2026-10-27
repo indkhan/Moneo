@@ -2,9 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Money moved between the owner's own accounts is a transfer, never income or spending.
-// Detection is deterministic: IBAN evidence from the source rows, or an exact opposite
-// amount between two own accounts that the statement itself calls a transfer. Every
-// decision goes through the audited link RPCs, so each one can be undone.
+// Detection is deterministic and IBAN-only: a row's counterparty IBAN is one of the owner's
+// own accounts. Every decision goes through the audited link RPCs, so each one can be undone.
 
 export const MATCH_DAYS = 3;
 const IBAN = /^[A-Z]{2}[0-9]{2}[A-Z0-9]{8,30}$/;
@@ -44,15 +43,6 @@ export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts) {
     const proven = ins.filter(into => !used.has(into.id) && matches(out, into) && (points(out, into.accountId) || points(into, out.accountId)))
       .sort((a, b) => days(out.postedOn, a.postedOn) - days(out.postedOn, b.postedOn) || a.id.localeCompare(b.id));
     if (!used.has(out.id) && proven[0]) take(out, proven[0]);
-  }
-  // Without IBAN evidence: the statement says transfer and the match is unambiguous both ways.
-  for (const out of outs) {
-    if (used.has(out.id)) continue;
-    const options = ins.filter(into => !used.has(into.id) && matches(out, into));
-    if (options.length !== 1) continue;
-    const into = options[0];
-    if (outs.filter(other => !used.has(other.id) && matches(other, into)).length !== 1) continue;
-    if (out.reviewReasons.includes("source_transfer") || into.reviewReasons.includes("source_transfer")) take(out, into);
   }
   // A leg that names an own account Moneo doesn't track.
   const single = rows.flatMap(row => {
@@ -107,7 +97,7 @@ export async function loadTransferCandidates(db: SupabaseClient, workspaceId: st
   return rows;
 }
 
-/** Find and link transfers between the owner's accounts, as the signed-in user. */
+/** Find and link transfers between the owner's accounts. The service role acts for the owner. */
 export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string) {
   const [own, rows] = await Promise.all([loadOwnAccounts(db, workspaceId), loadTransferCandidates(db, workspaceId)]);
   const { pairs, single } = findOwnTransfers(rows, own);
