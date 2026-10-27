@@ -146,12 +146,12 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             {chips.map(([key, label]) => <li key={key}><Link href={withParams(shareable, { [key]: null })} scroll={false} aria-label={`Remove filter ${label}`} className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-xs hover:bg-muted">{label}<span aria-hidden>×</span></Link></li>)}
             {chips.length ? <li><Link href="/money/transactions" className="px-1 text-xs text-muted-foreground underline">Clear all</Link></li> : null}
           </ul>
-          <div className="flex items-center gap-3">
-            {count !== null ? <span className="font-mono text-xs text-muted-foreground">{filters.cursor ? `${count.toLocaleString(workspace.locale)} from here` : `${count.toLocaleString(workspace.locale)} ${count === 1 ? "transaction" : "transactions"}`}</span> : null}
+          <div className="flex items-center gap-3 max-lg:w-full max-lg:flex-wrap max-lg:justify-between">
+            {count !== null ? <span className="font-mono text-xs text-muted-foreground max-lg:whitespace-nowrap">{filters.cursor ? `${count.toLocaleString(workspace.locale)} from here` : `${count.toLocaleString(workspace.locale)} ${count === 1 ? "transaction" : "transactions"}`}</span> : null}
             <nav aria-label="Group by" className="flex items-center gap-1 text-xs"><span className="text-muted-foreground">Group</span>
               {GROUPS.map(option => <Link key={option.value} scroll={false} aria-current={(filters.group ?? "") === option.value ? "true" : undefined}
                 href={withParams(viewBase, { group: option.value || null, cursor: null })}
-                className={`rounded-md px-2 py-1 ${(filters.group ?? "") === option.value ? "bg-muted font-medium" : "text-muted-foreground hover:bg-muted"}`}>{option.label}</Link>)}
+                className={`rounded-md px-2 py-1 max-lg:whitespace-nowrap ${(filters.group ?? "") === option.value ? "bg-muted font-medium" : "text-muted-foreground hover:bg-muted"}`}>{option.label}</Link>)}
             </nav>
           </div>
         </div>
