@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M5Z6NY62DMHAYG1RF48RWWWW",
+  "session_id": "edcf2f37-017a-49ae-ab56-a9af7ef8baaa",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-27T17:31:43.4673486Z",
+  "branch": "t3/fix-account-aware-artifacts",
+  "checkpoints_count": 2,
+  "save_step_count": 1,
+  "files_touched": [
+    "lib/ai/artifact-examples.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-haiku-5-5",
+  "turn_id": "7f84edfea823",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "redaction": {
+    "replacements": 107,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 152,
+      "key_context": 7,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 6
+  }
+}
