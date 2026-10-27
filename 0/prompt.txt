@@ -1,0 +1,37 @@
+Mission: Make the Entire Application Extremely Fast
+The application's functionality is good, but pages take too long to load and navigation and interactions feel slow. I want the entire application to feel almost instant.
+Act as a senior performance engineer. Inspect the codebase, identify the actual bottlenecks, implement the highest-impact optimizations, and prove the results with real measurements.
+1. Measure Before Optimizing
+Establish a baseline using actual timings. Measure:
+Initial application load and navigation between pages.
+Time taken for individual interactions, clicks, selections, filters, tabs, and dropdowns to respond and finish loading their content.
+API response times, database queries, unnecessary network requests, and frontend rendering delays.
+Relevant Core Web Vitals and bundle sizes where applicable.
+Pay particular attention to complete user workflows, not just individual pages. For example, open Overview, navigate to Cashflow, select In or Out, and then open Uncategorized. Measure how long each step takes, how quickly the UI responds, when the actual data appears, and the total time to complete the workflow.
+Identify which steps are fast, which are slow, and exactly why. Inspect similar workflows throughout the application.
+2. Optimize the Entire Application
+Investigate the frontend, backend, database, routing, rendering, and network requests as relevant to the project.
+Implement appropriate optimizations, including caching, lazy loading, code splitting, prefetching, parallel requests, query optimization, and eliminating unnecessary renders and duplicate API calls.
+Use current official documentation and proven techniques suited to the existing technology stack. Prioritize fixes based on measurable impact rather than adding optimizations blindly.
+Make navigation and interactions feel immediate while preserving existing functionality, UI, security, and data correctness.
+3. Verify Every Improvement
+After implementing the fixes, repeat the same tests under comparable conditions.
+Run the available tests and production build. Check for regressions, incorrect cached data, broken workflows, and console errors.
+Do not claim improvements without evidence. If a metric cannot be measured in your environment, clearly state that limitation.
+4. Final Deliverable: Pull Request (PR)
+Create a pull request containing the implemented performance optimizations and a clear performance report.
+The PR description must include:
+Before-and-after measurements: Actual timings in milliseconds or seconds, percentage improvements, and testing conditions.
+Workflow benchmarks: Step-by-step timings for important user journeys, including Overview → Cashflow → In/Out → Uncategorized, identifying which steps were slow.
+Root causes and fixes: The key bottlenecks discovered and the changes implemented to resolve them.
+Verification: Tests, production builds, performance checks, and workflows completed successfully.
+Remaining issues: Any unresolved bottlenecks, unavailable metrics, or limitations.
+
+The PR must contain actual measured results, not estimated or fabricated improvements.
+
+---
+
+Then apply the migrations 
+What does the industry do for this problem 
+Make them fast thing of smart ways to make it fast 
+Close the 2 other dev server to have it nice
