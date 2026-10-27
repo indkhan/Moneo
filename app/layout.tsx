@@ -14,6 +14,8 @@ export const metadata: Metadata = {
   applicationName: "Moneo",
   appleWebApp: { capable: true, title: "Moneo", statusBarStyle: "default" },
   icons: { icon: "/icon-192.png", apple: "/apple-touch-icon.png" },
+  // iPhone Safari reads this tag, not mobile-web-app-capable, to open the Home Screen app standalone.
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 // viewport-fit=cover lets env(safe-area-inset-*) report the iPhone notch and home indicator, which the mobile nav relies on.
