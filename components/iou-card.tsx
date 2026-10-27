@@ -9,7 +9,7 @@ type Proposal = Pick<ChatProposal, "id" | "title" | "detail" | "status"> & Parti
 const NEW_CASH = "";
 
 /** A loan, repayment or expense waiting for a yes/no. Nothing is saved until Add is pressed. */
-export function IouCard({ id, initial }: { id: string; initial?: Proposal }) {
+export function IouCard({ id, initial, onAccount }: { id: string; initial?: Proposal; onAccount?: (id: string, accountId: string | undefined) => void }) {
   const [proposal, setProposal] = useState<Proposal | null | undefined>(initial);
   const [account, setAccount] = useState<string>();
   const [error, setError] = useState<string>();
@@ -38,7 +38,7 @@ export function IouCard({ id, initial }: { id: string; initial?: Proposal }) {
     {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
     {open ? <div className="mt-3 flex flex-wrap items-center gap-2">
       {transaction && proposal.accounts && <label className="flex items-center gap-2 text-sm"><span className="text-muted-foreground">From</span>
-        <select value={chosen} onChange={event => setAccount(event.target.value)} disabled={pending} className="min-h-9 rounded-lg border border-border bg-background px-2 text-sm">
+        <select value={chosen} onChange={event => { setAccount(event.target.value); onAccount?.(id, event.target.value || undefined); }} disabled={pending} className="min-h-9 rounded-lg border border-border bg-background px-2 text-sm">
           {proposal.needsCash && <option value={NEW_CASH}>Cash (new account)</option>}
           {proposal.accounts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select></label>}

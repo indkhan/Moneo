@@ -24,7 +24,7 @@ import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/a
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
-  return content.replace(/```(?:chart|moneo-chart)\n[\s\S]*?```/g, "[chart]").replace(/```moneo-(?:proposal|decision)\n[\s\S]*?```/g, "[card shown]");
+  return content.replace(/```(?:chart|moneo-chart)\n[\s\S]*?```/g, "[chart]").replace(/```moneo-(?:proposals?|decision)\n[\s\S]*?```/g, "[card shown]");
 }
 
 const inputSchema = z.object({
@@ -271,7 +271,10 @@ export async function POST(request: Request) {
     }
     const [usage, steps] = await Promise.all([result.usage, result.steps]);
     if (!text.trim()) throw new Error("The model returned no answer");
-    const answer = [text.trim(), ...[...new Set(proposalCards)].map(id => "```moneo-proposal\n" + id + "\n```"), ...new Set(decisionCards)].join("\n\n");
+    // Several cards from one answer are grouped so they can also be added all at once.
+    const cards = [...new Set(proposalCards)];
+    const cardBlocks = cards.length > 1 ? ["```moneo-proposals\n" + JSON.stringify(cards) + "\n```"] : cards.map(id => "```moneo-proposal\n" + id + "\n```");
+    const answer = [text.trim(), ...cardBlocks, ...new Set(decisionCards)].join("\n\n");
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (request.signal.aborted) throw new Error("Request canceled");
