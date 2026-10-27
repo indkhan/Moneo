@@ -1,8 +1,9 @@
+import type { ChatAttachment } from "./chat-attachments";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
 const cursorSchema = z.object({ created_at: z.iso.datetime({ offset: true }), id: z.uuid() });
-export type HistoryMessage = { id: string; role: string; content: string; created_at: string; plan?: string[]; tools?: SavedToolStep[] };
+export type HistoryMessage = { id: string; role: string; content: string; created_at: string; plan?: string[]; tools?: SavedToolStep[]; attachments?: ChatAttachment[] };
 export type SavedToolStep = { name: string; state: "done"; input?: unknown; output?: string };
 export type HistoryThread = { id: string; title: string; created_at: string };
 const THREAD_PAGE = 30;
@@ -53,7 +54,7 @@ export async function loadThreads(supabase: SupabaseClient, workspace: string, t
 export async function loadConversation(supabase: SupabaseClient, workspace: string, id: string, messagesBefore?: string) {
   const mc = before(messagesBefore);
   if (!z.uuid().safeParse(id).success) throw new Error("Conversation unavailable");
-  let mq = supabase.from("messages").select("id,role,content,created_at,reply_to").eq("workspace_id", workspace).eq("conversation_id", id).order("created_at", { ascending: false }).order("id", { ascending: false });
+  let mq = supabase.from("messages").select("id,role,content,created_at,reply_to,attachments").eq("workspace_id", workspace).eq("conversation_id", id).order("created_at", { ascending: false }).order("id", { ascending: false });
   if (mc) mq = mq.or(`created_at.lt.${mc.created_at},and(created_at.eq.${mc.created_at},id.lt.${mc.id})`);
   const [conversation, page] = await Promise.all([
     supabase.from("conversations").select("id,title,created_at").eq("workspace_id", workspace).eq("id", id).is("deleted_at", null).maybeSingle(),

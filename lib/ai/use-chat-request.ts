@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { FollowUp } from "./follow-ups";
+import type { ChatAttachment } from "./chat-attachments";
 
 export type ChatAnswer = { answer: string; conversationId: string; toolsUsed?: string[]; followUps?: FollowUp[] };
 export type ChatStreamEvent =
@@ -38,7 +39,7 @@ export function useChatRequest() {
   const [error, setError] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
 
-  async function send(payload: { conversationId: string; message: string; context?: Record<string, unknown> }, onEvent?: (event: ChatStreamEvent) => void) {
+  async function send(payload: { conversationId: string; message: string; context?: Record<string, unknown>; attachments?: ChatAttachment[] }, onEvent?: (event: ChatStreamEvent) => void) {
     if (active.current) return null;
     const run = { requestId: crypto.randomUUID(), controller: new AbortController() };
     active.current = run;

@@ -5,7 +5,8 @@ import { AiToolActivity, type ToolStep } from "./ai-tool-activity";
 import type { HistoryMessage } from "@/lib/ai/conversation-history";
 import type { FollowUp } from "@/lib/ai/follow-ups";
 import Link from "next/link";
-import { ChevronRight, ListChecks, LoaderCircle, Sparkle } from "lucide-react";
+import { ChevronRight, FileText, ListChecks, LoaderCircle, Sparkle } from "lucide-react";
+import type { ChatAttachment } from "@/lib/ai/chat-attachments";
 
 export const DRAFT_EVENT = "moneo-chat-draft";
 /** One-click next steps: prompts fill the composer (the user still sends), links navigate. */
@@ -24,13 +25,26 @@ function Plan({ steps, done, collapsed = false }: { steps: string[]; done: boole
   </details>;
 }
 
+/** Photos show as thumbnails and PDFs as chips; both open the private file. */
+function MessageFiles({ files }: { files?: ChatAttachment[] }) {
+  if (!files?.length) return null;
+  return <ul className="mb-2 ml-auto flex w-fit max-w-[85%] flex-wrap justify-end gap-2" aria-label="Attachments">{files.map(file => {
+    const href = `/api/chat/attachments?${new URLSearchParams({ path: file.path })}`;
+    return <li key={file.path}><a href={href} target="_blank" rel="noreferrer" title={file.name} className="block">
+      {/* eslint-disable-next-line @next/next/no-img-element -- private, signed or local blob images cannot go through the image optimizer */}
+      {file.type.startsWith("image/") ? <img src={href} alt={file.name} className="h-28 max-w-48 rounded-xl border border-border object-cover" />
+        : <span className="flex max-w-56 items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm"><FileText className="size-4 shrink-0" aria-hidden="true" /><span className="truncate">{file.name}</span></span>}
+    </a></li>;
+  })}</ul>;
+}
+
 // The markdown renderer is the heaviest client code here; split it out of the page bundle.
 const AiMessage = dynamic(() => import("./ai-message").then(module => module.AiMessage), {
   loading: () => <div className="h-5 w-2/3 animate-pulse rounded bg-muted" aria-hidden="true" />,
 });
 
 export type ChatItem = Omit<HistoryMessage, "tools"> & { tools?: (string | ToolStep)[]; plan?: string[]; followUps?: FollowUp[] };
-export type PendingExchange = { question: string; tools: ToolStep[]; answer?: string; streaming?: boolean; plan?: string[]; steers?: string[] };
+export type PendingExchange = { question: string; attachments?: ChatAttachment[]; tools: ToolStep[]; answer?: string; streaming?: boolean; plan?: string[]; steers?: string[] };
 
 /** Message list shared by the AI page and the Ask Moneo panel. */
 export function ChatMessages({ messages, pending, compact = false }: { messages: ChatItem[]; pending?: PendingExchange | null; compact?: boolean }) {
@@ -40,10 +54,10 @@ export function ChatMessages({ messages, pending, compact = false }: { messages:
   return <div className={`min-w-0 max-w-full ${compact ? "space-y-6" : "space-y-8"}`} aria-live="polite">
     {messages.map(item => <article key={item.id}>
       <time className="sr-only" dateTime={item.created_at}>{item.created_at}</time>
-      {item.role === "user" ? <p className={bubble}>{item.content}</p> : assistant(<>{item.plan && <Plan steps={item.plan} done collapsed />}<AiToolActivity tools={item.tools ?? []} /><AiMessage content={item.content} />{item === messages.at(-1) && !pending && <FollowUps items={item.followUps ?? []} compact={compact} />}</>)}
+      {item.role === "user" ? <><MessageFiles files={item.attachments} /><p className={bubble}>{item.content}</p></> : assistant(<>{item.plan && <Plan steps={item.plan} done collapsed />}<AiToolActivity tools={item.tools ?? []} /><AiMessage content={item.content} />{item === messages.at(-1) && !pending && <FollowUps items={item.followUps ?? []} compact={compact} />}</>)}
     </article>)}
     {pending && <article className={compact ? "space-y-6" : "space-y-8"}>
-      <p className={bubble}>{pending.question}</p>
+      <div><MessageFiles files={pending.attachments} /><p className={bubble}>{pending.question}</p></div>
       {pending.steers?.map((steer, index) => <p key={index} className={bubble}>{steer}</p>)}
       {assistant(<>{pending.plan && <Plan steps={pending.plan} done={Boolean(pending.answer)} />}<AiToolActivity tools={pending.tools} />{pending.answer ? <><AiMessage content={pending.answer} />{!pending.streaming && <p role="status" className="mt-2 text-xs text-muted-foreground">Saving to history…</p>}</>
         : <p role="status" className="flex items-center gap-2 py-1 text-sm text-muted-foreground"><span className="flex gap-1" aria-hidden="true">{[0, 150, 300].map(delay => <span key={delay} className="size-1.5 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: `${delay}ms` }} />)}</span>{pending.tools.length ? "Working with your data…" : "Thinking…"}</p>}</>)}

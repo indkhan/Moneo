@@ -602,6 +602,7 @@ export const messages = pgTable("messages", {
   replyTo: uuid("reply_to"),
   content: text("content").notNull(),
   context: jsonb("context"),
+  attachments: jsonb("attachments").notNull().default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("messages_workspace").on(table.workspaceId),
@@ -609,6 +610,7 @@ export const messages = pgTable("messages", {
   uniqueIndex("messages_reply_unique").on(table.conversationId, table.replyTo).where(sql`${table.replyTo} is not null`),
   index("messages_conversation_created").on(table.conversationId, table.createdAt),
   check("messages_role_check", sql`${table.role} in ('user', 'assistant')`),
+  check("messages_attachments_check", sql`jsonb_typeof(${table.attachments}) = 'array' and jsonb_array_length(${table.attachments}) <= 4`),
 ]);
 
 export const artifacts = pgTable("artifacts", {
@@ -997,7 +999,7 @@ export const agentProposals = pgTable("agent_proposals", {
   unique("agent_proposals_run_conflict_key").on(table.runId, table.conflictKey),
   index("agent_proposals_workspace_status").on(table.workspaceId, table.status),
   uniqueIndex("agent_proposals_standalone_conflict_key").on(table.workspaceId, table.conflictKey).where(sql`${table.runId} is null`),
-  check("agent_proposals_kind_check", sql`${table.kind} in ('categorize','recurring','budget','finding','iou_create','iou_settle')`),
+  check("agent_proposals_kind_check", sql`${table.kind} in ('categorize','recurring','budget','finding','iou_create','iou_settle','transaction_create')`),
   check("agent_proposals_status_check", sql`${table.status} in ('proposed','applying','accepted','rejected','failed')`),
   check("agent_proposals_confidence_check", sql`${table.confidence} between 0 and 100`),
   check("agent_proposals_title_check", sql`char_length(${table.title}) between 1 and 200`),

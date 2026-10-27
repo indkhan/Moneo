@@ -16,11 +16,15 @@ import { evaluateInvestigationScenario, investigationDetail, investigationDetail
 import type { ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import { chatFollowUps, planInput } from "@/lib/ai/follow-ups";
 import { iouInputSchema, proposeIou, proposeRepayments } from "@/lib/ai/iou-proposals";
+import { proposeTransaction, transactionInputSchema } from "@/lib/ai/transaction-proposals";
+import { APP_GUIDE } from "@/lib/ai/app-guide";
+import { MAX_ATTACHMENTS, attachmentNote, attachmentSchema } from "@/lib/ai/chat-attachments";
+import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
-  return content.replace(/```(?:chart|moneo-chart)\n[\s\S]*?```/g, "[chart]").replace(/```moneo-proposal\n[\s\S]*?```/g, "[loan card shown]");
+  return content.replace(/```(?:chart|moneo-chart)\n[\s\S]*?```/g, "[chart]").replace(/```moneo-(?:proposals?|decision)\n[\s\S]*?```/g, "[card shown]");
 }
 
 const inputSchema = z.object({
@@ -28,6 +32,7 @@ const inputSchema = z.object({
   requestId: z.uuid(),
   message: z.string().trim().min(1).max(4000),
   context: z.record(z.string(), z.unknown()).optional(),
+  attachments: z.array(attachmentSchema).max(MAX_ATTACHMENTS).optional(),
 }).strict();
 
 export async function POST(request: Request) {
@@ -38,11 +43,12 @@ export async function POST(request: Request) {
   if (!parsed.success || JSON.stringify(parsed.data.context ?? {}).length > 2000)
     return Response.json({ error: "Invalid message" }, { status: 400 });
   if (!(process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY)) return Response.json({ error: "AI is not configured" }, { status: 503 });
-  const { conversationId, requestId, message, context: capturedContext } = parsed.data;
+  const { conversationId, requestId, message, context: capturedContext, attachments = [] } = parsed.data;
   const { supabase, workspace, settings } = context;
+  if (attachments.some(file => !file.path.startsWith(`${workspace.id}/`))) return Response.json({ error: "Invalid attachment" }, { status: 400 });
   // Model resolution and earlier history do not depend on the claim; start them with the ownership check.
   const modelPromise = modelForSettings(settings, "chat");
-  const historyPromise = Promise.resolve(supabase.from("messages").select("role, content, context")
+  const historyPromise = Promise.resolve(supabase.from("messages").select("role, content, context, attachments")
     .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
     .order("created_at", { ascending: false }).limit(19));
   modelPromise.catch(() => {});
@@ -66,18 +72,32 @@ export async function POST(request: Request) {
     await supabase.rpc("cancel_chat_request", { p_request_id: requestId });
     return Response.json({ status: "canceled" }, { status: 409 });
   }
+  // The claim saved the message; its files are kept beside it for the chat history.
+  if (attachments.length) {
+    const saved = await supabase.from("messages").update({ attachments }).eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
+      .eq("request_id", requestId).eq("role", "user");
+    if (saved.error) console.error("saving chat attachments failed", saved.error);
+  }
   const streaming = request.headers.get("accept")?.includes("application/x-ndjson") ?? false;
   async function complete(emit: (event: ChatStreamEvent) => void): Promise<[unknown, number]> {
   try {
   const { data: history, error: historyError } = await historyPromise;
   if (historyError) throw historyError;
   // History was read before the claim saved this message, so append it exactly as the claim stores it.
-  const submitted = { role: "user", content: message, context: capturedContext ?? {} };
-  const modelMessages = [...(history ?? []).reverse(), submitted].map(item => ({
+  const submitted = { role: "user", content: message, context: capturedContext ?? {}, attachments: [] };
+  const textMessages = [...(history ?? []).reverse(), submitted].map(item => ({
     role: item.role as "user" | "assistant",
     content: item.role === "assistant" ? withoutCharts(item.content)
-      : item.context && Object.keys(item.context).length ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content,
+      : (item.context && Object.keys(item.context).length ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content) + attachmentNote(item.attachments),
   }));
+  // Only this message's files are read by the model; earlier ones are named in their text.
+  const files = await Promise.all(attachments.map(async file => {
+    const { data, error } = await supabase.storage.from("chat").download(file.path);
+    if (error || !data) throw new Error(`Could not read ${file.name}`);
+    return { type: "file" as const, data: new Uint8Array(await data.arrayBuffer()), mediaType: file.type, filename: file.name };
+  }));
+  const last = textMessages.pop()!;
+  const modelMessages = [...textMessages, files.length ? { role: "user" as const, content: [{ type: "text" as const, text: last.content }, ...files] } : last];
   const categoryCommand = parseCategoryCommand(message);
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
@@ -135,6 +155,8 @@ export async function POST(request: Request) {
     let modelFollowUps: string[] = [];
     // Loan cards are drawn by the app beside the answer, so the model cannot misquote or skip them.
     const proposalCards: string[] = [];
+    // Agent-team decisions are confirmed on a card too; the model only names the ids.
+    const decisionCards: string[] = [];
     const planTool = { plan_investigation: tool({ description: "Optional: show the user 2-5 short steps you will take for a multi-part question, and up to 3 follow-up questions they might ask next. Returns nothing.",
       inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); toolCalls.push({ name: "plan_investigation", input, output: "" }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }),
       iou_propose: tool({ description: "The user says they lent or gave money to a person, or borrowed or received money from one. Shows them a card to accept or dismiss; nothing is saved until they accept. Use the user's exact amount, person and currency.",
@@ -142,6 +164,21 @@ export async function POST(request: Request) {
           const created = await proposeIou(await requireWorkspace(), input);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with Add and Dismiss is shown to the user below your answer. Say it is waiting for their approval; do not repeat the details." };
+        } }),
+      transaction_propose: tool({ description: "The user says they spent, paid, bought, earned or received money (or an attached receipt or invoice shows it). Shows a card to add it to their transactions; nothing is saved until they accept. Call once per separate payment, with the exact amount, currency and date from the user or document.",
+        inputSchema: transactionInputSchema, execute: async input => {
+          const created = await proposeTransaction(await requireWorkspace(), input);
+          proposalCards.push(created.proposalId);
+          return { proposed: created.title, note: "A card with an account picker, Add and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
+        } }),
+      app_help: tool({ description: "How Moneo works: its pages, what each does, and what this chat can do. Use for any question about the app itself.",
+        inputSchema: z.object({}).strict(), execute: async () => ({ guide: APP_GUIDE }) }),
+      agents_decide: tool({ description: "The user asks to accept, approve, mark as seen/watched, or dismiss agent-team findings. Pass the proposal ids from agents_findings. Shows one confirmation card; nothing changes until they press it.",
+        inputSchema: agentDecisionSchema, execute: async ({ ids, decision }) => {
+          const latest = await requireWorkspace();
+          const open = await openAgentProposalIds(latest.supabase, latest.workspace.id, [...new Set(ids)]);
+          if (open.length) decisionCards.push(decisionBlock(open, decision));
+          return { shown: open.length, skipped: ids.length - open.length, note: open.length ? "A confirmation card is shown below your answer; say it is waiting for them." : "None of these are open any more." };
         } }),
       // Artifacts are built on their own page; chat only hands the request over.
       suggest_artifact: tool({ description: "When the user asks for an interactive page, calculator, simulator, dashboard or what-if view, call this with a clear build request and give them the returned link. Do not build pages in chat.",
@@ -170,6 +207,8 @@ export async function POST(request: Request) {
           finance_detail: tool({ description: "Read an owned canonical transaction with its effective split/fee components, or a recurring series with complete paginated source transactions. Classification warnings remain explicit.", inputSchema: investigationDetailSchema, execute: input => aiEvidence(input.kind === "recurring" ? ["accounts", "transactions", "planning"] : ["accounts", "transactions"], latest => investigationDetail(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
           finance_scenario: tool({ description: "Compare the same investigation against at most 100 hypothetical effective-record amount/date/category overrides. Read-only; canonical ledger, sources, balances and recurrence remain unchanged. Use exact minor-unit strings and owned effective IDs.", inputSchema: investigationScenarioSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => evaluateInvestigationScenario(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
         } : {}),
+        ...(settings.ai_data_scopes.includes("transactions") ? { agents_findings: tool({ description: "Read what the agent team found in its recent runs: open proposals (categorizations, recurring bills, budgets, anomaly findings) with ids, plus each run's briefing and page link. Set includeDecided to also see accepted and dismissed ones.",
+          inputSchema: z.object({ includeDecided: z.boolean().optional() }).strict(), execute: ({ includeDecided }) => aiEvidence(["transactions"], latest => agentFindings(latest.supabase, workspace.id, { includeDecided })) }) } : {}),
         ...(settings.ai_data_scopes.includes("imports") ? { imports_status: tool({
           description: "Read recorded import workflow status and row counts. Completed means processing finished, not that all financial classifications or current balances are complete. Use this to answer whether imports are still running; do not infer status from balance freshness or filenames.",
           inputSchema: z.object({}).strict(), execute: () => aiEvidence(["imports"], async latest => {
@@ -232,7 +271,10 @@ export async function POST(request: Request) {
     }
     const [usage, steps] = await Promise.all([result.usage, result.steps]);
     if (!text.trim()) throw new Error("The model returned no answer");
-    const answer = [text.trim(), ...[...new Set(proposalCards)].map(id => "```moneo-proposal\n" + id + "\n```")].join("\n\n");
+    // Several cards from one answer are grouped so they can also be added all at once.
+    const cards = [...new Set(proposalCards)];
+    const cardBlocks = cards.length > 1 ? ["```moneo-proposals\n" + JSON.stringify(cards) + "\n```"] : cards.map(id => "```moneo-proposal\n" + id + "\n```");
+    const answer = [text.trim(), ...cardBlocks, ...new Set(decisionCards)].join("\n\n");
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
     if (request.signal.aborted) throw new Error("Request canceled");

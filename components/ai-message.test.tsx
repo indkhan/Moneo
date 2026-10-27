@@ -49,3 +49,11 @@ it("renders a loan card for an app-written moneo-proposal block and ignores a ma
   const bad = renderToStaticMarkup(<AiMessage content={"```moneo-proposal\nnot-an-id\n```"} />);
   expect(bad).not.toContain("Loading");
 });
+
+it("groups several proposal cards with an Add all button and ignores invalid groups", () => {
+  const ids = ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002", "00000000-0000-4000-8000-000000000003"];
+  const html = renderToStaticMarkup(<AiMessage content={`Three cards are waiting.\n\n\`\`\`moneo-proposals\n${JSON.stringify(ids)}\n\`\`\``} />);
+  expect(html).toContain("Add all 3");
+  expect(html.match(/Loading…/g)).toHaveLength(3);
+  expect(renderToStaticMarkup(<AiMessage content={'```moneo-proposals\n["not-an-id","x"]\n```'} />)).not.toContain("Add all");
+});

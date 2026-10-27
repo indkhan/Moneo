@@ -8,6 +8,8 @@ import type { Plugin } from "unified";
 import type { Root } from "mdast";
 import { ChatChart } from "./chat-chart";
 import { IouCard } from "./iou-card";
+import { DecisionCard } from "./decision-card";
+import { ProposalGroup } from "./proposal-group";
 import { AnswerChart, ChartBoundary, parseChartOption } from "./chart";
 
 // Only link known application paths in text nodes, never inside SQL/code blocks.
@@ -48,6 +50,8 @@ export function AiMessage({ content }: { content: string }) {
       if (code?.className?.includes("language-moneo-chart") && typeof code.children === "string") return <ChatChart source={code.children} />;
       const proposalId = code?.className?.includes("language-moneo-proposal") && typeof code.children === "string" ? /^[0-9a-f-]{36}$/i.exec(code.children.trim())?.[0] : undefined;
       if (proposalId) return <IouCard id={proposalId} />;
+      if (code?.className?.includes("language-moneo-proposals") && typeof code.children === "string") return <ProposalGroup source={code.children} />;
+      if (code?.className?.includes("language-moneo-decision") && typeof code.children === "string") return <DecisionCard source={code.children} />;
       // A chart that fails to parse or render stays visible as its source code.
       const chart = /\blanguage-chart\b/.test(code?.className ?? "") && typeof code?.children === "string" ? parseChartOption(code.children) : null;
       if (chart) return <ChartBoundary fallback={<CodeBlock>{children}</CodeBlock>}><AnswerChart option={chart} /></ChartBoundary>;

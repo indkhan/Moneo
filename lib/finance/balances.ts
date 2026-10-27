@@ -59,6 +59,8 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
       }
       balance.snapshot_valid = true;
       const boundaryDate = calendarDate(snapshot.as_of, timeZone);
+      // Balances entered for today record the moment they were observed; past-dated ones start at local midnight.
+      const observedDuringDay = calendarDate(new Date(Date.parse(snapshot.as_of) - 1).toISOString(), timeZone) === boundaryDate;
       const covered = new Set<string>();
       if (snapshot.boundary_kind === "reviewed_activity") {
         if (!Array.isArray(snapshot.covered_transactions)) throw new Error("Reviewed activity evidence is missing");
@@ -89,7 +91,8 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
             if (row.source_transaction_ids?.includes(snapshot.source_transaction_id)) continue;
             throw new Error("Same-timestamp ledger has no evidenced order relative to the snapshot");
           }
-        } else if (postingDate === boundaryDate) continue; // a date-only balance is that day's closing balance, so it already includes the day's rows
+        } else if (postingDate === boundaryDate && !(row.posted_at && observedDuringDay && Date.parse(row.posted_at) > Date.parse(snapshot.as_of))) continue;
+        // A date-only balance is that day's closing balance, unless it was observed during the day: then later timed rows still move it.
         if (row.currency_code !== account.currency_code) throw new Error("Ledger currency differs from account currency");
         estimate += delta;
         balance.reconciled_rows++;
