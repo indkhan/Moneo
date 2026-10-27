@@ -7,6 +7,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useChatQueue } from "@/lib/ai/use-chat-queue";
 import { ChatComposer } from "./chat-composer";
+import { useChatAttachments } from "@/lib/ai/use-chat-attachments";
+import { ATTACHMENT_ONLY_MESSAGE, type ChatAttachment } from "@/lib/ai/chat-attachments";
 import { ChatQueue } from "./chat-queue";
 import { ChatMessages, DRAFT_EVENT, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
 import { selectConversation } from "@/lib/ai/selected-conversation";
@@ -60,6 +62,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     return () => { window.clearTimeout(timer); ++counter.current; window.removeEventListener("moneo-conversation-change", changed); };
   }, [open, load]);
   const chat = useChatRequest();
+  const files = useChatAttachments();
   const { send, cancel, busy, error, status } = chat;
   useEffect(() => {
     const draft = (event: Event) => { const detail = (event as CustomEvent<{ prompt?: string; compact: boolean }>).detail; if (detail.compact && detail.prompt) { setQuestion(detail.prompt); document.getElementById("panel-question")?.focus(); } };
@@ -69,31 +72,33 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
 
   function ask(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!question.trim() || loading || historyError) return;
-    if (busy) { enqueue(question); setQuestion(""); return; }
-    void sendMessage(question);
+    if ((!question.trim() && !files.ready.length) || loading || historyError) return;
+    // Files go with the next message the user sends themselves, never with a queued one.
+    if (busy) { if (files.items.length) return; enqueue(question); setQuestion(""); return; }
+    void sendMessage(question, false, files.ready);
   }
 
-  async function sendMessage(question: string, queued = false) {
+  async function sendMessage(typed: string, queued = false, attachments: ChatAttachment[] = []) {
     if (busy || loading || historyError) return;
+    const question = typed.trim() || ATTACHMENT_ONLY_MESSAGE;
     const id = conversationId ?? crypto.randomUUID();
     setConversationId(id);
     const context = { path: window.location.pathname + window.location.search, ...(about ? { about } : {}) };
     const selectionGeneration = generation.current;
-    let live: PendingExchange = { question, tools: [] };
+    let live: PendingExchange = { question, attachments, tools: [] };
     setPending(live);
-    if (!queued) setQuestion("");
-    const result = await send({ conversationId: id, message: question, context }, event => { live = applyChatEvent(live, withSteers(event)); setPending(live); });
+    if (!queued) { setQuestion(""); files.clear(); }
+    const result = await send({ conversationId: id, message: question, context, ...(attachments.length && { attachments }) }, event => { live = applyChatEvent(live, withSteers(event)); setPending(live); });
     setPending(null);
     if (result && selectionGeneration === generation.current) {
       selectConversation(selectionKey, id);
       const now = new Date().toISOString();
-      setHistory(current => [...current, { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now },
+      setHistory(current => [...current, { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now, attachments },
         ...(live.steers ?? []).map(content => ({ id: `local-${crypto.randomUUID()}`, role: "user" as const, content, created_at: now })), { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: live.tools.length ? live.tools : result.toolsUsed, plan: live.plan, followUps: result.followUps }]);
       setAbout(null);
       // The AI page keeps its own client state; refresh it only when it is the page behind the panel.
       if (pathname === "/ai") { router.push(`/ai?conversation=${id}`); router.refresh(); }
-    } else if (!result && !queued) setQuestion(current => current || question);
+    } else if (!result && !queued) { setQuestion(current => current || typed); files.restore(attachments); }
   }
 
   // A queued message that fails goes back to the queue, so the composer keeps what the user is typing.
@@ -121,7 +126,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
       <div className="px-3 pb-3">
         {about && <p className="mb-2 flex items-center gap-2 px-2 text-xs text-muted-foreground">About: <span className="min-w-0 truncate rounded bg-muted px-1.5 py-0.5 text-foreground">{about.label}</span><button type="button" onClick={() => setAbout(null)} aria-label="Remove context" className="hover:text-foreground"><X className="size-3" aria-hidden="true" /></button></p>}
         <ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} />
-        <ChatComposer compact id="panel-question" label="Question" value={question} onChange={setQuestion} onSubmit={ask} onStop={() => void cancel()} busy={busy} disabled={loading || !!historyError} placeholder="Ask about this page…" busyText="Request running · waiting for response" />
+        <ChatComposer compact id="panel-question" label="Question" value={question} onChange={setQuestion} onSubmit={ask} onStop={() => void cancel()} busy={busy} disabled={loading || !!historyError} placeholder="Ask about this page…" busyText="Request running · waiting for response" attachments={files} />
         {error && <p role="alert" className="mt-2 px-2 text-sm text-danger">{error}</p>}
         {status === "canceled" && <p role="status" className="mt-2 px-2 text-sm text-muted-foreground">Canceled. Completed edits remain in transaction history.</p>}
         <Link href={historyError ? "/ai" : `/ai?conversation=${conversationId ?? "new"}`} onClick={onClose} className="mt-2 block text-center text-xs text-muted-foreground hover:text-foreground">Continue in AI workspace ↗</Link>

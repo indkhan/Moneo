@@ -10,6 +10,7 @@ import { ChatMessages, applyChatEvent, type ChatItem, type PendingExchange } fro
 import { ConversationSelection } from "@/lib/ai/selected-conversation";
 import type { HistoryThread } from "@/lib/ai/conversation-history";
 import type { ChatAnswer, ChatStreamEvent } from "@/lib/ai/use-chat-request";
+import type { ChatAttachment } from "@/lib/ai/chat-attachments";
 
 // Only fetched once someone opens the deep review popover.
 const AnalysisPanel = dynamic(() => import("@/app/ai/analysis-panel").then(module => module.AnalysisPanel), {
@@ -134,13 +135,13 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
 
   // Mirrors each pending exchange so the finished answer can keep its plan and tool calls.
   const live = useRef<Record<string, PendingExchange>>({});
-  function onStart(id: string, question: string) { live.current[id] = { question, tools: [] }; setPending(current => ({ ...current, [id]: live.current[id] })); }
+  function onStart(id: string, question: string, attachments: ChatAttachment[]) { live.current[id] = { question, attachments, tools: [] }; setPending(current => ({ ...current, [id]: live.current[id] })); }
   function onEvent(id: string, event: ChatStreamEvent) {
     if (!live.current[id]) return;
     const next = live.current[id] = applyChatEvent(live.current[id], event);
     setPending(current => current[id] ? { ...current, [id]: next } : current);
   }
-  function onDone(id: string, question: string, result: ChatAnswer | null) {
+  function onDone(id: string, question: string, result: ChatAnswer | null, attachments: ChatAttachment[]) {
     const finished = live.current[id];
     delete live.current[id];
     setPending(current => omit(current, id));
@@ -148,7 +149,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     const now = new Date().toISOString();
     const conversation = { id, title: question.trim().slice(0, 80), created_at: now };
     const exchange: ChatItem[] = [
-      { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now },
+      { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now, attachments },
       ...(finished?.steers ?? []).map(content => ({ id: `local-${crypto.randomUUID()}`, role: "user" as const, content, created_at: now })),
       { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: finished?.tools.length ? finished.tools : result.toolsUsed, plan: finished?.plan, followUps: result.followUps },
     ];

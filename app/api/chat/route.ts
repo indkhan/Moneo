@@ -18,6 +18,7 @@ import { chatFollowUps, planInput } from "@/lib/ai/follow-ups";
 import { iouInputSchema, proposeIou, proposeRepayments } from "@/lib/ai/iou-proposals";
 import { proposeTransaction, transactionInputSchema } from "@/lib/ai/transaction-proposals";
 import { APP_GUIDE } from "@/lib/ai/app-guide";
+import { MAX_ATTACHMENTS, attachmentNote, attachmentSchema } from "@/lib/ai/chat-attachments";
 import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
 
@@ -31,6 +32,7 @@ const inputSchema = z.object({
   requestId: z.uuid(),
   message: z.string().trim().min(1).max(4000),
   context: z.record(z.string(), z.unknown()).optional(),
+  attachments: z.array(attachmentSchema).max(MAX_ATTACHMENTS).optional(),
 }).strict();
 
 export async function POST(request: Request) {
@@ -41,11 +43,12 @@ export async function POST(request: Request) {
   if (!parsed.success || JSON.stringify(parsed.data.context ?? {}).length > 2000)
     return Response.json({ error: "Invalid message" }, { status: 400 });
   if (!(process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY)) return Response.json({ error: "AI is not configured" }, { status: 503 });
-  const { conversationId, requestId, message, context: capturedContext } = parsed.data;
+  const { conversationId, requestId, message, context: capturedContext, attachments = [] } = parsed.data;
   const { supabase, workspace, settings } = context;
+  if (attachments.some(file => !file.path.startsWith(`${workspace.id}/`))) return Response.json({ error: "Invalid attachment" }, { status: 400 });
   // Model resolution and earlier history do not depend on the claim; start them with the ownership check.
   const modelPromise = modelForSettings(settings, "chat");
-  const historyPromise = Promise.resolve(supabase.from("messages").select("role, content, context")
+  const historyPromise = Promise.resolve(supabase.from("messages").select("role, content, context, attachments")
     .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
     .order("created_at", { ascending: false }).limit(19));
   modelPromise.catch(() => {});
@@ -69,18 +72,32 @@ export async function POST(request: Request) {
     await supabase.rpc("cancel_chat_request", { p_request_id: requestId });
     return Response.json({ status: "canceled" }, { status: 409 });
   }
+  // The claim saved the message; its files are kept beside it for the chat history.
+  if (attachments.length) {
+    const saved = await supabase.from("messages").update({ attachments }).eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
+      .eq("request_id", requestId).eq("role", "user");
+    if (saved.error) console.error("saving chat attachments failed", saved.error);
+  }
   const streaming = request.headers.get("accept")?.includes("application/x-ndjson") ?? false;
   async function complete(emit: (event: ChatStreamEvent) => void): Promise<[unknown, number]> {
   try {
   const { data: history, error: historyError } = await historyPromise;
   if (historyError) throw historyError;
   // History was read before the claim saved this message, so append it exactly as the claim stores it.
-  const submitted = { role: "user", content: message, context: capturedContext ?? {} };
-  const modelMessages = [...(history ?? []).reverse(), submitted].map(item => ({
+  const submitted = { role: "user", content: message, context: capturedContext ?? {}, attachments: [] };
+  const textMessages = [...(history ?? []).reverse(), submitted].map(item => ({
     role: item.role as "user" | "assistant",
     content: item.role === "assistant" ? withoutCharts(item.content)
-      : item.context && Object.keys(item.context).length ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content,
+      : (item.context && Object.keys(item.context).length ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content) + attachmentNote(item.attachments),
   }));
+  // Only this message's files are read by the model; earlier ones are named in their text.
+  const files = await Promise.all(attachments.map(async file => {
+    const { data, error } = await supabase.storage.from("chat").download(file.path);
+    if (error || !data) throw new Error(`Could not read ${file.name}`);
+    return { type: "file" as const, data: new Uint8Array(await data.arrayBuffer()), mediaType: file.type, filename: file.name };
+  }));
+  const last = textMessages.pop()!;
+  const modelMessages = [...textMessages, files.length ? { role: "user" as const, content: [{ type: "text" as const, text: last.content }, ...files] } : last];
   const categoryCommand = parseCategoryCommand(message);
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
