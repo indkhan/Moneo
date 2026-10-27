@@ -6,6 +6,8 @@ import dynamic from "next/dynamic";
 // Loaded on the client only, so echarts never ships in the server render or blocks first paint.
 // App charts use a trimmed echarts (bar, line, scatter); answer charts may use any type, so they load the full build.
 export const ReactECharts = dynamic(() => import("./echarts-lean"), { ssr: false });
+// Pages that import this module eagerly (Plan) start the echarts download before their chart renders.
+if (typeof window !== "undefined") void import("./echarts-lean");
 const FullECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
 
 function subscribeTheme(onChange: () => void) {
