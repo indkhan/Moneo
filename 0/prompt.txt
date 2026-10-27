@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bf7tokmzb</task-id>
+<tool-use-id>toolu_01SZGGZDzn7PN5pNxuR7E62U</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-3714a934\85e9150a-7842-44c7-986d-eda6365a23fe\tasks\bf7tokmzb.output</output-file>
+<status>completed</status>
+<summary>Background command "Run v2 benchmark" completed (exit code 0)</summary>
+</task-notification>
