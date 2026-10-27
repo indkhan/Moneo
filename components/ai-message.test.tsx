@@ -11,19 +11,37 @@ it("renders structured answers, code and existing source links", () => {
   expect(html).toContain("Open transaction and Undo");
 });
 
-it("renders app-written charts with filtered transaction links and ignores invalid chart blocks", () => {
-  const chart = { title: "Spending by category", currency: "EUR", rows: [{ label: "Income · 2026-09-01 to 2026-09-30", valueMinor: "5000", href: "/money/transactions?from=2026-09-01&to=2026-09-30&direction=income" }, { label: "Spending · 2026-09-01 to 2026-09-30", valueMinor: "1250" }] };
-  const html = renderToStaticMarkup(<AiMessage content={`\`\`\`moneo-chart\n${JSON.stringify(chart)}\n\`\`\`\n\n/money/transactions?category=00000000-0000-4000-8000-000000000002`} />);
+it("renders a bar chart with exact values in a table, and links only to app transactions", () => {
+  const chart = { type: "bar", title: "Spending · Oct 19–25", unit: { kind: "money", currency: "EUR" }, labels: ["Mon 19", "Tue 20"], series: [{ name: "Spending", values: ["1250", "0"] }] };
+  const html = renderToStaticMarkup(<AiMessage content={`\`\`\`moneo-chart\n${JSON.stringify(chart)}\n\`\`\``} />);
   expect(html).toContain("ai-chart");
-  expect(html).toContain('href="/money/transactions?from=2026-09-01&amp;to=2026-09-30&amp;direction=income"');
-  expect(html).toContain("width:100%");
-  expect(html).toContain("Open matching transactions");
-  expect(html).toContain("Spending by category");
-  const invalid = renderToStaticMarkup(<AiMessage content={'```moneo-chart\n{"currency":"EUR","rows":[{"label":"x","valueMinor":"1","href":"https://evil.test"},{"label":"y","valueMinor":"2"}]}\n```'} />);
-  expect(invalid).not.toContain("evil.test");
-  expect(invalid).not.toContain("ai-chart");
-  expect(invalid).toContain("could not be drawn");
-  expect(invalid).not.toContain("<code");
+  expect(html).toContain("Spending · Oct 19–25");
+  expect(html).toContain("EUR 12.50");
+  expect(html).toContain("Mon 19");
+});
+
+it("renders pie and bubble charts with their shares and links, and keeps untrusted labels inert", () => {
+  const pie = { type: "pie", title: "Where it went", unit: { kind: "money", currency: "EUR" }, items: [{ label: "Food", value: "7500", href: "/money/transactions?category=00000000-0000-4000-8000-000000000002" }, { label: "<b>Rent</b>", value: "2500" }] };
+  const pieHtml = renderToStaticMarkup(<AiMessage content={`\`\`\`moneo-chart\n${JSON.stringify(pie)}\n\`\`\``} />);
+  expect(pieHtml).toContain("75%");
+  expect(pieHtml).toContain('href="/money/transactions?category=00000000-0000-4000-8000-000000000002"');
+  expect(pieHtml).not.toContain("<b>Rent</b>");
+  const bubble = { type: "bubble", title: "Balances", unit: { kind: "money", currency: "EUR" }, items: [{ label: "Cash", value: "11500" }, { label: "Revolut", value: "125000" }, { label: "Savings", value: "4000" }] };
+  const bubbleHtml = renderToStaticMarkup(<AiMessage content={`\`\`\`moneo-chart\n${JSON.stringify(bubble)}\n\`\`\``} />);
+  expect(bubbleHtml.match(/<circle/g)).toHaveLength(3);
+  expect(bubbleHtml).toContain("EUR 1250.00");
+});
+
+it("shows a notice instead of a chart for invalid specs, and never links off the app", () => {
+  const offApp = { type: "pie", title: "x", unit: { kind: "count" }, items: [{ label: "a", value: "1", href: "https://evil.test" }, { label: "b", value: "2" }] };
+  const offAppHtml = renderToStaticMarkup(<AiMessage content={`\`\`\`moneo-chart\n${JSON.stringify(offApp)}\n\`\`\``} />);
+  expect(offAppHtml).not.toContain("evil.test");
+  expect(offAppHtml).toContain("could not be drawn");
+  expect(offAppHtml).not.toContain("ai-chart");
+  const mismatched = { type: "line", title: "x", unit: { kind: "count" }, labels: ["a", "b"], series: [{ name: "s", values: ["1"] }] };
+  const mismatchedHtml = renderToStaticMarkup(<AiMessage content={`\`\`\`moneo-chart\n${JSON.stringify(mismatched)}\n\`\`\``} />);
+  expect(mismatchedHtml).toContain("could not be drawn");
+  expect(mismatchedHtml).not.toContain("<code");
 });
 
 it("keeps untrusted model output inert, including image tracking and unsafe links", () => {
@@ -32,18 +50,6 @@ it("keeps untrusted model output inert, including image tracking and unsafe link
   expect(html).not.toContain('href="javascript:');
   expect(html).not.toContain("<img");
   expect(html).not.toContain("Open transaction and Undo");
-});
-
-it("renders model chart blocks, falls back to code when invalid and never links off the app", () => {
-  const spec = { title: { text: "Spending by month" }, xAxis: { type: "category", data: ["Aug", "Sep"] }, yAxis: {}, series: [{ type: "bar", data: [1, 2] }] };
-  const html = renderToStaticMarkup(<AiMessage content={`\`\`\`chart\n${JSON.stringify(spec)}\n\`\`\`\n\n[site](https://example.com) and [tx](/money/transactions)`} />);
-  expect(html).toContain("ai-chart");
-  expect(html).toContain("Spending by month");
-  expect(html).not.toContain("example.com");
-  expect(html).toContain('href="/money/transactions"');
-  const invalid = renderToStaticMarkup(<AiMessage content={'```chart\n{"type": not json\n```'} />);
-  expect(invalid).not.toContain("ai-chart");
-  expect(invalid).toContain("ai-code");
 });
 
 it("renders a loan card for an app-written moneo-proposal block and ignores a malformed id", () => {

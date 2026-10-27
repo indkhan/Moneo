@@ -10,7 +10,6 @@ import { ChatChart } from "./chat-chart";
 import { IouCard } from "./iou-card";
 import { DecisionCard } from "./decision-card";
 import { ProposalGroup } from "./proposal-group";
-import { AnswerChart, ChartBoundary, parseChartOption } from "./chart";
 
 // Only link known application paths in text nodes, never inside SQL/code blocks.
 const appLinks: Plugin<[], Root> = () => tree => {
@@ -52,9 +51,6 @@ export function AiMessage({ content }: { content: string }) {
       if (proposalId) return <IouCard id={proposalId} />;
       if (code?.className?.includes("language-moneo-proposals") && typeof code.children === "string") return <ProposalGroup source={code.children} />;
       if (code?.className?.includes("language-moneo-decision") && typeof code.children === "string") return <DecisionCard source={code.children} />;
-      // A chart that fails to parse or render stays visible as its source code.
-      const chart = /\blanguage-chart\b/.test(code?.className ?? "") && typeof code?.children === "string" ? parseChartOption(code.children) : null;
-      if (chart) return <ChartBoundary fallback={<CodeBlock>{children}</CodeBlock>}><AnswerChart option={chart} /></ChartBoundary>;
       return <CodeBlock>{children}</CodeBlock>;
     },
     table: ({ children }) => <div className="ai-table"><table>{children}</table></div>,
