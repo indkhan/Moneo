@@ -2,9 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Money moved between the owner's own accounts is a transfer, never income or spending.
-// Detection is deterministic: IBAN evidence from the source rows, or an exact opposite
-// amount between two own accounts that the statement itself calls a transfer. Every
-// decision goes through the audited link RPCs, so each one can be undone.
+// Detection is deterministic and IBAN-only: a row's counterparty IBAN is one of the owner's
+// own accounts. Every decision goes through the audited link RPCs, so each one can be undone.
 
 export const MATCH_DAYS = 3;
 const IBAN = /^[A-Z]{2}[0-9]{2}[A-Z0-9]{8,30}$/;
@@ -28,7 +27,10 @@ export type OwnAccounts = { tracked: Map<string, string>; untracked: Map<string,
 
 const days = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86400000;
 
-export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts) {
+/** Every posted leg in the workspace, so a lone leg can tell whether its other side exists. */
+export type Leg = Pick<TransferCandidate, "id" | "accountId" | "postedOn" | "amountMinor" | "currencyCode">;
+
+export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts, legs: Leg[] = rows) {
   // The posting account's own IBAN often appears in its row too; only the other side counts.
   const counterparts = (row: TransferCandidate) => row.ibans.filter(iban => own.tracked.get(iban) !== row.accountId);
   const points = (row: TransferCandidate, accountId: string) => counterparts(row).some(iban => own.tracked.get(iban) === accountId);
@@ -45,20 +47,18 @@ export function findOwnTransfers(rows: TransferCandidate[], own: OwnAccounts) {
       .sort((a, b) => days(out.postedOn, a.postedOn) - days(out.postedOn, b.postedOn) || a.id.localeCompare(b.id));
     if (!used.has(out.id) && proven[0]) take(out, proven[0]);
   }
-  // Without IBAN evidence: the statement says transfer and the match is unambiguous both ways.
-  for (const out of outs) {
-    if (used.has(out.id)) continue;
-    const options = ins.filter(into => !used.has(into.id) && matches(out, into));
-    if (options.length !== 1) continue;
-    const into = options[0];
-    if (outs.filter(other => !used.has(other.id) && matches(other, into)).length !== 1) continue;
-    if (out.reviewReasons.includes("source_transfer") || into.reviewReasons.includes("source_transfer")) take(out, into);
-  }
-  // A leg that names an own account Moneo doesn't track.
-  const single = rows.flatMap(row => {
+  // A leg whose other side is missing: the counterparty is an own account, and no opposite
+  // leg exists in that account within the window. Untracked accounts are named by identifier;
+  // tracked accounts by IBAN.
+  const unpaired = (row: TransferCandidate, accountId: string) => !legs.some(other => other.id !== row.id && other.accountId === accountId
+    && other.currencyCode === row.currencyCode && other.amountMinor === -row.amountMinor && days(row.postedOn, other.postedOn) <= MATCH_DAYS);
+  const single = rows.flatMap((row): { transactionId: string; identifierId?: string; iban?: string }[] => {
     if (used.has(row.id)) return [];
     const identifierId = counterparts(row).map(iban => own.untracked.get(iban)).find(Boolean);
-    return identifierId ? [{ transactionId: row.id, identifierId }] : [];
+    if (identifierId) return [{ transactionId: row.id, identifierId }];
+    const iban = counterparts(row).find(item => own.tracked.has(item));
+    const accountId = iban ? own.tracked.get(iban) : undefined;
+    return iban && accountId && unpaired(row, accountId) ? [{ transactionId: row.id, iban }] : [];
   });
   return { pairs, single };
 }
@@ -107,10 +107,24 @@ export async function loadTransferCandidates(db: SupabaseClient, workspaceId: st
   return rows;
 }
 
-/** Find and link transfers between the owner's accounts, as the signed-in user. */
+/** Every posted leg, whatever its review state, so a lone leg can see whether its other side exists. */
+async function loadLegs(db: SupabaseClient, workspaceId: string): Promise<Leg[]> {
+  const legs: Leg[] = [];
+  for (let from = 0; from < MAX_ROWS; from += PAGE) {
+    const { data, error } = await db.from("transactions")
+      .select("id, account_id, posted_on, amount_minor::text, currency_code")
+      .eq("workspace_id", workspaceId).eq("status", "posted").order("id").range(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) legs.push({ id: row.id, accountId: row.account_id, postedOn: row.posted_on, amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code });
+    if ((data ?? []).length < PAGE) break;
+  }
+  return legs;
+}
+
+/** Find and link transfers between the owner's accounts. The service role acts for the owner. */
 export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string) {
-  const [own, rows] = await Promise.all([loadOwnAccounts(db, workspaceId), loadTransferCandidates(db, workspaceId)]);
-  const { pairs, single } = findOwnTransfers(rows, own);
+  const [own, rows, legs] = await Promise.all([loadOwnAccounts(db, workspaceId), loadTransferCandidates(db, workspaceId), loadLegs(db, workspaceId)]);
+  const { pairs, single } = findOwnTransfers(rows, own, legs);
   const byId = new Map(rows.map(row => [row.id, row]));
   let linked = 0, marked = 0, skipped = 0;
   for (const pair of pairs) {
@@ -121,7 +135,10 @@ export async function linkOwnTransfers(db: SupabaseClient, workspaceId: string) 
     if (error) skipped++; else linked++;
   }
   for (const item of single) {
-    const { error } = await db.rpc("mark_own_account_transfer", { p_transaction_id: item.transactionId, p_expected_version: byId.get(item.transactionId)!.version, p_identifier_id: item.identifierId });
+    const expectedVersion = byId.get(item.transactionId)!.version;
+    const { error } = item.identifierId
+      ? await db.rpc("mark_own_account_transfer", { p_transaction_id: item.transactionId, p_expected_version: expectedVersion, p_identifier_id: item.identifierId })
+      : await db.rpc("mark_own_iban_transfer", { p_transaction_id: item.transactionId, p_expected_version: expectedVersion, p_iban: item.iban });
     if (error) skipped++; else marked++;
   }
   return { linked, marked, skipped };

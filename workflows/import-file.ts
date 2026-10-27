@@ -6,6 +6,7 @@ import { inspectRows, mappingSchema, parseCsv, parseExcel, parseLegacyExcel } fr
 import { modelForSettings } from "@/lib/ai/provider";
 import { loadWorkspaceSettings, requireAiScope } from "@/lib/settings";
 import { stableId } from "@/lib/import/row";
+import { linkOwnTransfers } from "@/lib/finance/own-transfers";
 import { batchDecisions, candidateRowsSchema, stageImportRows } from "@/lib/import/batch";
 import { dispatchFinancialReview } from "@/lib/finance/start-review";
 import { startAgentRun } from "@/lib/ai/agent-dispatch";
@@ -27,8 +28,18 @@ export async function importFile(importId: string, workspaceId: string, rowCount
     await failImport(importId, workspaceId, String(error), runVersion);
     return;
   }
+  await linkOwnTransfersStep(workspaceId);
   await startAgentTeam(importId, workspaceId);
   await maybeStartFirstReview(importId, workspaceId);
+}
+
+// Transfers between the owner's own accounts are linked as soon as new rows land, so a later
+// import from the other bank completes the pair. A failure never affects the completed import.
+async function linkOwnTransfersStep(workspaceId: string) {
+  "use step";
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) return;
+  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  try { await linkOwnTransfers(db, workspaceId); } catch (error) { console.error("Own-account transfers were not linked", error); } // The next import retries.
 }
 
 // The agent team starts the moment an import's rows are in. It only proposes;

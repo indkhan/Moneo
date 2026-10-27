@@ -17,11 +17,9 @@ describe("findOwnTransfers", () => {
     expect(result.pairs).toEqual([{ outId: "out", inId: "near" }]);
   });
 
-  it("needs a transfer statement and an unambiguous match without IBAN evidence", () => {
+  it("never pairs without IBAN evidence, even when the statement calls it a transfer", () => {
     expect(findOwnTransfers([row("out", "current", -100n), row("in", "savings", 100n)], own).pairs).toEqual([]);
-    expect(findOwnTransfers([row("out", "current", -100n, "2026-10-01", { reviewReasons: ["source_transfer"] }), row("in", "savings", 100n)], own).pairs)
-      .toEqual([{ outId: "out", inId: "in" }]);
-    expect(findOwnTransfers([row("out", "current", -100n, "2026-10-01", { reviewReasons: ["source_transfer"] }), row("a", "savings", 100n), row("b", "savings", 100n)], own).pairs).toEqual([]);
+    expect(findOwnTransfers([row("out", "current", -100n, "2026-10-01", { reviewReasons: ["source_transfer"] }), row("in", "savings", 100n, "2026-10-01", { reviewReasons: ["source_transfer"] })], own).pairs).toEqual([]);
   });
 
   it("never pairs within one account, across currencies, beyond the window or unequal amounts", () => {
@@ -34,8 +32,15 @@ describe("findOwnTransfers", () => {
     expect(findOwnTransfers([row("out", "current", -100n, "2026-10-01", { ibans: [CURRENT, ELSEWHERE] })], own).single).toEqual([{ transactionId: "out", identifierId: "elsewhere-id" }]);
   });
 
-  it("leaves a lone leg to a tracked account for its other side to arrive", () => {
-    expect(findOwnTransfers([row("out", "current", -100n, "2026-10-01", { ibans: [SAVINGS] })], own)).toEqual({ pairs: [], single: [] });
+  it("marks a lone leg to a tracked own account by IBAN when its other side is not in Moneo", () => {
+    expect(findOwnTransfers([row("out", "current", -100n, "2026-10-01", { ibans: [SAVINGS] })], own).single).toEqual([{ transactionId: "out", iban: SAVINGS }]);
+  });
+
+  it("leaves a leg alone when its counterpart account holds the opposite amount nearby", () => {
+    const out = row("out", "current", -100n, "2026-10-01", { ibans: [SAVINGS] });
+    const legs = [out, row("in", "savings", 100n, "2026-10-03")];
+    expect(findOwnTransfers([out], own, legs).single).toEqual([]);
+    expect(findOwnTransfers([out], own, [out, row("late", "savings", 100n, "2026-10-09")]).single).toEqual([{ transactionId: "out", iban: SAVINGS }]);
   });
 });
 
