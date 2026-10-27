@@ -17,6 +17,7 @@ import type { ChatStreamEvent } from "@/lib/ai/use-chat-request";
 import { chatFollowUps, planInput } from "@/lib/ai/follow-ups";
 import { iouInputSchema, proposeIou, proposeRepayments } from "@/lib/ai/iou-proposals";
 import { proposeTransaction, transactionInputSchema } from "@/lib/ai/transaction-proposals";
+import { balanceInputSchema, proposeBalance } from "@/lib/ai/balance-proposals";
 import { APP_GUIDE } from "@/lib/ai/app-guide";
 import { MAX_ATTACHMENTS, attachmentNote, attachmentSchema } from "@/lib/ai/chat-attachments";
 import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
@@ -172,6 +173,12 @@ export async function POST(request: Request) {
           const created = await proposeTransaction(await requireWorkspace(), input);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with an account picker, Add and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
+        } }),
+      balance_propose: tool({ description: "The user states what an account holds now or held on a date (e.g. 'I have 115 euros in cash', 'my Revolut shows 1,250'). Shows a card to save it as that account's dated balance; nothing changes until they accept. Use the exact amount and currency the user gave.",
+        inputSchema: balanceInputSchema, execute: async input => {
+          const created = await proposeBalance(await requireWorkspace(), input);
+          proposalCards.push(created.proposalId);
+          return { proposed: created.title, note: "A card with Save and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
         } }),
       app_help: tool({ description: "How Moneo works: its pages, what each does, and what this chat can do. Use for any question about the app itself.",
         inputSchema: z.object({}).strict(), execute: async () => ({ guide: APP_GUIDE }) }),
