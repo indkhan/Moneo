@@ -46,3 +46,23 @@ it("accepting refuses a currency the account does not use", async () => {
   await expect(applyBalanceProposal(context, "p", { accountId: wallet.id, amountMinor: "100", currencyCode: "USD", asOf: "2026-10-27" })).rejects.toThrow("Choose an account in USD");
   expect(calls).toHaveLength(0);
 });
+
+it("uses the currency's only cash account, asks when several exist, and proposes creating one when none does", async () => {
+  const { inserts, context } = fakeDb({ accounts: [wallet, bank] });
+  await proposeBalance(context, { amount: "115", currency: "EUR" });
+  expect(inserts[0].row).toMatchObject({ payload: { accountId: wallet.id } });
+  const several = fakeDb({ accounts: [wallet, { ...wallet, id: "00000000-0000-4000-8000-0000000000ff", name: "Till" }] });
+  await expect(proposeBalance(several.context, { amount: "5", currency: "EUR" })).rejects.toThrow("Name the EUR account");
+  const none = fakeDb({ accounts: [bank] });
+  const result = await proposeBalance(none.context, { amount: "115", currency: "EUR" });
+  expect(result.title).toBe("Create a Cash EUR account and set its balance to EUR 115.00");
+  expect(none.inserts[0].row).toMatchObject({ payload: { accountId: null, amountMinor: "11500" } });
+});
+
+it("accepting a proposal with no account creates the Cash account first", async () => {
+  const { calls, inserts, context } = fakeDb({ accounts: [], balance_snapshots: [] });
+  const result = await applyBalanceProposal(context, "00000000-0000-4000-8000-0000000000dd", { accountId: null, amountMinor: "11500", currencyCode: "EUR", asOf: "2026-10-27" });
+  expect(inserts.find(insert => insert.table === "accounts")?.row).toMatchObject({ name: "Cash", type: "cash", currency_code: "EUR" });
+  expect(calls[0]).toMatchObject({ name: "record_manual_balance", args: expect.objectContaining({ p_account_id: "00000000-0000-4000-8000-000000000001", p_amount_minor: "11500" }) });
+  expect(result).toMatchObject({ createdAccount: true });
+});
