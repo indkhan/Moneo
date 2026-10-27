@@ -1,0 +1,13 @@
+can you tell me if making it as a android and ios application is easy or not
+
+---
+
+Okay, so, um, I think react native in the age of AI is not that hard to implement, so I think we could go with that.  And for the Apple developer programme in Google Play, we can have it in the beta test, the pilot something that is free, right?  If you have that, then it would not cost you something if I'm not wrong, right?  Or am I wrong?
+
+---
+
+What if we have the capacitor or the PWA installable web apps? Are they free on Apple?
+
+---
+
+Okay, for the PWA, do I need to do something for that?  Do I need to change something further?  Do I need to add something for it like or does it use what is already there?
