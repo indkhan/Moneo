@@ -1,0 +1,9 @@
+Can you merge the pr 108 and also tell me if they have the timing test things in the worktree that is there in the codebase itself cuz I think if we can add to the codebase as speed regression would be nice first merge that thing and then let’s talk about if we can get it out and use it
+
+---
+
+Can you check PR 110?  The problem with that PR is that it was created before this speeding uh speed time thing.  So it might follow some things which are not the fastest and all.  So, firstly, uh, rebase, main on that, then see the, things how they were done in the, main branch, as per, that do it on the branch of 110 PR.  So that it does not slow down the application and it stays the same speed as what 108 PR claimed that we just merged. So that the final main is really fast as well.  Do the speed test and all of that, if you want, you can directly get it from the work tree and then continue from there and then tell me, don't directly merge it, 1st solve these things.  Without making the AI thing, worse in any way, they should work as they are in the PR and all.
+
+---
+
+Also do all the migrations which are not applied i think everything is applied
