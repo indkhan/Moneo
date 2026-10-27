@@ -17,7 +17,6 @@ language sql stable security definer set search_path = '' as $$
 $$;
 
 revoke all on function public.can_link_workspace(uuid), public.link_actor(uuid) from public, anon;
-
 grant execute on function public.can_link_workspace(uuid), public.link_actor(uuid) to authenticated, service_role;
 
 create or replace function public.link_transactions(p_operation text,p_primary_id uuid,p_expected_version integer,p_other_id uuid,p_other_version integer,p_fx_rate_id uuid,p_fees jsonb,p_request_id uuid)
@@ -157,5 +156,4 @@ end;
 $$;
 
 grant execute on function public.link_transactions(text,uuid,integer,uuid,integer,uuid,jsonb,uuid) to service_role;
-
 grant execute on function public.mark_own_account_transfer(uuid, integer, uuid) to service_role;

@@ -50,5 +50,4 @@ end;
 $$;
 
 revoke all on function public.mark_own_iban_transfer(uuid, integer, text) from public, anon;
-
 grant execute on function public.mark_own_iban_transfer(uuid, integer, text) to authenticated, service_role;
