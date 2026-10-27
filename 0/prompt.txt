@@ -1,0 +1,23 @@
+can you add htat i have 115 eur in cash since i added the revolut transactions have been there
+
+2026-10-27T17:39:48.57022+00:00
+Moneo
+
+Used 1 tool
+I can’t set the balance directly from chat. Your accounts currently show Commerzbank and Revolut—no cash account. Go to Accounts, add a cash account, and set its dated balance to €115. It will then be included in your net worth.
+
+2026-10-27T17:41:03.343714+00:00
+now can you add it
+
+2026-10-27T17:41:11.800307+00:00
+Moneo
+
+Used 1 tool
+Your “wallet eur” cash account already exists. I can’t set its balance from this chat, but you can set its dated balance to €115 on Accounts.
+
+
+why does this not work it shoudl work directly
+
+---
+
+no it should be able to be done by chat itself it hsould have the tools and all to do it it is just that it should propose and user can do yes or no
