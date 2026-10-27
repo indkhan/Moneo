@@ -1,0 +1,15 @@
+i have to reload the page to see the proposal for me to accept 
+another problem is that i told it i lent somone and all it was fine then it showed to me that proposal which is fine and then i accpet to add to wealth and home but when i accepted it took then it showed i can see in wealth which is nice and i wennt and it had added then i went to overview to see it the problem there is that it does not add it nicely it showed me to accept the propsal again in overview saying wealth and home then i accepted then it added and then [Image: image.png; ref=image_7b340878-e468-4871-a353-8d1173c5bedb]  this is the ui it shows correct moeny on top and in cash and accounts and all and assets but in the line graph why does it go extra 1000 up for today itself so as per that i have that much money which is not true so it is showing wrong tell me why this problme and fix these problmes 
+
+directly fix and commit and then push
+
+<t3_context version="1">
+<context kind="image" id="image_7b340878-e468-4871-a353-8d1173c5bedb">
+name: image.png
+mimeType: image/png
+sizeBytes: 53020
+attachmentId: 3931003a-c89b-4c9f-bc46-8f3070e063cc-f8d9c9e1-244c-4f27-ab48-b076b0799fdd
+</context>
+</t3_context>
+
+[Attached image "image.png" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\3931003a-c89b-4c9f-bc46-8f3070e063cc-f8d9c9e1-244c-4f27-ab48-b076b0799fdd.png]
