@@ -1,6 +1,7 @@
 import { minorDigits } from "./fx";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildSourceCoverage, type SourceCoverage } from "./source-coverage";
+import { parseIouName } from "./iou";
 
 export function decimalRatio(value: string) {
   const match = /^(\d{1,24})(?:\.(\d{1,18}))?$/.exec(value.trim());
@@ -53,6 +54,9 @@ export function debtPayments(input: { principalMinor: bigint; annualRate: string
 }
 
 export type WealthValue = { id: string; name: string; amount_minor: string; currency_code: string; as_of: string; linked_account_id: string | null };
+/** A valuation counts in current net worth only when dated today, except money lent to or owed to a person:
+ * that is a fixed amount, not a market value, so it stays current from the day it changed hands until repaid. */
+export const currentOn = (row: Pick<WealthValue, "name" | "as_of">, today: string) => row.as_of === today || (row.as_of < today && parseIouName(row.name) !== null);
 export function wealthEvidence(rows: WealthValue[], today: string, basis: "current" | "observed" = "current") {
   dateValue(today);
   const included: { id: string; name: string; amountMinor: bigint; currencyCode: string; asOf: string; provenance: string }[] = [];
@@ -60,7 +64,7 @@ export function wealthEvidence(rows: WealthValue[], today: string, basis: "curre
   for (const row of rows) {
     if (row.linked_account_id) { excludedLinked.push(row.id); continue; }
     dateValue(row.as_of);
-    if (row.as_of > today || (basis === "current" && row.as_of !== today)) { missingInputs.push(`valuation:${row.id}:${row.as_of > today ? "future" : "historical"}`); continue; }
+    if (row.as_of > today || (basis === "current" && !currentOn(row, today))) { missingInputs.push(`valuation:${row.id}:${row.as_of > today ? "future" : "historical"}`); continue; }
     if (typeof row.amount_minor !== "string" || !/^-?\d+$/.test(row.amount_minor)) throw new Error("Invalid wealth money");
     minorDigits(row.currency_code);
     included.push({ id: row.id, name: row.name, amountMinor: BigInt(row.amount_minor), currencyCode: row.currency_code, asOf: row.as_of, provenance: "manual valuation" });

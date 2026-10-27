@@ -34,6 +34,12 @@ it("caps monthly debt cash obligations at payoff and carries exact interest assu
   expect(debtPayments({ principalMinor: -10000n, annualRate: "0", monthlyPaymentMinor: 6000n, nextPaymentOn: "2026-01-31" }, "2026-01-01", 90)[1].paymentMinor).toBe(4000n);
 });
 
+it("keeps a loan to or from a person in current net worth from the day it was made", () => {
+  const loan = { id: "loan", name: "Lent to Bilal", amount_minor: "100000", currency_code: "EUR", as_of: "2026-09-22", linked_account_id: null };
+  expect(wealthEvidence([loan, { ...loan, id: "owed", name: "Owed to Sam", amount_minor: "-500" }], "2026-10-27"))
+    .toMatchObject({ included: [{ id: "loan", amountMinor: 100000n }, { id: "owed", amountMinor: -500n }], missingInputs: [] });
+});
+
 it("keeps linked accounts out of additional net worth and flags historical evidence", () => {
   const base = { id: "asset", name: "Asset", amount_minor: "10000", currency_code: "EUR", as_of: "2026-10-02", linked_account_id: null };
   expect(wealthEvidence([base, { ...base, id: "holding", linked_account_id: "investment" }, { ...base, id: "old", as_of: "2026-10-01" }], "2026-10-02"))

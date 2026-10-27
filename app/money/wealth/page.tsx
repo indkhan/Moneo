@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireWorkspace } from "@/lib/auth";
 import { calendarDate } from "@/lib/finance/calendar";
-import { debtPayments, loadWealthItems, type WealthItem } from "@/lib/finance/wealth";
+import { currentOn, debtPayments, loadWealthItems, type WealthItem } from "@/lib/finance/wealth";
 import { formatMoney as formatCurrency } from "@/lib/finance/format";
 import { SourceCoverageDetails } from "@/app/source-coverage";
 import { Sparkline } from "@/app/money/accounts/sparkline";
@@ -56,7 +56,7 @@ export default async function WealthPage() {
   const now = series.at(-1)!;
   const totals = netWorth(now);
   const currencies = [...totals.keys()].sort((a, b) => Number(b === workspace.display_currency) - Number(a === workspace.display_currency) || a.localeCompare(b));
-  const dated = active.filter(item => !item.linked_account_id && item.as_of !== today).length;
+  const dated = active.filter(item => !item.linked_account_id && !currentOn(item, today)).length;
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="flex flex-col gap-1"><p className="eyebrow">Investments · assets · debts</p><h1 className="page-title">Wealth</h1></header>
@@ -89,7 +89,7 @@ export default async function WealthPage() {
           return <article key={item.id} className="space-y-2 px-5 py-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-medium">{item.name}</h3>
               <p className="font-mono font-semibold tabular-nums">{formatMoney(item.amount_minor, item.currency_code)}</p></div>
-            <p className="text-xs text-muted-foreground">As of {item.as_of}{item.kind === "holding" ? ` · ${item.quantity_text} × ${item.currency_code} ${item.unit_price_text}` : ""}{item.kind === "debt" ? ` · ${item.annual_rate_text}% a year · ${formatMoney(item.monthly_payment_minor ?? "0", item.currency_code)}/month` : ""}{item.linked_account_id ? " · Inside an account balance" : item.as_of === today ? "" : " · Outdated, not in current net worth"}</p>
+            <p className="text-xs text-muted-foreground">As of {item.as_of}{item.kind === "holding" ? ` · ${item.quantity_text} × ${item.currency_code} ${item.unit_price_text}` : ""}{item.kind === "debt" ? ` · ${item.annual_rate_text}% a year · ${formatMoney(item.monthly_payment_minor ?? "0", item.currency_code)}/month` : ""}{item.linked_account_id ? " · Inside an account balance" : currentOn(item, today) ? "" : " · Outdated, not in current net worth"}</p>
             {item.cost_basis_minor !== null && <p className="text-xs text-muted-foreground">Cost basis {formatMoney(item.cost_basis_minor, item.currency_code)} · valuation gain/loss {formatMoney(BigInt(item.amount_minor) - BigInt(item.cost_basis_minor), item.currency_code)} (unrealized)</p>}
             {item.kind === "debt" && (payments === null ? <p className="text-xs text-warning">Update the next repayment date and principal to project payments.</p> : payments.length > 0 && <ul className="space-y-0.5 text-xs text-muted-foreground">{payments.slice(0, 3).map(payment => <li key={payment.date}>{payment.date}: {formatMoney(payment.paymentMinor, item.currency_code)} payment, {formatMoney(payment.interestMinor, item.currency_code)} assumed interest, {formatMoney(payment.remainingMinor, item.currency_code)} left</li>)}</ul>)}
             {item.sourceCoverage && <SourceCoverageDetails coverage={item.sourceCoverage} />}
