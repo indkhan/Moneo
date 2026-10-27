@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Suspense } from "react";
 import { Providers } from "@/components/providers";
@@ -11,6 +11,17 @@ import { requireWorkspace } from "@/lib/auth";
 export const metadata: Metadata = {
   title: "Moneo — Personal Finance Workspace",
   description: "Understand your money, plan decisions, and build reusable financial tools with AI.",
+  applicationName: "Moneo",
+  appleWebApp: { capable: true, title: "Moneo", statusBarStyle: "default" },
+  icons: { icon: "/icon-192.png", apple: "/apple-touch-icon.png" },
+};
+
+// viewport-fit=cover lets env(safe-area-inset-*) report the iPhone notch and home indicator, which the mobile nav relies on.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0f1011",
 };
 
 type Theme = "light" | "dark" | "system";
