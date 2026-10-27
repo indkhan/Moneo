@@ -4,11 +4,12 @@ import { payloadSchemas, type ProposalKind } from "@/lib/ai/agent-team";
 import { calendarDate } from "@/lib/finance/calendar";
 import { iouCreateSchema, iouRecord, iouSettleSchema, parseIouName, settledRecord } from "@/lib/finance/iou";
 import { applyTransactionProposal } from "@/lib/ai/transaction-proposals";
+import { applyBalanceProposal } from "@/lib/ai/balance-proposals";
 
 // Accepting a proposal calls the SAME audited RPCs a person uses by hand, as
 // the signed-in owner (auth.uid()), so corrections, batches and Undo stay intact.
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
-export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle" | "transaction_create"; payload: unknown };
+export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle" | "transaction_create" | "balance_set"; payload: unknown };
 /** Choices made on the card itself, such as the account a chat expense is paid from. */
 export type DecideOptions = { accountId?: string };
 export type Applied = { href: string; undo?: string; [key: string]: unknown };
@@ -74,6 +75,8 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
     }
     case "transaction_create":
       return applyTransactionProposal(context, proposal.id, proposal.payload, options.accountId);
+    case "balance_set":
+      return applyBalanceProposal(context, proposal.id, proposal.payload);
     case "finding":
       payloadSchemas.finding.parse(proposal.payload);
       return { href: "/money/transactions", acknowledged: true };

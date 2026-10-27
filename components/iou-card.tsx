@@ -22,6 +22,7 @@ export function IouCard({ id, initial, onAccount }: { id: string; initial?: Prop
   if (proposal === undefined) return <p className="my-3 text-sm text-muted-foreground" role="status">Loading…</p>;
   if (!proposal) return null;
   const transaction = proposal.kind === "transaction_create";
+  const balance = proposal.kind === "balance_set";
   const chosen = account ?? proposal.selected ?? NEW_CASH;
   const decide = (decision: "accept" | "reject") => start(async () => {
     setError(undefined);
@@ -35,8 +36,9 @@ export function IouCard({ id, initial, onAccount }: { id: string; initial?: Prop
   const open = proposal.status === "proposed" || proposal.status === "failed";
   const done = transaction ? <>Added. {proposal.result?.href && <Link href={proposal.result.href} className="underline">Open transaction</Link>}
     {proposal.result?.createdAccount && <> A Cash account was created; <Link href="/money/accounts" className="underline">set its balance</Link> to count it in net worth.</>}</>
+    : balance ? <>Saved. <Link href="/money/accounts" className="underline">See it on Accounts</Link></>
     : <>Added. <Link href="/money/wealth" className="underline">See it in Wealth</Link></>;
-  return <section aria-label={transaction ? "Transaction proposal" : "Loan proposal"} className="my-3 rounded-xl border border-ai-border bg-ai-soft p-4">
+  return <section aria-label={transaction ? "Transaction proposal" : balance ? "Balance proposal" : "Loan proposal"} className="my-3 rounded-xl border border-ai-border bg-ai-soft p-4">
     <p className="font-medium">{proposal.title}</p>
     {proposal.detail && <p className="mt-1 text-sm text-muted-foreground">{proposal.detail}</p>}
     {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
@@ -46,7 +48,7 @@ export function IouCard({ id, initial, onAccount }: { id: string; initial?: Prop
           {proposal.needsCash && <option value={NEW_CASH}>Cash (new account)</option>}
           {proposal.accounts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select></label>}
-      <button type="button" disabled={pending} onClick={() => decide("accept")} className="min-h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">Add</button>
+      <button type="button" disabled={pending} onClick={() => decide("accept")} className="min-h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">{balance ? "Save" : "Add"}</button>
       <button type="button" disabled={pending} onClick={() => decide("reject")} className="min-h-9 rounded-lg border border-border px-4 text-sm hover:bg-muted disabled:opacity-50">Dismiss</button>
     </div> : <p role="status" className="mt-2 text-sm">{proposal.status === "accepted" ? done : "Dismissed. Nothing was changed."}</p>}
   </section>;
