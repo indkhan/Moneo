@@ -56,7 +56,7 @@ it("gives the model readable tool output without internal evidence", async () =>
 });
 it("keeps earlier assistant turns in history without their chart blocks", async () => {
   const context = await requireWorkspace();
-  const history = [{ role: "assistant", content: "Here:\n```chart\n{\"type\":\"bar\"}\n```\nDone", context: null }, { role: "user", content: "Earlier", context: {} }];
+  const history = [{ role: "assistant", content: "Here:\n```moneo-chart\n{\"type\":\"bar\"}\n```\nDone", context: null }, { role: "user", content: "Earlier", context: {} }];
   const query = { select: () => query, eq: () => query, order: () => query, limit: async () => ({ data: history, error: null }), maybeSingle: async () => ({ data: { id: "conversation" }, error: null }) };
   vi.mocked(requireWorkspace).mockResolvedValue({ ...context, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: ["accounts"] }, supabase: { ...context.supabase, from: () => query } } as unknown as typeof context);
   await POST(request("And now?"));

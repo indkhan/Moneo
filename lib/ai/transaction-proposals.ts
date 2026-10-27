@@ -24,7 +24,7 @@ export const transactionCreateSchema = z.object({
   date: z.iso.date(), description: z.string().trim().min(1).max(200), accountId: z.uuid().nullable(), categoryId: z.uuid().nullable(),
 }).strict();
 
-async function liveAccounts(supabase: SupabaseClient, workspaceId: string, currency: string) {
+export async function liveAccounts(supabase: SupabaseClient, workspaceId: string, currency: string) {
   const { data, error } = await supabase.from("accounts").select("id, name, type, currency_code").eq("workspace_id", workspaceId)
     .eq("currency_code", currency).is("archived_at", null).order("created_at").limit(200);
   if (error) throw new Error(error.message);

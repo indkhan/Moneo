@@ -5,7 +5,7 @@ export const APP_GUIDE = `Moneo is a personal-finance workspace. Pages (link wit
 - Organization (/money/organization): give merchants and categories to unorganized rows in bulk, optionally saving a rule.
 - Investigations (/money/investigations): saved, exact answers to finance questions.
 - Import (/import): drop CSV or XLSX bank exports; rows are matched, deduplicated and reviewed before they count.
-- Accounts (/money/accounts): add, rename or archive accounts and set a dated balance. Balances roll forward with later transactions; an account without a balance is left out of net worth.
+- Accounts (/money/accounts): add, rename or archive accounts and set a dated balance (chat can propose one for the user to save). Balances roll forward with later transactions; an account without a balance is left out of net worth.
 - Recurring (/money/recurring): subscriptions and bills found from history; confirm or reject them.
 - Plan (/plan): cash-flow forecast, goals and scenarios. Spending (/plan/spending): monthly category limits. Currency (/plan/currency): display currency and manual exchange rates.
 - Wealth (/money/wealth): investments, assets, debts and money lent to or borrowed from people; these count in net worth.
