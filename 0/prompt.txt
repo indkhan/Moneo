@@ -1,0 +1,23 @@
+ok so 2 problems once it did not make the chart and just gave me the code and all that should not happen it should create the chart and when it created the chart the chart looked soooo bad and not readable at all , bad design too much text and overla et without space almost functions in ti andall 
+
+
+we have to come up with ways so both of the problmes are solved and we have to think how to make it that the chart acrually is readable and useful and human and looks good  [Image: image.png; ref=image_74cb7ce1-1eee-4be5-94fc-0c1518c7c0d4] [Image: image.png; ref=image_080916aa-6067-41f1-a6fa-354173b722ab]
+
+<t3_context version="1">
+<context kind="image" id="image_74cb7ce1-1eee-4be5-94fc-0c1518c7c0d4">
+name: image.png
+mimeType: image/png
+sizeBytes: 32005
+attachmentId: 96613709-eee0-4e37-88a6-6e3d2a9218f5-d44acdc6-ba5e-4907-a242-d0f756e1cd60
+</context>
+<context kind="image" id="image_080916aa-6067-41f1-a6fa-354173b722ab">
+name: image.png
+mimeType: image/png
+sizeBytes: 59050
+attachmentId: 96613709-eee0-4e37-88a6-6e3d2a9218f5-88f0fc7b-573e-4be5-8bad-3c5d05aa67e9
+</context>
+</t3_context>
+
+[Attached image "image.png" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\96613709-eee0-4e37-88a6-6e3d2a9218f5-d44acdc6-ba5e-4907-a242-d0f756e1cd60.png]
+
+[Attached image "image.png" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\96613709-eee0-4e37-88a6-6e3d2a9218f5-88f0fc7b-573e-4be5-8bad-3c5d05aa67e9.png]
