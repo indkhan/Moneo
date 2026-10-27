@@ -15,8 +15,12 @@ export const iouInputSchema = z.object({ direction: z.enum(["lent", "borrowed"])
 
 const sentence = (direction: "lent" | "borrowed", person: string, amount: string) => direction === "lent" ? `${person} owes you ${amount}` : `You owe ${person} ${amount}`;
 
-/** Stores a pending "add this loan to Wealth" proposal. Nothing is written to Wealth until the owner accepts. */
-export async function proposeIou({ supabase, workspace }: Context, input: z.infer<typeof iouInputSchema>) {
+const firstName = (person: string) => person.normalize("NFD").replace(/\p{M}/gu, "").trim().toLowerCase().split(/\s+/)[0];
+
+/** Stores a pending "add this loan to Wealth" proposal. Nothing is written to Wealth until the owner accepts.
+ * `earlier` are the cards this chat already showed: an open one for the same loan is dismissed, so a correction
+ * ("his name is Bilal Amin, it was in September") cannot be added twice. */
+export async function proposeIou({ supabase, workspace }: Context, input: z.infer<typeof iouInputSchema>, earlier: string[] = []) {
   minorDigits(input.currency);
   const today = calendarDate(new Date(), workspace.timezone);
   const payload = iouCreateSchema.parse({ direction: input.direction, person: input.person, currencyCode: input.currency, date: input.date ?? today,
@@ -27,7 +31,19 @@ export async function proposeIou({ supabase, workspace }: Context, input: z.infe
     title: sentence(payload.direction, payload.person, formatted), detail: `${payload.direction === "lent" ? "Lent" : "Borrowed"} on ${payload.date}. Added to Wealth and net worth once you accept.`,
     payload, confidence: 100 }).select("id").single();
   if (error) throw new Error(error.message);
-  return { proposalId: data.id as string, title: sentence(payload.direction, payload.person, formatted) };
+  let replaced = 0;
+  if (earlier.length) {
+    const open = await supabase.from("agent_proposals").select("id, payload").eq("workspace_id", workspace.id).is("run_id", null).eq("kind", "iou_create")
+      .in("status", ["proposed", "failed"]).in("id", earlier);
+    if (open.error) throw new Error(open.error.message);
+    const same = (open.data ?? []).filter(row => row.payload?.direction === payload.direction && firstName(String(row.payload?.person ?? "")) === firstName(payload.person)).map(row => row.id as string);
+    if (same.length) {
+      const dismissed = await supabase.from("agent_proposals").update({ status: "rejected", decided_at: new Date().toISOString() }).eq("workspace_id", workspace.id).in("id", same).in("status", ["proposed", "failed"]);
+      if (dismissed.error) throw new Error(dismissed.error.message);
+      replaced = same.length;
+    }
+  }
+  return { proposalId: data.id as string, title: sentence(payload.direction, payload.person, formatted), replaced };
 }
 
 /** Looks for bank transactions that repay an open IOU and proposes each one once, whatever its later outcome. */

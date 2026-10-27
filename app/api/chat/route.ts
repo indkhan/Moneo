@@ -155,15 +155,17 @@ export async function POST(request: Request) {
     let modelFollowUps: string[] = [];
     // Loan cards are drawn by the app beside the answer, so the model cannot misquote or skip them.
     const proposalCards: string[] = [];
+    // Cards shown earlier in this chat; a corrected loan replaces its still-open card.
+    const earlierCards = (history ?? []).flatMap(item => item.role === "assistant" ? [...item.content.matchAll(/```moneo-proposals?\n([\s\S]*?)```/g)].flatMap(match => match[1].match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? []) : []);
     // Agent-team decisions are confirmed on a card too; the model only names the ids.
     const decisionCards: string[] = [];
     const planTool = { plan_investigation: tool({ description: "Optional: show the user 2-5 short steps you will take for a multi-part question, and up to 3 follow-up questions they might ask next. Returns nothing.",
       inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); toolCalls.push({ name: "plan_investigation", input, output: "" }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }),
       iou_propose: tool({ description: "The user says they lent or gave money to a person, or borrowed or received money from one. Shows them a card to accept or dismiss; nothing is saved until they accept. Use the user's exact amount, person and currency.",
         inputSchema: iouInputSchema, execute: async input => {
-          const created = await proposeIou(await requireWorkspace(), input);
+          const created = await proposeIou(await requireWorkspace(), input, [...earlierCards, ...proposalCards]);
           proposalCards.push(created.proposalId);
-          return { proposed: created.title, note: "A card with Add and Dismiss is shown to the user below your answer. Say it is waiting for their approval; do not repeat the details." };
+          return { proposed: created.title, note: `A card with Add and Dismiss is shown to the user below your answer.${created.replaced ? " It replaces the earlier card for this loan, which was dismissed." : ""} Say it is waiting for their approval; do not repeat the details.` };
         } }),
       transaction_propose: tool({ description: "The user says they spent, paid, bought, earned or received money (or an attached receipt or invoice shows it). Shows a card to add it to their transactions; nothing is saved until they accept. Call once per separate payment, with the exact amount, currency and date from the user or document.",
         inputSchema: transactionInputSchema, execute: async input => {

@@ -4,15 +4,17 @@ import { proposeIou, proposeRepayments } from "@/lib/ai/iou-proposals";
 type Rows = Record<string, unknown[]>;
 function fakeDb(rows: Rows) {
   const inserts: { table: string; row: unknown }[] = [];
+  const updates: { table: string; row: unknown }[] = [];
   const from = (table: string) => {
     const query: Record<string, unknown> = {};
     for (const name of ["select", "eq", "is", "in", "gte", "order", "limit"]) query[name] = () => query;
+    query.update = (row: unknown) => { updates.push({ table, row }); return query; };
     query.insert = (row: unknown) => { inserts.push({ table, row }); const list = Array.isArray(row) ? row : [row]; const result = { data: list.map((_, index) => ({ id: `new-${index}`, title: (list[index] as { title: string }).title })), error: null };
       return { select: () => ({ ...result, single: async () => ({ data: result.data[0], error: null }), then: (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve) }) }; };
     query.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ data: rows[table] ?? [], error: null }).then(resolve);
     return query;
   };
-  return { inserts, context: { supabase: { from }, workspace: { id: "w", timezone: "Europe/Berlin", locale: "en-IE" } } as never };
+  return { inserts, updates, context: { supabase: { from }, workspace: { id: "w", timezone: "Europe/Berlin", locale: "en-IE" } } as never };
 }
 
 it("proposing a loan stores exact minor units and writes nothing to Wealth", async () => {
@@ -22,6 +24,16 @@ it("proposing a loan stores exact minor units and writes nothing to Wealth", asy
   expect(inserts[0].table).toBe("agent_proposals");
   expect(inserts[0].row).toMatchObject({ kind: "iou_create", payload: { direction: "lent", person: "Mohammed", amountMinor: "50000", currencyCode: "EUR" } });
   expect(result.title).toContain("Mohammed owes you");
+});
+
+it("a corrected loan dismisses this chat's open card for the same person, not another person's", async () => {
+  const earlier = { id: "old", payload: { direction: "lent", person: "Bilal" } };
+  const same = fakeDb({ agent_proposals: [earlier] });
+  expect((await proposeIou(same.context, { direction: "lent", person: "Bilal Amin", amount: "1000", currency: "EUR", date: "2026-09-22" }, ["old"])).replaced).toBe(1);
+  expect(same.updates).toEqual([{ table: "agent_proposals", row: expect.objectContaining({ status: "rejected" }) }]);
+  const other = fakeDb({ agent_proposals: [{ ...earlier, payload: { direction: "lent", person: "Sam" } }] });
+  expect((await proposeIou(other.context, { direction: "lent", person: "Bilal Amin", amount: "1000", currency: "EUR" }, ["old"])).replaced).toBe(0);
+  expect(other.updates).toEqual([]);
 });
 
 it("rejects a future date and an unknown currency", async () => {
