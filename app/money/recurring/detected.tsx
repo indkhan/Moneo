@@ -5,14 +5,14 @@ import { formatInputAmount } from "@/lib/finance/format";
 import { confirmSeries, declineSeries } from "./actions";
 import { ActionForm, ScheduleDialog } from "./forms";
 import { formatMoney as formatCurrency, seriesKey } from "./series";
-import { loadSuggestions, MAX_TRANSACTIONS, seriesDecision } from "./suggestions";
+import { loadSuggestions, MAX_TRANSACTIONS, seriesDecision, type Suggestion } from "./suggestions";
 
 // Detection reads up to 10k postings in serial keyset pages, so the page streams this section.
 export async function DetectedPatterns({ supabase, workspace, names, today, categories }: { supabase: SupabaseClient; workspace: { id: string; locale: string }; names: Record<string, string>; today: string; categories: string[] }) {
   const formatMoney = (amount: string | bigint, currency: string) => formatCurrency(amount, currency, workspace.locale);
-  const { candidates, pending, reviewed, invalidated, truncated, cutoff, observedFrom, observedTo, detected, queryError, storedError, detectError } = await loadSuggestions(supabase, workspace);
+  const { pending, reviewed, invalidated, truncated, cutoff, observedFrom, observedTo, detected, queryError, storedError, detectError } = await loadSuggestions(supabase, workspace);
 
-  const card = ({ series, related, status, assumption, evidence }: typeof candidates[number]) => {
+  const card = ({ series, related, status, assumption, evidence }: Suggestion) => {
     const decision = seriesDecision({ series, evidence });
     const hidden = { accountId: decision.accountId, label: decision.label, cadence: decision.cadence, currencyCode: decision.currencyCode,
       sourceEvidence: JSON.stringify(decision.evidence), runAnchorId: decision.runAnchorId, evidenceLimited: String(decision.evidenceLimited) };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import { Modal } from "@/components/command-palette";
 import { recurringCadences } from "@/lib/finance/cadences";
 import type { ActionState } from "./actions";
@@ -30,20 +30,21 @@ export function ScheduleDialog({ title, trigger, triggerClassName, action, remov
   title: string; trigger: React.ReactNode; triggerClassName?: string; action: Action; remove?: Action; hidden?: Record<string, string>; defaults: ScheduleDefaults;
   accounts?: { id: string; name: string; currencyCode: string }[]; categories: string[]; submitLabel: string;
 }) {
-  const [open, setOpen] = useState(false);
+  // When it was opened; a submission that succeeds after that closes it. The action refreshes the page.
+  const [openedAt, setOpenedAt] = useState<number | null>(null);
   const [state, submit, pending] = useActionState<ActionState, FormData>(action, {});
   const [removed, removeSubmit, removing] = useActionState<ActionState, FormData>(remove ?? (async () => ({})), {});
   const [values, setValues] = useState(defaults);
   const [accountId, setAccountId] = useState(accounts?.[0]?.id ?? "");
-  // Close once a submission succeeds; the page itself is refreshed by the action.
-  useEffect(() => { if (state.done || removed.done) setOpen(false); }, [state.done, removed.done]);
+  const open = openedAt !== null && Math.max(state.done ?? 0, removed.done ?? 0) < openedAt;
+  const close = () => setOpenedAt(null);
   const currencyCode = accounts ? accounts.find(account => account.id === accountId)?.currencyCode ?? "" : defaults.currencyCode ?? "";
   const set = (key: keyof ScheduleDefaults) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setValues(current => ({ ...current, [key]: event.target.value }));
   const summary = values.amount && values.startsOn ? `${cadenceWords[values.cadence] ?? ""}: ${values.amount} ${currencyCode} ${values.direction === "out" ? "going out" : "coming in"}, next on ${values.startsOn}` : "";
   const listId = `categories-${title.replace(/\W/g, "")}`;
   return <>
-    <button type="button" className={triggerClassName} onClick={() => { setValues(defaults); setOpen(true); }}>{trigger}</button>
-    <Modal open={open} onClose={() => setOpen(false)} label={title} className="inset-0 size-full items-center justify-center px-4">
+    <button type="button" className={triggerClassName} onClick={() => { setValues(defaults); setOpenedAt(Date.now()); }}>{trigger}</button>
+    <Modal open={open} onClose={close} label={title} className="inset-0 size-full items-center justify-center px-4">
       <form action={submit} className="grid w-full max-w-md gap-3 rounded-xl border border-border bg-card p-5 shadow-xl">
         <Hidden values={{ ...hidden, shownStartsOn: defaults.startsOn, ...(currencyCode ? { currencyCode } : {}) }} />
         <h2 className="text-base font-semibold">{title}</h2>
@@ -64,7 +65,7 @@ export function ScheduleDialog({ title, trigger, triggerClassName, action, remov
         {(state.error || removed.error) && <p role="alert" className="text-sm text-danger">{state.error ?? removed.error}</p>}
         <div className="flex flex-wrap items-center gap-2">
           <button disabled={pending || removing} className="min-h-10 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">{pending ? "Saving…" : submitLabel}</button>
-          <button type="button" onClick={() => setOpen(false)} className="min-h-10 rounded-lg border border-border px-4 text-sm hover:bg-muted">Cancel</button>
+          <button type="button" onClick={close} className="min-h-10 rounded-lg border border-border px-4 text-sm hover:bg-muted">Cancel</button>
           {remove && <button formAction={removeSubmit} formNoValidate disabled={pending || removing} className="ml-auto min-h-10 rounded-lg px-3 text-sm text-danger hover:bg-muted disabled:opacity-50">{removing ? "Removing…" : "Remove from recurring"}</button>}
         </div>
       </form>
