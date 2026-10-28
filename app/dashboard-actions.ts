@@ -22,9 +22,8 @@ async function writeLayout({ supabase, workspace }: Workspace, version: number, 
 export async function saveDashboard(form: FormData) {
   const context = await requireWorkspace();
   const version = z.coerce.number().int().min(0).max(2147483646).parse(form.get("version"));
+  // The form lists the current Home order first, so shown cards keep their place and newly shown ones go last.
   const items = dashboardLayoutSchema.parse(form.getAll("enabled"));
-  const positions = new Map(items.map(key => [key, z.coerce.number().int().min(1).max(50).parse(form.get(`position:${key}`))]));
-  items.sort((a, b) => positions.get(a)! - positions.get(b)!);
   await writeLayout(context, version, items);
   revalidatePath("/settings");
   redirect("/settings");
