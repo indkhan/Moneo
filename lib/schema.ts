@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, pgSchema, uuid, text, timestamp, date, bigint, integer, jsonb, boolean, uniqueIndex, unique, index, check, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, pgSchema, uuid, text, timestamp, date, bigint, integer, jsonb, boolean, uniqueIndex, unique, index, check, primaryKey, foreignKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 export const dashboardLayouts = pgTable("dashboard_layouts", {
   workspaceId: uuid("workspace_id").primaryKey().references((): AnyPgColumn => workspaces.id, { onDelete: "cascade" }),
@@ -248,7 +248,7 @@ export const categories = pgTable("categories", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   name: text("name").notNull(),
-}, (table) => [unique("categories_workspace_name_unique").on(table.workspaceId, table.name)]);
+}, (table) => [unique("categories_workspace_name_unique").on(table.workspaceId, table.name), unique("categories_id_workspace_key").on(table.id, table.workspaceId)]);
 
 export const merchants = pgTable("merchants", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -478,6 +478,7 @@ export const financialAssumptions = pgTable("financial_assumptions", {
   startsOn: date("starts_on").notNull(),
   scheduleAnchorOn: date("schedule_anchor_on"),
   recurringEvidenceEligible: boolean("recurring_evidence_eligible").notNull().default(false),
+  categoryId: uuid("category_id"),
   endsOn: date("ends_on"),
   source: text("source").notNull(),
   confidence: integer("confidence"),
@@ -488,6 +489,7 @@ export const financialAssumptions = pgTable("financial_assumptions", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("financial_assumptions_workspace").on(table.workspaceId),
+  foreignKey({ name: "financial_assumptions_category_fkey", columns: [table.categoryId, table.workspaceId], foreignColumns: [categories.id, categories.workspaceId] }).onDelete("set null"),
   check("financial_assumptions_cadence_check", sql`${table.cadence} in ('once', 'daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly')`),
   check("financial_assumptions_confidence_check", sql`${table.confidence} between 0 and 100`),
   check("financial_assumptions_dates", sql`${table.endsOn} is null or ${table.endsOn} >= ${table.startsOn}`),
@@ -999,7 +1001,7 @@ export const agentProposals = pgTable("agent_proposals", {
   unique("agent_proposals_run_conflict_key").on(table.runId, table.conflictKey),
   index("agent_proposals_workspace_status").on(table.workspaceId, table.status),
   uniqueIndex("agent_proposals_standalone_conflict_key").on(table.workspaceId, table.conflictKey).where(sql`${table.runId} is null`),
-  check("agent_proposals_kind_check", sql`${table.kind} in ('categorize','recurring','budget','finding','iou_create','iou_settle','transaction_create','balance_set')`),
+  check("agent_proposals_kind_check", sql`${table.kind} in ('categorize','recurring','budget','finding','iou_create','iou_settle','transaction_create','balance_set','recurring_edit')`),
   check("agent_proposals_status_check", sql`${table.status} in ('proposed','applying','accepted','rejected','failed')`),
   check("agent_proposals_confidence_check", sql`${table.confidence} between 0 and 100`),
   check("agent_proposals_title_check", sql`char_length(${table.title}) between 1 and 200`),
