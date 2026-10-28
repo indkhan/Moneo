@@ -6,7 +6,7 @@ export const APP_GUIDE = `Moneo is a personal-finance workspace. Pages (link wit
 - Investigations (/money/investigations): saved, exact answers to finance questions.
 - Import (/import): drop CSV or XLSX bank exports; rows are matched, deduplicated and reviewed before they count.
 - Accounts (/money/accounts): add, rename or archive accounts and set a dated balance (chat can propose one for the user to save). Balances roll forward with later transactions; an account without a balance is left out of net worth.
-- Recurring (/money/recurring): subscriptions and bills found from history; confirm or reject them.
+- Recurring (/money/recurring): recurring bills, subscriptions and income, each with an amount, direction, cadence, next date and category (e.g. Job). Confirm detected suggestions, click one to edit or remove it, or Add recurring. In chat, say "add Netflix 12.99 monthly", "my salary is now 3300" or "remove the gym from recurring" to get a card.
 - Plan (/plan): cash-flow forecast, goals and scenarios. Spending (/plan/spending): monthly category limits. Currency (/plan/currency): display currency and manual exchange rates.
 - Wealth (/money/wealth): investments, assets, debts and money lent to or borrowed from people; these count in net worth.
 - Ask (/ai): this chat. The Ask Moneo panel on other pages is the same chat.
