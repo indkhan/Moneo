@@ -18,6 +18,7 @@ import { chatFollowUps, planInput } from "@/lib/ai/follow-ups";
 import { iouInputSchema, proposeIou, proposeRepayments } from "@/lib/ai/iou-proposals";
 import { proposeTransaction, transactionInputSchema } from "@/lib/ai/transaction-proposals";
 import { balanceInputSchema, proposeBalance } from "@/lib/ai/balance-proposals";
+import { listRecurring, proposeRecurring, recurringInputSchema } from "@/lib/ai/recurring-proposals";
 import { APP_GUIDE } from "@/lib/ai/app-guide";
 import { MAX_ATTACHMENTS, attachmentNote, attachmentSchema } from "@/lib/ai/chat-attachments";
 import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
@@ -180,6 +181,12 @@ export async function POST(request: Request) {
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with Save and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
         } }),
+      recurring_propose: tool({ description: "The user wants to add a recurring payment or income (bill, subscription, rent, salary), change one (amount, direction, how often, next date, name, category such as Job), remove one from recurring, or confirm a detected suggestion as recurring. Call recurring_list first to name an existing schedule or suggestion. Shows a card; nothing changes until they accept.",
+        inputSchema: recurringInputSchema, execute: async input => {
+          const created = await proposeRecurring(await requireWorkspace(), input);
+          proposalCards.push(created.proposalId);
+          return { proposed: created.title, note: "A card with Save and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
+        } }),
       app_help: tool({ description: "How Moneo works: its pages, what each does, and what this chat can do. Use for any question about the app itself.",
         inputSchema: z.object({}).strict(), execute: async () => ({ guide: APP_GUIDE }) }),
       agents_decide: tool({ description: "The user asks to accept, approve, mark as seen/watched, or dismiss agent-team findings. Pass the proposal ids from agents_findings. Shows one confirmation card; nothing changes until they press it.",
@@ -249,6 +256,7 @@ export async function POST(request: Request) {
             proposalCards.push(...found.map(item => item.id as string));
             return { found: found.map(item => item.title), note: found.length ? "Cards are shown to the user below your answer." : "No new repayments found." };
           }) }) } : {}),
+        ...(settings.ai_data_scopes.includes("planning") && settings.ai_data_scopes.includes("transactions") ? { recurring_list: tool({ description: "List confirmed recurring payments and income (id, name, amount, direction, cadence, next date, category) and detected suggestions not yet confirmed. Use before recurring_propose to change, remove or confirm one.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["transactions", "planning"], latest => listRecurring(latest)) }) } : {}),
         ...(settings.ai_data_scopes.includes("planning") ? { goals_list: tool({ description: "List the user's goals", inputSchema: z.object({}), execute: () => aiEvidence(["planning"], latest => listGoals(latest)) }) } : {}),
         ...(settings.ai_data_scopes.includes("planning") && settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions") ? { forecast_evaluate: tool({ description: "Deterministic account headroom and dated funding shortfalls with source coverage. Choose accountId for available to spend; aggregate cash requires explicit funding. Cases are assumptions, not probabilities", inputSchema: forecastInput, execute: input => aiEvidence(["accounts", "transactions", "planning"], latest => evaluateForecast(input, latest), false, true) }) } : {}),
         ...(canChangeCategory ? {
