@@ -132,38 +132,12 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       {active && <button type="button" onClick={() => void control("cancel")} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"><Square className="size-3.5" aria-hidden="true" />Stop</button>}
       {(run.status === "canceled" || run.status === "failed") && <button type="button" onClick={() => void control("resume")} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"><Play className="size-3.5" aria-hidden="true" />Resume</button>}
     </header>
-    {run.tasks.length > 0 && <TeamFlow statuses={Object.fromEntries(run.tasks.map(task => [task.agent, task.status]))} finished={run.status === "completed"} />}
     {run.error && <p role="alert" className="rounded-lg bg-danger-soft p-3 text-sm text-danger">{run.error}</p>}
-
-    {lead && <section aria-label="Lead agent" className="rounded-xl border border-ai-border bg-ai-soft p-5">
-      <div className="flex items-center gap-2"><StatusIcon status={lead.status} /><h2 className="text-sm font-medium text-ai">Lead</h2><span className="text-xs text-muted-foreground">{lead.summary ?? lead.step}</span></div>
-      <ol className="mt-2 grid gap-x-6 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2">{lead.events.slice(-8).map((event, index) => <li key={`${event.at}-${index}`} className="flex gap-1.5"><ChevronRight className="mt-0.5 size-3 shrink-0" aria-hidden="true" />{event.text}</li>)}</ol>
-    </section>}
-
-    {WAVES.map((wave, index) => {
-      const tasks = wave.map(agent => byAgent.get(agent)).filter((task): task is AgentTaskView => Boolean(task));
-      return tasks.length > 0 && <section key={index} aria-label={WAVE_LABELS[index]} className="space-y-2">
-        <h2 className="eyebrow">Wave {index + 1} · {WAVE_LABELS[index]}</h2>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{tasks.map(task => <AgentCard key={task.agent} task={task} />)}</div>
-      </section>;
-    })}
-    {!run.tasks.length && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" aria-hidden="true" />The lead is planning the work…</p>}
 
     {run.briefing && <section aria-label="Briefing" className="rounded-xl border border-border bg-card p-6 sm:p-7">
       <h2 className="flex items-center gap-2 text-sm font-medium"><Sparkles className="size-4 text-ai" aria-hidden="true" />Briefing</h2>
       <div className="mt-3 space-y-2 text-[15px] leading-relaxed text-pretty">{run.briefing.split(/\n{2,}/).map(paragraph => <p key={paragraph}>{paragraph}</p>)}</div>
       <p className="mt-2 text-xs text-muted-foreground">Every figure comes from application code; the writer is only allowed to repeat them.</p>
-    </section>}
-
-    {decided.length > 0 && <section aria-labelledby="decided-heading" className="space-y-2">
-      <h2 id="decided-heading" className="text-sm font-medium">Decided automatically <span className="text-muted-foreground">({decided.length})</span></h2>
-      <p className="text-xs text-muted-foreground">The Categorizer applied these itself. Each one is an audited batch; open it to check the rows or Undo.</p>
-      <ul className="space-y-2">{decided.map(item => <li key={item.id} className="rounded-2xl border border-border bg-card px-5 py-4">
-        <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{item.title}</p>{pill(item.status, "applied")}</div>
-        <p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
-        {item.result?.href && <p className="mt-1 text-xs"><Link href={item.result.href} className="text-brand underline">Open · Undo</Link></p>}
-        <EvidenceView proposal={item} locale={locale} />
-      </li>)}</ul>
     </section>}
 
     <section aria-labelledby="review-heading" className="space-y-3">
@@ -206,5 +180,32 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       </div>)}
       {!run.proposals.length && !active && <p className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">The team found nothing that needs a decision.</p>}
     </section>
+
+    {decided.length > 0 && <section aria-labelledby="decided-heading" className="space-y-2">
+      <h2 id="decided-heading" className="text-sm font-medium">Decided automatically <span className="text-muted-foreground">({decided.length})</span></h2>
+      <p className="text-xs text-muted-foreground">The Categorizer applied these itself. Each one is an audited batch; open it to check the rows or Undo.</p>
+      <ul className="space-y-2">{decided.map(item => <li key={item.id} className="rounded-2xl border border-border bg-card px-5 py-4">
+        <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{item.title}</p>{pill(item.status, "applied")}</div>
+        <p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
+        {item.result?.href && <p className="mt-1 text-xs"><Link href={item.result.href} className="text-brand underline">Open · Undo</Link></p>}
+        <EvidenceView proposal={item} locale={locale} />
+      </li>)}</ul>
+    </section>}
+
+    {run.tasks.length > 0 && <h2 className="eyebrow">How the team worked</h2>}
+    {run.tasks.length > 0 && <TeamFlow statuses={Object.fromEntries(run.tasks.map(task => [task.agent, task.status]))} finished={run.status === "completed"} />}
+    {lead && <section aria-label="Lead agent" className="rounded-xl border border-ai-border bg-ai-soft p-5">
+      <div className="flex items-center gap-2"><StatusIcon status={lead.status} /><h2 className="text-sm font-medium text-ai">Lead</h2><span className="text-xs text-muted-foreground">{lead.summary ?? lead.step}</span></div>
+      <ol className="mt-2 grid gap-x-6 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2">{lead.events.slice(-8).map((event, index) => <li key={`${event.at}-${index}`} className="flex gap-1.5"><ChevronRight className="mt-0.5 size-3 shrink-0" aria-hidden="true" />{event.text}</li>)}</ol>
+    </section>}
+
+    {WAVES.map((wave, index) => {
+      const tasks = wave.map(agent => byAgent.get(agent)).filter((task): task is AgentTaskView => Boolean(task));
+      return tasks.length > 0 && <section key={index} aria-label={WAVE_LABELS[index]} className="space-y-2">
+        <h2 className="eyebrow">Wave {index + 1} · {WAVE_LABELS[index]}</h2>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{tasks.map(task => <AgentCard key={task.agent} task={task} />)}</div>
+      </section>;
+    })}
+    {!run.tasks.length && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" aria-hidden="true" />The lead is planning the work…</p>}
   </div>;
 }
