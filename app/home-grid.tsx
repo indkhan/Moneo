@@ -2,19 +2,23 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, pointerWithin, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Check, GripHorizontal, LayoutGrid } from "lucide-react";
 import { moveDashboardWidgets } from "./dashboard-actions";
 
 export type HomeWidget = { key: string; label: string; span: string; node: ReactNode };
+// Cards differ in width, so shuffling them live jumps around; the others hold still and the drop target is outlined.
+const stayPut = () => null;
+// The card under the pointer is the target (a big card's center can sit over a neighbour); the keyboard has no pointer.
+const underPointer: CollisionDetection = args => { const hits = pointerWithin(args); return hits.length ? hits : closestCenter(args); };
 
 function Card({ widget, editing }: { widget: HomeWidget; editing: boolean }) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: widget.key });
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: widget.key });
   // The handle sits on the card's top edge, clear of each card's own header links; with a mouse it shows on hover, on touch in edit mode.
   return <div ref={setNodeRef} style={{ transform: CSS.Translate.toString(transform), transition }}
-    className={`group relative min-w-0 ${widget.span} [&>section]:h-full ${isDragging ? "z-20 opacity-80" : ""} ${editing ? "rounded-xl outline-2 outline-offset-4 outline-border outline-dashed" : ""}`}>
+    className={`group relative min-w-0 ${widget.span} [&>section]:h-full ${isDragging ? "z-20 opacity-80 shadow-lg" : ""} ${isOver && !isDragging ? "rounded-xl outline-2 outline-offset-4 outline-brand" : editing ? "min-h-12 rounded-xl outline-2 outline-offset-4 outline-border outline-dashed" : ""}`}>
     {widget.node}
     <button type="button" ref={setActivatorNodeRef} {...attributes} {...listeners} aria-label={`Move ${widget.label}`} title="Drag to move"
       className={`absolute -top-3 left-1/2 z-10 h-6 w-12 -translate-x-1/2 touch-none cursor-grab items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm hover:text-foreground active:cursor-grabbing
@@ -63,8 +67,8 @@ export function HomeGrid({ widgets, version, heading, children }: { widgets: Hom
     {children}
     {editing && <p className="text-sm text-muted-foreground">Drag a card by the handle on its top edge. <Link href="/settings#home" className="text-brand underline">Show or hide cards</Link></p>}
     {notice && <p role="alert" className="text-sm text-danger">{notice}</p>}
-    <DndContext id="home-grid" sensors={sensors} collisionDetection={closestCenter} onDragStart={() => setDragging(true)} onDragCancel={() => setDragging(false)} onDragEnd={onDragEnd}>
-      <SortableContext items={order} strategy={rectSortingStrategy}>
+    <DndContext id="home-grid" sensors={sensors} collisionDetection={underPointer} onDragStart={() => setDragging(true)} onDragCancel={() => setDragging(false)} onDragEnd={onDragEnd}>
+      <SortableContext items={order} strategy={stayPut}>
         {/* Artifact frames would swallow the pointer mid-drag. */}
         <div className={`grid grid-flow-dense gap-4 lg:grid-cols-6 ${dragging ? "select-none [&_iframe]:pointer-events-none" : ""}`}>
           {order.flatMap(key => { const widget = byKey.get(key); return widget ? [<Card key={key} widget={widget} editing={editing} />] : []; })}
