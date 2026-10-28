@@ -16,17 +16,30 @@ async function writeLayout({ supabase, workspace }: Workspace, version: number, 
   if (result.error) throw new Error("Dashboard could not be saved; reload before retrying");
   if (!result.data) throw new Error("Dashboard changed; reload before saving");
   revalidatePath("/");
+  return result.data.version as number;
 }
 
 export async function saveDashboard(form: FormData) {
   const context = await requireWorkspace();
   const version = z.coerce.number().int().min(0).max(2147483646).parse(form.get("version"));
+  // The form lists the current Home order first, so shown cards keep their place and newly shown ones go last.
   const items = dashboardLayoutSchema.parse(form.getAll("enabled"));
-  const positions = new Map(items.map(key => [key, z.coerce.number().int().min(1).max(50).parse(form.get(`position:${key}`))]));
-  items.sort((a, b) => positions.get(a)! - positions.get(b)!);
   await writeLayout(context, version, items);
   revalidatePath("/settings");
   redirect("/settings");
+}
+
+/** Saves the order dragged on Home; it can only rearrange widgets already there (Settings shows and hides them). */
+export async function moveDashboardWidgets(version: number, items: string[]) {
+  const context = await requireWorkspace();
+  const expected = z.number().int().min(0).max(2147483646).parse(version);
+  const next = dashboardLayoutSchema.parse(items);
+  const layout = await context.supabase.from("dashboard_layouts").select("items").eq("workspace_id", context.workspace.id).maybeSingle();
+  if (layout.error) throw new Error("Dashboard could not be loaded; try again");
+  const saved = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
+  const current = dashboardItems(saved?.success ? saved.data : null);
+  if (next.some(key => !current.includes(key))) throw new Error("Dashboard changed; reload before saving");
+  return writeLayout(context, expected, next);
 }
 
 /** Pins an artifact to Home (its compact widget view) or takes it off. */

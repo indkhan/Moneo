@@ -10,6 +10,7 @@ vi.mock("@/lib/finance/model", () => ({ evaluatePlanForWorkspace: vi.fn() }));
 vi.mock("./insights/panel", () => ({ WeeklyBriefing: () => null, loadInsightEvidence: async () => ({}) }));
 vi.mock("./agent-briefing", () => ({ AgentBriefing: () => null, loadAgentBriefing: async () => null }));
 vi.mock("./manual-balance-form", () => ({ ManualBalanceForm: () => null }));
+vi.mock("./home-grid", () => ({ HomeGrid: ({ heading, children, widgets }: { heading: ReactNode; children: ReactNode; widgets: { key: string; node: ReactNode }[] }) => <>{heading}{children}{widgets.map(widget => <div key={widget.key}>{widget.node}</div>)}</> }));
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("@/lib/finance/tools", () => ({ cashflow: async () => ({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), unavailable: "Synthetic period" }) }));
 vi.mock("@/lib/finance/wealth", () => ({ loadWealthItems: async () => [], wealthEvidence: () => ({ included: [], missingInputs: [], sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07", recordBasis: "manual_wealth" }, []) }) }));
