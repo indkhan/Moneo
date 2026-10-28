@@ -4,7 +4,8 @@ import { ManualBalanceForm } from "./manual-balance-form";
 import { WeeklyBriefing, loadInsightEvidence } from "./insights/panel";
 import { CashFlowPanel, Figure, MonthCashFlow, RecentTransactions, SectionFallback, card } from "./home-sections";
 import { Suspense, type ReactNode } from "react";
-import { artifactIdFromKey, dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
+import { BUILTIN_WIDGETS, artifactIdFromKey, dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
+import { HomeGrid } from "./home-grid";
 import { ArtifactFrame } from "@/components/artifact-frame";
 import { loadHomeSpending } from "@/lib/finance/dashboard-spending";
 import { redirect } from "next/navigation";
@@ -26,7 +27,7 @@ import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { dayRange, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
 import { NetWorthChart } from "./net-worth-chart";
-import { LayoutGrid, Sparkle } from "lucide-react";
+import { Sparkle } from "lucide-react";
 
 // Six columns: a wide card pairs with a narrow one and half cards pair up; dense flow fills the gaps whatever order the layout picks.
 const FULL = new Set(["overview", "history"]);
@@ -219,15 +220,11 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
 
   return (
     <main className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
-      <header className="mb-2 flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1"><p className="eyebrow">{new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))} · {new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))}</p><h1 className="page-title">Overview</h1></div>
-        <Link href="/settings#home" className="inline-flex h-11 items-center gap-2 rounded-xl border border-input px-4 text-[13px] hover:bg-muted"><LayoutGrid className="size-4" strokeWidth={1.6} aria-hidden="true" />Edit layout</Link>
-      </header>
-      <Suspense fallback={null}><IouReview db={supabase} workspaceId={workspace.id} /></Suspense>
-      <Suspense fallback={null}><RecurringReview supabase={supabase} workspace={workspace} /></Suspense>
-      <div className="grid grid-flow-dense gap-4 lg:grid-cols-6">
-        {ordered.map(key => <div key={key} className={`min-w-0 ${span(key)} [&>section]:h-full`}>{widgets[key]}</div>)}
-      </div>
+      <HomeGrid version={layout.data?.version ?? 0} widgets={ordered.map(key => ({ key, span: span(key), node: widgets[key], label: pinnedTitles.get(artifactIdFromKey(key) ?? "") ?? BUILTIN_WIDGETS[key as keyof typeof BUILTIN_WIDGETS] }))}
+        heading={<div className="flex flex-col gap-1"><p className="eyebrow">{new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))} · {new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))}</p><h1 className="page-title">Overview</h1></div>}>
+        <Suspense fallback={null}><IouReview db={supabase} workspaceId={workspace.id} /></Suspense>
+        <Suspense fallback={null}><RecurringReview supabase={supabase} workspace={workspace} /></Suspense>
+      </HomeGrid>
     </main>
   );
 }

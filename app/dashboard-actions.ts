@@ -16,6 +16,7 @@ async function writeLayout({ supabase, workspace }: Workspace, version: number, 
   if (result.error) throw new Error("Dashboard could not be saved; reload before retrying");
   if (!result.data) throw new Error("Dashboard changed; reload before saving");
   revalidatePath("/");
+  return result.data.version as number;
 }
 
 export async function saveDashboard(form: FormData) {
@@ -39,7 +40,7 @@ export async function moveDashboardWidgets(version: number, items: string[]) {
   const saved = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
   const current = dashboardItems(saved?.success ? saved.data : null);
   if (next.some(key => !current.includes(key))) throw new Error("Dashboard changed; reload before saving");
-  await writeLayout(context, expected, next);
+  return writeLayout(context, expected, next);
 }
 
 /** Pins an artifact to Home (its compact widget view) or takes it off. */
