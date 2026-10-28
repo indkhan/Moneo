@@ -1,0 +1,18 @@
+Can you also check that it picks up itself like if there is a recurring and it increases so it catches it and shows in the overview for me to confirm and all 
+
+
+If that is nicely fixed directly put migration make pr and then merge to main
+
+---
+
+It should for proposal everythihh n should have the same thing in the backend
+
+---
+
+<task-notification>
+<task-id>bopa9pbaa</task-id>
+<tool-use-id>toolu_0171SRwbXn9D3f7dSMMmvGoM</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-911cf2fb\6517b053-687a-4398-883e-b46e4814981b\tasks\bopa9pbaa.output</output-file>
+<status>failed</status>
+<summary>Background command "Start dev server" failed with exit code 1</summary>
+</task-notification>
