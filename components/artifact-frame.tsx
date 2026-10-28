@@ -2,26 +2,27 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 
+type Theme = "light" | "dark" | "system";
+
 function subscribeTheme(notify: () => void) {
   const observer = new MutationObserver(notify);
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-  const media = window.matchMedia("(prefers-color-scheme: dark)");
-  media.addEventListener("change", notify);
-  return () => { observer.disconnect(); media.removeEventListener("change", notify); };
+  return () => observer.disconnect();
 }
-function readTheme() {
+// A "system" frame gets no theme and follows the OS itself, like the app does.
+function readTheme(): Theme {
   const theme = document.documentElement.dataset.theme;
-  return theme === "light" || theme === "dark" ? theme : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return theme === "light" || theme === "dark" ? theme : "system";
 }
 
 const FIT_MIN = 160, FIT_MAX = 560, FIT_START = 320;
 
 /**
- * A sandboxed artifact from its frame route, in the app's current theme. The frame is only created
- * once the theme is known, so it loads once. `fit` sizes it to the page's reported content height.
+ * A sandboxed artifact from its frame route, in the app's current theme. Server pages pass the theme they
+ * rendered, so the frame is in the HTML and starts loading before hydration. `fit` sizes it to the page's reported content height.
  */
-export function ArtifactFrame({ src, title, fit = false, loading, className, style }: { src: string; title: string; fit?: boolean; loading?: "lazy"; className?: string; style?: CSSProperties }) {
-  const theme = useSyncExternalStore(subscribeTheme, readTheme, () => null);
+export function ArtifactFrame({ src, title, theme: rendered = "system", fit = false, loading, className, style }: { src: string; title: string; theme?: Theme; fit?: boolean; loading?: "lazy"; className?: string; style?: CSSProperties }) {
+  const theme = useSyncExternalStore(subscribeTheme, readTheme, () => rendered);
   const frame = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(FIT_START);
   useEffect(() => {
@@ -35,9 +36,8 @@ export function ArtifactFrame({ src, title, fit = false, loading, className, sty
     return () => window.removeEventListener("message", onMessage);
   }, [fit]);
   const sized = fit ? { height, ...style } : style;
-  if (!theme) return <div className={className} style={sized} />;
-  return <iframe ref={frame} title={title} sandbox="allow-scripts" loading={loading} src={`${src}${src.includes("?") ? "&" : "?"}theme=${theme}`}
-    className={`border-0 ${className ?? ""}`} style={{ colorScheme: theme, ...sized }} />;
+  return <iframe ref={frame} title={title} sandbox="allow-scripts" loading={loading} src={theme === "system" ? src : `${src}${src.includes("?") ? "&" : "?"}theme=${theme}`}
+    className={`border-0 ${className ?? ""}`} style={{ colorScheme: theme === "system" ? "light dark" : theme, ...sized }} />;
 }
 
 const THUMB_WIDTH = 800, THUMB_HEIGHT = 500;

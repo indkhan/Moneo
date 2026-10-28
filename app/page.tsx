@@ -148,7 +148,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const widgets: Record<string, ReactNode> = {
     ...Object.fromEntries([...pinnedTitles].map(([id, title]) => [`artifact:${id}`, <section key={id} aria-label={title} className={`${card} flex flex-col gap-3`}>
       <div className="flex items-baseline justify-between gap-2"><h2 className="truncate text-sm font-medium">{title}</h2><Link href={`/ai/artifacts/${id}`} className="shrink-0 text-sm font-medium text-brand hover:underline">Open</Link></div>
-      <ArtifactFrame src={`/ai/artifacts/${id}/frame?view=widget`} title={title} loading="lazy" fit className="w-full" />
+      <ArtifactFrame src={`/ai/artifacts/${id}/frame?view=widget`} title={title} theme={context.settings.theme} loading="lazy" fit className="w-full" />
     </section>])),
     overview: <section aria-label="Overview" className="grid gap-4 lg:grid-cols-3">
       <div className={`${card} flex flex-col gap-5 lg:col-span-2`}>

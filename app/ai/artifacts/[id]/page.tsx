@@ -24,7 +24,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   const current = versions.data.find(item => String(item.version) === v) ?? versions.data.at(-1)!;
   const latest = versions.data.at(-1)!.version;
   // The frame reruns the saved queries on every open, so the page always shows today's data.
-  const frame = <ArtifactFrame src={`/ai/artifacts/${id}/frame?v=${current.version}`} title={artifact.data.title} className="size-full" />;
+  const frame = <ArtifactFrame src={`/ai/artifacts/${id}/frame?v=${current.version}`} title={artifact.data.title} theme={context.settings.theme} className="size-full" />;
   const onHome = Array.isArray(layout.data?.items) && layout.data.items.includes(artifactWidgetKey(id));
   const at = (version: number, fullScreen = !!full) => `/ai/artifacts/${id}?v=${version}${fullScreen ? "&full=1" : ""}`;
 
