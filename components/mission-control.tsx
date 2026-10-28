@@ -120,6 +120,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
   const reviewable = !active;
   const toggle = (id: string) => setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const kinds = (Object.keys(KIND_LABELS) as ProposalKind[]).filter(kind => manual.some(item => item.kind === kind));
+  const openIds = (kind: ProposalKind) => open.filter(item => item.kind === kind).map(item => item.id);
   const model = run.model_status === "available" || run.model_status === "budget_exhausted" ? `Free model · ${run.model_calls}/${run.model_budget} calls`
     : run.model_status === "unknown" ? "Checking model…" : "Deterministic only (no free model)";
 
@@ -152,7 +153,10 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       <p className="text-xs text-muted-foreground">{reviewable ? "Nothing changes until you accept. Accepted changes use the same audited actions as the rest of Moneo, so history and Undo keep working." : "Proposals stream in as agents work. Review opens when the team finishes."}</p>
       {notice && <p role="status" className="text-sm">{notice}</p>}
       {kinds.map(kind => <details key={kind} open className="space-y-2 group">
-        <summary className="cursor-pointer list-none eyebrow flex items-center gap-1.5 [&::-webkit-details-marker]:hidden"><ChevronRight className="size-3.5 transition-transform group-open:rotate-90" aria-hidden="true" />{KIND_LABELS[kind]} ({manual.filter(item => item.kind === kind).length})</summary>
+        <summary className="cursor-pointer list-none eyebrow flex items-center gap-1.5 [&::-webkit-details-marker]:hidden"><ChevronRight className="size-3.5 transition-transform group-open:rotate-90" aria-hidden="true" />{KIND_LABELS[kind]} ({manual.filter(item => item.kind === kind).length}){reviewable && openIds(kind).length > 0 && <span className="ml-auto flex gap-1.5">
+          <button type="button" disabled={pending} onClick={event => { event.preventDefault(); decide(openIds(kind), "reject"); }} className="h-8 rounded-[10px] border border-input px-3 text-xs hover:bg-muted disabled:opacity-50">Reject all</button>
+          <button type="button" disabled={pending} onClick={event => { event.preventDefault(); decide(openIds(kind), "accept"); }} className="h-8 rounded-[10px] bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">{kind === "finding" ? "Mark all reviewed" : "Accept all"}</button>
+        </span>}</summary>
         <ul className="space-y-2">{manual.filter(item => item.kind === kind).map(item => {
           const decidable = reviewable && (item.status === "proposed" || item.status === "failed");
           return <li key={item.id} className={`rounded-2xl border bg-card px-5 py-[18px] ${item.status === "accepted" ? "border-brand/40" : "border-border"} ${item.status === "rejected" ? "opacity-60" : ""}`}>
