@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { confidenceToPercent, formatMoney, normalizeLabel, seriesKey } from "./series";
+import { priceChanges } from "./suggestions";
 
 describe("recurring review helpers", () => {
   it("normalizes labels like Postgres (trim, collapse spaces, lowercase)", () => {
@@ -33,4 +34,14 @@ it("converts cadences to an exact monthly equivalent", async () => {
   expect(monthlyEquivalent(-1000n, "biweekly")).toBe(-2167n);
   expect(monthlyEquivalent(3000n, "quarterly")).toBe(1000n);
   expect(monthlyEquivalent(-11999n, "yearly")).toBe(-1000n);
+});
+
+it("flags a confirmed schedule only when a charge newer than its evidence differs in amount", () => {
+  const schedule = { id: "a", name: "Netflix", amount_minor: "-1299", cadence: "monthly", starts_on: "2026-09-03", source: "recurring_confirmed", confirmed: true, enabled: true, removed_at: null, category: null };
+  const row = (id: string, amount: string) => ({ id, posted_on: `2026-${id}-03`, amount_minor: amount }) as never;
+  const item = (latest: string, linked: string[]) => ({ status: "confirmed", assumption: schedule, related: [{ recurring_series_transactions: linked.map(transaction_id => ({ transaction_id })) }],
+    evidence: [row("07", "-1299"), row("08", "-1299"), row("09", "-1299"), row("10", latest)] }) as never;
+  expect(priceChanges([item("-1399", ["07", "08", "09"])])).toHaveLength(1);
+  expect(priceChanges([item("-1299", ["07", "08", "09"])])).toHaveLength(0);
+  expect(priceChanges([item("-1399", ["07", "08", "09", "10"])])).toHaveLength(0);
 });

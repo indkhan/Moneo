@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { detectRecurring, type RecurringSeries } from "@/lib/finance/recurring";
 
@@ -8,14 +9,16 @@ export type TxRow = {
   id: string; posted_on: string; description: string; amount_minor: string; currency_code: string; account_id: string;
   merchant_id: string | null; version: number; status: "posted"; kind: "ordinary"; review_reasons: string[];
 };
+type Assumption = { id: string; name: string; amount_minor: string; cadence: string; starts_on: string; source: string; confirmed: boolean; enabled: boolean; removed_at: string | null; category: { name: string } | null };
 type Stored = { id: string; account_id: string; currency_code: string; cadence: string; status: string; label?: string; evidence_invalidated?: boolean; evidence_baseline?: unknown;
-  recurring_series_transactions?: { transaction_id: string }[]; assumption?: { source: string; confirmed: boolean; enabled: boolean; removed_at: string | null } | { source: string; confirmed: boolean; enabled: boolean; removed_at: string | null }[] | null };
+  recurring_series_transactions?: { transaction_id: string }[]; assumption?: Assumption | Assumption[] | null };
 
 /** Detected recurring patterns with their review state. Reads up to 10k postings in serial keyset pages; shared by the Recurring page and chat. */
-export async function loadSuggestions(supabase: SupabaseClient, workspace: { id: string }) {
+// Memoized per request, so Overview and the Recurring page sections share one detection pass.
+export const loadSuggestions = cache(async (supabase: SupabaseClient, workspace: { id: string }) => {
   // Started now (builders are lazy thenables) so it runs while transactions page in.
   const storedQuery = Promise.resolve(supabase.from("recurring_series")
-    .select("id, account_id, normalized_label, cadence, currency_code, status, assumption_id, label, evidence_invalidated, evidence_baseline, recurring_series_transactions(transaction_id), assumption:financial_assumptions(source,confirmed,enabled,removed_at)")
+    .select("id, account_id, normalized_label, cadence, currency_code, status, assumption_id, label, evidence_invalidated, evidence_baseline, recurring_series_transactions(transaction_id), assumption:financial_assumptions(id,name,amount_minor::text,cadence,starts_on,source,confirmed,enabled,removed_at,category:categories(name))")
     .eq("workspace_id", workspace.id));
 
   const rows: TxRow[] = [];
@@ -40,7 +43,7 @@ export async function loadSuggestions(supabase: SupabaseClient, workspace: { id:
     cursor = page.at(-1);
   }
   const { data: storedData, error: storedError } = await storedQuery;
-  const stored = (storedData ?? []) as Stored[];
+  const stored = (storedData ?? []) as unknown as Stored[];
   const truncated = rows.length > MAX_TRANSACTIONS;
   const cutoff = truncated ? rows[MAX_TRANSACTIONS].posted_on : null;
   // Exclude the entire boundary date rather than presenting an arbitrary slice of that day's postings.
@@ -70,7 +73,7 @@ export async function loadSuggestions(supabase: SupabaseClient, workspace: { id:
   const invalidated = stored.filter(series => series.evidence_invalidated);
 
   return { candidates, pending, reviewed, invalidated, truncated, cutoff, observedFrom, observedTo, detected, queryError, storedError: storedError?.message ?? null, detectError };
-}
+});
 
 export type Suggestion = Awaited<ReturnType<typeof loadSuggestions>>["candidates"][number];
 
@@ -78,4 +81,15 @@ export type Suggestion = Awaited<ReturnType<typeof loadSuggestions>>["candidates
 export function seriesDecision({ series, evidence }: Pick<Suggestion, "series" | "evidence">) {
   return { accountId: series.accountId, label: series.label, cadence: series.cadence, currencyCode: series.currencyCode,
     evidence: evidence.map(row => ({ id: row.id, version: row.version })), runAnchorId: series.runAnchorId, evidenceLimited: series.evidenceLimited };
+}
+
+/** Confirmed schedules whose newest charge, posted after confirming, differs from the scheduled amount (e.g. a price rise). */
+export function priceChanges(candidates: Suggestion[]) {
+  return candidates.flatMap(item => {
+    const schedule = item.assumption, linked = item.related.length === 1 ? item.related[0].recurring_series_transactions ?? [] : null;
+    const latest = item.evidence.at(-1);
+    if (item.status !== "confirmed" || !linked || !schedule?.confirmed || !schedule.enabled || schedule.removed_at || !latest) return [];
+    if (linked.some(link => link.transaction_id === latest.id) || latest.amount_minor === schedule.amount_minor) return [];
+    return [{ ...item, schedule, latest }];
+  });
 }
