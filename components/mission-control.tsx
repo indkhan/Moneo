@@ -151,8 +151,8 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       </div>
       <p className="text-xs text-muted-foreground">{reviewable ? "Nothing changes until you accept. Accepted changes use the same audited actions as the rest of Moneo, so history and Undo keep working." : "Proposals stream in as agents work. Review opens when the team finishes."}</p>
       {notice && <p role="status" className="text-sm">{notice}</p>}
-      {kinds.map(kind => <div key={kind} className="space-y-2">
-        <h3 className="eyebrow">{KIND_LABELS[kind]}</h3>
+      {kinds.map(kind => <details key={kind} open className="space-y-2 group">
+        <summary className="cursor-pointer list-none eyebrow flex items-center gap-1.5 [&::-webkit-details-marker]:hidden"><ChevronRight className="size-3.5 transition-transform group-open:rotate-90" aria-hidden="true" />{KIND_LABELS[kind]} ({manual.filter(item => item.kind === kind).length})</summary>
         <ul className="space-y-2">{manual.filter(item => item.kind === kind).map(item => {
           const decidable = reviewable && (item.status === "proposed" || item.status === "failed");
           return <li key={item.id} className={`rounded-2xl border bg-card px-5 py-[18px] ${item.status === "accepted" ? "border-brand/40" : "border-border"} ${item.status === "rejected" ? "opacity-60" : ""}`}>
@@ -177,7 +177,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
             </div>
           </li>;
         })}</ul>
-      </div>)}
+      </details>)}
       {!run.proposals.length && !active && <p className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">The team found nothing that needs a decision.</p>}
     </section>
 
