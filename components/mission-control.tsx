@@ -124,6 +124,24 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
   const model = run.model_status === "available" || run.model_status === "budget_exhausted" ? `Free model · ${run.model_calls}/${run.model_budget} calls`
     : run.model_status === "unknown" ? "Checking model…" : "Deterministic only (no free model)";
 
+  const team = <>
+    {!active && run.tasks.length > 0 && <h2 className="eyebrow">How the team worked</h2>}
+    {run.tasks.length > 0 && <TeamFlow statuses={Object.fromEntries(run.tasks.map(task => [task.agent, task.status]))} finished={run.status === "completed"} />}
+    {lead && <section aria-label="Lead agent" className="rounded-xl border border-ai-border bg-ai-soft p-5">
+      <div className="flex items-center gap-2"><StatusIcon status={lead.status} /><h2 className="text-sm font-medium text-ai">Lead</h2><span className="text-xs text-muted-foreground">{lead.summary ?? lead.step}</span></div>
+      <ol className="mt-2 grid gap-x-6 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2">{lead.events.slice(-8).map((event, index) => <li key={`${event.at}-${index}`} className="flex gap-1.5"><ChevronRight className="mt-0.5 size-3 shrink-0" aria-hidden="true" />{event.text}</li>)}</ol>
+    </section>}
+
+    {WAVES.map((wave, index) => {
+      const tasks = wave.map(agent => byAgent.get(agent)).filter((task): task is AgentTaskView => Boolean(task));
+      return tasks.length > 0 && <section key={index} aria-label={WAVE_LABELS[index]} className="space-y-2">
+        <h2 className="eyebrow">Wave {index + 1} · {WAVE_LABELS[index]}</h2>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{tasks.map(task => <AgentCard key={task.agent} task={task} />)}</div>
+      </section>;
+    })}
+    {!run.tasks.length && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" aria-hidden="true" />The lead is planning the work…</p>}
+  </>;
+
   return <div className="space-y-6">
     <header className="flex flex-wrap items-center gap-3">
       <div className="mr-auto min-w-0">
@@ -133,6 +151,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       {active && <button type="button" onClick={() => void control("cancel")} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"><Square className="size-3.5" aria-hidden="true" />Stop</button>}
       {(run.status === "canceled" || run.status === "failed") && <button type="button" onClick={() => void control("resume")} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"><Play className="size-3.5" aria-hidden="true" />Resume</button>}
     </header>
+    {active && team}
     {run.error && <p role="alert" className="rounded-lg bg-danger-soft p-3 text-sm text-danger">{run.error}</p>}
 
     {run.briefing && <section aria-label="Briefing" className="rounded-xl border border-border bg-card p-6 sm:p-7">
@@ -153,7 +172,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       <p className="text-xs text-muted-foreground">{reviewable ? "Nothing changes until you accept. Accepted changes use the same audited actions as the rest of Moneo, so history and Undo keep working." : "Proposals stream in as agents work. Review opens when the team finishes."}</p>
       {notice && <p role="status" className="text-sm">{notice}</p>}
       {kinds.map(kind => <details key={kind} open className="space-y-2 group">
-        <summary className="cursor-pointer list-none eyebrow flex items-center gap-1.5 [&::-webkit-details-marker]:hidden"><ChevronRight className="size-3.5 transition-transform group-open:rotate-90" aria-hidden="true" />{KIND_LABELS[kind]} ({manual.filter(item => item.kind === kind).length}){reviewable && openIds(kind).length > 0 && <span className="ml-auto flex gap-1.5">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden"><ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden="true" /><h3 className="eyebrow">{KIND_LABELS[kind]} ({manual.filter(item => item.kind === kind).length})</h3>{reviewable && openIds(kind).length > 0 && <span className="ml-auto flex gap-1.5">
           <button type="button" disabled={pending} onClick={event => { event.preventDefault(); decide(openIds(kind), "reject"); }} className="h-8 rounded-[10px] border border-input px-3 text-xs hover:bg-muted disabled:opacity-50">Reject all</button>
           <button type="button" disabled={pending} onClick={event => { event.preventDefault(); decide(openIds(kind), "accept"); }} className="h-8 rounded-[10px] bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">{kind === "finding" ? "Mark all reviewed" : "Accept all"}</button>
         </span>}</summary>
@@ -195,20 +214,6 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       </li>)}</ul>
     </section>}
 
-    {run.tasks.length > 0 && <h2 className="eyebrow">How the team worked</h2>}
-    {run.tasks.length > 0 && <TeamFlow statuses={Object.fromEntries(run.tasks.map(task => [task.agent, task.status]))} finished={run.status === "completed"} />}
-    {lead && <section aria-label="Lead agent" className="rounded-xl border border-ai-border bg-ai-soft p-5">
-      <div className="flex items-center gap-2"><StatusIcon status={lead.status} /><h2 className="text-sm font-medium text-ai">Lead</h2><span className="text-xs text-muted-foreground">{lead.summary ?? lead.step}</span></div>
-      <ol className="mt-2 grid gap-x-6 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2">{lead.events.slice(-8).map((event, index) => <li key={`${event.at}-${index}`} className="flex gap-1.5"><ChevronRight className="mt-0.5 size-3 shrink-0" aria-hidden="true" />{event.text}</li>)}</ol>
-    </section>}
-
-    {WAVES.map((wave, index) => {
-      const tasks = wave.map(agent => byAgent.get(agent)).filter((task): task is AgentTaskView => Boolean(task));
-      return tasks.length > 0 && <section key={index} aria-label={WAVE_LABELS[index]} className="space-y-2">
-        <h2 className="eyebrow">Wave {index + 1} · {WAVE_LABELS[index]}</h2>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{tasks.map(task => <AgentCard key={task.agent} task={task} />)}</div>
-      </section>;
-    })}
-    {!run.tasks.length && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" aria-hidden="true" />The lead is planning the work…</p>}
+    {!active && team}
   </div>;
 }
