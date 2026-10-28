@@ -7,7 +7,7 @@ import { expandSchedule } from "@/lib/finance/model";
 import { wealthAmount } from "@/lib/finance/wealth";
 import { liveAccounts } from "@/lib/ai/transaction-proposals";
 import { createSchedule, decideSeries, editSchedule, removeSchedule, scheduleFields, seriesSchema, type ScheduleFields } from "@/app/money/recurring/schedules";
-import { loadSuggestions, seriesDecision } from "@/app/money/recurring/suggestions";
+import { loadSuggestions, priceChanges, seriesDecision } from "@/app/money/recurring/suggestions";
 
 type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string } };
 
@@ -132,4 +132,51 @@ export async function applyRecurringProposal(context: Context, proposalId: strin
   else if (parsed.action === "remove") await removeSchedule(context, parsed.assumptionId, proposalId);
   else await decideSeries(context, parsed.series, "confirmed", parsed.changes, proposalId);
   return { href: "/money/recurring", undo: parsed.action === "add" ? "Remove it on the Recurring page" : "Undo the change in Plan history" };
+}
+
+const AUTO = ["recurring_new:", "recurring_price:"];
+const MAX_NEW = 10;
+
+/**
+ * Turns what detection catches into the same recurring_edit cards chat creates: a price change on a confirmed payment
+ * (one card per new charge) and new patterns to confirm. Idempotent: the conflict key is unique per workspace, so a
+ * dismissed card is never re-raised, and open cards whose cause disappeared (confirmed elsewhere) are closed.
+ */
+export async function syncRecurringProposals(context: Context) {
+  const { supabase, workspace } = context;
+  const suggestions = await loadSuggestions(supabase, workspace);
+  if (suggestions.queryError || suggestions.storedError || suggestions.detectError) return;
+  const money = (minor: string | bigint, currency: string) => formatMoney(minor, currency, workspace.locale);
+  const wanted = [
+    ...priceChanges(suggestions.candidates).map(({ series, evidence, schedule, latest }) => {
+      const up = BigInt(latest.amount_minor.replace("-", "")) > BigInt(schedule.amount_minor.replace("-", ""));
+      return { conflict_key: `recurring_price:${latest.id}`, title: `${schedule.name} went ${up ? "up" : "down"}: update to ${money(latest.amount_minor, series.currencyCode)}`.slice(0, 200),
+        detail: `Scheduled ${money(schedule.amount_minor, series.currencyCode)}; charged ${money(latest.amount_minor, series.currencyCode)} on ${latest.posted_on}. Dismiss to keep the current amount.`,
+        payload: { action: "confirm" as const, series: seriesDecision({ series, evidence }), changes: { amountMinor: latest.amount_minor } } };
+    }),
+    ...suggestions.pending.filter(item => item.related.length <= 1).slice(0, MAX_NEW).map(({ series, evidence }) => {
+      const latest = evidence.at(-1)?.amount_minor ?? series.amountMaxMinor.toString();
+      return { conflict_key: `recurring_new:${series.runAnchorId}`, title: `${series.label}: ${money(latest, series.currencyCode)} ${series.cadence}, confirm as recurring?`.slice(0, 200),
+        detail: `${series.occurrences} matching ${latest.startsWith("-") ? "payments" : "incoming payments"} found. Edit the amount, date or category on the Recurring page.`,
+        payload: { action: "confirm" as const, series: seriesDecision({ series, evidence }), changes: {} } };
+    }),
+  ];
+  const open = await supabase.from("agent_proposals").select("id, conflict_key").eq("workspace_id", workspace.id).is("run_id", null).eq("kind", "recurring_edit").in("status", ["proposed", "failed"]).limit(200);
+  if (open.error) return;
+  const keys = new Set(wanted.map(item => item.conflict_key));
+  const stale = (open.data ?? []).filter(row => AUTO.some(prefix => String(row.conflict_key).startsWith(prefix)) && !keys.has(row.conflict_key)).map(row => row.id);
+  if (stale.length) await supabase.from("agent_proposals").update({ status: "rejected", decided_at: new Date().toISOString(), result: { stale: true } }).eq("workspace_id", workspace.id).in("id", stale).in("status", ["proposed", "failed"]);
+  // Each cause is raised once: already open, accepted or dismissed keys are skipped (the unique key also guards races).
+  const seen = wanted.length ? await supabase.from("agent_proposals").select("conflict_key").eq("workspace_id", workspace.id).is("run_id", null).in("conflict_key", [...keys]) : { data: [], error: null };
+  if (seen.error) return;
+  const raised = new Set((seen.data ?? []).map(row => row.conflict_key));
+  const fresh = wanted.filter(item => !raised.has(item.conflict_key));
+  if (fresh.length) await supabase.from("agent_proposals").insert(fresh.map(item => ({ workspace_id: workspace.id, agent: "chat", kind: "recurring_edit", confidence: 100, ...item, payload: recurringEditSchema.parse(item.payload) })));
+}
+
+/** Open recurring cards raised by detection, newest first; prefix narrows to price changes or new patterns. */
+export async function openRecurringProposals(supabase: SupabaseClient, workspaceId: string, prefixes = AUTO) {
+  const { data } = await supabase.from("agent_proposals").select("id, title, detail, conflict_key").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "recurring_edit")
+    .in("status", ["proposed", "failed"]).order("created_at", { ascending: false }).limit(50);
+  return (data ?? []).filter(row => prefixes.some(prefix => String(row.conflict_key).startsWith(prefix))) as { id: string; title: string; detail: string }[];
 }

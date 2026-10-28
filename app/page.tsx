@@ -20,6 +20,7 @@ import { AgentBriefing, loadAgentBriefing } from "./agent-briefing";
 import { HomeBudgets } from "./home-budgets";
 import { HomeHistory, loadHomeHistory } from "./home-history";
 import { IouReview, loadIouReview } from "./iou-review";
+import { RecurringReview } from "./money/recurring/review";
 import { loadPriceChanges } from "@/lib/finance/price-changes";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
@@ -223,6 +224,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         <Link href="/settings#home" className="inline-flex h-11 items-center gap-2 rounded-xl border border-input px-4 text-[13px] hover:bg-muted"><LayoutGrid className="size-4" strokeWidth={1.6} aria-hidden="true" />Edit layout</Link>
       </header>
       <Suspense fallback={null}><IouReview db={supabase} workspaceId={workspace.id} /></Suspense>
+      <Suspense fallback={null}><RecurringReview supabase={supabase} workspace={workspace} /></Suspense>
       <div className="grid grid-flow-dense gap-4 lg:grid-cols-6">
         {ordered.map(key => <div key={key} className={`min-w-0 ${span(key)} [&>section]:h-full`}>{widgets[key]}</div>)}
       </div>

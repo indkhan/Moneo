@@ -50,7 +50,7 @@ export function IouCard({ id, initial, onAccount }: { id: string; initial?: Prop
           {proposal.needsCash && <option value={NEW_CASH}>Cash (new account)</option>}
           {proposal.accounts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select></label>}
-      <button type="button" disabled={pending} onClick={() => decide("accept")} className="min-h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">{balance || recurring ? "Save" : "Add"}</button>
+      <button type="button" disabled={pending} onClick={() => decide("accept")} className="min-h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">{recurring ? "Confirm" : balance ? "Save" : "Add"}</button>
       <button type="button" disabled={pending} onClick={() => decide("reject")} className="min-h-9 rounded-lg border border-border px-4 text-sm hover:bg-muted disabled:opacity-50">Dismiss</button>
     </div> : <p role="status" className="mt-2 text-sm">{proposal.status === "accepted" ? done : "Dismissed. Nothing was changed."}</p>}
   </section>;

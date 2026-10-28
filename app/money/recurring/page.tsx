@@ -11,6 +11,7 @@ import { addSchedule, deleteSchedule, updateSchedule } from "./actions";
 import { ScheduleDialog } from "./forms";
 import { DetectedPatterns } from "./detected";
 import { OccurrenceReview } from "./occurrences";
+import { RecurringReview } from "./review";
 
 type Schedule = { id: string; name: string; category: { name: string } | null; account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; schedule_anchor_on: string | null; source: string };
 const UPCOMING_DAYS = 30;
@@ -61,6 +62,7 @@ export default async function RecurringPage() {
           defaults={{ name: "", amount: "", direction: "out", cadence: "monthly", startsOn: today, category: "" }} />}
       </header>
       {accountsError && <p role="alert">Could not load accounts: {accountsError.message}</p>}
+      <Suspense fallback={null}><RecurringReview supabase={supabase} workspace={workspace} prices /></Suspense>
 
       <section aria-label="Bills and subscriptions" className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-4">
