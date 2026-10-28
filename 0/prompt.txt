@@ -1,0 +1,33 @@
+# 1. Agent Page & Run History
+
+# **Layout Structure**: Reorder the Run History view so the briefing and user-selected review items appear at the top, followed by a "Decided Automatically" section, and parallel analysis blocks at the bottom.
+
+# **Collapsible Findings**: Place findings (e.g., *Anomaly Hunter*, *Recurring Schedules*) at the top with toggles to collapse/expand details and keep the view clean.
+
+# **Batch Review Actions**: Add action controls to "Accept", "Mark Reviewed", or "Reject All" findings.
+
+# **Remove Duplicate Labels**: Remove repeated component labels (e.g., *Anomaly Hunter* shouldn't be listed in two separate places).
+
+# 2. Navigation & "Ask Chat"
+
+# **Auto-Hide Sidebar**: When opening or switching to the "Ask" page from the overview, automatically collapse/hide the sidebar.
+
+# **Remove Redundant Headers**: Eliminate duplicate "Ask Chat" headers/titles when the user is already active on the Ask page.
+
+# 3. Overview Page & Layout Customization
+
+# **Drag-and-Drop Widgets**: Enable direct drag-and-drop functionality for dashboard widgets/artifacts so users can freely rearrange their layout.
+
+# **Cross-Device Input**: Ensure touch drag-and-drop works on mobile devices and mouse drag-and-drop works on desktop.
+
+# **Settings Refactor**: Remove rigid layout position settings in favor of direct on-screen drag-and-drop editing
+
+when you open overview the artifact takes alot of time to load and same for opening artifact page 
+these are the few findings from my friends can you tell me  which are worth pursuing , which are easy to implement and if yes then tell me in simple what is being asked and  most simple and optimized way of doing it should be added
+
+---
+
+For 1 use subagents of haiku and then make pr and then u review if problem u fix and merge here 
+Leave second problem
+3 let’s think about a better and most popular and efficient page 
+4 yes another thing is that it takes time in chat for the old chats yes no to show and charts so think about u I t and check and another thing is Okay, another thing is.  It opens the last chat, almost always, even though my website is closed, I opened it again, it has such a chat open on the sidebar and on the main chat.  It should have the new chat thing.  Whenever the website was closed and then it got opened again.  It, the old chat should only be there if during the same time or that thing is on the thing.  Otherwise, close it, like how other applications are, even ChatGPT, it does not show old chat in that way.  So yeah, let's check into that as well.
