@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 import { DetectedPatterns } from "./detected";
 import { requireWorkspace } from "@/lib/auth";
 import type { SupabaseClient } from "@supabase/supabase-js";
-const RecurringPage = async () => { const { supabase, workspace } = await requireWorkspace(); return DetectedPatterns({ supabase: supabase as unknown as SupabaseClient, workspace, names: {} }); };
+const RecurringPage = async () => { const { supabase, workspace } = await requireWorkspace(); return DetectedPatterns({ supabase: supabase as unknown as SupabaseClient, workspace, names: {}, today: "2026-10-16", categories: [] }); };
 const reads: {table: string; columns?: string; orders: string[]; cursor?: string}[] = [];
 let stored: {id: string; account_id: string; currency_code: string; cadence: string; normalized_label: string; status: string; assumption?: {source: string; confirmed: boolean; enabled: boolean; removed_at: string | null}; recurring_series_transactions: {transaction_id: string}[]}[] = [];
 const renderedText = (node: unknown): string => {
@@ -70,8 +70,10 @@ it("does not label an intentionally disabled user schedule as used in forecast",
 const formInputs = (node: unknown): {name: string; value: string}[] => {
   if (Array.isArray(node)) return node.flatMap(formInputs);
   if (node && typeof node === "object" && "props" in node) {
-    const props = (node as {props: {name?: string; value?: string; children?: unknown}}).props;
-    return [...(props.name && typeof props.value === "string" ? [{name: props.name, value: props.value}] : []), ...formInputs(props.children)];
+    const props = (node as {props: {name?: string; value?: string; hidden?: Record<string, string>; children?: unknown}}).props;
+    // Client forms receive their hidden fields as a prop.
+    const hidden = Object.entries(props.hidden ?? {}).map(([name, value]) => ({name, value}));
+    return [...(props.name && typeof props.value === "string" ? [{name: props.name, value: props.value}] : []), ...hidden, ...formInputs(props.children)];
   }
   return [];
 };

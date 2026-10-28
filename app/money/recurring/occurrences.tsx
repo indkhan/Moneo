@@ -3,6 +3,7 @@ import { recurringCadences } from "@/lib/finance/cadences";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { associateOccurrence, undoOccurrence } from "./actions";
 import { formatMoney } from "./series";
+import { ActionForm } from "./forms";
 
 export async function OccurrenceReview({ supabase, workspace, accountNames }: { supabase: SupabaseClient; workspace: { id: string; locale: string }; accountNames: Record<string, string> }) {
   const [assumptions, transactions, settlements] = await Promise.all([
@@ -20,17 +21,17 @@ export async function OccurrenceReview({ supabase, workspace, accountNames }: { 
       <h2 className="text-sm font-medium">Match a payment to a schedule</h2>
       <p className="mt-1 text-xs text-muted-foreground">Pick the transaction that paid a scheduled date. Nothing is matched automatically; undo a match before replacing it.</p>
     </div>
-    <form action={associateOccurrence} className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-2">
+    <ActionForm action={associateOccurrence} className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-2">
       <label className="grid gap-1 text-sm">Confirmed assumption<select name="assumption" required className={inputClass} defaultValue=""><option value="" disabled>Select assumption</option>{(assumptions.data ?? []).map(row => <option key={row.id} value={`${row.id}:${row.version}`}>{row.name} · {formatMoney(row.amount_minor, row.currency_code, workspace.locale)} · starts {row.starts_on}</option>)}</select></label>
       <label className="grid gap-1 text-sm">Scheduled occurrence date<input name="scheduledOn" type="date" required className={inputClass} /></label>
       <label className="grid gap-1 text-sm">Transaction<select name="transaction" required className={inputClass} defaultValue=""><option value="" disabled>Select exact transaction</option>{(transactions.data ?? []).map(row => <option key={row.id} value={`${row.id}:${row.version}`}>{row.posted_on} · {accountNames[row.account_id] ?? "Account"} · {row.description} · {formatMoney(row.amount_minor, row.currency_code, workspace.locale)} · {row.status}</option>)}</select></label>
       <label className="grid gap-1 text-sm">Fulfillment<select name="fulfillment" className={inputClass} defaultValue="partial"><option value="partial">Partial — keep remainder due</option><option value="full">Full — close this occurrence</option></select></label>
       <button type="submit" className="min-h-10 w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Associate occurrence</button>
-    </form>
+    </ActionForm>
     <ul className="divide-y divide-border empty:hidden">{(settlements.data ?? []).map(row => <li key={row.id} className="flex flex-wrap items-center gap-3 py-3 text-sm">
       <span>{names.get(row.assumption_id) ?? "Assumption"} · {row.scheduled_on} · recorded {row.completes_occurrence ? "full" : "partial"} settlement{row.undone_at ? " · undone" : ""}</span>
       <Link href={`/money/transactions?transaction=${row.transaction_id}`} className="underline">Transaction evidence</Link>
-      {!row.undone_at && <form action={undoOccurrence}><input type="hidden" name="settlementId" value={row.id} /><input type="hidden" name="version" value={row.version} /><button className="underline">Undo occurrence association</button></form>}
+      {!row.undone_at && <ActionForm action={undoOccurrence} hidden={{ settlementId: row.id, version: String(row.version) }}><button className="underline">Undo occurrence association</button></ActionForm>}
     </li>)}</ul>
   </section>;
 }
