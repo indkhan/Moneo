@@ -163,7 +163,6 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
             <div className="flex items-start gap-3">
               <input type="checkbox" aria-label={`Select ${item.title}`} disabled={!decidable} checked={selected.has(item.id)} onChange={() => toggle(item.id)} className="mt-1 size-4" />
               <div className="min-w-0 flex-1">
-                <p className="mb-1.5 font-mono text-[11px] uppercase text-ai">{AGENTS[item.agent as AgentId]?.name}</p>
                 <div className="flex flex-wrap items-center gap-2"><p className="text-[15px] font-medium">{item.title}</p>
                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title="Heuristic confidence, not a probability"><span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted"><span className="block h-full bg-brand" style={{ width: `${item.confidence}%` }} /></span>{item.confidence}</span>
                   {item.status !== "proposed" && pill(item.status)}</div>
