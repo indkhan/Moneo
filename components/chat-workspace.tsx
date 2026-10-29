@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Check, Menu, Pencil, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
+import { Check, Menu, Pencil, Phone, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 import { ChatForm } from "@/app/ai/chat-form";
 import { ChatMessages, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
 import { ConversationSelection } from "@/lib/ai/selected-conversation";
@@ -16,6 +16,8 @@ import type { ChatAttachment } from "@/lib/ai/chat-attachments";
 const AnalysisPanel = dynamic(() => import("@/app/ai/analysis-panel").then(module => module.AnalysisPanel), {
   ssr: false, loading: () => <p role="status" className="p-6 text-sm text-muted-foreground">Loading review options…</p>,
 });
+// The call (WebRTC, audio meters) is only loaded when someone starts one.
+const VoiceCall = dynamic(() => import("./voice-call").then(module => module.VoiceCall), { ssr: false });
 
 type Entry = { conversation: HistoryThread; messages: ChatItem[]; cursor: string | null };
 type ChatWorkspaceInitial = { threads: HistoryThread[]; threadsCursor: string | null; selected: HistoryThread | null; messages: ChatItem[]; messagesCursor: string | null };
@@ -47,6 +49,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [calling, setCalling] = useState(false);
   const loading = useRef(new Set<string>());
   const menu = useRef<HTMLDetailsElement>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -198,10 +201,13 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     <ConversationSelection selectionKey={selectionKey} id={selectedId ?? "new"} />
     <aside className="sticky top-19 hidden h-[calc(100dvh-4.75rem)] w-72 shrink-0 overflow-y-auto border-r border-border px-4 py-6 lg:block">{sidebar("desktop")}</aside>
     <section className="flex min-w-0 flex-1 flex-col">
+      {/* Each spoken question is a normal chat request, so its answer joins this chat as it lands. */}
+      {calling ? <VoiceCall key={activeId} conversationId={activeId} onAnswer={(question, answer) => onDone(activeId, question, answer, [])} onClose={() => setCalling(false)} /> : <>
       <div className="relative flex items-center gap-2 border-b border-border px-4 py-4 sm:px-8">
         <details ref={menu} className="lg:hidden"><summary className={summary} aria-label="Show conversations"><Menu className="size-4" aria-hidden="true" /></summary><div className="absolute inset-x-4 top-full z-20 max-h-[70dvh] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-lg">{sidebar("mobile")}</div></details>
         <h1 className="min-w-0 flex-1 truncate font-display text-2xl font-semibold tracking-tight">{title}</h1>
         <details onToggle={event => { if (event.currentTarget.open) setReviewOpen(true); }}><summary className={summary}><Sparkles className="size-4" aria-hidden="true" />Run a deep review</summary><div className="absolute inset-x-4 top-full z-20 mx-auto max-h-[75dvh] max-w-3xl overflow-y-auto rounded-2xl border border-border bg-card shadow-lg">{reviewOpen && <AnalysisPanel locale={locale} timezone={timezone} />}</div></details>
+        <button type="button" onClick={() => setCalling(true)} className={summary}><Phone className="size-4" aria-hidden="true" />Call</button>
       </div>
       <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col px-4 sm:px-8">
         {notice && <p role="alert" className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">{notice}<button type="button" onClick={() => setNotice("")} aria-label="Dismiss" className="text-muted-foreground hover:text-foreground"><X className="size-4" aria-hidden="true" /></button></p>}
@@ -214,6 +220,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
           </>}
         <div ref={end} />
       </div>
+      </>}
     </section>
   </main>;
 }
