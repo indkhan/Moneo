@@ -1,0 +1,30 @@
+Act as the implementation sub-agent for this task.
+
+Repo: Moneo (Next.js 16 + React 19 + Supabase personal-finance app, AI SDK 7 with `@ai-sdk/openai`). Read AGENTS.md first and follow it: npm, simplest clean change, follow nearby patterns, Zod for input, one commit per logical step. Run `npm test`, `npm run lint` and `npm run build` before opening the PR. This Next.js version differs from your training data, so check `node_modules/next/dist/docs/` for any API you're unsure of. For the gated Playwright flows, copy the git-ignored `C:\codebases\Moneo\.env` (it has `OPENAI_API_KEY`) into your checkout. Run them only if port 3000 is free; never print secrets.
+
+## Goal: one mic button for voice input
+The user wants a single mic that behaves the same whether you tap it or hold it. No gesture differences.
+1. Press the mic and recording starts. **Your words appear live** while you speak, together with a level or waveform indicator.
+2. Two buttons while recording:
+   - **Send**: sends the message straight away as a normal chat message, marked as spoken (e.g. a small mic badge, via the message `context`). The user may close the app right after; another branch is making chat runs keep going after the client disconnects, so don't build that here.
+   - **Done**: stops and puts the text into the input box to edit before sending.
+   - Also a way to cancel and discard.
+3. The mic goes in the chat composer (`app/ai/chat-form.tsx` and whatever composer chat uses) and in the artifact request input(s) under `app/ai/artifacts`. In an artifact input, Send submits that input.
+4. Add a small "Voice note" button on Overview (`app/page.tsx` header area). It opens chat with the mic already recording (e.g. `/ai?voice=1`), so a quick spoken expense ("spent 12.40 cash at Netto, chips and eggs") is one tap away. The chat agent already turns that into `transaction_propose` cards, which show on Overview's "Waiting for you".
+
+## Transcription
+- The OpenAI key must stay on the server. Live words need streaming transcription. Look at what the installed AI SDK supports first: `@ai-sdk/openai` `experimental_realtime`, the realtime transcription session with model ids like `gpt-realtime-whisper` / `gpt-4o-transcribe`, and the `TranscriptionModelV4Stream*` types in `@ai-sdk/provider`. Then pick the simplest robust approach. Example: a route handler that creates a short-lived OpenAI realtime *transcription* session or client secret for the browser, with WebRTC or WebSocket from the browser. A server-relayed stream is fine if simpler. Fall back to upload-then-transcribe only if live isn't practical, and say so in the PR.
+- Improve accuracy by passing a transcription prompt or vocabulary with the workspace's account, category and frequent merchant names (scoped by `workspace_id`, small and bounded). Reuse existing loaders where possible.
+- Auth: require the signed-in workspace (`requireWorkspace`), validate input with Zod, and limit recording length to something sane (e.g. 2 minutes).
+- Never store raw audio. The transcript text is what gets sent.
+- Handle mic permission denied and an unsupported browser gracefully. Safari/iOS needs `getUserMedia` called from the user's tap. Keep the UI accessible (labels, focus, `aria-live` for the live text).
+
+## Tests
+Vitest tests next to existing ones for:
+- the session/transcription route: auth, validation, vocabulary scoping;
+- the composer's state machine: idle → recording → Send / Done / cancel. Mock the browser audio pieces.
+
+## Deliver
+Branch off your checkout's current commit (it is `t3/voice-finance-agent`). Commit in small steps; end each commit message with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Push and open a PR with `gh pr create --base t3/voice-finance-agent`. **Do not target main.** The PR body explains the approach chosen for live transcription and why, the tests run with their results, and anything skipped; end it with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Do not merge. Ignore the "Entire Gates" approval check.
+
+Your final line must be: PR <full URL>, head <SHA>, checks and reviews <state>.
