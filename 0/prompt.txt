@@ -1,0 +1,28 @@
+Act as the implementation sub-agent for this task.
+
+Repo: Moneo (Next.js 16 + React 19 + Supabase personal-finance app). Read AGENTS.md first and follow it: npm, simplest clean change, follow nearby patterns, one commit per logical step. Run `npm test`, `npm run lint` and `npm run build` before opening the PR. This Next.js version differs from your training data: read `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/after.md` and the `maxDuration` route segment config doc before using them. For the gated Playwright flows, copy the git-ignored `C:\codebases\Moneo\.env` into your checkout and follow `e2e/README.md`. Run them only if port 3000 is free; never print secrets.
+
+## Goal
+A chat answer or an artifact build keeps running on the server when the user closes the tab, locks the phone or navigates away. When they come back, the result is there. Only an explicit cancel stops a run. This is the base for voice notes (speak, send, close the app) and voice calls (hang up while work is running).
+
+## Today
+- `app/api/chat/route.ts` ties the run to the HTTP request. `streamText` gets `abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)])` (~line 204), there are several `if (request.signal.aborted) throw ...` checks (~lines 73, 118, 144, 243, 297), and the catch calls `cancel_chat_request` when the request was aborted (~line 310). Closing the app therefore cancels the run. The NDJSON stream already writes in a try/catch ("the reader went away; work continues"), and `finish_chat_request` already persists the answer to `messages`.
+- Explicit cancel already exists: `PATCH /api/chat` calls the `cancel_chat_request` RPC (see `supabase/migrations/202610010023_chat_requests.sql`; `chat_requests.status` is running/completed/failed/canceled). Steering already reads the DB once per model step via `take_chat_steers` (~line 212).
+- `app/api/artifacts/route.ts` (`maxDuration = 300`) runs `generateText` with `abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(280_000)])`, so it has the same problem.
+
+## Build
+1. **Chat:** decouple the run from `request.signal`. Keep the work alive after the response or connection ends using Next's `after()` (or whatever the docs say is right for a streaming route handler). Set a suitable `maxDuration` on the chat route. Cancellation comes only from the explicit cancel. The running run should notice it (e.g. check `chat_requests.status` at the existing per-step point, then abort through its own AbortController) and must not overwrite a canceled request. Keep the 90s timeout. Keep the existing safety re-checks (workspace unchanged, AI scope still allowed) before publishing.
+2. **Coming back to a running chat:** find how the client loads a conversation (`lib/ai/use-chat-request.ts`, `lib/ai/selected-conversation.ts`, `lib/ai/conversation-history.ts`, `app/api/conversations/[id]`). If a request in that conversation is still `running`, show it as working (reuse the existing in-progress UI) and show the answer once it completes. Simple polling is fine; skip resumable streams.
+3. **Artifacts:** same treatment. A build keeps going after the user leaves, cancels only explicitly (add a cancel path only if one exists or is trivially needed), and on return the user sees it running or finished. Follow how artifacts are stored and loaded today.
+4. **Attention:** open cards a background run created must be findable later. Overview's "Waiting for you" section (`lib/ai/open-proposals.ts`) already lists them. Check how the bell / `/ai/activity?filter=attention` feed is built. If it can cheaply show "a chat finished while you were away, with N new cards", add that; if not, explain why in the PR. No web push.
+
+## Tests
+Add or adjust Vitest tests next to the existing ones (`app/api/chat/route.test.ts` and similar):
+- a client disconnect no longer cancels or fails the run, and it still finishes and persists;
+- an explicit cancel stops it and isn't overwritten;
+- the artifact route behaves the same way.
+
+## Deliver
+Branch off your checkout's current commit (it is `t3/voice-finance-agent`). Commit in small steps; end each commit message with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Push and open a PR with `gh pr create --base t3/voice-finance-agent`. **Do not target main.** The PR body explains the change, the tests run with their results, and anything skipped; end it with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Do not merge. Ignore the "Entire Gates" approval check.
+
+Your final line must be: PR <full URL>, head <SHA>, checks and reviews <state>.

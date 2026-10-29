@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M64ZW0F2PGZDT4WW0Q2GFSZS",
+  "strategy": "manual-commit",
+  "branch": "t3/background-ai-runs",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/api/chat/route.test.ts",
+    "app/api/chat/route.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 42,
+    "cache_creation_tokens": 83494,
+    "cache_read_tokens": 1485438,
+    "output_tokens": 14009,
+    "api_call_count": 21
+  },
+  "redaction": {
+    "replacements": 3,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 2,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
