@@ -65,3 +65,16 @@ it.each(entryPoints)("%s clears unchanged submitted text only after a successful
   await find(render(), "form")!.onSubmit!({ preventDefault: vi.fn() });
   expect(find(render(), "textarea")!.value).toBe("");
 });
+
+it.each(entryPoints)("%s sends spoken words after the typed ones, marked as spoken", async (_name, component) => {
+  function render() { host.index = 0; return component(); }
+  type Voice = { voice?: { onSend: (text: string) => void } };
+  const composer = (node: ReactNode): Voice | undefined => Array.isArray(node) ? node.map(composer).find(Boolean)
+    : isValidElement<Voice & { children?: ReactNode }>(node) ? node.type === ChatComposer ? node.props : composer(node.props.children) : undefined;
+  host.send.mockResolvedValue({ answer: "Proposed a cash expense" });
+  find(render(), "textarea")!.onChange!({ target: { value: "Note:" } });
+  composer(render())!.voice!.onSend("spent 12.40 cash at Netto");
+  await Promise.resolve();
+  expect(host.send.mock.calls[0][0]).toMatchObject({ message: "Note: spent 12.40 cash at Netto", context: { input: "voice" } });
+  expect(find(render(), "textarea")!.value).toBe("");
+});

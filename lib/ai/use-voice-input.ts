@@ -1,10 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { startVoiceRecording, type VoiceHandlers, type VoiceRecording } from "./voice-recorder";
 
 export const VOICE_MAX_SECONDS = 120;
-/** Saved as the message `context` so a spoken message shows a mic badge and the model knows it was dictated. */
-export const VOICE_CONTEXT = { input: "voice" } as const;
-export const isSpoken = (context: unknown) => (context as { input?: unknown } | null)?.input === "voice";
 
 export type VoiceStatus = "idle" | "starting" | "recording" | "finishing";
 export type VoiceAction = "send" | "done";
@@ -20,7 +17,7 @@ export function createVoiceInput({ record, onFinish, onChange, maxSeconds = VOIC
   record: (handlers: VoiceHandlers) => Promise<VoiceRecording>; onFinish: (action: VoiceAction, text: string) => void;
   onChange: (state: VoiceState) => void; maxSeconds?: number; now?: () => number;
 }) {
-  let state = IDLE_VOICE, recording: VoiceRecording | null = null, run = 0, limit: ReturnType<typeof setTimeout> | undefined;
+  let state = IDLE_VOICE, recording: VoiceRecording | null = null, run = 0, limit: ReturnType<typeof setTimeout> | undefined, finished = onFinish;
   const set = (patch: Partial<VoiceState>) => { state = { ...state, ...patch }; onChange(state); };
   // Each start, stop or cancel begins a new run, so late events from an older one are ignored.
   const reset = (patch: Partial<VoiceState> = {}) => { run++; clearTimeout(limit); recording = null; set({ ...IDLE_VOICE, ...patch }); };
@@ -47,7 +44,7 @@ export function createVoiceInput({ record, onFinish, onChange, maxSeconds = VOIC
     const heard = (await active.stop().catch(() => state.text)).trim() || state.text.trim();
     if (current !== run) return;
     reset(heard ? {} : { error: "Didn't catch that. Try again." });
-    if (heard) onFinish(action, heard);
+    if (heard) finished(action, heard);
   }
 
   function cancel() {
@@ -60,18 +57,19 @@ export function createVoiceInput({ record, onFinish, onChange, maxSeconds = VOIC
     const heard = state.text.trim();
     recording?.cancel();
     reset({ error: error instanceof Error ? error.message : "Voice input failed. Try again." });
-    if (heard) onFinish("done", heard);
+    if (heard) finished("done", heard);
   }
 
-  return { start, send: () => finish("send"), done: () => finish("done"), cancel, get state() { return state; } };
+  return { start, send: () => finish("send"), done: () => finish("done"), cancel, get state() { return state; },
+    /** Swaps in the latest handler, so a re-rendered composer sees its current text. */
+    setOnFinish: (handler: typeof onFinish) => { finished = handler; } };
 }
 
 /** React binding for the shared voice input; recording stops if the composer unmounts. */
 export function useVoiceInput(onFinish: (action: VoiceAction, text: string) => void, record = startVoiceRecording) {
   const [state, setState] = useState(IDLE_VOICE);
-  const latest = useRef(onFinish);
-  useEffect(() => { latest.current = onFinish; });
-  const [voice] = useState(() => createVoiceInput({ record, onFinish: (action, text) => latest.current(action, text), onChange: setState }));
+  const [voice] = useState(() => createVoiceInput({ record, onFinish, onChange: setState }));
+  useEffect(() => voice.setOnFinish(onFinish));
   useEffect(() => () => voice.cancel(), [voice]);
   return { ...state, start: voice.start, send: voice.send, done: voice.done, cancel: voice.cancel };
 }

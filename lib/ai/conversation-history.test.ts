@@ -90,7 +90,7 @@ describe("saved answer activity", () => {
     const tables: Record<string, Record<string, unknown>[]> = {
       conversations: [{ id: conversation, workspace_id: workspace, title: "T", created_at: "2026-01-01T00:00:00+00:00" }],
       messages: [
-        { id: "m1", workspace_id: workspace, conversation_id: conversation, role: "user", content: "Q", created_at: "2026-01-01T00:00:01+00:00", reply_to: null },
+        { id: "m1", workspace_id: workspace, conversation_id: conversation, role: "user", content: "Q", created_at: "2026-01-01T00:00:01+00:00", reply_to: null, context: { input: "voice" } },
         { id: "m2", workspace_id: workspace, conversation_id: conversation, role: "assistant", content: "A", created_at: "2026-01-01T00:00:02+00:00", reply_to: "r1" },
         { id: "m3", workspace_id: workspace, conversation_id: conversation, role: "assistant", content: "B", created_at: "2026-01-01T00:00:03+00:00", reply_to: "r2" },
       ],
@@ -115,5 +115,9 @@ describe("saved answer activity", () => {
     expect(answer?.tools?.[1].output).toHaveLength(2000 + "\n… (truncated)".length);
     expect(answer).not.toHaveProperty("reply_to");
     expect(messages.find(row => row.id === "m3")).not.toHaveProperty("tools");
+    // A spoken question keeps only its badge, not the raw context.
+    expect(messages.find(row => row.id === "m1")).toMatchObject({ spoken: true });
+    expect(messages.find(row => row.id === "m1")).not.toHaveProperty("context");
+    expect(answer).not.toHaveProperty("spoken");
   });
 });

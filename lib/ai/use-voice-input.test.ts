@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createVoiceInput, isSpoken, VOICE_CONTEXT, type VoiceState } from "./use-voice-input";
+import { createVoiceInput, type VoiceState } from "./use-voice-input";
+import { isSpoken, VOICE_CONTEXT } from "./voice-context";
 import type { VoiceHandlers } from "./voice-recorder";
 
 function harness({ stopWith = "spent 12.40 cash at Netto", maxSeconds = 120 } = {}) {
