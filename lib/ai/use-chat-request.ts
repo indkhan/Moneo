@@ -15,8 +15,8 @@ export type ChatStreamEvent =
   | { type: "result"; status: number; body: unknown };
 
 /** Reads the opt-in NDJSON stream, or a plain JSON response, into the final status and body. */
-async function readResponse(response: Response, onEvent: (event: ChatStreamEvent) => void): Promise<{ ok: boolean; body: { error?: string } & Partial<ChatAnswer> }> {
-  if (!response.headers.get("content-type")?.includes("application/x-ndjson") || !response.body) return { ok: response.ok, body: await response.json() };
+export async function readResponse(response: Response, onEvent: (event: ChatStreamEvent) => void): Promise<{ ok: boolean; status: number; body: { error?: string } & Partial<ChatAnswer> }> {
+  if (!response.headers.get("content-type")?.includes("application/x-ndjson") || !response.body) return { ok: response.ok, status: response.status, body: await response.json() };
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";
   for (;;) {
@@ -26,7 +26,7 @@ async function readResponse(response: Response, onEvent: (event: ChatStreamEvent
     buffer = done ? "" : lines.pop()!;
     for (const line of lines.filter(Boolean)) {
       const event = JSON.parse(line) as ChatStreamEvent;
-      if (event.type === "result") return { ok: event.status < 400, body: event.body as { error?: string } };
+      if (event.type === "result") return { ok: event.status < 400, status: event.status, body: event.body as { error?: string } };
       onEvent(event);
     }
     if (done) throw new Error("The answer stream ended early; reload to see whether it was saved");
