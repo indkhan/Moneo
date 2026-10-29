@@ -995,11 +995,13 @@ export const agentProposals = pgTable("agent_proposals", {
   notes: text("notes").array().notNull().default(sql`'{}'::text[]`),
   status: text("status").notNull().default("proposed"),
   result: jsonb("result"),
+  chatRequestId: uuid("chat_request_id").references(() => chatRequests.id, { onDelete: "set null" }),
   decidedAt: timestamp("decided_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, table => [
   unique("agent_proposals_run_conflict_key").on(table.runId, table.conflictKey),
   index("agent_proposals_workspace_status").on(table.workspaceId, table.status),
+  index("agent_proposals_chat_request").on(table.chatRequestId).where(sql`${table.chatRequestId} is not null`),
   uniqueIndex("agent_proposals_standalone_conflict_key").on(table.workspaceId, table.conflictKey).where(sql`${table.runId} is null`),
   check("agent_proposals_kind_check", sql`${table.kind} in ('categorize','recurring','budget','finding','iou_create','iou_settle','transaction_create','balance_set','recurring_edit')`),
   check("agent_proposals_status_check", sql`${table.status} in ('proposed','applying','accepted','rejected','failed')`),
