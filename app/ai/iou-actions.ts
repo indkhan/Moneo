@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
+import { STANDALONE_KINDS } from "@/lib/ai/open-proposals";
 import { transactionAccountOptions } from "@/lib/ai/transaction-proposals";
 
 export type ChatProposal = { id: string; kind: string; title: string; detail: string; status: string; result: { error?: string; href?: string; createdAccount?: boolean } | null;
@@ -12,7 +13,7 @@ export async function loadIouProposal(id: string): Promise<ChatProposal | null> 
   const parsed = z.uuid().parse(id);
   const { supabase, workspace } = await requireWorkspace();
   const { data } = await supabase.from("agent_proposals").select("id, kind, title, detail, status, result, payload").eq("workspace_id", workspace.id).eq("id", parsed)
-    .in("kind", ["iou_create", "iou_settle", "transaction_create", "balance_set", "recurring_edit"]).maybeSingle();
+    .in("kind", STANDALONE_KINDS).maybeSingle();
   if (!data) return null;
   const { payload, ...proposal } = data;
   // Only an open expense card needs the accounts it can be paid from.

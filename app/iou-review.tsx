@@ -3,10 +3,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { IouCard } from "@/components/iou-card";
 import { openIouProposals } from "@/lib/ai/iou-proposals";
 
-// Memoized per request so Home can start this read before its own data resolves.
 export const loadIouReview = cache((db: SupabaseClient, workspaceId: string) => openIouProposals(db, workspaceId).catch(() => []));
 
-/** Loans and repayments waiting for a yes/no, on Home and the agent team page. */
+/** Loans and repayments waiting for a yes/no on the agent team page; Home lists them under Waiting for you. */
 export async function IouReview({ db, workspaceId }: { db: SupabaseClient; workspaceId: string }) {
   const proposals = await loadIouReview(db, workspaceId);
   if (!proposals.length) return null;
