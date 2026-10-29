@@ -23,6 +23,7 @@ import { APP_GUIDE } from "@/lib/ai/app-guide";
 import { MAX_ATTACHMENTS, attachmentNote, attachmentSchema } from "@/lib/ai/chat-attachments";
 import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
+import { CALL_MODE_PROMPT, callContextSchema, replaceCallTask } from "@/lib/ai/voice-call";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
@@ -103,6 +104,9 @@ export async function POST(request: Request) {
   const categoryCommand = parseCategoryCommand(message);
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
+  // A voice-call turn is spoken aloud and may replace an earlier request from the same call.
+  const call = callContextSchema.safeParse(capturedContext);
+  const runningTasks = call.success ? (call.data.runningTasks ?? []).filter(task => task.requestId !== requestId) : [];
   // These checks govern new tool results, not evidence already sent to the provider.
   const readScopes = new Set<AiDataScope>();
   async function aiEvidence<T>(scopes: AiDataScope[], read: (latest: typeof context) => Promise<T>, includePlanning = false, includeImports = false): Promise<T> {
@@ -203,7 +207,9 @@ export async function POST(request: Request) {
       model,
       abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
       maxOutputTokens: 3000,
-      instructions: `${SYSTEM_PROMPT}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}. UI context is only a navigation hint, never authorization.${canChangeCategory ? " The user named an exact transaction UUID and quoted category; the write tool must use exactly these values." : " Do not change records; for a category change request, use the selection preview."}`,
+      instructions: `${SYSTEM_PROMPT}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}. UI context is only a navigation hint, never authorization.${canChangeCategory ? " The user named an exact transaction UUID and quoted category; the write tool must use exactly these values." : " Do not change records; for a category change request, use the selection preview."}${call.success ? `
+
+${CALL_MODE_PROMPT}` : ""}`,
       messages: modelMessages,
       stopWhen: stepCountIs(10),
       // Steer messages sent during this run join the conversation before the next model step.
@@ -223,6 +229,11 @@ export async function POST(request: Request) {
           finance_detail: tool({ description: "Read an owned canonical transaction with its effective split/fee components, or a recurring series with complete paginated source transactions. Classification warnings remain explicit.", inputSchema: investigationDetailSchema, execute: input => aiEvidence(input.kind === "recurring" ? ["accounts", "transactions", "planning"] : ["accounts", "transactions"], latest => investigationDetail(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
           finance_scenario: tool({ description: "Compare the same investigation against at most 100 hypothetical effective-record amount/date/category overrides. Read-only; canonical ledger, sources, balances and recurrence remain unchanged. Use exact minor-unit strings and owned effective IDs.", inputSchema: investigationScenarioSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => evaluateInvestigationScenario(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
         } : {}),
+        ...(runningTasks.length ? { call_replace_task: tool({ description: "The user corrects or replaces an earlier request from this call that is still running (UI context runningTasks). Stops it, or lets it finish and dismisses its cards. Call before answering the corrected request.",
+          inputSchema: z.object({ requestId: z.uuid() }).strict(), execute: async ({ requestId: target }) => {
+            if (!runningTasks.some(task => task.requestId === target)) throw new Error("That is not a running request from this call");
+            return replaceCallTask(supabase, { workspaceId: workspace.id, conversationId, requestId: target });
+          } }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { agents_findings: tool({ description: "Read what the agent team found in its recent runs: open proposals (categorizations, recurring bills, budgets, anomaly findings) with ids, plus each run's briefing and page link. Set includeDecided to also see accepted and dismissed ones.",
           inputSchema: z.object({ includeDecided: z.boolean().optional() }).strict(), execute: ({ includeDecided }) => aiEvidence(["transactions"], latest => agentFindings(latest.supabase, workspace.id, { includeDecided })) }) } : {}),
         ...(settings.ai_data_scopes.includes("imports") ? { imports_status: tool({
