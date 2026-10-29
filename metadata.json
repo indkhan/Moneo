@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M650NH89BVSG6RZP7N6KG74E",
+  "strategy": "manual-commit",
+  "branch": "t3/live-voice-chat-call",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/api/chat/route.test.ts",
+    "app/api/chat/route.ts",
+    "lib/ai/voice-call.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 6,
+    "cache_creation_tokens": 4011,
+    "cache_read_tokens": 281927,
+    "output_tokens": 3824,
+    "api_call_count": 3
+  },
+  "redaction": {
+    "replacements": 7,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 6,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
