@@ -29,9 +29,9 @@ it("turns each delegation into a call request with the words since the previous 
   say("How much at Netto"); say(" this month?"); delegate("d1");
   say("And when is rent due?"); delegate("d2");
   expect(asks.map(([payload]) => payload.message)).toEqual(["How much at Netto this month?", "And when is rent due?"]);
-  expect(asks[0][0]).toMatchObject({ conversationId: "c", requestId: "r1", context: { via: "call", runningTasks: [] } });
+  expect(asks[0][0]).toMatchObject({ conversationId: "c", requestId: "r1", context: { via: "call", input: "voice", runningTasks: [] } });
   // The second request knows the first is still running, so it can replace it.
-  expect(asks[1][0].context).toEqual({ via: "call", runningTasks: [{ requestId: "r1", text: "How much at Netto this month?" }] });
+  expect(asks[1][0].context).toEqual({ via: "call", input: "voice", runningTasks: [{ requestId: "r1", text: "How much at Netto this month?" }] });
   asks[0][1]({ type: "tool", name: "finance_investigate", state: "running" });
   expect(call.tasks[0].step).toBe("searching transactions");
   expect(sent).toContainEqual({ type: "session.thinking.append", delegation_id: "d1", content: 'Working on "How much at Netto this month?": searching transactions.' });

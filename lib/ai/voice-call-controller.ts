@@ -136,7 +136,7 @@ export class VoiceCallController {
   private async run(requestId: string, text: string, delegationId: string | null, runningTasks: { requestId: string; text: string }[]) {
     const label = `"${text.slice(0, 120)}"`;
     try {
-      const result = await this.deps.ask({ conversationId: this.deps.conversationId, requestId, message: text.slice(0, 4000), context: { via: "call", runningTasks } }, event => {
+      const result = await this.deps.ask({ conversationId: this.deps.conversationId, requestId, message: text.slice(0, 4000), context: { via: "call", input: "voice", runningTasks } }, event => {
         if (event.type !== "tool" || event.state !== "running") return;
         const step = stepFor(event.name);
         this.update(requestId, { step });

@@ -86,7 +86,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       pc.onconnectionstatechange = () => { if (!closed && pc.connectionState === "failed") { setStatus("error"); setError("The call dropped. Check your connection and try again."); } };
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      const response = await fetch("/api/voice/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: offer.sdp, conversationId }) });
+      const response = await fetch("/api/voice/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: offer.sdp, conversationId }) });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error ?? "Could not start the call");
       if (!closed) await pc.setRemoteDescription({ type: "answer", sdp: body.sdp });

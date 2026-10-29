@@ -3,7 +3,9 @@ import { notFound, redirect } from "next/navigation";
 import { Check, ChevronLeft, ChevronRight, HousePlus, Maximize2, Minimize2 } from "lucide-react";
 import { requireWorkspace } from "@/lib/auth";
 import { ArtifactFrame } from "@/components/artifact-frame";
+import { loadArtifactBuilds } from "@/lib/ai/artifact-builds";
 import { ArtifactPrompt } from "../artifact-prompt";
+import { ArtifactBuilds } from "../artifact-builds";
 import { DeleteArtifactButton } from "../delete-artifact-button";
 import { setArtifactOnHome } from "@/app/dashboard-actions";
 import { artifactWidgetKey } from "@/lib/finance/dashboard";
@@ -14,10 +16,11 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   const { supabase, workspace } = context;
   const [{ id }, { v, full }] = await Promise.all([params, searchParams]);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const [artifact, versions, layout] = await Promise.all([
+  const [artifact, versions, layout, builds] = await Promise.all([
     supabase.from("artifacts").select("id, title").eq("workspace_id", workspace.id).eq("id", id).is("deleted_at", null).maybeSingle(),
     supabase.from("artifact_versions").select("version, prompt").eq("workspace_id", workspace.id).eq("artifact_id", id).order("version"),
     supabase.from("dashboard_layouts").select("items").eq("workspace_id", workspace.id).maybeSingle(),
+    loadArtifactBuilds(supabase, workspace.id, id),
   ]);
   if (artifact.error || versions.error || layout.error) throw artifact.error ?? versions.error ?? layout.error;
   if (!artifact.data || !versions.data.length) notFound();
@@ -46,6 +49,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
             className="block rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted aria-[current=page]:border-primary aria-[current=page]:bg-muted">
             <span className="text-xs text-muted-foreground">v{item.version}</span> {item.prompt}</Link></li>)}
       </ol>
+      <ArtifactBuilds builds={builds} />
       <ArtifactPrompt artifactId={id} placeholder="Change something, e.g. “Add a toggle for selling the car”" />
       <DeleteArtifactButton id={id} title={artifact.data.title} />
     </aside>

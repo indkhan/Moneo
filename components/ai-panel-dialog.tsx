@@ -6,11 +6,12 @@ import { SquarePen, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useChatQueue } from "@/lib/ai/use-chat-queue";
-import { ChatComposer } from "./chat-composer";
+import { ChatComposer, withSpoken } from "./chat-composer";
+import { VOICE_CONTEXT } from "@/lib/ai/voice-context";
 import { useChatAttachments } from "@/lib/ai/use-chat-attachments";
 import { ATTACHMENT_ONLY_MESSAGE, type ChatAttachment } from "@/lib/ai/chat-attachments";
 import { ChatQueue } from "./chat-queue";
-import { ChatMessages, DRAFT_EVENT, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
+import { ChatMessages, DRAFT_EVENT, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
 import { selectConversation } from "@/lib/ai/selected-conversation";
 import type { AskSeed } from "./ask-about";
 
@@ -32,6 +33,8 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
   const [older, setOlder] = useState<string | null>(null);
   const [historyError, setHistoryError] = useState("");
   const [loading, setLoading] = useState(false);
+  // A request in this chat still working in the background, e.g. after the app was closed mid-answer.
+  const [running, setRunning] = useState(false);
   const [selectionKey, setSelectionKey] = useState("");
   const generation = useRef(0);
   const pathname = usePathname();
@@ -49,6 +52,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
       selectConversation(result.selectionKey, result.selected?.id ?? "new", false);
       setHistory(current => cursor ? [...result.messages, ...current] : result.messages);
       setOlder(result.messagesCursor);
+      if (!cursor) setRunning(Boolean(result.running));
     } catch (cause) {
       if (run === generation.current) setHistoryError(cause instanceof Error ? cause.message : "Could not load conversation");
     } finally { if (run === generation.current) setLoading(false); }
@@ -67,6 +71,13 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
   const chat = useChatRequest();
   const files = useChatAttachments();
   const { send, cancel, busy, error, status } = chat;
+  // Until that run's answer is saved, check on it and reload the chat once it is done.
+  useEffect(() => {
+    if (!open || !running || busy || !conversationId) return;
+    const timer = window.setInterval(() => void fetch(`/api/conversations/${conversationId}`, { cache: "no-store" }).then(response => response.json())
+      .then(result => { if (!result.running) void load(); }).catch(() => {}), 3000);
+    return () => window.clearInterval(timer);
+  }, [open, running, busy, conversationId, load]);
   useEffect(() => {
     const draft = (event: Event) => { const detail = (event as CustomEvent<{ prompt?: string; compact: boolean }>).detail; if (detail.compact && detail.prompt) { setQuestion(detail.prompt); document.getElementById("panel-question")?.focus(); } };
     window.addEventListener(DRAFT_EVENT, draft);
@@ -81,14 +92,22 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     void sendMessage(question, false, files.ready);
   }
 
-  async function sendMessage(typed: string, queued = false, attachments: ChatAttachment[] = []) {
+  // As in the AI page composer: spoken words join the typed ones and queue while a reply runs.
+  function sendSpoken(text: string) {
+    const typed = withSpoken(question, text);
+    if (files.uploading || files.items.some(item => item.error) || (busy && files.items.length) || loading || historyError) { setQuestion(typed); document.getElementById("panel-question")?.focus(); return; }
+    if (busy) { enqueue(typed); setQuestion(""); return; }
+    void sendMessage(typed, false, files.ready, true);
+  }
+
+  async function sendMessage(typed: string, queued = false, attachments: ChatAttachment[] = [], spoken = false) {
     if (busy || loading || historyError) return;
     const question = typed.trim() || ATTACHMENT_ONLY_MESSAGE;
     const id = conversationId ?? crypto.randomUUID();
     setConversationId(id);
-    const context = { path: window.location.pathname + window.location.search, ...(about ? { about } : {}) };
+    const context = { path: window.location.pathname + window.location.search, ...(about ? { about } : {}), ...(spoken && VOICE_CONTEXT) };
     const selectionGeneration = generation.current;
-    let live: PendingExchange = { question, attachments, tools: [] };
+    let live: PendingExchange = { question, attachments, tools: [], spoken };
     setPending(live);
     if (!queued) { setQuestion(""); files.clear(); }
     const result = await send({ conversationId: id, message: question, context, ...(attachments.length && { attachments }) }, event => { live = applyChatEvent(live, withSteers(event)); setPending(live); });
@@ -96,7 +115,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
     if (result && selectionGeneration === generation.current) {
       selectConversation(selectionKey, id);
       const now = new Date().toISOString();
-      setHistory(current => [...current, { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now, attachments },
+      setHistory(current => [...current, { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now, attachments, spoken },
         ...(live.steers ?? []).map(content => ({ id: `local-${crypto.randomUUID()}`, role: "user" as const, content, created_at: now })), { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: live.tools.length ? live.tools : result.toolsUsed, plan: live.plan, followUps: result.followUps }]);
       setAbout(null);
       // The AI page keeps its own client state; refresh it only when it is the page behind the panel.
@@ -123,14 +142,14 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
         {historyError && <div role="alert" className="text-sm"><p>{historyError}</p><button type="button" onClick={() => void load()} className="mt-2 underline">Try again</button></div>}
         {loading && <p role="status" className="text-sm text-muted-foreground">Loading conversation...</p>}
         {older && !historyError && <button type="button" disabled={loading || busy} onClick={() => void load(older)} className="mx-auto mb-4 block text-sm text-muted-foreground hover:text-foreground">Older messages</button>}
-        {!historyError && <ChatMessages compact messages={history} pending={pending} />}
+        {!historyError && <ChatMessages compact messages={history} pending={pending ?? (running && !busy ? RESUMED_RUN : null)} />}
         <div ref={end} />
         {!history.length && !pending && !historyError && !loading && <div className="flex h-full flex-col items-center justify-center text-center"><h3 className="text-lg font-semibold">How can I help with your money?</h3><p className="mt-1 text-sm text-muted-foreground">Ask about this page, a transaction or a balance.</p><div className="mt-5 flex flex-wrap justify-center gap-2">{["What changed in my spending last month?", "Create a spending chart"].map(prompt => <button key={prompt} type="button" onClick={() => { setQuestion(prompt); document.getElementById("panel-question")?.focus(); }} className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{prompt}</button>)}</div></div>}
       </div>
       <div className="px-3 pb-3">
         {about && <p className="mb-2 flex items-center gap-2 px-2 text-xs text-muted-foreground">About: <span className="min-w-0 truncate rounded bg-muted px-1.5 py-0.5 text-foreground">{about.label}</span><button type="button" onClick={() => setAbout(null)} aria-label="Remove context" className="hover:text-foreground"><X className="size-3" aria-hidden="true" /></button></p>}
         <ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} />
-        <ChatComposer compact id="panel-question" label="Question" value={question} onChange={setQuestion} onSubmit={ask} onStop={() => void cancel()} busy={busy} disabled={loading || !!historyError} placeholder="Ask about this page…" busyText="Request running · waiting for response" attachments={files} />
+        <ChatComposer compact id="panel-question" label="Question" value={question} onChange={setQuestion} onSubmit={ask} onStop={() => void cancel()} busy={busy} disabled={loading || !!historyError} placeholder="Ask about this page…" busyText="Request running · waiting for response" attachments={files} voice={{ onSend: sendSpoken }} />
         {error && <p role="alert" className="mt-2 px-2 text-sm text-danger">{error}</p>}
         {status === "canceled" && <p role="status" className="mt-2 px-2 text-sm text-muted-foreground">Canceled. Completed edits remain in transaction history.</p>}
         <Link href={historyError ? "/ai" : `/ai?conversation=${conversationId ?? "new"}`} onClick={onClose} className="mt-2 block text-center text-xs text-muted-foreground hover:text-foreground">Continue in AI workspace ↗</Link>
