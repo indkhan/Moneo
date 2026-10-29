@@ -1,0 +1,34 @@
+Delegated task node:delegated-task:command%3Amcp%3A3f8ee9f3-e93b-4650-aafd-a0e03df88d87%3Adelegate-task%3Aed1f0c9e-c82e-46dd-846c-88252d531d88 (Overview "Waiting for you" cards) [completed]:
+I opened PR #118. Overview now has one **Waiting for you** section that lists every open card made outside an agent run: loans, transactions, balances and recurring changes. `npm test` (1039 passed, 9 skipped), `npm run lint` and `npm run build` all pass.
+
+- **Section:** it's a native `<details>` that starts expanded, with a header like "Waiting for you · 3". It's hidden when nothing is open. I found no existing collapsed-section pattern to follow instead.
+- **Filter chips:** All / Loans / Transactions / Balances / Recurring, shown only when more than one kind is open. Cards that don't match stay on the page but hidden, so a card you've already decided doesn't come back as open when you switch filters.
+- **Cards:** each one uses the existing chat card component (`components/iou-card.tsx`), so accept, dismiss and the account picker work as before through `lib/ai/agent-apply.ts`.
+- **Loader:** `lib/ai/open-proposals.ts` reads this workspace's cards with no run and status proposed or failed, oldest first, at most 100. Transaction cards also get their account choices. The list of card kinds is now shared with `app/ai/iou-actions.ts`.
+- **Replaced on Overview:** "Loans to review" and "Recurring to review". They still appear on the agent team page and `/money/recurring`.
+
+**Recurring cards:** I folded them in. The section runs recurring detection first, as the old recurring block did, so new detected cards appear and outdated ones are closed. Overview now also shows recurring changes made in chat, which it didn't before. The downside is that loan, transaction and balance cards now wait for detection to finish before they show, because it's all one list. The PR explains this.
+
+**Not run:** the gated Overview Playwright flows. This worktree has no `.env`, so Supabase and auth aren't configured.
+
+The first push failed with "missing necessary objects"; it went through after fetching from origin.
+
+PR https://github.com/indkhan/Moneo/pull/118, head e7e275d96a5c3dfe7d17aeddb6e9ce3559c441a2, checks and reviews Vercel pending, Vercel Preview Comments passed, no reviews yet.
+
+---
+
+REDACTED
+
+this is the api key 
+add make it eleven lab and normal tts and stt later with call pwer (in backlog_)
+
+yes and it should be that if i am talking i can tell it soemthing it says am checking and while it is checking i can tell it next thing as well and then it says am checking that as well so does that and while doing the second if first thing answer iis there it tells it while it is still check ing the second thing when that there says that as well 
+i honestly think it should be the same thte tap the mic and hold the mic lets not confuse users i think lets talk abit more about it 
+
+yes i agree with the recommnedation to fix it also another thing to have to that is make artifact like that as well wso even if you leave or something it continues with the thing 
+
+
+the build is as per you you do do direct or do subagents and you review and then merge to this branch and all what ever you like  it in this branch step by step do multiple pr to this branch this branch finally should have it how i fully want it and if i like it then will make a pr towards main 
+
+
+lets talk abit more i like where it is going
