@@ -1,0 +1,103 @@
+Act as the implementation sub-agent for this task.
+
+Repo: Moneo (Next.js 16 + React 19 + Supabase personal-finance app, AI SDK 7, `@ai-sdk/openai` installed). Read AGENTS.md first and follow it: npm, simplest clean change, follow nearby patterns, Zod for input, money as integer minor units, schema changes as a new ordered migration with `lib/schema.ts` kept aligned (apply via `npx supabase ... --db-url "$SUPABASE_DB_URL"`, per AGENTS.md), and one commit per logical step. This Next.js version differs from your training data, so check `node_modules/next/dist/docs/` when unsure. Copy the git-ignored `C:\codebases\Moneo\.env` into your checkout (it has `OPENAI_API_KEY` with gpt-live-1 access, plus Supabase and E2E credentials). Never print secrets.
+
+# Goal: a live voice call inside chat
+A **Call** button in the chat header turns the chat into a full-screen call on mobile; on desktop the call fills the chat area. You talk to Moneo like a friend. You can interrupt it and ask several things in a row. While it works it says what it's doing ("let me look through your transactions…"), and it speaks each answer as soon as it's ready. Every real question or action is answered by the **existing Moneo chat agent** (`app/api/chat/route.ts`: same tools, same prompt, the user's Settings chat model, same conversation). The voice model only talks. Writes stay proposal cards the user taps (never accepted by voice).
+
+# Verified GPT-Live protocol (tested against the real API tonight)
+Reference probe scripts: `C:\Users\mgsuk\voice-proto\live-probe.mjs` and `live-parallel.mjs` (WebSocket from Node). In the browser use **WebRTC**:
+- **Server side:** `import { openai } from "@ai-sdk/openai"`, then `openai.experimental_realtime("gpt-live-1")` returns an `OpenAIRealtimeModelLive`. Call `model.doCreateWebRTCSession({ sdp, sessionConfig: { instructions, voice, providerOptions: { openai: { delegation: { type: "client" }, input: [...prior messages] } } } })`, which returns `{ sessionId, sdp }`. This POSTs to `/v1/live/sessions`, and the API key stays on the server. Read the types in `node_modules/@ai-sdk/openai/dist/index.d.ts` (search "Live") and the implementation in `dist/index.js` around `buildOpenAILiveSessionConfig`. The default voice is "marin". The `input` option seeds prior conversation: `{type:"message", role:"user"|"developer", content:[{type:"input_text", text}]}` or `{role:"assistant", content:[{type:"output_text", text}]}`.
+- **Browser:** RTCPeerConnection with the mic track (echoCancellation, noiseSuppression, autoGainControl), a remote audio track played through an `<audio>` element, and a data channel labelled `oai-events`. Create the offer, POST it to our route, and set the returned answer.
+- **Server events (JSON on the data channel):**
+  - `session.started`
+  - `session.input_transcript.delta` / `session.output_transcript.delta` (`delta`, `start_ms`, `end_ms`)
+  - `session.delegation.created` (`{delegation:{id, type:"delegation", target:"client"}, offset_ms}`; **no task text**)
+  - `session.thinking.appended` / `session.commentary.appended` (acks)
+  - `session.usage.updated`, `session.closed`, `error`
+- **Client events:**
+  - `session.thinking.append {delegation_id, content}`: quiet context, not spoken when it arrives.
+  - `session.commentary.append {delegation_id, content}`: the model says it aloud (paraphrased).
+  - `session.instructions.append {delegation_id|null, content}`: steering.
+  - `session.close`.
+  - Content is at most ~500 tokens per append.
+- **Observed behavior:**
+  - The hand-off arrives about 0.5s after the user stops talking, and GPT-Live acknowledges by itself ("Checking now!", "Sure, I'm checking that too").
+  - Two questions back to back produce two delegations. When we sent the second result first, it spoke that one first, then the first.
+  - Prompt trigger: the instructions must say "Generate <|SpawnThinking|> when …" (OpenAI's documented phrasing; avoid "delegate to the backend").
+  - The prompt should keep three sections: Backchannel policy, Interruption policy, Delegation policy (see https://developers.openai.com/api/docs/guides/live-prompting and https://developers.openai.com/api/docs/guides/live-delegation).
+- $0.05/min. No cost limits for now (user's choice).
+
+# Build
+## 1. Server
+- `POST /api/voice/session`: `requireWorkspace`; Zod body `{ sdp, conversationId }`. Check that the conversation is owned and not deleted, like `/api/chat` does. Seed `input` with the last ~10 messages of the conversation as plain text, bounded, with card and chart blocks stripped (see `withoutCharts` in the chat route). Return `{ sdp, sessionId }`.
+- **Instructions:**
+  - Personality: **casual friend**. Short, warm, relaxed ("Yo, Netto's 42 this month"), occasional "mm-hm" backchannels.
+  - **Language: reply in whatever language the user speaks** (English, German or mixed).
+  - Never state an amount, date, balance or fact about their money unless it came from a Moneo result. Never say something was added or saved; say a card is on screen to tap.
+  - Generate <|SpawnThinking|> for any question about their money or any request to add or change something.
+  - Keep listening through pauses; ignore coughs and background speech; stop talking when interrupted.
+  - When starting work, say briefly what you're doing ("let me look through your transactions"). When a second request comes while one is running, say you're on that too.
+  - Speak each result when it arrives, naming which question it answers, and mention anything still running.
+- **Voice:** read from workspace settings if a voice setting exists, else "marin". A Settings picker comes in a later PR, so keep this one small.
+
+## 2. Call mode in `/api/chat`
+Requests from the call carry `context.via = "call"`. The context field already exists; it's limited to 2000 chars and the DB checks it.
+- When `via === "call"`, add to the system prompt: this turn comes from a voice call; reply in 1–3 short spoken sentences, plain text, no Markdown, tables or links, and no chart unless asked. Quote amounts with the formatted strings. If a card was made, say it's on screen to tap.
+- **Corrections rule (the user's exact rule):** when a new request in a call corrects or replaces a still-running earlier call request:
+  - if the old one can still stop (it is only reading and has made **no card yet**), stop it and start the new one;
+  - if it already made a card, let it finish, then do the new one, and **auto-dismiss the old card** with a "replaced" note.
+
+  App code decides this, not the model. Implement it as follows:
+  - Add a nullable `chat_request_id` (uuid, FK to `chat_requests`) on `agent_proposals` in a new migration, and set it in the chat propose paths: `proposeTransaction`, `proposeIou`, `proposeBalance`, `proposeRecurring` and repayments. Thread the requestId through their context; keep existing tests passing.
+  - Add a call-only tool, `call_replace_task({ requestId })`. The client passes the running call requests (requestId plus the user's words, at most 5) in `context.runningTasks`. Server side, verify the target is a running request in the same workspace and conversation.
+    - If it has no proposals: cancel it via the `cancel_chat_request` RPC, then re-check for any proposals it raced to create and dismiss those.
+    - Otherwise: wait (poll about 1s, capped at about 80s) until it is no longer running, then dismiss its open proposals (status `rejected`, `result: { replaced: true }`).
+    - Return what happened so the agent proceeds with the corrected request.
+  - Dismissing must only touch `proposed`/`failed` rows of this workspace.
+- Another PR is changing this route so runs survive client disconnects (`after()`, cancel only via explicit PATCH). Before opening your PR, `git fetch origin && git merge origin/t3/voice-finance-agent` and resolve conflicts in favor of keeping both behaviors.
+
+## 3. Client: `lib/ai/use-voice-call.ts` plus the call UI
+**Hook state:** status (connecting, live, ended, error), muted, live captions (user and assistant fragments assembled into turns), tasks, and the audio levels of the mic and of Moneo for the orb.
+
+**On `session.delegation.created`:**
+- Create a task. Its text is the user transcript since the previous delegation; fall back to the last user turn.
+- POST `/api/chat` with streaming NDJSON. Reuse `lib/ai/use-chat-request.ts` helpers where sensible. Send the same `conversationId`, a new `requestId`, `message` = the user's words, and `context: { via: "call", runningTasks: [...] }`.
+- Map NDJSON `tool` events to `session.thinking.append` progress lines, for example finance_investigate → "searching transactions", forecast_evaluate → "running the forecast", transaction_propose → "making a card".
+- If a task runs longer than ~8s while nobody is speaking, send one short `commentary` update ("still going through your transactions").
+
+**Results:**
+- Send the final answer (card and chart blocks stripped, truncated to about 1500 chars) as `session.commentary.append`, prefixed with which question it answers. If cards were made, add "N card(s) on screen to tap; nothing is saved until then."
+- **Hold results while the user is speaking** (an input transcript delta in the last ~700ms) and deliver them in arrival order. No limit on parallel tasks.
+- Errors become a short commentary ("I couldn't get that, want me to try again?").
+
+**Typed input:** a small text box in the call sends a typed message as a task directly, with no voice model needed to start it; its result is spoken the same way.
+
+**Other:** a mute toggle, End (`session.close`, then stop the tracks), the Screen Wake Lock while live, and graceful errors for mic denied, unsupported browser and network failure.
+
+**UI:**
+- An animated orb that reacts to the levels and shows listening, thinking and speaking states.
+- Live captions.
+- A task list: each row shows the question, its current step and an ✕ that cancels via `PATCH /api/chat`.
+- A **card tray** showing the cards the tasks made, using the existing chat proposal card component (`components/iou-card.tsx` etc.), so the user can tap Accept or Dismiss mid-call. They also appear on Overview's "Waiting for you".
+- Mute, End, and the text box.
+- Polished, matching the app's design tokens and components (look at `app/globals.css` and the chat UI). Mobile-first; respect reduced motion; accessible labels; `aria-live` captions.
+
+After the call, the task Q&A already lives in the chat as normal messages (they went through `/api/chat`), so make sure the chat view refreshes and shows them. A summary card and full transcript come in a later PR.
+
+## 4. Tests and live verification
+- **Vitest:**
+  - the session route: auth, validation, conversation ownership, input seeding bounds;
+  - the call-mode prompt switch;
+  - `call_replace_task`: stops the old task when it has no cards; waits, then dismisses its cards, when it has them;
+  - the hook's delegation, task and result-queue logic, with a fake data channel. Factor the logic so it's testable without WebRTC.
+- **Real end-to-end check:** add `scripts/voice-call-check.mjs`.
+  - Generate a WAV of test sentences with OpenAI TTS (`/v1/audio/speech`, model `gpt-4o-mini-tts`). Example: "How much did I spend at Netto this month?", then a pause, then "and when is my rent due?", then "btw I spent 12.40 in cash at Netto on chips and eggs".
+  - Run Playwright Chromium with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream --use-file-for-fake-audio-capture=<wav>`, signed in with the QA user (see `e2e/README.md`, `scripts/e2e-auth.mjs`; the app runs on localhost:3000).
+  - Open chat, start the call, wait, and assert: delegations ran, `/api/chat` requests completed, a transaction card appeared in the tray, and captions show Moneo's spoken answers.
+  - Run it if port 3000 is free and the chat model works; note: the QA user's chat model may be an OpenRouter id with no credits, so set it to an OpenAI model id for the test if needed. Report what you saw.
+
+# Deliver
+Branch off your checkout's current commit (`t3/voice-finance-agent`). Commit in small steps; end each commit message with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Run `npm test`, `npm run lint` and `npm run build`. Push and open a PR with `gh pr create --base t3/voice-finance-agent`. **Do not target main.** The PR body explains the design, the tests run and their results, the live check results, and anything skipped; end it with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Do not merge. Ignore the "Entire Gates" approval check. If you hit a decision, take the simplest option consistent with this brief and list it in the PR under "Decisions I made".
+
+Your final line must be: PR <full URL>, head <SHA>, checks and reviews <state>.
