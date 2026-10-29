@@ -25,7 +25,7 @@ import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { dayRange, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
 import { NetWorthChart } from "./net-worth-chart";
-import { LayoutGrid, Sparkle } from "lucide-react";
+import { LayoutGrid, Mic, Sparkle } from "lucide-react";
 
 // Six columns: a wide card pairs with a narrow one and half cards pair up; dense flow fills the gaps whatever order the layout picks.
 const FULL = new Set(["overview", "history"]);
@@ -220,7 +220,11 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     <main className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
       <header className="mb-2 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1"><p className="eyebrow">{new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))} · {new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))}</p><h1 className="page-title">Overview</h1></div>
-        <Link href="/settings#home" className="inline-flex h-11 items-center gap-2 rounded-xl border border-input px-4 text-[13px] hover:bg-muted"><LayoutGrid className="size-4" strokeWidth={1.6} aria-hidden="true" />Edit layout</Link>
+        <div className="flex gap-2">
+          {/* One tap to a spoken note, such as an expense; chat opens recording and its proposals land in Waiting for you. */}
+          <Link href="/ai?conversation=new&voice=1" className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Mic className="size-4" strokeWidth={1.8} aria-hidden="true" />Voice note</Link>
+          <Link href="/settings#home" className="inline-flex h-11 items-center gap-2 rounded-xl border border-input px-4 text-[13px] hover:bg-muted"><LayoutGrid className="size-4" strokeWidth={1.6} aria-hidden="true" />Edit layout</Link>
+        </div>
       </header>
       <Suspense fallback={null}><WaitingForYou supabase={supabase} workspace={workspace} /></Suspense>
       <div className="grid grid-flow-dense gap-4 lg:grid-cols-6">

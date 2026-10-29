@@ -54,7 +54,11 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   const menu = useRef<HTMLDetailsElement>(null);
   const end = useRef<HTMLDivElement>(null);
 
-  const param = useSearchParams().get("conversation");
+  const params = useSearchParams();
+  const param = params.get("conversation");
+  // Overview's Voice note opens chat already recording; the flag is dropped once read, so a reload or another chat does not record again.
+  const autoVoice = params.get("voice") === "1";
+  useEffect(() => { if (!autoVoice) return; const url = new URL(window.location.href); url.searchParams.delete("voice"); window.history.replaceState(null, "", url); }, [autoVoice]);
   const selectedId = param === "new" ? null : param ?? initial.selected?.id ?? null;
   const activeId = selectedId ?? draftId;
   const entry = entries[activeId];
@@ -146,7 +150,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
 
   // Mirrors each pending exchange so the finished answer can keep its plan and tool calls.
   const live = useRef<Record<string, PendingExchange>>({});
-  function onStart(id: string, question: string, attachments: ChatAttachment[]) { live.current[id] = { question, attachments, tools: [] }; setPending(current => ({ ...current, [id]: live.current[id] })); }
+  function onStart(id: string, question: string, attachments: ChatAttachment[], spoken: boolean) { live.current[id] = { question, attachments, tools: [], spoken }; setPending(current => ({ ...current, [id]: live.current[id] })); }
   function onEvent(id: string, event: ChatStreamEvent) {
     if (!live.current[id]) return;
     const next = live.current[id] = applyChatEvent(live.current[id], event);
@@ -160,7 +164,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     const now = new Date().toISOString();
     const conversation = { id, title: question.trim().slice(0, 80), created_at: now };
     const exchange: ChatItem[] = [
-      { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now, attachments },
+      { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now, attachments, spoken: finished?.spoken },
       ...(finished?.steers ?? []).map(content => ({ id: `local-${crypto.randomUUID()}`, role: "user" as const, content, created_at: now })),
       { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: finished?.tools.length ? finished.tools : result.toolsUsed, plan: finished?.plan, followUps: result.followUps },
     ];
@@ -221,7 +225,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
           : <>
             {entry?.cursor && <button type="button" disabled={busy} onClick={() => void olderMessages()} className="mt-2 self-center text-sm text-muted-foreground hover:text-foreground disabled:opacity-50">Older messages</button>}
             {!empty && <div className="py-6"><ChatMessages messages={entry?.messages ?? []} pending={active ?? (resuming ? RESUMED_RUN : undefined)} /></div>}
-            <ChatForm key={activeId} conversationId={activeId} selectionKey={selectionKey} empty={empty} scope={scope} onStart={onStart} onEvent={onEvent} onDone={onDone} />
+            <ChatForm key={activeId} conversationId={activeId} selectionKey={selectionKey} empty={empty} scope={scope} autoVoice={autoVoice} onStart={onStart} onEvent={onEvent} onDone={onDone} />
           </>}
         <div ref={end} />
       </div>
