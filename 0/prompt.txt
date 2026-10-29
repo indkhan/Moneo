@@ -1,0 +1,28 @@
+Act as the implementation sub-agent for this task.
+
+Repo: Moneo (Next.js 16 + React 19 + Supabase personal-finance app). Read AGENTS.md first and follow it: npm, simplest clean change, follow nearby patterns, one commit per logical step, run `npm test` and `npm run lint` (and `npm run build`, since this changes app UI) before opening the PR. This Next.js version differs from your training data, so check `node_modules/next/dist/docs/` before relying on any API you're unsure of.
+
+## Goal
+Cards the chat proposes (pending rows in `agent_proposals` with `run_id is null`, status `proposed` or `failed`) must be reviewable on Overview (`app/page.tsx`), not only in the chat message that created them. Today:
+- `iou_create` / `iou_settle` already show on Overview via `app/iou-review.tsx` (`IouReview`, "Loans to review", uses `openIouProposals` in `lib/ai/iou-proposals.ts` and `components/iou-card`).
+- Detected `recurring_edit` cards show via `app/money/recurring/review.tsx` (`RecurringReview`, rendered right after `IouReview` in `app/page.tsx`).
+- `transaction_create` (`lib/ai/transaction-proposals.ts`) and `balance_set` (`lib/ai/balance-proposals.ts`) cards appear ONLY in chat. That is the gap.
+
+Note: `app/ai/iou-actions.ts` already loads/decides proposals of kinds `iou_create, iou_settle, transaction_create, balance_set, recurring_edit`, and for an open `transaction_create` it adds account options. Find the card component chat uses for transaction/balance cards and reuse it; don't build new accept/reject logic. Applying goes through `lib/ai/agent-apply.ts` as it does now.
+
+## What to build
+One Overview section, "Waiting for you", that **collapses/expands** (the user asked for a toggle). The collapsed header shows the count of open cards. Expanded, it lists every open standalone chat card: IOUs, transactions, balances, and chat-made recurring changes. Each card keeps its existing accept/dismiss/edit behavior, using the existing card components.
+- Replace the separate "Loans to review" block on Overview with this section, so loans aren't listed twice. Keep `IouReview` wherever else it's used (e.g. `app/ai/agents/page.tsx`) unless you have a clean reason to change it.
+- Look at how `RecurringReview` works (it also syncs detected suggestions). If folding its cards into the same section is simple and clean, do it; if not, leave it alone and say why in the PR.
+- If you can do it cheaply, add small filter chips (All / Loans / Transactions / Balances / Recurring) inside the expanded section. Otherwise skip them.
+- Hide the section when there are no open cards. Default to expanded when there are cards, unless the existing UI has a clear pattern for collapsed sections (look for one, e.g. agent run review groups).
+- A future voice-note feature will create cards the same way, so make this section the single place all standalone open cards appear. No voice work now.
+- Keep queries scoped by `workspace_id`, `run_id is null`, status `proposed`/`failed`, with a sensible limit, oldest or newest first to match existing patterns. Add the loader in `lib/ai/` next to similar ones and memoize it with `cache` like `loadIouReview`.
+
+## Tests
+Add or adjust Vitest tests next to the existing ones (e.g. `app/home-sections.test.tsx`, `lib/ai/iou-proposals.test.ts`-style) for the new loader and the section's render (hidden when empty; lists transaction and balance cards). If a gated Playwright flow exists for Overview, run it only if Supabase/auth is configured per `e2e/README.md`; otherwise say it was skipped.
+
+## Deliver
+Branch off the current commit, commit in small steps (end each commit message with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`), push, and open a PR against `main` with `gh pr create`. The PR body describes the change, the tests run and their results, and anything skipped; end it with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Do not merge.
+
+Your final line must be: PR <full URL>, head <SHA>, checks and reviews <state>.
