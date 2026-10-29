@@ -22,6 +22,7 @@ import { balanceInputSchema, proposeBalance } from "@/lib/ai/balance-proposals";
 import { listRecurring, proposeRecurring, recurringInputSchema } from "@/lib/ai/recurring-proposals";
 import { APP_GUIDE } from "@/lib/ai/app-guide";
 import { MAX_ATTACHMENTS, attachmentNote, attachmentSchema } from "@/lib/ai/chat-attachments";
+import { answerCardIds } from "@/lib/ai/open-proposals";
 import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
 
@@ -164,7 +165,7 @@ export async function POST(request: Request) {
     // Loan cards are drawn by the app beside the answer, so the model cannot misquote or skip them.
     const proposalCards: string[] = [];
     // Cards shown earlier in this chat; a corrected loan replaces its still-open card.
-    const earlierCards = (history ?? []).flatMap(item => item.role === "assistant" ? [...item.content.matchAll(/```moneo-proposals?\n([\s\S]*?)```/g)].flatMap(match => match[1].match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? []) : []);
+    const earlierCards = (history ?? []).flatMap(item => item.role === "assistant" ? answerCardIds(item.content) : []);
     // Agent-team decisions are confirmed on a card too; the model only names the ids.
     const decisionCards: string[] = [];
     const planTool = { plan_investigation: tool({ description: "Optional: show the user 2-5 short steps you will take for a multi-part question, and up to 3 follow-up questions they might ask next. Returns nothing.",
