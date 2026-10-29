@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M650HC5N54H47C6SK5K8KTY2",
+  "strategy": "manual-commit",
+  "branch": "t3/live-voice-chat-call",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/api/chat/route.ts",
+    "lib/ai/balance-proposals.ts",
+    "lib/ai/iou-proposals.ts",
+    "lib/ai/recurring-proposals.ts",
+    "lib/ai/transaction-proposals.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 10,
+    "cache_creation_tokens": 8851,
+    "cache_read_tokens": 376650,
+    "output_tokens": 1962,
+    "api_call_count": 5
+  },
+  "redaction": {
+    "replacements": 3,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 2,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
