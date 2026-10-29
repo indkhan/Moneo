@@ -12,6 +12,8 @@ const MESSAGE_PAGE = 30;
 // Saved tool outputs can be tens of KB each; history shows a preview, the full record stays in chat_requests.
 const OUTPUT_PREVIEW = 2000;
 const preview = (output?: string) => output && output.length > OUTPUT_PREVIEW ? `${output.slice(0, OUTPUT_PREVIEW)}\n… (truncated)` : output;
+// A chat run outlives its tab for up to the chat route's maxDuration (120 s); an older "running" row was cut off, not working.
+const RUN_WINDOW_MS = 3 * 60_000;
 export const conversationTitleSchema = z.string().trim().min(1).max(120);
 
 function before(value?: string) {
@@ -56,9 +58,12 @@ export async function loadConversation(supabase: SupabaseClient, workspace: stri
   if (!z.uuid().safeParse(id).success) throw new Error("Conversation unavailable");
   let mq = supabase.from("messages").select("id,role,content,created_at,reply_to,attachments").eq("workspace_id", workspace).eq("conversation_id", id).order("created_at", { ascending: false }).order("id", { ascending: false });
   if (mc) mq = mq.or(`created_at.lt.${mc.created_at},and(created_at.eq.${mc.created_at},id.lt.${mc.id})`);
-  const [conversation, page] = await Promise.all([
+  const [conversation, page, run] = await Promise.all([
     supabase.from("conversations").select("id,title,created_at").eq("workspace_id", workspace).eq("id", id).is("deleted_at", null).maybeSingle(),
     mq.limit(MESSAGE_PAGE + 1),
+    // A request still working in the background, so a returning user sees it as in progress.
+    mc ? null : supabase.from("chat_requests").select("id,created_at").eq("workspace_id", workspace).eq("conversation_id", id).eq("status", "running")
+      .order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (conversation.error) throw new Error("Could not load conversation. Try again.");
   if (!conversation.data) throw new Error("Conversation unavailable. It may be missing or belong to another workspace.");
@@ -67,7 +72,9 @@ export async function loadConversation(supabase: SupabaseClient, workspace: stri
   const messagesCursor = (page.data?.length ?? 0) > MESSAGE_PAGE ? cursor(rows[rows.length - 1]) : null;
   const activity = await savedActivity(supabase, workspace, rows.flatMap(row => row.role === "assistant" && row.reply_to ? [row.reply_to] : []));
   const messages = rows.map(({ reply_to, ...message }) => ({ ...message, ...(reply_to ? activity.get(reply_to) : undefined) }));
-  return { selected: conversation.data as HistoryThread, messages: messages.reverse(), messagesCursor };
+  const latest = run?.data as { id: string; created_at: string } | null | undefined;
+  const running = latest && Date.parse(latest.created_at) > Date.now() - RUN_WINDOW_MS ? latest.id : null;
+  return { selected: conversation.data as HistoryThread, messages: messages.reverse(), messagesCursor, running };
 }
 
 const savedCall = z.object({ name: z.string(), input: z.unknown().optional(), output: z.string().optional() });
@@ -97,5 +104,5 @@ export async function loadConversationHistory(supabase: SupabaseClient, workspac
   // Nothing selected this session means a fresh chat; old threads stay one click away in the list.
   const { threads, threadsCursor } = await loadThreads(supabase, workspace, threadsBefore);
   const conversation = await explicit;
-  return { threads, threadsCursor, selected: conversation?.selected ?? null, messages: conversation?.messages ?? [], messagesCursor: conversation?.messagesCursor ?? null };
+  return { threads, threadsCursor, selected: conversation?.selected ?? null, messages: conversation?.messages ?? [], messagesCursor: conversation?.messagesCursor ?? null, running: conversation?.running ?? null };
 }

@@ -642,6 +642,24 @@ export const artifactVersions = pgTable("artifact_versions", {
   unique("artifact_versions_artifact_id_version_key").on(table.artifactId, table.version),
 ]);
 
+export const artifactBuilds = pgTable("artifact_builds", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  artifactId: uuid("artifact_id").references(() => artifacts.id, { onDelete: "cascade" }),
+  prompt: text("prompt").notNull(),
+  status: text("status").notNull().default("running"),
+  version: integer("version"),
+  error: text("error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("artifact_builds_workspace_created").on(table.workspaceId, table.createdAt.desc()),
+  check("artifact_builds_prompt_check", sql`length(btrim(${table.prompt})) between 1 and 4000`),
+  check("artifact_builds_status_check", sql`${table.status} in ('running','completed','failed')`),
+  check("artifact_builds_version_check", sql`${table.version} >= 1`),
+  check("artifact_builds_error_check", sql`length(${table.error}) <= 500`),
+]);
+
 export const recurringSeries = pgTable("recurring_series", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),

@@ -44,6 +44,8 @@ const AiMessage = dynamic(() => import("./ai-message").then(module => module.AiM
 });
 
 export type ChatItem = Omit<HistoryMessage, "tools"> & { tools?: (string | ToolStep)[]; plan?: string[]; followUps?: FollowUp[] };
+/** A run that kept going while the user was away: its question is already in the history, so only the working state shows. */
+export const RESUMED_RUN: PendingExchange = { question: "", tools: [] };
 export type PendingExchange = { question: string; attachments?: ChatAttachment[]; tools: ToolStep[]; answer?: string; streaming?: boolean; plan?: string[]; steers?: string[] };
 
 /** Message list shared by the AI page and the Ask Moneo panel. */
@@ -57,7 +59,7 @@ export function ChatMessages({ messages, pending, compact = false }: { messages:
       {item.role === "user" ? <><MessageFiles files={item.attachments} /><p className={bubble}>{item.content}</p></> : assistant(<>{item.plan && <Plan steps={item.plan} done collapsed />}<AiToolActivity tools={item.tools ?? []} /><AiMessage content={item.content} />{item === messages.at(-1) && !pending && <FollowUps items={item.followUps ?? []} compact={compact} />}</>)}
     </article>)}
     {pending && <article className={compact ? "space-y-6" : "space-y-8"}>
-      <div><MessageFiles files={pending.attachments} /><p className={bubble}>{pending.question}</p></div>
+      {pending.question && <div><MessageFiles files={pending.attachments} /><p className={bubble}>{pending.question}</p></div>}
       {pending.steers?.map((steer, index) => <p key={index} className={bubble}>{steer}</p>)}
       {assistant(<>{pending.plan && <Plan steps={pending.plan} done={Boolean(pending.answer)} />}<AiToolActivity tools={pending.tools} />{pending.answer ? <><AiMessage content={pending.answer} />{!pending.streaming && <p role="status" className="mt-2 text-xs text-muted-foreground">Saving to history…</p>}</>
         : <p role="status" className="flex items-center gap-2 py-1 text-sm text-muted-foreground"><span className="flex gap-1" aria-hidden="true">{[0, 150, 300].map(delay => <span key={delay} className="size-1.5 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: `${delay}ms` }} />)}</span>{pending.tools.length ? "Working with your data…" : "Thinking…"}</p>}</>)}

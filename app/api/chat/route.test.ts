@@ -15,8 +15,10 @@ vi.mock("ai", () => ({ tool: (value: unknown) => value, stepCountIs: (value: num
   const run = generateText(options);
   run.catch(() => {});
   return { fullStream: (async function* () { const { text } = await run; yield { type: "text-delta", text }; yield { type: "finish-step" }; })(),
-    usage: run.then(result => result.usage ?? {}), steps: run.then(result => result.steps ?? []) };
+    usage: run.then(result => result.usage ?? {}, () => ({})), steps: run.then(result => result.steps ?? [], () => []) };
 } }));
+const { after } = vi.hoisted(() => ({ after: vi.fn() }));
+vi.mock("next/server", async original => ({ ...await original<typeof import("next/server")>(), after }));
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ SYSTEM_PROMPT: "", modelForSettings: vi.fn(async () => ({ modelId: "free" })) }));
 vi.mock("@/lib/finance/start-review", () => ({ startFinancialReview: vi.fn(async () => ({ jobId: "job", status: "queued" })) }));
@@ -300,3 +302,38 @@ it("streams tool progress, answer text and the answer before durable publication
   expect(JSON.parse(text.trim().split("\n").at(-1)!)).toMatchObject({ type: "result", status: 200, body: { conversationId: "00000000-0000-4000-8000-000000000002" } });
 });
 
+it("keeps running and publishes the answer after the client goes away", async () => {
+  let release!: () => void;
+  vi.mocked(generateText).mockImplementationOnce(async () => { await new Promise<void>(resolve => { release = resolve; }); return { text: "Saved while you were away" }; });
+  const client = new AbortController();
+  const response = await POST(new Request("http://localhost/api/chat", { method: "POST", signal: client.signal, headers: { Accept: "application/x-ndjson" },
+    body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000002", requestId, message: "Explain my spending" }) }));
+  // The reader leaves: the request is aborted and the stream canceled before the model answers.
+  client.abort();
+  await response.body!.cancel();
+  await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+  expect(vi.mocked(generateText).mock.calls[0][0]).not.toHaveProperty("abortSignal.aborted", true);
+  release();
+  await vi.mocked(after).mock.calls[0][0]();
+  const rpc = vi.mocked((await requireWorkspace()).supabase.rpc);
+  expect(rpc).not.toHaveBeenCalledWith("cancel_chat_request", expect.anything());
+  expect(rpc.mock.calls.find(call => call[0] === "finish_chat_request")?.[1]).toMatchObject({ p_status: "completed", p_content: "Saved while you were away" });
+});
+
+it("stops at the next model step after an explicit cancel and never publishes over it", async () => {
+  const context = await requireWorkspace();
+  const query = { select: () => query, eq: () => query, order: () => query, limit: async () => ({ data: [], error: null }), maybeSingle: async () => ({ data: { id: "conversation", status: "canceled" }, error: null }) };
+  vi.mocked(requireWorkspace).mockResolvedValue({ ...context, supabase: { ...context.supabase, from: () => query } } as unknown as typeof context);
+  let signal: AbortSignal | undefined;
+  vi.mocked(generateText).mockImplementationOnce(async options => {
+    signal = (options as unknown as { abortSignal: AbortSignal }).abortSignal;
+    await (options as unknown as { prepareStep: (step: { messages: unknown[] }) => Promise<unknown> }).prepareStep({ messages: [] });
+    return { text: "Should not be published" };
+  });
+  const response = await POST(request("Explain my spending"));
+  expect(response.status).toBe(502);
+  expect(signal?.aborted).toBe(true);
+  const finishes = vi.mocked(context.supabase.rpc).mock.calls.filter(call => call[0] === "finish_chat_request");
+  expect(finishes.map(call => (call[1] as { p_status: string }).p_status)).toEqual(["failed"]);
+  expect(vi.mocked(context.supabase.rpc)).not.toHaveBeenCalledWith("take_chat_steers", expect.anything());
+});

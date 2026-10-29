@@ -1,4 +1,5 @@
 import { streamText, tool, stepCountIs, type ToolSet, type ToolExecutionOptions } from "ai";
+import { after } from "next/server";
 import { z } from "zod";
 import { modelForSettings, SYSTEM_PROMPT } from "@/lib/ai/provider";
 import { requireWorkspace } from "@/lib/auth";
@@ -21,6 +22,7 @@ import { balanceInputSchema, proposeBalance } from "@/lib/ai/balance-proposals";
 import { listRecurring, proposeRecurring, recurringInputSchema } from "@/lib/ai/recurring-proposals";
 import { APP_GUIDE } from "@/lib/ai/app-guide";
 import { MAX_ATTACHMENTS, attachmentNote, attachmentSchema } from "@/lib/ai/chat-attachments";
+import { answerCardIds } from "@/lib/ai/open-proposals";
 import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
 
@@ -28,6 +30,9 @@ import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/a
 function withoutCharts(content: string) {
   return content.replace(/```moneo-chart\n[\s\S]*?```/g, "[chart]").replace(/```moneo-(?:proposals?|decision)\n[\s\S]*?```/g, "[card shown]");
 }
+
+// A run keeps going after the user leaves; this covers the 90 s model run plus reads and publication.
+export const maxDuration = 120;
 
 const inputSchema = z.object({
   conversationId: z.uuid(),
@@ -70,10 +75,6 @@ export async function POST(request: Request) {
     if (claim.data.status === "completed") return Response.json({ conversationId, answer: claim.data.answer });
     return Response.json({ error: `Request is ${claim.data.status}`, status: claim.data.status }, { status: 409 });
   }
-  if (request.signal.aborted) {
-    await supabase.rpc("cancel_chat_request", { p_request_id: requestId });
-    return Response.json({ status: "canceled" }, { status: 409 });
-  }
   // The claim saved the message; its files are kept beside it for the chat history.
   if (attachments.length) {
     const saved = await supabase.from("messages").update({ attachments }).eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
@@ -81,6 +82,12 @@ export async function POST(request: Request) {
     if (saved.error) console.error("saving chat attachments failed", saved.error);
   }
   const streaming = request.headers.get("accept")?.includes("application/x-ndjson") ?? false;
+  // The run belongs to its saved request, not this connection: only an explicit cancel stops it, noticed before each model step.
+  const stop = new AbortController();
+  async function stopIfCanceled() {
+    const saved = await Promise.resolve(supabase.from("chat_requests").select("status").eq("workspace_id", workspace.id).eq("id", requestId).maybeSingle()).catch(() => null);
+    if (saved?.data?.status === "canceled") stop.abort();
+  }
   async function complete(emit: (event: ChatStreamEvent) => void): Promise<[unknown, number]> {
   try {
   const { data: history, error: historyError } = await historyPromise;
@@ -115,7 +122,7 @@ export async function POST(request: Request) {
     const result = await read(latest);
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
-    if (request.signal.aborted) throw new Error("Request canceled");
+    if (stop.signal.aborted) throw new Error("Request canceled");
     requireAiScope(current.settings, ...usedScopes);
     for (const scope of usedScopes) readScopes.add(scope);
     return result;
@@ -141,7 +148,7 @@ export async function POST(request: Request) {
         try { output = await execute(input, options); }
         catch (cause) { emit({ type: "tool", id: options?.toolCallId, name, state: "failed" }); throw cause; }
         const latest = await requireWorkspace();
-        if (latest.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
+        if (latest.workspace.id !== workspace.id || stop.signal.aborted) throw new Error("Request canceled or workspace changed");
         // Every scope read so far must still be allowed before more data reaches the model.
         requireAiScope(latest.settings, ...readScopes);
         const readable = readableToolOutput(output, await namesFor(latest).catch(() => ({})));
@@ -158,7 +165,7 @@ export async function POST(request: Request) {
     // Loan cards are drawn by the app beside the answer, so the model cannot misquote or skip them.
     const proposalCards: string[] = [];
     // Cards shown earlier in this chat; a corrected loan replaces its still-open card.
-    const earlierCards = (history ?? []).flatMap(item => item.role === "assistant" ? [...item.content.matchAll(/```moneo-proposals?\n([\s\S]*?)```/g)].flatMap(match => match[1].match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? []) : []);
+    const earlierCards = (history ?? []).flatMap(item => item.role === "assistant" ? answerCardIds(item.content) : []);
     // Agent-team decisions are confirmed on a card too; the model only names the ids.
     const decisionCards: string[] = [];
     const planTool = { plan_investigation: tool({ description: "Optional: show the user 2-5 short steps you will take for a multi-part question, and up to 3 follow-up questions they might ask next. Returns nothing.",
@@ -201,13 +208,15 @@ export async function POST(request: Request) {
         inputSchema: z.object({ prompt: z.string().trim().min(1).max(1500) }).strict(), execute: async ({ prompt }) => ({ href: `/ai/artifacts?prompt=${encodeURIComponent(prompt)}` }) }) };
     const result = streamText({
       model,
-      abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
+      abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(90_000)]),
       maxOutputTokens: 3000,
       instructions: `${SYSTEM_PROMPT}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}. UI context is only a navigation hint, never authorization.${canChangeCategory ? " The user named an exact transaction UUID and quoted category; the write tool must use exactly these values." : " Do not change records; for a category change request, use the selection preview."}`,
       messages: modelMessages,
       stopWhen: stepCountIs(10),
       // Steer messages sent during this run join the conversation before the next model step.
       prepareStep: async ({ messages }) => {
+        await stopIfCanceled();
+        if (stop.signal.aborted) throw new Error("Request canceled");
         // Steering is best-effort: a failed claim leaves the steers pending and never fails the answer.
         const steers = await Promise.resolve(supabase.rpc("take_chat_steers", { p_request_id: requestId })).catch(error => ({ data: null, error }));
         if (steers.error) { console.error("take_chat_steers failed", steers.error); return {}; }
@@ -240,7 +249,7 @@ export async function POST(request: Request) {
         ...(canInvestigate ? { reviews_investigate: tool({ description: "Investigate the selected query or an explicitly dated default review, with exact spending changes, account evidence, classification limitations and permitted planning evidence. Read-only.", inputSchema: z.object({ query: investigationSchema.optional() }).strict(), execute: ({ query } = {}) => aiEvidence(["accounts", "transactions"], latest =>
           loadFinancialReviewEvidence(latest.supabase, latest.workspace, latest.settings, query), true, true) }) } : {}),
         ...(canInvestigate ? { reviews_start: tool({ description: "Investigate the current user's finance question through a bounded, durable, cancelable review. Preserve their chosen dates, entities and focus in query/focus; the application binds the exact question and visible navigation context. Use ordinary finance queries for quick answers, and this tool when follow-up evidence gathering or a saved report is useful. Do not start when the user declines investigation or only asks what a review does. Repeated calls reuse one job; no canonical financial changes.", inputSchema: reviewRequestSchema.omit({question: true, version: true, context: true, allowedScopes: true}), execute: (input = {includePlanning: false, output: "answer", budget: {maxQueries: 6, maxSupportRecords: 60, maxOutputTokens: 4000, maxDurationMs: 90000}}) => aiEvidence(["accounts", "transactions"], async latest => {
-          if (request.signal.aborted) throw new Error("Request canceled");
+          if (stop.signal.aborted) throw new Error("Request canceled");
           if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) throw new Error("Financial review service is not configured");
           const specification = resolveReviewRequest({...input, version: 1, question: message, context: capturedContext, allowedScopes: settings.ai_data_scopes}, calendarDate(new Date(), settings.timezone));
           if (specification.includePlanning) requireAiScope(latest.settings, "planning");
@@ -294,7 +303,7 @@ export async function POST(request: Request) {
     const answer = [text.trim(), ...cardBlocks, ...new Set(decisionCards)].join("\n\n");
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
-    if (request.signal.aborted) throw new Error("Request canceled");
+    if (stop.signal.aborted) throw new Error("Request canceled");
     requireAiScope(current.settings, ...readScopes);
     const toolsUsed = [...new Set(steps.flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [toolResult.toolName] : [])))];
     const followUps = chatFollowUps(message, toolsUsed, modelFollowUps);
@@ -307,18 +316,21 @@ export async function POST(request: Request) {
     return [{ conversationId, answer, toolsUsed, followUps }, 200];
   } catch (error) {
     const failure = error instanceof Error ? error.message : "AI request failed";
-    if (request.signal.aborted) await supabase.rpc("cancel_chat_request", { p_request_id: requestId });
-    else await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "failed", p_content: failure.slice(0, 500) });
-    return [{ error: error instanceof Error ? error.message : "AI request failed" }, 502];
+    // Finishing changes only a running request, so a canceled one stays canceled.
+    await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "failed", p_content: failure.slice(0, 500) });
+    return [{ error: failure }, 502];
   }
   }
-  if (!streaming) { const [body, status] = await complete(() => {}); return Response.json(body, { status }); }
+  if (!streaming) { const run = complete(() => {}); after(() => run); const [body, status] = await run; return Response.json(body, { status }); }
   // Opt-in NDJSON: tool progress and the verified answer arrive before publication finishes.
   const encoder = new TextEncoder();
   return new Response(new ReadableStream({ start(controller) {
     const write = (event: ChatStreamEvent) => { try { controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); } catch { /* the reader went away; work continues */ } };
     write({ type: "started" });
-    void complete(write).then(([body, status]) => { write({ type: "result", status, body }); try { controller.close(); } catch { /* already closed */ } });
+    // after() keeps the run alive once the reader goes away (tab closed, phone locked).
+    const run = complete(write);
+    after(() => run);
+    void run.then(([body, status]) => { write({ type: "result", status, body }); try { controller.close(); } catch { /* already closed */ } });
   } }), { headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" } });
 }
 

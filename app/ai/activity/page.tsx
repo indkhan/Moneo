@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { usageLabel, type ReportedUsage } from "@/lib/ai/usage";
+import { answerCardIds } from "@/lib/ai/open-proposals";
 
 const FILTERS = { all: "All", attention: "Needs attention", imports: "Imports", analyses: "Analyses", chats: "Chats" } as const;
 type Filter = keyof typeof FILTERS;
@@ -28,9 +29,15 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
       .eq("workspace_id", workspace.id).eq("kind", "financial_review").order("created_at", { ascending: false }).limit(20) : none,
     wants("analyses") ? supabase.from("saved_analyses").select("job_id, title").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20) : none,
     wants("chats") ? supabase.from("conversations").select("id, title, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20) : none,
-    wants("chats") ? supabase.from("chat_requests").select("id, conversation_id, status, error, usage, updated_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30) : none,
+    wants("chats") ? supabase.from("chat_requests").select("id, conversation_id, status, error, usage, answer, updated_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30) : none,
   ]);
-  const errors = [imports, jobs, saved, conversations, requests].map(result => result.error).filter(Boolean);
+  // A reply whose cards are still open needs attention, so cards from a chat that finished after the user left stay findable.
+  const cards = new Map((requests.data ?? []).map(row => [row.id, row.status === "completed" ? answerCardIds(row.answer) : []]));
+  const cardIds = [...new Set([...cards.values()].flat())];
+  const open = await (cardIds.length ? supabase.from("agent_proposals").select("id").eq("workspace_id", workspace.id).in("id", cardIds).in("status", ["proposed", "failed"]) : none);
+  const openIds = new Set((open.data ?? []).map(row => row.id as string));
+  const waiting = (id: string) => (cards.get(id) ?? []).filter(card => openIds.has(card)).length;
+  const errors = [imports, jobs, saved, conversations, requests, open].map(result => result.error).filter(Boolean);
   const titles = new Map((saved.data ?? []).map(row => [row.job_id, row.title]));
 
   const items: Item[] = [
@@ -45,10 +52,11 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
       href: `/ai/activity/${row.id}`, attention: row.status === "failed" })),
     ...(conversations.data ?? []).map(row => ({ key: `conversation:${row.id}`, kind: "chats" as const, at: row.created_at, badge: "Conversation", title: row.title,
       detail: "AI chat thread", href: `/ai?conversation=${row.id}`, attention: false })),
-    // Successful replies are noise in the combined feed; they stay under Chats.
-    ...(requests.data ?? []).map(row => ({ key: `chat:${row.id}`, kind: "chats" as const, at: row.updated_at, badge: "Chat", title: `Chat reply ${row.status}`,
+    // Successful replies are noise in the combined feed unless cards they raised are still waiting; the rest stay under Chats.
+    ...(requests.data ?? []).map(row => ({ key: `chat:${row.id}`, kind: "chats" as const, at: row.updated_at, badge: "Chat",
+      title: waiting(row.id) ? `Chat reply · ${waiting(row.id)} ${waiting(row.id) === 1 ? "card" : "cards"} waiting for you` : `Chat reply ${row.status}`,
       detail: [row.usage ? usageLabel(row.usage as ReportedUsage) : "", row.status === "failed" ? truncate(row.error) : ""].filter(Boolean).join(" · ") || words(row.status),
-      href: `/ai?conversation=${row.conversation_id}`, attention: row.status === "failed", quiet: row.status !== "failed" })),
+      href: `/ai?conversation=${row.conversation_id}`, attention: row.status === "failed" || waiting(row.id) > 0, quiet: row.status !== "failed" && !waiting(row.id) })),
   ];
   const visible = items.filter(item => filter === "attention" ? item.attention : filter === "all" ? !item.quiet : item.kind === filter)
     .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 50);
