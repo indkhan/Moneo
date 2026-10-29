@@ -1,4 +1,5 @@
 import { generateText, hasToolCall, stepCountIs, tool } from "ai";
+import { after } from "next/server";
 import { z } from "zod";
 import { modelForSettings } from "@/lib/ai/provider";
 import { requireWorkspace } from "@/lib/auth";
@@ -61,33 +62,50 @@ export async function POST(request: Request) {
   const prompt = latest
     ? `Earlier requests:\n${history}\n\nCurrent queries:\n${JSON.stringify(latest.queries)}\n\nCurrent HTML:\n${latest.html}\n\nChange it: ${message}`
     : message;
-  // Until an artifact model is chosen in Settings, artifacts use the chat model.
-  let model: Awaited<ReturnType<typeof modelForSettings>>;
-  try {
-    model = await modelForSettings(settings, settings.ai_models.artifacts ? "artifacts" : "chat");
-    await generateText({
-      model, prompt, tools: { ...dataTools, save_artifact },
-      instructions: `${INSTRUCTIONS}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}.`,
-      stopWhen: [hasToolCall("save_artifact"), stepCountIs(12)],
-      maxOutputTokens: 32000,
-      abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(280_000)]),
-    });
-  } catch (cause) { return Response.json({ error: cause instanceof Error ? cause.message : "AI request failed" }, { status: 502 }); }
-  if (!saved) return Response.json({ error: "The model did not produce an artifact. Try rephrasing." }, { status: 502 });
+  // The build keeps going after the user leaves; this row is how they find it running, finished or failed.
+  const build = await supabase.from("artifact_builds").insert({ workspace_id: workspace.id, artifact_id: artifactId ?? null, prompt: message }).select("id").single();
+  if (build.error) return Response.json({ error: "Could not start the build" }, { status: 500 });
 
-  let id = artifactId;
-  if (id) {
-    const { error } = await supabase.from("artifacts").update({ title: saved.title, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("id", id);
-    if (error) throw error;
-  } else {
-    const { data, error } = await supabase.from("artifacts").insert({ workspace_id: workspace.id, title: saved.title }).select("id").single();
-    if (error) throw error;
-    id = data.id as string;
+  type Outcome = [{ id?: string; version?: number; error?: string }, number];
+  async function run(): Promise<Outcome> {
+    // Until an artifact model is chosen in Settings, artifacts use the chat model.
+    let model: Awaited<ReturnType<typeof modelForSettings>>;
+    try {
+      model = await modelForSettings(settings, settings.ai_models.artifacts ? "artifacts" : "chat");
+      await generateText({
+        model, prompt, tools: { ...dataTools, save_artifact },
+        instructions: `${INSTRUCTIONS}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}.`,
+        stopWhen: [hasToolCall("save_artifact"), stepCountIs(12)],
+        maxOutputTokens: 32000,
+        abortSignal: AbortSignal.timeout(280_000),
+      });
+    } catch (cause) { return [{ error: cause instanceof Error ? cause.message : "AI request failed" }, 502]; }
+    if (!saved) return [{ error: "The model did not produce an artifact. Try rephrasing." }, 502];
+
+    let id = artifactId;
+    if (id) {
+      const { error } = await supabase.from("artifacts").update({ title: saved.title, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("id", id);
+      if (error) return [{ error: "Could not save" }, 500];
+    } else {
+      const { data, error } = await supabase.from("artifacts").insert({ workspace_id: workspace.id, title: saved.title }).select("id").single();
+      if (error) return [{ error: "Could not save" }, 500];
+      id = data.id as string;
+    }
+    const version = (latest?.version ?? 0) + 1;
+    // ponytail: a concurrent refine of the same artifact hits the unique version and fails; retry if that becomes common.
+    const { error } = await supabase.from("artifact_versions").insert({ workspace_id: workspace.id, artifact_id: id, version,
+      prompt: message, html: saved.html, queries: saved.queries, model: model.modelId });
+    if (error) return [{ error: error.code === "23505" ? "Another change finished first; try again" : "Could not save" }, 409];
+    return [{ id, version }, 200];
   }
-  const version = (latest?.version ?? 0) + 1;
-  // ponytail: a concurrent refine of the same artifact hits the unique version and fails; retry if that becomes common.
-  const { error } = await supabase.from("artifact_versions").insert({ workspace_id: workspace.id, artifact_id: id, version,
-    prompt: message, html: saved.html, queries: saved.queries, model: model.modelId });
-  if (error) return Response.json({ error: error.code === "23505" ? "Another change finished first; try again" : "Could not save" }, { status: 409 });
-  return Response.json({ id, version });
+  const finished = run().catch((cause): Outcome => [{ error: cause instanceof Error ? cause.message : "Could not build the artifact" }, 500]).then(async ([body, status]): Promise<Outcome> => {
+    const outcome = status < 400 ? { status: "completed", artifact_id: body.id, version: body.version } : { status: "failed", error: body.error?.slice(0, 500) };
+    const recorded = await supabase.from("artifact_builds").update({ ...outcome, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("id", build.data.id);
+    if (recorded.error) console.error("recording artifact build failed", recorded.error);
+    return [body, status];
+  });
+  // Not tied to this request: closing the tab or leaving the page lets the build finish and save.
+  after(() => finished);
+  const [body, status] = await finished;
+  return Response.json(body, { status });
 }
