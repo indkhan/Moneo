@@ -5,7 +5,7 @@ import { formatMoney } from "@/lib/finance/format";
 import { minorDigits } from "@/lib/finance/fx";
 import { wealthAmount } from "@/lib/finance/wealth";
 
-type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string } };
+type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string }; chatRequestId?: string };
 type Account = { id: string; name: string; type: string; currency_code: string };
 
 /** The model's view of money the user spent or received: a decimal amount; the application turns it into exact minor units. */
@@ -40,7 +40,7 @@ export function chooseAccount(accounts: Account[], named?: string) {
 }
 
 /** Stores a pending "add this transaction" proposal. Nothing reaches the ledger until the owner accepts. */
-export async function proposeTransaction({ supabase, workspace }: Context, input: z.infer<typeof transactionInputSchema>) {
+export async function proposeTransaction({ supabase, workspace, chatRequestId }: Context, input: z.infer<typeof transactionInputSchema>) {
   minorDigits(input.currency);
   const today = calendarDate(new Date(), workspace.timezone);
   const date = input.date ?? today;
@@ -53,7 +53,7 @@ export async function proposeTransaction({ supabase, workspace }: Context, input
     date, description: input.description, accountId: chooseAccount(accounts, input.account), categoryId: category?.id ?? null });
   const amount = formatMoney(payload.amountMinor, payload.currencyCode, workspace.locale);
   const title = `${payload.direction === "spent" ? "Spent" : "Received"} ${amount} · ${payload.description}`.slice(0, 200);
-  const { data, error } = await supabase.from("agent_proposals").insert({ workspace_id: workspace.id, agent: "chat", kind: "transaction_create",
+  const { data, error } = await supabase.from("agent_proposals").insert({ workspace_id: workspace.id, agent: "chat", kind: "transaction_create", ...(chatRequestId ? { chat_request_id: chatRequestId } : {}), 
     conflict_key: `transaction_create:${crypto.randomUUID()}`, title, detail: [date === today ? "Today" : date, category?.name].filter(Boolean).join(" · "), payload, confidence: 100 }).select("id").single();
   if (error) throw new Error(error.message);
   return { proposalId: data.id as string, title };

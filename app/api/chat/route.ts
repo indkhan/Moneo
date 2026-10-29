@@ -165,25 +165,25 @@ export async function POST(request: Request) {
       inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); toolCalls.push({ name: "plan_investigation", input, output: "" }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }),
       iou_propose: tool({ description: "The user says they lent or gave money to a person, or borrowed or received money from one. Shows them a card to accept or dismiss; nothing is saved until they accept. Use the user's exact amount, person and currency.",
         inputSchema: iouInputSchema, execute: async input => {
-          const created = await proposeIou(await requireWorkspace(), input, [...earlierCards, ...proposalCards]);
+          const created = await proposeIou({ ...await requireWorkspace(), chatRequestId: requestId }, input, [...earlierCards, ...proposalCards]);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: `A card with Add and Dismiss is shown to the user below your answer.${created.replaced ? " It replaces the earlier card for this loan, which was dismissed." : ""} Say it is waiting for their approval; do not repeat the details.` };
         } }),
       transaction_propose: tool({ description: "The user says they spent, paid, bought, earned or received money (or an attached receipt or invoice shows it). Shows a card to add it to their transactions; nothing is saved until they accept. Call once per separate payment, with the exact amount, currency and date from the user or document.",
         inputSchema: transactionInputSchema, execute: async input => {
-          const created = await proposeTransaction(await requireWorkspace(), input);
+          const created = await proposeTransaction({ ...await requireWorkspace(), chatRequestId: requestId }, input);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with an account picker, Add and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
         } }),
       balance_propose: tool({ description: "The user states what an account holds now or held on a date (e.g. 'I have 115 euros in cash', 'my Revolut shows 1,250'). Shows a card to save it as that account's dated balance; nothing changes until they accept. Use the exact amount and currency the user gave.",
         inputSchema: balanceInputSchema, execute: async input => {
-          const created = await proposeBalance(await requireWorkspace(), input);
+          const created = await proposeBalance({ ...await requireWorkspace(), chatRequestId: requestId }, input);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with Save and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
         } }),
       recurring_propose: tool({ description: "The user wants to add a recurring payment or income (bill, subscription, rent, salary), change one (amount, direction, how often, next date, name, category such as Job), remove one from recurring, or confirm a detected suggestion as recurring. Call recurring_list first to name an existing schedule or suggestion. Shows a card; nothing changes until they accept.",
         inputSchema: recurringInputSchema, execute: async input => {
-          const created = await proposeRecurring(await requireWorkspace(), input);
+          const created = await proposeRecurring({ ...await requireWorkspace(), chatRequestId: requestId }, input);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with Save and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
         } }),
@@ -252,7 +252,7 @@ export async function POST(request: Request) {
         transactions_search: tool({ description: "Find transactions, newest first. Filter by description text, posted date range (from/to), absolute amount range in minor units, and limit (default 20, max 50).", inputSchema: financeToolSchemas.searchInput, execute: input => aiEvidence(["transactions"], latest => searchTransactions(input, latest)) }) } : {}),
         ...(canInvestigate ? { iou_findRepayments: tool({ description: "Check recent bank transactions for repayments of money the user lent to or borrowed from people, and show each as a card to accept or dismiss. Nothing changes until they accept.", inputSchema: z.object({}).strict(),
           execute: () => aiEvidence(["accounts", "transactions"], async latest => {
-            const found = await proposeRepayments(latest);
+            const found = await proposeRepayments({ ...latest, chatRequestId: requestId });
             proposalCards.push(...found.map(item => item.id as string));
             return { found: found.map(item => item.title), note: found.length ? "Cards are shown to the user below your answer." : "No new repayments found." };
           }) }) } : {}),

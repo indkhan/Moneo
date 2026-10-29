@@ -6,7 +6,7 @@ import { minorDigits } from "@/lib/finance/fx";
 import { iouCreateSchema, repaymentMatches, type IouItem } from "@/lib/finance/iou";
 import { wealthAmount } from "@/lib/finance/wealth";
 
-type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string } };
+type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string }; chatRequestId?: string };
 
 /** The model's view of a new IOU: a decimal amount; the application turns it into exact minor units. */
 export const iouInputSchema = z.object({ direction: z.enum(["lent", "borrowed"]).describe("lent: the user gave money to the person; borrowed: the user received money from the person"),
@@ -20,14 +20,14 @@ const firstName = (person: string) => person.normalize("NFD").replace(/\p{M}/gu,
 /** Stores a pending "add this loan to Wealth" proposal. Nothing is written to Wealth until the owner accepts.
  * `earlier` are the cards this chat already showed: an open one for the same loan is dismissed, so a correction
  * ("his name is Bilal Amin, it was in September") cannot be added twice. */
-export async function proposeIou({ supabase, workspace }: Context, input: z.infer<typeof iouInputSchema>, earlier: string[] = []) {
+export async function proposeIou({ supabase, workspace, chatRequestId }: Context, input: z.infer<typeof iouInputSchema>, earlier: string[] = []) {
   minorDigits(input.currency);
   const today = calendarDate(new Date(), workspace.timezone);
   const payload = iouCreateSchema.parse({ direction: input.direction, person: input.person, currencyCode: input.currency, date: input.date ?? today,
     amountMinor: wealthAmount(input.amount, input.currency).toString() });
   if (payload.date > today) throw new Error("The date cannot be in the future");
   const formatted = formatMoney(payload.amountMinor, payload.currencyCode, workspace.locale);
-  const { data, error } = await supabase.from("agent_proposals").insert({ workspace_id: workspace.id, agent: "chat", kind: "iou_create", conflict_key: `iou_create:${crypto.randomUUID()}`,
+  const { data, error } = await supabase.from("agent_proposals").insert({ workspace_id: workspace.id, agent: "chat", kind: "iou_create", ...(chatRequestId ? { chat_request_id: chatRequestId } : {}),  conflict_key: `iou_create:${crypto.randomUUID()}`,
     title: sentence(payload.direction, payload.person, formatted), detail: `${payload.direction === "lent" ? "Lent" : "Borrowed"} on ${payload.date}. Added to Wealth and net worth once you accept.`,
     payload, confidence: 100 }).select("id").single();
   if (error) throw new Error(error.message);
@@ -47,7 +47,7 @@ export async function proposeIou({ supabase, workspace }: Context, input: z.infe
 }
 
 /** Looks for bank transactions that repay an open IOU and proposes each one once, whatever its later outcome. */
-export async function proposeRepayments({ supabase, workspace }: Context) {
+export async function proposeRepayments({ supabase, workspace, chatRequestId }: Context) {
   const { data: rows, error } = await supabase.from("wealth_items").select("id, kind, name, currency_code, amount_minor::text, as_of, version, removed_at, linked_account_id")
     .eq("workspace_id", workspace.id).is("removed_at", null).is("linked_account_id", null).in("kind", ["asset", "debt"]).limit(1000);
   if (error) throw new Error(error.message);
@@ -68,7 +68,7 @@ export async function proposeRepayments({ supabase, workspace }: Context) {
     const transaction = byTransaction.get(match.transactionId)!, item = items.find(candidate => candidate.id === match.itemId)!;
     if (seen.has(keys[index])) return [];
     const applied = formatMoney(match.appliedMinor, item.currency_code, workspace.locale), owed = formatMoney(match.owedMinor, item.currency_code, workspace.locale);
-    return [{ workspace_id: workspace.id, agent: "chat", kind: "iou_settle", conflict_key: keys[index], confidence: match.appliedMinor === match.owedMinor ? 90 : 70,
+    return [{ workspace_id: workspace.id, agent: "chat", kind: "iou_settle", ...(chatRequestId ? { chat_request_id: chatRequestId } : {}),  conflict_key: keys[index], confidence: match.appliedMinor === match.owedMinor ? 90 : 70,
       title: `${match.person} ${match.direction === "lent" ? "paid you" : "was paid"} ${applied}`.slice(0, 200),
       detail: `“${transaction.description}” on ${transaction.posted_on}. Counting it against ${owed} still ${match.direction === "lent" ? "owed to you" : "owed by you"}.`,
       evidence: { facts: [], transactions: [{ id: transaction.id, date: transaction.posted_on, description: transaction.description, amountMinor: transaction.amount_minor, currency: transaction.currency_code }], links: [] },
