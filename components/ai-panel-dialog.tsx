@@ -10,7 +10,7 @@ import { ChatComposer } from "./chat-composer";
 import { useChatAttachments } from "@/lib/ai/use-chat-attachments";
 import { ATTACHMENT_ONLY_MESSAGE, type ChatAttachment } from "@/lib/ai/chat-attachments";
 import { ChatQueue } from "./chat-queue";
-import { ChatMessages, DRAFT_EVENT, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
+import { ChatMessages, DRAFT_EVENT, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
 import { selectConversation } from "@/lib/ai/selected-conversation";
 import type { AskSeed } from "./ask-about";
 
@@ -32,6 +32,8 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
   const [older, setOlder] = useState<string | null>(null);
   const [historyError, setHistoryError] = useState("");
   const [loading, setLoading] = useState(false);
+  // A request in this chat still working in the background, e.g. after the app was closed mid-answer.
+  const [running, setRunning] = useState(false);
   const [selectionKey, setSelectionKey] = useState("");
   const generation = useRef(0);
   const pathname = usePathname();
@@ -49,6 +51,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
       selectConversation(result.selectionKey, result.selected?.id ?? "new", false);
       setHistory(current => cursor ? [...result.messages, ...current] : result.messages);
       setOlder(result.messagesCursor);
+      if (!cursor) setRunning(Boolean(result.running));
     } catch (cause) {
       if (run === generation.current) setHistoryError(cause instanceof Error ? cause.message : "Could not load conversation");
     } finally { if (run === generation.current) setLoading(false); }
@@ -67,6 +70,13 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
   const chat = useChatRequest();
   const files = useChatAttachments();
   const { send, cancel, busy, error, status } = chat;
+  // Until that run's answer is saved, check on it and reload the chat once it is done.
+  useEffect(() => {
+    if (!open || !running || busy || !conversationId) return;
+    const timer = window.setInterval(() => void fetch(`/api/conversations/${conversationId}`, { cache: "no-store" }).then(response => response.json())
+      .then(result => { if (!result.running) void load(); }).catch(() => {}), 3000);
+    return () => window.clearInterval(timer);
+  }, [open, running, busy, conversationId, load]);
   useEffect(() => {
     const draft = (event: Event) => { const detail = (event as CustomEvent<{ prompt?: string; compact: boolean }>).detail; if (detail.compact && detail.prompt) { setQuestion(detail.prompt); document.getElementById("panel-question")?.focus(); } };
     window.addEventListener(DRAFT_EVENT, draft);
@@ -123,7 +133,7 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
         {historyError && <div role="alert" className="text-sm"><p>{historyError}</p><button type="button" onClick={() => void load()} className="mt-2 underline">Try again</button></div>}
         {loading && <p role="status" className="text-sm text-muted-foreground">Loading conversation...</p>}
         {older && !historyError && <button type="button" disabled={loading || busy} onClick={() => void load(older)} className="mx-auto mb-4 block text-sm text-muted-foreground hover:text-foreground">Older messages</button>}
-        {!historyError && <ChatMessages compact messages={history} pending={pending} />}
+        {!historyError && <ChatMessages compact messages={history} pending={pending ?? (running && !busy ? RESUMED_RUN : null)} />}
         <div ref={end} />
         {!history.length && !pending && !historyError && !loading && <div className="flex h-full flex-col items-center justify-center text-center"><h3 className="text-lg font-semibold">How can I help with your money?</h3><p className="mt-1 text-sm text-muted-foreground">Ask about this page, a transaction or a balance.</p><div className="mt-5 flex flex-wrap justify-center gap-2">{["What changed in my spending last month?", "Create a spending chart"].map(prompt => <button key={prompt} type="button" onClick={() => { setQuestion(prompt); document.getElementById("panel-question")?.focus(); }} className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">{prompt}</button>)}</div></div>}
       </div>
