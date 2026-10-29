@@ -15,7 +15,7 @@ The first version is the dictation mic, voice notes and live calls in chat, with
 - Offline voice notes: record without signal and send when back online; share-target and receipt photo plus voice in one note.
 - Spoken daily brief: a short audio version of the agent briefing.
 - Accept by voice: "yes, add it" accepts small cards (cash spends, IOUs); balances and recurring changes stay tap-only.
-- Other voice providers: ElevenLabs (Eleven Realtime) or Gemini Live behind the same call interface.
+- ElevenLabs voices and separate speech-to-text and text-to-speech (any chat model in the middle) with the same call abilities: talk over it, several tasks at once, spoken progress. Gemini Live is another option behind the same call interface.
 - Moving money: "send 20 to Ali" makes an IOU or reminder today; real bank payments are a separate, regulated feature.
 - Phone-number calls (SIP) and a hands-free wake word.
 - Push notifications when the app is closed (today the bell shows them on the next open).
