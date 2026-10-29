@@ -1,0 +1,48 @@
+i want to use the one which is ral call that hears you even during it talks and all and can run things while hearing you (run tools and all which hearing u so tool in the background ) 
+ways i think eleven labs and openai 
+
+should use the brainstorm skill to get it done as alot of questions 
+basically it should be like chat with all its feature but it should be chat native for call should be in chat itself you open chat but a button for call you click it and it turns into a call thing takes the full space most probably i think that should be like that and more things we neeed to think about like how does it do the confirm is it it shows confirm on the screen but does not ask ask it lets it be there the user clicks it then or he can just do it later when he has time to see and it is there in overview and all 
+
+another thing should be like a direct audio message that you tell it ok i want to have this and dthen he closes it and then it does its thing and then user later when time can see it in overview 
+
+like am out and spent direct cash i tell it btw spent this much money on this place using cash on netto for chips , eggs and all and the ai adds it 
+
+both things should be there but how is the questions , and what do we want now and what is fine for later
+
+
+This is the feature which I'm not sure at all how it should work. We have to think about it.
+
+The basic idea is that in the chat, in the artifact, everywhere, I should be able to tell it in voice as well especially. That's the basic voice adding and that's fine. It's just voice-to-text adding and that's fine but there should be a call feature as well. You can just call and talk to it as if you're talking to your financial agent and I can ask if you have any checks.
+
+The way agents work right now should be the same way but I don't know how we are going to have it in more detail. This is a really big feature, a really important feature. There are a lot of ways of implementing this. I'm not sure what the best way of implementing this is. Let's think of a few ways and let's talk about it. Come up with a few ideas. Let's see what would be the best thing to do in this case. 
+Be fully. First of all check the web: what is the latest way? What are most of the people doing for this and this specific thing? I know there are not a lot of applications which do this financial agent thing (the other big first one) but for other agent calling what is the latest trend? What are the latest things which happened in October 2026?
+
+Before that do first research on that and come up with as many possibilities as possible. Think of as many unique cool ideas as there could be. What are the most technologically leading things happening and all of that? It should be like after talking to your finance agent and you can ask him, "Yo, can you tell me and send this money to this person or that thing to that person or something like this?" It should feel like that. 
+
+
+i want it to be the coolest thing possible
+
+---
+
+tell a subagent to change the transactions and balances proposed in chat is only in chat to be in overview as ewll like IOUs make a pr towards main and leave that after calling the subagent 
+
+the thing you proposed yes have like a toggle and in that toggle t shows eveyrhting the IOU and also these tthings the vioce audio and all and chat and all 
+
+where will voice note be will it be with chat itself or with the call or another thing or what  like the dictation mic itself i think that makes sense the only thing is then we have to make the chat and all have the durable agent / background workflow or somehtng 
+
+the things in later have in backlog
+
+call i agree with you , the searching thransactions it will tell you let me look through the transactions and all as well not only show , 
+yes 
+yes 
+yse 
+yes 
+
+we need to make more decison like when does it answer and all those things or does the openai realtime model do it itself 
+
+
+and think more plan more and all and then come up with an answer of what will be the best thing to do
+
+
+take all of this and thnk ressearch take as much time and planning and ultrathink and give me the what are the best options now
