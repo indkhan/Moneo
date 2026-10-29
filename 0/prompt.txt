@@ -1,0 +1,5 @@
+Update from the parent: `t3/voice-finance-agent` now includes the mic (PR #120) and runs that keep going after you leave (PR #119).
+1. **Route name:** `app/api/voice/session/route.ts` is now taken by the mic's transcription session. Put the call's WebRTC route at **`/api/voice/call`** instead.
+2. **Merge the base:** `git fetch origin && git merge origin/t3/voice-finance-agent` before your PR (or now). The chat route now runs work in `after()`, and chat components changed: `components/chat-messages.tsx` has a `spoken` badge and `RESUMED_RUN`; `components/chat-workspace.tsx` and `chat-composer.tsx` gained the mic. Keep both behaviors when resolving.
+3. **Migrations:** `supabase/migrations/202610300001_artifact_builds.sql` exists and is applied remotely. Give yours a later version number, e.g. `202610300002_...`.
+4. **Messages from a call:** set `context.input = "voice"` on them as well as `via: "call"`, so they get the mic badge (see `isSpoken` in `lib/ai/conversation-history.ts`).
