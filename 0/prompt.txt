@@ -1,0 +1,82 @@
+Delegated task node:delegated-task:command%3Amcp%3Add9baa93-b2f1-4303-9fc5-350c0b467fb9%3Adelegate-task%3A314a79fe-0819-4519-9883-a25315957f96 (After-call summary, voice settings) [completed]:
+All four parts are built and the PR is open against `t3/voice-finance-agent`. The last live check passed 12 of 12, and `npm test`, `npm run lint` and `npm run build` all pass.
+
+- **Call summary card:** hanging up saves a call record (new `voice_calls` table, 40 KB transcript cap). The summary is written in `after()` by the chat model. The card shows duration, summary, the call's cards with their current state, anything still running, the call's requests and a collapsible transcript. The call's own messages move inside the card.
+- **Voice picker:** a Call voice select with a Play sample button in Settings. `/api/voice/call` uses the saved voice. The valid `gpt-live-1` voices are the ten the live API accepted when I tried each one: marin, cedar, alloy, ash, ballad, coral, echo, sage, shimmer and verse.
+- **Voice call model:** a "Voice call" entry in the AI models setting. Blank means it follows the chat model, and call requests use it.
+- **Typed message during a call:** it already worked through `session.commentary.append` with `delegation_id: null`; I confirmed GPT-Live speaks the answer. I made the wording explicit after one run answered in German to an English message.
+
+Not verified: I can't hear audio, so the chosen voice is confirmed from the session config GPT-Live reports, not by ear. I did not exercise the Ask Moneo side panel.
+
+Three migrations (`202610300004` to `202610300006`) are already applied to the shared Supabase project. `save_workspace_preferences` also gained the previously missing `artifacts` model key.
+
+PR https://github.com/indkhan/Moneo/pull/122, head ef721590e93826886cf2c3ca75556cd55be4ddf8, checks and reviews pending (GitGuardian and Vercel running)
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A83bd6191-a695-4893-98a6-183a0fdef6ae%3Adelegate-task%3Afadb77f1-e1f7-4f40-97d6-206fa823fe6f (UI polish pass for voice) [completed]:
+I opened PR #123 into `t3/voice-finance-agent` with the voice UI polish. Tests, lint and build all pass. The call screens were checked only from screenshots of fake call states, not from a real call.
+
+**What changed:**
+- **Call screen:**
+  - The orb now reacts to the voice: its glow and ring grow with the sound, it turns while Moneo works and breathes otherwise, and it changes colour with the state. It holds still when reduced motion is on.
+  - The status sits under the orb, and a "Live" pill and top safe-area spacing were added.
+  - Captions are larger, and older lines fade.
+  - Tasks have icons, and their ✕ is now 44 px.
+  - Mute and End are 64 px with labels.
+  - The typed box hides once the call is over.
+- **Mic:** the recording view has a violet outline, a pulsing red recording dot, a finer level meter and visible focus. The error message is clearer and easier to dismiss.
+- **Call summary card:** it has an icon header, status marks for work still running when the call ended, and 44 px rows to open the requests and transcript.
+- **Waiting for you:** the section has a proper heading with a count badge and a chevron, and the filters are pill buttons.
+- **Settings:** Play sample shows loading and playing states with icons, and its failure message says what to try.
+- **Thinking… dots:** they now respect reduced motion.
+
+I made the call screen's view a separate component so each state can be shown without a connection. That is a presentation-only split; behaviour and APIs are unchanged. I updated `app/waiting-for-you.test.tsx` to match the new heading.
+
+**Testing:**
+- `npm test`: 1133 tests passed, 9 skipped.
+- `npm run lint` and `npm run build`: both pass.
+- The fake mic against the real API recorded and transcribed correctly.
+
+**Not done:**
+- I placed no real call. The call screens come from a mocked state on a throwaway preview page, which I deleted before committing.
+- The artifact builder's running and failed states were not restyled.
+- I didn't screenshot the Ask Moneo panel mic; it uses the same composer as the chat page.
+
+The Vercel preview is still deploying. "Entire Gates" is failing, which you said to ignore. There are no reviews yet. The dev server is stopped. Screenshots are in `C:\Users\mgsuk\voice-proto\ui\before\` and `C:\Users\mgsuk\voice-proto\ui\after\`.
+
+PR https://github.com/indkhan/Moneo/pull/123, head 292f1b8fe5c481701a87cea778960568b89079c0, checks and reviews Vercel pending, Entire Gates failing (ignored), no reviews
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A83bd6191-a695-4893-98a6-183a0fdef6ae%3Adelegate-task%3A384bb747-1d0d-45ef-adff-551a92f0ea46 (Speed and regression pass) [completed]:
+The PR is open against `t3/voice-finance-agent` (not `main`), with fixes for the regressions I found. The servers are stopped and the temporary main worktree is removed.
+
+Regressions found and fixed:
+- **Mic bundle weight:** `/ai/artifacts` carried +94 KB of JS because the mic pulled in zod. It is now 168 KB, against 163 KB on main.
+- **Hidden-tab polling:** background polling kept running in a hidden tab. It now pauses there, and the artifact-build refresh is down from 68 page requests per 12 s to 0.
+- **Overview layout shift:** Waiting for you pushed the grid down, giving CLS 0.40 (0.74 on mobile). That was already the case on main. It is now 0.00, with no added delay to the page.
+- **Chat open cost:** opening a chat did an extra sequential query. It is now back to about main's latency (264 ms vs 255 ms).
+- **New index:** a new migration, `202610300007`, indexes running chat requests. It is applied to the project database.
+- **Test selectors:** the `chat-cancel` and `chat-drafts` "Ask Moneo" selectors are fixed, and both now pass.
+
+Test results:
+- **Unit and lint:** `npm test` passes (1142 tests, 9 skipped), `npm run lint` is clean, and `npm run build` passes.
+- **E2E on the branch:** the full gated Playwright suite ran 44 passed, 23 failed.
+- **E2E on main:** the same run on `origin/main` had 36 passed, 30 failed. No failure is unique to the branch, and the PR fixes 7 of main's.
+- **Live call check:** `scripts/voice-call-check.mjs` passes 12/12.
+
+I did not chase the 23 failures that remain; they fail the same way on main and look like fixture and cleanup debt rather than voice work. Page timings on this machine are noisy and showed no gap between main and the branch. The PR body has the full before/after tables, what I skipped, and "Decisions I made".
+
+PR https://github.com/indkhan/Moneo/pull/124, head cd6124c4c93c830d387059e6392a095c52e7658d, checks and reviews: pending (only the "Entire Gates" approval check is reported, no review yet)
+
+---
+
+weather i run on website or phone iphone on safari or chrome no where does the ai listening worked it just showed me 
+Voice input is not configured
+
+try to find what the problem could be and how to fix it 
+and in the ui dont have text cancel send done only the icons are enough for the users to understand 
+in the overview have the thing for call not voice note 
+
+check these things if any question ask me and try to fix these things so it works

@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M665SWYW9Q5D0C6EZM5HY18D",
+  "session_id": "8729088a-363e-468f-ba7c-03fb9b749de0",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-30T10:31:08.0735741Z",
+  "branch": "t3/voice-finance-agent",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "components/voice-input.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "7eab61c5b44f",
+  "checkpoint_transcript_start": 1158,
+  "transcript_lines_at_start": 1158,
+  "compact_transcript_start": 157,
+  "token_usage": {
+    "input_tokens": 98,
+    "cache_creation_tokens": 375090,
+    "cache_read_tokens": 7857258,
+    "output_tokens": 28961,
+    "api_call_count": 49
+  },
+  "redaction": {
+    "replacements": 65,
+    "layers": {
+      "betterleaks": 10,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 26,
+      "credentialed_uri": 0,
+      "entropy": 22,
+      "key_context": 17,
+      "provider_token": 10,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 15
+  }
+}
