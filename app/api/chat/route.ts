@@ -25,7 +25,7 @@ import { MAX_ATTACHMENTS, attachmentNote, attachmentSchema } from "@/lib/ai/chat
 import { answerCardIds } from "@/lib/ai/open-proposals";
 import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
-import { CALL_MODE_PROMPT, callContextSchema, replaceCallTask } from "@/lib/ai/voice-call";
+import { CALL_MODE_PROMPT, callContextSchema, replaceCallTask, withoutCallBrief } from "@/lib/ai/voice-call";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
@@ -48,7 +48,8 @@ export async function POST(request: Request) {
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
   const body = await request.json().catch(() => null);
   const parsed = inputSchema.safeParse(body);
-  if (!parsed.success || JSON.stringify(parsed.data.context ?? {}).length > 2000)
+  // A call turn carries a brief of the call so far, so it gets more room.
+  if (!parsed.success || JSON.stringify(parsed.data.context ?? {}).length > (parsed.data.context?.via === "call" ? 8000 : 2000))
     return Response.json({ error: "Invalid message" }, { status: 400 });
   if (!(process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY)) return Response.json({ error: "AI is not configured" }, { status: 503 });
   const { conversationId, requestId, message, context: capturedContext, attachments = [] } = parsed.data;
@@ -100,7 +101,8 @@ export async function POST(request: Request) {
   const running = new Set(runningTasks.map(task => task.requestId));
   // History was read before the claim saved this message, so append it exactly as the claim stores it.
   const submitted = { role: "user", content: message, context: capturedContext ?? {}, attachments: [] };
-  const textMessages = [...(history ?? []).filter(item => !running.has(item.request_id)).reverse(), submitted].map(item => ({
+  const replayed = (history ?? []).filter(item => !running.has(item.request_id)).reverse().map(item => item.context?.via === "call" ? { ...item, context: withoutCallBrief(item.context) } : item);
+  const textMessages = [...replayed, submitted].map(item => ({
     role: item.role as "user" | "assistant",
     content: item.role === "assistant" ? withoutCharts(item.content)
       : (item.context && Object.keys(item.context).length ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content) + attachmentNote(item.attachments),

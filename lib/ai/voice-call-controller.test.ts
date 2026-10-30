@@ -18,8 +18,8 @@ function setup() {
       for (const timer of due) { timers.splice(timers.indexOf(timer), 1); timer.run(); }
     await new Promise(resolve => setTimeout(resolve));
   };
-  const say = (text: string) => call.handle({ type: "session.input_transcript.delta", delta: text });
-  const delegate = (id: string) => call.handle({ type: "session.delegation.created", delegation: { id } });
+  const say = (text: string, endMs?: number) => call.handle({ type: "session.input_transcript.delta", delta: text, end_ms: endMs });
+  const delegate = (id: string, offsetMs?: number) => call.handle({ type: "session.delegation.created", offset_ms: offsetMs, delegation: { id } });
   const answer = async (message: string, text: string, status = 200) => { pending[message]({ ok: status < 400, status, body: status < 400 ? { answer: text, conversationId: "c" } : { error: "x" } }); await new Promise(resolve => setTimeout(resolve)); };
   return { call, sent, asks, advance, say, delegate, answer, onAnswer };
 }
@@ -29,9 +29,9 @@ it("turns each delegation into a call request with the words since the previous 
   say("How much at Netto"); say(" this month?"); delegate("d1");
   say("And when is rent due?"); delegate("d2");
   expect(asks.map(([payload]) => payload.message)).toEqual(["How much at Netto this month?", "And when is rent due?"]);
-  expect(asks[0][0]).toMatchObject({ conversationId: "c", requestId: "r1", context: { via: "call", input: "voice", runningTasks: [] } });
-  // The second request knows the first is still running, so it can replace it.
-  expect(asks[1][0].context).toEqual({ via: "call", input: "voice", runningTasks: [{ requestId: "r1", text: "How much at Netto this month?" }] });
+  expect(asks[0][0]).toMatchObject({ conversationId: "c", requestId: "r1", context: { via: "call", input: "voice", runningTasks: [], answered: [] } });
+  // The second request knows the first is still running, so it neither answers it again nor misses a correction.
+  expect(asks[1][0].context).toMatchObject({ via: "call", input: "voice", runningTasks: [{ requestId: "r1", text: "How much at Netto this month?" }] });
   asks[0][1]({ type: "tool", name: "finance_investigate", state: "running" });
   expect(call.tasks[0].step).toBe("searching transactions");
   expect(sent).toContainEqual({ type: "session.thinking.append", delegation_id: "d1", content: 'Working on "How much at Netto this month?": searching transactions.' });
@@ -102,15 +102,27 @@ it("reads card ids and strips blocks for speech", () => {
   expect(spokenAnswer("Hi **there** [link](/x)\n```moneo-chart\n{}\n```", 10)).toBe("Hi there …");
 });
 
-it("starts a task for words GPT-Live never handed off, once the user has been quiet", async () => {
-  const { call, asks, say, delegate, advance } = setup();
-  say("How much at Netto?"); delegate("d1");
-  say("btw I spent 12 at Rewe");
-  await advance(1000);
-  expect(asks).toHaveLength(1);
-  await advance(2500);
-  expect(asks.map(([payload]) => payload.message)).toEqual(["How much at Netto?", "btw I spent 12 at Rewe"]);
-  expect(call.tasks[1].delegationId).toBe("d1");
-  say("thanks"); await advance(5000);
-  expect(asks).toHaveLength(2);
+it("cuts each request at its hand-off's offset, leaving later words for the next one", () => {
+  const { asks, say, delegate } = setup();
+  say("Analyze last month.", 2000); say(" Also how much", 4000); delegate("d1", 2500);
+  say(" did I spend?", 5000); delegate("d2", 5200);
+  expect(asks.map(([payload]) => payload.message)).toEqual(["Analyze last month.", "Also how much did I spend?"]);
+});
+
+it("never turns small talk GPT-Live answered itself into a request", async () => {
+  const { asks, say, advance } = setup();
+  say("Hey, how are you doing today?");
+  await advance(10_000);
+  expect(asks).toHaveLength(0);
+});
+
+it("briefs each request with the call so far and what it already answered", async () => {
+  const { asks, say, delegate, answer, call } = setup();
+  call.handle({ type: "session.output_transcript.delta", delta: "Hi there!" });
+  say("What did I spend in September?"); delegate("d1");
+  await answer("What did I spend in September?", "You spent **EUR 1,607.37**.");
+  say("And August?"); delegate("d2");
+  expect(asks[1][0].context).toEqual({ via: "call", input: "voice", runningTasks: [],
+    recentTurns: [{ role: "assistant", text: "Hi there!" }, { role: "user", text: "What did I spend in September?And August?" }],
+    answered: [{ text: "What did I spend in September?", answer: "You spent EUR 1,607.37." }] });
 });

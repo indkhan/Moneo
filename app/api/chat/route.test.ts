@@ -73,7 +73,7 @@ it("leaves this call's still-running questions out of a call request's history",
   vi.mocked(requireWorkspace).mockResolvedValue({ ...context, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: ["accounts"] }, supabase: { ...context.supabase, from: () => query } } as unknown as typeof context);
   await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000002", requestId, message: "Total spent last month?",
     context: { via: "call", runningTasks: [{ requestId: running, text: "Analyze last month" }] } }) }));
-  expect(vi.mocked(generateText).mock.calls[0][0].messages.map((item: { content: unknown }) => String(item.content).split("\n")[0])).toEqual(["Earlier", "Total spent last month?"]);
+  expect((vi.mocked(generateText).mock.calls[0][0].messages as { content: unknown }[]).map(item => String(item.content).split("\n")[0])).toEqual(["Earlier", "Total spent last month?"]);
 });
 it("offers scoped investigation and question-bound review start within ten model steps", async () => {
   expect((await POST(request("Start a deep financial review"))).status).toBe(200);

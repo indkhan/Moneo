@@ -5,7 +5,7 @@ export type CallTask = { requestId: string; text: string; step: string; status: 
 export type CallAsk = (payload: { conversationId: string; requestId: string; message: string; context: Record<string, unknown> }, onEvent: (event: ChatStreamEvent) => void)
   => Promise<{ ok: boolean; status?: number; body: { error?: string } & Partial<ChatAnswer> }>;
 
-type ServerEvent = { type: string; delta?: string; delegation?: { id: string }; error?: { message?: string }; message?: string };
+type ServerEvent = { type: string; delta?: string; end_ms?: number; offset_ms?: number | null; delegation?: { id: string }; error?: { message?: string }; message?: string };
 type Deps = {
   conversationId: string;
   /** Sends a client event on the oai-events data channel. */
@@ -42,7 +42,6 @@ export function spokenAnswer(answer: string, max = 1500) {
 
 export const SPEAKING_HOLD_MS = 700;
 export const SLOW_TASK_MS = 8000;
-export const UNCLAIMED_MS = 3000;
 
 /**
  * Runs a voice call's tasks: each GPT-Live delegation (or typed message) becomes one /api/chat request, and its
@@ -52,9 +51,10 @@ export class VoiceCallController {
   captions: CallCaption[] = [];
   tasks: CallTask[] = [];
   error = "";
-  private heard = "";
+  /** Words the user said that no hand-off has claimed yet, with when each piece ended in the session. */
+  private heard: { text: string; end: number }[] = [];
   private lastUserTurn = "";
-  private lastDelegation: string | null = null;
+  private answers = new Map<string, string>();
   private lastUserSpeech = -Infinity;
   private lastAssistantSpeech = -Infinity;
   private outbox: Record<string, unknown>[] = [];
@@ -82,19 +82,20 @@ export class VoiceCallController {
     switch (event.type) {
       case "session.input_transcript.delta":
         this.lastUserSpeech = this.now();
-        this.heard += event.delta ?? "";
+        this.heard.push({ text: event.delta ?? "", end: event.end_ms ?? Infinity });
         this.caption("user", event.delta ?? "");
-        this.schedule(() => this.claimUnheard(), UNCLAIMED_MS);
         break;
       case "session.output_transcript.delta":
         this.lastAssistantSpeech = this.now();
         this.caption("assistant", event.delta ?? "");
         break;
       case "session.delegation.created": {
-        // The delegation carries no task text: it is what the user said since the previous one.
-        const text = this.heard.trim() || this.lastUserTurn;
-        this.heard = "";
-        if (event.delegation?.id) this.lastDelegation = event.delegation.id;
+        // The delegation carries no task text: it is what the user said up to its offset since the previous one;
+        // words said after the offset belong to the next request.
+        const offset = event.offset_ms ?? Infinity;
+        const claimed = this.heard.some(piece => piece.end <= offset) ? this.heard.filter(piece => piece.end <= offset) : this.heard;
+        this.heard = this.heard.filter(piece => !claimed.includes(piece));
+        const text = claimed.map(piece => piece.text).join("").trim() || this.lastUserTurn;
         if (event.delegation?.id && text) this.start(text, event.delegation.id);
         break;
       }
@@ -103,17 +104,6 @@ export class VoiceCallController {
         this.deps.onChange();
         break;
     }
-  }
-
-  /**
-   * GPT-Live sometimes folds a later request into an earlier hand-off and never delegates it. Words that stay
-   * unclaimed after the user has been quiet for a while become their own task, answered through the latest hand-off.
-   */
-  private claimUnheard() {
-    const text = this.heard.trim();
-    if (this.now() - this.lastUserSpeech < UNCLAIMED_MS || text.split(/\s+/).length < 4) return;
-    this.heard = "";
-    this.start(text, this.lastDelegation);
   }
 
   /** A typed message starts a task directly; its answer is spoken the same way. */
@@ -139,19 +129,32 @@ export class VoiceCallController {
     this.deps.onChange();
   }
 
+  /**
+   * What Moneo needs to answer one request on its own: the requests still being answered separately, the call so far
+   * to resolve "that" or "also", and what this call has already answered.
+   */
+  private brief() {
+    return {
+      via: "call", input: "voice",
+      runningTasks: this.running.slice(-5).map(task => ({ requestId: task.requestId, text: task.text.slice(0, 300) })),
+      recentTurns: this.captions.slice(-6).map(caption => ({ role: caption.role, text: caption.text.slice(-300) })),
+      answered: this.tasks.filter(task => this.answers.has(task.requestId)).slice(-4).map(task => ({ text: task.text.slice(0, 150), answer: this.answers.get(task.requestId)!.slice(0, 300) })),
+    };
+  }
+
   private start(text: string, delegationId: string | null) {
     const requestId = this.newId();
-    const runningTasks = this.running.slice(-5).map(task => ({ requestId: task.requestId, text: task.text.slice(0, 300) }));
+    const context = this.brief();
     this.tasks = [...this.tasks, { requestId, text, step: "starting", status: "running", delegationId, cards: [] }];
     this.deps.onChange();
     this.watchSlow(requestId);
-    void this.run(requestId, text, delegationId, runningTasks);
+    void this.run(requestId, text, delegationId, context);
   }
 
-  private async run(requestId: string, text: string, delegationId: string | null, runningTasks: { requestId: string; text: string }[]) {
+  private async run(requestId: string, text: string, delegationId: string | null, context: ReturnType<VoiceCallController["brief"]>) {
     const label = `"${text.slice(0, 120)}"`;
     try {
-      const result = await this.deps.ask({ conversationId: this.deps.conversationId, requestId, message: text.slice(0, 4000), context: { via: "call", input: "voice", runningTasks } }, event => {
+      const result = await this.deps.ask({ conversationId: this.deps.conversationId, requestId, message: text.slice(0, 4000), context }, event => {
         if (event.type !== "tool" || event.state !== "running") return;
         const step = stepFor(event.name);
         this.update(requestId, { step });
@@ -162,6 +165,7 @@ export class VoiceCallController {
       if (task?.status === "canceled" || result.status === 409) { this.update(requestId, { status: "canceled", step: "stopped" }); return; }
       if (!result.ok || !result.body.answer) throw new Error(result.body.error ?? "No answer");
       const cards = answerCards(result.body.answer);
+      this.answers.set(requestId, spokenAnswer(result.body.answer));
       this.update(requestId, { status: "done", step: "answered", cards });
       this.deps.onAnswer?.(text, result.body as ChatAnswer);
       const others = this.running.map(item => `"${item.text.slice(0, 80)}"`);
