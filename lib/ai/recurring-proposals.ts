@@ -141,11 +141,12 @@ const MAX_NEW = 10;
  * Turns what detection catches into the same recurring_edit cards chat creates: a price change on a confirmed payment
  * (one card per new charge) and new patterns to confirm. Idempotent: the conflict key is unique per workspace, so a
  * dismissed card is never re-raised, and open cards whose cause disappeared (confirmed elsewhere) are closed.
+ * Resolves to whether any card was raised or closed.
  */
-export async function syncRecurringProposals(context: Context) {
+export async function syncRecurringProposals(context: Context): Promise<boolean> {
   const { supabase, workspace } = context;
   const suggestions = await loadSuggestions(supabase, workspace);
-  if (suggestions.queryError || suggestions.storedError || suggestions.detectError) return;
+  if (suggestions.queryError || suggestions.storedError || suggestions.detectError) return false;
   const money = (minor: string | bigint, currency: string) => formatMoney(minor, currency, workspace.locale);
   const wanted = [
     ...priceChanges(suggestions.candidates).map(({ series, evidence, schedule, latest }) => {
@@ -162,16 +163,17 @@ export async function syncRecurringProposals(context: Context) {
     }),
   ];
   const open = await supabase.from("agent_proposals").select("id, conflict_key").eq("workspace_id", workspace.id).is("run_id", null).eq("kind", "recurring_edit").in("status", ["proposed", "failed"]).limit(200);
-  if (open.error) return;
+  if (open.error) return false;
   const keys = new Set(wanted.map(item => item.conflict_key));
   const stale = (open.data ?? []).filter(row => AUTO.some(prefix => String(row.conflict_key).startsWith(prefix)) && !keys.has(row.conflict_key)).map(row => row.id);
   if (stale.length) await supabase.from("agent_proposals").update({ status: "rejected", decided_at: new Date().toISOString(), result: { stale: true } }).eq("workspace_id", workspace.id).in("id", stale).in("status", ["proposed", "failed"]);
   // Each cause is raised once: already open, accepted or dismissed keys are skipped (the unique key also guards races).
   const seen = wanted.length ? await supabase.from("agent_proposals").select("conflict_key").eq("workspace_id", workspace.id).is("run_id", null).in("conflict_key", [...keys]) : { data: [], error: null };
-  if (seen.error) return;
+  if (seen.error) return false;
   const raised = new Set((seen.data ?? []).map(row => row.conflict_key));
   const fresh = wanted.filter(item => !raised.has(item.conflict_key));
   if (fresh.length) await supabase.from("agent_proposals").insert(fresh.map(item => ({ workspace_id: workspace.id, agent: "chat", kind: "recurring_edit", confidence: 100, ...item, payload: recurringEditSchema.parse(item.payload) })));
+  return stale.length > 0 || fresh.length > 0;
 }
 
 /** Open recurring cards raised by detection, newest first; prefix narrows to price changes or new patterns. */

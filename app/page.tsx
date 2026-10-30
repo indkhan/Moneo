@@ -19,7 +19,7 @@ import { SourceCoverageDetails } from "./source-coverage";
 import { AgentBriefing, loadAgentBriefing } from "./agent-briefing";
 import { HomeBudgets } from "./home-budgets";
 import { HomeHistory, loadHomeHistory } from "./home-history";
-import { WaitingForYou, loadWaitingForYou } from "./waiting-for-you";
+import { RecurringDetection, WaitingForYou, detectRecurring, loadWaitingForYou } from "./waiting-for-you";
 import { loadPriceChanges } from "@/lib/finance/price-changes";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
@@ -53,12 +53,13 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const allWealthPromise = loadWealthItems(supabase, workspace.id, true);
   const wealthPromise = allWealthPromise.then(items => items.filter(item => !item.removed_at));
   const sourceMetadataPromise = loadSourceCoverageMetadata(supabase, workspace.id, true);
-  // Start the streamed sections' reads now (memoized); their Suspense boundaries pick up the same promises. Waiting for you is awaited with the page.
+  // Start the streamed sections' reads now (memoized); their Suspense boundaries pick up the same promises.
   loadInsightEvidence(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
   loadHomeSpending(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
   loadHomeHistory(supabase, workspace.id).catch(() => undefined);
   loadAgentBriefing(supabase, workspace.id).catch(() => undefined);
   loadWaitingForYou(supabase, workspace);
+  detectRecurring(supabase, workspace);
   const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle());
   // Pinned artifact titles chain onto the layout read, so they finish inside the slower forecast; the frames load their data themselves.
   const pinnedPromise = layoutPromise.then(async ({ data }) => {
@@ -226,8 +227,9 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
           <Link href="/settings#home" className="inline-flex h-11 items-center gap-2 rounded-xl border border-input px-4 text-[13px] hover:bg-muted"><LayoutGrid className="size-4" strokeWidth={1.6} aria-hidden="true" />Edit layout</Link>
         </div>
       </header>
-      {/* Not streamed: cards that arrive after the grid is on screen push every section down (CLS 0.4 on Overview). The read starts above, beside the others. */}
+      {/* Stored cards come with the page, so they never push the grid down; the slow detection streams after and reloads only if it changed a card. */}
       <WaitingForYou supabase={supabase} workspace={workspace} />
+      <Suspense fallback={null}><RecurringDetection supabase={supabase} workspace={workspace} /></Suspense>
       <div className="grid grid-flow-dense gap-4 lg:grid-cols-6">
         {ordered.map(key => <div key={key} className={`min-w-0 ${span(key)} [&>section]:h-full`}>{widgets[key]}</div>)}
       </div>

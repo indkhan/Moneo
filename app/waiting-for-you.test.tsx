@@ -2,12 +2,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { expect, it, vi } from "vitest";
 import { openStandaloneProposals } from "@/lib/ai/open-proposals";
-import { WaitingForYou } from "./waiting-for-you";
+import { syncRecurringProposals } from "@/lib/ai/recurring-proposals";
+import { RecurringDetection, WaitingForYou } from "./waiting-for-you";
 
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("@/app/ai/agents/actions", () => ({ decideAgentProposals: vi.fn() }));
 vi.mock("@/app/ai/iou-actions", () => ({ loadIouProposal: vi.fn() }));
-vi.mock("@/lib/ai/recurring-proposals", () => ({ syncRecurringProposals: async () => undefined }));
+vi.mock("@/lib/ai/recurring-proposals", () => ({ syncRecurringProposals: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/ai/open-proposals", () => ({ openStandaloneProposals: vi.fn() }));
 
 const render = async () => renderToStaticMarkup(await WaitingForYou({ supabase: {} as SupabaseClient, workspace: { id: "w", timezone: "UTC", locale: "en" } }));
@@ -32,4 +34,17 @@ it("lists transaction and balance cards with their count, open and filterable", 
   expect(html).toContain("Cash is €40.00");
   expect(html).toMatch(/>All<.*>Transactions<.*>Balances</);
   expect(html).not.toContain(">Loans<");
+});
+
+it("lists stored cards without running detection", async () => {
+  vi.mocked(syncRecurringProposals).mockClear();
+  vi.mocked(openStandaloneProposals).mockResolvedValue([]);
+  await render();
+  expect(syncRecurringProposals).not.toHaveBeenCalled();
+});
+
+it("asks the page to reload only when detection changed a card", async () => {
+  const detect = (changed: boolean) => { vi.mocked(syncRecurringProposals).mockResolvedValue(changed); return RecurringDetection({ supabase: { id: `s${changed}` } as unknown as SupabaseClient, workspace: { id: `w${changed}`, timezone: "UTC", locale: "en" } }); };
+  expect(await detect(false)).toBeNull();
+  expect(await detect(true)).not.toBeNull();
 });
