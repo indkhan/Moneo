@@ -1,0 +1,17 @@
+<task-notification>
+<task-id>bjpr84ulq</task-id>
+<tool-use-id>toolu_01W9gB2pmxHvVzznGioDfM5a</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-9d7672ea\b8d0c46b-21b9-4d69-8df6-e31c2f3567d5\tasks\bjpr84ulq.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo &amp;&amp; until [ "$(wc -l &lt; perf-final.log)" -ge 44 ]; do sleep 10; done; echo done" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bxloigwnr</task-id>
+<tool-use-id>toolu_015cWQwFoLnYJAVqduWqtKee</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-9d7672ea\b8d0c46b-21b9-4d69-8df6-e31c2f3567d5\tasks\bxloigwnr.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo &amp;&amp; until [ "$(wc -l &lt; perf-final.log)" -ge 44 ]; do sleep 10; done; tail -n 3 perf-final.log" completed (exit code 0)</summary>
+</task-notification>
