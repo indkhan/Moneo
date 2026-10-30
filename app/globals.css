@@ -13,6 +13,11 @@
   --radius-lg: 0.75rem;
   --radius-xl: 1.25rem;
   --radius-2xl: 1.5rem;
+  /* The voice call orb: a slow turn while Moneo works and a calm breath otherwise. */
+  --animate-orb-spin: orb-spin 5s linear infinite;
+  --animate-orb-breathe: orb-breathe 4.5s ease-in-out infinite;
+  @keyframes orb-spin { to { transform: rotate(360deg); } }
+  @keyframes orb-breathe { 50% { transform: scale(1.05); } }
   --color-background: light-dark(#f4f3ee, #0f1011);
   --color-card: light-dark(#ffffff, #16171a);
   --color-foreground: light-dark(#141413, #eeece6);
