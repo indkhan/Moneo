@@ -62,10 +62,11 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   const cedar=()=>queue().getByRole('listitem').filter({hasText:'CEDAR COOPERATIVE'});
   const selectCedar=async()=>{await expect(cedar()).toHaveCount(2,{timeout:20000});for(const box of await cedar().getByRole('checkbox').all())await box.check();await expect(queue()).toContainText('2 selected');};
   const pick=async(name:'Category'|'Merchant',value:string)=>queue().getByRole('combobox',{name,exact:true}).fill(value);
-  const approve=async(saveRule:boolean)=>{
-   await impact().getByRole('checkbox',{name:'I reviewed these entries',exact:false}).check();
-   if(saveRule)await impact().getByRole('checkbox',{name:'Suggest the same for future entries',exact:false}).check();
-   await impact().getByRole('button',{name:'Approve',exact:true}).click();await expect(impact().getByRole('heading',{name:'Applied',exact:true})).toBeVisible();
+  const impact=()=>page.getByRole('region',{name:'Organization impact preview'});
+  // One step: Apply is the approval; the rule box is ticked by default.
+  const apply=async(saveRule:boolean)=>{
+   const box=queue().getByRole('checkbox',{name:'Do the same for future entries',exact:false});if(saveRule)await box.check();else await box.uncheck();
+   await queue().getByRole('button',{name:/^Apply to \d+$/}).click();await expect(impact().getByRole('heading',{name:/^Applied/})).toBeVisible();
   };
   const rules=async()=>{const details=page.locator('details').filter({hasText:'Rules ('});if(!await details.evaluate(node=>(node as HTMLDetailsElement).open))await details.locator('summary').click();return details.locator('li').filter({hasText:'cedar cooperative'});};
   await selectCedar();
@@ -82,12 +83,10 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await expect(queue().getByRole('combobox',{name:'Merchant',exact:true})).toHaveValue('Cedar Cooperative');
   await page.unroute('**/api/money/organization/suggestions');
   await pick('Category','QA Groceries');
-  await queue().getByRole('button',{name:'Preview changes',exact:true}).click();
-  const impact=()=>page.getByRole('region',{name:'Organization impact preview'});
+  await apply(true);
   await expect(impact()).toContainText('Merchant: unassigned → Cedar Cooperative');await expect(impact()).toContainText('Category: uncategorized → QA Groceries');
-  await expect(impact()).toContainText('90071992547409.93');expect(await fingerprint()).toBe(before);
+  await expect(impact()).toContainText('90071992547409.93');
   await page.screenshot({path:testInfo.outputPath('native-organization-exact-preview.png'),fullPage:true});
-  await approve(true);
   await page.reload();expect(await fingerprint()).toBe(before);
   const [rule]=await db`select id,enabled,version,merchant_id,category_id from public.organization_rules where workspace_id=${workspace!}`;
   expect(rule).toMatchObject({enabled:true,version:1,category_id:category});
@@ -97,15 +96,14 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await expect(page).toHaveURL(/\/money\/organization\?review=/);
   expect((await db`select version from public.transactions where id=${first.id} and workspace_id=${workspace!}`)[0].version).toBe(1);
   await impact().getByRole('button',{name:'Undo this batch',exact:true}).click();
-  await expect(impact().getByRole('heading',{name:'Undone',exact:true})).toBeVisible();
+  await expect(impact().getByRole('heading',{name:/^Undone/})).toBeVisible();
   expect((await db`select enabled from public.organization_rules where id=${rule.id} and workspace_id=${workspace!}`)[0].enabled).toBe(false);
   expect((await db`select merchant_id,category_id,version from public.transactions where workspace_id=${workspace!} and description like '%CEDAR%'`).every(row=>row.merchant_id===null&&row.category_id===null&&row.version===2)).toBe(true);expect(await fingerprint()).toBe(before);
-  // Undone corrections permit a fresh full preview and explicit rule approval; typed names resolve to the existing merchant and category.
+  // Undone corrections can be applied again with the rule; typed names resolve to the existing merchant and category.
   await page.goto('/money/organization?import='+imported);
   await selectCedar();await pick('Merchant','cedar cooperative');await pick('Category','qa groceries');
-  await queue().getByRole('button',{name:'Preview changes',exact:true}).click();
+  await apply(true);
   await expect(impact()).toContainText('Category: uncategorized → QA Groceries');
-  await approve(true);
   expect((await db`select count(*)::int count from public.categories where workspace_id=${workspace!}`)[0].count).toBe(1);
   const originalSources=[...await db`select id,original_row from public.source_transactions where workspace_id=${workspace!} order by id`];
   await importCsv('organization-rule-reuse.csv','date,description,amount,id\n2026-09-04,CARD PAYMENT CEDAR COOPERATIVE REF:103,-3.00,cedar-103\n');

@@ -9,6 +9,7 @@ import { briefingFindings, keepsFacts, plainWording, rephraseFindings } from "@/
 import { getModel, modelIdFor } from "@/lib/ai/provider";
 import { describeMissingInputs, formatInputAmount } from "@/lib/finance/format";
 import { type ReviewTransaction } from "@/lib/finance/review";
+import { loadLoanPayoutIds } from "@/lib/finance/iou";
 import { budgetProgress, type MonthlyLimit } from "@/lib/finance/spending-plans";
 import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import type { evaluatePlan } from "@/lib/finance/model";
@@ -65,10 +66,13 @@ export const loadInsightEvidence = cache(async (db: SupabaseClient, workspaceId:
     const recurringEvidence = new Map(canonical.map(row => [row.id, row]));
     const missingBaselineIds = [...new Set(recurring.flatMap(series => (series.evidence_baseline ?? []).map(row => row.id)))].filter(id => !recurringEvidence.has(id));
     if (missingBaselineIds.length > 10000) throw new Error("Recurring insight evidence exceeds the current bound");
-    const [transactions, older] = await Promise.all([
+    const [effective, older, loans] = await Promise.all([
       rows<ReviewTransaction & { account_id: string }>("effective_transactions", columns, first),
       byIds<ReviewTransaction & { account_id: string }>(canonicalColumns, missingBaselineIds),
+      loadLoanPayoutIds(db, workspaceId).catch(() => new Set<string>()),
     ]);
+    // Money lent or repaid is not spending: the briefing and budgets treat it like a transfer.
+    const transactions = effective.map(row => loans.has(row.parent_transaction_id ?? row.id) ? { ...row, kind: "transfer" as const } : row);
     for (const row of older) recurringEvidence.set(row.id, row);
     const refundIds = [...new Set(transactions.flatMap(row => row.refund_of_id ? [row.refund_of_id] : []))];
     const originals = await byIds<{ id: string; category_id: string | null }>("id,category_id", refundIds);

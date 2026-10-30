@@ -69,7 +69,7 @@ export async function proposeRepayments({ supabase, workspace, chatRequestId }: 
     if (seen.has(keys[index])) return [];
     const applied = formatMoney(match.appliedMinor, item.currency_code, workspace.locale), owed = formatMoney(match.owedMinor, item.currency_code, workspace.locale);
     return [{ workspace_id: workspace.id, agent: "chat", kind: "iou_settle", ...(chatRequestId ? { chat_request_id: chatRequestId } : {}),  conflict_key: keys[index], confidence: match.appliedMinor === match.owedMinor ? 90 : 70,
-      title: `${match.person} ${match.direction === "lent" ? "paid you" : "was paid"} ${applied}`.slice(0, 200),
+      title: (match.direction === "lent" ? `${match.person} paid you ${applied}` : `You paid ${match.person} ${applied}`).slice(0, 200),
       detail: `“${transaction.description}” on ${transaction.posted_on}. Counting it against ${owed} still ${match.direction === "lent" ? "owed to you" : "owed by you"}.`,
       evidence: { facts: [], transactions: [{ id: transaction.id, date: transaction.posted_on, description: transaction.description, amountMinor: transaction.amount_minor, currency: transaction.currency_code }], links: [] },
       payload: { itemId: match.itemId, transactionId: match.transactionId, appliedMinor: match.appliedMinor } }];

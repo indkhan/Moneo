@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { iouName, iouRecord, parseIouName, repaymentMatches, settledRecord, type IouItem } from "./iou";
+import { iouName, iouRecord, loanPayouts, parseIouName, repaymentMatches, settledRecord, type IouItem } from "./iou";
 
 const lent: IouItem = { id: "i1", kind: "asset", name: "Lent to Mohammed", currency_code: "EUR", amount_minor: "50000", as_of: "2026-10-01", version: 1, removed_at: null, linked_account_id: null };
 const owed: IouItem = { id: "i2", kind: "debt", name: "Owed to Sara", currency_code: "EUR", amount_minor: "-20000", as_of: "2026-10-01", version: 1, removed_at: null, linked_account_id: null };
@@ -44,5 +44,19 @@ describe("settledRecord", () => {
   });
   it("returns null when fully repaid", () => {
     expect(settledRecord({ ...lent, annual_rate_text: null, monthly_payment_minor: null }, "50000", "2026-10-26")).toBeNull();
+  });
+});
+
+describe("loanPayouts", () => {
+  const loan = { person: "Bilal Amin", direction: "lent" as const, amountMinor: 100000n, currencyCode: "EUR", date: "2026-09-10" };
+  const row = (id: string, description: string, amount_minor: string, posted_on = "2026-09-12") => ({ id, description, amount_minor, currency_code: "EUR", posted_on });
+  it("finds the transfer that lent the money, by first name, amount and date", () => {
+    expect([...loanPayouts([loan], [row("a", "PayPal an Bilal", "-100000"), row("b", "Bilal", "-5000")])]).toEqual(["a"]);
+  });
+  it("ignores other amounts, the other direction, other people and far dates", () => {
+    expect(loanPayouts([loan], [row("a", "Bilal", "100000"), row("b", "Sara", "-100000"), row("c", "Bilal", "-100000", "2026-10-30"), row("d", "Bilalx", "-100000")]).size).toBe(0);
+  });
+  it("treats borrowed money arriving as the payout", () => {
+    expect([...loanPayouts([{ ...loan, direction: "borrowed" }], [row("a", "From Bilal Amin", "100000")])]).toEqual(["a"]);
   });
 });

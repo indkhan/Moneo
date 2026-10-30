@@ -6,13 +6,14 @@ import { iouCreateSchema, iouRecord, iouSettleSchema, parseIouName, settledRecor
 import { applyTransactionProposal } from "@/lib/ai/transaction-proposals";
 import { applyBalanceProposal } from "@/lib/ai/balance-proposals";
 import { applyRecurringProposal, dismissRecurringProposal } from "@/lib/ai/recurring-proposals";
+import type { ScheduleFields } from "@/app/money/recurring/schedules";
 
 // Accepting a proposal calls the SAME audited RPCs a person uses by hand, as
 // the signed-in owner (auth.uid()), so corrections, batches and Undo stay intact.
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
 export type StoredProposal = { id: string; kind: ProposalKind | "iou_create" | "iou_settle" | "transaction_create" | "balance_set" | "recurring_edit"; payload: unknown };
-/** Choices made on the card itself, such as the account a chat expense is paid from. */
-export type DecideOptions = { accountId?: string };
+/** Choices made on the card itself: the account a chat expense is paid from, or what the person set when confirming a recurring payment. */
+export type DecideOptions = { accountId?: string; recurring?: Partial<ScheduleFields> };
 export type Applied = { href: string; undo?: string; [key: string]: unknown };
 
 export async function applyProposal(context: Context, proposal: StoredProposal, options: DecideOptions = {}): Promise<Applied> {
@@ -79,27 +80,38 @@ export async function applyProposal(context: Context, proposal: StoredProposal, 
     case "balance_set":
       return applyBalanceProposal(context, proposal.id, proposal.payload);
     case "recurring_edit":
-      return applyRecurringProposal(context, proposal.id, proposal.payload);
+      return applyRecurringProposal(context, proposal.id, proposal.payload, options.recurring);
     case "finding":
       payloadSchemas.finding.parse(proposal.payload);
       return { href: "/money/transactions", acknowledged: true };
   }
 }
 
-/** Claims each proposal once, applies it, and records the outcome. Rejecting never changes data. */
+/**
+ * A message a person can act on. When the database or its proxy is unreachable the client hands back an HTML error page
+ * (a Cloudflare 5xx screen), which is no use on a card.
+ */
+export function readableError(cause: unknown) {
+  const message = cause instanceof Error || (typeof cause === "object" && cause && "message" in cause) ? String((cause as { message: unknown }).message) : String(cause);
+  return /<(!doctype|html|head|body)\b/i.test(message) || /cloudflare/i.test(message) ? "The database did not answer. Nothing was saved; try again in a moment." : message.slice(0, 500);
+}
+
+/** Claims each proposal once, applies it, and records the outcome. Rejecting only changes a dismissed recurring pattern's review state. */
 export async function decideProposals(context: Context, ids: string[], decision: "accept" | "reject", options: DecideOptions = {}) {
   const { supabase, workspace } = context;
   const outcomes: { id: string; status: string; error?: string }[] = [];
   for (const id of ids) {
     const now = new Date().toISOString();
     if (decision === "reject") {
+      // A dismissed recurring pattern is remembered on the series first; if that fails the card stays open to try again.
+      // Dismissing a price change only keeps the old amount.
+      const open = await supabase.from("agent_proposals").select("conflict_key, payload").eq("id", id).eq("workspace_id", workspace.id).in("status", ["proposed", "failed"]).maybeSingle();
+      const dismissed = open.data && String(open.data.conflict_key).startsWith("recurring_new:")
+        ? await dismissRecurringProposal(context, id, open.data.payload).then(() => undefined, (cause: unknown) => readableError(cause)) : undefined;
+      if (open.error || dismissed) { outcomes.push({ id, status: "failed", error: open.error ? readableError(open.error) : dismissed }); continue; }
       const { data, error } = await supabase.from("agent_proposals").update({ status: "rejected", decided_at: now }).eq("id", id).eq("workspace_id", workspace.id).in("status", ["proposed", "failed"])
-        .select("id, conflict_key, payload").maybeSingle();
-      // A dismissed recurring pattern is remembered on the series too; dismissing a price change only keeps the old amount.
-      const dismissed = data && String(data.conflict_key).startsWith("recurring_new:")
-        ? await dismissRecurringProposal(context, id, data.payload).then(() => undefined, (cause: unknown) => cause instanceof Error ? cause.message : String(cause)) : undefined;
-      const failure = error?.message ?? dismissed;
-      outcomes.push({ id, status: error ? "failed" : data ? "rejected" : "unchanged", ...(failure ? { error: failure } : {}) });
+        .select("id").maybeSingle();
+      outcomes.push({ id, status: error ? "failed" : data ? "rejected" : "unchanged", ...(error ? { error: readableError(error) } : {}) });
       continue;
     }
     const claim = await supabase.from("agent_proposals").update({ status: "applying", decided_at: now }).eq("id", id).eq("workspace_id", workspace.id).in("status", ["proposed", "failed"])
@@ -108,7 +120,7 @@ export async function decideProposals(context: Context, ids: string[], decision:
     let result: Applied;
     try { result = await applyProposal(context, claim.data as StoredProposal, options); }
     catch (cause) {
-      const message = (cause instanceof Error ? cause.message : String(cause)).slice(0, 500);
+      const message = readableError(cause);
       await supabase.from("agent_proposals").update({ status: "failed", result: { error: message } }).eq("id", id).eq("workspace_id", workspace.id).eq("status", "applying");
       outcomes.push({ id, status: "failed", error: message });
       continue;

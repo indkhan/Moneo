@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { loadLoanPayoutIds } from "@/lib/finance/iou";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { expenditurePosting, reportExpenditure, type ExpenditureRate } from "@/lib/finance/expenditure";
 import { loadExpenditureRates } from "@/lib/finance/expenditure-rates";
@@ -60,8 +61,9 @@ export const loadHomeSpending = cache(async (db: SupabaseClient, workspaceId: st
     if (rows.length > ROW_LIMIT) throw new Error("Spending history exceeds the Home summary limit");
     return rows;
   }
-  const [rows, rates] = await Promise.all([loadRows(), loadExpenditureRates(db, workspaceId, { currencyCode, from, to: today })]);
-  const summary = summarizeSpending(rows, rates, currencyCode, today);
+  const [rows, rates, loans] = await Promise.all([loadRows(), loadExpenditureRates(db, workspaceId, { currencyCode, from, to: today }), loadLoanPayoutIds(db, workspaceId).catch(() => new Set<string>())]);
+  // Lending someone money (or being repaid) moves it between you and them like a transfer; it is not spending or income.
+  const summary = summarizeSpending(rows.map(row => loans.has(row.parent_transaction_id ?? row.id) ? { ...row, kind: "transfer" } : row), rates, currencyCode, today);
   async function names(table: "categories" | "merchants", groups: { id: string | null }[]) {
     const ids = groups.flatMap(group => group.id ? [group.id] : []);
     if (!ids.length) return new Map<string, string>();

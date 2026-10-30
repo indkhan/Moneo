@@ -2,6 +2,7 @@ import Link from 'next/link';
 import {z} from 'zod';
 import {requireWorkspace} from '@/lib/auth';
 import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
+import {loadLoanPayoutIds} from '@/lib/finance/iou';
 import {formatMoney} from '@/lib/finance/format';
 import {versionedRows} from '../transactions/input';
 import {dismissReview,toggleRule} from './actions';
@@ -14,9 +15,12 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
  const importId=params.import===undefined?null:z.uuid().parse(params.import);
  let cursor:{date:string;id:string}|null=null;
  if(params.cursor){const parts=z.string().parse(params.cursor).split(':');if(parts.length!==2)throw new Error('Invalid organization cursor');cursor={date:z.iso.date().parse(parts[0]),id:z.uuid().parse(parts[1])};}
- let query=supabase.from('transactions').select(importId?'id,version,posted_on,transaction_sources!inner(source_transactions!inner(import_id))':'id,version,posted_on').eq('workspace_id',workspace.id).neq('status','voided');
+ let query=supabase.from('transactions').select(importId?'id,version,posted_on,transaction_sources!inner(source_transactions!inner(import_id))':'id,version,posted_on').eq('workspace_id',workspace.id).neq('status','voided').neq('kind','transfer');
  query=query.or(cursor?`and(or(merchant_id.is.null,category_id.is.null),or(posted_on.lt.${cursor.date},and(posted_on.eq.${cursor.date},id.lt.${cursor.id})))`:'merchant_id.is.null,category_id.is.null');
  if(importId)query=query.eq('transaction_sources.source_transactions.import_id',importId);
+ // A loan's payout is recorded in Wealth; it is not spending to organize.
+ const loans=await loadLoanPayoutIds(supabase,workspace.id).catch(()=>new Set<string>());
+ if(loans.size)query=query.not('id','in',`(${[...loans].join(',')})`);
  const [queue,merchants,categories,rules,reviews,selectedReview]=await Promise.all([
   query.order('posted_on',{ascending:false}).order('id',{ascending:false}).limit(51),
   supabase.from('merchants').select('id,name').eq('workspace_id',workspace.id).order('name').limit(501),
@@ -48,17 +52,17 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
  const card='rounded-xl border border-border bg-card p-6';
  return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 text-foreground sm:px-8 lg:py-8">
   <header><p className="eyebrow">Money</p><h1 className="mt-1 page-title">Organize spending</h1>
-   <p className="mt-2 text-sm text-muted-foreground">Select entries, pick a category, preview, approve. Every batch can be undone.</p></header>
+   <p className="mt-2 text-sm text-muted-foreground">Tick entries, pick a category, press Apply. Every batch can be undone.</p></header>
   {reviewId&&!review&&<p role="alert" className="text-sm">This review is no longer available.</p>}
   {review&&<section aria-label="Organization impact preview" className={card}>
-   <h2 className="text-sm font-medium">{batch.data?.undone?'Undone':review.status==='applied'?'Applied':review.status==='dismissed'?'Dismissed':'Review changes'}</h2>
-   <p className="mt-1 text-sm text-muted-foreground">{snapshots.length} {snapshots.length===1?'entry':'entries'} · Total {Object.entries(totals).map(([currency,minor])=>formatMoney(minor,currency,workspace.locale)).join('; ')} · Only merchant and category change.</p>
+   <h2 className="text-sm font-medium">{batch.data?.undone?'Undone':review.status==='applied'?'Applied':review.status==='dismissed'?'Dismissed':'Not applied yet'}{patchCategory&&` · ${patchCategory}`}{patchMerchant&&` · ${patchMerchant}`}</h2>
+   <details className="mt-1 text-sm"><summary className="cursor-pointer text-muted-foreground hover:text-foreground">{snapshots.length} {snapshots.length===1?'entry':'entries'} · Total {Object.entries(totals).map(([currency,minor])=>formatMoney(minor,currency,workspace.locale)).join('; ')}</summary>
    <ul className="mt-3 divide-y divide-border text-sm">{snapshots.map(row=>{
     const beforeMerchant=merchantName(row.merchant_id)??'unassigned';
     const beforeCategory=categoryName(row.category_id)??'uncategorized';
     return <li key={row.id} className="flex flex-wrap items-baseline gap-x-3 py-2"><span className="font-mono text-xs text-muted-foreground">{row.posted_on}</span><Link className="min-w-0 flex-1 truncate hover:underline" href={'/money/transactions?transaction='+row.id}>{row.description}</Link><span className="font-mono">{formatMoney(row.amount_minor,row.currency_code,workspace.locale)}</span>
      <span className="basis-full text-xs text-muted-foreground">{`Merchant: ${beforeMerchant} → ${patchMerchant??beforeMerchant}`} · {`Category: ${beforeCategory} → ${patchCategory??beforeCategory}`}</span></li>;
-   })}</ul>
+   })}</ul></details>
    {review.status==='pending'&&<><ApprovalForm reviewId={review.id} canSaveRule={Boolean(review.rule_key)} /><form action={dismissReview} className="mt-3"><input type="hidden" name="reviewId" value={review.id} /><button className="text-sm text-muted-foreground underline">Dismiss</button></form></>}
    {review.batch_id&&!batch.data?.undone&&currentRows.data.length===snapshots.length&&<UndoReviewForm reviewId={review.id} rows={versionedRows.parse(currentRows.data)} />}
   </section>}

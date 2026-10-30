@@ -6,7 +6,9 @@ import { requireWorkspace } from "@/lib/auth";
 import { reviewedLocalTimestamp } from "@/lib/finance/calendar";
 import { recurringCadences } from "@/lib/finance/cadences";
 import { parseManualAmount } from "@/app/money/transactions/input";
-import { createSchedule, decideSeries, editSchedule, removeSchedule, scheduleFields, type ScheduleFields } from "./schedules";
+import { decideProposals, readableError } from "@/lib/ai/agent-apply";
+import { decideCurrentSeries, recurringCardDetails } from "@/lib/ai/recurring-proposals";
+import { createSchedule, editSchedule, removeSchedule, scheduleFields, type ScheduleFields } from "./schedules";
 
 /** What a recurring form shows after submitting: an error to fix, or done. Failures never reach the error page. */
 export type ActionState = { error?: string; done?: number };
@@ -22,7 +24,7 @@ async function run(work: () => Promise<unknown>): Promise<ActionState> {
   try { await work(); }
   catch (cause) {
     if (cause instanceof z.ZodError) return { error: cause.issues[0]?.message ?? "Check the form" };
-    return { error: cause instanceof Error ? cause.message : String(cause) };
+    return { error: readableError(cause) };
   }
   revalidatePath("/", "layout");
   return { done: Date.now() };
@@ -43,7 +45,7 @@ function seriesFrom(form: FormData) {
 
 /** The editable fields of the dialog: a positive amount plus a direction, so "coming in" never needs a minus sign. */
 function fieldsFrom(form: FormData, currencyCode: string): ScheduleFields {
-  const amount = parseManualAmount(String(form.get("amount") ?? ""), currencyCode);
+  const amount = parseManualAmount(String(form.get("amount") ?? "").replace(",", "."), currencyCode);
   if (amount <= 0n) throw new Error("Enter an amount above zero");
   const direction = z.enum(["out", "in"]).parse(form.get("direction"));
   return scheduleFields.parse({ name: form.get("name"), amountMinor: (direction === "out" ? -amount : amount).toString(), cadence: form.get("scheduleCadence"),
@@ -59,11 +61,32 @@ function changesFrom(form: FormData, currencyCode: string): Partial<ScheduleFiel
 export async function confirmSeries(_: ActionState, form: FormData) {
   return run(async () => {
     const series = seriesFrom(form);
-    await decideSeries(await requireWorkspace(), series, "confirmed", form.has("amount") ? changesFrom(form, series.currencyCode) : {});
+    await decideCurrentSeries(await requireWorkspace(), series, "confirmed", form.has("amount") ? changesFrom(form, series.currencyCode) : {});
   });
 }
 export async function declineSeries(_: ActionState, form: FormData) {
-  return run(async () => { await decideSeries(await requireWorkspace(), seriesFrom(form), "dismissed"); });
+  return run(async () => { await decideCurrentSeries(await requireWorkspace(), seriesFrom(form), "dismissed"); });
+}
+
+/** The payments behind each detected recurring card and what its confirm dialog starts from, in one detection pass. */
+export async function loadRecurringCards(ids: string[]) {
+  const parsed = z.array(uuid).min(1).max(100).parse(ids);
+  const context = await requireWorkspace();
+  const { supabase, workspace } = context;
+  const [proposals, categories] = await Promise.all([
+    supabase.from("agent_proposals").select("id, payload").eq("workspace_id", workspace.id).eq("kind", "recurring_edit").in("id", parsed),
+    supabase.from("categories").select("name").eq("workspace_id", workspace.id).order("name").limit(500),
+  ]);
+  if (proposals.error) throw new Error(proposals.error.message);
+  return { details: await recurringCardDetails(context, proposals.data ?? []), categories: (categories.data ?? []).map(row => row.name as string), locale: workspace.locale as string | undefined };
+}
+
+/** Confirms a recurring card with what the person set in its dialog (amount, date, category), in one step. */
+export async function confirmRecurringCard(_: ActionState, form: FormData) {
+  return run(async () => {
+    const [outcome] = await decideProposals(await requireWorkspace(), [uuid.parse(form.get("proposalId"))], "accept", { recurring: changesFrom(form, currency.parse(form.get("currencyCode"))) });
+    if (outcome?.error) throw new Error(outcome.error);
+  });
 }
 
 export async function addSchedule(_: ActionState, form: FormData) {

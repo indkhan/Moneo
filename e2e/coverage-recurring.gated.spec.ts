@@ -93,7 +93,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       const expected = `EUR ${(2000 - (futureCount-1) * 20).toFixed(2)}`;
       await page.goto("/money/recurring");
       await expect(candidate).toHaveCount(1); await expect(candidate).toContainText(cadence);
-      await expect(candidate).toContainText("3 observed payments");
+      await expect(candidate).toContainText("3 payments found");
       await expect(candidate).toContainText("not a probability");
       await candidate.getByRole("button", {name: "Confirm",exact: true}).click(); await expect(candidate).toContainText("Confirmed");
       const [generated] = await db`select a.id,a.version,a.cadence,a.schedule_anchor_on::text from public.financial_assumptions a join public.recurring_series s on s.assumption_id=a.id where s.workspace_id=${workspace!} and s.account_id=${account}`;
@@ -104,13 +104,14 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       await page.goto("/money/recurring"); await candidate.getByRole("button", {name: "Confirm",exact: true}).click(); await expect(candidate).toContainText("Confirmed");
       const review = page.getByRole("region", {name: "Occurrence reconciliation"});
       const [{version}] = await db`select version from public.financial_assumptions where id=${generated.id} and workspace_id=${workspace!}`;
-      await review.getByRole("combobox", {name: "Confirmed assumption",exact: true}).selectOption(`${generated.id}:${version}`);
+      if (!await review.locator("details").evaluate(node => (node as HTMLDetailsElement).open)) await review.locator("summary").click();
+      await review.getByRole("combobox", {name: "Schedule",exact: true}).selectOption(`${generated.id}:${version}`);
       await review.getByLabel("Scheduled occurrence date", {exact: true}).fill(latest);
       await review.getByRole("combobox", {name: "Transaction",exact: true}).selectOption(`${ids[2]}:0`);
       await review.getByRole("combobox", {name: "Fulfillment",exact: true}).selectOption("full");
-      await review.getByRole("button", {name: "Associate occurrence",exact: true}).click(); await expect(review).toContainText("recorded full settlement");
+      await review.getByRole("button", {name: "Mark as paid",exact: true}).click(); await expect(review).toContainText("recorded full settlement");
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
-      await page.goto("/money/recurring"); await review.getByRole("button", {name: "Undo occurrence association",exact: true}).click(); await expect(review).toContainText("undone");
+      await page.goto("/money/recurring"); await review.getByRole("button", {name: "Undo",exact: true}).click(); await expect(review).toContainText("undone");
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
       await page.goto(`/money/transactions?transaction=${ids[2]}&linkSearch=${encodeURIComponent(creditLabel)}`);
       const detail = page.getByRole("complementary", {name: "Transaction details"});

@@ -1,6 +1,7 @@
 import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { detectRecurring, type RecurringSeries } from "@/lib/finance/recurring";
+import { normalizeLabel } from "./series";
 
 export const MAX_TRANSACTIONS = 10_000;
 const PAGE_SIZE = 1000;
@@ -69,13 +70,26 @@ export const loadSuggestions = cache(async (supabase: SupabaseClient, workspace:
     return { series, related, status: state?.status ?? "pending", assumption: Array.isArray(state?.assumption) ? state.assumption[0] : state?.assumption,
       evidence: series.transactionIds.map(id => byId.get(id)).filter((row): row is TxRow => Boolean(row)) };
   });
-  const pending = candidates.filter(item => item.status === "pending"), reviewed = candidates.filter(item => item.status !== "pending");
+  // A price change splits one payment into runs (the 15% band); an open run that a later run of the same payment replaced is not asked about.
+  const superseded = candidates.filter(item => item.status === "pending" && candidates.some(other => other !== item && sameRun(item, other) && firstDate(other) > lastDate(item)));
+  const pending = candidates.filter(item => item.status === "pending" && !superseded.includes(item)), reviewed = candidates.filter(item => item.status !== "pending");
   const invalidated = stored.filter(series => series.evidence_invalidated);
 
-  return { candidates, pending, reviewed, invalidated, truncated, cutoff, observedFrom, observedTo, detected, queryError, storedError: storedError?.message ?? null, detectError };
+  return { candidates, pending, reviewed, superseded, invalidated, truncated, cutoff, observedFrom, observedTo, detected, queryError, storedError: storedError?.message ?? null, detectError };
 });
 
 export type Suggestion = Awaited<ReturnType<typeof loadSuggestions>>["candidates"][number];
+
+type Run = { series: RecurringSeries; evidence: TxRow[] };
+const firstDate = (item: Run) => item.evidence[0]?.posted_on ?? "";
+const lastDate = (item: Run) => item.evidence.at(-1)?.posted_on ?? "";
+const sameRun = (a: Run, b: Run) => a.series.accountId === b.series.accountId && a.series.currencyCode === b.series.currencyCode
+  && a.series.cadence === b.series.cadence && normalizeLabel(a.series.label) === normalizeLabel(b.series.label);
+
+/** Earlier runs of the same payment at an older price, closed when the person decides on the current one. */
+export function olderRuns<T extends Run>(superseded: T[], item: Run) {
+  return superseded.filter(other => sameRun(other, item) && lastDate(other) < firstDate(item));
+}
 
 /** The compact evidence a confirm or dismiss needs; the database re-checks every version under lock. */
 export function seriesDecision({ series, evidence }: Pick<Suggestion, "series" | "evidence">) {

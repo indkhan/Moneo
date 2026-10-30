@@ -119,6 +119,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const valuations = wealthEvidence(wealthItems, today);
   missingInputs.push(...valuations.missingInputs);
   for (const valuation of valuations.included) addConverted(valuation.amountMinor, valuation.currencyCode, valuation.asOf, valuation.provenance, valuation.name, "assets");
+  const missing = describeMissingInputs(missingInputs);
 
   // Daily net worth over the last year for the chart (hover any day) and the month-end "this month" change; display currency only for now (see BACKLOG.md).
   const trend = netWorthSeries({ dates: dayRange(monthEnds(today, 12)[0], today), timeZone: workspace.timezone, accountIds: new Set(accounts.map(account => account.id)),
@@ -162,7 +163,8 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
           : convertedCount > 0 ? <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><Figure value={money(netWorthMinor, displayCurrency)} digits={minorDigits(displayCurrency)} className="display-figure text-5xl sm:text-7xl" />
             {monthChange !== 0n && <span className="font-mono text-sm text-muted-foreground"><span className={monthChange > 0n ? "text-brand" : "text-warning"}>{monthChange > 0n ? "+" : ""}{money(monthChange, displayCurrency)}</span> this month{monthBase !== null && monthBase > 0n ? ` · ${monthChange > 0n ? "+" : ""}${(Number(monthChange * 1000n / monthBase) / 10).toFixed(1)}%` : ""}</span>}</div>
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
-        {convertedCount === 0 && missingInputs.length > 0 && <details className="text-xs text-muted-foreground"><summary className="cursor-pointer text-brand">See what is missing</summary><ul className="mt-2 list-disc space-y-1 pl-4">{describeMissingInputs(missingInputs).map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>}
+        {/* A partial total must say so: an account whose balance needs review is left out, not counted as zero. */}
+        {missingInputs.length > 0 && <details className={`text-xs ${convertedCount ? "text-warning" : "text-muted-foreground"}`}><summary className="cursor-pointer text-brand">{convertedCount ? `Not counted: ${missing.length === 1 ? "1 item" : `${missing.length} items`}` : "See what is missing"}</summary><ul className="mt-2 list-disc space-y-1 pl-4">{missing.map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/accounts" className="mt-2 mr-3 inline-block underline">Review balances</Link><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>}
         {convertedCount > 0 && trend.length > 1 && <div><NetWorthChart label={`Net worth in ${displayCurrency} at each month end`}
             points={trend.map(point => ({ date: point.date, label: point.date === today ? `Today, ${fullDate(today)}` : fullDate(point.date), amount: money(point.value, displayCurrency), y: Number(point.value) }))} />
           <p className="mt-2 flex justify-between font-mono text-[11px] text-subtle"><span>{monthLabel(trend[0].date)}</span>{trend.length > 2 && <span>{monthLabel(trend[Math.floor(trend.length / 2)].date)}</span>}<span>{monthLabel(today)}</span></p></div>}

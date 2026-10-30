@@ -60,17 +60,18 @@ export function OrganizationQueue({items,merchants,categories,requestId,locale}:
    <label className="grid gap-1 text-xs text-muted-foreground">Merchant<input name="merchantSearch" list="organize-merchants" value={merchant} onChange={event=>{draftRevision.current++;setMerchant(event.target.value);}} maxLength={100} placeholder="Keep current" className={field} /></label>
    <datalist id="organize-categories">{categories.map(target=><option key={target.id} value={target.name} />)}</datalist>
    <datalist id="organize-merchants">{merchants.map(target=><option key={target.id} value={target.name} />)}</datalist>
-   <button disabled={pending||providerBusy||!rows.length||(merchantValue==='keep'&&categoryValue==='keep')} className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Preparing…':'Preview changes'}</button>
+   <button disabled={pending||providerBusy||!rows.length||(merchantValue==='keep'&&categoryValue==='keep')} className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Applying…':rows.length?`Apply to ${rows.length}`:'Apply'}</button>
+   <label className="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" name="saveRule" value="true" defaultChecked />Do the same for future entries like these</label>
    <button type="button" disabled={providerBusy||pending||!rows.length} onClick={requestSuggestions} className="min-h-10 text-sm text-muted-foreground underline disabled:opacity-40">{providerBusy?'Asking AI…':'Suggest with AI'}</button>
    {created&&<p className="basis-full text-xs text-muted-foreground">New {created} will be created.</p>}
    {assistance&&<p role="status" className="basis-full text-sm">{assistance}</p>}
    {state.error&&<p role="alert" className="basis-full text-sm text-danger">{state.error}</p>}
   </div>
   <ul className="divide-y divide-border">{items.map(({row,proposal})=>{const hint=suggestion(proposal).filter(Boolean).join(' · ');
-   return <li key={row.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+   return <li key={row.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
     <input type="checkbox" aria-label={'Select '+row.description} checked={selected.includes(row.id)} onChange={event=>toggle([row.id],event.target.checked)} />
     <span className="font-mono text-xs text-muted-foreground">{row.posted_on}</span>
-    <a className="min-w-0 flex-1 truncate hover:underline" href={'/money/transactions?transaction='+row.id}>{row.description}</a>
+    <a className="min-w-0 flex-1 break-words hover:underline" href={'/money/transactions?transaction='+row.id}>{row.description}</a>
     {proposal.financialReviewRequired&&<span className="text-xs text-muted-foreground">Check amount in Transactions</span>}
     {hint&&<button type="button" onClick={()=>applySuggestion(proposal)} title="Select similar entries and use this suggestion" className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground">{hint}</button>}
     <span className="font-mono">{formatMoney(row.amount_minor,row.currency_code,locale)}</span>
@@ -81,10 +82,10 @@ export function ApprovalForm({reviewId,canSaveRule}:{reviewId:string;canSaveRule
  const [state,action,pending]=useActionState(applyReview,{});
  return <form action={action} className="mt-4 space-y-3">
   <input type="hidden" name="reviewId" value={reviewId} />
-  <label className="flex gap-2 text-sm"><input type="checkbox" name="confirmed" value="true" required />I reviewed these entries and approve the changes.</label>
+  <input type="hidden" name="confirmed" value="true" />
   {canSaveRule&&<label className="flex gap-2 text-sm"><input type="checkbox" name="saveRule" value="true" />Suggest the same for future entries with this description.</label>}
   {state.error&&<p role="alert" className="text-sm text-danger">{state.error}</p>}
-  <button disabled={pending} className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Applying…':'Approve'}</button>
+  <button disabled={pending} className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Applying…':'Apply'}</button>
  </form>;
 }
 export function UndoReviewForm({reviewId,rows}:{reviewId:string;rows:{id:string;version:number}[]}) {

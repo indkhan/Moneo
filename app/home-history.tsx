@@ -6,6 +6,9 @@ import { formatMoney } from "@/lib/finance/format";
 
 type Change = { key: string; at: string; title: string; source: string; href: string };
 
+// A recurring card asks a question ("X: €9.99 monthly, confirm as recurring?"); once accepted, History says what was done.
+const decidedTitle = (title: string) => /, confirm as recurring\?$/.test(title) ? `Confirmed ${title.slice(0, title.lastIndexOf(": ")) || title} as recurring` : title;
+
 // Memoized per request so Home can start these reads before its own data resolves.
 export const loadHomeHistory = cache(async (db: SupabaseClient, workspaceId: string) => Promise.all([
   db.from("imports").select("id, filename, new_rows, created_at").eq("workspace_id", workspaceId).eq("status", "completed").order("created_at", { ascending: false }).limit(4),
@@ -24,7 +27,7 @@ export async function HomeHistory({ db, workspaceId, locale, timeZone, names }: 
     ...(imports.data ?? []).map(row => ({ key: `import:${row.id}`, at: row.created_at, title: `Imported ${row.filename} · ${row.new_rows} rows`, source: "import", href: "/import" })),
     ...(balances.data ?? []).map(row => ({ key: `balance:${row.id}`, at: row.created_at, title: `Set ${names.get(row.account_id) ?? "account"} balance to ${formatMoney(row.amount_minor, row.currency_code, locale)}`, source: "manual", href: "/money/accounts" })),
     ...(wealth.data ?? []).map(row => ({ key: `wealth:${row.id}`, at: row.created_at, title: `${(row.after as { removed_at?: string | null }).removed_at ? "Removed" : "Updated"} ${(row.after as { name?: string }).name ?? "a valuation"}`, source: "manual", href: "/money/wealth" })),
-    ...(agents.data ?? []).filter(row => row.decided_at).map(row => ({ key: `agent:${row.id}`, at: row.decided_at!, title: row.title, source: "agent", href: (row.result as { href?: string } | null)?.href ?? `/ai/agents/${row.run_id}` })),
+    ...(agents.data ?? []).filter(row => row.decided_at).map(row => ({ key: `agent:${row.id}`, at: row.decided_at!, title: decidedTitle(row.title), source: "agent", href: (row.result as { href?: string } | null)?.href ?? `/ai/agents/${row.run_id}` })),
   ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 4);
   if (!changes.length) return null;
   const when = (iso: string) => new Intl.DateTimeFormat(locale, { weekday: "short", hour: "2-digit", minute: "2-digit", timeZone }).format(new Date(iso));

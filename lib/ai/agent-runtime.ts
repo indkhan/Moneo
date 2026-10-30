@@ -8,6 +8,7 @@ import { formatMoney } from "@/lib/finance/format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { mergeOrganizationSuggestions, organizationProposals, organizationRuleSchema, type OrganizationProposal, type OrganizationRow } from "@/lib/import/organization";
 import { proposeRepayments } from "@/lib/ai/iou-proposals";
+import { loadLoanPayoutIds } from "@/lib/finance/iou";
 import { openRecurringProposals, syncRecurringProposals } from "@/lib/ai/recurring-proposals";
 import { AGENTS, WAVES, anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, planRun, verifiedBriefing,
   daysBefore, payloadSchemas, type AgentId, type BriefingFacts, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
@@ -140,7 +141,9 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
     names(db, workspace.id),
   ]);
   const corrected = new Set((checked(corrections) as { transaction_id: string }[]).map(row => row.transaction_id));
-  const raw = targets as (RawRow & { status: string })[];
+  // A loan's payout is recorded in Wealth, not spending to categorize.
+  const loans = await loadLoanPayoutIds(db, workspace.id).catch(() => new Set<string>());
+  const raw = (targets as (RawRow & { status: string })[]).filter(row => !loans.has(row.id));
   const toRow = (row: RawRow): OrganizationRow => ({ id: row.id, version: row.version, description: row.description, merchantId: row.merchant_id, categoryId: row.category_id,
     kind: row.kind as OrganizationRow["kind"], reviewReasons: row.review_reasons ?? [], userCorrected: corrected.has(row.id) });
   const approved = (checked(rules) as { id: string; version: number; description_key: string; merchant_id: string | null; category_id: string | null; approved_by: string; enabled: boolean }[])
@@ -200,7 +203,9 @@ async function recurring(context: Context) {
 
 async function anomaly(context: Context) {
   await report(context, { type: "step", text: "Comparing the last 13 months for duplicates, fees and outliers" });
-  const rows = await loadLedger(context.db, context.workspace.id, daysBefore(context.today, 400));
+  const loans = await loadLoanPayoutIds(context.db, context.workspace.id).catch(() => new Set<string>());
+  // Lending someone money is not an unusual charge.
+  const rows = (await loadLedger(context.db, context.workspace.id, daysBefore(context.today, 400))).filter(row => !loans.has(row.id));
   await report(context, { type: "tool", text: `anomalyFindings over ${rows.length} postings` });
   const findings = anomalyFindings(rows, context.today, context.workspace.locale);
   return { proposals: findings, summary: `${findings.length} findings from ${rows.length} postings` };

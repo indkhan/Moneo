@@ -3,6 +3,7 @@ import {confirmSeries, declineSeries} from "./actions";
 const {rpc} = vi.hoisted(() => ({rpc: vi.fn<(name: string, args: Record<string, unknown>) => Promise<{data: null; error: unknown}>>().mockResolvedValue({data: null, error: null})}));
 vi.mock("@/lib/auth", () => ({requireWorkspace: async () => ({supabase: {rpc}})}));
 vi.mock("next/cache", () => ({revalidatePath: vi.fn()}));
+vi.mock("./suggestions", async importOriginal => ({...await importOriginal<object>(), loadSuggestions: async () => ({candidates: [], superseded: []})}));
 const account = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const sourceIds = [1,2,3].map(n => `${n}${n}${n}${n}${n}${n}${n}${n}-${n}${n}${n}${n}-4${n}${n}${n}-8${n}${n}${n}-${String(n).repeat(12)}`);
 const evidence = sourceIds.map((id,version) => ({id,version}));

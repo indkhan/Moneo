@@ -31,11 +31,16 @@ export async function createReview(_state:ReviewState,form:FormData):Promise<Rev
   const keys=new Set(current.proposals.map(proposal=>proposal.descriptionKey));
   const key=keys.size===1?[...keys][0]:null;
   const evidence=[...new Map(current.proposals.flatMap(proposal=>proposal.evidence).map(row=>[row.id,row])).values()];
+  const ruleKey=key&&key.length>=3?key:null;
   const {data,error}=await supabase.rpc('create_organization_review',{p_rows:rows,p_patch:patch,p_merchant_name:merchantName,
-   p_rule_key:key&&key.length>=3?key:null,p_evidence:evidence,p_request_id:requestId});
+   p_rule_key:ruleKey,p_evidence:evidence,p_request_id:requestId});
   if(error)throw error;reviewId=z.uuid().parse(data.id);
- } catch {return {error:'Could not create a review. Reload changed rows, or use Transactions for a manual correction.'};}
- revalidatePath('/money/organization');redirect('/money/organization?review='+reviewId);
+  // Choosing and pressing Apply is the approval: the review is applied at once and stays undoable.
+  const saveRule=ruleKey!==null&&form.get('saveRule')==='true';
+  const applied=await supabase.rpc('apply_organization_review',{p_review_id:reviewId,p_save_rule:saveRule});
+  if(applied.error)throw applied.error;
+ } catch {return {error:'Could not apply this. Some entries changed meanwhile; reload and try again, or fix them one by one in Transactions.'};}
+ revalidatePath('/','layout');redirect('/money/organization?review='+reviewId);
 }
 export async function applyReview(_state:ReviewState,form:FormData):Promise<ReviewState> {
  let reviewId:string;

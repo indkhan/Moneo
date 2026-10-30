@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { IouCard } from "@/components/iou-card";
+import { RecurringCards } from "./cards";
 import { openRecurringProposals, syncRecurringProposals } from "@/lib/ai/recurring-proposals";
 
 /** Recurring changes detection caught, as the same proposal cards chat shows; accepting runs the same apply path. */
@@ -10,6 +10,6 @@ export async function RecurringReview({ supabase, workspace, prices = false }: {
   if (!proposals.length) return null;
   return <section aria-label="Recurring to review" className="space-y-1">
     <h2 className="text-sm font-medium text-ai">Recurring to review</h2>
-    {proposals.map(({ id, title, detail }) => <IouCard key={id} id={id} initial={{ id, title, detail, status: "proposed", kind: "recurring_edit" }} />)}
+    <RecurringCards cards={proposals} />
   </section>;
 }

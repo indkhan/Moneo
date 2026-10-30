@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { Modal } from "@/components/command-palette";
 import { recurringCadences } from "@/lib/finance/cadences";
 import type { ActionState } from "./actions";
@@ -26,15 +26,17 @@ export function ActionForm({ action, hidden = {}, className, children }: { actio
 export type ScheduleDefaults = { name: string; amount: string; direction: "out" | "in"; cadence: string; startsOn: string; category: string; currencyCode?: string };
 
 /** Opens a dialog to confirm, edit or add a recurring payment: how much, which way, how often, the next date and a category. */
-export function ScheduleDialog({ title, trigger, triggerClassName, action, remove, hidden = {}, defaults, accounts, categories, submitLabel }: {
+export function ScheduleDialog({ title, trigger, triggerClassName, action, remove, hidden = {}, defaults, accounts, categories, submitLabel, onDone }: {
   title: string; trigger: React.ReactNode; triggerClassName?: string; action: Action; remove?: Action; hidden?: Record<string, string>; defaults: ScheduleDefaults;
-  accounts?: { id: string; name: string; currencyCode: string }[]; categories: string[]; submitLabel: string;
+  accounts?: { id: string; name: string; currencyCode: string }[]; categories: string[]; submitLabel: string; onDone?: () => void;
 }) {
   // When it was opened; a submission that succeeds after that closes it. The action refreshes the page.
   const [openedAt, setOpenedAt] = useState<number | null>(null);
   const [state, submit, pending] = useActionState<ActionState, FormData>(action, {});
   const [removed, removeSubmit, removing] = useActionState<ActionState, FormData>(remove ?? (async () => ({})), {});
   const [values, setValues] = useState(defaults);
+  // Tell the owner once a save went through, e.g. so a card can show it is done.
+  useEffect(() => { if (state.done) onDone?.(); }, [state.done]); // eslint-disable-line react-hooks/exhaustive-deps
   const [accountId, setAccountId] = useState(accounts?.[0]?.id ?? "");
   const open = openedAt !== null && Math.max(state.done ?? 0, removed.done ?? 0) < openedAt;
   const close = () => setOpenedAt(null);
@@ -55,7 +57,7 @@ export function ScheduleDialog({ title, trigger, triggerClassName, action, remov
         <div className="grid grid-cols-2 gap-3">
           <label className="grid gap-1 text-sm">Direction<select name="direction" value={values.direction} onChange={set("direction")} className={inputClass}>
             <option value="out">Going out</option><option value="in">Coming in</option></select></label>
-          <label className="grid gap-1 text-sm">Amount{currencyCode && ` (${currencyCode})`}<input name="amount" required inputMode="decimal" pattern="\d+(\.\d+)?" value={values.amount} onChange={set("amount")} className={inputClass} /></label>
+          <label className="grid gap-1 text-sm">Amount{currencyCode && ` (${currencyCode})`}<input name="amount" required inputMode="decimal" pattern="\d+([.,]\d+)?" value={values.amount} onChange={set("amount")} className={inputClass} /></label>
           <label className="grid gap-1 text-sm">How often<select name="scheduleCadence" value={values.cadence} onChange={set("cadence")} className={inputClass}>
             {recurringCadences.map(cadence => <option key={cadence} value={cadence}>{cadenceWords[cadence]}</option>)}</select></label>
           <label className="grid gap-1 text-sm">Next date<input name="startsOn" type="date" required value={values.startsOn} onChange={set("startsOn")} className={inputClass} /></label>

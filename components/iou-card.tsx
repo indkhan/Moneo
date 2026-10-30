@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
+import { useBusy } from "@/components/use-busy";
 import Link from "next/link";
 import { decideAgentProposals } from "@/app/ai/agents/actions";
 import { loadIouProposal, type ChatProposal } from "@/app/ai/iou-actions";
+import { formatMoney } from "@/lib/finance/format";
 
 type Proposal = Pick<ChatProposal, "id" | "title" | "detail" | "status"> & Partial<ChatProposal> & { conflict_key?: string };
 const NEW_CASH = "";
@@ -13,7 +15,7 @@ export function IouCard({ id, initial, onAccount }: { id: string; initial?: Prop
   const [proposal, setProposal] = useState<Proposal | null | undefined>(initial);
   const [account, setAccount] = useState<string>();
   const [error, setError] = useState<string>();
-  const [pending, start] = useTransition();
+  const [pending, start] = useBusy();
   const [unavailable, setUnavailable] = useState(false);
   const [attempt, setAttempt] = useState(0);
   // A failed load used to hide the card until the page was reloaded; it now says so and can be retried.
@@ -43,6 +45,13 @@ export function IouCard({ id, initial, onAccount }: { id: string; initial?: Prop
   return <section aria-label={transaction ? "Transaction proposal" : balance ? "Balance proposal" : recurring ? "Recurring proposal" : "Loan proposal"} className="my-3 rounded-xl border border-ai-border bg-ai-soft p-4">
     <p className="font-medium">{proposal.title}</p>
     {proposal.detail && <p className="mt-1 text-sm text-muted-foreground">{proposal.detail}</p>}
+    {open && !!proposal.transactions?.length && <details className="mt-2 text-sm">
+      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Show the {proposal.transactions.length === 1 ? "transaction" : `${proposal.transactions.length} transactions`}</summary>
+      <ul className="mt-2 divide-y divide-border rounded-lg border border-border bg-background">{proposal.transactions.map(row => <li key={row.id}>
+        <Link href={`/money/transactions?transaction=${row.id}`} className="flex items-baseline gap-3 px-3 py-2 hover:bg-muted">
+          <span className="shrink-0 font-mono text-xs text-muted-foreground">{row.date}</span><span className="min-w-0 flex-1 truncate">{row.description}</span>
+          <span className="shrink-0 font-mono">{formatMoney(row.amountMinor, row.currency)}</span></Link></li>)}</ul>
+    </details>}
     {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
     {open ? <div className="mt-3 flex flex-wrap items-center gap-2">
       {transaction && proposal.accounts && <label className="flex items-center gap-2 text-sm"><span className="text-muted-foreground">From</span>
