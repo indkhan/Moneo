@@ -1,0 +1,13 @@
+can you check what happened to my artifact itshows zero recurring thing in the artifact but in setting i have things that are recurring 
+
+can you also check when it is done with syncing for the day does it do a check of all the things like a mini analysis so it categorize , find anomaly , see recurring and all on its own or i need to do manual deep analysis 
+
+and if the mini analysis found something liek categorize it it does on its own , if it things it is uncategorized show in the overview with the iou and others and also for thigns ai thigns could be recurring but if user already said it is not recurring hten dont show again 
+
+lets talk
+
+---
+
+for the 1. yes do it call a haiku subagent and get it done 
+2,3,4 now tell me how will it look overall then tell me the agents page and home page how will it look in simple words 
+i do agree with summary card but then how will the user choose
