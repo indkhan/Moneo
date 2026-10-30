@@ -1,0 +1,54 @@
+Act as the design sub-agent for this task.
+
+Repo: Moneo (Next.js 16 + React 19 + Tailwind 4 personal-finance app). Read AGENTS.md first and follow it: simplest clean change, follow the existing design tokens and components (`app/globals.css`, `components/`), and one commit per logical step. Copy the git-ignored `C:\codebases\Moneo\.env` into your checkout; never print secrets. Use a dev server on port 3200 or above, since others use 3000–3102. Sign in the QA user with `E2E_BASE_URL=http://localhost:3200 node --env-file=.env scripts/e2e-auth.mjs`. Never run `--reset`; another agent runs the E2E suite.
+
+## Goal
+The user wants the new voice feature to **look really good and polished**, as cool as the best voice-AI apps, while fitting Moneo's existing visual language. Screenshot every new surface, judge it critically, fix it, and screenshot again.
+
+## Surfaces (find them in the code first)
+1. **Overview "Waiting for you":** collapsible section, filter chips and cards (`lib/ai/open-proposals.ts` and its component on `app/page.tsx`). Also the **Voice note** button on Overview.
+2. **The mic:** in the chat composer (`components/chat-composer.tsx`, `components/voice-input.tsx`), the Ask Moneo panel and artifact inputs. Check the idle, recording (live words, level meter), finishing, error and permission-denied states, and the spoken badge on messages.
+3. **The call:**
+   - the Call button in the chat header;
+   - the full-screen call on mobile and the call in the chat area on desktop;
+   - the orb in listening, thinking and speaking states;
+   - captions, the task list with steps and ✕, the card tray, mute, end and the typed input;
+   - the connecting and error states.
+
+   Search for "voice-call" / "Call". Look for an existing preview route or story; if there isn't one, render states with a mocked controller in a throwaway page you delete before committing.
+4. **The call summary card** in the chat: duration, summary, cards, still-running work, collapsible transcript.
+5. **Settings:** the Call voice picker with Play sample, and the Voice call model entry.
+6. **Background run states:** a chat resumed while still "Thinking…", artifact builds still running or failed, and "Chat reply · N cards waiting for you" in `/ai/activity`.
+
+## How
+- Screenshot each surface at mobile 390×844 and desktop 1440×900, in light and dark if the app supports both, with Playwright, into `C:\Users\mgsuk\voice-proto\ui\before\` and `...\after\`.
+- To trigger real states, use the fake mic: launch Chromium with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream --use-file-for-fake-audio-capture=C:\Users\mgsuk\voice-proto\mic.wav`. A real call costs about $0.05/min; a few short calls are fine.
+- Fix:
+  - spacing, alignment, typography and hierarchy;
+  - consistent tokens, radius, shadows and icons (lucide);
+  - smooth transitions with no layout jump;
+  - an orb that feels alive (audio-reactive, calm, respects `prefers-reduced-motion`);
+  - readable captions with good contrast;
+  - touch targets ≥ 44 px;
+  - safe-area insets on mobile;
+  - visible focus;
+  - `aria-live` used without noise;
+  - clear empty, loading and error states with helpful copy in the app's voice.
+- Keep changes in the UI layer; don't change behavior or APIs.
+- Run `npm test`, `npm run lint` and `npm run build`, and update affected component tests.
+
+## Deliver
+Branch off your checkout's current commit (`t3/voice-finance-agent`). Commit in small steps; end each commit message with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Before the PR, run `git fetch origin && git merge origin/t3/voice-finance-agent`. A speed/regression agent works in parallel, so keep both sides in conflicts. Push and open a PR with `gh pr create --base t3/voice-finance-agent`. **Do not target main.** The PR body lists each surface with what changed, the before/after screenshot paths, the tests run, anything skipped, and "Decisions I made"; end it with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Do not merge. Ignore the "Entire Gates" approval check. Stop your dev server when done.
+
+Your final line must be: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>bp6bw0wg5</task-id>
+<tool-use-id>toolu_01NobsjNC7qEHZ3DDHc9dU1x</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-51303d68\2405edb9-a13d-445a-9e80-b3c2bbc6c3b3\tasks\bp6bw0wg5.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /c/Users/mgsuk/.t3/worktrees/Moneo/t3-51303d68; npx next dev -p 3200 &gt; /tmp/dev3200.log 2&gt;&amp;1 &amp;
+for i in $(seq 1 60); do curl -s -o /dev/null -w "%{http_code}" http://localhost:3200/login 2&gt;/dev/null | grep -q 200 &amp;&amp; break; sleep 3; done; E2E_BASE_URL=http://localhost:3200 node --env-file=.env scripts/e2e-auth.mjs 2&gt;&amp;1 | tail -2" completed (exit code 0)</summary>
+</task-notification>
