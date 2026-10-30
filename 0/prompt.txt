@@ -1,0 +1,35 @@
+can you check why can i not login i am trying it shows and then bring me back to login i mean the vercel deployed one on main
+
+---
+
+<task-notification>
+<task-id>big78cvom</task-id>
+<tool-use-id>toolu_01TKbaDr3r9su5vnTkKKtXJR</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--codebases-Moneo\47976e75-f349-4d01-ba12-8a83747fe8db\tasks\big78cvom.output</output-file>
+<status>failed</status>
+<summary>Background command "Start production commit dev server on port 3100" failed with exit code 1</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>brwz5y8jr</task-id>
+<tool-use-id>toolu_01AjwCvEcrDgS5ieWhg2Bpoc</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--codebases-Moneo\47976e75-f349-4d01-ba12-8a83747fe8db\tasks\brwz5y8jr.output</output-file>
+<status>completed</status>
+<summary>Background command "Check whether QA user also gets streamed redirect" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bb4su9d5v</task-id>
+<tool-use-id>toolu_01Uq3ufMr7tprnekEcduiMgu</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--codebases-Moneo\47976e75-f349-4d01-ba12-8a83747fe8db\tasks\bb4su9d5v.output</output-file>
+<status>failed</status>
+<summary>Background command "Start production commit dev server" failed with exit code 1</summary>
+</task-notification>
+
+---
+
+sure do that and pusht he code after applying so it does not happen again
