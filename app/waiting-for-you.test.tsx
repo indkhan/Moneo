@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { expect, it, vi } from "vitest";
 import { openStandaloneProposals } from "@/lib/ai/open-proposals";
 import { syncRecurringProposals } from "@/lib/ai/recurring-proposals";
-import { RecurringDetection, WaitingForYou } from "./waiting-for-you";
+import { RecurringDetection, WaitingForYou, loadWaitingForYou } from "./waiting-for-you";
 
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("@/app/ai/agents/actions", () => ({ decideAgentProposals: vi.fn() }));
@@ -12,7 +12,7 @@ vi.mock("@/lib/ai/recurring-proposals", () => ({ syncRecurringProposals: vi.fn()
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/ai/open-proposals", () => ({ openStandaloneProposals: vi.fn() }));
 
-const render = async () => renderToStaticMarkup(await WaitingForYou({ supabase: {} as SupabaseClient, workspace: { id: "w", timezone: "UTC", locale: "en" } }));
+const render = async () => renderToStaticMarkup(WaitingForYou({ proposals: await loadWaitingForYou({} as SupabaseClient, { id: "w", timezone: "UTC", locale: "en" }) }));
 
 it("is hidden when nothing is waiting", async () => {
   vi.mocked(openStandaloneProposals).mockResolvedValue([]);

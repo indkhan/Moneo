@@ -53,12 +53,11 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const allWealthPromise = loadWealthItems(supabase, workspace.id, true);
   const wealthPromise = allWealthPromise.then(items => items.filter(item => !item.removed_at));
   const sourceMetadataPromise = loadSourceCoverageMetadata(supabase, workspace.id, true);
-  // Start the streamed sections' reads now (memoized); their Suspense boundaries pick up the same promises.
+  // Start the streamed sections' reads now (memoized); their Suspense boundaries pick up the same promises. Recurring detection streams beside the page.
   loadInsightEvidence(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
   loadHomeSpending(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
   loadHomeHistory(supabase, workspace.id).catch(() => undefined);
   loadAgentBriefing(supabase, workspace.id).catch(() => undefined);
-  loadWaitingForYou(supabase, workspace);
   detectRecurring(supabase, workspace);
   const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle());
   // Pinned artifact titles chain onto the layout read, so they finish inside the slower forecast; the frames load their data themselves.
@@ -66,7 +65,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     const ids = (Array.isArray(data?.items) ? data.items : []).map(artifactIdFromKey).filter(id => id !== null);
     return ids.length ? supabase.from("artifacts").select("id, title").eq("workspace_id", workspace.id).in("id", ids).is("deleted_at", null) : { data: [], error: null };
   });
-  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges] = await Promise.all([
+  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges, waiting] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
     wealthPromise,
@@ -82,6 +81,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     supabase.from("bank_connection_accounts").select("account_name, currency_code").eq("workspace_id", workspace.id),
     // Price labels are a nicety; Coming up still renders without them.
     loadPriceChanges(supabase, workspace.id).catch(() => new Map<string, never>()),
+    loadWaitingForYou(supabase, workspace),
   ]);
   for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error, bankAccounts.error]) if (error) throw error;
   // A bank sync imports into the account with the bank's name and currency, as on the Accounts page.
@@ -228,7 +228,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         </div>
       </header>
       {/* Stored cards come with the page, so they never push the grid down; the slow detection streams after and reloads only if it changed a card. */}
-      <WaitingForYou supabase={supabase} workspace={workspace} />
+      <WaitingForYou proposals={waiting} />
       <Suspense fallback={null}><RecurringDetection supabase={supabase} workspace={workspace} /></Suspense>
       <div className="grid grid-flow-dense gap-4 lg:grid-cols-6">
         {ordered.map(key => <div key={key} className={`min-w-0 ${span(key)} [&>section]:h-full`}>{widgets[key]}</div>)}

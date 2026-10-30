@@ -65,7 +65,7 @@ async function open(wav) {
   const browser = await chromium.launch({ args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${wav}`, "--autoplay-policy=no-user-gesture-required"] });
   const context = await browser.newContext({ storageState: "e2e/.auth.json", permissions: ["microphone"] });
   const page = await context.newPage();
-  const log = [], chats = [];
+  const log = [], chats = [], timing = {};
   page.on("response", async response => {
     if (!response.url().endsWith("/api/chat") || response.request().method() !== "POST") return;
     const request = JSON.parse(response.request().postData() ?? "{}");
@@ -76,6 +76,8 @@ async function open(wav) {
   });
   page.on("console", message => {
     const text = message.text();
+    if (text.startsWith("[call] started")) timing.sessionStartedAt ??= Date.now();
+    if (text.startsWith("[call] spoke")) timing.firstWordsAt ??= Date.now();
     if (text.startsWith("[call]")) { log.push(text); if (!text.startsWith("[call] spoke")) console.log(text.slice(0, 220)); }
     else if (message.type() === "error") console.log(text);
   });
@@ -94,20 +96,23 @@ async function open(wav) {
       return channel;
     };
   });
-  return { browser, page, log, chats };
+  return { browser, page, log, chats, timing };
 }
-async function startCall(page) {
+/** Clicks Call and waits until the call is live; `timing` gets when each step happened (ms after the click). */
+async function startCall(page, timing) {
   await page.goto(`${base}/ai?conversation=new`);
   await page.getByRole("button", { name: "Call" }).click();
+  const clicked = Date.now();
   const call = page.getByRole("dialog", { name: "Voice call with Moneo" });
   await call.getByRole("status").filter({ hasText: /Listening|Working|talking/ }).waitFor({ timeout: 30_000 });
-  console.log("call is live");
+  timing.liveMs = Date.now() - clicked; timing.clicked = clicked;
+  console.log(`call is live ${timing.liveMs} ms after the click`);
   return call;
 }
 
 // --- Call 1: spoken requests, voice, hang-up, summary card ---
 const first = await open(talking);
-const call = await startCall(first.page);
+const call = await startCall(first.page, first.timing);
 const deadline = Date.now() + 150_000;
 let cards = 0;
 while (Date.now() < deadline) {
@@ -139,6 +144,8 @@ await first.page.screenshot({ path: ".qa/voice-call-card.png", fullPage: true })
 await first.page.reload();
 const reloaded = await first.page.getByRole("region", { name: "Voice call", exact: true }).waitFor({ timeout: 30_000 }).then(() => true, () => false);
 const duplicates = await outside(first.page);
+const afterClick = at => at ? `${at - first.timing.clicked} ms after the click` : "not heard";
+console.log(`timings: live ${first.timing.liveMs} ms; session started ${afterClick(first.timing.sessionStartedAt)}; Moneo's first spoken words ${afterClick(first.timing.firstWordsAt)}`);
 const voiceStarted = first.log.find(line => line.startsWith("[call] started"));
 await first.browser.close();
 
@@ -146,7 +153,7 @@ console.log("\n--- captions ---\n" + captions + "\n--- tasks ---\n" + tasks + "\
 
 // --- Call 2: a typed message must be spoken ---
 const second = await open(quiet);
-const quietCall = await startCall(second.page);
+const quietCall = await startCall(second.page, second.timing);
 await second.page.waitForTimeout(2000);
 await quietCall.getByLabel("Type to Moneo").fill("How much did I spend at Netto this month?");
 await quietCall.getByRole("button", { name: "Send" }).click();

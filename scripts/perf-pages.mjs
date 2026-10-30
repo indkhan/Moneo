@@ -1,14 +1,15 @@
 // Page-load measurements against a running production build (`npm run build && npx next start -p 3101`).
 // Per page and viewport it runs a few cold loads (fresh context, no HTTP cache) and reports the median TTFB, FCP, LCP,
 // time until the page heading is visible, CLS, long tasks over 50 ms, transfer size and JS bytes.
-//   node scripts/perf-pages.mjs <baseUrl> <label> [runs=3]      (needs e2e/.auth.json from scripts/e2e-auth.mjs)
-// Writes .qa/perf-<label>.json.
+//   node scripts/perf-pages.mjs <runs> <label=baseUrl>...      (needs e2e/.auth.json from scripts/e2e-auth.mjs)
+// Several builds are measured interleaved, run by run, so machine noise hits them alike. Writes .qa/perf-<label>.json each.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium, devices } from "@playwright/test";
 
-const [base, label, runsArg] = process.argv.slice(2);
-if (!base || !label) throw new Error("usage: node scripts/perf-pages.mjs <baseUrl> <label> [runs]");
-const runs = Number(runsArg ?? 3);
+const [runsArg, ...targetArgs] = process.argv.slice(2);
+const targets = targetArgs.map(arg => { const [label, base] = [arg.slice(0, arg.indexOf("=")), arg.slice(arg.indexOf("=") + 1)]; return { label, base }; });
+if (!targets.length || !targets.every(target => target.label && target.base)) throw new Error("usage: node scripts/perf-pages.mjs <runs> <label=baseUrl>...");
+const runs = Number(runsArg);
 const PAGES = ["/", "/ai", "/ai/artifacts", "/ai/activity", "/money/accounts", "/money/transactions", "/money/recurring", "/money/wealth", "/plan", "/plan/spending", "/settings"];
 const VIEWPORTS = { desktop: { viewport: { width: 1440, height: 900 } }, mobile: { ...devices["Pixel 7"] } };
 
@@ -27,39 +28,42 @@ const probe = () => {
 
 const median = values => { const sorted = values.filter(v => v != null).sort((a, b) => a - b); return sorted.length ? sorted[Math.floor(sorted.length / 2)] : null; };
 const browser = await chromium.launch();
-const result = {};
+const results = Object.fromEntries(targets.map(target => [target.label, {}]));
 for (const [vpName, vp] of Object.entries(VIEWPORTS)) {
   for (const path of PAGES) {
-    const samples = [];
+    const samples = Object.fromEntries(targets.map(target => [target.label, []]));
     for (let run = -1; run < runs; run++) { // run -1 warms server caches and is not recorded
-      const context = await browser.newContext({ ...vp, baseURL: base, storageState: "e2e/.auth.json" });
-      await context.addInitScript(probe);
-      const page = await context.newPage();
-      let transfer = 0, js = 0, requests = 0;
-      page.on("requestfinished", async request => {
-        try {
-          const sizes = await request.sizes(); const bytes = sizes.responseBodySize + sizes.responseHeadersSize;
-          transfer += bytes; requests++;
-          if (request.resourceType() === "script") js += sizes.responseBodySize;
-        } catch { /* request gone with the context */ }
-      });
-      const response = await page.goto(path, { waitUntil: "load" }).catch(() => null);
-      await page.waitForTimeout(3000);
-      const m = await page.evaluate(() => {
-        const nav = performance.getEntriesByType("navigation")[0];
-        const fcp = performance.getEntriesByName("first-contentful-paint")[0];
-        return { ...window.__perf, ttfb: nav.responseStart, fcp: fcp?.startTime ?? null, load: nav.loadEventEnd };
-      });
-      if (run >= 0) samples.push({ ...m, status: response?.status(), final: new URL(page.url()).pathname, transferKB: transfer / 1024, jsKB: js / 1024, requests });
-      await context.close();
+      for (const { label, base } of targets) {
+        const context = await browser.newContext({ ...vp, baseURL: base, storageState: "e2e/.auth.json" });
+        await context.addInitScript(probe);
+        const page = await context.newPage();
+        let transfer = 0, js = 0, requests = 0;
+        page.on("requestfinished", async request => {
+          try {
+            const sizes = await request.sizes(); const bytes = sizes.responseBodySize + sizes.responseHeadersSize;
+            transfer += bytes; requests++;
+            if (request.resourceType() === "script") js += sizes.responseBodySize;
+          } catch { /* request gone with the context */ }
+        });
+        const response = await page.goto(path, { waitUntil: "load" }).catch(() => null);
+        await page.waitForTimeout(3000);
+        const m = await page.evaluate(() => {
+          const nav = performance.getEntriesByType("navigation")[0];
+          const fcp = performance.getEntriesByName("first-contentful-paint")[0];
+          return { ...window.__perf, ttfb: nav.responseStart, fcp: fcp?.startTime ?? null, load: nav.loadEventEnd };
+        });
+        if (run >= 0) samples[label].push({ ...m, status: response?.status(), final: new URL(page.url()).pathname, transferKB: transfer / 1024, jsKB: js / 1024, requests });
+        await context.close();
+      }
     }
-    const pick = key => median(samples.map(s => s[key]));
-    result[`${vpName} ${path}`] = { final: samples[0]?.final, status: samples[0]?.status, ttfb: pick("ttfb"), fcp: pick("fcp"), lcp: pick("lcp"), heading: pick("heading"), load: pick("load"),
-      cls: pick("cls"), longTasks: pick("longTasks"), longTaskMs: pick("longTaskMs"), transferKB: pick("transferKB"), jsKB: pick("jsKB"), requests: pick("requests") };
-    const r = result[`${vpName} ${path}`];
-    console.log(`${vpName.padEnd(7)} ${path.padEnd(22)} ttfb ${r.ttfb?.toFixed(0)} fcp ${r.fcp?.toFixed(0)} lcp ${r.lcp?.toFixed(0)} heading ${r.heading?.toFixed(0)} cls ${r.cls?.toFixed(3)} lt ${r.longTasks}/${r.longTaskMs?.toFixed(0)}ms xfer ${r.transferKB?.toFixed(0)}KB js ${r.jsKB?.toFixed(0)}KB ${r.final !== path ? `-> ${r.final}` : ""}`);
+    for (const { label } of targets) {
+      const pick = key => median(samples[label].map(s => s[key]));
+      const r = results[label][`${vpName} ${path}`] = { final: samples[label][0]?.final, status: samples[label][0]?.status, ttfb: pick("ttfb"), fcp: pick("fcp"), lcp: pick("lcp"), heading: pick("heading"), load: pick("load"),
+        cls: pick("cls"), longTasks: pick("longTasks"), longTaskMs: pick("longTaskMs"), transferKB: pick("transferKB"), jsKB: pick("jsKB"), requests: pick("requests") };
+      console.log(`${label.padEnd(8)} ${vpName.padEnd(7)} ${path.padEnd(22)} ttfb ${r.ttfb?.toFixed(0)} fcp ${r.fcp?.toFixed(0)} lcp ${r.lcp?.toFixed(0)} heading ${r.heading?.toFixed(0)} cls ${r.cls?.toFixed(3)} lt ${r.longTasks}/${r.longTaskMs?.toFixed(0)}ms xfer ${r.transferKB?.toFixed(0)}KB js ${r.jsKB?.toFixed(0)}KB ${r.final !== path ? `-> ${r.final}` : ""}`);
+    }
   }
 }
 await browser.close();
 mkdirSync(".qa", { recursive: true });
-writeFileSync(`.qa/perf-${label}.json`, JSON.stringify(result, null, 2));
+for (const { label } of targets) writeFileSync(`.qa/perf-${label}.json`, JSON.stringify(results[label], null, 2));
