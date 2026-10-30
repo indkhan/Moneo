@@ -23,8 +23,8 @@ it("lists transaction and balance cards with their count, open and filterable", 
     { id: "b", kind: "balance_set", title: "Cash is €40.00", detail: "", status: "failed" },
   ]);
   const html = await render();
-  expect(html).toContain("<details open=\"\" aria-label=\"Waiting for you\">");
-  expect(html).toContain("Waiting for you · 2");
+  expect(html).toMatch(/<details open="" aria-label="Waiting for you"/);
+  expect(html).toMatch(/Waiting for you<\/span><span[^>]*>2<\/span>/);
   expect(html).toContain("aria-label=\"Transaction proposal\"");
   expect(html).toContain("Spent €12.00 · Lunch");
   expect(html).toContain("Wallet");
