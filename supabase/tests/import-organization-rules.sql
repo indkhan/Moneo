@@ -19,7 +19,7 @@ begin
   begin
     perform public.save_organization_rule(workspace,'northstar market',merchant,category,false,0);
     raise exception 'Stale rule update accepted';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   result:=public.save_organization_rule(workspace,'northstar market',merchant,category,false,1);
   if result->>'version'<>'2' or exists(select 1 from public.organization_rules where id=rule and enabled) then raise exception 'Rule disable lost versioned intent'; end if;
   perform public.save_organization_rule(workspace,'northstar market',merchant,category,true,2);

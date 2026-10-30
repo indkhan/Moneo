@@ -32,7 +32,7 @@ begin
   begin
     perform public.undo_transaction_splits(set_id,0);
     raise exception 'Stale split undo accepted';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   perform public.undo_transaction_splits(set_id,1);
   if not exists(select 1 from public.effective_transactions where id=parent and amount_minor=-9007199254740993) or
      exists(select 1 from public.effective_transactions where parent_transaction_id=parent and id<>parent) then raise exception 'Undo failed effective parent restore'; end if;
@@ -40,7 +40,7 @@ begin
   begin
     perform public.undo_manual_transaction((select id from public.manual_transaction_entries where transaction_id=parent),0,2);
     raise exception 'Split historical evidence removed';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   perform set_config('request.jwt.claim.sub',other::text,true);
   begin
     perform public.split_transaction(parent,2,children,gen_random_uuid());

@@ -139,7 +139,7 @@ async function processImportBatch(importId: string, workspaceId: string, offset:
     const decisions = batchDecisions(candidateRowsSchema.parse(candidates));
     const result = await db.rpc("ingest_import_batch", { p_import_id: importId, p_workspace_id: workspaceId, p_run_version: runVersion, p_offset: offset, p_decisions: decisions });
     if (!result.error) return;
-    if (result.error.code !== "40001" || attempt === 2) throw new Error(result.error.message);
+    if (result.error.code !== "PT409" || attempt === 2) throw new Error(result.error.message);
   }
 }
 

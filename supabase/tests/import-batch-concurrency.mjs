@@ -56,7 +56,7 @@ try {
   assert(blocked, "Real cancellation must wait for the specific in-flight batch transaction"); assert(!acknowledged);
   assert.equal((await db`select id from public.source_transactions where import_id=${first}`).length, 0, "Uncommitted batch progress must remain invisible");
   release(); await posting; const stopped = await cancellation;
-  assert.equal((await overlappingRace)?.code, "40001", "Concurrent overlapping batch must reject its stale new decision after the account lock releases");
+  assert.equal((await overlappingRace)?.code, "PT409", "Concurrent overlapping batch must reject its stale new decision after the account lock releases");
   assert.equal(stopped.status, "canceled"); assert.equal((await db`select id from public.source_transactions where import_id=${first}`).length, 1);
   await assert.rejects(ingest(db, first), error => error.code === "57014");
   const resumed = await db.begin(async tx => { await tx`select set_config('request.jwt.claim.sub',${actor},true)`; await tx.unsafe("set local role authenticated"); return (await tx`select public.control_import(${first},'resume',${randomUUID()}) result`)[0].result; });
@@ -65,7 +65,7 @@ try {
   assert.equal((await db`select id from public.transactions where workspace_id=${workspace}`).length, 1);
   // Both workers may prefetch before another batch commits. The row core must
   // reject the stale new decision; a fresh overlap decision is review.
-  await assert.rejects(ingest(db, second), error => error.code === "40001");
+  await assert.rejects(ingest(db, second), error => error.code === "PT409");
   const [{ result: candidates }] = await db.unsafe(`select ${schema}.import_batch_candidates($1::uuid,$2::uuid,1,0) result`, [second, workspace]);
   assert.equal(candidates[0].candidates.length, 1); assert.equal(candidates[0].candidates[0].version, 0);
   await ingest(db, second, "review");

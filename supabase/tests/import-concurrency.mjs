@@ -120,7 +120,7 @@ try {
   };
   const overlap = await race(tx => overlapIngest(tx, overlapA, overlapSourceA, overlapTransaction),
     tx => overlapIngest(tx, overlapB, overlapSourceB, randomUUID()), "ingest_import_row");
-  assert.equal(overlap.error?.code, "40001", "Concurrent different files must recheck overlap after the first canonical commit");
+  assert.equal(overlap.error?.code, "PT409", "Concurrent different files must recheck overlap after the first canonical commit");
   assert.equal((await db`select count(*)::int count from public.transactions where workspace_id=${workspace} and description='Synthetic overlapping files'`)[0].count, 1);
   assert.equal((await db`select count(*)::int count from public.source_transactions where id=${overlapSourceB}`)[0].count, 0, "Rejected stale overlap must leave no source effects");
   await db.begin(async tx => {
@@ -137,7 +137,7 @@ try {
     await authenticated(tx);
     return (await tx`select public.undo_import(${imported},1,1) result`)[0].result;
   }, "undo_import");
-  assert.equal(undoAfterCorrection.error?.code, "40001", "Undo must wait for canonical correction, then report the retained audit conflict instead of deadlocking");
+  assert.equal(undoAfterCorrection.error?.code, "PT409", "Undo must wait for canonical correction, then report the retained audit conflict instead of deadlocking");
   assert.equal((await db`select count(*)::int count from public.transactions where id=${transaction}`)[0].count, 1);
   assert.equal((await db`select status from public.imports where id=${imported}`)[0].status, "completed");
   const archivedWrite = await race(async tx => {

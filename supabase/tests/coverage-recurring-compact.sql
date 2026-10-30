@@ -20,7 +20,7 @@ begin
  begin
    perform public.review_recurring_series_versions('confirmed',account,'Short merchant label','quarterly','EUR',stale,ids[1]);
    raise exception 'Compact stale versions accepted';
- exception when sqlstate '40001' then null; end;
+ exception when sqlstate 'PT409' then null; end;
  begin
    perform public.review_recurring_series_versions('confirmed',account,'Short merchant label','quarterly','EUR',jsonb_set(versions,'{2,id}',to_jsonb(alien::text)),ids[1]);
    raise exception 'Compact foreign source accepted';

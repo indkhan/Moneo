@@ -17,7 +17,7 @@ begin
   begin
     perform public.undo_transaction_link(link,jsonb_build_array(jsonb_build_object('id',debit,'version',0),jsonb_build_object('id',credit,'version',1)));
     raise exception 'Stale pair undo accepted';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   perform public.undo_transaction_link(link,jsonb_build_array(jsonb_build_object('id',debit,'version',1),jsonb_build_object('id',credit,'version',1)));
   if exists(select 1 from public.transactions where id in(debit,credit) and kind<>'ordinary') or exists(select 1 from public.effective_transactions where parent_transaction_id=debit and id<>debit) then raise exception 'Pair undo left active classifications or fee expenses'; end if;
   if not exists(select 1 from public.transaction_link_fees where link_id=link) then raise exception 'Undo destroyed fee source evidence'; end if;

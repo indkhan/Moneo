@@ -37,7 +37,7 @@ begin
     begin
       perform public.review_recurring_series('confirmed',account,'MNE014 '||cadence,cadence,'EUR',stale,ids[1]);
       raise exception 'Stale candidate evidence accepted';
-    exception when sqlstate '40001' then null; end;
+    exception when sqlstate 'PT409' then null; end;
     execute 'reset role';
     select version into assumption_version from public.financial_assumptions where id=series.assumption_id;
     execute 'set local role authenticated';

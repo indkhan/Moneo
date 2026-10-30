@@ -19,9 +19,9 @@ begin
   result:=public.reserve_goal_funds(goal,account,'8000',0,request);
   if public.reserve_goal_funds(goal,account,'8000',0,request)<>result then raise exception 'Reservation retry duplicated event'; end if;
   begin perform public.reserve_goal_funds(goal,account,'8000',1,request); raise exception 'Reservation retry changed expected version' using errcode='ZX001'; exception when sqlstate '22023' then null; end;
-  begin perform public.reserve_goal_funds(goal,account,'10',0,gen_random_uuid()); raise exception 'Stale reservation version accepted' using errcode='ZX001'; exception when sqlstate '40001' then null; end;
+  begin perform public.reserve_goal_funds(goal,account,'10',0,gen_random_uuid()); raise exception 'Stale reservation version accepted' using errcode='ZX001'; exception when sqlstate 'PT409' then null; end;
   second:=public.reserve_goal_funds(goal,account,'5000',1,gen_random_uuid());
-  begin perform public.undo_goal_reservation((result->>'eventId')::uuid,2); raise exception 'Older reservation undo accepted' using errcode='ZX001'; exception when sqlstate '40001' then null; end;
+  begin perform public.undo_goal_reservation((result->>'eventId')::uuid,2); raise exception 'Older reservation undo accepted' using errcode='ZX001'; exception when sqlstate 'PT409' then null; end;
   perform public.undo_goal_reservation((second->>'eventId')::uuid,2);
   perform public.undo_goal_reservation((result->>'eventId')::uuid,3);
   if not exists(select 1 from public.goal_allocations where goal_id=goal and account_id=account and amount_minor=0 and version=4) then raise exception 'Release lost continuous version/evidence'; end if;

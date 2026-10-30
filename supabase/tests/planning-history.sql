@@ -33,7 +33,7 @@ begin
   begin
     perform public.edit_assumption(assumption,1,'{"enabled":false}',gen_random_uuid());
     raise exception 'Stale edit accepted';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   begin
     perform public.edit_assumption(assumption,2,'{"source":"recurring_confirmed"}',gen_random_uuid());
     raise exception 'Unvalidated patch accepted';
@@ -53,7 +53,7 @@ begin
   begin
     perform public.undo_planning_event(edited,3);
     raise exception 'Undo crossed a later removal';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   perform public.undo_planning_event(removed,3);
   if not exists(select 1 from public.financial_assumptions where id=assumption and removed_at is null and enabled and version=4) then raise exception 'Removal undo failed'; end if;
   perform public.undo_planning_event(edited,4);

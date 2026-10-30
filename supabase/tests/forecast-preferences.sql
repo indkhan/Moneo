@@ -10,13 +10,13 @@ begin
  e:=public.edit_forecast_preferences(w,patch,0,r);
  if public.edit_forecast_preferences(w,patch,0,r)<>e then raise exception 'Retry must reuse preference event'; end if;
  if (select after->>'safety_buffer_minor' from public.forecast_preference_events where id=(e->>'eventId')::uuid)<>'9007199254740993' then raise exception 'Buffer history must preserve exact money'; end if;
- begin perform public.edit_forecast_preferences(w,patch||'{"uncertainty_bps":0}',0,gen_random_uuid()); raise exception 'Stale preference edit must fail'; exception when sqlstate '40001' then null; end;
+ begin perform public.edit_forecast_preferences(w,patch||'{"uncertainty_bps":0}',0,gen_random_uuid()); raise exception 'Stale preference edit must fail'; exception when sqlstate 'PT409' then null; end;
  begin perform public.edit_forecast_preferences(w,patch||'{"safety_buffer_minor":9007199254740993}',1,gen_random_uuid()); raise exception 'JSON number must not masquerade as exact money'; exception when sqlstate '22023' then null; end;
  begin perform public.edit_forecast_preferences(w,patch||'{"currency_code":"ZZZ"}',1,gen_random_uuid()); raise exception 'Unknown precision must fail'; exception when sqlstate '22023' then null; end;
  begin perform public.edit_forecast_preferences(w,patch||'{"spending_starts_on":"today"}',1,gen_random_uuid()); raise exception 'Relative date must fail'; exception when sqlstate '22023' then null; end;
  begin perform public.edit_forecast_preferences(w,patch||'{"spending_account_id":null}',1,gen_random_uuid()); raise exception 'Spending needs its account'; exception when check_violation then null; end;
  e2:=public.edit_forecast_preferences(w,patch||'{"safety_buffer_minor":"500"}',1,gen_random_uuid());
- begin perform public.undo_forecast_preferences((e->>'eventId')::uuid,2); raise exception 'Older change must not erase newer preferences'; exception when sqlstate '40001' then null; end;
+ begin perform public.undo_forecast_preferences((e->>'eventId')::uuid,2); raise exception 'Older change must not erase newer preferences'; exception when sqlstate 'PT409' then null; end;
  perform public.undo_forecast_preferences((e2->>'eventId')::uuid,2);
  perform public.undo_forecast_preferences((e->>'eventId')::uuid,3);
  if (select safety_buffer_minor from public.forecast_preferences where workspace_id=w)<>0 or (select daily_spending_minor from public.forecast_preferences where workspace_id=w)<>0 then raise exception 'Undo initial edit must restore disabled defaults'; end if;

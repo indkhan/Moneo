@@ -12,7 +12,7 @@ begin
   begin
     perform public.edit_wealth_item(item,0,record||'{"name":"Changed"}',false,gen_random_uuid());
     raise exception 'Stale wealth edit accepted';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   begin
     perform public.edit_wealth_item(item,1,record||'{"amount_minor":"1"}',false,gen_random_uuid());
     raise exception 'Inconsistent holding valuation accepted';
