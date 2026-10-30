@@ -18,7 +18,7 @@ export const loadAgentBriefing = cache(async (db: SupabaseClient, workspaceId: s
   const run = latest.data;
   const [tasks, open] = run ? await Promise.all([
     db.from("agent_tasks").select("agent, status, summary").eq("workspace_id", workspaceId).eq("run_id", run.id),
-    db.from("agent_proposals").select("kind").eq("workspace_id", workspaceId).eq("run_id", run.id).eq("status", "proposed").limit(500),
+    db.from("agent_proposals").select("kind").eq("workspace_id", workspaceId).eq("run_id", run.id).eq("status", "proposed").eq("kind", "budget").limit(500),
   ]) : [null, null];
   return { run, tasks, open };
 });
@@ -41,7 +41,7 @@ export async function AgentBriefing({ db, workspaceId, timeZone = "UTC" }: { db:
     </li>; })}</ul>
     <div className="mt-auto">
       {running ? <Link href={`/ai/agents/${run.id}`} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-ai text-[13px] font-medium text-[#0f1011] hover:opacity-90">Watch live<ArrowRight className="size-4" aria-hidden="true" /></Link>
-        : proposals > 0 ? <Link href={`/ai/agents/${run!.id}`} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary text-[13px] font-medium text-primary-foreground hover:opacity-90">Review {proposals} proposal{proposals === 1 ? "" : "s"}<ArrowRight className="size-4" aria-hidden="true" /></Link>
+        : proposals > 0 ? <Link href={`/ai/agents/${run!.id}`} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary text-[13px] font-medium text-primary-foreground hover:opacity-90">Review {proposals} spending limit{proposals === 1 ? "" : "s"}<ArrowRight className="size-4" aria-hidden="true" /></Link>
         : <StartAgentRun label={run ? "Run again" : "Run agent team"} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-input text-[13px] font-medium hover:bg-muted disabled:opacity-50" />}
     </div>
   </section>;

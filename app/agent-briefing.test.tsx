@@ -11,8 +11,8 @@ const db = (run: unknown, proposals: unknown[] = [], tasks: unknown[] = []) => (
 
 it("shows each agent's result from the latest run and links to its proposals", async () => {
   const run = { id: "r1", status: "completed", created_at: "2026-10-26T06:00:00Z", finished_at: "2026-10-26T06:04:12Z" };
-  const html = renderToStaticMarkup(await AgentBriefing({ db: db(run, [{ kind: "finding" }, { kind: "budget" }], [{ agent: "categorizer", status: "done", summary: "14 proposals · 2 new rules" }]), workspaceId: "w" }));
-  for (const text of ["Agent team", "last run 06:00 · 4m 12s", "Categorizer", "14 proposals · 2 new rules", "Recurring detective", "Insight writer", "Review 2 proposals", 'href="/ai/agents/r1"']) expect(html).toContain(text);
+  const html = renderToStaticMarkup(await AgentBriefing({ db: db(run, [{ kind: "budget" }, { kind: "budget" }], [{ agent: "categorizer", status: "done", summary: "14 proposals · 2 new rules" }]), workspaceId: "w" }));
+  for (const text of ["Agent team", "last run 06:00 · 4m 12s", "Categorizer", "14 proposals · 2 new rules", "Recurring detective", "Insight writer", "Review 2 spending limits", 'href="/ai/agents/r1"']) expect(html).toContain(text);
   expect(html).not.toContain("Run again");
 });
 
