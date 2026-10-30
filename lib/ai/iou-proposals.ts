@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { minorDigits } from "@/lib/finance/fx";
-import { iouCreateSchema, repaymentMatches, type IouItem } from "@/lib/finance/iou";
+import { iouCreateSchema, loanPayouts, parseIouName, repaymentMatches, type IouItem, type LoanStart } from "@/lib/finance/iou";
 import { wealthAmount } from "@/lib/finance/wealth";
 
 type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string }; chatRequestId?: string };
@@ -79,6 +79,28 @@ export async function proposeRepayments({ supabase, workspace, chatRequestId }: 
   // A concurrent run inserted the same match first; its proposals are the ones to show.
   if (inserted.error && inserted.error.code !== "23505") throw new Error(inserted.error.message);
   return inserted.data ?? [];
+}
+
+/**
+ * Ids of the bank transactions that paid out a recorded IOU (e.g. the transfer that lent Bilal €1,000). Each IOU is read as
+ * first recorded in Wealth, so a later repayment or a full settlement does not lose its payout.
+ */
+export async function loadLoanPayoutIds(supabase: SupabaseClient, workspaceId: string): Promise<Set<string>> {
+  const events = await supabase.from("wealth_events").select("item_id, after").eq("workspace_id", workspaceId).is("undone_at", null).order("created_at").limit(2000);
+  if (events.error) throw new Error(events.error.message);
+  const loans = new Map<string, LoanStart>();
+  for (const { item_id, after } of (events.data ?? []) as { item_id: string; after: { name?: string; amount_minor?: string | number; currency_code?: string; as_of?: string } }[]) {
+    const parsed = parseIouName(String(after?.name ?? ""));
+    if (loans.has(item_id) || !parsed || after.amount_minor === undefined || !after.currency_code || !after.as_of) continue;
+    const amount = BigInt(after.amount_minor);
+    loans.set(item_id, { ...parsed, amountMinor: amount < 0n ? -amount : amount, currencyCode: after.currency_code, date: String(after.as_of).slice(0, 10) });
+  }
+  if (!loans.size) return new Set();
+  const amounts = [...new Set([...loans.values()].map(loan => (loan.direction === "lent" ? -loan.amountMinor : loan.amountMinor).toString()))];
+  const rows = await supabase.from("transactions").select("id, description, amount_minor::text, currency_code, posted_on").eq("workspace_id", workspaceId).neq("status", "voided")
+    .in("amount_minor", amounts.slice(0, 200)).limit(2000);
+  if (rows.error) throw new Error(rows.error.message);
+  return loanPayouts([...loans.values()], rows.data ?? []);
 }
 
 /** Open standalone IOU proposals, oldest first. */

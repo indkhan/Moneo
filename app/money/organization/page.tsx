@@ -2,6 +2,7 @@ import Link from 'next/link';
 import {z} from 'zod';
 import {requireWorkspace} from '@/lib/auth';
 import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
+import {loadLoanPayoutIds} from '@/lib/ai/iou-proposals';
 import {formatMoney} from '@/lib/finance/format';
 import {versionedRows} from '../transactions/input';
 import {dismissReview,toggleRule} from './actions';
@@ -17,6 +18,9 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
  let query=supabase.from('transactions').select(importId?'id,version,posted_on,transaction_sources!inner(source_transactions!inner(import_id))':'id,version,posted_on').eq('workspace_id',workspace.id).neq('status','voided').neq('kind','transfer');
  query=query.or(cursor?`and(or(merchant_id.is.null,category_id.is.null),or(posted_on.lt.${cursor.date},and(posted_on.eq.${cursor.date},id.lt.${cursor.id})))`:'merchant_id.is.null,category_id.is.null');
  if(importId)query=query.eq('transaction_sources.source_transactions.import_id',importId);
+ // A loan's payout is recorded in Wealth; it is not spending to organize.
+ const loans=await loadLoanPayoutIds(supabase,workspace.id).catch(()=>new Set<string>());
+ if(loans.size)query=query.not('id','in',`(${[...loans].join(',')})`);
  const [queue,merchants,categories,rules,reviews,selectedReview]=await Promise.all([
   query.order('posted_on',{ascending:false}).order('id',{ascending:false}).limit(51),
   supabase.from('merchants').select('id,name').eq('workspace_id',workspace.id).order('name').limit(501),
