@@ -74,7 +74,7 @@ test("owned Stop and reload distinguish request, worker acknowledgment and uncon
     if (workspace && user) {
       await db.begin(async tx => {
         expect((await tx`select owner_id from public.workspaces where id=${workspace!}`)[0]?.owner_id).toBe(user);
-        for (const table of ["saved_analyses", "background_jobs", "correction_events", "transactions", "accounts", "workspace_settings"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
+        for (const table of ["saved_analyses", "background_jobs", "correction_events", "transactions", "accounts", "workspace_settings", "categories"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
         await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
       });
       expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();

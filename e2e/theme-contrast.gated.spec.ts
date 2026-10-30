@@ -189,7 +189,7 @@ test("money and import text stays readable in persisted light, dark and system t
   } finally {
     await context.close().catch(() => {});
     await db.begin(async (tx) => {
-      for (const table of ["correction_events", "money_metadata_events", "transactions", "transaction_views", "accounts"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace.id}`;
+      for (const table of ["correction_events", "money_metadata_events", "transactions", "transaction_views", "accounts", "categories"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace.id}`;
       await tx`delete from public.workspaces where id=${workspace.id} and owner_id=${user}`;
     });
     expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();

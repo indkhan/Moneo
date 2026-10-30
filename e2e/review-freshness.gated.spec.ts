@@ -59,7 +59,7 @@ test("saved review stays historical while balance corrections and scopes change 
   } finally {
     await context.close().catch(() => {});
     await db.begin(async tx => {
-      for (const table of ["saved_analyses", "background_jobs", "balance_snapshots", "accounts"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace.id}`;
+      for (const table of ["saved_analyses", "background_jobs", "balance_snapshots", "accounts", "categories"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace.id}`;
       await tx`delete from public.workspaces where id=${workspace.id} and owner_id=${user}`;
     });
     expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();

@@ -91,7 +91,7 @@ test("scenario comparison, edits, removal and undo preserve actual cash", async 
   } finally {
     await context.close().catch(() => {});
     await db.begin(async tx => {
-      for (const table of ["scenario_events", "scenario_overrides", "scenarios", "forecast_preference_events", "forecast_preferences", "balance_snapshots", "accounts"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace}`;
+      for (const table of ["scenario_events", "scenario_overrides", "scenarios", "forecast_preference_events", "forecast_preferences", "balance_snapshots", "accounts", "categories"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace}`;
       await tx`delete from public.workspaces where id=${workspace} and owner_id=${user}`;
     });
     expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();
