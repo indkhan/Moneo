@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { VoiceCallController, answerCards, spokenAnswer, type CallAsk } from "./voice-call-controller";
+import { VoiceCallController, answerCards, looksLikeRequest, spokenAnswer, type CallAsk } from "./voice-call-controller";
 
 const card = "11111111-1111-4111-8111-111111111111";
 function setup() {
@@ -192,4 +192,26 @@ it("leaves sound tags out of captions, even when they arrive in pieces between t
   call.handle({ type: "session.output_transcript.delta", delta: "coff" });
   call.handle({ type: "session.output_transcript.delta", delta: "] I'm good." });
   expect(call.captions.map(caption => caption.text)).toEqual(["Sure. ", "are", "I'm good."]);
+});
+
+it("starts a request GPT-Live agreed to but never handed off, once the user has been quiet", async () => {
+  const { call, asks, say, delegate, advance } = setup();
+  say("Where did I spend my money this month?"); delegate("d1");
+  say("Can you also check where I spent my money last month");
+  await advance(3000);
+  expect(asks).toHaveLength(1);
+  await advance(1500);
+  expect(asks.map(([payload]) => payload.message)).toEqual(["Where did I spend my money this month?", "Can you also check where I spent my money last month"]);
+  expect(call.tasks[1].delegationId).toBe("d1");
+  // GPT-Live hands it off after all: the running request answers through that hand-off instead of starting again.
+  delegate("d2");
+  expect(asks).toHaveLength(2);
+  expect(call.tasks[1].delegationId).toBe("d2");
+});
+
+it("tells requests from small talk among unclaimed words", () => {
+  expect(looksLikeRequest("Hey, how are you doing today?")).toBe(false);
+  expect(looksLikeRequest("Mm uh, can you also tell me how are you")).toBe(false);
+  expect(looksLikeRequest("Can you also check where all did I spend my money last month")).toBe(true);
+  expect(looksLikeRequest("btw I spent 12 at Rewe")).toBe(true);
 });
