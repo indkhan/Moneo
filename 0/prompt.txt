@@ -1,0 +1,14 @@
+the application it's really buggy, especially the home view, IOU, other suggestions, the recurring suggestion, and even the recurring page is a bit buggy. Try to find all the places where it is buggy and report to me all the bugs that are there. 
+Another problem is that when it says, "Review these transactions and select," it is not very clear. For each different transaction there should be a toggle which shows more detail about the transaction so the user can already decide from there itself and choose. He does not have to go to the organization page.
+
+If he goes to the organization page, selects something, and then assigns something to something, he then has to approve it again. Only one time is enough. Make the organization page simple as well. Make the recurring page simple as well.
+
+From the main overview remove all the buggy parts. There were a few bugs, for example, when I was using it from the phone and TK. When I said, "Yeah it is recurring," it did not accept that and it said something about Cloudflare or something. I don't remember. I think the reason could be that the ticket took a different amount of money and a different amount of time. Because of that every time you save a recurring, it should open that thing where you select how much, which date, and all of those things.
+
+The same thing: if I go to the recurring page, I can edit anything which I have already selected. For the things which I have already given my opinion on, have them in a toggle. Don't show them to me unless and until I want to see them. Find things like this and report to me so that we can fix all of it one by one.
+
+---
+
+Find each thing and just don't report me. Fix it as well.
+
+At the very end, once you have gone through each of these things (the whole overview page, the organization, recording, and all of these things, each and every single thing), you have opened the web, tested it, and fixed it. Make a PR in which you write down all the things you have fixed, and push the PR towards the main.
