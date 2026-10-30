@@ -21,7 +21,10 @@ function setup() {
   const say = (text: string, endMs?: number) => call.handle({ type: "session.input_transcript.delta", delta: text, end_ms: endMs });
   const delegate = (id: string, offsetMs?: number) => call.handle({ type: "session.delegation.created", offset_ms: offsetMs, delegation: { id } });
   const answer = async (message: string, text: string, status = 200) => { pending[message]({ ok: status < 400, status, body: status < 400 ? { answer: text, conversationId: "c" } : { error: "x" } }); await new Promise(resolve => setTimeout(resolve)); };
-  return { call, sent, asks, advance, say, delegate, answer, onAnswer };
+  // Time passes in small steps, so retries the controller schedules run too; Moneo's voice is metered every 100 ms.
+  const wait = async (ms: number) => { for (let time = 0; time < ms; time += 100) await advance(100); };
+  const moneoTalks = async (ms: number) => { for (let time = 0; time < ms; time += 100) { call.heardMoneo(); await advance(100); } };
+  return { call, sent, asks, advance, wait, moneoTalks, say, delegate, answer, onAnswer };
 }
 
 it("turns each delegation into a call request with the words since the previous one", async () => {
@@ -39,17 +42,20 @@ it("turns each delegation into a call request with the words since the previous 
 });
 
 it("says the first finished result first, then the next once Moneo has said it", async () => {
-  const { call, sent, say, delegate, answer, advance, onAnswer } = setup();
+  const { sent, say, delegate, answer, wait, moneoTalks, onAnswer } = setup();
   say("Netto?"); delegate("d1"); say("Rent?"); delegate("d2");
-  await advance(2000);
+  await wait(2000);
   await answer("Rent?", "Rent is **EUR 850.00** on Nov 1.");
-  await answer("Netto?", `I spent it.\n\n\`\`\`moneo-proposal\n${card}\n\`\`\``);
+  await answer("Netto?", `I spent it.
+
+\`\`\`moneo-proposal
+${card}
+\`\`\``);
   const spoken = () => sent.filter(event => event.type === "session.commentary.append");
   expect(spoken()).toHaveLength(1);
-  call.handle({ type: "session.output_transcript.delta", delta: "Rent is 850 on Nov 1." });
-  await advance(300);
+  await moneoTalks(2000);
   expect(spoken()).toHaveLength(1);
-  await advance(500); await advance(300);
+  await wait(2700);
   expect(spoken()).toEqual([
     { type: "session.commentary.append", delegation_id: "d2", content: 'Result for "Rent?": Rent is EUR 850.00 on Nov 1. Still working on "Netto?".' },
     { type: "session.commentary.append", delegation_id: "d1", content: 'Result for "Netto?": I spent it. 1 card on screen to tap; nothing is saved until then.' },
@@ -133,48 +139,48 @@ it("briefs each request with the call so far and what it already answered", asyn
 });
 
 it("asks Moneo to finish a result the user cut off, after it has answered them, before the next result", async () => {
-  const { call, sent, say, delegate, answer, advance } = setup();
+  const { sent, say, delegate, answer, wait, moneoTalks } = setup();
   say("Analyze September?"); delegate("d1"); say(" Total?"); delegate("d2");
   await answer("Analyze September?", "You spent EUR 1607.37; insurance was highest.");
   await answer("Total?", "EUR 1607.37.");
-  await advance(1600); await advance(300);
+  await wait(1600);
   const spoken = () => sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content));
-  call.handle({ type: "session.output_transcript.delta", delta: "You spent 1607" });
-  await advance(100);
+  expect(spoken()).toHaveLength(1);
+  await moneoTalks(1000);
+  // GPT-Live goes quiet the moment the user cuts in; their words are transcribed a second later.
+  await wait(1000);
   say("wait, who did I lend to?"); delegate("d3");
-  await advance(800);
-  call.handle({ type: "session.output_transcript.delta", delta: "Sure, checking." });
-  await advance(800); await advance(300);
+  await wait(1600);
+  await moneoTalks(800);
+  await wait(800);
   expect(spoken()).toHaveLength(2);
   expect(spoken()[1]).toMatch(/^The user talked over you while you were giving this result\. .*Result for "Analyze September\?": You spent EUR 1607\.37/);
-  call.handle({ type: "session.output_transcript.delta", delta: "Insurance was highest." });
-  await advance(800); await advance(300);
+  await moneoTalks(1500);
+  await wait(2700);
   expect(spoken()[2]).toContain('Result for "Total?"');
 });
 
 it("does not resume over a short mm-hm", async () => {
-  const { call, sent, say, delegate, answer, advance } = setup();
+  const { sent, say, delegate, answer, wait, moneoTalks } = setup();
   say("Rent?"); delegate("d1");
   await answer("Rent?", "EUR 850.");
-  await advance(800);
-  call.handle({ type: "session.output_transcript.delta", delta: "Rent is" });
-  await advance(100);
+  await wait(1600);
+  await moneoTalks(500);
   say("mm-hm");
-  await advance(4000); await advance(300);
+  await wait(5000);
   expect(sent.filter(event => event.type === "session.commentary.append")).toHaveLength(1);
 });
 
-it("notices a cut-off by when the user started talking, though their words are transcribed late", async () => {
-  const { call, sent, say, delegate, answer, advance } = setup();
-  say("Spending this month?"); delegate("d1");
-  await answer("Spending this month?", "Housing EUR 355.00, groceries EUR 327.30, insurance EUR 144.31.");
-  await advance(2000);
-  call.handle({ type: "session.output_transcript.delta", delta: "Housing 355, groceries 327.30,", start_ms: 10_000, end_ms: 12_000 });
-  // The user cut in at 11.8 s; their words arrive 1.5 s later, after GPT-Live went quiet and said "mm-hm".
-  await advance(1500);
-  call.handle({ type: "session.input_transcript.delta", delta: "By the way, who has my money?", start_ms: 11_800, end_ms: 13_000 });
-  call.handle({ type: "session.output_transcript.delta", delta: "Mm-hm.", start_ms: 13_100, end_ms: 13_300 });
-  delegate("d2");
-  await advance(3000); await advance(300); await advance(300);
-  expect(sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content)).at(-1)).toMatch(/^The user talked over you.*Housing EUR 355\.00/);
+it("waits for Moneo's voice, not its transcript, before handing over the next result", async () => {
+  const { call, sent, say, delegate, answer, wait, moneoTalks } = setup();
+  say("This month?"); delegate("d1"); say(" September?"); delegate("d2");
+  await answer("This month?", "Housing EUR 355.00, groceries EUR 327.30.");
+  await answer("September?", "Bilal EUR 1011.34.");
+  await wait(1600);
+  // The whole transcript arrives at once, well ahead of the voice saying it.
+  call.handle({ type: "session.output_transcript.delta", delta: "Housing 355, groceries 327.30." });
+  await moneoTalks(4000);
+  expect(sent.filter(event => event.type === "session.commentary.append")).toHaveLength(1);
+  await wait(2700);
+  expect(sent.filter(event => event.type === "session.commentary.append")).toHaveLength(2);
 });

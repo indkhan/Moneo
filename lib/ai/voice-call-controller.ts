@@ -5,7 +5,7 @@ export type CallTask = { requestId: string; text: string; step: string; status: 
 export type CallAsk = (payload: { conversationId: string; requestId: string; message: string; context: Record<string, unknown> }, onEvent: (event: ChatStreamEvent) => void)
   => Promise<{ ok: boolean; status?: number; body: { error?: string } & Partial<ChatAnswer> }>;
 
-type ServerEvent = { type: string; delta?: string; start_ms?: number; end_ms?: number; offset_ms?: number | null; delegation?: { id: string }; error?: { message?: string }; message?: string };
+type ServerEvent = { type: string; delta?: string; end_ms?: number; offset_ms?: number | null; delegation?: { id: string }; error?: { message?: string }; message?: string };
 type Deps = {
   conversationId: string;
   /** Sends a client event on the oai-events data channel. */
@@ -14,6 +14,8 @@ type Deps = {
   /** Called when a task's answer is saved in the chat, so the chat view can show it. */
   onAnswer?: (question: string, answer: ChatAnswer) => void;
   onChange: () => void;
+  /** Notes what the call decided and when, for debugging a call. */
+  log?: (message: string) => void;
   now?: () => number;
   schedule?: (run: () => void, ms: number) => unknown;
   newId?: () => string;
@@ -42,7 +44,10 @@ export function spokenAnswer(answer: string, max = 1500) {
 
 export const SPEAKING_HOLD_MS = 700;
 export const SLOW_TASK_MS = 8000;
-/** Longest wait for Moneo to say one result before the next is handed over anyway. */
+/** Moneo silent this long after it began saying a result means it said all of it. The user's words are transcribed
+ * about a second late, so words arriving sooner than this were said over the result. */
+export const RESULT_DONE_MS = 2500;
+/** Longest wait for Moneo to start saying a result before the next is handed over anyway. */
 export const RESULT_TURN_MS = 20_000;
 /** A pause this long ends the user's turn for handing over a result; people pause mid-sentence ("uh… like…"). */
 export const USER_PAUSE_MS = 1500;
@@ -63,14 +68,14 @@ export class VoiceCallController {
   private answers = new Map<string, string>();
   private lastUserSpeech = -Infinity;
   private lastAssistantSpeech = -Infinity;
+  /** When Moneo was last audible in the call's audio. Transcript text runs ahead of the voice, so once the audio is
+   * metered it, not the transcript, says whether Moneo is talking. */
+  private lastAudible = -Infinity;
+  private metered = false;
   private outbox: { delegationId: string | null; content: string }[] = [];
   private flushing = false;
-  /** When the result being said was handed over, until Moneo has said it. */
-  private saying: number | null = null;
-  /** The result Moneo is saying now, so an interruption can be noticed. */
-  private current: { delegationId: string | null; content: string; spoke: boolean } | null = null;
-  /** Where Moneo's last spoken words ended, on the session's audio clock. */
-  private lastOutputEnd = -Infinity;
+  /** The result Moneo was last handed and when, until it has said all of it or was talked over. */
+  private current: { delegationId: string | null; content: string; at: number } | null = null;
   /** A result the user talked over, with what they said since, until Moneo is asked to finish it. */
   private cut: { delegationId: string | null; content: string; words: string } | null = null;
   private captionId = 0;
@@ -86,20 +91,31 @@ export class VoiceCallController {
 
   get running() { return this.tasks.filter(task => task.status === "running"); }
   get cards() { return this.tasks.flatMap(task => task.cards); }
+  /** When Moneo last made a sound: its metered voice once there is one, else its transcript. */
+  private get lastMoneo() { return this.metered ? this.lastAudible : this.lastAssistantSpeech; }
   /** Someone is talking right now. */
   speaking(by: "user" | "any" = "any") {
-    const last = by === "user" ? this.lastUserSpeech : Math.max(this.lastUserSpeech, this.lastAssistantSpeech);
+    const last = by === "user" ? this.lastUserSpeech : Math.max(this.lastUserSpeech, this.lastMoneo);
     return this.now() - last < SPEAKING_HOLD_MS;
+  }
+  /** Called while Moneo's voice is audible in the call. */
+  heardMoneo() { this.metered = true; this.lastAudible = this.now(); }
+
+  /** Whether Moneo has said the result it was handed: it began, then went quiet with nobody talking over it. */
+  private resultSaid() {
+    const current = this.current;
+    if (!current) return true;
+    const began = this.lastMoneo > current.at;
+    return began ? this.now() - this.lastMoneo >= RESULT_DONE_MS : this.now() - current.at > RESULT_TURN_MS;
   }
 
   handle(event: ServerEvent) {
     switch (event.type) {
       case "session.input_transcript.delta":
-        // Talking while Moneo says a result cuts it off: GPT-Live stops, and the rest would be lost. The user's words
-        // are transcribed late, so their start on the audio clock, not their arrival, tells whether Moneo was still talking.
-        if (this.current?.spoke && (event.start_ms !== undefined && Number.isFinite(this.lastOutputEnd)
-          ? event.start_ms <= this.lastOutputEnd + 300 : this.now() - this.lastAssistantSpeech < 2500)) {
+        // Talking over a result GPT-Live is saying stops it, and the rest would be lost.
+        if (this.current && this.lastMoneo > this.current.at && !this.resultSaid()) {
           this.cut = { delegationId: this.current.delegationId, content: this.current.content, words: "" };
+          this.deps.log?.(`cut off: ${this.current.content.slice(0, 60)}`);
           this.current = null;
           this.resume();
         }
@@ -109,11 +125,6 @@ export class VoiceCallController {
         this.caption("user", event.delta ?? "");
         break;
       case "session.output_transcript.delta":
-        // Moneo's first words after a hand-off start the result; a long pause after them means it was said in full.
-        if (this.current?.spoke && (event.start_ms !== undefined && Number.isFinite(this.lastOutputEnd)
-          ? event.start_ms - this.lastOutputEnd > 1500 : this.now() - this.lastAssistantSpeech > 1500)) this.current = null;
-        else if (this.current) this.current.spoke = true;
-        if (event.end_ms !== undefined) this.lastOutputEnd = event.end_ms;
         this.lastAssistantSpeech = this.now();
         this.caption("assistant", event.delta ?? "");
         break;
@@ -211,7 +222,8 @@ export class VoiceCallController {
     this.schedule(() => {
       const task = this.tasks.find(item => item.requestId === requestId);
       if (task?.status !== "running") return;
-      if (this.speaking()) return this.watchSlow(requestId, 1000);
+      // Never in the middle of saying a result, or before one waiting to be said.
+      if (this.speaking() || this.current || this.cut || this.outbox.length) return this.watchSlow(requestId, 1000);
       this.deps.send({ type: "session.commentary.append", delegation_id: task.delegationId, content: `Still working on "${task.text.slice(0, 120)}" (${task.step}). Say so in a few words${task.delegationId ? "" : ", in the language they typed"}.` });
     }, delay);
   }
@@ -228,16 +240,15 @@ export class VoiceCallController {
    */
   private flush() {
     if (this.flushing || !this.outbox.length || this.cut) return;
-    const said = this.saying !== null && (this.lastAssistantSpeech >= this.saying || this.now() - this.saying > RESULT_TURN_MS);
-    if (this.speaking() || this.now() - this.lastUserSpeech < USER_PAUSE_MS || (this.saying !== null && !said)) {
+    if (this.speaking() || this.now() - this.lastUserSpeech < USER_PAUSE_MS || !this.resultSaid()) {
       this.flushing = true;
       this.schedule(() => { this.flushing = false; this.flush(); }, 300);
       return;
     }
     const { delegationId, content } = this.outbox.shift()!;
     const others = this.running.map(item => `"${item.text.slice(0, 80)}"`);
-    this.saying = this.now();
-    this.current = { delegationId, content, spoke: false };
+    this.current = { delegationId, content, at: this.now() };
+    this.deps.log?.(`handed over: ${content.slice(0, 60)}`);
     this.deps.send({ type: "session.commentary.append", delegation_id: delegationId, content: others.length ? `${content} Still working on ${others.join(", ")}.` : content });
     this.flush();
   }
@@ -250,11 +261,13 @@ export class VoiceCallController {
     this.schedule(() => {
       const cut = this.cut;
       if (!cut) return;
-      if (this.speaking() || (this.lastAssistantSpeech <= this.lastUserSpeech && this.now() - this.lastUserSpeech < RESUME_AFTER_MS)) return this.resume();
+      if (this.speaking() || this.now() - this.lastUserSpeech < USER_PAUSE_MS
+        || (this.lastMoneo <= this.lastUserSpeech && this.now() - this.lastUserSpeech < RESUME_AFTER_MS)) return this.resume();
       this.cut = null;
-      if (cut.words.trim().split(/\s+/).length >= 3) this.outbox.unshift({ delegationId: cut.delegationId,
+      const words = cut.words.trim().split(/\s+/).length;
+      this.deps.log?.(words >= 3 ? "resuming the cut-off result" : "not resuming: only a backchannel");
+      if (words >= 3) this.outbox.unshift({ delegationId: cut.delegationId,
         content: `The user talked over you while you were giving this result. If you hadn't finished it, finish the part you hadn't said yet, without repeating what you already said; if you had, or they asked you to stop or skip it, say nothing more about it. ${cut.content}` });
-      this.saying = null;
       this.flush();
     }, 300);
   }

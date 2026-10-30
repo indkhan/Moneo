@@ -59,6 +59,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       } finally { live.aborts.delete(payload.requestId); }
     };
     return new VoiceCallController({ conversationId, ask, onChange: render, onAnswer: (question, answer) => live.onAnswer?.(question, answer),
+      log: process.env.NODE_ENV === "production" ? undefined : message => console.debug(`[call ${new Date().toISOString().slice(11, 23)}] ${message}`),
       send: event => { if (live.channel?.readyState === "open") live.channel.send(JSON.stringify(event)); } });
   });
 
@@ -110,9 +111,13 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
         .then(response => { if (response.ok) finished?.(); }, () => {});
     }
     connect().catch(cause => { if (!closed) { setStatus("error"); setError(failure(cause)); } });
+    // Moneo's voice, metered: what the user actually hears decides when a result has been said.
+    const buffer = new Uint8Array(512);
+    const meter = setInterval(() => { if (level(live.moneoLevel, buffer) > 0.02) controller.heardMoneo(); }, 100);
     document.addEventListener("visibilitychange", lock);
     return () => {
       closed = true;
+      clearInterval(meter);
       saveRecord();
       document.removeEventListener("visibilitychange", lock);
       try { if (live.channel?.readyState === "open") live.channel.send(JSON.stringify({ type: "session.close" })); } catch { /* already closed */ }
