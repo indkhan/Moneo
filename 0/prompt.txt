@@ -1,0 +1,65 @@
+Act as the test sub-agent for this task.
+
+Repo: Moneo (Next.js 16 + React 19 + Supabase personal-finance app). Read AGENTS.md first and follow it. Copy the git-ignored `C:\codebases\Moneo\.env` into your checkout; never print secrets. Use ports 3100 and above, because others may be running dev servers on 3000/3001. `scripts/e2e-auth.mjs` and Playwright honor `E2E_BASE_URL`; check `playwright.config.ts` and set `baseURL`/port via env if needed, without breaking the default.
+
+## Goal
+This branch (`t3/voice-finance-agent`) adds a voice feature on top of `main`:
+- Overview "Waiting for you" cards
+- chat and artifact runs that keep going in the background
+- the mic with live transcription
+- a GPT-Live voice call in chat
+- the call summary card, voice settings and the voice call model
+
+Before the user merges it, make sure **the app is still fast and smooth** and **nothing regressed**. Measure, find regressions against `main`, and fix them.
+
+## Do
+1. **Production builds of both:** `npm run build && npx next start -p 3101` for this branch, and the same for `origin/main` in a temporary `git worktree` of origin/main on port 3102. Don't touch `C:\codebases\Moneo`. Sign the QA user in with `node --env-file=.env scripts/e2e-auth.mjs` (with `E2E_BASE_URL`).
+2. **Measure each page** on both builds with a Playwright script: TTFB, FCP, LCP, total transfer, JS bytes, and time until the main content is visible. Run 3 times, take the median, desktop and mobile viewport. Pages:
+   - Overview `/` (watch the "Waiting for you" section: it runs recurring detection before rendering; check whether it delays the page or streams under Suspense)
+   - `/ai` chat
+   - the Ask Moneo panel
+   - `/ai/artifacts`
+   - `/money` pages
+   - `/plan`
+   - `/settings`
+   - `/ai/activity`
+3. **Measure interactions:**
+   - chat time to first token and to the full answer for a simple question, before and after;
+   - the cost of the new running-request polling (every 3 s) and of `loadConversation`'s extra query;
+   - mic tap to recording;
+   - call button to "live" and first spoken words (`scripts/voice-call-check.mjs` logs timings; extend if needed).
+
+   Check that background polling stops when nothing is running and when the tab is hidden.
+4. **Look for smoothness problems:** long tasks over 50 ms, layout shift (CLS) from new sections (Waiting for you, mic UI, call card), unnecessary re-renders while transcripts stream (React profiler or performance marks), and the bundle size of chat routes, since voice code should be lazy-loaded and not add weight to pages that don't use it.
+5. **Fix what you find**, simplest first: lazy-load voice and call code, stream slow sections, add missing indexes for new queries (new migration files only; apply with `npx supabase db push --db-url "$SUPABASE_DB_URL"`; the latest version is `202610300006`), debounce or limit polling.
+6. **Regression run:**
+   - `npm test`, `npm run lint`, `npm run build`;
+   - then the full gated Playwright suite: `node --env-file=.env scripts/e2e-auth.mjs --reset` first, as AGENTS.md says; this only empties the QA workspace and never deletes the user;
+   - `node --env-file=.env scripts/voice-call-check.mjs` against your build.
+
+   Fix real failures. A previous report said the panel variants of `chat-cancel` and `chat-drafts` fail because "Ask Moneo" matches two header buttons; fix that test selector if it's still failing.
+
+## Deliver
+Branch off your checkout's current commit (`t3/voice-finance-agent`). Commit in small steps; end each commit message with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Before the PR, run `git fetch origin && git merge origin/t3/voice-finance-agent`. Another agent is doing a UI polish pass in parallel, so resolve conflicts keeping both. Push and open a PR with `gh pr create --base t3/voice-finance-agent`. **Do not target main.**
+
+The PR body must have:
+- a **before/after table** (main vs. this branch before your fixes vs. after) for each page and interaction;
+- the regressions found and how they were fixed;
+- the test and E2E results;
+- anything skipped;
+- "Decisions I made".
+
+End it with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Do not merge. Ignore the "Entire Gates" approval check. Stop the servers and remove the temporary main worktree when done.
+
+Your final line must be: PR <full URL>, head <SHA>, checks and reviews <state>.
+
+---
+
+<task-notification>
+<task-id>b1mv6gb5v</task-id>
+<tool-use-id>toolu_017ALY2AyXf65pWgfkeF47Ed</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-9d7672ea\b8d0c46b-21b9-4d69-8df6-e31c2f3567d5\tasks\b1mv6gb5v.output</output-file>
+<status>completed</status>
+<summary>Background command "export MSYS_NO_PATHCONV=1 &amp;&amp; (node --env-file=.env scripts/perf-pages.mjs http://localhost:3101 branch-before 3 &gt; ../perf-branch-before.log 2&gt;&amp;1; node --env-file=.env scripts/perf-pages.mjs http://localhost:3102 main-before 3 &gt; ../perf-main-before.log 2&gt;&amp;1) &amp;
+sleep 2; cd /c/Users/mgsuk/.t3/worktrees/Moneo/t3-9d7672ea; cat lib/ai/voice-recorder.ts | head -60; cat components/waiting-for-you.tsx | head -60; ls .next/static/chunks | wc -l" completed (exit code 0)</summary>
+</task-notification>
