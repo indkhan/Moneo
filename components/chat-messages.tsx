@@ -68,7 +68,7 @@ export function ChatMessages({ messages, pending, compact = false }: { messages:
       {pending.question && <div><MessageFiles files={pending.attachments} /><p className={bubble}><Spoken show={pending.spoken} />{pending.question}</p></div>}
       {pending.steers?.map((steer, index) => <p key={index} className={bubble}>{steer}</p>)}
       {assistant(<>{pending.plan && <Plan steps={pending.plan} done={Boolean(pending.answer)} />}<AiToolActivity tools={pending.tools} />{pending.answer ? <><AiMessage content={pending.answer} />{!pending.streaming && <p role="status" className="mt-2 text-xs text-muted-foreground">Saving to history…</p>}</>
-        : <p role="status" className="flex items-center gap-2 py-1 text-sm text-muted-foreground"><span className="flex gap-1" aria-hidden="true">{[0, 150, 300].map(delay => <span key={delay} className="size-1.5 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: `${delay}ms` }} />)}</span>{pending.tools.length ? "Working with your data…" : "Thinking…"}</p>}</>)}
+        : <p role="status" className="flex items-center gap-2 py-1 text-sm text-muted-foreground"><span className="flex gap-1" aria-hidden="true">{[0, 150, 300].map(delay => <span key={delay} className="size-1.5 rounded-full bg-muted-foreground motion-safe:animate-bounce" style={{ animationDelay: `${delay}ms` }} />)}</span>{pending.tools.length ? "Working with your data…" : "Thinking…"}</p>}</>)}
     </article>}
   </div>;
 }
