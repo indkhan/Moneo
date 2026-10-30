@@ -165,7 +165,8 @@ export class VoiceCallController {
       this.update(requestId, { status: "done", step: "answered", cards });
       this.deps.onAnswer?.(text, result.body as ChatAnswer);
       const others = this.running.map(item => `"${item.text.slice(0, 80)}"`);
-      this.deliver(delegationId, [`Result for ${label}: ${spokenAnswer(result.body.answer)}`,
+      // A typed request has no hand-off to answer through, so the result says outright that it is to be spoken.
+      this.deliver(delegationId, [`Result for ${label}${delegationId ? "" : " (typed by the user in the call; say the result to them now, in the language they typed)"}: ${spokenAnswer(result.body.answer)}`,
         cards.length ? `${cards.length} card${cards.length > 1 ? "s" : ""} on screen to tap; nothing is saved until then.` : "",
         others.length ? `Still working on ${others.join(", ")}.` : ""].filter(Boolean).join(" "));
     } catch {
@@ -181,7 +182,7 @@ export class VoiceCallController {
       const task = this.tasks.find(item => item.requestId === requestId);
       if (task?.status !== "running") return;
       if (this.speaking()) return this.watchSlow(requestId, 1000);
-      this.deps.send({ type: "session.commentary.append", delegation_id: task.delegationId, content: `Still working on "${task.text.slice(0, 120)}" (${task.step}). Say so in a few words.` });
+      this.deps.send({ type: "session.commentary.append", delegation_id: task.delegationId, content: `Still working on "${task.text.slice(0, 120)}" (${task.step}). Say so in a few words${task.delegationId ? "" : ", in the language they typed"}.` });
     }, delay);
   }
 

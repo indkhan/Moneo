@@ -23,7 +23,7 @@ export function VoiceCallCard({ call, createdAt }: { call: CallCard; createdAt: 
   const bullets = call.summary?.split("\n").map(line => line.replace(/^-\s*/, "")).filter(Boolean) ?? [];
   return <section aria-label="Voice call" className="space-y-3 rounded-2xl border border-border bg-card p-4">
     <p className="flex items-center gap-2 text-sm font-medium"><Phone className="size-4 text-ai" aria-hidden="true" />
-      Voice call · {callDuration(call.durationSeconds)}<time className="font-normal text-muted-foreground" dateTime={createdAt}>{new Date(createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></p>
+      Voice call · {callDuration(call.durationSeconds)}<span className="font-normal text-muted-foreground">· <time dateTime={createdAt}>{new Date(createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></span></p>
     {call.summaryStatus === "pending" && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 motion-safe:animate-spin" aria-hidden="true" />Writing the summary…</p>}
     {bullets.length > 0 && <ul aria-label="Call summary" className="list-disc space-y-1 pl-5 text-[15px]">{bullets.map(line => <li key={line}>{line}</li>)}</ul>}
     {call.cards.length > 0 && <div role="region" aria-label="Cards from this call"><p className="eyebrow">Cards from this call</p>{call.cards.map(id => <IouCard key={id} id={id} />)}</div>}

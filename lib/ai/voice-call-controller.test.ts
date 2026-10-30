@@ -87,6 +87,16 @@ it("says a failure briefly, and stays quiet for canceled or replaced requests", 
   expect(sent.filter(event => event.type === "session.commentary.append")).toEqual([{ type: "session.commentary.append", delegation_id: null, content: expect.stringContaining("couldn't get an answer") }]);
 });
 
+it("hands a typed message's result to GPT-Live to say, without a delegation", async () => {
+  const { call, sent, answer } = setup();
+  call.typed("What did I spend?");
+  await answer("What did I spend?", "42 euros", 200);
+  expect(call.captions).toEqual([{ id: 1, role: "user", text: "What did I spend?" }]);
+  expect(sent.filter(event => event.type === "session.commentary.append")).toEqual([
+    { type: "session.commentary.append", delegation_id: null, content: 'Result for "What did I spend?" (typed by the user in the call; say the result to them now, in the language they typed): 42 euros' }]);
+  expect(sent.filter(event => event.type === "session.thinking.append")).toEqual([]);
+});
+
 it("reads card ids and strips blocks for speech", () => {
   expect(answerCards(`a\n\`\`\`moneo-proposals\n["${card}"]\n\`\`\``)).toEqual([card]);
   expect(spokenAnswer("Hi **there** [link](/x)\n```moneo-chart\n{}\n```", 10)).toBe("Hi there …");
