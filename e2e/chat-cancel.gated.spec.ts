@@ -21,7 +21,7 @@ for (const panel of [false, true]) {
       }
     });
     await page.goto("/ai?conversation=new");
-    if (panel) await page.getByRole("button", { name: "Ask Moneo" }).click();
+    if (panel) await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
     const scope = panel ? page.getByRole("dialog", { name: "AI assistant" }) : page.locator("main");
     await scope.getByLabel(panel ? "Question" : "Ask about your finances").fill("What changed this month?");
     await scope.getByRole("button", { name: "Send", exact: true }).click();

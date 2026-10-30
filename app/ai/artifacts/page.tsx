@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { ArtifactThumbnail } from "@/components/artifact-frame";
 import { artifactExamples } from "@/lib/ai/artifact-examples";
+import { loadArtifactBuilds } from "@/lib/ai/artifact-builds";
 import { ArtifactPrompt } from "./artifact-prompt";
+import { ArtifactBuilds } from "./artifact-builds";
 import { DeleteArtifactButton } from "./delete-artifact-button";
 
 export default async function ArtifactsPage({ searchParams }: { searchParams: Promise<{ prompt?: string }> }) {
@@ -11,8 +13,11 @@ export default async function ArtifactsPage({ searchParams }: { searchParams: Pr
   try { context = await requireWorkspace(); } catch { redirect("/login"); }
   const { supabase, workspace } = context;
   const { prompt } = await searchParams;
-  const { data, error } = await supabase.from("artifacts").select("id, title, updated_at, artifact_versions(prompt)")
-    .eq("workspace_id", workspace.id).is("deleted_at", null).eq("artifact_versions.version", 1).order("updated_at", { ascending: false }).limit(200);
+  const [{ data, error }, builds] = await Promise.all([
+    supabase.from("artifacts").select("id, title, updated_at, artifact_versions(prompt)")
+      .eq("workspace_id", workspace.id).is("deleted_at", null).eq("artifact_versions.version", 1).order("updated_at", { ascending: false }).limit(200),
+    loadArtifactBuilds(supabase, workspace.id),
+  ]);
   const date = new Intl.DateTimeFormat(workspace.locale, { dateStyle: "medium", timeZone: workspace.timezone });
   return <main className="mx-auto grid w-full max-w-[1400px] gap-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="grid gap-1">
@@ -23,6 +28,7 @@ export default async function ArtifactsPage({ searchParams }: { searchParams: Pr
     <section aria-label="New artifact" className="rounded-xl border border-border bg-card p-4">
       <ArtifactPrompt key={prompt} defaultValue={prompt?.slice(0, 4000)} placeholder="Describe what to build, e.g. “What if my rent goes up €300 — how does my monthly budget look?”" />
     </section>
+    <ArtifactBuilds builds={builds} />
     <section aria-label="Examples" className="grid gap-3">
       <h2 className="text-sm font-medium text-muted-foreground">Start from an example</h2>
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{artifactExamples.map(example => <li key={example.title}>

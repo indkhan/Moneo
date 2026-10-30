@@ -73,7 +73,7 @@ test("explicit booked-balance review covers timestamped and date-only activity, 
   } finally {
     await context.close().catch(() => {});
     await db.begin(async tx => {
-      for (const table of ["balance_snapshots", "transactions", "accounts", "workspace_settings"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace.id}`;
+      for (const table of ["balance_snapshots", "transactions", "accounts", "workspace_settings", "categories"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace.id}`;
       await tx`delete from public.workspaces where id=${workspace.id} and owner_id=${user}`;
     });
     expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();

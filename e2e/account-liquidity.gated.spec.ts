@@ -100,7 +100,7 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     await context.close().catch(() => {});
     try {
       if (workspace) await db.begin(async tx => {
-        for (const table of ["insight_dismissals", "goal_reservation_events", "goal_allocations", "goal_events", "goals", "planning_events", "financial_assumptions", "forecast_preference_events", "forecast_preferences", "balance_snapshots", "accounts"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
+        for (const table of ["insight_dismissals", "goal_reservation_events", "goal_allocations", "goal_events", "goals", "planning_events", "financial_assumptions", "forecast_preference_events", "forecast_preferences", "balance_snapshots", "accounts", "categories"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
         await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
       });
       if (user) expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();

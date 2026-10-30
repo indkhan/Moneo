@@ -642,6 +642,24 @@ export const artifactVersions = pgTable("artifact_versions", {
   unique("artifact_versions_artifact_id_version_key").on(table.artifactId, table.version),
 ]);
 
+export const artifactBuilds = pgTable("artifact_builds", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  artifactId: uuid("artifact_id").references(() => artifacts.id, { onDelete: "cascade" }),
+  prompt: text("prompt").notNull(),
+  status: text("status").notNull().default("running"),
+  version: integer("version"),
+  error: text("error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("artifact_builds_workspace_created").on(table.workspaceId, table.createdAt.desc()),
+  check("artifact_builds_prompt_check", sql`length(btrim(${table.prompt})) between 1 and 4000`),
+  check("artifact_builds_status_check", sql`${table.status} in ('running','completed','failed')`),
+  check("artifact_builds_version_check", sql`${table.version} >= 1`),
+  check("artifact_builds_error_check", sql`length(${table.error}) <= 500`),
+]);
+
 export const recurringSeries = pgTable("recurring_series", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
@@ -885,6 +903,7 @@ export const workspaceSettings = pgTable("workspace_settings", {
   timezone: text("timezone").notNull().default("Europe/Berlin"),
   locale: text("locale").notNull().default("en-GB"),
   theme: text("theme").notNull().default("system"),
+  voice: text("voice").notNull().default("marin"),
   aiModels: jsonb("ai_models").notNull().default(sql`'{}'::jsonb`),
   aiDataScopes: text("ai_data_scopes").array().notNull().default(sql`array['accounts','transactions','planning','imports']::text[]`),
   mutedInsightTypes: text("muted_insight_types").array().notNull().default(sql`'{}'::text[]`),
@@ -895,11 +914,34 @@ export const workspaceSettings = pgTable("workspace_settings", {
   check("workspace_settings_timezone_check", sql`length(${table.timezone}) between 1 and 100`),
   check("workspace_settings_locale_check", sql`length(${table.locale}) between 1 and 50`),
   check("workspace_settings_theme_check", sql`${table.theme} in ('system','light','dark')`),
+  check("workspace_settings_voice_check", sql`${table.voice} in ('marin','cedar','alloy','ash','ballad','coral','echo','sage','shimmer','verse')`),
   check("workspace_settings_ai_models_check", sql`jsonb_typeof(${table.aiModels}) = 'object'`),
   check("workspace_settings_ai_data_scopes_check", sql`${table.aiDataScopes} <@ array['accounts','transactions','planning','imports']::text[]`),
   check("workspace_settings_muted_insight_types_check", sql`${table.mutedInsightTypes} <@ array['spending_changes','budget_pressure','unusual_activity','recurring_changes','upcoming_obligations','cash_shortfall','goal_progress','asset_debt','data_quality']::text[]`),
   check("workspace_settings_summary_cadence_check", sql`${table.summaryCadence} in ('none','weekly','monthly')`),
   check("workspace_settings_summary_time_check", sql`${table.summaryTime} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
+]);
+
+export const voiceCalls = pgTable("voice_calls", {
+  id: uuid("id").primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  durationSeconds: integer("duration_seconds").notNull(),
+  transcript: jsonb("transcript").notNull(),
+  tasks: jsonb("tasks").notNull(),
+  requestIds: uuid("request_ids").array().notNull().default(sql`'{}'::uuid[]`),
+  summary: text("summary"),
+  summaryStatus: text("summary_status").notNull().default("pending"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("voice_calls_conversation_created").on(table.conversationId, table.createdAt),
+  index("voice_calls_request_ids").using("gin", table.requestIds),
+  check("voice_calls_request_ids_check", sql`cardinality(${table.requestIds}) <= 30`),
+  check("voice_calls_duration_check", sql`${table.durationSeconds} between 0 and 86400`),
+  check("voice_calls_transcript_check", sql`jsonb_typeof(${table.transcript}) = 'array' and octet_length(${table.transcript}::text) <= 60000`),
+  check("voice_calls_tasks_check", sql`jsonb_typeof(${table.tasks}) = 'array' and octet_length(${table.tasks}::text) <= 60000`),
+  check("voice_calls_summary_check", sql`length(${table.summary}) <= 2000`),
+  check("voice_calls_summary_status_check", sql`${table.summaryStatus} in ('pending','done','failed')`),
 ]);
 
 export const pendingHoldResolutions = pgTable("pending_hold_resolutions", {
@@ -995,11 +1037,13 @@ export const agentProposals = pgTable("agent_proposals", {
   notes: text("notes").array().notNull().default(sql`'{}'::text[]`),
   status: text("status").notNull().default("proposed"),
   result: jsonb("result"),
+  chatRequestId: uuid("chat_request_id").references(() => chatRequests.id, { onDelete: "set null" }),
   decidedAt: timestamp("decided_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, table => [
   unique("agent_proposals_run_conflict_key").on(table.runId, table.conflictKey),
   index("agent_proposals_workspace_status").on(table.workspaceId, table.status),
+  index("agent_proposals_chat_request").on(table.chatRequestId).where(sql`${table.chatRequestId} is not null`),
   uniqueIndex("agent_proposals_standalone_conflict_key").on(table.workspaceId, table.conflictKey).where(sql`${table.runId} is null`),
   check("agent_proposals_kind_check", sql`${table.kind} in ('categorize','recurring','budget','finding','iou_create','iou_settle','transaction_create','balance_set','recurring_edit')`),
   check("agent_proposals_status_check", sql`${table.status} in ('proposed','applying','accepted','rejected','failed')`),

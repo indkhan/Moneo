@@ -36,7 +36,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
       const auth = createServerClient(url, key, { cookies: { getAll: () => [...cookies].map(([name, value]) => ({ name, value })), setAll: values => { for (const value of values) cookies.set(value.name, value.value); } } });
       const signedIn = await auth.auth.signInWithPassword({ email, password });
       expect(signedIn.error).toBeNull();
-      const context = await browser.newContext({ baseURL: "http://localhost:3000" });
+      const context = await browser.newContext({ baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000" });
       contexts.push(context);
       await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: "localhost", path: "/", sameSite: "Lax" as const })));
       sessions.push(auth);

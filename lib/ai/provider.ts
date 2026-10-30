@@ -16,7 +16,9 @@ export function getModel(modelId: string) {
   return createOpenAI({ apiKey })(modelId);
 }
 
-export function modelIdFor(settings: WorkspaceSettings | undefined, agent: AiAgent) {
+export function modelIdFor(settings: WorkspaceSettings | undefined, agent: AiAgent): string {
+  // A voice call uses the chat model until a faster one is chosen for calls.
+  if (agent === "voice_call") return settings?.ai_models.voice_call ?? modelIdFor(settings, "chat");
   return settings?.ai_models[agent] ?? AI_AGENTS[agent].model;
 }
 

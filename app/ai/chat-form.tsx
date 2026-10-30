@@ -6,14 +6,15 @@ import { useChatRequest, type ChatAnswer, type ChatStreamEvent } from "@/lib/ai/
 import { useChatQueue } from "@/lib/ai/use-chat-queue";
 import { useChatAttachments } from "@/lib/ai/use-chat-attachments";
 import { ATTACHMENT_ONLY_MESSAGE, type ChatAttachment } from "@/lib/ai/chat-attachments";
-import { ChatComposer } from "@/components/chat-composer";
+import { ChatComposer, withSpoken } from "@/components/chat-composer";
+import { VOICE_CONTEXT } from "@/lib/ai/voice-context";
 import { ChatQueue } from "@/components/chat-queue";
 import { DRAFT_EVENT } from "@/components/chat-messages";
 
 const suggestions = ["What changed in my spending last month?", "Where did most of my money go this month?", "Find my largest transactions", "Create a spending chart"];
 
 export type ChatFormEvents = {
-  onStart?: (conversationId: string, question: string, attachments: ChatAttachment[]) => void;
+  onStart?: (conversationId: string, question: string, attachments: ChatAttachment[], spoken: boolean) => void;
   onEvent?: (conversationId: string, event: ChatStreamEvent) => void;
   onDone?: (conversationId: string, question: string, result: ChatAnswer | null, attachments: ChatAttachment[]) => void;
 };
@@ -38,12 +39,20 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, o
     void sendMessage(message, false, files.ready);
   }
 
-  async function sendMessage(typed: string, queued = false, attachments: ChatAttachment[] = []) {
+  // Spoken words go with what is typed and any ready files, queue like typed words while a reply runs, and wait in the box while files are unsettled.
+  function sendSpoken(text: string) {
+    const typed = withSpoken(message, text);
+    if (files.uploading || files.items.some(item => item.error) || (busy && files.items.length)) { setMessage(typed); document.getElementById("question")?.focus(); return; }
+    if (busy) { enqueue(typed); setMessage(""); return; }
+    void sendMessage(typed, false, files.ready, true);
+  }
+
+  async function sendMessage(typed: string, queued = false, attachments: ChatAttachment[] = [], spoken = false) {
     if (busy) return;
     const message = typed.trim() || ATTACHMENT_ONLY_MESSAGE;
-    onStart?.(conversationId, message, attachments);
+    onStart?.(conversationId, message, attachments, spoken);
     if (!queued) { setMessage(""); files.clear(); }
-    const result = await send({ conversationId, message, ...(attachments.length && { attachments }) }, streamed => onEvent?.(conversationId, withSteers(streamed)));
+    const result = await send({ conversationId, message, ...(spoken && { context: VOICE_CONTEXT }), ...(attachments.length && { attachments }) }, streamed => onEvent?.(conversationId, withSteers(streamed)));
     if (result) {
       selectConversation(selectionKey, conversationId);
     } else if (!queued) { setMessage(current => current || typed); files.restore(attachments); }
@@ -58,7 +67,7 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, o
   }
   const { queue, enqueue, remove, steer, withSteers, canSteer } = useChatQueue(chat, conversationId, startQueued);
 
-  const composer = <><ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} /><ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder="Ask anything about your money" busyText="Waiting for a response…" attachments={files} /></>;
+  const composer = <><ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} /><ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder="Ask anything about your money" busyText="Waiting for a response…" attachments={files} voice={{ onSend: sendSpoken }} /></>;
   const notices = <>{error && <p role="alert" className="mt-2 px-3 text-sm text-danger">{error}</p>}
     {status === "canceled" && <p role="status" className="mt-2 px-3 text-sm text-muted-foreground">Canceled. Previously completed edits remain in transaction history.</p>}</>;
 

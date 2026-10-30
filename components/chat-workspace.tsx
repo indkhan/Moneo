@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Check, Menu, Pencil, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
+import { Check, Menu, Pencil, Phone, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 import { ChatForm } from "@/app/ai/chat-form";
-import { ChatMessages, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
+import { ChatMessages, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
+import { usePolling } from "@/lib/ai/use-polling";
 import { ConversationSelection } from "@/lib/ai/selected-conversation";
 import type { HistoryThread } from "@/lib/ai/conversation-history";
 import type { ChatAnswer, ChatStreamEvent } from "@/lib/ai/use-chat-request";
@@ -16,9 +17,13 @@ import type { ChatAttachment } from "@/lib/ai/chat-attachments";
 const AnalysisPanel = dynamic(() => import("@/app/ai/analysis-panel").then(module => module.AnalysisPanel), {
   ssr: false, loading: () => <p role="status" className="p-6 text-sm text-muted-foreground">Loading review options…</p>,
 });
+// The call (WebRTC, audio meters) is only loaded when someone starts one.
+const VoiceCall = dynamic(() => import("./voice-call").then(module => module.VoiceCall), { ssr: false });
 
-type Entry = { conversation: HistoryThread; messages: ChatItem[]; cursor: string | null };
-type ChatWorkspaceInitial = { threads: HistoryThread[]; threadsCursor: string | null; selected: HistoryThread | null; messages: ChatItem[]; messagesCursor: string | null };
+// running: a request in this chat still working in the background.
+type Entry = { conversation: HistoryThread; messages: ChatItem[]; cursor: string | null; running?: string | null };
+type Loaded = { selected: HistoryThread; messages: ChatItem[]; messagesCursor: string | null; running?: string | null };
+type ChatWorkspaceInitial = { threads: HistoryThread[]; threadsCursor: string | null; selected: HistoryThread | null; messages: ChatItem[]; messagesCursor: string | null; running?: string | null };
 
 async function json<T>(input: string, init?: RequestInit): Promise<T> {
   const response = await fetch(input, { cache: "no-store", ...init });
@@ -26,9 +31,11 @@ async function json<T>(input: string, init?: RequestInit): Promise<T> {
   if (!response.ok) throw new Error(body.error ?? "Request failed. Try again.");
   return body as T;
 }
-const seed = (initial: ChatWorkspaceInitial): Record<string, Entry> => initial.selected ? { [initial.selected.id]: { conversation: initial.selected, messages: initial.messages, cursor: initial.messagesCursor } } : {};
+const seed = (initial: ChatWorkspaceInitial): Record<string, Entry> => initial.selected ? { [initial.selected.id]: { conversation: initial.selected, messages: initial.messages, cursor: initial.messagesCursor, running: initial.running } } : {};
+const loaded = (data: Loaded): Entry => ({ conversation: data.selected, messages: data.messages, cursor: data.messagesCursor, running: data.running });
 function omit<T>(record: Record<string, T>, key: string) { const next = { ...record }; delete next[key]; return next; }
 const href = (id: string) => `/ai?conversation=${id}`;
+const fetchEntry = (id: string) => json<Loaded>(`/api/conversations/${id}`);
 
 /** Client-side chat workspace: switching, paging, search, rename and delete never re-render the server page. */
 export function ChatWorkspace({ initial, newConversationId, selectionKey, locale, timezone, scope }: { initial: ChatWorkspaceInitial; newConversationId: string; selectionKey: string; locale: string; timezone: string; scope: React.ReactNode }) {
@@ -51,7 +58,15 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   const menu = useRef<HTMLDetailsElement>(null);
   const end = useRef<HTMLDivElement>(null);
 
-  const param = useSearchParams().get("conversation");
+  const params = useSearchParams();
+  const param = params.get("conversation");
+  // Overview's Call opens chat already calling; the flag is dropped once read, so a reload does not call again.
+  const autoCall = params.get("call") === "1";
+  const [calling, setCalling] = useState(autoCall);
+  useEffect(() => {
+    if (!autoCall) return;
+    const url = new URL(window.location.href); url.searchParams.delete("call"); window.history.replaceState(null, "", url);
+  }, [autoCall]);
   const selectedId = param === "new" ? null : param ?? initial.selected?.id ?? null;
   const activeId = selectedId ?? draftId;
   const entry = entries[activeId];
@@ -60,14 +75,24 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   function load(id: string) {
     if (entries[id] || errors[id] || loading.current.has(id)) return;
     loading.current.add(id);
-    json<{ selected: HistoryThread; messages: ChatItem[]; messagesCursor: string | null }>(`/api/conversations/${id}`)
-      .then(data => { setEntries(current => current[id] ? current : { ...current, [id]: { conversation: data.selected, messages: data.messages, cursor: data.messagesCursor } }); setErrors(current => omit(current, id)); })
+    json<Loaded>(`/api/conversations/${id}`)
+      .then(data => { setEntries(current => current[id] ? current : { ...current, [id]: loaded(data) }); setErrors(current => omit(current, id)); })
       .catch(cause => setErrors(current => ({ ...current, [id]: cause.message })))
       .finally(() => loading.current.delete(id));
   }
   const latest = useRef({ selectedId, draftId });
   useEffect(() => { latest.current = { selectedId, draftId }; if (selectedId) load(selectedId); }); // load() skips cached and in-flight chats
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [activeId, entry?.messages.length, active]);
+  // A run that kept going while the user was away shows as working until its answer is saved.
+  const resuming = entry?.running && !active ? activeId : null;
+  usePolling(() => void json<Loaded>(`/api/conversations/${resuming}`)
+    .then(data => { if (!data.running) setEntries(current => ({ ...current, [resuming!]: loaded(data) })); }).catch(() => {}), 3000, !!resuming);
+
+  // A finished call is saved after hang-up: its summary and any request still running arrive a little later.
+  const waitingOnCall = entry?.messages.some(item => item.call && (item.call.summaryStatus === "pending" || item.call.unfinished.some(task => task.status === "running"))) ? activeId : null;
+  const tries = useRef(0);
+  useEffect(() => { tries.current = 0; }, [waitingOnCall]);
+  usePolling(() => { if (++tries.current <= 60) fetchEntry(waitingOnCall!).then(data => setEntries(current => ({ ...current, [waitingOnCall!]: loaded(data) }))).catch(() => {}); }, 3000, !!waitingOnCall);
 
   // Debounced search over titles and message text.
   useEffect(() => {
@@ -135,7 +160,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
 
   // Mirrors each pending exchange so the finished answer can keep its plan and tool calls.
   const live = useRef<Record<string, PendingExchange>>({});
-  function onStart(id: string, question: string, attachments: ChatAttachment[]) { live.current[id] = { question, attachments, tools: [] }; setPending(current => ({ ...current, [id]: live.current[id] })); }
+  function onStart(id: string, question: string, attachments: ChatAttachment[], spoken: boolean) { live.current[id] = { question, attachments, tools: [], spoken }; setPending(current => ({ ...current, [id]: live.current[id] })); }
   function onEvent(id: string, event: ChatStreamEvent) {
     if (!live.current[id]) return;
     const next = live.current[id] = applyChatEvent(live.current[id], event);
@@ -149,7 +174,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     const now = new Date().toISOString();
     const conversation = { id, title: question.trim().slice(0, 80), created_at: now };
     const exchange: ChatItem[] = [
-      { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now, attachments },
+      { id: `local-${crypto.randomUUID()}`, role: "user", content: question.trim(), created_at: now, attachments, spoken: finished?.spoken },
       ...(finished?.steers ?? []).map(content => ({ id: `local-${crypto.randomUUID()}`, role: "user" as const, content, created_at: now })),
       { id: `local-${crypto.randomUUID()}`, role: "assistant", content: result.answer, created_at: now, tools: finished?.tools.length ? finished.tools : result.toolsUsed, plan: finished?.plan, followUps: result.followUps },
     ];
@@ -157,6 +182,16 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     setThreads(current => current.some(thread => thread.id === id) ? current : [conversation, ...current]);
     // The first answer saves a new chat: give it its own URL without remounting the composer.
     if (latest.current.selectedId === null && latest.current.draftId === id) window.history.replaceState(null, "", href(id));
+  }
+
+  /** Reloads a chat after a call, so its messages move into the call card. */
+  async function callEnded(id: string) {
+    try {
+      const data = await fetchEntry(id);
+      setEntries(current => ({ ...current, [id]: loaded(data) }));
+      setThreads(current => current.some(thread => thread.id === id) ? current : [data.selected, ...current]);
+      if (latest.current.selectedId === null && latest.current.draftId === id) window.history.replaceState(null, "", href(id));
+    } catch (cause) { setNotice((cause as Error).message); }
   }
 
   const title = entry?.conversation.title ?? threads.find(thread => thread.id === selectedId)?.title ?? (selectedId ? "" : "New chat");
@@ -198,10 +233,13 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     <ConversationSelection selectionKey={selectionKey} id={selectedId ?? "new"} />
     <aside className="sticky top-19 hidden h-[calc(100dvh-4.75rem)] w-72 shrink-0 overflow-y-auto border-r border-border px-4 py-6 lg:block">{sidebar("desktop")}</aside>
     <section className="flex min-w-0 flex-1 flex-col">
+      {/* Each spoken question is a normal chat request, so its answer joins this chat as it lands. */}
+      {calling ? <VoiceCall key={activeId} conversationId={activeId} onAnswer={(question, answer) => onDone(activeId, question, answer, [])} onEnded={() => void callEnded(activeId)} onClose={() => setCalling(false)} /> : <>
       <div className="relative flex items-center gap-2 border-b border-border px-4 py-4 sm:px-8">
         <details ref={menu} className="lg:hidden"><summary className={summary} aria-label="Show conversations"><Menu className="size-4" aria-hidden="true" /></summary><div className="absolute inset-x-4 top-full z-20 max-h-[70dvh] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-lg">{sidebar("mobile")}</div></details>
         <h1 className="min-w-0 flex-1 truncate font-display text-2xl font-semibold tracking-tight">{title}</h1>
         <details onToggle={event => { if (event.currentTarget.open) setReviewOpen(true); }}><summary className={summary}><Sparkles className="size-4" aria-hidden="true" />Run a deep review</summary><div className="absolute inset-x-4 top-full z-20 mx-auto max-h-[75dvh] max-w-3xl overflow-y-auto rounded-2xl border border-border bg-card shadow-lg">{reviewOpen && <AnalysisPanel locale={locale} timezone={timezone} />}</div></details>
+        <button type="button" onClick={() => setCalling(true)} className={summary}><Phone className="size-4" aria-hidden="true" />Call</button>
       </div>
       <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col px-4 sm:px-8">
         {notice && <p role="alert" className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">{notice}<button type="button" onClick={() => setNotice("")} aria-label="Dismiss" className="text-muted-foreground hover:text-foreground"><X className="size-4" aria-hidden="true" /></button></p>}
@@ -209,11 +247,12 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
           : selectedId && !entry ? <div className="space-y-6 py-6" role="status" aria-label="Loading conversation">{[0, 1].map(row => <div key={row} className="space-y-3"><div className="ml-auto h-9 w-1/2 animate-pulse rounded-3xl bg-muted" /><div className="h-4 w-5/6 animate-pulse rounded bg-muted" /><div className="h-4 w-2/3 animate-pulse rounded bg-muted" /></div>)}</div>
           : <>
             {entry?.cursor && <button type="button" disabled={busy} onClick={() => void olderMessages()} className="mt-2 self-center text-sm text-muted-foreground hover:text-foreground disabled:opacity-50">Older messages</button>}
-            {!empty && <div className="py-6"><ChatMessages messages={entry?.messages ?? []} pending={active} /></div>}
+            {!empty && <div className="py-6"><ChatMessages messages={entry?.messages ?? []} pending={active ?? (resuming ? RESUMED_RUN : undefined)} /></div>}
             <ChatForm key={activeId} conversationId={activeId} selectionKey={selectionKey} empty={empty} scope={scope} onStart={onStart} onEvent={onEvent} onDone={onDone} />
           </>}
         <div ref={end} />
       </div>
+      </>}
     </section>
   </main>;
 }

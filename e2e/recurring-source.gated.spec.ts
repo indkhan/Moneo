@@ -16,7 +16,7 @@ test("source correction invalidates the inferred forecast obligation and undo re
   const runId=randomUUID(),email=`qa-${runId}@example.invalid`,password=randomBytes(24).toString("hex");
   let user:string|undefined,workspace:string|undefined,migrationLedger:unknown;
   const recovery=`.qa/recurring-${runId}.json`;
-  const context=await browser.newContext({baseURL:"http://localhost:3000"});
+  const context=await browser.newContext({baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000"});
   try {
   migrationLedger=await db`select version,name,statements from supabase_migrations.schema_migrations order by version`;
   const created=await admin.auth.admin.createUser({email,password,email_confirm:true,user_metadata:{qa_test:"recurring-source",run_id:runId}});expect(created.error).toBeNull();

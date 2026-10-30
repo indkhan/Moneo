@@ -14,7 +14,7 @@ test("explicit partial/full occurrence association changes the forecast once and
   const db = postgres(connection.toString(), { ssl: "require", max: 1, connect_timeout: 10, connection: {application_name: "MNE014-browser-occurrences", lock_timeout: 10_000, statement_timeout: 120_000, idle_in_transaction_session_timeout: 150_000} });
   const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
   let user: string | undefined, workspace: string | undefined;
-  const context = await browser.newContext({ baseURL: "http://localhost:3000" });
+  const context = await browser.newContext({ baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000" });
   const runId = randomUUID();
   const recovery = `.qa/occurrences-${runId}.json`;
   let migrationLedger: unknown;

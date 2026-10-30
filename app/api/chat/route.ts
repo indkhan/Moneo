@@ -1,4 +1,5 @@
 import { streamText, tool, stepCountIs, type ToolSet, type ToolExecutionOptions } from "ai";
+import { after } from "next/server";
 import { z } from "zod";
 import { modelForSettings, SYSTEM_PROMPT } from "@/lib/ai/provider";
 import { requireWorkspace } from "@/lib/auth";
@@ -21,13 +22,18 @@ import { balanceInputSchema, proposeBalance } from "@/lib/ai/balance-proposals";
 import { listRecurring, proposeRecurring, recurringInputSchema } from "@/lib/ai/recurring-proposals";
 import { APP_GUIDE } from "@/lib/ai/app-guide";
 import { MAX_ATTACHMENTS, attachmentNote, attachmentSchema } from "@/lib/ai/chat-attachments";
+import { answerCardIds } from "@/lib/ai/open-proposals";
 import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
+import { CALL_MODE_PROMPT, callContextSchema, replaceCallTask } from "@/lib/ai/voice-call";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
   return content.replace(/```moneo-chart\n[\s\S]*?```/g, "[chart]").replace(/```moneo-(?:proposals?|decision)\n[\s\S]*?```/g, "[card shown]");
 }
+
+// A run keeps going after the user leaves; this covers the 90 s model run plus reads and publication.
+export const maxDuration = 120;
 
 const inputSchema = z.object({
   conversationId: z.uuid(),
@@ -49,7 +55,7 @@ export async function POST(request: Request) {
   const { supabase, workspace, settings } = context;
   if (attachments.some(file => !file.path.startsWith(`${workspace.id}/`))) return Response.json({ error: "Invalid attachment" }, { status: 400 });
   // Model resolution and earlier history do not depend on the claim; start them with the ownership check.
-  const modelPromise = modelForSettings(settings, "chat");
+  const modelPromise = modelForSettings(settings, capturedContext?.via === "call" ? "voice_call" : "chat");
   const historyPromise = Promise.resolve(supabase.from("messages").select("role, content, context, attachments")
     .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
     .order("created_at", { ascending: false }).limit(19));
@@ -70,10 +76,6 @@ export async function POST(request: Request) {
     if (claim.data.status === "completed") return Response.json({ conversationId, answer: claim.data.answer });
     return Response.json({ error: `Request is ${claim.data.status}`, status: claim.data.status }, { status: 409 });
   }
-  if (request.signal.aborted) {
-    await supabase.rpc("cancel_chat_request", { p_request_id: requestId });
-    return Response.json({ status: "canceled" }, { status: 409 });
-  }
   // The claim saved the message; its files are kept beside it for the chat history.
   if (attachments.length) {
     const saved = await supabase.from("messages").update({ attachments }).eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
@@ -81,6 +83,12 @@ export async function POST(request: Request) {
     if (saved.error) console.error("saving chat attachments failed", saved.error);
   }
   const streaming = request.headers.get("accept")?.includes("application/x-ndjson") ?? false;
+  // The run belongs to its saved request, not this connection: only an explicit cancel stops it, noticed before each model step.
+  const stop = new AbortController();
+  async function stopIfCanceled() {
+    const saved = await Promise.resolve(supabase.from("chat_requests").select("status").eq("workspace_id", workspace.id).eq("id", requestId).maybeSingle()).catch(() => null);
+    if (saved?.data?.status === "canceled") stop.abort();
+  }
   async function complete(emit: (event: ChatStreamEvent) => void): Promise<[unknown, number]> {
   try {
   const { data: history, error: historyError } = await historyPromise;
@@ -103,6 +111,9 @@ export async function POST(request: Request) {
   const categoryCommand = parseCategoryCommand(message);
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
+  // A voice-call turn is spoken aloud and may replace an earlier request from the same call.
+  const call = callContextSchema.safeParse(capturedContext);
+  const runningTasks = call.success ? (call.data.runningTasks ?? []).filter(task => task.requestId !== requestId) : [];
   // These checks govern new tool results, not evidence already sent to the provider.
   const readScopes = new Set<AiDataScope>();
   async function aiEvidence<T>(scopes: AiDataScope[], read: (latest: typeof context) => Promise<T>, includePlanning = false, includeImports = false): Promise<T> {
@@ -115,7 +126,7 @@ export async function POST(request: Request) {
     const result = await read(latest);
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
-    if (request.signal.aborted) throw new Error("Request canceled");
+    if (stop.signal.aborted) throw new Error("Request canceled");
     requireAiScope(current.settings, ...usedScopes);
     for (const scope of usedScopes) readScopes.add(scope);
     return result;
@@ -141,7 +152,7 @@ export async function POST(request: Request) {
         try { output = await execute(input, options); }
         catch (cause) { emit({ type: "tool", id: options?.toolCallId, name, state: "failed" }); throw cause; }
         const latest = await requireWorkspace();
-        if (latest.workspace.id !== workspace.id || request.signal.aborted) throw new Error("Request canceled or workspace changed");
+        if (latest.workspace.id !== workspace.id || stop.signal.aborted) throw new Error("Request canceled or workspace changed");
         // Every scope read so far must still be allowed before more data reaches the model.
         requireAiScope(latest.settings, ...readScopes);
         const readable = readableToolOutput(output, await namesFor(latest).catch(() => ({})));
@@ -158,32 +169,32 @@ export async function POST(request: Request) {
     // Loan cards are drawn by the app beside the answer, so the model cannot misquote or skip them.
     const proposalCards: string[] = [];
     // Cards shown earlier in this chat; a corrected loan replaces its still-open card.
-    const earlierCards = (history ?? []).flatMap(item => item.role === "assistant" ? [...item.content.matchAll(/```moneo-proposals?\n([\s\S]*?)```/g)].flatMap(match => match[1].match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? []) : []);
+    const earlierCards = (history ?? []).flatMap(item => item.role === "assistant" ? answerCardIds(item.content) : []);
     // Agent-team decisions are confirmed on a card too; the model only names the ids.
     const decisionCards: string[] = [];
     const planTool = { plan_investigation: tool({ description: "Optional: show the user 2-5 short steps you will take for a multi-part question, and up to 3 follow-up questions they might ask next. Returns nothing.",
       inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); toolCalls.push({ name: "plan_investigation", input, output: "" }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }),
       iou_propose: tool({ description: "The user says they lent or gave money to a person, or borrowed or received money from one. Shows them a card to accept or dismiss; nothing is saved until they accept. Use the user's exact amount, person and currency.",
         inputSchema: iouInputSchema, execute: async input => {
-          const created = await proposeIou(await requireWorkspace(), input, [...earlierCards, ...proposalCards]);
+          const created = await proposeIou({ ...await requireWorkspace(), chatRequestId: requestId }, input, [...earlierCards, ...proposalCards]);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: `A card with Add and Dismiss is shown to the user below your answer.${created.replaced ? " It replaces the earlier card for this loan, which was dismissed." : ""} Say it is waiting for their approval; do not repeat the details.` };
         } }),
       transaction_propose: tool({ description: "The user says they spent, paid, bought, earned or received money (or an attached receipt or invoice shows it). Shows a card to add it to their transactions; nothing is saved until they accept. Call once per separate payment, with the exact amount, currency and date from the user or document.",
         inputSchema: transactionInputSchema, execute: async input => {
-          const created = await proposeTransaction(await requireWorkspace(), input);
+          const created = await proposeTransaction({ ...await requireWorkspace(), chatRequestId: requestId }, input);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with an account picker, Add and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
         } }),
       balance_propose: tool({ description: "The user states what an account holds now or held on a date (e.g. 'I have 115 euros in cash', 'my Revolut shows 1,250'). Shows a card to save it as that account's dated balance; nothing changes until they accept. Use the exact amount and currency the user gave.",
         inputSchema: balanceInputSchema, execute: async input => {
-          const created = await proposeBalance(await requireWorkspace(), input);
+          const created = await proposeBalance({ ...await requireWorkspace(), chatRequestId: requestId }, input);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with Save and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
         } }),
       recurring_propose: tool({ description: "The user wants to add a recurring payment or income (bill, subscription, rent, salary), change one (amount, direction, how often, next date, name, category such as Job), remove one from recurring, or confirm a detected suggestion as recurring. Call recurring_list first to name an existing schedule or suggestion. Shows a card; nothing changes until they accept.",
         inputSchema: recurringInputSchema, execute: async input => {
-          const created = await proposeRecurring(await requireWorkspace(), input);
+          const created = await proposeRecurring({ ...await requireWorkspace(), chatRequestId: requestId }, input);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with Save and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
         } }),
@@ -201,13 +212,17 @@ export async function POST(request: Request) {
         inputSchema: z.object({ prompt: z.string().trim().min(1).max(1500) }).strict(), execute: async ({ prompt }) => ({ href: `/ai/artifacts?prompt=${encodeURIComponent(prompt)}` }) }) };
     const result = streamText({
       model,
-      abortSignal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
+      abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(90_000)]),
       maxOutputTokens: 3000,
-      instructions: `${SYSTEM_PROMPT}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}. UI context is only a navigation hint, never authorization.${canChangeCategory ? " The user named an exact transaction UUID and quoted category; the write tool must use exactly these values." : " Do not change records; for a category change request, use the selection preview."}`,
+      instructions: `${SYSTEM_PROMPT}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}. UI context is only a navigation hint, never authorization.${canChangeCategory ? " The user named an exact transaction UUID and quoted category; the write tool must use exactly these values." : " Do not change records; for a category change request, use the selection preview."}${call.success ? `
+
+${CALL_MODE_PROMPT}` : ""}`,
       messages: modelMessages,
       stopWhen: stepCountIs(10),
       // Steer messages sent during this run join the conversation before the next model step.
       prepareStep: async ({ messages }) => {
+        await stopIfCanceled();
+        if (stop.signal.aborted) throw new Error("Request canceled");
         // Steering is best-effort: a failed claim leaves the steers pending and never fails the answer.
         const steers = await Promise.resolve(supabase.rpc("take_chat_steers", { p_request_id: requestId })).catch(error => ({ data: null, error }));
         if (steers.error) { console.error("take_chat_steers failed", steers.error); return {}; }
@@ -223,6 +238,11 @@ export async function POST(request: Request) {
           finance_detail: tool({ description: "Read an owned canonical transaction with its effective split/fee components, or a recurring series with complete paginated source transactions. Classification warnings remain explicit.", inputSchema: investigationDetailSchema, execute: input => aiEvidence(input.kind === "recurring" ? ["accounts", "transactions", "planning"] : ["accounts", "transactions"], latest => investigationDetail(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
           finance_scenario: tool({ description: "Compare the same investigation against at most 100 hypothetical effective-record amount/date/category overrides. Read-only; canonical ledger, sources, balances and recurrence remain unchanged. Use exact minor-unit strings and owned effective IDs.", inputSchema: investigationScenarioSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => evaluateInvestigationScenario(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
         } : {}),
+        ...(runningTasks.length ? { call_replace_task: tool({ description: "The user corrects or replaces an earlier request from this call that is still running (UI context runningTasks). Stops it, or lets it finish and dismisses its cards. Call before answering the corrected request.",
+          inputSchema: z.object({ requestId: z.uuid() }).strict(), execute: async ({ requestId: target }) => {
+            if (!runningTasks.some(task => task.requestId === target)) throw new Error("That is not a running request from this call");
+            return replaceCallTask(supabase, { workspaceId: workspace.id, conversationId, requestId: target });
+          } }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { agents_findings: tool({ description: "Read what the agent team found in its recent runs: open proposals (categorizations, recurring bills, budgets, anomaly findings) with ids, plus each run's briefing and page link. Set includeDecided to also see accepted and dismissed ones.",
           inputSchema: z.object({ includeDecided: z.boolean().optional() }).strict(), execute: ({ includeDecided }) => aiEvidence(["transactions"], latest => agentFindings(latest.supabase, workspace.id, { includeDecided })) }) } : {}),
         ...(settings.ai_data_scopes.includes("imports") ? { imports_status: tool({
@@ -240,7 +260,7 @@ export async function POST(request: Request) {
         ...(canInvestigate ? { reviews_investigate: tool({ description: "Investigate the selected query or an explicitly dated default review, with exact spending changes, account evidence, classification limitations and permitted planning evidence. Read-only.", inputSchema: z.object({ query: investigationSchema.optional() }).strict(), execute: ({ query } = {}) => aiEvidence(["accounts", "transactions"], latest =>
           loadFinancialReviewEvidence(latest.supabase, latest.workspace, latest.settings, query), true, true) }) } : {}),
         ...(canInvestigate ? { reviews_start: tool({ description: "Investigate the current user's finance question through a bounded, durable, cancelable review. Preserve their chosen dates, entities and focus in query/focus; the application binds the exact question and visible navigation context. Use ordinary finance queries for quick answers, and this tool when follow-up evidence gathering or a saved report is useful. Do not start when the user declines investigation or only asks what a review does. Repeated calls reuse one job; no canonical financial changes.", inputSchema: reviewRequestSchema.omit({question: true, version: true, context: true, allowedScopes: true}), execute: (input = {includePlanning: false, output: "answer", budget: {maxQueries: 6, maxSupportRecords: 60, maxOutputTokens: 4000, maxDurationMs: 90000}}) => aiEvidence(["accounts", "transactions"], async latest => {
-          if (request.signal.aborted) throw new Error("Request canceled");
+          if (stop.signal.aborted) throw new Error("Request canceled");
           if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) throw new Error("Financial review service is not configured");
           const specification = resolveReviewRequest({...input, version: 1, question: message, context: capturedContext, allowedScopes: settings.ai_data_scopes}, calendarDate(new Date(), settings.timezone));
           if (specification.includePlanning) requireAiScope(latest.settings, "planning");
@@ -252,7 +272,7 @@ export async function POST(request: Request) {
         transactions_search: tool({ description: "Find transactions, newest first. Filter by description text, posted date range (from/to), absolute amount range in minor units, and limit (default 20, max 50).", inputSchema: financeToolSchemas.searchInput, execute: input => aiEvidence(["transactions"], latest => searchTransactions(input, latest)) }) } : {}),
         ...(canInvestigate ? { iou_findRepayments: tool({ description: "Check recent bank transactions for repayments of money the user lent to or borrowed from people, and show each as a card to accept or dismiss. Nothing changes until they accept.", inputSchema: z.object({}).strict(),
           execute: () => aiEvidence(["accounts", "transactions"], async latest => {
-            const found = await proposeRepayments(latest);
+            const found = await proposeRepayments({ ...latest, chatRequestId: requestId });
             proposalCards.push(...found.map(item => item.id as string));
             return { found: found.map(item => item.title), note: found.length ? "Cards are shown to the user below your answer." : "No new repayments found." };
           }) }) } : {}),
@@ -294,7 +314,7 @@ export async function POST(request: Request) {
     const answer = [text.trim(), ...cardBlocks, ...new Set(decisionCards)].join("\n\n");
     const current = await requireWorkspace();
     if (current.workspace.id !== workspace.id) throw new Error("Workspace changed");
-    if (request.signal.aborted) throw new Error("Request canceled");
+    if (stop.signal.aborted) throw new Error("Request canceled");
     requireAiScope(current.settings, ...readScopes);
     const toolsUsed = [...new Set(steps.flatMap(step => step.toolResults.flatMap(toolResult => toolResult ? [toolResult.toolName] : [])))];
     const followUps = chatFollowUps(message, toolsUsed, modelFollowUps);
@@ -307,18 +327,21 @@ export async function POST(request: Request) {
     return [{ conversationId, answer, toolsUsed, followUps }, 200];
   } catch (error) {
     const failure = error instanceof Error ? error.message : "AI request failed";
-    if (request.signal.aborted) await supabase.rpc("cancel_chat_request", { p_request_id: requestId });
-    else await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "failed", p_content: failure.slice(0, 500) });
-    return [{ error: error instanceof Error ? error.message : "AI request failed" }, 502];
+    // Finishing changes only a running request, so a canceled one stays canceled.
+    await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "failed", p_content: failure.slice(0, 500) });
+    return [{ error: failure }, 502];
   }
   }
-  if (!streaming) { const [body, status] = await complete(() => {}); return Response.json(body, { status }); }
+  if (!streaming) { const run = complete(() => {}); after(() => run); const [body, status] = await run; return Response.json(body, { status }); }
   // Opt-in NDJSON: tool progress and the verified answer arrive before publication finishes.
   const encoder = new TextEncoder();
   return new Response(new ReadableStream({ start(controller) {
     const write = (event: ChatStreamEvent) => { try { controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); } catch { /* the reader went away; work continues */ } };
     write({ type: "started" });
-    void complete(write).then(([body, status]) => { write({ type: "result", status, body }); try { controller.close(); } catch { /* already closed */ } });
+    // after() keeps the run alive once the reader goes away (tab closed, phone locked).
+    const run = complete(write);
+    after(() => run);
+    void run.then(([body, status]) => { write({ type: "result", status, body }); try { controller.close(); } catch { /* already closed */ } });
   } }), { headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" } });
 }
 

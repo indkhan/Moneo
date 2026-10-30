@@ -1,7 +1,7 @@
 // Signs the persistent QA user in through the local /login page and saves e2e/.auth.json
 // for the authenticated Playwright specs. The first run creates the user and stores its
 // login as E2E_USER_EMAIL / E2E_USER_PASSWORD in the git-ignored .env.
-// Run with the app on http://localhost:3000:  node --env-file=.env scripts/e2e-auth.mjs
+// Run with the app on http://localhost:3000 (or E2E_BASE_URL):  node --env-file=.env scripts/e2e-auth.mjs
 // Empty its workspace (specs expect one):      node --env-file=.env scripts/e2e-auth.mjs --reset
 import { randomBytes } from "node:crypto";
 import { appendFileSync } from "node:fs";

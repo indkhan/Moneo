@@ -15,7 +15,7 @@ vi.mock("ai", async importOriginal => ({ ...await importOriginal<typeof import("
 
 function form() {
   const data = new FormData();
-  for (const [key, value] of Object.entries({ timezone: "Europe/Berlin", locale: "en-GB", theme: "dark", display_currency: "EUR", summary_cadence: "none", summary_time: "09:00" })) data.set(key, value);
+  for (const [key, value] of Object.entries({ timezone: "Europe/Berlin", locale: "en-GB", theme: "dark", voice: "cedar", display_currency: "EUR", summary_cadence: "none", summary_time: "09:00" })) data.set(key, value);
   data.append("ai_data_scopes", "accounts");
   return data;
 }
@@ -47,7 +47,7 @@ it("persists exact scoped preferences with blank models left as defaults", async
   vi.mocked(requireWorkspace).mockResolvedValue(workspaceWith(null, rpc));
   const data = form(); data.set("model:chat", "  ");
   expect(await saveSettings({}, data)).toEqual({ saved: true });
-  expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({ p_workspace_id: "owned", p_display_currency: "EUR", p_preferences: expect.objectContaining({ theme: "dark", ai_data_scopes: ["accounts"], ai_models: {} }) }));
+  expect(rpc).toHaveBeenCalledWith("save_workspace_preferences", expect.objectContaining({ p_workspace_id: "owned", p_display_currency: "EUR", p_preferences: expect.objectContaining({ theme: "dark", voice: "cedar", ai_data_scopes: ["accounts"], ai_models: {} }) }));
 });
 
 it("rejects an unsupported display currency before persisting it", async () => {

@@ -8,7 +8,7 @@ vi.mock("next/headers", () => ({ cookies: async () => ({ get: (key: string) => k
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(requireWorkspace).mockResolvedValue({ workspace: { id: "owned" }, supabase: {} } as never);
-  vi.mocked(loadConversationHistory).mockResolvedValue({ selected: null, threads: [], messages: [], messagesCursor: null, threadsCursor: null });
+  vi.mocked(loadConversationHistory).mockResolvedValue({ selected: null, threads: [], messages: [], messagesCursor: null, threadsCursor: null, running: null });
 });
 it("uses the authenticated workspace's selection after reload and lets explicit New override it", async () => {
   const response = await GET(new Request("http://localhost/api/conversations"));

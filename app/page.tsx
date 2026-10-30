@@ -19,13 +19,13 @@ import { SourceCoverageDetails } from "./source-coverage";
 import { AgentBriefing, loadAgentBriefing } from "./agent-briefing";
 import { HomeBudgets } from "./home-budgets";
 import { HomeHistory, loadHomeHistory } from "./home-history";
-import { WaitingForYou, loadWaitingForYou } from "./waiting-for-you";
+import { RecurringDetection, WaitingForYou, detectRecurring, loadWaitingForYou } from "./waiting-for-you";
 import { loadPriceChanges } from "@/lib/finance/price-changes";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { dayRange, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
 import { NetWorthChart } from "./net-worth-chart";
-import { LayoutGrid, Sparkle } from "lucide-react";
+import { LayoutGrid, Phone, Sparkle } from "lucide-react";
 
 // Six columns: a wide card pairs with a narrow one and half cards pair up; dense flow fills the gaps whatever order the layout picks.
 const FULL = new Set(["overview", "history"]);
@@ -53,19 +53,19 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const allWealthPromise = loadWealthItems(supabase, workspace.id, true);
   const wealthPromise = allWealthPromise.then(items => items.filter(item => !item.removed_at));
   const sourceMetadataPromise = loadSourceCoverageMetadata(supabase, workspace.id, true);
-  // Start the streamed sections' reads now (memoized); their Suspense boundaries pick up the same promises.
+  // Start the streamed sections' reads now (memoized); their Suspense boundaries pick up the same promises. Recurring detection streams beside the page.
   loadInsightEvidence(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
   loadHomeSpending(supabase, workspace.id, displayCurrency, today).catch(() => undefined);
   loadHomeHistory(supabase, workspace.id).catch(() => undefined);
   loadAgentBriefing(supabase, workspace.id).catch(() => undefined);
-  loadWaitingForYou(supabase, workspace);
+  detectRecurring(supabase, workspace);
   const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle());
   // Pinned artifact titles chain onto the layout read, so they finish inside the slower forecast; the frames load their data themselves.
   const pinnedPromise = layoutPromise.then(async ({ data }) => {
     const ids = (Array.isArray(data?.items) ? data.items : []).map(artifactIdFromKey).filter(id => id !== null);
     return ids.length ? supabase.from("artifacts").select("id, title").eq("workspace_id", workspace.id).in("id", ids).is("deleted_at", null) : { data: [], error: null };
   });
-  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges] = await Promise.all([
+  const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges, waiting] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
     wealthPromise,
@@ -81,6 +81,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     supabase.from("bank_connection_accounts").select("account_name, currency_code").eq("workspace_id", workspace.id),
     // Price labels are a nicety; Coming up still renders without them.
     loadPriceChanges(supabase, workspace.id).catch(() => new Map<string, never>()),
+    loadWaitingForYou(supabase, workspace),
   ]);
   for (const error of [rates.error, layout.error, pinned.error, goals.error, allocations.error, bankAccounts.error]) if (error) throw error;
   // A bank sync imports into the account with the bank's name and currency, as on the Accounts page.
@@ -220,9 +221,15 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     <main className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
       <header className="mb-2 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1"><p className="eyebrow">{new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))} · {new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))}</p><h1 className="page-title">Overview</h1></div>
-        <Link href="/settings#home" className="inline-flex h-11 items-center gap-2 rounded-xl border border-input px-4 text-[13px] hover:bg-muted"><LayoutGrid className="size-4" strokeWidth={1.6} aria-hidden="true" />Edit layout</Link>
+        <div className="flex gap-2">
+          {/* One tap to a live call in a new chat; cards it makes land in Waiting for you. */}
+          <Link href="/ai?conversation=new&call=1" className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" strokeWidth={1.8} aria-hidden="true" />Call Moneo</Link>
+          <Link href="/settings#home" className="inline-flex h-11 items-center gap-2 rounded-xl border border-input px-4 text-[13px] hover:bg-muted"><LayoutGrid className="size-4" strokeWidth={1.6} aria-hidden="true" />Edit layout</Link>
+        </div>
       </header>
-      <Suspense fallback={null}><WaitingForYou supabase={supabase} workspace={workspace} /></Suspense>
+      {/* Stored cards come with the page, so they never push the grid down; the slow detection streams after and reloads only if it changed a card. */}
+      <WaitingForYou proposals={waiting} />
+      <Suspense fallback={null}><RecurringDetection supabase={supabase} workspace={workspace} /></Suspense>
       <div className="grid grid-flow-dense gap-4 lg:grid-cols-6">
         {ordered.map(key => <div key={key} className={`min-w-0 ${span(key)} [&>section]:h-full`}>{widgets[key]}</div>)}
       </div>
