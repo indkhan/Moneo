@@ -8,6 +8,8 @@ const external = process.env.E2E_BASE_URL;
 
 export default defineConfig({
   testDir: "./e2e",
+  // e2e/*.test.ts are Vitest unit tests, not browser specs.
+  testMatch: "**/*.spec.ts",
   use: {
     baseURL: external ?? "http://localhost:3000",
   },
