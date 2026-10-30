@@ -1,0 +1,9 @@
+9 things look off
+
+Nothing changes unless you open and fix a transaction.
+
+All fine
+Minified React error #441; visit https://react.dev/errors/441 for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+
+
+hen i clicked all fine
