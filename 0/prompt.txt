@@ -1,0 +1,1 @@
+Another small thing is that it has recognized that I have lent €1,000 to Bilal. Still in "for me to review," it shows me the €1,000 that I have sent to Bilal even though it took that transaction state and all of that. It should know that it was the money that I lent him. Why does it ask me about it? Fix that as well.
