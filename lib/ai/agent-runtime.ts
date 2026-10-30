@@ -310,7 +310,12 @@ export async function runAgent(runId: string, workspaceId: string, agent: Exclud
   checked(await db.from("agent_tasks").update({ status: "running", started_at: new Date().toISOString() }).eq("run_id", runId).eq("workspace_id", workspaceId).eq("agent", agent));
   try {
     requireAiScope(settings, ...AGENTS[agent].scopes);
-    const { proposals, summary } = await RUNNERS[agent](context);
+    const { proposals: found, summary } = await RUNNERS[agent](context);
+    // A finding is raised once: an earlier run's open or decided one stands, so "It's fine" on Home sticks.
+    const findingKeys = found.filter(item => item.kind === "finding").map(item => item.conflictKey);
+    const earlier = findingKeys.length ? new Set((checked(await db.from("agent_proposals").select("conflict_key").eq("workspace_id", workspaceId).eq("kind", "finding")
+      .neq("run_id", runId).in("conflict_key", findingKeys)) as { conflict_key: string }[]).map(row => row.conflict_key)) : new Set<string>();
+    const proposals = found.filter(item => item.kind !== "finding" || !earlier.has(item.conflictKey));
     await activeRun(db, runId, workspaceId);
     if (proposals.length) checked(await db.from("agent_proposals").upsert(proposals.map(item => ({ run_id: runId, workspace_id: workspaceId, agent: item.agent, kind: item.kind,
       conflict_key: item.conflictKey, title: item.title.slice(0, 200), detail: item.detail, evidence: item.evidence, payload: item.payload, confidence: item.confidence, notes: item.notes })),
