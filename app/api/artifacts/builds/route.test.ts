@@ -1,8 +1,10 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
-const auth = vi.hoisted(() => ({ requireWorkspace: vi.fn() }));
-vi.mock("@/lib/auth", () => auth);
+import { requireWorkspace } from "@/lib/auth";
 import { GET } from "./route";
+
+vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
+const auth = { requireWorkspace: vi.mocked(requireWorkspace) as unknown as ReturnType<typeof vi.fn> };
 
 const build = { id: "b1", prompt: "Rent what-if", status: "running", error: null, artifact_id: null, created_at: new Date().toISOString() };
 function client(rows: unknown[], seen: { artifact?: string } = {}) {
@@ -10,7 +12,7 @@ function client(rows: unknown[], seen: { artifact?: string } = {}) {
     limit: async () => ({ data: rows, error: null }) };
   return { from: () => query };
 }
-beforeEach(() => auth.requireWorkspace.mockReset());
+beforeEach(() => { auth.requireWorkspace.mockReset(); });
 
 it("needs a signed-in workspace", async () => {
   auth.requireWorkspace.mockImplementation(async () => { throw new Error("no session"); });
