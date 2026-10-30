@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { loadLoanPayoutIds } from "@/lib/ai/iou-proposals";
+import { loadLoanPayoutIds } from "@/lib/finance/iou";
 import { cardTransactions, type CardTransaction } from "@/lib/ai/open-proposals";
 
 export type HomeFinding = { ids: string[]; title: string; detail: string; href: string | null; transactions: CardTransaction[] };

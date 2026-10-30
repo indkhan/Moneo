@@ -2,7 +2,7 @@ import Link from 'next/link';
 import {z} from 'zod';
 import {requireWorkspace} from '@/lib/auth';
 import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
-import {loadLoanPayoutIds} from '@/lib/ai/iou-proposals';
+import {loadLoanPayoutIds} from '@/lib/finance/iou';
 import {formatMoney} from '@/lib/finance/format';
 import {versionedRows} from '../transactions/input';
 import {dismissReview,toggleRule} from './actions';

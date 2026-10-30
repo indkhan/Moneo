@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Money lent to or borrowed from a person lives in Wealth as an ordinary asset ("Lent to Sam")
 // or debt ("Owed to Sam"), so net worth, history and Undo work unchanged. The name carries the person.
@@ -88,4 +89,30 @@ export function settledRecord(item: IouItem & { annual_rate_text: string | null;
   if (lent ? left <= 0n : left >= 0n) return null;
   return { ...iouRecord({ direction: lent ? "lent" : "borrowed", person: parseIouName(item.name)!.person, amountMinor: abs(left).toString(), currencyCode: item.currency_code, date: today }),
     annual_rate_text: item.annual_rate_text, monthly_payment_minor: item.monthly_payment_minor };
+}
+
+/**
+ * Ids of the bank transactions that paid out a recorded IOU (e.g. the transfer that lent Bilal €1,000) or repaid one. Each IOU is read as
+ * first recorded in Wealth, so a later repayment or a full settlement does not lose its payout.
+ */
+export async function loadLoanPayoutIds(supabase: SupabaseClient, workspaceId: string): Promise<Set<string>> {
+  const events = await supabase.from("wealth_events").select("item_id, after").eq("workspace_id", workspaceId).is("undone_at", null).order("created_at").limit(2000);
+  if (events.error) throw new Error(events.error.message);
+  const loans = new Map<string, LoanStart>();
+  for (const { item_id, after } of (events.data ?? []) as { item_id: string; after: { name?: string; amount_minor?: string | number; currency_code?: string; as_of?: string } }[]) {
+    const parsed = parseIouName(String(after?.name ?? ""));
+    if (loans.has(item_id) || !parsed || after.amount_minor === undefined || !after.currency_code || !after.as_of) continue;
+    const amount = BigInt(after.amount_minor);
+    loans.set(item_id, { ...parsed, amountMinor: amount < 0n ? -amount : amount, currencyCode: after.currency_code, date: String(after.as_of).slice(0, 10) });
+  }
+  // Accepted repayments are loan money too.
+  const settled = await supabase.from("agent_proposals").select("payload").eq("workspace_id", workspaceId).eq("kind", "iou_settle").eq("status", "accepted").limit(1000);
+  if (settled.error) throw new Error(settled.error.message);
+  const repaid = (settled.data ?? []).map(row => row.payload?.transactionId).filter((id): id is string => typeof id === "string");
+  if (!loans.size) return new Set(repaid);
+  const amounts = [...new Set([...loans.values()].map(loan => (loan.direction === "lent" ? -loan.amountMinor : loan.amountMinor).toString()))];
+  const rows = await supabase.from("transactions").select("id, description, amount_minor::text, currency_code, posted_on").eq("workspace_id", workspaceId).neq("status", "voided")
+    .in("amount_minor", amounts.slice(0, 200)).limit(2000);
+  if (rows.error) throw new Error(rows.error.message);
+  return new Set([...loanPayouts([...loans.values()], rows.data ?? []), ...repaid]);
 }

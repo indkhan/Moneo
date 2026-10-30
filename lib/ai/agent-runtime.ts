@@ -7,7 +7,8 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { mergeOrganizationSuggestions, organizationProposals, organizationRuleSchema, type OrganizationProposal, type OrganizationRow } from "@/lib/import/organization";
-import { loadLoanPayoutIds, proposeRepayments } from "@/lib/ai/iou-proposals";
+import { proposeRepayments } from "@/lib/ai/iou-proposals";
+import { loadLoanPayoutIds } from "@/lib/finance/iou";
 import { openRecurringProposals, syncRecurringProposals } from "@/lib/ai/recurring-proposals";
 import { AGENTS, WAVES, anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, planRun, verifiedBriefing,
   daysBefore, payloadSchemas, type AgentId, type BriefingFacts, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";

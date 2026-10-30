@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
 import { organizationDescriptionKey } from "@/lib/import/organization";
-import { loadLoanPayoutIds } from "@/lib/ai/iou-proposals";
+import { loadLoanPayoutIds } from "@/lib/finance/iou";
 
 /** `recent` are the newest few transactions, so a person can decide from the sheet without opening Organize. */
 export type UncategorizedGroup = { key: string; label: string; count: number; rows: { id: string; version: number }[]; suggested: string | null;
