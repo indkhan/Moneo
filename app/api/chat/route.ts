@@ -334,7 +334,8 @@ ${CALL_MODE_PROMPT}` : ""}`,
     const failure = error instanceof Error ? error.message : "AI request failed";
     // Finishing changes only a running request, so a canceled one stays canceled.
     await supabase.rpc("finish_chat_request", { p_request_id: requestId, p_status: "failed", p_content: failure.slice(0, 500) });
-    return [{ error: failure }, 502];
+    // A stopped request was canceled, not failed: say so, so a call shows it as stopped.
+    return stop.signal.aborted ? [{ status: "canceled", error: "Request is canceled" }, 409] : [{ error: failure }, 502];
   }
   }
   if (!streaming) { const run = complete(() => {}); after(() => run); const [body, status] = await run; return Response.json(body, { status }); }

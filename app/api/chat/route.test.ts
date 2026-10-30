@@ -357,7 +357,8 @@ it("stops at the next model step after an explicit cancel and never publishes ov
     return { text: "Should not be published" };
   });
   const response = await POST(request("Explain my spending"));
-  expect(response.status).toBe(502);
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({ status: "canceled" });
   expect(signal?.aborted).toBe(true);
   const finishes = vi.mocked(context.supabase.rpc).mock.calls.filter(call => call[0] === "finish_chat_request");
   expect(finishes.map(call => (call[1] as { p_status: string }).p_status)).toEqual(["failed"]);
