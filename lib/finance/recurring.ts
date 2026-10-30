@@ -183,7 +183,8 @@ export function detectRecurring(transactions: RecurringTransaction[]): Recurring
       const confidence = Math.max(0.1, Math.min(0.95, Math.round((0.6 + 0.05 * (ordered.length - 3) + (exactAmounts ? 0.1 : 0) - 0.05 * candidate.missing) * 100) / 100));
       series.push({
         cadence: candidate.cadence,
-        label,
+        // Bank descriptions can run to hundreds of characters; keep the label within what a schedule name accepts.
+        label: label.slice(0, 120).trimEnd(),
         accountId: ordered[0].accountId,
         currencyCode: ordered[0].currencyCode,
         amountMinMinor: min,
