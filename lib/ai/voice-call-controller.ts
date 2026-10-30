@@ -79,6 +79,8 @@ export class VoiceCallController {
   /** A result the user talked over, with what they said since, until Moneo is asked to finish it. */
   private cut: { delegationId: string | null; content: string; words: string } | null = null;
   private captionId = 0;
+  /** A sound tag ("[scoff]") still open at the end of a role's last words, held until it closes. */
+  private openTag: Record<CallCaption["role"], string> = { user: "", assistant: "" };
   private readonly now: () => number;
   private readonly schedule: (run: () => void, ms: number) => unknown;
   private readonly newId: () => string;
@@ -134,7 +136,7 @@ export class VoiceCallController {
         const offset = event.offset_ms ?? Infinity;
         const claimed = this.heard.some(piece => piece.end <= offset) ? this.heard.filter(piece => piece.end <= offset) : this.heard;
         this.heard = this.heard.filter(piece => !claimed.includes(piece));
-        const text = claimed.map(piece => piece.text).join("").trim() || this.lastUserTurn;
+        const text = claimed.map(piece => piece.text).join("").replace(/\[[^\]]*\]/g, "").trim() || this.lastUserTurn;
         if (event.delegation?.id && text) this.start(text, event.delegation.id);
         break;
       }
@@ -154,7 +156,13 @@ export class VoiceCallController {
     this.start(message, null);
   }
 
-  private caption(role: CallCaption["role"], delta: string) {
+  private caption(role: CallCaption["role"], words: string) {
+    // Sound tags are not words, and can arrive in pieces between the other side's words.
+    let delta = (this.openTag[role] + words).replace(/\[[^\]]*\]/g, "");
+    // A "[" that never closes within a few words was just a bracket.
+    const open = delta.length - delta.lastIndexOf("[") > 40 ? -1 : delta.lastIndexOf("[");
+    this.openTag[role] = open < 0 ? "" : delta.slice(open);
+    if (open >= 0) delta = delta.slice(0, open);
     if (!delta) return;
     const last = this.captions.at(-1);
     if (last?.role === role) this.captions = [...this.captions.slice(0, -1), { ...last, text: last.text + delta }];

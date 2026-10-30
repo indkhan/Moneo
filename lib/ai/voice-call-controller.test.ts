@@ -184,3 +184,12 @@ it("waits for Moneo's voice, not its transcript, before handing over the next re
   await wait(2700);
   expect(sent.filter(event => event.type === "session.commentary.append")).toHaveLength(2);
 });
+
+it("leaves sound tags out of captions, even when they arrive in pieces between the user's words", () => {
+  const { call, say } = setup();
+  call.handle({ type: "session.output_transcript.delta", delta: "Sure. [s" });
+  say("are");
+  call.handle({ type: "session.output_transcript.delta", delta: "coff" });
+  call.handle({ type: "session.output_transcript.delta", delta: "] I'm good." });
+  expect(call.captions.map(caption => caption.text)).toEqual(["Sure. ", "are", "I'm good."]);
+});
