@@ -69,7 +69,7 @@ export async function proposeRepayments({ supabase, workspace, chatRequestId }: 
     if (seen.has(keys[index])) return [];
     const applied = formatMoney(match.appliedMinor, item.currency_code, workspace.locale), owed = formatMoney(match.owedMinor, item.currency_code, workspace.locale);
     return [{ workspace_id: workspace.id, agent: "chat", kind: "iou_settle", ...(chatRequestId ? { chat_request_id: chatRequestId } : {}),  conflict_key: keys[index], confidence: match.appliedMinor === match.owedMinor ? 90 : 70,
-      title: `${match.person} ${match.direction === "lent" ? "paid you" : "was paid"} ${applied}`.slice(0, 200),
+      title: (match.direction === "lent" ? `${match.person} paid you ${applied}` : `You paid ${match.person} ${applied}`).slice(0, 200),
       detail: `“${transaction.description}” on ${transaction.posted_on}. Counting it against ${owed} still ${match.direction === "lent" ? "owed to you" : "owed by you"}.`,
       evidence: { facts: [], transactions: [{ id: transaction.id, date: transaction.posted_on, description: transaction.description, amountMinor: transaction.amount_minor, currency: transaction.currency_code }], links: [] },
       payload: { itemId: match.itemId, transactionId: match.transactionId, appliedMinor: match.appliedMinor } }];
@@ -82,7 +82,7 @@ export async function proposeRepayments({ supabase, workspace, chatRequestId }: 
 }
 
 /**
- * Ids of the bank transactions that paid out a recorded IOU (e.g. the transfer that lent Bilal €1,000). Each IOU is read as
+ * Ids of the bank transactions that paid out a recorded IOU (e.g. the transfer that lent Bilal €1,000) or repaid one. Each IOU is read as
  * first recorded in Wealth, so a later repayment or a full settlement does not lose its payout.
  */
 export async function loadLoanPayoutIds(supabase: SupabaseClient, workspaceId: string): Promise<Set<string>> {
@@ -95,12 +95,16 @@ export async function loadLoanPayoutIds(supabase: SupabaseClient, workspaceId: s
     const amount = BigInt(after.amount_minor);
     loans.set(item_id, { ...parsed, amountMinor: amount < 0n ? -amount : amount, currencyCode: after.currency_code, date: String(after.as_of).slice(0, 10) });
   }
-  if (!loans.size) return new Set();
+  // Accepted repayments are loan money too.
+  const settled = await supabase.from("agent_proposals").select("payload").eq("workspace_id", workspaceId).eq("kind", "iou_settle").eq("status", "accepted").limit(1000);
+  if (settled.error) throw new Error(settled.error.message);
+  const repaid = (settled.data ?? []).map(row => row.payload?.transactionId).filter((id): id is string => typeof id === "string");
+  if (!loans.size) return new Set(repaid);
   const amounts = [...new Set([...loans.values()].map(loan => (loan.direction === "lent" ? -loan.amountMinor : loan.amountMinor).toString()))];
   const rows = await supabase.from("transactions").select("id, description, amount_minor::text, currency_code, posted_on").eq("workspace_id", workspaceId).neq("status", "voided")
     .in("amount_minor", amounts.slice(0, 200)).limit(2000);
   if (rows.error) throw new Error(rows.error.message);
-  return loanPayouts([...loans.values()], rows.data ?? []);
+  return new Set([...loanPayouts([...loans.values()], rows.data ?? []), ...repaid]);
 }
 
 /** Open standalone IOU proposals, oldest first. */
