@@ -92,7 +92,7 @@ let conversationId;
     const { context, page } = await open();
     await page.goto("/ai?conversation=new"); await page.waitForLoadState("load"); await page.waitForTimeout(1000);
     await page.evaluate(() => { window.__rec = { long: 0, cls: 0 };
-      new PerformanceObserver(list => { for (const e of list.getEntries()) window.__rec.long++; }).observe({ type: "longtask" });
+      new PerformanceObserver(list => { window.__rec.long += list.getEntries().length; }).observe({ type: "longtask" });
       new PerformanceObserver(list => { for (const e of list.getEntries()) window.__rec.cls += e.value; }).observe({ type: "layout-shift" }); });
     const mic = page.getByRole("button", { name: /^Talk/ });
     if (!await mic.count()) { await context.close(); out.micToRecordingMs = null; break; }
