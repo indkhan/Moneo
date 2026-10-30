@@ -12,7 +12,7 @@ export const withSpoken = (typed: string, spoken: string) => [typed.trim(), spok
 export function ChatComposer({ id, label, value, onChange, onSubmit, onStop, busy, disabled = false, placeholder, compact = false, busyText, attachments, voice }: {
   id: string; label: string; value: string; onChange: (value: string) => void; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onStop: () => void; busy: boolean; disabled?: boolean; placeholder: string; compact?: boolean; busyText: string; attachments?: ChatAttachments;
-  voice?: { onSend: (text: string) => void; autoStart?: boolean };
+  voice?: { onSend: (text: string) => void };
 }) {
   const button = `flex items-center justify-center rounded-xl bg-primary text-primary-foreground hover:opacity-90 ${compact ? "size-9" : "size-11"}`;
   const files = attachments?.items ?? [];
@@ -39,7 +39,7 @@ export function ChatComposer({ id, label, value, onChange, onSubmit, onStop, bus
         </label>}
         <span role={busy ? "status" : undefined} className="truncate text-xs text-muted-foreground">{busy ? busyText : ""}</span>
       </div>
-      <div className="flex items-center gap-1.5">{voice && <VoiceInput compact={compact} disabled={disabled} autoStart={voice.autoStart} onSend={voice.onSend}
+      <div className="flex items-center gap-1.5">{voice && <VoiceInput compact={compact} disabled={disabled} onSend={voice.onSend}
           onDone={text => { onChange(withSpoken(value, text)); document.getElementById(id)?.focus(); }} />}
         {busy && <button type="button" onClick={onStop} aria-label="Stop" className={button}><Square className={`${compact ? "size-3" : "size-3.5"} fill-current`} aria-hidden="true" /></button>}
         {/* While a reply runs, sending queues the message. */}

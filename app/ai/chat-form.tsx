@@ -20,7 +20,7 @@ export type ChatFormEvents = {
 };
 
 // The composer keeps its key when a new chat is first saved, so a draft typed during the answer stays put.
-export function ChatForm({ conversationId, selectionKey, empty = false, scope, autoVoice = false, onStart, onEvent, onDone }: { conversationId: string; selectionKey: string; isNewConversation?: boolean; empty?: boolean; scope?: React.ReactNode; autoVoice?: boolean } & ChatFormEvents) {
+export function ChatForm({ conversationId, selectionKey, empty = false, scope, onStart, onEvent, onDone }: { conversationId: string; selectionKey: string; isNewConversation?: boolean; empty?: boolean; scope?: React.ReactNode } & ChatFormEvents) {
   const [message, setMessage] = useState("");
   const chat = useChatRequest();
   const files = useChatAttachments();
@@ -67,7 +67,7 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, a
   }
   const { queue, enqueue, remove, steer, withSteers, canSteer } = useChatQueue(chat, conversationId, startQueued);
 
-  const composer = <><ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} /><ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder="Ask anything about your money" busyText="Waiting for a response…" attachments={files} voice={{ onSend: sendSpoken, autoStart: autoVoice }} /></>;
+  const composer = <><ChatQueue items={queue} canSteer={canSteer} onSteer={item => void steer(item)} onRemove={remove} /><ChatComposer id="question" label="Ask about your finances" value={message} onChange={setMessage} onSubmit={submit} onStop={() => void cancel()} busy={busy} placeholder="Ask anything about your money" busyText="Waiting for a response…" attachments={files} voice={{ onSend: sendSpoken }} /></>;
   const notices = <>{error && <p role="alert" className="mt-2 px-3 text-sm text-danger">{error}</p>}
     {status === "canceled" && <p role="status" className="mt-2 px-3 text-sm text-muted-foreground">Canceled. Previously completed edits remain in transaction history.</p>}</>;
 

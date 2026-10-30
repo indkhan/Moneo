@@ -54,16 +54,19 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [calling, setCalling] = useState(false);
   const loading = useRef(new Set<string>());
   const menu = useRef<HTMLDetailsElement>(null);
   const end = useRef<HTMLDivElement>(null);
 
   const params = useSearchParams();
   const param = params.get("conversation");
-  // Overview's Voice note opens chat already recording; the flag is dropped once read, so a reload or another chat does not record again.
-  const autoVoice = params.get("voice") === "1";
-  useEffect(() => { if (!autoVoice) return; const url = new URL(window.location.href); url.searchParams.delete("voice"); window.history.replaceState(null, "", url); }, [autoVoice]);
+  // Overview's Call opens chat already calling; the flag is dropped once read, so a reload does not call again.
+  const autoCall = params.get("call") === "1";
+  const [calling, setCalling] = useState(autoCall);
+  useEffect(() => {
+    if (!autoCall) return;
+    const url = new URL(window.location.href); url.searchParams.delete("call"); window.history.replaceState(null, "", url);
+  }, [autoCall]);
   const selectedId = param === "new" ? null : param ?? initial.selected?.id ?? null;
   const activeId = selectedId ?? draftId;
   const entry = entries[activeId];
@@ -245,7 +248,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
           : <>
             {entry?.cursor && <button type="button" disabled={busy} onClick={() => void olderMessages()} className="mt-2 self-center text-sm text-muted-foreground hover:text-foreground disabled:opacity-50">Older messages</button>}
             {!empty && <div className="py-6"><ChatMessages messages={entry?.messages ?? []} pending={active ?? (resuming ? RESUMED_RUN : undefined)} /></div>}
-            <ChatForm key={activeId} conversationId={activeId} selectionKey={selectionKey} empty={empty} scope={scope} autoVoice={autoVoice} onStart={onStart} onEvent={onEvent} onDone={onDone} />
+            <ChatForm key={activeId} conversationId={activeId} selectionKey={selectionKey} empty={empty} scope={scope} onStart={onStart} onEvent={onEvent} onDone={onDone} />
           </>}
         <div ref={end} />
       </div>
