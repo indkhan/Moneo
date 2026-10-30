@@ -9,7 +9,7 @@ import { liveAccounts } from "@/lib/ai/transaction-proposals";
 import { createSchedule, decideSeries, editSchedule, removeSchedule, scheduleFields, seriesSchema, type ScheduleFields } from "@/app/money/recurring/schedules";
 import { loadSuggestions, priceChanges, seriesDecision } from "@/app/money/recurring/suggestions";
 
-type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string } };
+type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string }; chatRequestId?: string };
 
 /** The model's view of a recurring change; the application resolves names and turns amounts into exact minor units. */
 export const recurringInputSchema = z.object({
@@ -118,7 +118,7 @@ export async function proposeRecurring(context: Context, input: z.infer<typeof r
       title = `Change ${schedule.name}: ${[edits.name && `rename to ${edits.name}`, describe(edits, schedule.currency_code)].filter(Boolean).join(", ")}`;
     }
   }
-  const { data, error } = await supabase.from("agent_proposals").insert({ workspace_id: workspace.id, agent: "chat", kind: "recurring_edit",
+  const { data, error } = await supabase.from("agent_proposals").insert({ workspace_id: workspace.id, agent: "chat", kind: "recurring_edit", ...(context.chatRequestId ? { chat_request_id: context.chatRequestId } : {}),
     conflict_key: `recurring_edit:${crypto.randomUUID()}`, title: title.slice(0, 200), detail: "Recurring payments", payload: recurringEditSchema.parse(payload), confidence: 100 }).select("id").single();
   if (error) throw new Error(error.message);
   return { proposalId: data.id as string, title };

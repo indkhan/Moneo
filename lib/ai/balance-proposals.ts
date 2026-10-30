@@ -6,7 +6,7 @@ import { formatMoney } from "@/lib/finance/format";
 import { minorDigits } from "@/lib/finance/fx";
 import { wealthAmount } from "@/lib/finance/wealth";
 
-type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string } };
+type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string }; chatRequestId?: string };
 
 /** The model's view of a balance the user states: a decimal amount; the application turns it into exact minor units. */
 export const balanceInputSchema = z.object({
@@ -22,7 +22,7 @@ export const balanceSetSchema = z.object({
 }).strict();
 
 /** Stores a pending "set this account's balance" proposal. Nothing changes until the owner accepts. */
-export async function proposeBalance({ supabase, workspace }: Context, input: z.infer<typeof balanceInputSchema>) {
+export async function proposeBalance({ supabase, workspace, chatRequestId }: Context, input: z.infer<typeof balanceInputSchema>) {
   minorDigits(input.currency);
   const today = calendarDate(new Date(), workspace.timezone);
   const asOf = input.asOf ?? today;
@@ -37,7 +37,7 @@ export async function proposeBalance({ supabase, workspace }: Context, input: z.
   const payload = balanceSetSchema.parse({ accountId: account?.id ?? null, amountMinor: wealthAmount(input.amount, input.currency).toString(), currencyCode: input.currency, asOf });
   const amount = formatMoney(payload.amountMinor, payload.currencyCode, workspace.locale);
   const title = (account ? `Set ${account.name} balance to ${amount}` : `Create a Cash ${input.currency} account and set its balance to ${amount}`).slice(0, 200);
-  const { data, error } = await supabase.from("agent_proposals").insert({ workspace_id: workspace.id, agent: "chat", kind: "balance_set",
+  const { data, error } = await supabase.from("agent_proposals").insert({ workspace_id: workspace.id, agent: "chat", kind: "balance_set", ...(chatRequestId ? { chat_request_id: chatRequestId } : {}), 
     conflict_key: `balance_set:${crypto.randomUUID()}`, title, detail: asOf === today ? "Today" : asOf, payload, confidence: 100 }).select("id").single();
   if (error) throw new Error(error.message);
   return { proposalId: data.id as string, title };

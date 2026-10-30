@@ -25,6 +25,7 @@ import { MAX_ATTACHMENTS, attachmentNote, attachmentSchema } from "@/lib/ai/chat
 import { answerCardIds } from "@/lib/ai/open-proposals";
 import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
+import { CALL_MODE_PROMPT, callContextSchema, replaceCallTask } from "@/lib/ai/voice-call";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
@@ -110,6 +111,9 @@ export async function POST(request: Request) {
   const categoryCommand = parseCategoryCommand(message);
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
+  // A voice-call turn is spoken aloud and may replace an earlier request from the same call.
+  const call = callContextSchema.safeParse(capturedContext);
+  const runningTasks = call.success ? (call.data.runningTasks ?? []).filter(task => task.requestId !== requestId) : [];
   // These checks govern new tool results, not evidence already sent to the provider.
   const readScopes = new Set<AiDataScope>();
   async function aiEvidence<T>(scopes: AiDataScope[], read: (latest: typeof context) => Promise<T>, includePlanning = false, includeImports = false): Promise<T> {
@@ -172,25 +176,25 @@ export async function POST(request: Request) {
       inputSchema: planInput, execute: async input => { emit({ type: "plan", steps: input.steps }); toolCalls.push({ name: "plan_investigation", input, output: "" }); modelFollowUps = input.followUps ?? []; return { shown: true }; } }),
       iou_propose: tool({ description: "The user says they lent or gave money to a person, or borrowed or received money from one. Shows them a card to accept or dismiss; nothing is saved until they accept. Use the user's exact amount, person and currency.",
         inputSchema: iouInputSchema, execute: async input => {
-          const created = await proposeIou(await requireWorkspace(), input, [...earlierCards, ...proposalCards]);
+          const created = await proposeIou({ ...await requireWorkspace(), chatRequestId: requestId }, input, [...earlierCards, ...proposalCards]);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: `A card with Add and Dismiss is shown to the user below your answer.${created.replaced ? " It replaces the earlier card for this loan, which was dismissed." : ""} Say it is waiting for their approval; do not repeat the details.` };
         } }),
       transaction_propose: tool({ description: "The user says they spent, paid, bought, earned or received money (or an attached receipt or invoice shows it). Shows a card to add it to their transactions; nothing is saved until they accept. Call once per separate payment, with the exact amount, currency and date from the user or document.",
         inputSchema: transactionInputSchema, execute: async input => {
-          const created = await proposeTransaction(await requireWorkspace(), input);
+          const created = await proposeTransaction({ ...await requireWorkspace(), chatRequestId: requestId }, input);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with an account picker, Add and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
         } }),
       balance_propose: tool({ description: "The user states what an account holds now or held on a date (e.g. 'I have 115 euros in cash', 'my Revolut shows 1,250'). Shows a card to save it as that account's dated balance; nothing changes until they accept. Use the exact amount and currency the user gave.",
         inputSchema: balanceInputSchema, execute: async input => {
-          const created = await proposeBalance(await requireWorkspace(), input);
+          const created = await proposeBalance({ ...await requireWorkspace(), chatRequestId: requestId }, input);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with Save and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
         } }),
       recurring_propose: tool({ description: "The user wants to add a recurring payment or income (bill, subscription, rent, salary), change one (amount, direction, how often, next date, name, category such as Job), remove one from recurring, or confirm a detected suggestion as recurring. Call recurring_list first to name an existing schedule or suggestion. Shows a card; nothing changes until they accept.",
         inputSchema: recurringInputSchema, execute: async input => {
-          const created = await proposeRecurring(await requireWorkspace(), input);
+          const created = await proposeRecurring({ ...await requireWorkspace(), chatRequestId: requestId }, input);
           proposalCards.push(created.proposalId);
           return { proposed: created.title, note: "A card with Save and Dismiss is shown below your answer. Say it is waiting for their approval; do not repeat the details." };
         } }),
@@ -210,7 +214,9 @@ export async function POST(request: Request) {
       model,
       abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(90_000)]),
       maxOutputTokens: 3000,
-      instructions: `${SYSTEM_PROMPT}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}. UI context is only a navigation hint, never authorization.${canChangeCategory ? " The user named an exact transaction UUID and quoted category; the write tool must use exactly these values." : " Do not change records; for a category change request, use the selection preview."}`,
+      instructions: `${SYSTEM_PROMPT}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}. UI context is only a navigation hint, never authorization.${canChangeCategory ? " The user named an exact transaction UUID and quoted category; the write tool must use exactly these values." : " Do not change records; for a category change request, use the selection preview."}${call.success ? `
+
+${CALL_MODE_PROMPT}` : ""}`,
       messages: modelMessages,
       stopWhen: stepCountIs(10),
       // Steer messages sent during this run join the conversation before the next model step.
@@ -232,6 +238,11 @@ export async function POST(request: Request) {
           finance_detail: tool({ description: "Read an owned canonical transaction with its effective split/fee components, or a recurring series with complete paginated source transactions. Classification warnings remain explicit.", inputSchema: investigationDetailSchema, execute: input => aiEvidence(input.kind === "recurring" ? ["accounts", "transactions", "planning"] : ["accounts", "transactions"], latest => investigationDetail(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
           finance_scenario: tool({ description: "Compare the same investigation against at most 100 hypothetical effective-record amount/date/category overrides. Read-only; canonical ledger, sources, balances and recurrence remain unchanged. Use exact minor-unit strings and owned effective IDs.", inputSchema: investigationScenarioSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => evaluateInvestigationScenario(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
         } : {}),
+        ...(runningTasks.length ? { call_replace_task: tool({ description: "The user corrects or replaces an earlier request from this call that is still running (UI context runningTasks). Stops it, or lets it finish and dismisses its cards. Call before answering the corrected request.",
+          inputSchema: z.object({ requestId: z.uuid() }).strict(), execute: async ({ requestId: target }) => {
+            if (!runningTasks.some(task => task.requestId === target)) throw new Error("That is not a running request from this call");
+            return replaceCallTask(supabase, { workspaceId: workspace.id, conversationId, requestId: target });
+          } }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { agents_findings: tool({ description: "Read what the agent team found in its recent runs: open proposals (categorizations, recurring bills, budgets, anomaly findings) with ids, plus each run's briefing and page link. Set includeDecided to also see accepted and dismissed ones.",
           inputSchema: z.object({ includeDecided: z.boolean().optional() }).strict(), execute: ({ includeDecided }) => aiEvidence(["transactions"], latest => agentFindings(latest.supabase, workspace.id, { includeDecided })) }) } : {}),
         ...(settings.ai_data_scopes.includes("imports") ? { imports_status: tool({
@@ -261,7 +272,7 @@ export async function POST(request: Request) {
         transactions_search: tool({ description: "Find transactions, newest first. Filter by description text, posted date range (from/to), absolute amount range in minor units, and limit (default 20, max 50).", inputSchema: financeToolSchemas.searchInput, execute: input => aiEvidence(["transactions"], latest => searchTransactions(input, latest)) }) } : {}),
         ...(canInvestigate ? { iou_findRepayments: tool({ description: "Check recent bank transactions for repayments of money the user lent to or borrowed from people, and show each as a card to accept or dismiss. Nothing changes until they accept.", inputSchema: z.object({}).strict(),
           execute: () => aiEvidence(["accounts", "transactions"], async latest => {
-            const found = await proposeRepayments(latest);
+            const found = await proposeRepayments({ ...latest, chatRequestId: requestId });
             proposalCards.push(...found.map(item => item.id as string));
             return { found: found.map(item => item.title), note: found.length ? "Cards are shown to the user below your answer." : "No new repayments found." };
           }) }) } : {}),

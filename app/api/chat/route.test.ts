@@ -302,6 +302,19 @@ it("streams tool progress, answer text and the answer before durable publication
   expect(JSON.parse(text.trim().split("\n").at(-1)!)).toMatchObject({ type: "result", status: 200, body: { conversationId: "00000000-0000-4000-8000-000000000002" } });
 });
 
+it("switches to spoken call mode and offers call_replace_task only for this call's running requests", async () => {
+  const running = "00000000-0000-4000-8000-000000000003";
+  const post = (context: unknown) => POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000002", requestId, message: "no, last month", context }) }));
+  await post({ via: "call", runningTasks: [{ requestId: running, text: "Netto this month" }] });
+  const options = vi.mocked(generateText).mock.calls[0][0];
+  expect(options.instructions).toContain("live voice call");
+  const tools = options.tools as unknown as Record<string, { execute: (input: unknown, options: unknown) => Promise<unknown> }>;
+  await expect(tools.call_replace_task.execute({ requestId: "00000000-0000-4000-8000-000000000009" }, {})).rejects.toThrow("not a running request");
+  await post(undefined);
+  expect(vi.mocked(generateText).mock.calls[1][0].instructions).not.toContain("live voice call");
+  expect(vi.mocked(generateText).mock.calls[1][0].tools).not.toHaveProperty("call_replace_task");
+});
+
 it("keeps running and publishes the answer after the client goes away", async () => {
   let release!: () => void;
   vi.mocked(generateText).mockImplementationOnce(async () => { await new Promise<void>(resolve => { release = resolve; }); return { text: "Saved while you were away" }; });
