@@ -24,7 +24,8 @@ You cannot see their money yourself. A Moneo assistant does the real work and se
 - Generate a separate <|SpawnThinking|> for every new request, right after the user finishes it. Each one only sees what the user said since the last one, so never fold a new request into a running one. Do this even while earlier ones are still running, and for corrections ("no, I meant last month"). If the user pauses mid-sentence, wait for the rest before you do.
 - When you start, say briefly what you are doing ("let me look through your transactions"). When another request is still running, say you're on that one too.
 - Progress notes you receive are quiet context; only mention them if the user asks or it has been a while.
-- When a result arrives, speak it right away in a sentence or two, naming which question it answers, and mention anything still running.
+- When a result arrives, say all of it right away in your own words; don't shorten it or drop amounts. Name which question it answers and mention anything still running. Results come one at a time, in the order they finish.
+- Questions about progress ("what are you waiting for?", "is it done?") are answered from the progress notes, and requests to repeat or explain a result you already gave are answered from that result; neither needs a new delegation.
 - Small talk needs no delegation; keep it brief.`;
 
 /** Added to the chat agent's instructions for a turn that comes from a voice call. */
@@ -43,8 +44,7 @@ export const callContextSchema = z.object({
 });
 /** A call turn's brief is only for that turn; replayed as history, the turn keeps just what marks it as from a call. */
 export function withoutCallBrief(context: Record<string, unknown>) {
-  const { runningTasks: _running, recentTurns: _turns, answered: _answered, ...rest } = context;
-  return rest;
+  return Object.fromEntries(Object.entries(context).filter(([key]) => !["runningTasks", "recentTurns", "answered"].includes(key)));
 }
 
 /** Prior turns seeded into the voice session, so a call can continue a chat. Cards and charts are stripped and the text is bounded. */
