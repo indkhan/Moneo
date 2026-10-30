@@ -56,7 +56,7 @@ export async function POST(request: Request) {
   if (attachments.some(file => !file.path.startsWith(`${workspace.id}/`))) return Response.json({ error: "Invalid attachment" }, { status: 400 });
   // Model resolution and earlier history do not depend on the claim; start them with the ownership check.
   const modelPromise = modelForSettings(settings, capturedContext?.via === "call" ? "voice_call" : "chat");
-  const historyPromise = Promise.resolve(supabase.from("messages").select("role, content, context, attachments")
+  const historyPromise = Promise.resolve(supabase.from("messages").select("role, content, context, attachments, request_id")
     .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
     .order("created_at", { ascending: false }).limit(19));
   modelPromise.catch(() => {});
@@ -93,9 +93,14 @@ export async function POST(request: Request) {
   try {
   const { data: history, error: historyError } = await historyPromise;
   if (historyError) throw historyError;
+  // A voice-call turn is spoken aloud and may replace an earlier request from the same call.
+  const call = callContextSchema.safeParse(capturedContext);
+  const runningTasks = call.success ? (call.data.runningTasks ?? []).filter(task => task.requestId !== requestId) : [];
+  // Other requests from this call are still being answered on their own; leaving their questions out keeps this answer to its own request.
+  const running = new Set(runningTasks.map(task => task.requestId));
   // History was read before the claim saved this message, so append it exactly as the claim stores it.
   const submitted = { role: "user", content: message, context: capturedContext ?? {}, attachments: [] };
-  const textMessages = [...(history ?? []).reverse(), submitted].map(item => ({
+  const textMessages = [...(history ?? []).filter(item => !running.has(item.request_id)).reverse(), submitted].map(item => ({
     role: item.role as "user" | "assistant",
     content: item.role === "assistant" ? withoutCharts(item.content)
       : (item.context && Object.keys(item.context).length ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content) + attachmentNote(item.attachments),
@@ -111,9 +116,6 @@ export async function POST(request: Request) {
   const categoryCommand = parseCategoryCommand(message);
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
-  // A voice-call turn is spoken aloud and may replace an earlier request from the same call.
-  const call = callContextSchema.safeParse(capturedContext);
-  const runningTasks = call.success ? (call.data.runningTasks ?? []).filter(task => task.requestId !== requestId) : [];
   // These checks govern new tool results, not evidence already sent to the provider.
   const readScopes = new Set<AiDataScope>();
   async function aiEvidence<T>(scopes: AiDataScope[], read: (latest: typeof context) => Promise<T>, includePlanning = false, includeImports = false): Promise<T> {
