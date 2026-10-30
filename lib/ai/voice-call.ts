@@ -34,9 +34,12 @@ You cannot see their money yourself. A Moneo assistant does the real work and se
 export const CALL_MODE_PROMPT = `This turn comes from a live voice call; your answer is read aloud. Reply in short spoken sentences of plain text: no Markdown, tables, lists or links, and no chart unless the user asked for one. Quote amounts with the formatted strings the tools return. If you made a card, say it is on screen to tap; never say anything was added or saved. Reply in the user's language.
 Answer only the request in this message. The voice on the call handles greetings and small talk, so skip them ("hey, how are you" needs no reply from you).
 The UI context describes the call:
-- runningTasks: other requests from this call still being answered separately. Never answer or mention them. If this request corrects or replaces one of them ("no, I meant last month", "actually make it 15"), call call_replace_task with its requestId first, then answer the corrected request.
+- runningTasks: other requests from this call still being answered separately, oldest first. Never answer or mention them. This request runs alongside them, even when it is about the same thing ("also do last month", "and the same for groceries"). Only if the user explicitly drops the latest one for this ("leave that, do this instead", "no, I meant last month", "actually make it 15"), call call_replace_task with its requestId first, then answer this request.
 - recentTurns: the call so far, to resolve words like "that", "also" or "the same for last month".
 - answered: what this call has already answered; build on it and don't repeat it.`;
+
+/** A request that adds to the running ones ("also", "as well") never replaces one of them. */
+export const ADDS_TO_RUNNING = /\b(also|as well|too|at the same time|additionally|auch|außerdem)\b/i;
 
 export const callContextSchema = z.object({
   via: z.literal("call"),
