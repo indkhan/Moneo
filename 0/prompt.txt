@@ -1,0 +1,94 @@
+take more time do research what others do to have it really fast and accurate and all 
+if we have that the second thing should we not do directly to moneo itself likek idk if that is the best way lets think more research more and then give me what are the top 2 ways and their pros and cons
+
+---
+
+i have one question with way 1 gpt live hands off to openai can it not hand off to moneo is that not what we should be doing with just a really smash way of context management and awareness like a harnesss
+
+another thing should be i ask something it starts sesarching for it and i ask for another thing it starts for that as well if the second question got answer faster say that first and then the first one 
+
+also could be that the second does not need a new chat cuz user might just be asking like how are you and all which needs no call so think about it froma harness and context engineering standpoint i think that mgiht help
+
+---
+
+yes go ahead and build it
+
+---
+
+can you run the applicaiton so i can test it
+
+---
+
+it clearly shows i have lent mmoney 
+
+
+Voice call
+2 min 20 s · 12:47 PM
+
+You asked for an analysis of last month’s spending; recorded September 2026 spending was €1,607.37, excluding two transfers, and statement coverage could not be confirmed.
+The largest category was uncategorized at €1,261.34, including some large payments to individuals.
+You asked how much you lent and to whom; Moneo couldn’t confirm loans, but found payments linked to Mohammed Esam Saleh Halboup, Usman Khan, Saad Iqbal Malick, Bilal Amin, and Mohammed Halboup that could be regular expenses.
+Requests from this call (3)
+Hey, can you analyze all my expenditure of last month
+
+Uh- While you are doing that, can you also, uh- tell me how much did I spend exactly in the whole last month
+
+In September, your recorded spending was EUR 1607.37. That excludes two transfers; statement coverage isn’t confirmed, so this may not include every transaction.
+
+For September 2026, recorded expenditure was EUR 1607.37. The biggest category was uncategorized at EUR 1261.34, including large payments to individuals, so that may not all represent everyday spending. Categorized spending was highest for insurance at EUR 144.31, groceries at EUR 89.05, and utilities at EUR 59.00.
+
+This covers posted, classified spending in the records; account and statement coverage is unknown, so it may not include everything.
+
+By the way, um- before you continue, uh- telling me about all of that, can you also tell me that- how much do I lend and who do I lend
+
+I can’t confirm how much you’ve lent, because your records don’t mark these payments as loans. They show payments associated with Mohammed Esam Saleh Halboup, Usman Khan, Saad Iqbal Malick, Bilal Amin, and Mohammed Halboup—but those may be ordinary expenses, not money lent.
+
+Full transcript
+You: Hey, can you analyze all my expenditure of last month
+Moneo: Yeah, taking a look through your transactions now.
+You: Uh- While you are doing that, can you also, uh- tell me how much did I spend exactly in the whole last month
+Moneo: On that too. Still crunching through all of that. I'm searching your transactions for the analysis. Meanwhile, I'm adding up your income and spend for last month. Still adding that up. Still going through your transactions for the big picture. For September, your recorded spending comes to 1,607 euros and 37 cents. That's excluding two transfers. And I can't confirm statement coverage. So it may not include every transaction. Okay, here's the breakdown. In September 2026, you spent 1,607 euro and 37 cents. The biggest chunk was labeled uncategorized, about 1,261 euro and 34 cents. And that includes some big payments to individuals. So it might not all be everyday spending. In the labeled stuff, insurance was 144 euro
+You: By the way, um- before you continue, uh- telling me about all of that, can you also tell me that- how much do I lend and who do I lend
+Moneo: Sure thing. I'm checking that as soon as I finish the overview. Still working on that one. I'm sorting through your transactions. I can't confirm how much you've lent because your records don't flag these as loans. They do show payments connected to Mohammed Esam Saleh Halboup, Usman Khan, Saad Iqbal Malick, Bilal Amin, and Mohammed Halboup. But those could just be regular expenses, not money you lent.
+Voice call
+2 min 20 s · 12:47 PM
+
+You asked for an analysis of last month’s spending; recorded September 2026 spending was €1,607.37, excluding two transfers, and statement coverage could not be confirmed.
+The largest category was uncategorized at €1,261.34, including some large payments to individuals.
+You asked how much you lent and to whom; Moneo couldn’t confirm loans, but found payments linked to Mohammed Esam Saleh Halboup, Usman Khan, Saad Iqbal Malick, Bilal Amin, and Mohammed Halboup that could be regular expenses.
+Requests from this call (3)
+Hey, can you analyze all my expenditure of last month
+
+Uh- While you are doing that, can you also, uh- tell me how much did I spend exactly in the whole last month
+
+In September, your recorded spending was EUR 1607.37. That excludes two transfers; statement coverage isn’t confirmed, so this may not include every transaction.
+
+For September 2026, recorded expenditure was EUR 1607.37. The biggest category was uncategorized at EUR 1261.34, including large payments to individuals, so that may not all represent everyday spending. Categorized spending was highest for insurance at EUR 144.31, groceries at EUR 89.05, and utilities at EUR 59.00.
+
+This covers posted, classified spending in the records; account and statement coverage is unknown, so it may not include everything.
+
+By the way, um- before you continue, uh- telling me about all of that, can you also tell me that- how much do I lend and who do I lend
+
+I can’t confirm how much you’ve lent, because your records don’t mark these payments as loans. They show payments associated with Mohammed Esam Saleh Halboup, Usman Khan, Saad Iqbal Malick, Bilal Amin, and Mohammed Halboup—but those may be ordinary expenses, not money lent.
+
+Full transcript
+You: Hey, can you analyze all my expenditure of last month
+Moneo: Yeah, taking a look through your transactions now.
+You: Uh- While you are doing that, can you also, uh- tell me how much did I spend exactly in the whole last month
+Moneo: On that too. Still crunching through all of that. I'm searching your transactions for the analysis. Meanwhile, I'm adding up your income and spend for last month. Still adding that up. Still going through your transactions for the big picture. For September, your recorded spending comes to 1,607 euros and 37 cents. That's excluding two transfers. And I can't confirm statement coverage. So it may not include every transaction. Okay, here's the breakdown. In September 2026, you spent 1,607 euro and 37 cents. The biggest chunk was labeled uncategorized, about 1,261 euro and 34 cents. And that includes some big payments to individuals. So it might not all be everyday spending. In the labeled stuff, insurance was 144 euro
+You: By the way, um- before you continue, uh- telling me about all of that, can you also tell me that- how much do I lend and who do I lend
+Moneo: Sure thing. I'm checking that as soon as I finish the overview. Still working on that one. I'm sorting through your transactions. I can't confirm how much you've lent because your records don't flag these as loans. They do show payments connected to Mohammed Esam Saleh Halboup, Usman Khan, Saad Iqbal Malick, Bilal Amin, and Mohammed Halboup. But those could just be regular expenses, not money you lent.
+
+another hting is thatt now it was fine much better but i was in between i cut it in between but it did not continue and started waiting for the things can we try to find why it did nott continue and how would fixing it look like so that it actually works 
+
+
+can you also tell me he 3 requestiosn does it go in differnt chat or in the same chat how does it work in consice and simple words
+
+[Attached image "image.png" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\29b3f8eb-6035-4877-89eb-0b5278243c06-f703ceff-1d67-4e3a-8285-0d618b5a8749.png]
+
+---
+
+but it can add things like ok thtis person u lent to and all so yes adda  read tool as well 
+yes do both fixes i like how you going to do it 
+
+i dont get how the 3 requsetinos go intto the same chat at the same time is it like steer or what do they get hteir own runtime or not hat is the main thing
