@@ -2,7 +2,7 @@ import type { ChatAttachment } from "./chat-attachments";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { isSpoken } from "./voice-context";
-import { loadCalls, type CallCard } from "./voice-call-history";
+import { callStubs, loadCalls, type CallCard } from "./voice-call-history";
 
 const cursorSchema = z.object({ created_at: z.iso.datetime({ offset: true }), id: z.uuid() });
 export type HistoryMessage = { id: string; role: string; content: string; created_at: string; plan?: string[]; tools?: SavedToolStep[]; attachments?: ChatAttachment[]; spoken?: boolean; call?: CallCard };
@@ -60,12 +60,13 @@ export async function loadConversation(supabase: SupabaseClient, workspace: stri
   if (!z.uuid().safeParse(id).success) throw new Error("Conversation unavailable");
   let mq = supabase.from("messages").select("id,role,content,created_at,request_id,reply_to,attachments,context").eq("workspace_id", workspace).eq("conversation_id", id).order("created_at", { ascending: false }).order("id", { ascending: false });
   if (mc) mq = mq.or(`created_at.lt.${mc.created_at},and(created_at.eq.${mc.created_at},id.lt.${mc.id})`);
-  const [conversation, page, run] = await Promise.all([
+  const [conversation, page, run, stubs] = await Promise.all([
     supabase.from("conversations").select("id,title,created_at").eq("workspace_id", workspace).eq("id", id).is("deleted_at", null).maybeSingle(),
     mq.limit(MESSAGE_PAGE + 1),
     // A request still working in the background, so a returning user sees it as in progress.
     mc ? null : supabase.from("chat_requests").select("id,created_at").eq("workspace_id", workspace).eq("conversation_id", id).eq("status", "running")
       .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    callStubs(supabase, workspace, id),
   ]);
   if (conversation.error) throw new Error("Could not load conversation. Try again.");
   if (!conversation.data) throw new Error("Conversation unavailable. It may be missing or belong to another workspace.");
@@ -73,7 +74,7 @@ export async function loadConversation(supabase: SupabaseClient, workspace: stri
   const rows = (page.data ?? []).slice(0, MESSAGE_PAGE) as (HistoryMessage & { request_id?: string | null; reply_to?: string | null; context?: unknown })[];
   const messagesCursor = (page.data?.length ?? 0) > MESSAGE_PAGE ? cursor(rows[rows.length - 1]) : null;
   // A finished call shows as one card at the time it ended; the messages its requests made move inside it.
-  const calls = await loadCalls(supabase, workspace, id, { requestIds: rows.flatMap(row => row.request_id ?? row.reply_to ?? []),
+  const calls = await loadCalls(supabase, workspace, id, stubs, { requestIds: rows.flatMap(row => row.request_id ?? row.reply_to ?? []),
     from: messagesCursor ? rows[rows.length - 1].created_at : undefined, to: mc?.created_at });
   const visible = rows.filter(row => !calls.hidden.has((row.request_id ?? row.reply_to) as string));
   const activity = await savedActivity(supabase, workspace, visible.flatMap(row => row.role === "assistant" && row.reply_to ? [row.reply_to] : []));

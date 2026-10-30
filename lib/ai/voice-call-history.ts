@@ -16,21 +16,29 @@ export type CallCard = {
 };
 type CallRow = { id: string; duration_seconds: number; transcript: unknown; tasks: unknown; request_ids: string[]; summary: string | null; summary_status: CallCard["summaryStatus"]; created_at: string };
 
+type CallStub = Pick<CallRow, "id" | "request_ids" | "created_at">;
+// A conversation rarely has more than a handful of calls; the list holds ids only, never transcripts.
+const STUB_LIMIT = 200;
+
+/** Which calls a conversation has and the requests each started. Start it beside the page of messages so it adds no round trip. */
+export const callStubs = (supabase: SupabaseClient, workspace: string, conversation: string) =>
+  Promise.resolve(supabase.from("voice_calls").select("id,request_ids,created_at").eq("workspace_id", workspace).eq("conversation_id", conversation)
+    .order("created_at", { ascending: false }).limit(STUB_LIMIT));
+
 /** Calls to show on a page of messages (saved within its time range) and the request ids whose messages they replace. */
-export async function loadCalls(supabase: SupabaseClient, workspace: string, conversation: string, page: { requestIds: string[]; from?: string; to?: string }) {
-  let shown = supabase.from("voice_calls").select("id,duration_seconds,transcript,tasks,request_ids,summary,summary_status,created_at")
-    .eq("workspace_id", workspace).eq("conversation_id", conversation).order("created_at", { ascending: false }).limit(20);
-  if (page.from) shown = shown.gte("created_at", page.from);
-  if (page.to) shown = shown.lt("created_at", page.to);
+export async function loadCalls(supabase: SupabaseClient, workspace: string, conversation: string, stubs: Awaited<ReturnType<typeof callStubs>>, page: { requestIds: string[]; from?: string; to?: string }) {
+  if (stubs.error) throw new Error("Could not load calls. Try again.");
+  const all = (stubs.data ?? []) as CallStub[];
+  const inPage = (stub: CallStub) => (!page.from || Date.parse(stub.created_at) >= Date.parse(page.from)) && (!page.to || Date.parse(stub.created_at) < Date.parse(page.to));
+  const shown = all.filter(inPage).slice(0, 20);
   // A call whose card is on a newer page can still own messages on this one.
-  const owners = page.requestIds.length
-    ? supabase.from("voice_calls").select("request_ids").eq("workspace_id", workspace).eq("conversation_id", conversation).overlaps("request_ids", page.requestIds)
-    : null;
-  const [calls, owning] = await Promise.all([shown, owners]);
-  if (calls.error || owning?.error) throw new Error("Could not load calls. Try again.");
-  const rows = (calls.data ?? []) as CallRow[];
-  const hidden = new Set([...rows, ...(owning?.data ?? []) as Pick<CallRow, "request_ids">[]].flatMap(row => row.request_ids));
-  if (!rows.length) return { hidden, items: [] };
+  const own = new Set(page.requestIds);
+  const hidden = new Set([...shown, ...all.filter(stub => stub.request_ids.some(id => own.has(id)))].flatMap(stub => stub.request_ids));
+  if (!shown.length) return { hidden, items: [] };
+  const called = await supabase.from("voice_calls").select("id,duration_seconds,transcript,tasks,request_ids,summary,summary_status,created_at")
+    .eq("workspace_id", workspace).eq("conversation_id", conversation).in("id", shown.map(stub => stub.id)).order("created_at", { ascending: false });
+  if (called.error) throw new Error("Could not load calls. Try again.");
+  const rows = (called.data ?? []) as CallRow[];
 
   const requestIds = [...new Set(rows.flatMap(row => row.request_ids))];
   const running = [...new Set(rows.flatMap(row => parseTasks(row.tasks).filter(task => task.status === "running").map(task => task.requestId)))];
