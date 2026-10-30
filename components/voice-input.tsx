@@ -8,11 +8,11 @@ const clock = (ms: number) => { const seconds = Math.floor(ms / 1000); return `$
 
 /**
  * The mic for a text input. A tap or a hold both start recording (on release, which Safari needs for the mic);
- * live words show over the input with a level meter, then Send sends them, Done puts them in the input to edit,
- * and Cancel or Escape discards them. Put it inside a `relative` form: the recording view covers that form.
+ * live words show over the input with a level meter, then the arrow sends them, the check puts them in the input to edit,
+ * and the cross or Escape discards them. Put it inside a `relative` form: the recording view covers that form.
  */
-export function VoiceInput({ onSend, onDone, autoStart = false, disabled = false, compact = false }: {
-  onSend: (text: string) => void; onDone: (text: string) => void; autoStart?: boolean; disabled?: boolean; compact?: boolean;
+export function VoiceInput({ onSend, onDone, disabled = false, compact = false }: {
+  onSend: (text: string) => void; onDone: (text: string) => void; disabled?: boolean; compact?: boolean;
 }) {
   const voice = useVoiceInput((action, text) => action === "send" ? onSend(text) : onDone(text));
   const { status, start } = voice;
@@ -21,7 +21,6 @@ export function VoiceInput({ onSend, onDone, autoStart = false, disabled = false
   const words = useRef<HTMLParagraphElement>(null);
   const wasActive = useRef(false);
   const [now, setNow] = useState(0);
-  useEffect(() => { if (autoStart) void start(); }, [autoStart, start]);
   useEffect(() => {
     if (status === "recording") done.current?.focus();
     // Send and Cancel leave nothing focused; Done hands focus to the input itself.
@@ -35,7 +34,7 @@ export function VoiceInput({ onSend, onDone, autoStart = false, disabled = false
 
   const active = status !== "idle";
   const icon = compact ? "size-8" : "size-9";
-  const action = "inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai disabled:opacity-40";
+  const action = "inline-flex size-9 items-center justify-center rounded-xl text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai disabled:opacity-40";
   const label = status === "starting" ? "Starting the microphone…" : status === "finishing" ? "Finishing…" : "Listening…";
   return <>
     <button ref={mic} type="button" onClick={() => void start()} onContextMenu={event => event.preventDefault()} disabled={disabled || active}
@@ -52,9 +51,9 @@ export function VoiceInput({ onSend, onDone, autoStart = false, disabled = false
             <span key={index} className="w-[3px] rounded-full bg-ai transition-[height] duration-100" style={{ height: `${4 + Math.round(voice.level * scale * 18)}px` }} />)}</span></span>
         <span className="font-mono text-xs text-muted-foreground"><span className="sr-only">Recording </span>{clock(status === "recording" ? Math.max(0, now - voice.startedAt) : 0)} / {clock(VOICE_MAX_SECONDS * 1000)}</span>
         <span className="ml-auto" />
-        <button type="button" onClick={() => { voice.cancel(); mic.current?.focus(); }} aria-label="Cancel and discard recording" className={`${action} text-muted-foreground hover:bg-muted hover:text-foreground`}><X className="size-4" aria-hidden="true" /><span className="max-sm:sr-only">Cancel</span></button>
-        <button ref={done} type="button" onClick={() => void voice.done()} disabled={status !== "recording"} aria-label="Done: put the words in the box to edit" className={`${action} border border-input hover:bg-muted`}><Check className="size-4" aria-hidden="true" />Done</button>
-        <button type="button" onClick={() => void voice.send()} disabled={status !== "recording"} aria-label="Send now" className={`${action} bg-primary text-primary-foreground hover:opacity-90`}><ArrowUp className="size-4" aria-hidden="true" />Send</button>
+        <button type="button" onClick={() => { voice.cancel(); mic.current?.focus(); }} aria-label="Cancel and discard recording" title="Cancel" className={`${action} text-muted-foreground hover:bg-muted hover:text-foreground`}><X className="size-4" aria-hidden="true" /></button>
+        <button ref={done} type="button" onClick={() => void voice.done()} disabled={status !== "recording"} aria-label="Done: put the words in the box to edit" title="Edit before sending" className={`${action} border border-input hover:bg-muted`}><Check className="size-4" aria-hidden="true" /></button>
+        <button type="button" onClick={() => void voice.send()} disabled={status !== "recording"} aria-label="Send now" title="Send" className={`${action} bg-primary text-primary-foreground hover:opacity-90`}><ArrowUp className="size-4" aria-hidden="true" /></button>
       </div>
     </div>}
   </>;
