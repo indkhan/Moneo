@@ -58,36 +58,52 @@ export async function startVoiceRecording({ onText, onLevel, onError }: VoiceHan
     // Opened without a tap (for example from a link), mobile Safari keeps audio suspended.
     await Promise.race([resumed, new Promise(resolve => setTimeout(resolve, 1000))]);
     if (audio.state !== "running") throw new Error("Tap the mic to start recording.");
-    const response = await fetch("/api/voice/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-    const body = await response.json().catch(() => ({}));
-    const session = sessionSchema.safeParse(body);
-    if (!response.ok || !session.success) throw new Error(typeof body?.error === "string" ? body.error : "Voice input is unavailable. Try again.");
-    return transcribe(audio, stream, release, new WebSocket(session.data.url, ["realtime", `openai-insecure-api-key.${session.data.token}`]), { onText, onLevel, onError });
   } catch (cause) { release(); throw cause; }
+  // Recording starts now and is buffered while the session connects, so the first words aren't lost.
+  return transcribe(audio, stream, release, openSocket(), { onText, onLevel, onError });
 }
 
-function transcribe(audio: AudioContext, stream: MediaStream, release: () => void, socket: WebSocket, { onText, onLevel, onError }: VoiceHandlers): VoiceRecording {
+/** A realtime transcription socket, authorized with a short-lived secret from our server. */
+async function openSocket() {
+  const response = await fetch("/api/voice/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  const body = await response.json().catch(() => ({}));
+  const session = sessionSchema.safeParse(body);
+  if (!response.ok || !session.success) throw new Error(typeof body?.error === "string" ? body.error : "Voice input is unavailable. Try again.");
+  return new WebSocket(session.data.url, ["realtime", `openai-insecure-api-key.${session.data.token}`]);
+}
+
+function transcribe(audio: AudioContext, stream: MediaStream, release: () => void, connecting: Promise<WebSocket>, { onText, onLevel, onError }: VoiceHandlers): VoiceRecording {
   const items = new Map<string, string>();
   const text = () => [...items.values()].join(" ").replace(/\s+/g, " ").trim();
   const waiting: string[] = [];
-  let sent = 0, ended = false, settle: ((text: string) => void) | null = null;
+  let socket: WebSocket | null = null, sent = 0, ended = false, settle: ((text: string) => void) | null = null;
   const append = (chunk: string) => {
     const message = JSON.stringify({ type: "input_audio_buffer.append", audio: chunk });
-    if (socket.readyState === WebSocket.OPEN) { socket.send(message); sent++; } else waiting.push(message);
+    if (socket?.readyState === WebSocket.OPEN) { socket.send(message); sent++; } else waiting.push(message);
   };
-  const flush = () => { const queued = waiting.splice(0); queued.forEach(message => socket.send(message)); sent += queued.length; };
-  socket.onopen = flush;
-  socket.onmessage = event => {
-    const parsed = eventSchema.safeParse((() => { try { return JSON.parse(String(event.data)); } catch { return null; } })());
-    if (!parsed.success) return;
-    const { type, item_id: id = "", delta, transcript, error } = parsed.data;
-    if (type === "conversation.item.input_audio_transcription.delta") { items.set(id, (items.get(id) ?? "") + (delta ?? "")); onText(text()); }
-    else if (type === "conversation.item.input_audio_transcription.completed") { items.set(id, transcript ?? items.get(id) ?? ""); onText(text()); settle?.(text()); }
-    // After a stop, an error (such as nothing to commit) just ends with what was heard.
-    else if (type === "error") { if (settle) settle(text()); else fail(new Error(error?.message ?? "Voice transcription failed.")); }
+  const flush = () => { const queued = waiting.splice(0); queued.forEach(message => socket?.send(message)); sent += queued.length; };
+  const commit = () => { flush(); socket?.send(JSON.stringify({ type: "input_audio_buffer.commit" })); };
+  connecting.then(opened => {
+    if (ended && !settle) { opened.close(); return; }
+    socket = opened;
+    listen(opened);
+  }, cause => { if (settle) settle(text()); else fail(cause instanceof Error ? cause : new Error("Voice input is unavailable. Try again.")); });
+
+  const listen = (socket: WebSocket) => {
+    // If Done was pressed while connecting, send what was recorded and wait for the final words.
+    socket.onopen = () => settle ? commit() : flush();
+    socket.onmessage = event => {
+      const parsed = eventSchema.safeParse((() => { try { return JSON.parse(String(event.data)); } catch { return null; } })());
+      if (!parsed.success) return;
+      const { type, item_id: id = "", delta, transcript, error } = parsed.data;
+      if (type === "conversation.item.input_audio_transcription.delta") { items.set(id, (items.get(id) ?? "") + (delta ?? "")); onText(text()); }
+      else if (type === "conversation.item.input_audio_transcription.completed") { items.set(id, transcript ?? items.get(id) ?? ""); onText(text()); settle?.(text()); }
+      // After a stop, an error (such as nothing to commit) just ends with what was heard.
+      else if (type === "error") { if (settle) settle(text()); else fail(new Error(error?.message ?? "Voice transcription failed.")); }
+    };
+    socket.onerror = () => { if (settle) settle(text()); else fail(new Error("Lost the connection to voice transcription.")); };
+    socket.onclose = () => { if (settle) settle(text()); else fail(new Error("Lost the connection to voice transcription.")); };
   };
-  socket.onerror = () => { if (settle) settle(text()); else fail(new Error("Lost the connection to voice transcription.")); };
-  socket.onclose = () => { if (settle) settle(text()); else fail(new Error("Lost the connection to voice transcription.")); };
 
   // ScriptProcessor runs everywhere without loading a worklet module; it must reach the destination to run, so it goes through a muted gain.
   const source = audio.createMediaStreamSource(stream);
@@ -105,8 +121,10 @@ function transcribe(audio: AudioContext, stream: MediaStream, release: () => voi
   function end() {
     ended = true;
     processor.onaudioprocess = null;
-    socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
-    if (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN) socket.close();
+    if (socket) {
+      socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
+      if (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN) socket.close();
+    }
     release();
   }
   function fail(error: Error) { if (ended) return; end(); onError(error); }
@@ -120,9 +138,9 @@ function transcribe(audio: AudioContext, stream: MediaStream, release: () => voi
       settle = heard => { if (done) return; done = true; clearTimeout(timer); end(); resolve(heard); };
       // Waits for the final words, but never hangs on a slow or dropped connection.
       const timer = setTimeout(() => settle?.(text()), 5000);
-      if (socket.readyState === WebSocket.OPEN && sent) socket.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
-      else if (socket.readyState !== WebSocket.CONNECTING) settle(text());
-      else socket.onopen = () => { flush(); socket.send(JSON.stringify({ type: "input_audio_buffer.commit" })); };
+      // Still connecting: the socket commits once it opens.
+      if (socket?.readyState === WebSocket.OPEN && (sent || waiting.length)) commit();
+      else if (socket ? socket.readyState !== WebSocket.CONNECTING : !waiting.length) settle(text());
     }),
   };
 }

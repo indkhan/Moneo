@@ -3,7 +3,7 @@ import { level, pcm16Base64, startVoiceRecording } from "./voice-recorder";
 
 class FakeSocket {
   static CONNECTING = 0; static OPEN = 1; static CLOSING = 2; static CLOSED = 3;
-  static last: FakeSocket;
+  static last: FakeSocket | null = null;
   readyState = FakeSocket.CONNECTING;
   sent: { type: string; audio?: string }[] = [];
   onopen: (() => void) | null = null; onmessage: ((event: { data: string }) => void) | null = null;
@@ -28,10 +28,12 @@ const track = { stop: vi.fn() };
 const getUserMedia = vi.fn();
 const fetchMock = vi.fn();
 const handlers = () => ({ onText: vi.fn(), onLevel: vi.fn(), onError: vi.fn() });
+/** The socket opens after the session request, a moment after recording starts. */
+const connected = () => vi.waitFor(() => { if (!FakeSocket.last) throw new Error("not connected yet"); return FakeSocket.last; });
 const speak = (value = 0.5) => audio.processor!.onaudioprocess!({ inputBuffer: { getChannelData: () => new Float32Array(480).fill(value) } });
 
 beforeEach(() => {
-  audio.state = "running"; audio.closed = 0; audio.processor = null; track.stop.mockClear();
+  audio.state = "running"; audio.closed = 0; audio.processor = null; track.stop.mockClear(); FakeSocket.last = null;
   getUserMedia.mockResolvedValue({ getTracks: () => [track] });
   fetchMock.mockResolvedValue(Response.json({ token: "ek_test", url: "wss://api.openai.com/v1/realtime?intent=transcription" }));
   vi.stubGlobal("window", { AudioContext: FakeAudioContext, WebSocket: FakeSocket });
@@ -52,11 +54,12 @@ it("converts 48 kHz float samples to 24 kHz 16-bit PCM", () => {
 it("streams audio with the short-lived secret and shows words as they arrive", async () => {
   const events = handlers();
   const recording = await startVoiceRecording(events);
-  const socket = FakeSocket.last;
+  speak();
+  const socket = await connected();
   expect(fetchMock).toHaveBeenCalledWith("/api/voice/session", expect.objectContaining({ method: "POST" }));
   expect(socket.protocols).toEqual(["realtime", "openai-insecure-api-key.ek_test"]);
-  speak();
   expect(events.onLevel).toHaveBeenCalledWith(1);
+  // Audio from before the connection opened goes first, so the first words are not lost.
   socket.open();
   speak();
   expect(socket.sent.map(message => message.type)).toEqual(["input_audio_buffer.append", "input_audio_buffer.append"]);
@@ -74,18 +77,20 @@ it("streams audio with the short-lived secret and shows words as they arrive", a
 
 it("cancel closes the mic and the connection without waiting", async () => {
   const recording = await startVoiceRecording(handlers());
-  FakeSocket.last.open();
+  const socket = await connected();
+  socket.open();
   recording.cancel();
   expect(track.stop).toHaveBeenCalled();
-  expect(FakeSocket.last.readyState).toBe(FakeSocket.CLOSED);
-  expect(FakeSocket.last.sent).toEqual([]);
+  expect(socket.readyState).toBe(FakeSocket.CLOSED);
+  expect(socket.sent).toEqual([]);
 });
 
 it("reports a dropped connection while recording", async () => {
   const events = handlers();
   await startVoiceRecording(events);
-  FakeSocket.last.open();
-  FakeSocket.last.onclose?.();
+  const socket = await connected();
+  socket.open();
+  socket.onclose?.();
   expect(events.onError).toHaveBeenCalledWith(new Error("Lost the connection to voice transcription."));
 });
 
@@ -109,7 +114,9 @@ it("asks for a tap when the browser keeps audio suspended", async () => {
 
 it("passes on the session route's error and releases the mic", async () => {
   fetchMock.mockResolvedValue(Response.json({ error: "Voice input is not configured" }, { status: 503 }));
-  await expect(startVoiceRecording(handlers())).rejects.toThrow("Voice input is not configured");
+  const events = handlers();
+  await startVoiceRecording(events);
+  await vi.waitFor(() => expect(events.onError).toHaveBeenCalledWith(new Error("Voice input is not configured")));
   expect(track.stop).toHaveBeenCalled();
 });
 
