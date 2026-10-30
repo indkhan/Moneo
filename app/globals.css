@@ -104,6 +104,13 @@ body {
   font-family: var(--font-mono);
   font-size: 11px;
 }
+/* Keeps a scroll area scrollable without drawing its scrollbar. */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
 
 :focus-visible {
   outline: 2px solid var(--color-brand);
