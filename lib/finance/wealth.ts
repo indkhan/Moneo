@@ -2,6 +2,7 @@ import { minorDigits } from "./fx";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildSourceCoverage, type SourceCoverage } from "./source-coverage";
 import { parseIouName } from "./iou";
+import { formatMoney } from "./format";
 
 export function decimalRatio(value: string) {
   const match = /^(\d{1,24})(?:\.(\d{1,18}))?$/.exec(value.trim());
@@ -77,6 +78,28 @@ export function wealthEvidence(rows: WealthValue[], today: string, basis: "curre
 export type WealthItem = WealthValue & { kind: "holding" | "asset" | "debt"; quantity_text: string | null; unit_price_text: string | null; cost_basis_minor: string | null;
   payment_account_id: string | null; annual_rate_text: string | null; monthly_payment_minor: string | null; next_payment_on: string | null;
   payment_assumption_id: string | null; payment_transaction_id: string | null; version: number; removed_at: string | null; sourceCoverage?: SourceCoverage };
+
+/**
+ * What the Wealth page holds, for the chat: each item with its money formatted, money lent to or owed to a person
+ * named as such, and totals per group and currency. Currencies are never added together.
+ */
+export function wealthOverview(items: Pick<WealthItem, "id" | "name" | "kind" | "amount_minor" | "currency_code" | "as_of" | "removed_at">[]) {
+  const totals = new Map<string, bigint>();
+  const listed = items.filter(item => !item.removed_at).map(item => {
+    const iou = parseIouName(item.name);
+    const group = iou?.direction ?? item.kind;
+    const key = `${group}:${item.currency_code}`;
+    totals.set(key, (totals.get(key) ?? 0n) + BigInt(item.amount_minor));
+    return { id: item.id, group, name: item.name, ...(iou && { person: iou.person }), amountMinor: item.amount_minor,
+      amountFormatted: formatMoney(item.amount_minor, item.currency_code), currencyCode: item.currency_code, asOf: item.as_of };
+  });
+  return {
+    items: listed,
+    totals: [...totals].map(([key, minor]) => { const [group, currencyCode] = key.split(":"); return { group, currencyCode, amountMinor: minor.toString(), amountFormatted: formatMoney(minor, currencyCode) }; }),
+    groups: "lent: money the user lent to a person (an asset); borrowed: money the user owes a person (a debt); asset, holding, debt: other Wealth items.",
+    link: "/money/wealth",
+  };
+}
 
 export async function loadWealthItems(client: SupabaseClient, workspaceId: string, includeRemoved = false): Promise<WealthItem[]> {
   const rows: WealthItem[] = [];

@@ -7,6 +7,7 @@ import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-covera
 import { expenditurePosting, reportExpenditure } from "./expenditure";
 import { loadExpenditureRates } from "./expenditure-rates";
 import {forecastInput} from "./forecast-schema";
+import { loadWealthItems, wealthOverview } from "./wealth";
 export {forecastInput} from "./forecast-schema";
 
 type FinanceContext = Awaited<ReturnType<typeof requireWorkspace>>;
@@ -115,6 +116,11 @@ export async function searchTransactions(input: unknown, context?: FinanceContex
       allocationSemantics: "Parent amount; effectiveRows are its split components (do not add both).",
       link: `/money/transactions?transaction=${row.id}` };
   });
+}
+
+export async function listWealth(context?: FinanceContext) {
+  const { supabase, workspace } = context ?? await requireWorkspace();
+  return wealthOverview(await loadWealthItems(supabase, workspace.id));
 }
 
 export async function listGoals(context?: FinanceContext) {

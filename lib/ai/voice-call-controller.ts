@@ -23,7 +23,7 @@ type Deps = {
 const STEPS: Record<string, string> = {
   finance_investigate: "searching transactions", transactions_search: "searching transactions", finance_detail: "reading a transaction", finance_entities: "looking up names",
   finance_scenario: "comparing a what-if", analytics_cashflow: "adding up income and spending", accounts_list: "checking accounts", accounts_getBalances: "checking balances",
-  forecast_evaluate: "running the forecast", goals_list: "checking goals", recurring_list: "checking recurring payments", reviews_investigate: "reviewing finances",
+  forecast_evaluate: "running the forecast", goals_list: "checking goals", wealth_list: "checking what you lent and own", recurring_list: "checking recurring payments", reviews_investigate: "reviewing finances",
   reviews_start: "starting a deep review", imports_status: "checking imports", agents_findings: "reading agent findings", agents_decide: "making a confirmation card",
   transaction_propose: "making a card", iou_propose: "making a loan card", balance_propose: "making a balance card", recurring_propose: "making a recurring card",
   iou_findRepayments: "looking for repayments", call_replace_task: "replacing the earlier request", app_help: "checking how Moneo works",

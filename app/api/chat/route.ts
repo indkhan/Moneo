@@ -11,7 +11,7 @@ import {reviewRequestSchema, resolveReviewRequest} from "@/lib/finance/review-re
 import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
 import { startFinancialReview } from "@/lib/finance/start-review";
 import { categoryPreviewSchema, loadCategoryPreview } from "@/lib/finance/edit-preview";
-import { cashflow, evaluateForecast, financeToolSchemas, forecastInput, getBalances, listAccounts, listGoals, searchTransactions } from "@/lib/finance/tools";
+import { cashflow, evaluateForecast, financeToolSchemas, forecastInput, getBalances, listAccounts, listGoals, listWealth, searchTransactions } from "@/lib/finance/tools";
 import { investigationSchema } from "@/lib/finance/investigation";
 import { evaluateInvestigationScenario, investigationDetail, investigationDetailSchema, investigationScenarioSchema, loadInvestigationEntities, runInvestigation } from "@/lib/finance/investigation-reader";
 import type { ChatStreamEvent } from "@/lib/ai/use-chat-request";
@@ -281,7 +281,8 @@ ${CALL_MODE_PROMPT}` : ""}`,
             return { found: found.map(item => item.title), note: found.length ? "Cards are shown to the user below your answer." : "No new repayments found." };
           }) }) } : {}),
         ...(settings.ai_data_scopes.includes("planning") && settings.ai_data_scopes.includes("transactions") ? { recurring_list: tool({ description: "List confirmed recurring payments and income (id, name, amount, direction, cadence, next date, category) and detected suggestions not yet confirmed. Use before recurring_propose to change, remove or confirm one.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["transactions", "planning"], latest => listRecurring(latest)) }) } : {}),
-        ...(settings.ai_data_scopes.includes("planning") ? { goals_list: tool({ description: "List the user's goals", inputSchema: z.object({}), execute: () => aiEvidence(["planning"], latest => listGoals(latest)) }) } : {}),
+        ...(settings.ai_data_scopes.includes("planning") ? { goals_list: tool({ description: "List the user's goals", inputSchema: z.object({}), execute: () => aiEvidence(["planning"], latest => listGoals(latest)) }),
+        wealth_list: tool({ description: "List what the Wealth page holds: money the user lent to people and owes to people (by person), plus other assets, holdings and debts, with totals per currency. Use for questions like \"how much have I lent and to whom\" or \"what do I owe\".", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["planning"], latest => listWealth(latest)) }) } : {}),
         ...(settings.ai_data_scopes.includes("planning") && settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions") ? { forecast_evaluate: tool({ description: "Deterministic account headroom and dated funding shortfalls with source coverage. Choose accountId for available to spend; aggregate cash requires explicit funding. Cases are assumptions, not probabilities", inputSchema: forecastInput, execute: input => aiEvidence(["accounts", "transactions", "planning"], latest => evaluateForecast(input, latest), false, true) }) } : {}),
         ...(canChangeCategory ? {
           transactions_setCategory: tool({
