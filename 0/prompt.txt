@@ -1,0 +1,66 @@
+the voice call is really nice the only problme is that when i ask it something it does not say it nicely like i asked something then another thing it is ig sending in the same thing not in queue as it does in steer last answer gets worse i will show the transcript 
+
+
+Voice call
+2 min 7 s · 11:42 AM
+
+The user asked for an analysis of last month’s income and spending, including the biggest spending areas and ways to save, and also asked for the total spent.
+Moneo said September’s main income was salary from three K B GmbH and spending was lower than in August, but it couldn’t confirm the full picture; the detailed breakdown was still pending.
+Still running when the call ended
+
+Uh .What are you waiting for · finished afterwards
+Requests from this call (3)
+Hey, how are you? Uh .Can you ana-analyze my spending in the whole last month and then tell me how does it look, where my earning, where my spending the most, where can I save a bit of money
+
+Can you in the meanwhile also see how much did I spend in the whole last month
+
+Doing well, thanks! In September, your main income was salary from 3kb GmbH: EUR 1,343.41; recorded spending was EUR 1,607.37, dominated by uncategorized payments of EUR 1,000 and EUR 250 that may be transfers rather than everyday expenses. Among categorized costs, insurance was highest at EUR 144.31, then groceries at EUR 89.05; first check what those large payments were, and whether the EUR 15 GPT Pro subscription is worth keeping—your account records don’t confirm complete statement coverage.
+
+I’m doing well, thanks! Your recorded spending for September was EUR 1607.37, down from EUR 2490.78 in August; statement coverage isn’t confirmed, so these totals may be incomplete. I’ve started the fuller review of your income, biggest spending areas, and possible savings, and it’s still processing.
+
+Uh .What are you waiting for
+
+Nothing now—sorry for the wait. For September, recorded spending was EUR 1,607.37, and your salary from 3kb GmbH was EUR 1,343.41. The largest outflows were uncategorized payments to Bilal Amin and Venjalin Ravindran, so check whether those were transfers or loans; among regular categories, insurance was highest at EUR 144.31, then groceries at EUR 89.05. You could review the EUR 15 GPT Pro subscription and compare insurance prices; statement coverage is unknown, so the totals may be incomplete.
+
+Full transcript
+You: Hey, how are you? Uh .Can you ana-analyze my spending in the whole last month and then tell me how does it look, where my earning, where my spending the most, where can I save a bit of money
+Moneo: Oh, okay. Yeah, I'm gonna look through your transactions for a sec. I'm on it. Just waiting on those results.
+You: Can you in the meanwhile also see how much did I spend in the whole last month
+Moneo: Yeah, checking that too. For your first question, I'm doing well, thanks! For September, your main income was your salary from three K B GmbH. I'm digging through that spending you asked about and I'll let you know once I have that all figured out. I'm still doing well, thanks again! I see you spent less in September than in August, though I can't confirm if that's the complete picture. I'm still waiting on that fuller breakdown.
+You: Uh .What are you waiting for
+Moneo: Oh, sorry, I'm still crunching that deeper spend breakdown. It can take a little bit. Yep, I'm still on it, nothing to share quite yet.
+
+
+and the ui itself is fine the only thing is that in the time it is running dont open multiple scrool thing and remove the scrool thing from the navigation itself 
+
+[Image: image.png; ref=image_d2dde609-792c-4018-aded-c6f3e3b37d8c] 
+
+hope you get what my problems are with it, lets talk about how can we solve it
+
+<t3_context version="1">
+<context kind="image" id="image_d2dde609-792c-4018-aded-c6f3e3b37d8c">
+name: image.png
+mimeType: image/png
+sizeBytes: 97358
+attachmentId: 29b3f8eb-6035-4877-89eb-0b5278243c06-2e9f16fb-eb12-4bf4-8fa1-09db490d36a5
+</context>
+</t3_context>
+
+[Attached image "image.png" is saved at: C:\Users\mgsuk\.t3\userdata\attachments\29b3f8eb-6035-4877-89eb-0b5278243c06-2e9f16fb-eb12-4bf4-8fa1-09db490d36a5.png]
+
+---
+
+remove the cut result down to a sentence or two
+can it not be that the gpt model for talking and lisstening is the one that does the prompting cuz it has to do multiple thigns and all of tha tyou know lets talk about what all possibilities are there and what will be the best research 
+
+thre should be no scroll like no scroll thing shown it is possible to scroll but no ui thing 
+i mean the navigation which shows overview , ask , plan and all at the bottom there is a horizontal scroll remove
+
+
+
+lets talk about it
+
+---
+
+just call a haiku subagent for the scrollbars and all 
+between a b and c think about it abit more is there a way to get it done in a better way we are already using openai models itself can the thing not do ask_moneo on its own the gpt live another thing is someone asks a simple question like hi or something will it still call moneo like it shouldnt for so small thing right
