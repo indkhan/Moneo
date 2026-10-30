@@ -5,7 +5,7 @@ import { calendarDate } from "@/lib/finance/calendar";
 import { iouCreateSchema, iouRecord, iouSettleSchema, parseIouName, settledRecord } from "@/lib/finance/iou";
 import { applyTransactionProposal } from "@/lib/ai/transaction-proposals";
 import { applyBalanceProposal } from "@/lib/ai/balance-proposals";
-import { applyRecurringProposal } from "@/lib/ai/recurring-proposals";
+import { applyRecurringProposal, dismissRecurringProposal } from "@/lib/ai/recurring-proposals";
 
 // Accepting a proposal calls the SAME audited RPCs a person uses by hand, as
 // the signed-in owner (auth.uid()), so corrections, batches and Undo stay intact.
@@ -93,8 +93,13 @@ export async function decideProposals(context: Context, ids: string[], decision:
   for (const id of ids) {
     const now = new Date().toISOString();
     if (decision === "reject") {
-      const { data, error } = await supabase.from("agent_proposals").update({ status: "rejected", decided_at: now }).eq("id", id).eq("workspace_id", workspace.id).in("status", ["proposed", "failed"]).select("id").maybeSingle();
-      outcomes.push({ id, status: error ? "failed" : data ? "rejected" : "unchanged", ...(error ? { error: error.message } : {}) });
+      const { data, error } = await supabase.from("agent_proposals").update({ status: "rejected", decided_at: now }).eq("id", id).eq("workspace_id", workspace.id).in("status", ["proposed", "failed"])
+        .select("id, conflict_key, payload").maybeSingle();
+      // A dismissed recurring pattern is remembered on the series too; dismissing a price change only keeps the old amount.
+      const dismissed = data && String(data.conflict_key).startsWith("recurring_new:")
+        ? await dismissRecurringProposal(context, id, data.payload).then(() => undefined, (cause: unknown) => cause instanceof Error ? cause.message : String(cause)) : undefined;
+      const failure = error?.message ?? dismissed;
+      outcomes.push({ id, status: error ? "failed" : data ? "rejected" : "unchanged", ...(failure ? { error: failure } : {}) });
       continue;
     }
     const claim = await supabase.from("agent_proposals").update({ status: "applying", decided_at: now }).eq("id", id).eq("workspace_id", workspace.id).in("status", ["proposed", "failed"])

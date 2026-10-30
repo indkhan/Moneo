@@ -5,13 +5,12 @@ import { modelForSettings } from "@/lib/ai/provider";
 import { loadWorkspaceSettings, requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
-import { detectRecurring } from "@/lib/finance/recurring";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { mergeOrganizationSuggestions, organizationProposals, organizationRuleSchema, type OrganizationProposal, type OrganizationRow } from "@/lib/import/organization";
 import { proposeRepayments } from "@/lib/ai/iou-proposals";
-import { monthlyEquivalent } from "@/app/money/recurring/series";
-import { AGENTS, WAVES, anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, planRun, recurringProposals, verifiedBriefing,
-  daysBefore, payloadSchemas, reviewed, type AgentId, type BriefingFacts, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
+import { openRecurringProposals, syncRecurringProposals } from "@/lib/ai/recurring-proposals";
+import { AGENTS, WAVES, anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, planRun, verifiedBriefing,
+  daysBefore, payloadSchemas, type AgentId, type BriefingFacts, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
 
 // Server-only agent runtime. Agents read through the service role, so every
 // query is fenced by workspace_id; they write only agent_* rows. Canonical
@@ -189,16 +188,14 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
 
 async function recurring(context: Context) {
   const { db, workspace } = context;
-  await report(context, { type: "step", text: "Scanning up to 10,000 posted transactions for repeating payments" });
-  const [rows, stored] = await Promise.all([loadLedger(db, workspace.id, "0001-01-01"),
-    db.from("recurring_series").select("account_id, currency_code, cadence, recurring_series_transactions(transaction_id)").eq("workspace_id", workspace.id)]);
-  const eligible = rows.filter(reviewed);
-  await report(context, { type: "tool", text: `detectRecurring over ${eligible.length} reviewed postings` });
-  const series = detectRecurring(eligible.map(row => ({ id: row.id, date: row.date, description: row.description, amountMinor: row.amountMinor, currencyCode: row.currency, accountId: row.accountId, merchantId: row.merchantId })));
-  const confirmed = (checked(stored) as { account_id: string; currency_code: string; cadence: string; recurring_series_transactions: { transaction_id: string }[] }[])
-    .map(item => ({ accountId: item.account_id, currencyCode: item.currency_code, cadence: item.cadence, transactionIds: item.recurring_series_transactions.map(link => link.transaction_id) }));
-  const { proposals, findings } = recurringProposals(series, confirmed,new Map(eligible.map(row => [row.id, row])), workspace.locale);
-  return { proposals: [...proposals, ...findings], summary: `${series.length} patterns detected, ${proposals.length} new to review, ${findings.length} price increases` };
+  await report(context, { type: "step", text: "Scanning posted transactions for repeating payments" });
+  // Home raises recurring cards from the same detection, so a "Not recurring" there is the only decision needed.
+  const raised = await syncRecurringProposals({ supabase: db, workspace });
+  const waiting = (await openRecurringProposals(db, workspace.id)).length;
+  // Cards earlier runs kept here now live on Home.
+  checked(await db.from("agent_proposals").update({ status: "rejected", decided_at: new Date().toISOString(), result: { movedToHome: true } })
+    .eq("workspace_id", workspace.id).eq("kind", "recurring").eq("status", "proposed").not("run_id", "is", null));
+  return { proposals: [], summary: `${waiting} recurring ${waiting === 1 ? "payment waits" : "payments wait"} on Home${raised ? "" : "; nothing new"}` };
 }
 
 async function anomaly(context: Context) {
@@ -221,16 +218,11 @@ async function budget(context: Context) {
 }
 
 async function forecaster(context: Context) {
-  const { db, workspace, runId } = context;
+  const { db, workspace } = context;
   await report(context, { type: "step", text: "Projecting 30 days of cash with confirmed payments" });
   const projection = await evaluatePlanForWorkspace(db, workspace, 30);
   await report(context, { type: "tool", text: "evaluatePlanForWorkspace(30 days)" });
   const money = (value: bigint) => formatMoney(value, workspace.display_currency, workspace.locale);
-  const pending = (await runProposals(db, runId, workspace.id)).filter((item): item is Proposal<"recurring"> => item.kind === "recurring" && item.payload.currencyCode === workspace.display_currency);
-  const monthly = pending.reduce((sum, item) => {
-    const typical = item.evidence.transactions.length ? BigInt(item.evidence.transactions.at(-1)!.amountMinor) : 0n;
-    return typical < 0n ? sum + monthlyEquivalent(-typical, item.payload.cadence) : sum;
-  }, 0n);
   const proposals: Proposal[] = [];
   const available = projection.available;
   let summary: string;
@@ -241,7 +233,6 @@ async function forecaster(context: Context) {
       evidence: { facts: [{ label: "Lowest point", value: money(available.amountMinor) }, { label: "Date", value: available.limitingDate }], transactions: [], links: [{ label: "Forecast", href: "/plan" }] },
       payload: { severity: "high", transactionIds: [] }, confidence: 80, notes: [] });
   } else summary = "The forecast needs current balances before it can project cash; update balances on Accounts.";
-  if (monthly > 0n) summary += ` Confirming the ${pending.length} proposed recurring payments would add about ${money(monthly)} a month of obligations.`;
   await report(context, { type: "finding", text: summary });
   return { proposals, summary };
 }

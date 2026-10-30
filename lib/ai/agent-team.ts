@@ -3,9 +3,7 @@ import type { AiDataScope } from "@/lib/settings";
 import { formatMoney } from "@/lib/finance/format";
 import { minorDigits } from "@/lib/finance/fx";
 import type { OrganizationProposal } from "@/lib/import/organization";
-import type { RecurringSeries } from "@/lib/finance/recurring";
 import { recurringCadences } from "@/lib/finance/cadences";
-import { monthlyEquivalent } from "@/app/money/recurring/series";
 
 // The agent team's deterministic core. Every number here is computed from
 // application data in exact minor units; models only phrase or suggest, and
@@ -14,7 +12,7 @@ import { monthlyEquivalent } from "@/app/money/recurring/series";
 export const AGENTS = {
   lead: { name: "Lead", role: "Plans the run, assigns work, merges results and resolves conflicts", scopes: [] },
   categorizer: { name: "Categorizer", role: "Proposes merchants and categories for unorganized rows and learns rules", scopes: ["transactions"] },
-  recurring: { name: "Recurring detective", role: "Finds subscriptions and bills and proposes schedules", scopes: ["accounts", "transactions"] },
+  recurring: { name: "Recurring detective", role: "Finds subscriptions and bills and raises them on Home", scopes: ["accounts", "transactions"] },
   anomaly: { name: "Anomaly hunter", role: "Finds duplicates, fees, unusual charges and price increases", scopes: ["transactions"] },
   budget: { name: "Budget coach", role: "Proposes monthly category limits from real history", scopes: ["transactions", "planning"] },
   forecaster: { name: "Cash-flow forecaster", role: "Projects cash and flags shortfalls", scopes: ["accounts", "transactions", "planning"] },
@@ -126,41 +124,6 @@ export function categorizeGroups(proposals: OrganizationProposal[], rows: Map<st
     }
   }
   return result.sort((a, b) => b.payload.rows.length - a.payload.rows.length);
-}
-
-// ── Recurring detective ──────────────────────────────────────────────────────
-export type StoredSeries = { accountId: string; currencyCode: string; cadence: string; transactionIds: string[] };
-export function recurringProposals(series: RecurringSeries[], stored: StoredSeries[], rows: Map<string, LedgerRow>, locale?: string): { proposals: Proposal<"recurring">[]; findings: Proposal<"finding">[] } {
-  const proposals: Proposal<"recurring">[] = [], findings: Proposal<"finding">[] = [];
-  for (const item of series) {
-    const evidence = item.transactionIds.map(id => rows.get(id)).filter((row): row is LedgerRow => Boolean(row));
-    if (evidence.length !== item.transactionIds.length) continue;
-    const ids = new Set(item.transactionIds);
-    const reviewedAlready = stored.some(other => other.accountId === item.accountId && other.currencyCode === item.currencyCode && other.transactionIds.some(id => ids.has(id)));
-    const latest = evidence.at(-1)!, previous = evidence.at(-2)!;
-    if (abs(latest.amountMinor) > abs(previous.amountMinor) && (abs(latest.amountMinor) - abs(previous.amountMinor)) * 100n >= abs(previous.amountMinor) * 5n) {
-      const percent = (abs(latest.amountMinor) - abs(previous.amountMinor)) * 1000n / abs(previous.amountMinor);
-      findings.push({ agent: "recurring", kind: "finding", conflictKey: `price:${item.runAnchorId}`,
-        title: `${item.label} went up ${percent / 10n}.${percent % 10n}%`,
-        detail: `Latest charge ${formatMoney(abs(latest.amountMinor), latest.currency, locale)} on ${latest.date}, previously ${formatMoney(abs(previous.amountMinor), previous.currency, locale)} on ${previous.date}.`,
-        evidence: { facts: [{ label: "Before", value: formatMoney(abs(previous.amountMinor), previous.currency, locale) }, { label: "Now", value: formatMoney(abs(latest.amountMinor), latest.currency, locale) }],
-          transactions: [previous, latest].map(evidenceRow), links: [{ label: "Latest charge", href: txLink(latest.id) }] },
-        payload: { severity: "medium", transactionIds: [previous.id, latest.id] }, confidence: 80, notes: [] });
-    }
-    if (reviewedAlready) continue;
-    const typical = median(evidence.map(row => row.amountMinor));
-    const monthly = monthlyEquivalent(typical, item.cadence);
-    proposals.push({ agent: "recurring", kind: "recurring", conflictKey: `recurring:${item.runAnchorId}`,
-      title: `${item.label} · ${item.cadence} ${typical < 0n ? "payment" : "income"}`,
-      detail: `${item.occurrences} matching postings since ${evidence[0].date}. About ${formatMoney(abs(monthly), item.currencyCode, locale)} a month. Confirming adds it to your forecast; “Not recurring” on the Recurring page reverses it.`,
-      evidence: { facts: [{ label: "Typical amount", value: formatMoney(typical, item.currencyCode, locale) }, { label: "Per month", value: formatMoney(monthly, item.currencyCode, locale) },
-        { label: "Observed", value: `${item.occurrences} times` }, ...(item.missingPeriods ? [{ label: "Gaps", value: `${item.missingPeriods} unobserved periods` }] : [])],
-        transactions: evidence.slice(-5).map(evidenceRow), links: [{ label: "Recurring", href: "/money/recurring" }] },
-      payload: { accountId: item.accountId, label: item.label.slice(0, 200), cadence: item.cadence, currencyCode: item.currencyCode,
-        evidence: evidence.map(row => ({ id: row.id, version: row.version })), runAnchorId: item.runAnchorId, evidenceLimited: item.evidenceLimited },
-      confidence: Math.max(1, Math.min(99, Math.round(item.confidence * 100))), notes: [] });
-  }
-  return { proposals: proposals.sort((a, b) => b.confidence - a.confidence).slice(0, 40), findings };
 }
 
 // ── Anomaly hunter ───────────────────────────────────────────────────────────
