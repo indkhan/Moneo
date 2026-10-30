@@ -41,7 +41,7 @@ it("turns each delegation into a call request with the words since the previous 
 it("says the first finished result first, then the next once Moneo has said it", async () => {
   const { call, sent, say, delegate, answer, advance, onAnswer } = setup();
   say("Netto?"); delegate("d1"); say("Rent?"); delegate("d2");
-  await advance(1000);
+  await advance(2000);
   await answer("Rent?", "Rent is **EUR 850.00** on Nov 1.");
   await answer("Netto?", `I spent it.\n\n\`\`\`moneo-proposal\n${card}\n\`\`\``);
   const spoken = () => sent.filter(event => event.type === "session.commentary.append");
@@ -64,7 +64,7 @@ it("holds results while the user is speaking", async () => {
   say("um, also"); // the user is talking when the answer lands
   await answer("Netto?", "42 euros.");
   expect(sent.some(event => event.type === "session.commentary.append")).toBe(false);
-  await advance(800);
+  await advance(800); await advance(800);
   expect(sent.filter(event => event.type === "session.commentary.append")).toHaveLength(1);
 });
 
@@ -87,7 +87,7 @@ it("says a failure briefly, and stays quiet for canceled or replaced requests", 
   await answer("A?", "late");
   await answer("B?", "", 409);
   await answer("C?", "", 502);
-  await advance(1000);
+  await advance(1000); await advance(1000);
   expect(call.tasks.map(task => task.status)).toEqual(["canceled", "canceled", "failed"]);
   expect(sent.filter(event => event.type === "session.commentary.append")).toEqual([{ type: "session.commentary.append", delegation_id: null, content: expect.stringContaining("couldn't get an answer") }]);
 });
@@ -137,7 +137,7 @@ it("asks Moneo to finish a result the user cut off, after it has answered them, 
   say("Analyze September?"); delegate("d1"); say(" Total?"); delegate("d2");
   await answer("Analyze September?", "You spent EUR 1607.37; insurance was highest.");
   await answer("Total?", "EUR 1607.37.");
-  await advance(800); await advance(300);
+  await advance(1600); await advance(300);
   const spoken = () => sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content));
   call.handle({ type: "session.output_transcript.delta", delta: "You spent 1607" });
   await advance(100);
@@ -146,7 +146,7 @@ it("asks Moneo to finish a result the user cut off, after it has answered them, 
   call.handle({ type: "session.output_transcript.delta", delta: "Sure, checking." });
   await advance(800); await advance(300);
   expect(spoken()).toHaveLength(2);
-  expect(spoken()[1]).toMatch(/^You were cut off while giving this result\. .*Result for "Analyze September\?": You spent EUR 1607\.37/);
+  expect(spoken()[1]).toMatch(/^The user talked over you while you were giving this result\. .*Result for "Analyze September\?": You spent EUR 1607\.37/);
   call.handle({ type: "session.output_transcript.delta", delta: "Insurance was highest." });
   await advance(800); await advance(300);
   expect(spoken()[2]).toContain('Result for "Total?"');
@@ -162,4 +162,19 @@ it("does not resume over a short mm-hm", async () => {
   say("mm-hm");
   await advance(4000); await advance(300);
   expect(sent.filter(event => event.type === "session.commentary.append")).toHaveLength(1);
+});
+
+it("notices a cut-off by when the user started talking, though their words are transcribed late", async () => {
+  const { call, sent, say, delegate, answer, advance } = setup();
+  say("Spending this month?"); delegate("d1");
+  await answer("Spending this month?", "Housing EUR 355.00, groceries EUR 327.30, insurance EUR 144.31.");
+  await advance(2000);
+  call.handle({ type: "session.output_transcript.delta", delta: "Housing 355, groceries 327.30,", start_ms: 10_000, end_ms: 12_000 });
+  // The user cut in at 11.8 s; their words arrive 1.5 s later, after GPT-Live went quiet and said "mm-hm".
+  await advance(1500);
+  call.handle({ type: "session.input_transcript.delta", delta: "By the way, who has my money?", start_ms: 11_800, end_ms: 13_000 });
+  call.handle({ type: "session.output_transcript.delta", delta: "Mm-hm.", start_ms: 13_100, end_ms: 13_300 });
+  delegate("d2");
+  await advance(3000); await advance(300); await advance(300);
+  expect(sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content)).at(-1)).toMatch(/^The user talked over you.*Housing EUR 355\.00/);
 });
