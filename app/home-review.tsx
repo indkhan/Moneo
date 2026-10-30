@@ -67,7 +67,12 @@ export function FindingsSheet({ findings }: { findings: HomeFinding[] }) {
       {left.length > 1 && <button type="button" disabled={pending} className={secondary} onClick={() => dismiss(left)}>All fine</button>}</div>
     {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
     <ul className="mt-2 divide-y divide-border">{left.map(item => <li key={item.ids[0]} className="flex flex-wrap items-center gap-2 py-3">
-      <div className="min-w-0 flex-1"><p className="text-sm font-medium">{item.title}</p><p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p></div>
+      <div className="min-w-0 flex-1"><p className="text-sm font-medium">{item.title}</p><p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
+        {item.transactions.length > 0 && <details className="mt-1 text-xs text-muted-foreground"><summary className="cursor-pointer hover:text-foreground">Show the {item.transactions.length === 1 ? "transaction" : `${item.transactions.length} transactions`}</summary>
+          <ul className="mt-1 divide-y divide-border rounded-lg border border-border bg-background">{item.transactions.map(row => <li key={row.id}>
+            <Link href={`/money/transactions?transaction=${row.id}`} className="flex items-baseline gap-3 px-3 py-1.5 hover:bg-muted">
+              <span className="shrink-0 font-mono">{row.date}</span><span className="min-w-0 flex-1 truncate text-foreground">{row.description}</span>
+              <span className="shrink-0 font-mono text-foreground">{formatMoney(row.amountMinor, row.currency)}</span></Link></li>)}</ul></details>}</div>
       {item.href && <Link href={item.href} className={secondary + " inline-flex items-center"}>Open</Link>}
       <button type="button" disabled={pending} className={secondary} onClick={() => dismiss([item])}>It&apos;s fine</button>
     </li>)}</ul>

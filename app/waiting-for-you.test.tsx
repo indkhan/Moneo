@@ -54,7 +54,7 @@ it("folds recurring cards, uncategorized rows and findings into one summary card
   const html = renderToStaticMarkup(WaitingForYou({
     proposals: [{ id: "r1", kind: "recurring_edit", title: "Gym: €30.00 monthly, confirm as recurring?", detail: "", status: "proposed" },
       { id: "r2", kind: "recurring_edit", title: "Rent went up", detail: "", status: "proposed" }, { id: "b", kind: "balance_set", title: "Cash is €40.00", detail: "", status: "proposed" }],
-    review: { uncategorized: 310, findings: [{ ids: ["f1", "f2"], title: "Possible duplicate", detail: "", href: null }] },
+    review: { uncategorized: 310, findings: [{ ids: ["f1", "f2"], title: "Possible duplicate", detail: "", href: null, transactions: [] }] },
   }));
   expect(html).toMatch(/Waiting for you<\/span><span[^>]*>314<\/span>/);
   expect(html).toContain("310 transactions need a category");

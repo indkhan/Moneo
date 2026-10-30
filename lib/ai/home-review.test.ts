@@ -18,7 +18,7 @@ it("shows a finding raised by several runs once, carrying every id so one dismis
     { id: "fee", conflict_key: "fees:EUR", title: "3 fees", detail: "", evidence: { links: [{ href: "/money/transactions?q=fee" }] } },
   ], 12), "w");
   expect(review).toEqual({ uncategorized: 12, findings: [
-    { ids: ["new", "old"], title: "Possible duplicate", detail: "Twice", href: "/money/transactions?transaction=t1" },
-    { ids: ["fee"], title: "3 fees", detail: "", href: "/money/transactions?q=fee" },
+    { ids: ["new", "old"], title: "Possible duplicate", detail: "Twice", href: "/money/transactions?transaction=t1", transactions: [] },
+    { ids: ["fee"], title: "3 fees", detail: "", href: "/money/transactions?q=fee", transactions: [] },
   ] });
 });

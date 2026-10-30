@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadLoanPayoutIds } from "@/lib/ai/iou-proposals";
+import { cardTransactions, type CardTransaction } from "@/lib/ai/open-proposals";
 
-export type HomeFinding = { ids: string[]; title: string; detail: string; href: string | null };
+export type HomeFinding = { ids: string[]; title: string; detail: string; href: string | null; transactions: CardTransaction[] };
 export type HomeReview = { uncategorized: number; findings: HomeFinding[] };
 
 type FindingRow = { id: string; conflict_key: string; title: string; detail: string; evidence: { links?: { href: string }[]; transactions?: { id: string }[] } | null };
@@ -26,7 +27,7 @@ export async function loadHomeReview(supabase: SupabaseClient, workspaceId: stri
     const known = byKey.get(row.conflict_key);
     if (known) { known.ids.push(row.id); continue; }
     const transaction = row.evidence?.transactions?.[0]?.id;
-    byKey.set(row.conflict_key, { ids: [row.id], title: row.title, detail: row.detail,
+    byKey.set(row.conflict_key, { ids: [row.id], title: row.title, detail: row.detail, transactions: cardTransactions(row.evidence),
       href: transaction ? `/money/transactions?transaction=${transaction}` : row.evidence?.links?.[0]?.href ?? null });
   }
   return { uncategorized: uncategorized.count ?? 0, findings: [...byKey.values()] };
