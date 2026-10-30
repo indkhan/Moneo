@@ -131,3 +131,35 @@ it("briefs each request with the call so far and what it already answered", asyn
     recentTurns: [{ role: "assistant", text: "Hi there!" }, { role: "user", text: "What did I spend in September?And August?" }],
     answered: [{ text: "What did I spend in September?", answer: "You spent EUR 1,607.37." }] });
 });
+
+it("asks Moneo to finish a result the user cut off, after it has answered them, before the next result", async () => {
+  const { call, sent, say, delegate, answer, advance } = setup();
+  say("Analyze September?"); delegate("d1"); say(" Total?"); delegate("d2");
+  await answer("Analyze September?", "You spent EUR 1607.37; insurance was highest.");
+  await answer("Total?", "EUR 1607.37.");
+  await advance(800); await advance(300);
+  const spoken = () => sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content));
+  call.handle({ type: "session.output_transcript.delta", delta: "You spent 1607" });
+  await advance(100);
+  say("wait, who did I lend to?"); delegate("d3");
+  await advance(800);
+  call.handle({ type: "session.output_transcript.delta", delta: "Sure, checking." });
+  await advance(800); await advance(300);
+  expect(spoken()).toHaveLength(2);
+  expect(spoken()[1]).toMatch(/^You were cut off while giving this result\. .*Result for "Analyze September\?": You spent EUR 1607\.37/);
+  call.handle({ type: "session.output_transcript.delta", delta: "Insurance was highest." });
+  await advance(800); await advance(300);
+  expect(spoken()[2]).toContain('Result for "Total?"');
+});
+
+it("does not resume over a short mm-hm", async () => {
+  const { call, sent, say, delegate, answer, advance } = setup();
+  say("Rent?"); delegate("d1");
+  await answer("Rent?", "EUR 850.");
+  await advance(800);
+  call.handle({ type: "session.output_transcript.delta", delta: "Rent is" });
+  await advance(100);
+  say("mm-hm");
+  await advance(4000); await advance(300);
+  expect(sent.filter(event => event.type === "session.commentary.append")).toHaveLength(1);
+});

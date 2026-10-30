@@ -44,6 +44,8 @@ export const SPEAKING_HOLD_MS = 700;
 export const SLOW_TASK_MS = 8000;
 /** Longest wait for Moneo to say one result before the next is handed over anyway. */
 export const RESULT_TURN_MS = 20_000;
+/** How long Moneo gets to answer an interruption before it is asked to finish the result it was cut off in. */
+export const RESUME_AFTER_MS = 3000;
 
 /**
  * Runs a voice call's tasks: each GPT-Live delegation (or typed message) becomes one /api/chat request, and its
@@ -63,6 +65,10 @@ export class VoiceCallController {
   private flushing = false;
   /** When the result being said was handed over, until Moneo has said it. */
   private saying: number | null = null;
+  /** The result Moneo is saying now, so an interruption can be noticed. */
+  private current: { delegationId: string | null; content: string } | null = null;
+  /** A result the user talked over, with what they said since, until Moneo is asked to finish it. */
+  private cut: { delegationId: string | null; content: string; words: string } | null = null;
   private captionId = 0;
   private readonly now: () => number;
   private readonly schedule: (run: () => void, ms: number) => unknown;
@@ -85,11 +91,20 @@ export class VoiceCallController {
   handle(event: ServerEvent) {
     switch (event.type) {
       case "session.input_transcript.delta":
+        // Talking while Moneo says a result cuts it off: GPT-Live stops, and the rest would be lost.
+        if (this.current && this.saying !== null && this.lastAssistantSpeech >= this.saying && this.now() - this.lastAssistantSpeech < SPEAKING_HOLD_MS) {
+          this.cut = { ...this.current, words: "" };
+          this.current = null;
+          this.resume();
+        }
+        if (this.cut) this.cut.words += event.delta ?? "";
         this.lastUserSpeech = this.now();
         this.heard.push({ text: event.delta ?? "", end: event.end_ms ?? Infinity });
         this.caption("user", event.delta ?? "");
         break;
       case "session.output_transcript.delta":
+        // A pause after it began speaking means the result was said; later speech is something else.
+        if (this.current && this.saying !== null && this.lastAssistantSpeech >= this.saying && this.now() - this.lastAssistantSpeech > 1500) this.current = null;
         this.lastAssistantSpeech = this.now();
         this.caption("assistant", event.delta ?? "");
         break;
@@ -203,7 +218,7 @@ export class VoiceCallController {
    * read when it goes out, so a result never says another is pending after that one has finished.
    */
   private flush() {
-    if (this.flushing || !this.outbox.length) return;
+    if (this.flushing || !this.outbox.length || this.cut) return;
     const said = this.saying !== null && (this.lastAssistantSpeech >= this.saying || this.now() - this.saying > RESULT_TURN_MS);
     if (this.speaking() || (this.saying !== null && !said)) {
       this.flushing = true;
@@ -213,8 +228,26 @@ export class VoiceCallController {
     const { delegationId, content } = this.outbox.shift()!;
     const others = this.running.map(item => `"${item.text.slice(0, 80)}"`);
     this.saying = this.now();
+    this.current = { delegationId, content };
     this.deps.send({ type: "session.commentary.append", delegation_id: delegationId, content: others.length ? `${content} Still working on ${others.join(", ")}.` : content });
     this.flush();
+  }
+
+  /**
+   * Once the user has finished and Moneo has answered them (or had a few seconds to), Moneo is asked to finish the
+   * result it was cut off in before any other. A short "mm-hm" over it is not an interruption.
+   */
+  private resume() {
+    this.schedule(() => {
+      const cut = this.cut;
+      if (!cut) return;
+      if (this.speaking() || (this.lastAssistantSpeech <= this.lastUserSpeech && this.now() - this.lastUserSpeech < RESUME_AFTER_MS)) return this.resume();
+      this.cut = null;
+      if (cut.words.trim().split(/\s+/).length >= 3) this.outbox.unshift({ delegationId: cut.delegationId,
+        content: `You were cut off while giving this result. Unless the user asked you to stop or skip it, finish the part you hadn't said yet, without repeating what you already said. ${cut.content}` });
+      this.saying = null;
+      this.flush();
+    }, 300);
   }
 
   /** Marks a task canceled; the caller asks the server to stop it. */
