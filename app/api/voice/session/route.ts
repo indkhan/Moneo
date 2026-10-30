@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
   if (!inputSchema.safeParse(await request.json().catch(() => null)).success) return Response.json({ error: "Invalid request" }, { status: 400 });
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return Response.json({ error: "Voice input is not configured" }, { status: 503 });
+  if (!apiKey) return Response.json({ error: "Voice isn't set up on this server: OPENAI_API_KEY is missing" }, { status: 503 });
   const { supabase, workspace, settings } = context;
   // Spelling hints only: a failed lookup still lets the user talk.
   const keywords = await loadVoiceVocabulary(supabase, workspace.id, settings.ai_data_scopes).catch(() => []);

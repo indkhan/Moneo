@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
   const parsed = inputSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Invalid call request" }, { status: 400 });
-  if (!process.env.OPENAI_API_KEY) return Response.json({ error: "Voice is not configured" }, { status: 503 });
+  if (!process.env.OPENAI_API_KEY) return Response.json({ error: "Voice isn't set up on this server: OPENAI_API_KEY is missing" }, { status: 503 });
   const { sdp, conversationId } = parsed.data;
   const { supabase, workspace, settings } = context;
   const existing = await supabase.from("conversations").select("id, deleted_at").eq("workspace_id", workspace.id).eq("id", conversationId).maybeSingle();

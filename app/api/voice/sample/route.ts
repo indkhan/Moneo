@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   const parsed = querySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
   if (!parsed.success) return Response.json({ error: "Unknown voice" }, { status: 400 });
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return Response.json({ error: "Voice is not configured" }, { status: 503 });
+  if (!apiKey) return Response.json({ error: "Voice isn't set up on this server: OPENAI_API_KEY is missing" }, { status: 503 });
   const { voice } = parsed.data;
   if (!clips.has(voice)) clips.set(voice, makeClip(voice, apiKey));
   try {
