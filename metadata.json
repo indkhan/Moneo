@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M65GVZ864ZC0CDR0KJSF74H3",
+  "strategy": "manual-commit",
+  "branch": "t3/polish-voice-ui",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "components/chat-messages.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2,
+    "cache_creation_tokens": 578,
+    "cache_read_tokens": 103323,
+    "output_tokens": 498,
+    "api_call_count": 1
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
