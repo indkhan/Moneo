@@ -42,6 +42,7 @@ export function spokenAnswer(answer: string, max = 1500) {
 
 export const SPEAKING_HOLD_MS = 700;
 export const SLOW_TASK_MS = 8000;
+export const UNCLAIMED_MS = 3000;
 
 /**
  * Runs a voice call's tasks: each GPT-Live delegation (or typed message) becomes one /api/chat request, and its
@@ -53,6 +54,7 @@ export class VoiceCallController {
   error = "";
   private heard = "";
   private lastUserTurn = "";
+  private lastDelegation: string | null = null;
   private lastUserSpeech = -Infinity;
   private lastAssistantSpeech = -Infinity;
   private outbox: Record<string, unknown>[] = [];
@@ -82,6 +84,7 @@ export class VoiceCallController {
         this.lastUserSpeech = this.now();
         this.heard += event.delta ?? "";
         this.caption("user", event.delta ?? "");
+        this.schedule(() => this.claimUnheard(), UNCLAIMED_MS);
         break;
       case "session.output_transcript.delta":
         this.lastAssistantSpeech = this.now();
@@ -91,6 +94,7 @@ export class VoiceCallController {
         // The delegation carries no task text: it is what the user said since the previous one.
         const text = this.heard.trim() || this.lastUserTurn;
         this.heard = "";
+        if (event.delegation?.id) this.lastDelegation = event.delegation.id;
         if (event.delegation?.id && text) this.start(text, event.delegation.id);
         break;
       }
@@ -99,6 +103,17 @@ export class VoiceCallController {
         this.deps.onChange();
         break;
     }
+  }
+
+  /**
+   * GPT-Live sometimes folds a later request into an earlier hand-off and never delegates it. Words that stay
+   * unclaimed after the user has been quiet for a while become their own task, answered through the latest hand-off.
+   */
+  private claimUnheard() {
+    const text = this.heard.trim();
+    if (this.now() - this.lastUserSpeech < UNCLAIMED_MS || text.split(/\s+/).length < 4) return;
+    this.heard = "";
+    this.start(text, this.lastDelegation);
   }
 
   /** A typed message starts a task directly; its answer is spoken the same way. */

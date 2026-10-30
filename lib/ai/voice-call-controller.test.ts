@@ -91,3 +91,16 @@ it("reads card ids and strips blocks for speech", () => {
   expect(answerCards(`a\n\`\`\`moneo-proposals\n["${card}"]\n\`\`\``)).toEqual([card]);
   expect(spokenAnswer("Hi **there** [link](/x)\n```moneo-chart\n{}\n```", 10)).toBe("Hi there …");
 });
+
+it("starts a task for words GPT-Live never handed off, once the user has been quiet", async () => {
+  const { call, asks, say, delegate, advance } = setup();
+  say("How much at Netto?"); delegate("d1");
+  say("btw I spent 12 at Rewe");
+  await advance(1000);
+  expect(asks).toHaveLength(1);
+  await advance(2500);
+  expect(asks.map(([payload]) => payload.message)).toEqual(["How much at Netto?", "btw I spent 12 at Rewe"]);
+  expect(call.tasks[1].delegationId).toBe("d1");
+  say("thanks"); await advance(5000);
+  expect(asks).toHaveLength(2);
+});
