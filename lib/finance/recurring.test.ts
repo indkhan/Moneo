@@ -13,6 +13,13 @@ function transaction(overrides: Partial<RecurringTransaction> & { id: string }):
 }
 
 describe("detectRecurring", () => {
+  it("keeps long bank descriptions within a usable label length", () => {
+    const description = "Lebara Germany Limited SEPA-BASISLASTSCHRIFT ".repeat(10);
+    const [series] = detectRecurring(["2026-01-02", "2026-02-02", "2026-03-02"].map((date, index) => transaction({ id: `l${index}`, date, description })));
+    expect(series.label.length).toBeLessThanOrEqual(120);
+    expect(description.startsWith(series.label)).toBe(true);
+  });
+
   it("finds monthly and weekly series with evidence, ranges, labels, and confidence", () => {
     const result = detectRecurring([
       transaction({ id: "r1", date: "2026-01-01", description: "  ACME Rent " }),
