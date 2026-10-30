@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M665T56R4GNQVXYMN5HM5S7W",
+  "strategy": "manual-commit",
+  "branch": "t3/voice-finance-agent",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "app/api/voice/call/route.ts",
+    "app/api/voice/sample/route.ts",
+    "app/api/voice/session/route.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "redaction": {
+    "replacements": 65,
+    "layers": {
+      "betterleaks": 10,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 26,
+      "credentialed_uri": 0,
+      "entropy": 22,
+      "key_context": 17,
+      "provider_token": 10,
+      "shell_stdin": 0
+    }
+  }
+}
