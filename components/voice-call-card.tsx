@@ -23,7 +23,7 @@ export function VoiceCallCard({ call, createdAt }: { call: CallCard; createdAt: 
   const bullets = call.summary?.split("\n").map(line => line.replace(/^-\s*/, "")).filter(Boolean) ?? [];
   return <section aria-label="Voice call" className="space-y-3 rounded-2xl border border-border bg-card p-4">
     <div className="flex items-center gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-full bg-ai-soft text-ai"><Phone className="size-4" aria-hidden="true" /></span>
-      <p className="text-sm leading-tight"><span className="block font-medium">Voice call</span><span className="text-xs text-muted-foreground">{callDuration(call.durationSeconds)} · <time dateTime={createdAt}>{new Date(createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></span></p></div>
+      <p className="text-sm leading-tight"><span className="block font-medium">Voice call</span><span className="text-xs text-muted-foreground">{callDuration(call.durationSeconds)} · <time dateTime={createdAt} suppressHydrationWarning>{new Date(createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></span></p></div>
     {call.summaryStatus === "pending" && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 motion-safe:animate-spin" aria-hidden="true" />Writing the summary…</p>}
     {bullets.length > 0 && <ul aria-label="Call summary" className="list-disc space-y-1 pl-5 text-[15px]">{bullets.map(line => <li key={line}>{line}</li>)}</ul>}
     {call.cards.length > 0 && <div role="region" aria-label="Cards from this call"><p className="eyebrow">Cards from this call</p>{call.cards.map(id => <IouCard key={id} id={id} />)}</div>}
