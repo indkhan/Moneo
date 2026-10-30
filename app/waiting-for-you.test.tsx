@@ -8,7 +8,7 @@ import { RecurringDetection, WaitingForYou, loadWaitingForYou } from "./waiting-
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("@/app/ai/agents/actions", () => ({ decideAgentProposals: vi.fn() }));
 vi.mock("@/app/ai/iou-actions", () => ({ loadIouProposal: vi.fn() }));
-vi.mock("./home-review-actions", () => ({ loadUncategorizedGroups: vi.fn(), categorizeGroup: vi.fn() }));
+vi.mock("./home-review-actions", () => ({ loadUncategorizedGroups: vi.fn(), categorizeGroups: vi.fn() }));
 vi.mock("@/lib/ai/recurring-proposals", () => ({ syncRecurringProposals: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/ai/open-proposals", () => ({ openStandaloneProposals: vi.fn() }));
