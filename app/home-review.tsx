@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition, type ReactNode } from "reac
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, X } from "lucide-react";
-import { IouCard } from "@/components/iou-card";
+import { RecurringCards } from "@/app/money/recurring/cards";
 import { decideAgentProposals } from "@/app/ai/agents/actions";
 import { categorizeGroup, loadUncategorizedGroups, type UncategorizedGroup } from "./home-review-actions";
 import type { OpenProposal } from "@/lib/ai/open-proposals";
@@ -42,21 +42,11 @@ function useDecide() {
   return { pending, error, run };
 }
 
-/** Detected and chat-made recurring changes; each card says yes or no on its own, or all at once. */
+/** Detected and chat-made recurring changes, one decision each: confirming opens the dialog to check amount, date and category. */
 export function RecurringSheet({ proposals }: { proposals: OpenProposal[] }) {
-  const { pending, error, run } = useDecide();
-  const [version, setVersion] = useState(0);
   return <div>
-    <div className="mt-2 flex flex-wrap items-center gap-2"><p className="mr-auto text-sm text-muted-foreground">Confirmed payments go into your forecast. “Not recurring” is remembered.</p>
-      <button type="button" disabled={pending} className={primary} onClick={() => run(async () => {
-        const outcomes = await decideAgentProposals(proposals.map(item => item.id), "accept");
-        setVersion(count => count + 1);
-        const failed = outcomes.filter(item => item.error);
-        return failed.length ? `${failed.length} could not be saved: ${failed[0].error}` : undefined;
-      })}>Confirm all</button></div>
-    {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
-    {/* Remounting after Confirm all reloads every card's outcome. */}
-    {proposals.map(proposal => <IouCard key={`${proposal.id}:${version}`} id={proposal.id} initial={version ? undefined : proposal} />)}
+    <p className="mt-2 text-sm text-muted-foreground">Confirmed payments go into your forecast. “Not recurring” is remembered.</p>
+    <RecurringCards cards={proposals} />
   </div>;
 }
 

@@ -227,5 +227,5 @@ export async function syncRecurringProposals(context: Context): Promise<boolean>
 export async function openRecurringProposals(supabase: SupabaseClient, workspaceId: string, prefixes = AUTO) {
   const { data } = await supabase.from("agent_proposals").select("id, title, detail, conflict_key").eq("workspace_id", workspaceId).is("run_id", null).eq("kind", "recurring_edit")
     .in("status", ["proposed", "failed"]).order("created_at", { ascending: false }).limit(50);
-  return (data ?? []).filter(row => prefixes.some(prefix => String(row.conflict_key).startsWith(prefix))) as { id: string; title: string; detail: string }[];
+  return (data ?? []).filter(row => prefixes.some(prefix => String(row.conflict_key).startsWith(prefix))) as { id: string; title: string; detail: string; conflict_key: string }[];
 }

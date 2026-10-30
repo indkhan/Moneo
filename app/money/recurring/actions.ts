@@ -7,7 +7,7 @@ import { reviewedLocalTimestamp } from "@/lib/finance/calendar";
 import { recurringCadences } from "@/lib/finance/cadences";
 import { parseManualAmount } from "@/app/money/transactions/input";
 import { decideProposals, readableError } from "@/lib/ai/agent-apply";
-import { decideCurrentSeries } from "@/lib/ai/recurring-proposals";
+import { decideCurrentSeries, recurringCardDetails } from "@/lib/ai/recurring-proposals";
 import { createSchedule, editSchedule, removeSchedule, scheduleFields, type ScheduleFields } from "./schedules";
 
 /** What a recurring form shows after submitting: an error to fix, or done. Failures never reach the error page. */
@@ -66,6 +66,19 @@ export async function confirmSeries(_: ActionState, form: FormData) {
 }
 export async function declineSeries(_: ActionState, form: FormData) {
   return run(async () => { await decideCurrentSeries(await requireWorkspace(), seriesFrom(form), "dismissed"); });
+}
+
+/** The payments behind each detected recurring card and what its confirm dialog starts from, in one detection pass. */
+export async function loadRecurringCards(ids: string[]) {
+  const parsed = z.array(uuid).min(1).max(100).parse(ids);
+  const context = await requireWorkspace();
+  const { supabase, workspace } = context;
+  const [proposals, categories] = await Promise.all([
+    supabase.from("agent_proposals").select("id, payload").eq("workspace_id", workspace.id).eq("kind", "recurring_edit").in("id", parsed),
+    supabase.from("categories").select("name").eq("workspace_id", workspace.id).order("name").limit(500),
+  ]);
+  if (proposals.error) throw new Error(proposals.error.message);
+  return { details: await recurringCardDetails(context, proposals.data ?? []), categories: (categories.data ?? []).map(row => row.name as string), locale: workspace.locale as string | undefined };
 }
 
 /** Confirms a recurring card with what the person set in its dialog (amount, date, category), in one step. */
