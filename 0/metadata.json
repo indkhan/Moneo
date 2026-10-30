@@ -1,0 +1,63 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M67JXAM1QCC7HHY1QRVJRV7B",
+  "session_id": "47976e75-f349-4d01-ba12-8a83747fe8db",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-30T23:39:25.796816Z",
+  "branch": "fix/no-retry-conflict-errors",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "supabase/tests/budget-rollover.sql",
+    "supabase/tests/conflict-errcode.test.ts",
+    "supabase/tests/coverage-recurring-compact.sql",
+    "supabase/tests/coverage-recurring-serialization.mjs",
+    "supabase/tests/coverage-recurring.sql",
+    "supabase/tests/forecast-preferences.sql",
+    "supabase/tests/goal-plans.sql",
+    "supabase/tests/goal-reservations.sql",
+    "supabase/tests/import-batch-concurrency.mjs",
+    "supabase/tests/import-concurrency.mjs",
+    "supabase/tests/import-organization-reviews.sql",
+    "supabase/tests/import-organization-rules.sql",
+    "supabase/tests/import-organization.sql",
+    "supabase/tests/money-editing.sql",
+    "supabase/tests/planning-history.sql",
+    "supabase/tests/recurring-occurrence-concurrency.mjs",
+    "supabase/tests/recurring-occurrences.sql",
+    "supabase/tests/reviewed-balances.sql",
+    "supabase/tests/scenario-history.sql",
+    "supabase/tests/transaction-splits.sql",
+    "supabase/tests/verified-links.sql",
+    "supabase/tests/wealth-history.sql"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "2b1436a009b7",
+  "checkpoint_transcript_start": 520,
+  "transcript_lines_at_start": 520,
+  "compact_transcript_start": 61,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "redaction": {
+    "replacements": 17,
+    "layers": {
+      "betterleaks": 2,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 13,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 2,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 1
+  }
+}
