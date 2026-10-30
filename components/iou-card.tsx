@@ -5,7 +5,7 @@ import Link from "next/link";
 import { decideAgentProposals } from "@/app/ai/agents/actions";
 import { loadIouProposal, type ChatProposal } from "@/app/ai/iou-actions";
 
-type Proposal = Pick<ChatProposal, "id" | "title" | "detail" | "status"> & Partial<ChatProposal>;
+type Proposal = Pick<ChatProposal, "id" | "title" | "detail" | "status"> & Partial<ChatProposal> & { conflict_key?: string };
 const NEW_CASH = "";
 
 /** A loan, repayment or expense waiting for a yes/no. Nothing is saved until Add is pressed. */
@@ -50,8 +50,8 @@ export function IouCard({ id, initial, onAccount }: { id: string; initial?: Prop
           {proposal.needsCash && <option value={NEW_CASH}>Cash (new account)</option>}
           {proposal.accounts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select></label>}
-      <button type="button" disabled={pending} onClick={() => decide("accept")} className="min-h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">{recurring ? "Confirm" : balance ? "Save" : "Add"}</button>
-      <button type="button" disabled={pending} onClick={() => decide("reject")} className="min-h-9 rounded-lg border border-border px-4 text-sm hover:bg-muted disabled:opacity-50">Dismiss</button>
-    </div> : <p role="status" className="mt-2 text-sm">{proposal.status === "accepted" ? done : "Dismissed. Nothing was changed."}</p>}
+      <button type="button" disabled={pending} onClick={() => decide("accept")} className="min-h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">{proposal.conflict_key?.startsWith("recurring_new:") ? "Yes, recurring" : recurring ? "Confirm" : balance ? "Save" : "Add"}</button>
+      <button type="button" disabled={pending} onClick={() => decide("reject")} className="min-h-9 rounded-lg border border-border px-4 text-sm hover:bg-muted disabled:opacity-50">{proposal.conflict_key?.startsWith("recurring_new:") ? "Not recurring" : proposal.conflict_key?.startsWith("recurring_price:") ? "Keep old amount" : "Dismiss"}</button>
+    </div> : <p role="status" className="mt-2 text-sm">{proposal.status === "accepted" ? done : recurring ? "Dismissed. It won’t be suggested again." : "Dismissed. Nothing was changed."}</p>}
   </section>;
 }

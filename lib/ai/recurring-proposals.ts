@@ -134,6 +134,12 @@ export async function applyRecurringProposal(context: Context, proposalId: strin
   return { href: "/money/recurring", undo: parsed.action === "add" ? "Remove it on the Recurring page" : "Undo the change in Plan history" };
 }
 
+/** "Not recurring" on a detected pattern: the series is dismissed, so neither Home nor the Recurring page suggests it again. */
+export async function dismissRecurringProposal(context: Context, proposalId: string, payload: unknown) {
+  const parsed = recurringEditSchema.parse(payload);
+  if (parsed.action === "confirm") await decideSeries(context, parsed.series, "dismissed", {}, proposalId);
+}
+
 const AUTO = ["recurring_new:", "recurring_price:"];
 const MAX_NEW = 10;
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { ARTIFACT_FRAME_CSP, artifactDocument, artifactQueriesSchema, runArtifactQueries } from "@/lib/ai/artifact-data";
+import { calendarDate } from "@/lib/finance/calendar";
 
 const querySchema = z.object({
   v: z.coerce.number().int().min(1).optional(),
@@ -20,7 +21,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!id.success || !query.success) return new Response("Not found", { status: 404 });
   const { supabase, workspace } = context;
   const { v, view, theme } = query.data;
-  const versions = supabase.from("artifact_versions").select("html, queries").eq("workspace_id", workspace.id).eq("artifact_id", id.data);
+  const versions = supabase.from("artifact_versions").select("html, queries, created_at").eq("workspace_id", workspace.id).eq("artifact_id", id.data);
   const [artifact, version] = await Promise.all([
     supabase.from("artifacts").select("id").eq("workspace_id", workspace.id).eq("id", id.data).is("deleted_at", null).maybeSingle(),
     (v ? versions.eq("version", v) : versions.order("version", { ascending: false }).limit(1)).maybeSingle(),
@@ -28,7 +29,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (artifact.error || version.error) throw artifact.error ?? version.error;
   if (!artifact.data || !version.data) return new Response("Not found", { status: 404 });
   const queries = artifactQueriesSchema.safeParse(version.data.queries);
-  const data = await runArtifactQueries(queries.success ? queries.data : [], context);
+  const data = await runArtifactQueries(queries.success ? queries.data : [], context, calendarDate(version.data.created_at, context.settings.timezone));
   return new Response(artifactDocument(version.data.html, data, { view, theme }), {
     headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": ARTIFACT_FRAME_CSP, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" },
   });

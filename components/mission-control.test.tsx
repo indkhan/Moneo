@@ -28,16 +28,17 @@ it("streams each agent's status, step and tool calls while the run is live", () 
   expect(html).toContain("Allow AI access to planning in Settings");
   expect(html).toContain("Free model · 2/6 calls");
   expect(html).toContain(">Stop<");
-  // Review stays closed until the lead has merged and the run finished.
-  expect(html).toContain("Review opens when the team finishes");
-  expect(html).not.toContain("Mark reviewed");
+  expect(html).toContain("Results stream in as agents work");
+  expect(html).not.toContain(">Accept<");
 });
 
 it("ends with the briefing and a review screen with evidence, lead notes and undo paths", () => {
   const html = renderToStaticMarkup(<MissionControl initial={run("completed")} locale="en-GB" />);
   expect(html).toContain("You paid EUR 5.00 in fees.");
-  expect(html).toContain("Accept selected (0)");
-  expect(html).toContain("Mark reviewed");
+  // Findings are decided on Home; only category limits keep their buttons here.
+  expect(html).toContain("Decide on Home");
+  expect(html).toContain(">on Home<");
+  expect(html).not.toContain("Mark reviewed");
   expect(html).toContain("Monthly account fee");
   expect(html).toContain("Lead: 2 rows proposed");
   expect(html).toContain("Turn the limit off in Plan → Spending");

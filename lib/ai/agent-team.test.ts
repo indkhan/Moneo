@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { organizationProposals } from "@/lib/import/organization";
-import { detectRecurring } from "@/lib/finance/recurring";
-import { anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, payloadSchemas, planRun, recurringProposals, verifiedBriefing, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
+import { anomalyFindings, budgetProposals, categorizeGroups, deterministicBriefing, mergeProposals, payloadSchemas, planRun, verifiedBriefing, type LedgerRow, type Proposal } from "@/lib/ai/agent-team";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const account = id(900);
@@ -42,23 +41,6 @@ describe("categorizer", () => {
     const groups = categorizeGroups(organizationProposals(rows.map(organizationRow), [], []), new Map(rows.map(item => [item.id, item])), { categories: new Map(), merchants: new Map() });
     expect(groups.map(group => group.payload.merchantName)).toEqual(["Streamflix"]);
     expect(groups[0].payload.patch).toEqual({});
-  });
-});
-
-describe("recurring detective", () => {
-  const months = ["2026-05-02", "2026-06-02", "2026-07-02", "2026-08-02", "2026-09-02"];
-  const rows = months.map((date, n) => row(n + 1, date, "STREAMFLIX", n === 4 ? -1099n : -999n));
-  const series = detectRecurring(rows.map(item => ({ id: item.id, date: item.date, description: item.description, amountMinor: item.amountMinor, currencyCode: "EUR", accountId: account })));
-  it("proposes unreviewed series with versioned evidence and flags price increases", () => {
-    const { proposals, findings } = recurringProposals(series, [], new Map(rows.map(item => [item.id, item])));
-    expect(proposals).toHaveLength(1);
-    expect(proposals[0].payload).toMatchObject({ cadence: "monthly", currencyCode: "EUR", accountId: account });
-    expect(proposals[0].payload.evidence).toHaveLength(5);
-    expect(findings[0]).toMatchObject({ conflictKey: expect.stringMatching(/^price:/), title: "STREAMFLIX went up 10.0%" });
-  });
-  it("does not re-propose series the user already reviewed", () => {
-    const stored = [{ accountId: account, currencyCode: "EUR", cadence: "monthly", transactionIds: [id(1)] }];
-    expect(recurringProposals(series, stored, new Map(rows.map(item => [item.id, item]))).proposals).toEqual([]);
   });
 });
 

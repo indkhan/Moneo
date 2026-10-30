@@ -4,6 +4,8 @@ import { requireAiScope, type AiDataScope } from "@/lib/settings";
 import { cashflow, financeToolSchemas, getBalances, listAccounts, listGoals, searchTransactions } from "@/lib/finance/tools";
 import { investigationSchema } from "@/lib/finance/investigation";
 import { runInvestigation } from "@/lib/finance/investigation-reader";
+import { listRecurring } from "@/lib/ai/recurring-proposals";
+import { calendarDate } from "@/lib/finance/calendar";
 import { readableToolOutput } from "@/lib/ai/tool-output";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
@@ -21,6 +23,8 @@ export const ARTIFACT_SOURCES = {
     run: (input: unknown, context: Context) => searchTransactions(input, context) },
   balances: { description: "Current dated account balances.", input: empty, scopes: ["accounts"], run: (_: unknown, context: Context) => getBalances(context, imports(context)) },
   accounts: { description: "The user's accounts.", input: empty, scopes: ["accounts"], run: (_: unknown, context: Context) => listAccounts(context) },
+  recurring: { description: "Confirmed recurring payments and income (name, amount, direction, cadence, next date, category) plus detected patterns still awaiting confirmation.", input: empty, scopes: ["planning", "transactions"],
+    run: (_: unknown, context: Context) => listRecurring(context) },
   goals: { description: "The user's savings goals.", input: empty, scopes: ["planning"], run: (_: unknown, context: Context) => listGoals(context) },
 } satisfies Record<string, { description: string; input: z.ZodType; scopes: AiDataScope[]; run: (input: unknown, context: Context) => Promise<unknown> }>;
 export type ArtifactSource = keyof typeof ARTIFACT_SOURCES;
@@ -45,10 +49,31 @@ export async function runArtifactSource(source: ArtifactSource, input: unknown, 
   return readableToolOutput(await definition.run(definition.input.parse(input), context));
 }
 
-/** Runs saved queries fresh; one failing query reports its error instead of hiding the rest. */
-export async function runArtifactQueries(queries: ArtifactQuery[], context: Context): Promise<Record<string, unknown>> {
+const DATE_VALUE = /^\d{4}-\d{2}-\d{2}$/;
+const DAY_MS = 86_400_000;
+
+/** A query input with each saved from/to date moved forward by days. Page cursors are dropped: they pin the old window. */
+export function rollQueryDates(input: unknown, days: number): unknown {
+  if (!days) return structuredClone(input);
+  if (Array.isArray(input)) return input.map(item => rollQueryDates(item, days));
+  if (!input || typeof input !== "object") return input;
+  return Object.fromEntries(Object.entries(input).map(([key, value]) => {
+    if ((key === "from" || key === "to") && typeof value === "string" && DATE_VALUE.test(value)) return [key, new Date(Date.parse(value) + days * DAY_MS).toISOString().slice(0, 10)];
+    if (key === "page" && value && typeof value === "object" && !Array.isArray(value)) {
+      const page = { ...value } as Record<string, unknown>;
+      delete page.cursor;
+      return [key, rollQueryDates(page, days)];
+    }
+    return [key, rollQueryDates(value, days)];
+  }));
+}
+
+/** Runs saved queries fresh; one failing query reports its error instead of hiding the rest. savedOn is the ISO date the version was saved. */
+export async function runArtifactQueries(queries: ArtifactQuery[], context: Context, savedOn?: string): Promise<Record<string, unknown>> {
+  // Saved periods keep their length and move with time, so an artifact always shows the latest window.
+  const days = savedOn ? Math.round((Date.parse(calendarDate(new Date(), context.settings.timezone)) - Date.parse(savedOn)) / DAY_MS) : 0;
   return Object.fromEntries(await Promise.all(queries.map(async query => {
-    try { return [query.name, await runArtifactSource(query.source, query.input, context)]; }
+    try { return [query.name, await runArtifactSource(query.source, days > 0 ? rollQueryDates(query.input, days) : query.input, context)]; }
     catch (cause) { return [query.name, { error: cause instanceof Error ? cause.message : "Data unavailable" }]; }
   })));
 }

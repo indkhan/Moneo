@@ -71,7 +71,6 @@ function EvidenceView({ proposal, locale }: { proposal: AgentProposalView; local
 /** Live mission control for one agent-team run, with the review screen at the end. */
 export function MissionControl({ initial, locale }: { initial: AgentRunView; locale: string }) {
   const [run, setRun] = useState(initial);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [notice, setNotice] = useState("");
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -105,7 +104,6 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
         const outcomes = await decideAgentProposals(ids, decision);
         const failed = outcomes.filter(outcome => outcome.status === "failed");
         setNotice(failed.length ? `${failed.length} could not be applied: ${failed[0].error}` : `${outcomes.filter(outcome => outcome.status !== "unchanged").length} ${decision === "accept" ? "accepted" : "rejected"}.`);
-        setSelected(new Set());
         await refresh();
         router.refresh();
       } catch (cause) { setNotice(cause instanceof Error ? cause.message : "Could not save decisions"); }
@@ -118,9 +116,9 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
   const manual = run.proposals.filter(item => !item.result?.auto);
   const open = manual.filter(item => item.status === "proposed" || item.status === "failed");
   const reviewable = !active;
-  const toggle = (id: string) => setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const kinds = (Object.keys(KIND_LABELS) as ProposalKind[]).filter(kind => manual.some(item => item.kind === kind));
-  const openIds = (kind: ProposalKind) => open.filter(item => item.kind === kind).map(item => item.id);
+  // Only category limits are decided here; everything else waits on Home, so a decision has one place.
+  const openIds = (kind: ProposalKind) => open.filter(item => item.kind === kind && kind === "budget").map(item => item.id);
   const model = run.model_status === "available" || run.model_status === "budget_exhausted" ? `Free model · ${run.model_calls}/${run.model_budget} calls`
     : run.model_status === "unknown" ? "Checking model…" : "Deterministic only (no free model)";
 
@@ -162,29 +160,24 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
 
     <section aria-labelledby="review-heading" className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 id="review-heading" className="mr-auto font-display text-2xl font-semibold tracking-tight">Review <span className="font-sans text-sm font-normal text-muted-foreground">({open.length} open of {manual.length})</span></h2>
-        {reviewable && open.length > 0 && <>
-          <button type="button" onClick={() => setSelected(selected.size === open.length ? new Set() : new Set(open.map(item => item.id)))} className="h-10 rounded-[10px] border border-input px-3.5 text-[13px] hover:bg-muted">{selected.size === open.length ? "Clear selection" : "Select all"}</button>
-          <button type="button" disabled={pending || !selected.size} onClick={() => decide([...selected], "reject")} className="h-10 rounded-[10px] border border-input px-3.5 text-[13px] hover:bg-muted disabled:opacity-50">Reject selected</button>
-          <button type="button" disabled={pending || !selected.size} onClick={() => decide([...selected], "accept")} className="h-10 rounded-[10px] bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">{pending ? "Applying…" : `Accept selected (${selected.size})`}</button>
-        </>}
+        <h2 id="review-heading" className="mr-auto font-display text-2xl font-semibold tracking-tight">What the team found <span className="font-sans text-sm font-normal text-muted-foreground">({manual.length})</span></h2>
+        {open.some(item => item.kind !== "budget") && <Link href="/" className="h-10 rounded-[10px] bg-primary px-4 py-2.5 text-[13px] font-medium text-primary-foreground hover:opacity-90">Decide on Home</Link>}
       </div>
-      <p className="text-xs text-muted-foreground">{reviewable ? "Nothing changes until you accept. Accepted changes use the same audited actions as the rest of Moneo, so history and Undo keep working." : "Proposals stream in as agents work. Review opens when the team finishes."}</p>
+      <p className="text-xs text-muted-foreground">{reviewable ? "Flagged items and recurring payments are decided on Home; category limits here. Accepted changes use the same audited actions as the rest of Moneo, so history and Undo keep working." : "Results stream in as agents work."}</p>
       {notice && <p role="status" className="text-sm">{notice}</p>}
       {kinds.map(kind => <details key={kind} open className="space-y-2 group">
         <summary className="flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden"><ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden="true" /><h3 className="eyebrow">{KIND_LABELS[kind]} ({manual.filter(item => item.kind === kind).length})</h3>{reviewable && openIds(kind).length > 0 && <span className="ml-auto flex gap-1.5">
           <button type="button" disabled={pending} onClick={event => { event.preventDefault(); decide(openIds(kind), "reject"); }} className="h-8 rounded-[10px] border border-input px-3 text-xs hover:bg-muted disabled:opacity-50">Reject all</button>
-          <button type="button" disabled={pending} onClick={event => { event.preventDefault(); decide(openIds(kind), "accept"); }} className="h-8 rounded-[10px] bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">{kind === "finding" ? "Mark all reviewed" : "Accept all"}</button>
+          <button type="button" disabled={pending} onClick={event => { event.preventDefault(); decide(openIds(kind), "accept"); }} className="h-8 rounded-[10px] bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">Accept all</button>
         </span>}</summary>
         <ul className="space-y-2">{manual.filter(item => item.kind === kind).map(item => {
-          const decidable = reviewable && (item.status === "proposed" || item.status === "failed");
+          const decidable = reviewable && kind === "budget" && (item.status === "proposed" || item.status === "failed");
           return <li key={item.id} className={`rounded-2xl border bg-card px-5 py-[18px] ${item.status === "accepted" ? "border-brand/40" : "border-border"} ${item.status === "rejected" ? "opacity-60" : ""}`}>
             <div className="flex items-start gap-3">
-              <input type="checkbox" aria-label={`Select ${item.title}`} disabled={!decidable} checked={selected.has(item.id)} onChange={() => toggle(item.id)} className="mt-1 size-4" />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2"><p className="text-[15px] font-medium">{item.title}</p>
                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title="Heuristic confidence, not a probability"><span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted"><span className="block h-full bg-brand" style={{ width: `${item.confidence}%` }} /></span>{item.confidence}</span>
-                  {item.status !== "proposed" && pill(item.status)}</div>
+                  {item.status !== "proposed" ? pill(item.status, item.result?.movedToHome ? "moved to Home" : item.status) : kind !== "budget" && pill("proposed", "on Home")}</div>
                 <p className="mt-1 text-[13px] text-muted-foreground text-pretty">{item.detail}</p>
                 {item.notes.map(note => <p key={note} className="mt-1 text-xs text-warning">Lead: {note}</p>)}
                 {item.status === "failed" && item.result?.error && <p className="mt-1 text-xs text-danger">{item.result.error}</p>}
@@ -194,7 +187,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
               </div>
               {decidable && <div className="flex shrink-0 gap-1.5">
                 <button type="button" disabled={pending} onClick={() => decide([item.id], "reject")} className="h-11 rounded-xl border border-input px-4 text-[13px] hover:bg-muted">Reject</button>
-                <button type="button" disabled={pending} onClick={() => decide([item.id], "accept")} className="h-11 rounded-xl bg-foreground px-[18px] text-[13px] font-medium text-background hover:opacity-90">{kind === "finding" ? "Mark reviewed" : "Accept"}</button>
+                <button type="button" disabled={pending} onClick={() => decide([item.id], "accept")} className="h-11 rounded-xl bg-foreground px-[18px] text-[13px] font-medium text-background hover:opacity-90">Accept</button>
               </div>}
             </div>
           </li>;
