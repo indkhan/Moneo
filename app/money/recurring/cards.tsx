@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
+import { useBusy } from "@/components/use-busy";
 import Link from "next/link";
 import { IouCard } from "@/components/iou-card";
 import { decideAgentProposals } from "@/app/ai/agents/actions";
@@ -34,7 +35,7 @@ export function RecurringCards({ cards }: { cards: Card[] }) {
 function RecurringCard({ card, loaded }: { card: Card; loaded?: Loaded }) {
   const [outcome, setOutcome] = useState<"saved" | "dismissed">();
   const [error, setError] = useState<string>();
-  const [pending, start] = useTransition();
+  const [pending, start] = useBusy();
   const price = card.conflict_key?.startsWith("recurring_price:");
   const details = loaded?.details[card.id];
   const money = (minor: string, currency: string) => formatMoney(minor, currency, loaded?.locale);

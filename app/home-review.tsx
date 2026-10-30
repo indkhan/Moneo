@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useBusy } from "@/components/use-busy";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, X } from "lucide-react";
@@ -34,7 +35,7 @@ export function SummaryCard({ title, detail, children }: { title: string; detail
 }
 
 function useDecide() {
-  const [pending, start] = useTransition();
+  const [pending, start] = useBusy();
   const [error, setError] = useState<string>();
   const run = (work: () => Promise<string | void>) => start(async () => {
     setError(undefined);

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
+import { useBusy } from "@/components/use-busy";
 import Link from "next/link";
 import { decideAgentProposals } from "@/app/ai/agents/actions";
 import { loadIouProposal, type ChatProposal } from "@/app/ai/iou-actions";
@@ -13,7 +14,7 @@ export function IouCard({ id, initial, onAccount }: { id: string; initial?: Prop
   const [proposal, setProposal] = useState<Proposal | null | undefined>(initial);
   const [account, setAccount] = useState<string>();
   const [error, setError] = useState<string>();
-  const [pending, start] = useTransition();
+  const [pending, start] = useBusy();
   const [unavailable, setUnavailable] = useState(false);
   const [attempt, setAttempt] = useState(0);
   // A failed load used to hide the card until the page was reloaded; it now says so and can be retried.
