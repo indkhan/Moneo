@@ -1,13 +1,18 @@
-import { z } from "zod";
-
 /** A live recording: `stop` waits for the final transcript, `cancel` throws everything away. */
 export type VoiceRecording = { stop: () => Promise<string>; cancel: () => void };
 export type VoiceHandlers = { onText: (text: string) => void; onLevel: (level: number) => void; onError: (error: Error) => void };
 
 const RATE = 24000;
-const sessionSchema = z.object({ token: z.string().min(1), url: z.url() });
-const eventSchema = z.object({ type: z.string(), item_id: z.string().optional(), delta: z.string().optional(), transcript: z.string().optional(),
-  error: z.object({ message: z.string().optional() }).optional() });
+// Plain checks instead of zod: this file loads on every page with a mic, and zod would add ~90 KB to them.
+type RealtimeEvent = { type: string; item_id?: string; delta?: string; transcript?: string; error?: { message?: string } };
+const str = (value: unknown) => typeof value === "string" ? value : undefined;
+function realtimeEvent(data: unknown): RealtimeEvent | null {
+  try {
+    const event = JSON.parse(String(data));
+    if (typeof event?.type !== "string") return null;
+    return { type: event.type, item_id: str(event.item_id), delta: str(event.delta), transcript: str(event.transcript), error: { message: str(event.error?.message) } };
+  } catch { return null; }
+}
 
 /** Mono float samples at any rate to 16-bit PCM at 24 kHz, base64 encoded, as the realtime API takes them. */
 export function pcm16Base64(samples: Float32Array, sampleRate: number) {
@@ -67,9 +72,8 @@ export async function startVoiceRecording({ onText, onLevel, onError }: VoiceHan
 async function openSocket() {
   const response = await fetch("/api/voice/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
   const body = await response.json().catch(() => ({}));
-  const session = sessionSchema.safeParse(body);
-  if (!response.ok || !session.success) throw new Error(typeof body?.error === "string" ? body.error : "Voice input is unavailable. Try again.");
-  return new WebSocket(session.data.url, ["realtime", `openai-insecure-api-key.${session.data.token}`]);
+  if (!response.ok || !str(body?.token) || !str(body?.url)) throw new Error(typeof body?.error === "string" ? body.error : "Voice input is unavailable. Try again.");
+  return new WebSocket(body.url, ["realtime", `openai-insecure-api-key.${body.token}`]);
 }
 
 function transcribe(audio: AudioContext, stream: MediaStream, release: () => void, connecting: Promise<WebSocket>, { onText, onLevel, onError }: VoiceHandlers): VoiceRecording {
@@ -93,9 +97,9 @@ function transcribe(audio: AudioContext, stream: MediaStream, release: () => voi
     // If Done was pressed while connecting, send what was recorded and wait for the final words.
     socket.onopen = () => settle ? commit() : flush();
     socket.onmessage = event => {
-      const parsed = eventSchema.safeParse((() => { try { return JSON.parse(String(event.data)); } catch { return null; } })());
-      if (!parsed.success) return;
-      const { type, item_id: id = "", delta, transcript, error } = parsed.data;
+      const parsed = realtimeEvent(event.data);
+      if (!parsed) return;
+      const { type, item_id: id = "", delta, transcript, error } = parsed;
       if (type === "conversation.item.input_audio_transcription.delta") { items.set(id, (items.get(id) ?? "") + (delta ?? "")); onText(text()); }
       else if (type === "conversation.item.input_audio_transcription.completed") { items.set(id, transcript ?? items.get(id) ?? ""); onText(text()); settle?.(text()); }
       // After a stop, an error (such as nothing to commit) just ends with what was heard.
