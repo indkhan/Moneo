@@ -65,6 +65,16 @@ it("keeps earlier assistant turns in history without their chart blocks", async 
   await POST(request("And now?"));
   expect(vi.mocked(generateText).mock.calls[0][0].messages).toEqual([{ role: "user", content: "Earlier" }, { role: "assistant", content: "Here:\n[chart]\nDone" }, { role: "user", content: "And now?" }]);
 });
+it("lets a call request replace only the latest running request, and never one it adds to", async () => {
+  const [older, latest] = ["00000000-0000-4000-8000-000000000003", "00000000-0000-4000-8000-000000000004"];
+  const runningTasks = [{ requestId: older, text: "Spending this month" }, { requestId: latest, text: "Who did I lend to" }];
+  const post = (message: string) => POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000002", requestId, message, context: { via: "call", runningTasks } }) }));
+  await post("Leave that, check my rent instead");
+  const tools = vi.mocked(generateText).mock.calls[0][0].tools as unknown as Record<string, { execute: (input: unknown, options: unknown) => Promise<unknown> }>;
+  await expect(tools.call_replace_task.execute({ requestId: older }, {})).rejects.toThrow("Only the latest running request");
+  await post("At the same time, can you also do last month as well");
+  expect(vi.mocked(generateText).mock.calls[1][0].tools).not.toHaveProperty("call_replace_task");
+});
 it("leaves this call's still-running questions out of a call request's history", async () => {
   const context = await requireWorkspace();
   const running = "00000000-0000-4000-8000-000000000003";
@@ -320,7 +330,7 @@ it("switches to spoken call mode and offers call_replace_task only for this call
   const options = vi.mocked(generateText).mock.calls[0][0];
   expect(options.instructions).toContain("live voice call");
   const tools = options.tools as unknown as Record<string, { execute: (input: unknown, options: unknown) => Promise<unknown> }>;
-  await expect(tools.call_replace_task.execute({ requestId: "00000000-0000-4000-8000-000000000009" }, {})).rejects.toThrow("not a running request");
+  await expect(tools.call_replace_task.execute({ requestId: "00000000-0000-4000-8000-000000000009" }, {})).rejects.toThrow("Only the latest running request");
   expect(vi.mocked(modelForSettings).mock.lastCall?.[1]).toBe("voice_call");
   await post(undefined);
   expect(vi.mocked(modelForSettings).mock.lastCall?.[1]).toBe("chat");
