@@ -1,0 +1,22 @@
+<task-notification>
+<task-id>b48iku2jd</task-id>
+<tool-use-id>toolu_01SMhYQbDNb5KRYUk9YuqfSx</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-30ebcd8e\0e501682-86ff-425c-9723-001a164d6a59\tasks\b48iku2jd.output</output-file>
+<status>killed</status>
+<summary>Background command "npm run dev &gt; /tmp/dev.log 2&gt;&amp;1" was stopped after reaching its background time limit</summary>
+<note>If the work in progress still needs it, start it again with `run_in_background` and a longer `timeout`. If it already had the longest `timeout` allowed, do not restart it. Either way, report that it was stopped.</note>
+</task-notification>
+
+---
+
+Continue where you left off.
+
+---
+
+<task-notification>
+<task-id>ba513opkm</task-id>
+<tool-use-id>toolu_012Adgp7tQotrEUsCAaW25QC</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-30ebcd8e\0e501682-86ff-425c-9723-001a164d6a59\tasks\ba513opkm.output</output-file>
+<status>failed</status>
+<summary>Background command "npm run dev &gt; /tmp/dev.log 2&gt;&amp;1" failed with exit code 1</summary>
+</task-notification>
