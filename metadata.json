@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M65ERN70D25GJQMC7GP6RW0T",
+  "strategy": "manual-commit",
+  "branch": "t3/voice-call-summaries",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/api/voice/calls/route.test.ts",
+    "app/api/voice/calls/route.ts",
+    "lib/ai/voice-call-record.test.ts",
+    "lib/ai/voice-call-record.ts",
+    "supabase/migrations/202610300005_voice_calls.sql"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 48,
+    "cache_creation_tokens": 66830,
+    "cache_read_tokens": 3675656,
+    "output_tokens": 43374,
+    "api_call_count": 24
+  },
+  "redaction": {
+    "replacements": 10,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 9,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
