@@ -2,12 +2,12 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { recurringCadences } from "@/lib/finance/cadences";
 import { calendarDate } from "@/lib/finance/calendar";
-import { formatMoney } from "@/lib/finance/format";
+import { formatInputAmount, formatMoney } from "@/lib/finance/format";
 import { expandSchedule } from "@/lib/finance/model";
 import { wealthAmount } from "@/lib/finance/wealth";
 import { liveAccounts } from "@/lib/ai/transaction-proposals";
-import { createSchedule, decideSeries, editSchedule, removeSchedule, scheduleFields, seriesSchema, type ScheduleFields } from "@/app/money/recurring/schedules";
-import { loadSuggestions, priceChanges, seriesDecision } from "@/app/money/recurring/suggestions";
+import { createSchedule, decideSeries, editSchedule, removeSchedule, scheduleFields, seriesSchema, type ScheduleFields, type SeriesDecision } from "@/app/money/recurring/schedules";
+import { loadSuggestions, olderRuns, priceChanges, seriesDecision } from "@/app/money/recurring/suggestions";
 
 type Context = { supabase: SupabaseClient; workspace: { id: string; timezone: string; locale: string }; chatRequestId?: string };
 
@@ -124,20 +124,60 @@ export async function proposeRecurring(context: Context, input: z.infer<typeof r
   return { proposalId: data.id as string, title };
 }
 
-/** Applies an accepted card through the same functions as the Recurring page; the proposal id is the request id. */
-export async function applyRecurringProposal(context: Context, proposalId: string, payload: unknown) {
+/**
+ * Decides a detected pattern against its transactions as they are now: a card stores the versions it saw, and a later edit
+ * (a category, a new charge) would otherwise fail with "Source changed". Earlier runs at an older price are closed with it.
+ */
+export async function decideCurrentSeries(context: Context, stored: SeriesDecision, decision: "confirmed" | "dismissed", changes: Partial<ScheduleFields> = {}, requestId?: string) {
+  const { candidates, superseded } = await loadSuggestions(context.supabase, context.workspace);
+  const found = candidates.find(item => item.series.accountId === stored.accountId && item.series.runAnchorId === stored.runAnchorId);
+  await decideSeries(context, found ? seriesDecision(found) : stored, decision, changes, requestId);
+  // Best effort: an old run that cannot be closed stays hidden behind the current one anyway.
+  for (const older of found ? olderRuns(superseded, found) : []) await decideSeries(context, seriesDecision(older), "dismissed").catch(() => undefined);
+}
+
+/** Applies an accepted card through the same functions as the Recurring page; the proposal id is the request id. `edits` are what the person set in the confirm dialog. */
+export async function applyRecurringProposal(context: Context, proposalId: string, payload: unknown, edits: Partial<ScheduleFields> = {}) {
   const parsed = recurringEditSchema.parse(payload);
   if (parsed.action === "add") await createSchedule(context, parsed.accountId, parsed.fields);
   else if (parsed.action === "change") await editSchedule(context, parsed.assumptionId, parsed.changes, proposalId);
   else if (parsed.action === "remove") await removeSchedule(context, parsed.assumptionId, proposalId);
-  else await decideSeries(context, parsed.series, "confirmed", parsed.changes, proposalId);
+  else await decideCurrentSeries(context, parsed.series, "confirmed", { ...parsed.changes, ...edits }, proposalId);
   return { href: "/money/recurring", undo: parsed.action === "add" ? "Remove it on the Recurring page" : "Undo the change in Plan history" };
 }
 
 /** "Not recurring" on a detected pattern: the series is dismissed, so neither Home nor the Recurring page suggests it again. */
 export async function dismissRecurringProposal(context: Context, proposalId: string, payload: unknown) {
   const parsed = recurringEditSchema.parse(payload);
-  if (parsed.action === "confirm") await decideSeries(context, parsed.series, "dismissed", {}, proposalId);
+  if (parsed.action === "confirm") await decideCurrentSeries(context, parsed.series, "dismissed", {}, proposalId);
+}
+
+export type RecurringCardDetails = {
+  name: string; amount: string; direction: "out" | "in"; cadence: string; startsOn: string; category: string; currencyCode: string;
+  transactions: { id: string; date: string; description: string; amountMinor: string }[];
+};
+
+/** What a confirm card's dialog and details show, read fresh from detection; null when the pattern is gone (decided elsewhere or its transactions changed). */
+export async function recurringCardDetails(context: Context, proposals: { id: string; payload: unknown }[]): Promise<Record<string, RecurringCardDetails | null>> {
+  const { candidates } = await loadSuggestions(context.supabase, context.workspace);
+  const today = calendarDate(new Date(), context.workspace.timezone);
+  return Object.fromEntries(proposals.map(({ id, payload }) => {
+    const parsed = recurringEditSchema.safeParse(payload);
+    if (!parsed.success || parsed.data.action !== "confirm") return [id, null];
+    const { series: stored, changes } = parsed.data;
+    const found = candidates.find(item => item.series.accountId === stored.accountId && item.series.runAnchorId === stored.runAnchorId);
+    if (!found) return [id, null];
+    const { series, evidence, assumption } = found;
+    const latest = evidence.at(-1);
+    const amount = BigInt(changes.amountMinor ?? latest?.amount_minor ?? series.amountMaxMinor);
+    // The next date this pattern is expected, as the Recurring page prefills it.
+    const next = latest ? expandSchedule({ account_id: series.accountId, amount_minor: amount.toString(), currency_code: series.currencyCode, cadence: series.cadence,
+      starts_on: latest.posted_on, ends_on: null, schedule_anchor_on: series.anchorDate }, today, 400)[0]?.date : undefined;
+    const details: RecurringCardDetails = { name: assumption?.name ?? series.label, amount: formatInputAmount(amount < 0n ? -amount : amount, series.currencyCode),
+      direction: amount < 0n ? "out" : "in", cadence: series.cadence, startsOn: next ?? today, category: assumption?.category?.name ?? "", currencyCode: series.currencyCode,
+      transactions: evidence.slice(-12).reverse().map(row => ({ id: row.id, date: row.posted_on, description: row.description, amountMinor: row.amount_minor })) };
+    return [id, details];
+  }));
 }
 
 const AUTO = ["recurring_new:", "recurring_price:"];
@@ -164,7 +204,7 @@ export async function syncRecurringProposals(context: Context): Promise<boolean>
     ...suggestions.pending.filter(item => item.related.length <= 1).slice(0, MAX_NEW).map(({ series, evidence }) => {
       const latest = evidence.at(-1)?.amount_minor ?? series.amountMaxMinor.toString();
       return { conflict_key: `recurring_new:${series.runAnchorId}`, title: `${series.label}: ${money(latest, series.currencyCode)} ${series.cadence}, confirm as recurring?`.slice(0, 200),
-        detail: `${series.occurrences} matching ${latest.startsWith("-") ? "payments" : "incoming payments"} found. Edit the amount, date or category on the Recurring page.`,
+        detail: `${series.occurrences} matching ${latest.startsWith("-") ? "payments" : "incoming payments"} found. You set the amount, date and category when you confirm.`,
         payload: { action: "confirm" as const, series: seriesDecision({ series, evidence }), changes: {} } };
     }),
   ];
@@ -172,14 +212,15 @@ export async function syncRecurringProposals(context: Context): Promise<boolean>
   if (open.error) return false;
   const keys = new Set(wanted.map(item => item.conflict_key));
   const stale = (open.data ?? []).filter(row => AUTO.some(prefix => String(row.conflict_key).startsWith(prefix)) && !keys.has(row.conflict_key)).map(row => row.id);
-  if (stale.length) await supabase.from("agent_proposals").update({ status: "rejected", decided_at: new Date().toISOString(), result: { stale: true } }).eq("workspace_id", workspace.id).in("id", stale).in("status", ["proposed", "failed"]);
+  // A failed write reports no change, so Home does not reload into the same failure again and again.
+  const closed = stale.length ? !(await supabase.from("agent_proposals").update({ status: "rejected", decided_at: new Date().toISOString(), result: { stale: true } }).eq("workspace_id", workspace.id).in("id", stale).in("status", ["proposed", "failed"])).error : false;
   // Each cause is raised once: already open, accepted or dismissed keys are skipped (the unique key also guards races).
   const seen = wanted.length ? await supabase.from("agent_proposals").select("conflict_key").eq("workspace_id", workspace.id).is("run_id", null).in("conflict_key", [...keys]) : { data: [], error: null };
   if (seen.error) return false;
   const raised = new Set((seen.data ?? []).map(row => row.conflict_key));
   const fresh = wanted.filter(item => !raised.has(item.conflict_key));
-  if (fresh.length) await supabase.from("agent_proposals").insert(fresh.map(item => ({ workspace_id: workspace.id, agent: "chat", kind: "recurring_edit", confidence: 100, ...item, payload: recurringEditSchema.parse(item.payload) })));
-  return stale.length > 0 || fresh.length > 0;
+  const raisedNew = fresh.length ? !(await supabase.from("agent_proposals").insert(fresh.map(item => ({ workspace_id: workspace.id, agent: "chat", kind: "recurring_edit", confidence: 100, ...item, payload: recurringEditSchema.parse(item.payload) })))).error : false;
+  return closed || raisedNew;
 }
 
 /** Open recurring cards raised by detection, newest first; prefix narrows to price changes or new patterns. */

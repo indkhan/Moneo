@@ -55,7 +55,7 @@ export function ScheduleDialog({ title, trigger, triggerClassName, action, remov
         <div className="grid grid-cols-2 gap-3">
           <label className="grid gap-1 text-sm">Direction<select name="direction" value={values.direction} onChange={set("direction")} className={inputClass}>
             <option value="out">Going out</option><option value="in">Coming in</option></select></label>
-          <label className="grid gap-1 text-sm">Amount{currencyCode && ` (${currencyCode})`}<input name="amount" required inputMode="decimal" pattern="\d+(\.\d+)?" value={values.amount} onChange={set("amount")} className={inputClass} /></label>
+          <label className="grid gap-1 text-sm">Amount{currencyCode && ` (${currencyCode})`}<input name="amount" required inputMode="decimal" pattern="\d+([.,]\d+)?" value={values.amount} onChange={set("amount")} className={inputClass} /></label>
           <label className="grid gap-1 text-sm">How often<select name="scheduleCadence" value={values.cadence} onChange={set("cadence")} className={inputClass}>
             {recurringCadences.map(cadence => <option key={cadence} value={cadence}>{cadenceWords[cadence]}</option>)}</select></label>
           <label className="grid gap-1 text-sm">Next date<input name="startsOn" type="date" required value={values.startsOn} onChange={set("startsOn")} className={inputClass} /></label>

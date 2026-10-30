@@ -4,6 +4,8 @@ import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 vi.mock("@/lib/import/organization-loader", () => ({ loadOrganizationSuggestions: vi.fn() }));
+// Detection reads the ledger; these cases decide the stored series as it is.
+vi.mock("@/app/money/recurring/suggestions", async importOriginal => ({ ...await importOriginal<object>(), loadSuggestions: async () => ({ candidates: [], superseded: [] }) }));
 
 type Call = { kind: "rpc" | "update" | "insert"; name: string; args: unknown; filters: unknown[][] };
 function fakeContext(options: { rpc?: Record<string, { data?: unknown; error?: { message: string; code?: string } | null }>; claim?: unknown; rejected?: unknown; insertError?: { message: string; code?: string } } = {}) {
@@ -77,7 +79,9 @@ it("remembers “Not recurring” on the series, but dismissing a price change k
   const series = { accountId: id(20), label: "Gym", cadence: "monthly", currencyCode: "EUR", evidence: [1, 2, 3].map(n => ({ id: id(n + 30), version: 1 })), runAnchorId: id(31), evidenceLimited: false };
   const fresh = fakeContext({ rejected: { id: id(8), conflict_key: `recurring_new:${id(31)}`, payload: { action: "confirm", series, changes: {} } } });
   expect(await decideProposals(fresh.context, [id(8)], "reject")).toEqual([{ id: id(8), status: "rejected" }]);
-  expect(fresh.calls.at(-1)).toMatchObject({ name: "review_recurring_series_versions", args: { p_decision: "dismissed", p_run_anchor_id: id(31) } });
+  // The series is dismissed first, so a failure leaves the card open to retry.
+  expect(fresh.calls.map(call => call.name)).toEqual(["review_recurring_series_versions", "agent_proposals"]);
+  expect(fresh.calls[0]).toMatchObject({ args: { p_decision: "dismissed", p_run_anchor_id: id(31) } });
   const price = fakeContext({ rejected: { id: id(9), conflict_key: `recurring_price:${id(32)}`, payload: { action: "confirm", series, changes: { amountMinor: "-1299" } } } });
   await decideProposals(price.context, [id(9)], "reject");
   expect(price.calls.some(call => call.kind === "rpc")).toBe(false);
