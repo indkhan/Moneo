@@ -4,6 +4,7 @@ import { requireAiScope, type AiDataScope } from "@/lib/settings";
 import { cashflow, financeToolSchemas, getBalances, listAccounts, listGoals, searchTransactions } from "@/lib/finance/tools";
 import { investigationSchema } from "@/lib/finance/investigation";
 import { runInvestigation } from "@/lib/finance/investigation-reader";
+import { listRecurring } from "@/lib/ai/recurring-proposals";
 import { readableToolOutput } from "@/lib/ai/tool-output";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
@@ -21,6 +22,8 @@ export const ARTIFACT_SOURCES = {
     run: (input: unknown, context: Context) => searchTransactions(input, context) },
   balances: { description: "Current dated account balances.", input: empty, scopes: ["accounts"], run: (_: unknown, context: Context) => getBalances(context, imports(context)) },
   accounts: { description: "The user's accounts.", input: empty, scopes: ["accounts"], run: (_: unknown, context: Context) => listAccounts(context) },
+  recurring: { description: "Confirmed recurring payments and income (name, amount, direction, cadence, next date, category) plus detected patterns still awaiting confirmation.", input: empty, scopes: ["planning", "transactions"],
+    run: (_: unknown, context: Context) => listRecurring(context) },
   goals: { description: "The user's savings goals.", input: empty, scopes: ["planning"], run: (_: unknown, context: Context) => listGoals(context) },
 } satisfies Record<string, { description: string; input: z.ZodType; scopes: AiDataScope[]; run: (input: unknown, context: Context) => Promise<unknown> }>;
 export type ArtifactSource = keyof typeof ARTIFACT_SOURCES;

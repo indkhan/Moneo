@@ -7,7 +7,7 @@ export const artifactExamples = [
   { title: "Goals tracker", summary: "Progress and projected finish date for each goal.",
     prompt: `Build a "Goals tracker". Use goals for each savings goal: a progress ring, saved vs target and amount left. Use cashflow over the last 3 months for the average monthly net, then project a finish date per goal and mark goals that are on or off track.` },
   { title: "Subscription radar", summary: "Recurring charges and what they cost per year.",
-    prompt: `Build a "Subscription radar". Use transactions and investigate over the last 6 months to find merchants charged at regular intervals with similar amounts. List each with its typical amount, cadence, last charge and next expected date; show total monthly and yearly cost at the top.` },
+    prompt: `Build a "Subscription radar". Use recurring for the confirmed subscriptions and bills (amount, cadence, next date), and list its suggestions still awaiting confirmation in their own section. Use investigate over the last 6 months to find other merchants charged at regular intervals with similar amounts. List each with its typical amount, cadence, last charge and next expected date; show total monthly and yearly cost at the top.` },
   { title: "Net worth snapshot", summary: "Balances across accounts and currencies.",
     prompt: `Build a "Net worth snapshot". Use balances and accounts: a total per currency (never add different currencies together), a donut of balance by account, and a list of accounts showing how old each balance is.` },
   { title: "Spending heatmap", summary: "Every day of spending at a glance.",
