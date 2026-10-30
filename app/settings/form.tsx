@@ -36,7 +36,8 @@ function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
         {state === "loading" ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" /> : state === "playing" ? <Volume2 className="size-4 text-ai" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
         {state === "loading" ? "Loading…" : state === "playing" ? "Playing" : "Play sample"}</button>
     </div>
-    <span role="status" className="text-sm font-normal text-danger">{state === "failed" && "Couldn’t play the sample. Check your sound and try again."}</span></div>;
+    {/* Only present on failure: an always-mounted empty status would match every page-wide status lookup (and the specs') beside "Preferences saved". */}
+    {state === "failed" && <span role="alert" className="text-sm font-normal text-danger">Couldn’t play the sample. Check your sound and try again.</span>}</div>;
 }
 
 export function SettingsForm({ settings, currency }: { settings: WorkspaceSettings; currency: string }) {
