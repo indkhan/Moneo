@@ -32,7 +32,7 @@ for (const panel of [false, true]) {
     });
     try {
       await page.goto(panel ? "/money/transactions" : "/ai?conversation=new");
-      if (panel) await page.getByRole("button", { name: "Ask Moneo" }).click();
+      if (panel) await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
       const scope = panel ? page.getByRole("dialog", { name: "AI assistant" }) : page.locator("main");
       const input = scope.getByLabel(panel ? "Question" : "Ask about your finances", { exact: true });
       await input.fill("Submitted question");
