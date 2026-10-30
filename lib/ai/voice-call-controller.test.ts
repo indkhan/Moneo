@@ -38,14 +38,19 @@ it("turns each delegation into a call request with the words since the previous 
   expect(call.captions).toEqual([{ id: 1, role: "user", text: "How much at Netto this month?And when is rent due?" }]);
 });
 
-it("speaks results in arrival order, names the question, notes cards and what is still running", async () => {
-  const { sent, say, delegate, answer, advance, onAnswer } = setup();
+it("says the first finished result first, then the next once Moneo has said it", async () => {
+  const { call, sent, say, delegate, answer, advance, onAnswer } = setup();
   say("Netto?"); delegate("d1"); say("Rent?"); delegate("d2");
   await advance(1000);
   await answer("Rent?", "Rent is **EUR 850.00** on Nov 1.");
   await answer("Netto?", `I spent it.\n\n\`\`\`moneo-proposal\n${card}\n\`\`\``);
-  const spoken = sent.filter(event => event.type === "session.commentary.append");
-  expect(spoken).toEqual([
+  const spoken = () => sent.filter(event => event.type === "session.commentary.append");
+  expect(spoken()).toHaveLength(1);
+  call.handle({ type: "session.output_transcript.delta", delta: "Rent is 850 on Nov 1." });
+  await advance(300);
+  expect(spoken()).toHaveLength(1);
+  await advance(500); await advance(300);
+  expect(spoken()).toEqual([
     { type: "session.commentary.append", delegation_id: "d2", content: 'Result for "Rent?": Rent is EUR 850.00 on Nov 1. Still working on "Netto?".' },
     { type: "session.commentary.append", delegation_id: "d1", content: 'Result for "Netto?": I spent it. 1 card on screen to tap; nothing is saved until then.' },
   ]);

@@ -42,10 +42,12 @@ export function spokenAnswer(answer: string, max = 1500) {
 
 export const SPEAKING_HOLD_MS = 700;
 export const SLOW_TASK_MS = 8000;
+/** Longest wait for Moneo to say one result before the next is handed over anyway. */
+export const RESULT_TURN_MS = 20_000;
 
 /**
  * Runs a voice call's tasks: each GPT-Live delegation (or typed message) becomes one /api/chat request, and its
- * answer is handed back to be spoken, held while the user is talking and delivered in arrival order.
+ * answer is handed back to be spoken: first finished, first said, one at a time, and never over the user.
  */
 export class VoiceCallController {
   captions: CallCaption[] = [];
@@ -57,8 +59,10 @@ export class VoiceCallController {
   private answers = new Map<string, string>();
   private lastUserSpeech = -Infinity;
   private lastAssistantSpeech = -Infinity;
-  private outbox: Record<string, unknown>[] = [];
+  private outbox: { delegationId: string | null; content: string }[] = [];
   private flushing = false;
+  /** When the result being said was handed over, until Moneo has said it. */
+  private saying: number | null = null;
   private captionId = 0;
   private readonly now: () => number;
   private readonly schedule: (run: () => void, ms: number) => unknown;
@@ -168,11 +172,9 @@ export class VoiceCallController {
       this.answers.set(requestId, spokenAnswer(result.body.answer));
       this.update(requestId, { status: "done", step: "answered", cards });
       this.deps.onAnswer?.(text, result.body as ChatAnswer);
-      const others = this.running.map(item => `"${item.text.slice(0, 80)}"`);
       // A typed request has no hand-off to answer through, so the result says outright that it is to be spoken.
       this.deliver(delegationId, [`Result for ${label}${delegationId ? "" : " (typed by the user in the call; say the result to them now, in the language they typed)"}: ${spokenAnswer(result.body.answer)}`,
-        cards.length ? `${cards.length} card${cards.length > 1 ? "s" : ""} on screen to tap; nothing is saved until then.` : "",
-        others.length ? `Still working on ${others.join(", ")}.` : ""].filter(Boolean).join(" "));
+        cards.length ? `${cards.length} card${cards.length > 1 ? "s" : ""} on screen to tap; nothing is saved until then.` : ""].filter(Boolean).join(" "));
     } catch {
       if (this.tasks.find(item => item.requestId === requestId)?.status === "canceled") return;
       this.update(requestId, { status: "failed", step: "failed" });
@@ -190,20 +192,29 @@ export class VoiceCallController {
     }, delay);
   }
 
-  /** Results wait while the user is speaking and go out in arrival order. */
+  /** Results queue in the order they finish. */
   private deliver(delegationId: string | null, content: string) {
-    this.outbox.push({ type: "session.commentary.append", delegation_id: delegationId, content });
+    this.outbox.push({ delegationId, content });
     this.flush();
   }
 
+  /**
+   * Hands over the next result once Moneo has said the previous one and nobody is talking. What is still running is
+   * read when it goes out, so a result never says another is pending after that one has finished.
+   */
   private flush() {
-    if (this.flushing) return;
-    if (this.speaking("user")) {
+    if (this.flushing || !this.outbox.length) return;
+    const said = this.saying !== null && (this.lastAssistantSpeech >= this.saying || this.now() - this.saying > RESULT_TURN_MS);
+    if (this.speaking() || (this.saying !== null && !said)) {
       this.flushing = true;
-      this.schedule(() => { this.flushing = false; this.flush(); }, SPEAKING_HOLD_MS);
+      this.schedule(() => { this.flushing = false; this.flush(); }, 300);
       return;
     }
-    for (const event of this.outbox.splice(0)) this.deps.send(event);
+    const { delegationId, content } = this.outbox.shift()!;
+    const others = this.running.map(item => `"${item.text.slice(0, 80)}"`);
+    this.saying = this.now();
+    this.deps.send({ type: "session.commentary.append", delegation_id: delegationId, content: others.length ? `${content} Still working on ${others.join(", ")}.` : content });
+    this.flush();
   }
 
   /** Marks a task canceled; the caller asks the server to stop it. */
