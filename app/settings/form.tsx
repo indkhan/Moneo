@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useRef, useState } from "react";
+import { Loader2, Play, Volume2 } from "lucide-react";
 import { AI_AGENT_KEYS, AI_AGENTS, AI_DATA_SCOPES, INSIGHT_TYPES, VOICES, type WorkspaceSettings } from "@/lib/settings";
 import { saveSettings } from "./actions";
 
@@ -31,9 +32,11 @@ function VoicePicker({ value }: { value: WorkspaceSettings["voice"] }) {
   return <div className="grid gap-1.5 text-sm font-medium"><label htmlFor="voice">Call voice</label>
     <div className="flex gap-2">
       <select id="voice" name="voice" className={input} value={voice} onChange={event => setVoice(event.target.value as typeof voice)}>{VOICES.map(name => <option key={name} value={name}>{name[0].toUpperCase() + name.slice(1)}</option>)}</select>
-      <button type="button" onClick={() => void play()} disabled={state === "loading"} className="min-h-10 shrink-0 rounded-lg border border-border px-3 text-sm font-medium disabled:opacity-60">{state === "loading" ? "Loading…" : "Play sample"}</button>
+      <button type="button" onClick={() => void play()} disabled={state === "loading"} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai disabled:opacity-60">
+        {state === "loading" ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" /> : state === "playing" ? <Volume2 className="size-4 text-ai" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
+        {state === "loading" ? "Loading…" : state === "playing" ? "Playing" : "Play sample"}</button>
     </div>
-    <span role="status" className="text-sm font-normal text-danger">{state === "failed" && "Could not play the sample."}</span></div>;
+    <span role="status" className="text-sm font-normal text-danger">{state === "failed" && "Couldn’t play the sample. Check your sound and try again."}</span></div>;
 }
 
 export function SettingsForm({ settings, currency }: { settings: WorkspaceSettings; currency: string }) {
