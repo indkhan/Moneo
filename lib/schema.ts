@@ -922,6 +922,28 @@ export const workspaceSettings = pgTable("workspace_settings", {
   check("workspace_settings_summary_time_check", sql`${table.summaryTime} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
 ]);
 
+export const voiceCalls = pgTable("voice_calls", {
+  id: uuid("id").primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  durationSeconds: integer("duration_seconds").notNull(),
+  transcript: jsonb("transcript").notNull(),
+  tasks: jsonb("tasks").notNull(),
+  requestIds: uuid("request_ids").array().notNull().default(sql`'{}'::uuid[]`),
+  summary: text("summary"),
+  summaryStatus: text("summary_status").notNull().default("pending"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("voice_calls_conversation_created").on(table.conversationId, table.createdAt),
+  index("voice_calls_request_ids").using("gin", table.requestIds),
+  check("voice_calls_request_ids_check", sql`cardinality(${table.requestIds}) <= 30`),
+  check("voice_calls_duration_check", sql`${table.durationSeconds} between 0 and 86400`),
+  check("voice_calls_transcript_check", sql`jsonb_typeof(${table.transcript}) = 'array' and octet_length(${table.transcript}::text) <= 60000`),
+  check("voice_calls_tasks_check", sql`jsonb_typeof(${table.tasks}) = 'array' and octet_length(${table.tasks}::text) <= 60000`),
+  check("voice_calls_summary_check", sql`length(${table.summary}) <= 2000`),
+  check("voice_calls_summary_status_check", sql`${table.summaryStatus} in ('pending','done','failed')`),
+]);
+
 export const pendingHoldResolutions = pgTable("pending_hold_resolutions", {
   id: uuid("id").defaultRandom().primaryKey(), workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   pendingTransactionId: uuid("pending_transaction_id").references(() => transactions.id, { onDelete: "set null" }),
