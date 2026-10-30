@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { Check, Menu, Pencil, Phone, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 import { ChatForm } from "@/app/ai/chat-form";
 import { ChatMessages, RESUMED_RUN, applyChatEvent, type ChatItem, type PendingExchange } from "./chat-messages";
+import { usePolling } from "@/lib/ai/use-polling";
 import { ConversationSelection } from "@/lib/ai/selected-conversation";
 import type { HistoryThread } from "@/lib/ai/conversation-history";
 import type { ChatAnswer, ChatStreamEvent } from "@/lib/ai/use-chat-request";
@@ -81,24 +82,14 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [activeId, entry?.messages.length, active]);
   // A run that kept going while the user was away shows as working until its answer is saved.
   const resuming = entry?.running && !active ? activeId : null;
-  useEffect(() => {
-    if (!resuming) return;
-    const timer = setInterval(() => json<Loaded>(`/api/conversations/${resuming}`)
-      .then(data => { if (!data.running) setEntries(current => ({ ...current, [resuming]: loaded(data) })); }).catch(() => {}), 3000);
-    return () => clearInterval(timer);
-  }, [resuming]);
+  usePolling(() => void json<Loaded>(`/api/conversations/${resuming}`)
+    .then(data => { if (!data.running) setEntries(current => ({ ...current, [resuming!]: loaded(data) })); }).catch(() => {}), 3000, !!resuming);
 
   // A finished call is saved after hang-up: its summary and any request still running arrive a little later.
   const waitingOnCall = entry?.messages.some(item => item.call && (item.call.summaryStatus === "pending" || item.call.unfinished.some(task => task.status === "running"))) ? activeId : null;
-  useEffect(() => {
-    if (!waitingOnCall) return;
-    let tries = 0;
-    const timer = setInterval(() => {
-      if (++tries > 60) return clearInterval(timer);
-      fetchEntry(waitingOnCall).then(data => setEntries(current => ({ ...current, [waitingOnCall]: loaded(data) }))).catch(() => {});
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [waitingOnCall]);
+  const tries = useRef(0);
+  useEffect(() => { tries.current = 0; }, [waitingOnCall]);
+  usePolling(() => { if (++tries.current <= 60) fetchEntry(waitingOnCall!).then(data => setEntries(current => ({ ...current, [waitingOnCall!]: loaded(data) }))).catch(() => {}); }, 3000, !!waitingOnCall);
 
   // Debounced search over titles and message text.
   useEffect(() => {

@@ -6,6 +6,7 @@ import { SquarePen, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useChatQueue } from "@/lib/ai/use-chat-queue";
+import { usePolling } from "@/lib/ai/use-polling";
 import { ChatComposer, withSpoken } from "./chat-composer";
 import { VOICE_CONTEXT } from "@/lib/ai/voice-context";
 import { useChatAttachments } from "@/lib/ai/use-chat-attachments";
@@ -72,12 +73,8 @@ export function AiPanelDialog({ open, onClose, seed }: { open: boolean; onClose:
   const files = useChatAttachments();
   const { send, cancel, busy, error, status } = chat;
   // Until that run's answer is saved, check on it and reload the chat once it is done.
-  useEffect(() => {
-    if (!open || !running || busy || !conversationId) return;
-    const timer = window.setInterval(() => void fetch(`/api/conversations/${conversationId}`, { cache: "no-store" }).then(response => response.json())
-      .then(result => { if (!result.running) void load(); }).catch(() => {}), 3000);
-    return () => window.clearInterval(timer);
-  }, [open, running, busy, conversationId, load]);
+  usePolling(() => void fetch(`/api/conversations/${conversationId}`, { cache: "no-store" }).then(response => response.json())
+    .then(result => { if (!result.running) void load(); }).catch(() => {}), 3000, open && running && !busy && !!conversationId);
   useEffect(() => {
     const draft = (event: Event) => { const detail = (event as CustomEvent<{ prompt?: string; compact: boolean }>).detail; if (detail.compact && detail.prompt) { setQuestion(detail.prompt); document.getElementById("panel-question")?.focus(); } };
     window.addEventListener(DRAFT_EVENT, draft);
