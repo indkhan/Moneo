@@ -1,0 +1,43 @@
+Venji owes you EUR 250.00
+Lent on 2026-09-28. Added to Wealth and net worth once you accept.
+Add
+Dismiss
+Requests from this call (4)
+Hey, can you uh check all the places where I spent money this month
+
+At the same time, can you also do for last month as well
+
+I checked both periods. Through October 30, the largest recorded amounts were Studierendenwerk Saarland, EUR 355.00; Techniker Krankenkasse, EUR 141.16; Tamil Alagan Jevalaggaan, EUR 107.10; Bereket Metzgerei, EUR 87.90; Netto, EUR 79.18; and Aldi, EUR 65.19.
+
+For September, the largest were Bilal Amin, EUR 1,011.34; Venjalin Ravindran, EUR 250.00; Techniker Krankenkasse, EUR 141.16; Vattenfall, EUR 59.00; and Netto, EUR 48.08.
+
+These are recorded transactions; statement coverage is unknown, so the lists may not include every expense.
+
+Yo, by the way, um while you're say that, can you also check who all have I lent my money to
+
+You’ve lent money to Bilal: EUR 1000.00, recorded on September 22, 2026.
+
+Hmm. Can you also add that I lend two fifty euros to Venji? First, find out when did I give her the money and as per that, add that to the lending thing
+
+I found a EUR 250.00 transfer to Venjalin Ravindran on September 28, 2026. The lending entry for Venji, dated September 28, is on screen for you to approve.
+
+Venji owes you EUR 250.00
+
+Lent on 2026-09-28. Added to Wealth and net worth once you accept.
+
+Add
+Dismiss
+Full transcript
+You: Hey, can you uh check all the places where I spent money this month
+Moneo: Hmm, let me take a look for this month.
+You: At the same time, can you also do for last month as well
+Moneo: Oh yeah, sure. I'll check those as well. Okay, I'm still digging through this month. Alright, switching to last month now. Still going over last month. Alright, so, I checked both periods. Through October 30th, the largest recorded amounts were Studierendenwerk Saarland,
+You: Yo, by the way, um while you're say that, can you also check who all have I lent my money to
+Moneo: Mm-hm. Yeah. I'll check who you've lent money to as well. Techniker Krankenkasse, 141.16 euros, Tamil Alagan Jevalaggaan, 107.10 euros, Bereket Metzgerei, 87.90 euros, Netto, 79.18 euros, Aldi, 65.19 euros. For September, the biggest were Bilal Amin, 1,011.34 euros, Venjalin Ravindran, 250 euros, again Techniker Krankenkasse, 141.16 euros, Vattenfall, 59 euros, and Netto, 48.08 euros. Those are recorded transactions, but statement coverage is unknown. So, the lists may not include every expense. I'm also checking what you lent and are owed. Okay, and you lent Bilal a thousand euros on September 22nd, 2026.
+You: Hmm. Can you also add that I lend two fifty euros to Venji? First, find out when did I give her the money and as per that, add that to the lending thing
+Moneo: Mm, yeah, okay. I'll check when you gave her that and go from there. Okay, I found your 250 euro transfer to Venjalin Ravindran on September 28th, 2026. I've set up the Venji lending entry dated September 28th. It's on screen for you to approve. 1 card on screen to tap. Nothing is saved until then.
+You: Can you, save it for me
+Moneo: Sure thing. I'll take care of that one. It's on screen for you to approve, 1 card on screen to tap, and nothing
+
+
+It showed that it failed the first thing it said it stoped and on the second thing it showed it is taking over that one and all of that not a good thing think how to make it that it only stops the last thing and second take over if and only if user says leave that do this other wise run both
