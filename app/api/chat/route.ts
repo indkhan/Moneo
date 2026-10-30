@@ -55,7 +55,7 @@ export async function POST(request: Request) {
   const { supabase, workspace, settings } = context;
   if (attachments.some(file => !file.path.startsWith(`${workspace.id}/`))) return Response.json({ error: "Invalid attachment" }, { status: 400 });
   // Model resolution and earlier history do not depend on the claim; start them with the ownership check.
-  const modelPromise = modelForSettings(settings, "chat");
+  const modelPromise = modelForSettings(settings, capturedContext?.via === "call" ? "voice_call" : "chat");
   const historyPromise = Promise.resolve(supabase.from("messages").select("role, content, context, attachments")
     .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
     .order("created_at", { ascending: false }).limit(19));

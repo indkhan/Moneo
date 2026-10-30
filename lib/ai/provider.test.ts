@@ -11,6 +11,13 @@ test("uses each agent's typed model and falls back to its default", () => {
   expect(modelIdFor(undefined, "chat")).toBe(AI_AGENTS.chat.model);
 });
 
+test("a voice call follows the chat model until its own model is set", () => {
+  expect(modelIdFor(settingsSchema.parse({}), "voice_call")).toBe(AI_AGENTS.chat.model);
+  expect(modelIdFor(settingsSchema.parse({ ai_models: { chat: "gpt-custom" } }), "voice_call")).toBe("gpt-custom");
+  expect(modelIdFor(settingsSchema.parse({ ai_models: { chat: "gpt-custom", voice_call: "gpt-fast" } }), "voice_call")).toBe("gpt-fast");
+  expect(modelIdFor(undefined, "voice_call")).toBe(AI_AGENTS.chat.model);
+});
+
 test("requires an OpenAI key", () => {
   vi.stubEnv("OPENAI_API_KEY", "");
   expect(() => getModel("gpt-5")).toThrow("OPENAI_API_KEY");

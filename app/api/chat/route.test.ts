@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { investigationDetail } from "@/lib/finance/investigation-reader";
 import { POST } from "./route";
 import { requireWorkspace } from "@/lib/auth";
+import { modelForSettings } from "@/lib/ai/provider";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
 import { loadCategoryPreview } from "@/lib/finance/edit-preview";
 import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
@@ -310,7 +311,9 @@ it("switches to spoken call mode and offers call_replace_task only for this call
   expect(options.instructions).toContain("live voice call");
   const tools = options.tools as unknown as Record<string, { execute: (input: unknown, options: unknown) => Promise<unknown> }>;
   await expect(tools.call_replace_task.execute({ requestId: "00000000-0000-4000-8000-000000000009" }, {})).rejects.toThrow("not a running request");
+  expect(vi.mocked(modelForSettings).mock.lastCall?.[1]).toBe("voice_call");
   await post(undefined);
+  expect(vi.mocked(modelForSettings).mock.lastCall?.[1]).toBe("chat");
   expect(vi.mocked(generateText).mock.calls[1][0].instructions).not.toContain("live voice call");
   expect(vi.mocked(generateText).mock.calls[1][0].tools).not.toHaveProperty("call_replace_task");
 });

@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { POST } from "./route";
 import { requireWorkspace } from "@/lib/auth";
+import { DEFAULT_SETTINGS } from "@/lib/settings";
 
 const { doCreateWebRTCSession } = vi.hoisted(() => ({ doCreateWebRTCSession: vi.fn(async (options: { sdp: string; sessionConfig: { instructions: string; voice: string; providerOptions: { openai: { input: unknown[] } } } }) => { void options; return { sessionId: "session", sdp: "answer" }; }) }));
 vi.mock("@ai-sdk/openai", () => ({ openai: { experimental_realtime: () => ({ doCreateWebRTCSession }) } }));
@@ -14,7 +15,7 @@ beforeEach(() => {
   conversation = { id: conversationId, deleted_at: null }; messages = [];
   const query = { select: () => query, eq: (...args: unknown[]) => { eqs.push(args); return query; }, order: () => query,
     limit: async (count: number) => ({ data: messages.slice(-count).reverse(), error: null }), maybeSingle: async () => ({ data: conversation, error: null }) };
-  vi.mocked(requireWorkspace).mockResolvedValue({ supabase: { from: () => query }, workspace: { id: "workspace" }, settings: {} } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  vi.mocked(requireWorkspace).mockResolvedValue({ supabase: { from: () => query }, workspace: { id: "workspace" }, settings: DEFAULT_SETTINGS } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
 });
 const request = (body: unknown) => new Request("http://localhost/api/voice/call", { method: "POST", body: JSON.stringify(body) });
 
@@ -47,6 +48,11 @@ it("starts a delegating session seeded with the last ten messages, without cards
   expect(input[9].content[0].text).not.toContain("moneo-proposal");
   expect(input[9].content[0].text.length).toBeLessThanOrEqual(1000);
   expect(sessionConfig.providerOptions.openai).toMatchObject({ delegation: { type: "client" } });
+});
+it("uses the voice chosen in settings", async () => {
+  vi.mocked(requireWorkspace).mockResolvedValueOnce({ supabase: { from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) }) }, workspace: { id: "workspace" }, settings: { ...DEFAULT_SETTINGS, voice: "cedar" } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  expect((await POST(request({ sdp: "offer", conversationId }))).status).toBe(200);
+  expect(doCreateWebRTCSession.mock.calls[0][0].sessionConfig.voice).toBe("cedar");
 });
 it("starts a new chat's call with no history", async () => {
   conversation = null;

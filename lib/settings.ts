@@ -13,15 +13,21 @@ export const AI_AGENTS = {
   imports: { label: "Import mapping", model: "gpt-6-luna" },
   organize: { label: "Organization suggestions", model: "gpt-6-luna" },
   artifacts: { label: "Artifact builder", model: "gpt-6.1-sol" },
+  // Typed as a model like the others, but a blank one follows the chat model (see modelIdFor).
+  voice_call: { label: "Voice call", model: "gpt-6.1-sol" },
 } as const;
 export type AiAgent = keyof typeof AI_AGENTS;
 export const AI_AGENT_KEYS = Object.keys(AI_AGENTS) as AiAgent[];
+// Voices GPT-Live (gpt-live-1) accepts; each also exists for gpt-4o-mini-tts, which plays the Settings sample.
+export const VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"] as const;
+export const DEFAULT_VOICE = VOICES[0];
 
 export const settingsSchema = z.object({
   timezone: z.string().max(100).refine(value => { try { new Intl.DateTimeFormat("en", { timeZone: value }); return true; } catch { return false; } }, "Choose a valid timezone").default("Europe/Berlin"),
   locale: z.string().max(50).refine(value => { try { return Intl.DateTimeFormat.supportedLocalesOf([value]).length === 1; } catch { return false; } }, "Choose a supported locale").default("en-GB"),
   theme: z.enum(["system", "light", "dark"]).default("system"),
   ai_models: z.partialRecord(z.enum(AI_AGENT_KEYS as [AiAgent, ...AiAgent[]]), z.string().trim().min(1).max(200)).default({}),
+  voice: z.enum(VOICES).default(DEFAULT_VOICE),
   ai_data_scopes: z.array(z.enum(AI_DATA_SCOPES)).max(AI_DATA_SCOPES.length).default([...AI_DATA_SCOPES]),
   muted_insight_types: z.array(z.enum(INSIGHT_TYPES)).max(INSIGHT_TYPES.length).default([]),
   summary_cadence: z.enum(["none", "weekly", "monthly"]).default("none"),

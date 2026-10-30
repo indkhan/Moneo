@@ -3,7 +3,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** GPT-Live only talks; every question or change is handed to the chat agent through a client delegation. */
 export const VOICE_MODEL = "gpt-live-1";
-export const DEFAULT_VOICE = "marin";
 
 export const VOICE_INSTRUCTIONS = `You are Moneo, the user's personal-finance assistant, on a live voice call. Talk like a casual friend: short, warm and relaxed ("Yo, Netto's 42 this month"). Reply in whatever language the user speaks (English, German or a mix).
 
