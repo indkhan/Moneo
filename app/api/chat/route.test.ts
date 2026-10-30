@@ -65,6 +65,16 @@ it("keeps earlier assistant turns in history without their chart blocks", async 
   await POST(request("And now?"));
   expect(vi.mocked(generateText).mock.calls[0][0].messages).toEqual([{ role: "user", content: "Earlier" }, { role: "assistant", content: "Here:\n[chart]\nDone" }, { role: "user", content: "And now?" }]);
 });
+it("leaves this call's still-running questions out of a call request's history", async () => {
+  const context = await requireWorkspace();
+  const running = "00000000-0000-4000-8000-000000000003";
+  const history = [{ role: "user", content: "Analyze last month", context: { via: "call" }, request_id: running }, { role: "user", content: "Earlier", context: {}, request_id: "00000000-0000-4000-8000-000000000004" }];
+  const query = { select: () => query, eq: () => query, order: () => query, limit: async () => ({ data: history, error: null }), maybeSingle: async () => ({ data: { id: "conversation" }, error: null }) };
+  vi.mocked(requireWorkspace).mockResolvedValue({ ...context, settings: { ...DEFAULT_SETTINGS, ai_data_scopes: ["accounts"] }, supabase: { ...context.supabase, from: () => query } } as unknown as typeof context);
+  await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ conversationId: "00000000-0000-4000-8000-000000000002", requestId, message: "Total spent last month?",
+    context: { via: "call", runningTasks: [{ requestId: running, text: "Analyze last month" }] } }) }));
+  expect((vi.mocked(generateText).mock.calls[0][0].messages as { content: unknown }[]).map(item => String(item.content).split("\n")[0])).toEqual(["Earlier", "Total spent last month?"]);
+});
 it("offers scoped investigation and question-bound review start within ten model steps", async () => {
   expect((await POST(request("Start a deep financial review"))).status).toBe(200);
   const options = vi.mocked(generateText).mock.calls[0][0];

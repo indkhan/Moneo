@@ -44,7 +44,7 @@ function Orb({ levels, state }: { levels: () => { mic: number; moneo: number }; 
   </div>;
 }
 
-/** A live voice call with Moneo: speak or type, see captions and running tasks, and tap the cards it makes. */
+/** A live voice call with Moneo: speak or type, see the requests it is working on, and tap the cards it makes. The full transcript is saved with the call. */
 export function VoiceCall({ conversationId, onAnswer, onEnded, onClose }: { conversationId: string; onAnswer: (question: string, answer: ChatAnswer) => void; onEnded: () => void; onClose: () => void }) {
   return <VoiceCallView call={useVoiceCall(conversationId, onAnswer, onEnded)} onClose={onClose} />;
 }
@@ -52,8 +52,8 @@ export function VoiceCall({ conversationId, onAnswer, onEnded, onClose }: { conv
 /** The call screen for a call's state, kept apart from the connection so each state can be rendered alone. */
 export function VoiceCallView({ call, onClose }: { call: ReturnType<typeof useVoiceCall>; onClose: () => void }) {
   const [text, setText] = useState("");
-  const captions = useRef<HTMLDivElement>(null);
-  useEffect(() => { captions.current?.scrollTo({ top: captions.current.scrollHeight }); }, [call.captions]);
+  const body = useRef<HTMLDivElement>(null);
+  useEffect(() => { body.current?.scrollTo({ top: body.current.scrollHeight }); }, [call.tasks]);
   const last = call.captions.at(-1);
   const live = call.status === "live";
   const open = live || call.status === "connecting";
@@ -67,17 +67,13 @@ export function VoiceCallView({ call, onClose }: { call: ReturnType<typeof useVo
       <p className="font-display text-lg font-semibold">Call with Moneo</p>
       {live && <span className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-xs font-medium text-success"><span className="size-1.5 rounded-full bg-current motion-safe:animate-pulse" aria-hidden="true" />Live</span>}
     </header>
-    <div className="mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col overflow-y-auto px-4 sm:px-8">
+    <div ref={body} className="scrollbar-none mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col overflow-y-auto px-4 sm:px-8">
       <div className="flex flex-col items-center pt-4 sm:pt-8">
         <Orb levels={call.levels} state={state} />
         <p role="status" className="flex h-7 items-center gap-2 font-display text-lg font-medium">{state === "connecting" && <Loader2 className="size-4 text-ai motion-safe:animate-spin" aria-hidden="true" />}{label}</p>
       </div>
       {call.error && <p role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-sm text-danger"><AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{call.error}</p>}
-      <div ref={captions} aria-live="polite" aria-label="Live captions" className="mt-2 max-h-56 shrink-0 space-y-3 overflow-y-auto pt-4 text-[15px] leading-relaxed [mask-image:linear-gradient(to_bottom,transparent,black_1.25rem)] sm:text-base">
-        {!call.captions.length && live && <p className="text-center text-muted-foreground">Say hi, ask about your money, or tell Moneo what you spent.</p>}
-        {call.captions.slice(-8).map((caption, index, shown) => <p key={caption.id} className={`transition-opacity duration-300 ${index < shown.length - 2 ? "opacity-60" : ""} ${caption.role === "user" ? "ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-muted px-3.5 py-2" : "max-w-[92%]"}`}>
-          <span className="sr-only">{caption.role === "user" ? "You: " : "Moneo: "}</span>{caption.text}</p>)}
-      </div>
+      {!call.tasks.length && live && <p className="mt-6 text-center text-[15px] text-muted-foreground sm:text-base">Say hi, ask about your money, or tell Moneo what you spent.</p>}
       {call.tasks.length > 0 && <div className="mt-5">
         <p className="eyebrow pb-2">{running.length ? `Working on ${running.length} of ${call.tasks.length}` : "All done"}</p>
         <ul className="space-y-1.5" aria-label="Tasks">

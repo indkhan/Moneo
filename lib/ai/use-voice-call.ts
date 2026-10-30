@@ -23,6 +23,9 @@ function level(analyser: AnalyserNode | null, buffer: Uint8Array<ArrayBuffer>) {
   return Math.min(1, Math.sqrt(sum / buffer.length) * 4);
 }
 
+/** In development, a timed trace of the call (events, who is audible, what the controller decided) in the console and the dev server log. */
+const trace = process.env.NODE_ENV === "production" ? undefined : (message: string) => console.info(`[call ${new Date().toISOString().slice(11, 23)}] ${message}`);
+
 /** Connection handles live outside React state; the controller, effect and orb share them. */
 class Connection {
   channel: RTCDataChannel | null = null;
@@ -59,7 +62,11 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       } finally { live.aborts.delete(payload.requestId); }
     };
     return new VoiceCallController({ conversationId, ask, onChange: render, onAnswer: (question, answer) => live.onAnswer?.(question, answer),
-      send: event => { if (live.channel?.readyState === "open") live.channel.send(JSON.stringify(event)); } });
+      log: trace,
+      send: event => {
+        trace?.(`sent ${event.type}: ${String(event.content ?? "").slice(0, 100)}`);
+        if (live.channel?.readyState === "open") live.channel.send(JSON.stringify(event));
+      } });
   });
 
   useEffect(() => {
@@ -85,6 +92,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
         const event = JSON.parse(message.data);
         if (event.type === "session.started") { setStatus("live"); live.startedAt ??= Date.now(); lock(); }
         else if (event.type === "session.closed") setStatus("ended");
+        if (trace && event.type !== "session.output_audio.delta") trace(`${event.type}${event.delta !== undefined ? ` ${JSON.stringify(event.delta)}` : ""}${event.start_ms !== undefined ? ` ${event.start_ms}-${event.end_ms}ms` : ""}${event.offset_ms != null ? ` offset ${event.offset_ms}ms` : ""}`);
         controller.handle(event);
       };
       pc.onconnectionstatechange = () => { if (!closed && pc.connectionState === "failed") { setStatus("error"); setError("The call dropped. Check your connection and try again."); } };
@@ -110,9 +118,20 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
         .then(response => { if (response.ok) finished?.(); }, () => {});
     }
     connect().catch(cause => { if (!closed) { setStatus("error"); setError(failure(cause)); } });
+    // Moneo's voice, metered: what the user actually hears decides when a result has been said.
+    const buffer = new Uint8Array(512);
+    let moneoOn = false, micOn = false;
+    const meter = setInterval(() => {
+      const moneo = level(live.moneoLevel, buffer) > 0.02, mic = level(live.micLevel, buffer) > 0.08;
+      if (moneo) controller.heardMoneo();
+      if (trace && moneo !== moneoOn) trace(moneo ? "Moneo audible" : "Moneo quiet");
+      if (trace && mic !== micOn) trace(mic ? "mic loud" : "mic quiet");
+      moneoOn = moneo; micOn = mic;
+    }, 100);
     document.addEventListener("visibilitychange", lock);
     return () => {
       closed = true;
+      clearInterval(meter);
       saveRecord();
       document.removeEventListener("visibilitychange", lock);
       try { if (live.channel?.readyState === "open") live.channel.send(JSON.stringify({ type: "session.close" })); } catch { /* already closed */ }

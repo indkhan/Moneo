@@ -11,7 +11,7 @@ import {reviewRequestSchema, resolveReviewRequest} from "@/lib/finance/review-re
 import { loadFinancialReviewEvidence } from "@/lib/finance/review-loader";
 import { startFinancialReview } from "@/lib/finance/start-review";
 import { categoryPreviewSchema, loadCategoryPreview } from "@/lib/finance/edit-preview";
-import { cashflow, evaluateForecast, financeToolSchemas, forecastInput, getBalances, listAccounts, listGoals, searchTransactions } from "@/lib/finance/tools";
+import { cashflow, evaluateForecast, financeToolSchemas, forecastInput, getBalances, listAccounts, listGoals, listWealth, searchTransactions } from "@/lib/finance/tools";
 import { investigationSchema } from "@/lib/finance/investigation";
 import { evaluateInvestigationScenario, investigationDetail, investigationDetailSchema, investigationScenarioSchema, loadInvestigationEntities, runInvestigation } from "@/lib/finance/investigation-reader";
 import type { ChatStreamEvent } from "@/lib/ai/use-chat-request";
@@ -25,7 +25,7 @@ import { MAX_ATTACHMENTS, attachmentNote, attachmentSchema } from "@/lib/ai/chat
 import { answerCardIds } from "@/lib/ai/open-proposals";
 import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
-import { CALL_MODE_PROMPT, callContextSchema, replaceCallTask } from "@/lib/ai/voice-call";
+import { CALL_MODE_PROMPT, callContextSchema, replaceCallTask, withoutCallBrief } from "@/lib/ai/voice-call";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
@@ -48,7 +48,8 @@ export async function POST(request: Request) {
   try { context = await requireWorkspace(); } catch { return Response.json({ error: "Unauthorized" }, { status: 401 }); }
   const body = await request.json().catch(() => null);
   const parsed = inputSchema.safeParse(body);
-  if (!parsed.success || JSON.stringify(parsed.data.context ?? {}).length > 2000)
+  // A call turn carries a brief of the call so far, so it gets more room.
+  if (!parsed.success || JSON.stringify(parsed.data.context ?? {}).length > (parsed.data.context?.via === "call" ? 8000 : 2000))
     return Response.json({ error: "Invalid message" }, { status: 400 });
   if (!(process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY)) return Response.json({ error: "AI is not configured" }, { status: 503 });
   const { conversationId, requestId, message, context: capturedContext, attachments = [] } = parsed.data;
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
   if (attachments.some(file => !file.path.startsWith(`${workspace.id}/`))) return Response.json({ error: "Invalid attachment" }, { status: 400 });
   // Model resolution and earlier history do not depend on the claim; start them with the ownership check.
   const modelPromise = modelForSettings(settings, capturedContext?.via === "call" ? "voice_call" : "chat");
-  const historyPromise = Promise.resolve(supabase.from("messages").select("role, content, context, attachments")
+  const historyPromise = Promise.resolve(supabase.from("messages").select("role, content, context, attachments, request_id")
     .eq("workspace_id", workspace.id).eq("conversation_id", conversationId)
     .order("created_at", { ascending: false }).limit(19));
   modelPromise.catch(() => {});
@@ -93,9 +94,15 @@ export async function POST(request: Request) {
   try {
   const { data: history, error: historyError } = await historyPromise;
   if (historyError) throw historyError;
+  // A voice-call turn is spoken aloud and may replace an earlier request from the same call.
+  const call = callContextSchema.safeParse(capturedContext);
+  const runningTasks = call.success ? (call.data.runningTasks ?? []).filter(task => task.requestId !== requestId) : [];
+  // Other requests from this call are still being answered on their own; leaving their questions out keeps this answer to its own request.
+  const running = new Set(runningTasks.map(task => task.requestId));
   // History was read before the claim saved this message, so append it exactly as the claim stores it.
   const submitted = { role: "user", content: message, context: capturedContext ?? {}, attachments: [] };
-  const textMessages = [...(history ?? []).reverse(), submitted].map(item => ({
+  const replayed = (history ?? []).filter(item => !running.has(item.request_id)).reverse().map(item => item.context?.via === "call" ? { ...item, context: withoutCallBrief(item.context) } : item);
+  const textMessages = [...replayed, submitted].map(item => ({
     role: item.role as "user" | "assistant",
     content: item.role === "assistant" ? withoutCharts(item.content)
       : (item.context && Object.keys(item.context).length ? `${item.content}\n[UI context at submission: ${JSON.stringify(item.context)}]` : item.content) + attachmentNote(item.attachments),
@@ -111,9 +118,6 @@ export async function POST(request: Request) {
   const categoryCommand = parseCategoryCommand(message);
   const canChangeCategory = categoryCommand !== null && settings.ai_data_scopes.includes("transactions");
   const canInvestigate = settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions");
-  // A voice-call turn is spoken aloud and may replace an earlier request from the same call.
-  const call = callContextSchema.safeParse(capturedContext);
-  const runningTasks = call.success ? (call.data.runningTasks ?? []).filter(task => task.requestId !== requestId) : [];
   // These checks govern new tool results, not evidence already sent to the provider.
   const readScopes = new Set<AiDataScope>();
   async function aiEvidence<T>(scopes: AiDataScope[], read: (latest: typeof context) => Promise<T>, includePlanning = false, includeImports = false): Promise<T> {
@@ -277,7 +281,8 @@ ${CALL_MODE_PROMPT}` : ""}`,
             return { found: found.map(item => item.title), note: found.length ? "Cards are shown to the user below your answer." : "No new repayments found." };
           }) }) } : {}),
         ...(settings.ai_data_scopes.includes("planning") && settings.ai_data_scopes.includes("transactions") ? { recurring_list: tool({ description: "List confirmed recurring payments and income (id, name, amount, direction, cadence, next date, category) and detected suggestions not yet confirmed. Use before recurring_propose to change, remove or confirm one.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["transactions", "planning"], latest => listRecurring(latest)) }) } : {}),
-        ...(settings.ai_data_scopes.includes("planning") ? { goals_list: tool({ description: "List the user's goals", inputSchema: z.object({}), execute: () => aiEvidence(["planning"], latest => listGoals(latest)) }) } : {}),
+        ...(settings.ai_data_scopes.includes("planning") ? { goals_list: tool({ description: "List the user's goals", inputSchema: z.object({}), execute: () => aiEvidence(["planning"], latest => listGoals(latest)) }),
+        wealth_list: tool({ description: "List what the Wealth page holds: money the user lent to people and owes to people (by person), plus other assets, holdings and debts, with totals per currency. Use for questions like \"how much have I lent and to whom\" or \"what do I owe\".", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["planning"], latest => listWealth(latest)) }) } : {}),
         ...(settings.ai_data_scopes.includes("planning") && settings.ai_data_scopes.includes("accounts") && settings.ai_data_scopes.includes("transactions") ? { forecast_evaluate: tool({ description: "Deterministic account headroom and dated funding shortfalls with source coverage. Choose accountId for available to spend; aggregate cash requires explicit funding. Cases are assumptions, not probabilities", inputSchema: forecastInput, execute: input => aiEvidence(["accounts", "transactions", "planning"], latest => evaluateForecast(input, latest), false, true) }) } : {}),
         ...(canChangeCategory ? {
           transactions_setCategory: tool({

@@ -15,26 +15,39 @@ You cannot see their money yourself. A Moneo assistant does the real work and se
 - Keep listening through pauses; the user may still be thinking.
 
 # Interruption policy
-- Stop talking as soon as the user interrupts, and listen.
-- Ignore coughs, noise and background speech that is not addressed to you.
+- The moment the user starts speaking words to you while you talk, stop right away, mid-sentence, and listen. Do not finish your sentence or wait to hear what they want first; when in doubt, stop.
+- Only a lone "mm-hm", "yeah" or "okay" from the user, a cough or background noise is not an interruption.
+- After an interruption, answer what they said. You will be told if there is an unfinished result to pick up.
 
 # Delegation policy
 - Generate <|SpawnThinking|> for any question about their money, spending, balances, bills, plans or Moneo, and for any request to add, change or remove something.
 - Also generate <|SpawnThinking|> whenever the user mentions money they spent, received, lent or borrowed, or what an account holds, even in passing ("btw I spent 12.40 at Netto", "I've got 80 in cash"): Moneo makes a card for it.
+- Saying you'll check something does nothing on its own: every "I'm on that too" needs its own <|SpawnThinking|> in the same turn.
 - Generate a separate <|SpawnThinking|> for every new request, right after the user finishes it. Each one only sees what the user said since the last one, so never fold a new request into a running one. Do this even while earlier ones are still running, and for corrections ("no, I meant last month"). If the user pauses mid-sentence, wait for the rest before you do.
 - When you start, say briefly what you are doing ("let me look through your transactions"). When another request is still running, say you're on that one too.
 - Progress notes you receive are quiet context; only mention them if the user asks or it has been a while.
-- When a result arrives, speak it right away in a sentence or two, naming which question it answers, and mention anything still running.
+- When a result arrives, say all of it right away in your own words; don't shorten it or drop amounts. Name which question it answers and mention anything still running. Results come one at a time, in the order they finish.
+- Questions about progress ("what are you waiting for?", "is it done?") are answered from the progress notes, and requests to repeat or explain a result you already gave are answered from that result; neither needs a new delegation.
 - Small talk needs no delegation; keep it brief.`;
 
 /** Added to the chat agent's instructions for a turn that comes from a voice call. */
-export const CALL_MODE_PROMPT = `This turn comes from a live voice call; your answer is read aloud. Reply in 1-3 short spoken sentences of plain text: no Markdown, tables, lists or links, and no chart unless the user asked for one. Quote amounts with the formatted strings the tools return. If you made a card, say it is on screen to tap; never say anything was added or saved. Reply in the user's language.
-The UI context lists runningTasks: earlier requests from this call that are still running (requestId and the user's words). If this request corrects or replaces one of them ("no, I meant last month", "actually make it 15"), call call_replace_task with its requestId first, then answer the corrected request.`;
+export const CALL_MODE_PROMPT = `This turn comes from a live voice call; your answer is read aloud. Reply in short spoken sentences of plain text: no Markdown, tables, lists or links, and no chart unless the user asked for one. Quote amounts with the formatted strings the tools return. If you made a card, say it is on screen to tap; never say anything was added or saved. Reply in the user's language.
+Answer only the request in this message. The voice on the call handles greetings and small talk, so skip them ("hey, how are you" needs no reply from you).
+The UI context describes the call:
+- runningTasks: other requests from this call still being answered separately. Never answer or mention them. If this request corrects or replaces one of them ("no, I meant last month", "actually make it 15"), call call_replace_task with its requestId first, then answer the corrected request.
+- recentTurns: the call so far, to resolve words like "that", "also" or "the same for last month".
+- answered: what this call has already answered; build on it and don't repeat it.`;
 
 export const callContextSchema = z.object({
   via: z.literal("call"),
   runningTasks: z.array(z.object({ requestId: z.uuid(), text: z.string().max(300) })).max(5).optional(),
+  recentTurns: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(300) })).max(6).optional(),
+  answered: z.array(z.object({ text: z.string().max(150), answer: z.string().max(300) })).max(4).optional(),
 });
+/** A call turn's brief is only for that turn; replayed as history, the turn keeps just what marks it as from a call. */
+export function withoutCallBrief(context: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(context).filter(([key]) => !["runningTasks", "recentTurns", "answered"].includes(key)));
+}
 
 /** Prior turns seeded into the voice session, so a call can continue a chat. Cards and charts are stripped and the text is bounded. */
 export function seedInput(history: { role: string; content: string }[], limits = { messages: 10, chars: 1000 }) {
