@@ -35,20 +35,21 @@ export function VoiceInput({ onSend, onDone, autoStart = false, disabled = false
 
   const active = status !== "idle";
   const icon = compact ? "size-8" : "size-9";
-  const action = "inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-medium disabled:opacity-40";
+  const action = "inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai disabled:opacity-40";
   const label = status === "starting" ? "Starting the microphone…" : status === "finishing" ? "Finishing…" : "Listening…";
   return <>
     <button ref={mic} type="button" onClick={() => void start()} onContextMenu={event => event.preventDefault()} disabled={disabled || active}
-      aria-label="Talk: record a voice message" title="Talk" className={`flex shrink-0 touch-manipulation items-center justify-center rounded-lg text-muted-foreground select-none hover:bg-muted hover:text-foreground disabled:opacity-40 ${icon}`}>
+      aria-label="Talk: record a voice message" title="Talk" className={`flex shrink-0 touch-manipulation items-center justify-center rounded-lg text-muted-foreground transition-colors select-none hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ai disabled:opacity-40 ${icon}`}>
       <Mic className="size-4" aria-hidden="true" /></button>
-    {voice.error && !active && <p role="alert" className="absolute bottom-full left-0 mb-2 flex max-w-full items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-danger shadow-sm">
-      {voice.error}<button type="button" onClick={voice.cancel} aria-label="Dismiss" className="rounded p-0.5 text-muted-foreground hover:text-foreground"><X className="size-3" aria-hidden="true" /></button></p>}
+    {voice.error && !active && <p role="alert" className="absolute bottom-full left-0 mb-2 flex max-w-full items-center gap-2 rounded-lg border border-danger/30 bg-danger-soft py-1 pr-1 pl-3 text-xs text-danger shadow-sm">
+      {voice.error}<button type="button" onClick={voice.cancel} aria-label="Dismiss" className="grid size-7 place-items-center rounded-md hover:bg-danger/10"><X className="size-3.5" aria-hidden="true" /></button></p>}
     {active && <div role="group" aria-label="Voice message" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); voice.cancel(); } }}
-      className="absolute inset-0 z-10 flex min-h-28 flex-col gap-2 rounded-[inherit] border border-muted-foreground/60 bg-card p-2.5">
+      className="absolute inset-0 z-10 flex min-h-28 flex-col gap-2 rounded-2xl border border-ai-border bg-card p-2.5 shadow-[0_0_0_3px_var(--color-ai-soft)]">
       <p ref={words} aria-live="polite" className={`min-h-0 flex-1 overflow-y-auto px-1 whitespace-pre-wrap ${compact ? "text-sm" : "text-[15px]"} ${voice.text ? "" : "text-muted-foreground"}`}>{voice.text || label}</p>
       <div className="flex items-center gap-2">
-        <span className="flex h-5 items-center gap-0.5" aria-hidden="true">{[0.5, 0.8, 1, 0.8, 0.5].map((scale, index) =>
-          <span key={index} className="w-1 rounded-full bg-danger transition-[height] duration-100" style={{ height: `${4 + Math.round(voice.level * scale * 16)}px` }} />)}</span>
+        <span className="flex items-center gap-2 pl-1" aria-hidden="true"><span className={`size-2 rounded-full bg-danger ${status === "recording" ? "motion-safe:animate-pulse" : "opacity-40"}`} />
+          <span className="flex h-6 items-center gap-[3px]">{[0.45, 0.7, 1, 0.8, 0.55, 0.35].map((scale, index) =>
+            <span key={index} className="w-[3px] rounded-full bg-ai transition-[height] duration-100" style={{ height: `${4 + Math.round(voice.level * scale * 18)}px` }} />)}</span></span>
         <span className="font-mono text-xs text-muted-foreground"><span className="sr-only">Recording </span>{clock(status === "recording" ? Math.max(0, now - voice.startedAt) : 0)} / {clock(VOICE_MAX_SECONDS * 1000)}</span>
         <span className="ml-auto" />
         <button type="button" onClick={() => { voice.cancel(); mic.current?.focus(); }} aria-label="Cancel and discard recording" className={`${action} text-muted-foreground hover:bg-muted hover:text-foreground`}><X className="size-4" aria-hidden="true" /><span className="max-sm:sr-only">Cancel</span></button>
