@@ -21,7 +21,7 @@ begin
   begin
     perform public.restore_manual_transaction(entry,0);
     raise exception 'Stale restore accepted';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   if public.restore_manual_transaction(entry,1)<>first_id then raise exception 'Restore changed original ID'; end if;
   if not exists(select 1 from public.transactions where id=first_id and amount_minor=-9007199254740993 and note='Original note') then raise exception 'Restore lost source data'; end if;
   result := public.create_manual_transaction(account,'2026-10-02','Second entry','-100','pending',null,'',gen_random_uuid());
@@ -32,7 +32,7 @@ begin
   begin
     perform public.bulk_edit_transactions(rows,'{"tags":["trip"]}',gen_random_uuid());
     raise exception 'Stale bulk edit accepted';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   if exists(select 1 from public.transaction_batches where workspace_id=workspace) or exists(select 1 from public.transactions where workspace_id=workspace and tags<>'{}') then raise exception 'Stale bulk edit partially wrote'; end if;
   rows := jsonb_build_array(jsonb_build_object('id',first_id,'version',0),jsonb_build_object('id',second_id,'version',1));
   request := gen_random_uuid();
@@ -45,7 +45,7 @@ begin
   begin
     perform public.undo_manual_transaction(entry,2,1);
     raise exception 'Corrected manual evidence deleted';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   begin
     perform public.undo_transaction_batch(batch,jsonb_build_array(jsonb_build_object('id',first_id,'version','1'),jsonb_build_object('id',second_id,'version',2)));
     raise exception 'String undo version accepted';
@@ -63,13 +63,13 @@ begin
   begin
     perform public.undo_manual_transaction(protected_entry,0,0);
     raise exception 'Source-backed manual evidence deleted';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   delete from public.transaction_sources where transaction_id=protected_id;
   update public.transactions set refund_of_id=protected_id where id=second_id;
   begin
     perform public.undo_manual_transaction(protected_entry,0,0);
     raise exception 'Linked manual evidence deleted';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   update public.transactions set refund_of_id=null where id=second_id;
   insert into public.recurring_series(id,workspace_id,account_id,label,normalized_label,cadence,currency_code,amount_min_minor,amount_max_minor,occurrences)
     values(series_id,workspace,account,'Protected','protected','monthly','EUR',-100,-100,3);
@@ -77,7 +77,7 @@ begin
   begin
     perform public.undo_manual_transaction(protected_entry,0,0);
     raise exception 'Recurring manual evidence deleted';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   if not exists(select 1 from public.transactions where id=protected_id) then raise exception 'Protected source vanished'; end if;
   begin
     perform public.bulk_edit_transactions(jsonb_build_array(jsonb_build_object('id',first_id,'version',2)),'{"amount_minor":"0"}',gen_random_uuid());

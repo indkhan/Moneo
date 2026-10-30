@@ -49,13 +49,13 @@ begin
   begin
     perform public.bulk_edit_transactions(jsonb_build_array(jsonb_build_object('id',first_id,'version',1),jsonb_build_object('id',second_id,'version',0)),jsonb_build_object('merchant_id',null),gen_random_uuid());
     raise exception 'Stale organization preview accepted';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   if (select count(*) from public.transaction_batches where workspace_id=workspace)<>1 or exists(select 1 from public.transactions where workspace_id=workspace and merchant_id is distinct from merchant) then raise exception 'Rejected organization batch partially wrote'; end if;
 
   begin
     perform public.undo_transaction_batch(batch,jsonb_build_array(jsonb_build_object('id',first_id,'version',1),jsonb_build_object('id',second_id,'version',0)));
     raise exception 'Partial stale organization Undo accepted';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   if exists(select 1 from public.transactions where workspace_id=workspace and version<>1) or exists(select 1 from public.correction_events where workspace_id=workspace and undone) then raise exception 'Failed Undo partially restored organization'; end if;
   perform public.undo_transaction_batch(batch,jsonb_build_array(jsonb_build_object('id',first_id,'version',1),jsonb_build_object('id',second_id,'version',1)));
   if not exists(select 1 from public.transactions where id=first_id and merchant_id is null and category_id is null and version=2)

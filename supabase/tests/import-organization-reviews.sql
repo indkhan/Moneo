@@ -23,7 +23,7 @@ begin
   begin
     perform public.apply_organization_review(stale_id,false);
     raise exception 'Stale durable review applied';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   if not exists(select 1 from public.organization_reviews where id=stale_id and status='pending') then raise exception 'Failed review approval partially persisted'; end if;
   perform public.dismiss_organization_review(stale_id);
   begin
@@ -47,7 +47,7 @@ begin
   begin
     perform public.apply_organization_review(review_id,true);
     raise exception 'Changed approval rule silently overwritten';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   if exists(select 1 from public.merchants where workspace_id=workspace and normalized_name='alternative merchant') or exists(select 1 from public.transactions where id=transaction_id and version<>2) then raise exception 'Rejected rule approval partially wrote'; end if;
   -- Replacing an existing disabled rule then undoing must restore its prior target and intent.
   review_id:=(public.create_organization_review(selection,jsonb_build_object('category_id',category),'Replacement Merchant','northstar market','[]',gen_random_uuid())->>'id')::uuid;
@@ -62,7 +62,7 @@ begin
   begin
     perform public.undo_transaction_batch((applied->>'batchId')::uuid,jsonb_build_array(jsonb_build_object('id',transaction_id,'version',5)));
     raise exception 'Batch Undo overwrote a later rule edit';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   if exists(select 1 from public.transactions where id=transaction_id and version<>5) or exists(select 1 from public.transaction_batches where id=(applied->>'batchId')::uuid and undone) then raise exception 'Fenced rule Undo partially restored metadata'; end if;
   set local role authenticated;
   begin

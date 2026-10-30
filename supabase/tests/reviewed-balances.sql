@@ -26,11 +26,11 @@ begin
   begin insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance) values(workspace,account,1,'EUR',now(),'forged'); raise exception 'Direct snapshot forge allowed' using errcode='ZX001'; exception when insufficient_privilege then null; end;
   begin update public.balance_snapshots set amount_minor=1 where id=baseline; raise exception 'Direct snapshot edit allowed' using errcode='ZX001'; exception when insufficient_privilege then null; end;
   begin delete from public.balance_snapshots where id=baseline; raise exception 'Direct snapshot delete allowed' using errcode='ZX001'; exception when insufficient_privilege then null; end;
-  begin perform public.record_manual_balance(account,'10000',today,true,'[]',baseline,1,gen_random_uuid()); raise exception 'Incomplete preview accepted' using errcode='ZX001'; exception when sqlstate '40001' then null; end;
+  begin perform public.record_manual_balance(account,'10000',today,true,'[]',baseline,1,gen_random_uuid()); raise exception 'Incomplete preview accepted' using errcode='ZX001'; exception when sqlstate 'PT409' then null; end;
   result:=public.record_manual_balance(account,'10000',today,true,receipt,baseline,1,request);
   if public.record_manual_balance(account,'10000',today,true,receipt,baseline,1,request)<>result then raise exception 'Retry duplicated history'; end if;
   begin perform public.record_manual_balance(account,'10001',today,true,receipt,baseline,1,request); raise exception 'Request reused with changed amount' using errcode='ZX001'; exception when sqlstate '22023' then null; end;
-  begin perform public.record_manual_balance(account,'10000',today,true,receipt,baseline,1,gen_random_uuid()); raise exception 'Stale history receipt accepted' using errcode='ZX001'; exception when sqlstate '40001' then null; end;
+  begin perform public.record_manual_balance(account,'10000',today,true,receipt,baseline,1,gen_random_uuid()); raise exception 'Stale history receipt accepted' using errcode='ZX001'; exception when sqlstate 'PT409' then null; end;
   begin perform public.reserve_goal_funds(goal,account,'9001',0,gen_random_uuid()); raise exception 'Pending hold overreserved' using errcode='ZX001'; exception when sqlstate '22003' then null; end;
   reservation:=public.reserve_goal_funds(goal,account,'9000',0,gen_random_uuid());
   perform public.undo_goal_reservation((reservation->>'eventId')::uuid,1);
@@ -49,7 +49,7 @@ begin
   update public.transactions set amount_minor=-101,version=version+1 where id=morning;
   if public.reservation_balance_evidence(account,snapshot.as_of+interval '2 minutes','Europe/Berlin')->>'status'<>'ambiguous' then raise exception 'Covered correction silently reused'; end if;
   execute 'set local role authenticated';
-  begin perform public.record_manual_balance(account,'10000',today,true,receipt,request,1,changed_request); raise exception 'Changed preview accepted' using errcode='ZX001'; exception when sqlstate '40001' then null; end;
+  begin perform public.record_manual_balance(account,'10000',today,true,receipt,request,1,changed_request); raise exception 'Changed preview accepted' using errcode='ZX001'; exception when sqlstate 'PT409' then null; end;
   perform public.undo_manual_balance(request,1,request,1);
   if public.undo_manual_balance(request,1,request,1)->>'undone'<>'true' then raise exception 'Undo retry failed'; end if;
   execute 'reset role';
@@ -59,7 +59,7 @@ begin
   -- Replay retains the undone result; old receipt version cannot be used to write after undo.
   execute 'set local role authenticated';
   if public.record_manual_balance(account,'10000',today,true,receipt,baseline,1,request)->>'undone'<>'true' then raise exception 'Retry resurrected undone balance'; end if;
-  begin perform public.record_manual_balance(account,'10000',today,false,null,request,1,gen_random_uuid()); raise exception 'Pre-undo history version accepted' using errcode='ZX001'; exception when sqlstate '40001' then null; end;
+  begin perform public.record_manual_balance(account,'10000',today,false,null,request,1,gen_random_uuid()); raise exception 'Pre-undo history version accepted' using errcode='ZX001'; exception when sqlstate 'PT409' then null; end;
   perform set_config('request.jwt.claim.sub',foreign_actor::text,true);
   begin perform public.undo_manual_balance(request,2,request,2); raise exception 'Foreign undo accepted' using errcode='ZX001'; exception when sqlstate 'P0002' then null; end;
   perform set_config('request.jwt.claim.sub','',true);

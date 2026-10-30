@@ -11,7 +11,7 @@ begin
  e:=public.edit_spending_plan(p,1,jsonb_build_object('rollover',true,'rollover_from',month::text),r);
  if public.edit_spending_plan(p,1,jsonb_build_object('rollover',true,'rollover_from',month::text),r)<>e then raise exception 'Rollover retry lost receipt'; end if;
  e2:=public.edit_spending_plan(p,2,'{"limit_minor":"9007199254740993"}',gen_random_uuid());
- begin perform public.undo_planning_event(e,3); raise exception 'Older rollover undo erased newer target'; exception when sqlstate '40001' then null; end;
+ begin perform public.undo_planning_event(e,3); raise exception 'Older rollover undo erased newer target'; exception when sqlstate 'PT409' then null; end;
  perform public.undo_planning_event(e2,3);
  perform public.undo_planning_event(e,4);
  if not exists(select 1 from public.spending_plans where id=p and not rollover and limit_minor=10000 and version=5) then raise exception 'Sequential budget undo failed'; end if;

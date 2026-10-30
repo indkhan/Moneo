@@ -13,7 +13,7 @@ begin
   begin
     perform public.record_recurring_occurrence(a,0,'2026-02-28',t,0,false);
     raise exception 'Stale assumption accepted';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   begin
     perform public.record_recurring_occurrence(a,1,'2026-02-27',t,0,false);
     raise exception 'Nonoccurrence date accepted';
@@ -40,7 +40,7 @@ begin
   begin
     perform public.undo_recurring_occurrence(r.id,0);
     raise exception 'Stale undo accepted';
-  exception when sqlstate '40001' then null; end;
+  exception when sqlstate 'PT409' then null; end;
   r:=public.undo_recurring_occurrence(r.id,1);
   if r.undone_at is null or r.version<>2 or r.receipt<>saved_receipt then raise exception 'Undo destroyed history'; end if;
   update public.transactions set amount_minor=-12000,version=version+1 where id=t;

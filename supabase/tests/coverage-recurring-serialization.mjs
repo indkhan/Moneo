@@ -68,10 +68,10 @@ export async function checkSerialization(db, connection, schema, run, record) {
     const sourceSettled=Promise.allSettled(tasks);
     await observeBlocked();release();
     const sourceResult=await sourceSettled;
-    assert.equal(sourceResult[0].status,'fulfilled');assert.equal(sourceResult[1].status,'rejected');assert.equal(sourceResult[1].reason.code,'40001');
+    assert.equal(sourceResult[0].status,'fulfilled');assert.equal(sourceResult[1].status,'rejected');assert.equal(sourceResult[1].reason.code,'PT409');
     const [ledger]=await db.unsafe(`select count(*)::int as sources, bool_and(amount_minor=-9007199254740993 and currency_code='EUR' and merchant_id=$1) as original_money from ${schema}.transactions where id=any($2::uuid[])`,[merchant,ids]);
     assert.deepEqual(ledger,{sources:6,original_money:true});
-    record({phase:'serialization_pass',activeSchedules:1,overlapSqlstate:'22023',staleSqlstate:'40001',ledgerOriginalsPreserved:true});
+    record({phase:'serialization_pass',activeSchedules:1,overlapSqlstate:'22023',staleSqlstate:'PT409',ledgerOriginalsPreserved:true});
   } finally {
     release?.(); const completed=await Promise.allSettled(tasks);
     record({phase:"writer_results",results:completed.map(result=>({status:result.status,code:result.reason?.code,message:result.reason?.message}))});

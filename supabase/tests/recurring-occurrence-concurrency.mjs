@@ -80,7 +80,7 @@ try {
   const [holderOutcome, waiterOutcome] = await Promise.allSettled([holder, waiter]);
   assert.equal(holderOutcome.status, "fulfilled", "Financial correction must commit in the isolated schema");
   assert.equal(waiterOutcome.status, "fulfilled");
-  assert.equal(waiterOutcome.value.code, "40001", "Waiting association must recheck changed assumption/transaction versions");
+  assert.equal(waiterOutcome.value.code, "PT409", "Waiting association must recheck changed assumption/transaction versions");
   assert.equal((await db.unsafe(`select count(*)::int as count from ${schema}.recurring_occurrence_settlements`))[0].count, 0, "Stale association must not persist");
   const [changed] = await db.unsafe(`select enabled,confirmed from ${schema}.financial_assumptions where id=$1`, [assumption]);
   assert.equal(changed.enabled, false); assert.equal(changed.confirmed, false);
