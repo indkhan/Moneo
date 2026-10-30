@@ -18,7 +18,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
     expect(connection.hostname === `db.${project}.supabase.co` || connection.username.endsWith(`.${project}`)).toBe(true);
     const db = postgres(connection.toString(), {ssl: "require", max: 1, connect_timeout: 10, connection: {application_name: "MNE014-browser-coverage", lock_timeout: 10_000, statement_timeout: 120_000, idle_in_transaction_session_timeout: 150_000}});
     const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, {auth: {persistSession: false, autoRefreshToken: false}});
-    const context = await browser.newContext({baseURL: "http://localhost:3000"});
+    const context = await browser.newContext({baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000"});
     let user: string | undefined, workspace: string | undefined;
     const runId = randomUUID();
     mkdirSync(".qa", {recursive: true});

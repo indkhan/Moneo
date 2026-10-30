@@ -23,7 +23,7 @@ test("saved review stays historical while balance corrections and scopes change 
   const [workspace] = await db`select id,display_currency,'Europe/Berlin' as timezone from public.workspaces where owner_id=${user}`;
   const recovery = `.qa/review-freshness-${user}.json`;
   mkdirSync(".qa", { recursive: true }); writeFileSync(recovery, JSON.stringify({ project, user, workspace: workspace.id }));
-  const context = await browser.newContext({ baseURL: "http://localhost:3000" });
+  const context = await browser.newContext({ baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000" });
   try {
     const cookies = new Map<string, string>();
     const auth = createServerClient(url, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { cookies: { getAll: () => [...cookies].map(([name, value]) => ({ name, value })), setAll: values => values.forEach(({ name, value }) => cookies.set(name, value)) } });

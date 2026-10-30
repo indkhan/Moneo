@@ -120,7 +120,7 @@ async function count(page, path, match, hidden = false) {
 }
 {
   const isChat = url => url.includes(`/api/conversations/${conversationId}`);
-  const isRsc = url => url.includes("_rsc=") || url.includes("/ai/artifacts");
+  const isRsc = url => url.includes("_rsc=");
   const requestId = crypto.randomUUID();
   const [{ id: build }] = await db`insert into public.artifact_builds(workspace_id, prompt) values (${workspace}, 'perf probe') returning id`;
   const polling = {};

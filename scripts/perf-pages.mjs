@@ -46,7 +46,7 @@ for (const [vpName, vp] of Object.entries(VIEWPORTS)) {
           } catch { /* request gone with the context */ }
         });
         const response = await page.goto(path, { waitUntil: "load" }).catch(() => null);
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(2000);
         const m = await page.evaluate(() => {
           const nav = performance.getEntriesByType("navigation")[0];
           const fcp = performance.getEntriesByName("first-contentful-paint")[0];
