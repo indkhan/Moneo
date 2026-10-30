@@ -30,8 +30,8 @@ function Orb({ levels, state }: { levels: () => { mic: number; moneo: number }; 
 }
 
 /** A live voice call with Moneo: speak or type, see captions and running tasks, and tap the cards it makes. */
-export function VoiceCall({ conversationId, onAnswer, onClose }: { conversationId: string; onAnswer: (question: string, answer: ChatAnswer) => void; onClose: () => void }) {
-  const call = useVoiceCall(conversationId, onAnswer);
+export function VoiceCall({ conversationId, onAnswer, onEnded, onClose }: { conversationId: string; onAnswer: (question: string, answer: ChatAnswer) => void; onEnded: () => void; onClose: () => void }) {
+  const call = useVoiceCall(conversationId, onAnswer, onEnded);
   const [text, setText] = useState("");
   const captions = useRef<HTMLDivElement>(null);
   useEffect(() => { captions.current?.scrollTo({ top: captions.current.scrollHeight }); }, [call.captions]);

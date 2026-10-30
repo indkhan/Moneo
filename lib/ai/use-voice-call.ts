@@ -3,6 +3,7 @@
 import { useEffect, useReducer, useState } from "react";
 import { readResponse, type ChatAnswer } from "./use-chat-request";
 import { VoiceCallController, type CallAsk } from "./voice-call-controller";
+import { boundTranscript } from "./voice-call-record";
 
 export type CallStatus = "connecting" | "live" | "ended" | "error";
 
@@ -29,21 +30,24 @@ class Connection {
   micLevel: AnalyserNode | null = null;
   moneoLevel: AnalyserNode | null = null;
   readonly aborts = new Map<string, AbortController>();
-  constructor(public onAnswer?: (question: string, answer: ChatAnswer) => void) {}
-  set(patch: Partial<Pick<Connection, "channel" | "mic" | "micLevel" | "moneoLevel" | "onAnswer">>) { Object.assign(this, patch); }
+  /** The call's id and when it went live, for the record saved at hang-up. */
+  readonly callId = crypto.randomUUID();
+  startedAt: number | null = null;
+  constructor(public onAnswer?: (question: string, answer: ChatAnswer) => void, public onEnded?: () => void) {}
+  set(patch: Partial<Pick<Connection, "channel" | "mic" | "micLevel" | "moneoLevel" | "onAnswer" | "onEnded">>) { Object.assign(this, patch); }
 }
 
 /**
  * A live GPT-Live call over WebRTC. GPT-Live only talks; every question it hands off runs through /api/chat
  * in this conversation (see VoiceCallController), and the answer is sent back for it to speak.
  */
-export function useVoiceCall(conversationId: string, onAnswer?: (question: string, answer: ChatAnswer) => void) {
+export function useVoiceCall(conversationId: string, onAnswer?: (question: string, answer: ChatAnswer) => void, onEnded?: () => void) {
   const [status, setStatus] = useState<CallStatus>("connecting");
   const [error, setError] = useState("");
   const [muted, setMuted] = useState(false);
   const [, render] = useReducer((count: number) => count + 1, 0);
-  const [live] = useState(() => new Connection(onAnswer));
-  useEffect(() => { live.set({ onAnswer }); });
+  const [live] = useState(() => new Connection(onAnswer, onEnded));
+  useEffect(() => { live.set({ onAnswer, onEnded }); });
 
   const [controller] = useState(() => {
     const ask: CallAsk = async (payload, onEvent) => {
@@ -79,7 +83,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       live.set({ channel: dc });
       dc.onmessage = message => {
         const event = JSON.parse(message.data);
-        if (event.type === "session.started") { setStatus("live"); lock(); }
+        if (event.type === "session.started") { setStatus("live"); live.startedAt ??= Date.now(); lock(); }
         else if (event.type === "session.closed") setStatus("ended");
         controller.handle(event);
       };
@@ -91,10 +95,25 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       if (!response.ok) throw new Error(body.error ?? "Could not start the call");
       if (!closed) await pc.setRemoteDescription({ type: "answer", sdp: body.sdp });
     }
+    /** Hanging up saves the call in the chat; keepalive lets it finish even if the tab is closing. */
+    function saveRecord() {
+      const transcript = boundTranscript(controller.captions);
+      if (live.startedAt === null || !transcript.length) return;
+      const seconds = Math.min(86_400, Math.round((Date.now() - live.startedAt) / 1000));
+      live.startedAt = null;
+      // Answers that land after hang-up are saved by the server and shown inside the call.
+      const finished = live.onEnded;
+      live.set({ onAnswer: undefined });
+      void fetch("/api/voice/calls", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: live.callId, conversationId, durationSeconds: seconds, transcript,
+          tasks: controller.tasks.slice(-30).map(task => ({ requestId: task.requestId, text: task.text.slice(0, 300), status: task.status })) }) })
+        .then(response => { if (response.ok) finished?.(); }, () => {});
+    }
     connect().catch(cause => { if (!closed) { setStatus("error"); setError(failure(cause)); } });
     document.addEventListener("visibilitychange", lock);
     return () => {
       closed = true;
+      saveRecord();
       document.removeEventListener("visibilitychange", lock);
       try { if (live.channel?.readyState === "open") live.channel.send(JSON.stringify({ type: "session.close" })); } catch { /* already closed */ }
       live.set({ channel: null, micLevel: null, moneoLevel: null });

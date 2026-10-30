@@ -5,9 +5,9 @@ const workspace = "owned";
 const rows = Array.from({ length: 1000 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, workspace_id: workspace, conversation_id: "00000000-0000-4000-8000-000000000000", title: `Thread ${i}`, content: `Message ${i}`, created_at: "2026-01-01T00:00:00+00:00" }));
 function client(fail: boolean | "selected" | "messages" = false) {
   return { from(table: string) {
-    let data = table === "messages" ? [...rows] : rows.slice(0, 100);
+    let data = table === "voice_calls" ? [] : table === "messages" ? [...rows] : rows.slice(0, 100);
     const query = {
-      select: () => query, is: () => query,
+      select: () => query, is: () => query, gte: () => query, lt: () => query, overlaps: () => query,
       eq: (key: string, value: string) => { data = data.filter(row => row[key as keyof typeof row] === value); return query; },
       order: (key: string, options?: { ascending: boolean }) => { data.sort((a, b) => (options?.ascending === false ? -1 : 1) * (a[key as "id"].localeCompare(b[key as "id"]))); return query; },
       or: (filter: string) => { const id = filter.match(/id.lt.([0-9a-f-]+)/)?.[1]; const timestamp = filter.match(/created_at.lt.([^,]+)/)?.[1]; data = data.filter(row => row.created_at < timestamp! || (row.created_at === timestamp && row.id < id!)); return query; },
@@ -100,9 +100,9 @@ describe("saved answer activity", () => {
       ],
     };
     const fake = { from(table: string) {
-      let data = [...tables[table]];
+      let data = [...(tables[table] ?? [])];
       const query = {
-        select: () => query, is: () => query, order: () => query, limit: () => query,
+        select: () => query, is: () => query, order: () => query, limit: () => query, gte: () => query, lt: () => query, overlaps: () => query,
         eq: (key: string, value: string) => { data = data.filter(row => row[key] === value); return query; },
         in: (key: string, values: string[]) => { data = data.filter(row => values.includes(row[key] as string)); return query; },
         maybeSingle: async () => ({ data: data[0] ?? null, error: null }),
@@ -129,7 +129,7 @@ describe("background chat runs", () => {
     const load = (requests: Record<string, unknown>[]) => loadConversation({ from(table: string) {
       let data = table === "conversations" ? [{ id: conversation, workspace_id: workspace, title: "T", created_at: ago(600) }] : table === "chat_requests" ? [...requests] : [];
       const query = {
-        select: () => query, is: () => query, limit: () => query, in: () => query,
+        select: () => query, is: () => query, limit: () => query, in: () => query, gte: () => query, lt: () => query, overlaps: () => query,
         eq: (key: string, value: string) => { data = data.filter(row => row[key as keyof typeof row] === value); return query; },
         order: () => { data.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))); return query; },
         maybeSingle: async () => ({ data: data[0] ?? null, error: null }),

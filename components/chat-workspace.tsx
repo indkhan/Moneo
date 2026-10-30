@@ -34,6 +34,7 @@ const seed = (initial: ChatWorkspaceInitial): Record<string, Entry> => initial.s
 const loaded = (data: Loaded): Entry => ({ conversation: data.selected, messages: data.messages, cursor: data.messagesCursor, running: data.running });
 function omit<T>(record: Record<string, T>, key: string) { const next = { ...record }; delete next[key]; return next; }
 const href = (id: string) => `/ai?conversation=${id}`;
+const fetchEntry = (id: string) => json<Loaded>(`/api/conversations/${id}`);
 
 /** Client-side chat workspace: switching, paging, search, rename and delete never re-render the server page. */
 export function ChatWorkspace({ initial, newConversationId, selectionKey, locale, timezone, scope }: { initial: ChatWorkspaceInitial; newConversationId: string; selectionKey: string; locale: string; timezone: string; scope: React.ReactNode }) {
@@ -86,6 +87,18 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
       .then(data => { if (!data.running) setEntries(current => ({ ...current, [resuming]: loaded(data) })); }).catch(() => {}), 3000);
     return () => clearInterval(timer);
   }, [resuming]);
+
+  // A finished call is saved after hang-up: its summary and any request still running arrive a little later.
+  const waitingOnCall = entry?.messages.some(item => item.call && (item.call.summaryStatus === "pending" || item.call.unfinished.some(task => task.status === "running"))) ? activeId : null;
+  useEffect(() => {
+    if (!waitingOnCall) return;
+    let tries = 0;
+    const timer = setInterval(() => {
+      if (++tries > 60) return clearInterval(timer);
+      fetchEntry(waitingOnCall).then(data => setEntries(current => ({ ...current, [waitingOnCall]: loaded(data) }))).catch(() => {});
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [waitingOnCall]);
 
   // Debounced search over titles and message text.
   useEffect(() => {
@@ -177,6 +190,16 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     if (latest.current.selectedId === null && latest.current.draftId === id) window.history.replaceState(null, "", href(id));
   }
 
+  /** Reloads a chat after a call, so its messages move into the call card. */
+  async function callEnded(id: string) {
+    try {
+      const data = await fetchEntry(id);
+      setEntries(current => ({ ...current, [id]: loaded(data) }));
+      setThreads(current => current.some(thread => thread.id === id) ? current : [data.selected, ...current]);
+      if (latest.current.selectedId === null && latest.current.draftId === id) window.history.replaceState(null, "", href(id));
+    } catch (cause) { setNotice((cause as Error).message); }
+  }
+
   const title = entry?.conversation.title ?? threads.find(thread => thread.id === selectedId)?.title ?? (selectedId ? "" : "New chat");
   const list = results ?? threads;
   const sidebar = (prefix: string) => <>
@@ -217,7 +240,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     <aside className="sticky top-19 hidden h-[calc(100dvh-4.75rem)] w-72 shrink-0 overflow-y-auto border-r border-border px-4 py-6 lg:block">{sidebar("desktop")}</aside>
     <section className="flex min-w-0 flex-1 flex-col">
       {/* Each spoken question is a normal chat request, so its answer joins this chat as it lands. */}
-      {calling ? <VoiceCall key={activeId} conversationId={activeId} onAnswer={(question, answer) => onDone(activeId, question, answer, [])} onClose={() => setCalling(false)} /> : <>
+      {calling ? <VoiceCall key={activeId} conversationId={activeId} onAnswer={(question, answer) => onDone(activeId, question, answer, [])} onEnded={() => void callEnded(activeId)} onClose={() => setCalling(false)} /> : <>
       <div className="relative flex items-center gap-2 border-b border-border px-4 py-4 sm:px-8">
         <details ref={menu} className="lg:hidden"><summary className={summary} aria-label="Show conversations"><Menu className="size-4" aria-hidden="true" /></summary><div className="absolute inset-x-4 top-full z-20 max-h-[70dvh] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-lg">{sidebar("mobile")}</div></details>
         <h1 className="min-w-0 flex-1 truncate font-display text-2xl font-semibold tracking-tight">{title}</h1>

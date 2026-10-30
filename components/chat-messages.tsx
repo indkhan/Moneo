@@ -7,6 +7,7 @@ import type { FollowUp } from "@/lib/ai/follow-ups";
 import Link from "next/link";
 import { ChevronRight, FileText, ListChecks, LoaderCircle, Mic, Sparkle } from "lucide-react";
 import type { ChatAttachment } from "@/lib/ai/chat-attachments";
+import { VoiceCallCard } from "./voice-call-card";
 
 export const DRAFT_EVENT = "moneo-chat-draft";
 /** One-click next steps: prompts fill the composer (the user still sends), links navigate. */
@@ -61,7 +62,7 @@ export function ChatMessages({ messages, pending, compact = false }: { messages:
   return <div className={`min-w-0 max-w-full ${compact ? "space-y-6" : "space-y-8"}`} aria-live="polite">
     {messages.map(item => <article key={item.id}>
       <time className="sr-only" dateTime={item.created_at}>{item.created_at}</time>
-      {item.role === "user" ? <><MessageFiles files={item.attachments} /><p className={bubble}><Spoken show={item.spoken} />{item.content}</p></> : assistant(<>{item.plan && <Plan steps={item.plan} done collapsed />}<AiToolActivity tools={item.tools ?? []} /><AiMessage content={item.content} />{item === messages.at(-1) && !pending && <FollowUps items={item.followUps ?? []} compact={compact} />}</>)}
+      {item.call ? <VoiceCallCard call={item.call} createdAt={item.created_at} /> : item.role === "user" ? <><MessageFiles files={item.attachments} /><p className={bubble}><Spoken show={item.spoken} />{item.content}</p></> : assistant(<>{item.plan && <Plan steps={item.plan} done collapsed />}<AiToolActivity tools={item.tools ?? []} /><AiMessage content={item.content} />{item === messages.at(-1) && !pending && <FollowUps items={item.followUps ?? []} compact={compact} />}</>)}
     </article>)}
     {pending && <article className={compact ? "space-y-6" : "space-y-8"}>
       {pending.question && <div><MessageFiles files={pending.attachments} /><p className={bubble}><Spoken show={pending.spoken} />{pending.question}</p></div>}
