@@ -49,7 +49,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
             className="block rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted aria-[current=page]:border-primary aria-[current=page]:bg-muted">
             <span className="text-xs text-muted-foreground">v{item.version}</span> {item.prompt}</Link></li>)}
       </ol>
-      <ArtifactBuilds builds={builds} />
+      <ArtifactBuilds builds={builds} artifactId={id} />
       <ArtifactPrompt artifactId={id} placeholder="Change something, e.g. “Add a toggle for selling the car”" />
       <DeleteArtifactButton id={id} title={artifact.data.title} />
     </aside>
