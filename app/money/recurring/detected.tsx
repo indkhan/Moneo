@@ -28,7 +28,10 @@ export async function DetectedPatterns({ supabase, workspace, names, today, cate
         <span className="rounded bg-muted px-2 py-0.5 text-xs capitalize">{series.cadence}</span>
         {status === "confirmed" && <span className="rounded bg-success-soft px-2 py-0.5 text-xs text-success">Confirmed{assumption?.confirmed && assumption.enabled && !assumption.removed_at ? " · used in forecast" : " · review schedule in Plan"}</span>}
         {status === "dismissed" && <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">Dismissed</span>}
-        <span className="font-mono text-sm tabular-nums">{formatMoney(series.amountMinMinor, series.currencyCode)}{series.amountMinMinor !== series.amountMaxMinor && <> to {formatMoney(series.amountMaxMinor, series.currencyCode)}</>}</span>
+        {/* Smallest to largest payment, whichever way the money goes. */}
+        <span className="font-mono text-sm tabular-nums">{series.amountMinMinor === series.amountMaxMinor ? formatMoney(series.amountMinMinor, series.currencyCode)
+          : series.amountMaxMinor < 0n ? <>{formatMoney(series.amountMaxMinor, series.currencyCode)} to {formatMoney(series.amountMinMinor, series.currencyCode)}</>
+          : <>{formatMoney(series.amountMinMinor, series.currencyCode)} to {formatMoney(series.amountMaxMinor, series.currencyCode)}</>}</span>
         <div className="flex gap-2">
           {status !== "confirmed" && !blocked && <ScheduleDialog title={`Confirm ${series.label}`} trigger="Confirm" submitLabel="Confirm recurring" action={confirmSeries} hidden={hidden} categories={categories}
             triggerClassName="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
@@ -36,10 +39,10 @@ export async function DetectedPatterns({ supabase, workspace, names, today, cate
           {status !== "dismissed" && !blocked && <ActionForm action={declineSeries} hidden={hidden} className="flex flex-col gap-1"><button className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted">Not recurring</button></ActionForm>}
         </div>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">{names[series.accountId] ?? "Unknown account"} · {series.occurrences} observed payments (a count, not a probability)</p>
+      <p className="mt-1 text-xs text-muted-foreground">{names[series.accountId] ?? "Unknown account"} · {series.occurrences} payments found</p>
       {blocked && <p role="alert" className="mt-1 text-xs">Evidence overlaps several reviewed runs. Review their schedules in Plan before deciding.</p>}
       <details className="mt-1 text-xs">
-        <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Evidence ({evidence.length} posted transactions)</summary>
+        <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Show the {evidence.length} payments</summary>
         {(series.evidenceLimited || series.sameDateAlternatives > 0) && <p className="mt-1 text-muted-foreground">{series.evidenceLimited && `Review evidence retains the original calendar anchor and the latest 999 of ${series.observedOccurrences} matching observations. `}{series.sameDateAlternatives > 0 && `${series.sameDateAlternatives} other similar same-date postings were not selected. They may represent separate purchases or obligations; review them before confirming.`}</p>}
         {assumption?.source === "user" && <p className="mt-1 text-muted-foreground">Your intentional Plan schedule is retained when confirming or declining this candidate. Edit or disable it in <Link href="/plan" className="underline">Plan</Link>.</p>}
         <ul className="mt-1 space-y-0.5 text-muted-foreground">{evidence.slice(0, 8).map(row => <li key={row.id}>
@@ -50,7 +53,7 @@ export async function DetectedPatterns({ supabase, workspace, names, today, cate
   };
 
   return <>
-    {invalidated.length > 0 && <section aria-label="Recurring source changes" className="rounded-xl border border-warning/40 p-5"><h2 className="text-sm font-medium">Confirmed source evidence changed</h2><p className="mt-2 text-sm">Inferred assumptions are disabled when their transaction evidence is reclassified. Intentional user assumptions are retained. Undo the source correction to restore unchanged inference, or review a new valid pattern before confirming it.</p><ul className="mt-3 space-y-3">{invalidated.map(series => <li key={series.id} className="text-sm"><p>{series.label} · {names[series.account_id] ?? "Account"}</p><div className="flex flex-wrap gap-3">{((series.evidence_baseline ?? []) as { id: string; posted_on: string }[]).map(source => <Link key={source.id} href={`/money/transactions?transaction=${source.id}`} className="underline">Source {source.posted_on}</Link>)}<Link href="/plan" className="underline">Review assumption in Plan</Link></div></li>)}</ul></section>}
+    {invalidated.length > 0 && <section aria-label="Recurring source changes" className="rounded-xl border border-warning/40 p-5"><h2 className="text-sm font-medium">Payments behind a confirmed schedule changed</h2><p className="mt-2 text-sm">A transaction behind these was edited, so the detected schedule was paused. Schedules you added yourself are kept. Undo the edit to restore it, or confirm the new pattern below.</p><ul className="mt-3 space-y-3">{invalidated.map(series => <li key={series.id} className="text-sm"><p>{series.label} · {names[series.account_id] ?? "Account"}</p><div className="flex flex-wrap gap-3">{((series.evidence_baseline ?? []) as { id: string; posted_on: string }[]).map(source => <Link key={source.id} href={`/money/transactions?transaction=${source.id}`} className="underline">Source {source.posted_on}</Link>)}<Link href="/plan" className="underline">Review assumption in Plan</Link></div></li>)}</ul></section>}
     {storedError && <p role="alert">Could not load review state: {storedError}</p>}
     {queryError && <p role="alert">Could not load transactions: {queryError}</p>}
     {detectError && <p role="alert">Could not detect patterns: {detectError}</p>}
@@ -66,9 +69,10 @@ export async function DetectedPatterns({ supabase, workspace, names, today, cate
       <details className="text-xs text-muted-foreground"><summary className="cursor-pointer hover:text-foreground">How detection works</summary><p className="mt-2">Looks at up to {MAX_TRANSACTIONS.toLocaleString(workspace.locale)} recent posted transactions. Statement intervals, missing statements and account completeness are unknown. Pending items, transfers and unresolved classifications are excluded. A pattern needs at least three payments, so yearly ones need two years of history. Confirming creates one forecast assumption; schedules you edited in Plan are kept. Regular purchases can look like this too, so check the evidence before confirming.</p></details>
     </section>
 
-    {reviewed.length > 0 && <section aria-label="Reviewed patterns" className="space-y-3">
-      <h2 className="text-sm font-medium">Reviewed <span className="text-muted-foreground">({reviewed.length})</span></h2>
-      {reviewed.map(card)}
-    </section>}
+    {/* Already decided: out of the way until wanted, but still there to change a decision. */}
+    {reviewed.length > 0 && <details aria-label="Reviewed patterns" className="group space-y-3">
+      <summary className="cursor-pointer text-sm font-medium">Already decided <span className="text-muted-foreground">({reviewed.length})</span></summary>
+      <div className="mt-3 space-y-3">{reviewed.map(card)}</div>
+    </details>}
   </>;
 }
