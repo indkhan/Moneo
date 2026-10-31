@@ -4,12 +4,12 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { loadOrganizationSuggestions } from "@/lib/import/organization-loader";
-import { organizationDescriptionKey } from "@/lib/import/organization";
+import { organizationDescriptionKey, organizationDisplayName } from "@/lib/import/organization";
 import { loadLoanPayoutIds } from "@/lib/finance/iou";
 
-/** `recent` are the newest few transactions, so a person can decide from the sheet without opening Organize. */
+/** `label` is the payee's name, never the bank's raw text; `recent` are the newest few transactions, so a person can decide from the sheet without opening Organize. */
 export type UncategorizedGroup = { key: string; label: string; count: number; rows: { id: string; version: number }[]; suggested: string | null;
-  recent: { id: string; date: string; description: string; amountMinor: string; currency: string }[] };
+  recent: { id: string; date: string; amountMinor: string; currency: string }[] };
 
 const MAX_GROUPS = 30;
 
@@ -17,7 +17,7 @@ const MAX_GROUPS = 30;
 export async function loadUncategorizedGroups() {
   const { supabase, workspace } = await requireWorkspace();
   const [rows, categories, proposals, loans] = await Promise.all([
-    supabase.from("transactions").select("id, version, description, posted_on, amount_minor::text, currency_code").eq("workspace_id", workspace.id).eq("status", "posted").is("category_id", null).neq("kind", "transfer")
+    supabase.from("transactions").select("id, version, description, posted_on, amount_minor::text, currency_code, merchants(name)").eq("workspace_id", workspace.id).eq("status", "posted").is("category_id", null).neq("kind", "transfer")
       .order("posted_on", { ascending: false }).limit(1000),
     supabase.from("categories").select("id, name").eq("workspace_id", workspace.id).order("name").limit(500),
     // The Categorizer's picks it was not sure enough to apply.
@@ -35,14 +35,18 @@ export async function loadUncategorizedGroups() {
   const spending = (rows.data ?? []).filter(row => !loans.has(row.id));
   for (const row of spending) {
     const key = organizationDescriptionKey(row.description) || row.description;
-    const group: UncategorizedGroup = groups.get(key) ?? { key, label: row.description, count: 0, rows: [], suggested: null, recent: [] };
+    const merchant = [row.merchants].flat()[0]?.name;
+    const group: UncategorizedGroup = groups.get(key) ?? { key, label: merchant ?? organizationDisplayName(key), count: 0, rows: [], suggested: null, recent: [] };
     group.count++;
     group.rows.push({ id: row.id, version: row.version });
-    if (group.recent.length < 8) group.recent.push({ id: row.id, date: row.posted_on, description: row.description, amountMinor: row.amount_minor, currency: row.currency_code });
+    if (group.recent.length < 8) group.recent.push({ id: row.id, date: row.posted_on, amountMinor: row.amount_minor, currency: row.currency_code });
     group.suggested ??= picked.get(row.id) ?? null;
     groups.set(key, group);
   }
   const top = [...groups.values()].sort((a, b) => b.count - a.count).slice(0, MAX_GROUPS);
+  // Payments to one person for different things share a name; the cleaned text keeps what each was for.
+  const named = Map.groupBy(top, group => group.label);
+  for (const group of top) if (named.get(group.label)!.length > 1) group.label = organizationDisplayName(group.key);
   // History and approved rules suggest a category for groups the Categorizer left open.
   const open = top.filter(group => !group.suggested);
   if (open.length) {

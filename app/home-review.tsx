@@ -71,7 +71,7 @@ export function FindingsSheet({ findings }: { findings: HomeFinding[] }) {
         {item.transactions.length > 0 && <details className="mt-1 text-xs text-muted-foreground"><summary className="cursor-pointer hover:text-foreground">Show the {item.transactions.length === 1 ? "transaction" : `${item.transactions.length} transactions`}</summary>
           <ul className="mt-1 divide-y divide-border rounded-lg border border-border bg-background">{item.transactions.map(row => <li key={row.id}>
             <Link href={`/money/transactions?transaction=${row.id}`} className="flex items-baseline gap-3 px-3 py-1.5 hover:bg-muted">
-              <span className="shrink-0 font-mono">{row.date}</span><span className="min-w-0 flex-1 truncate text-foreground">{row.description}</span>
+              <span className="flex-1 font-mono">{row.date}</span>
               <span className="shrink-0 font-mono text-foreground">{formatMoney(row.amountMinor, row.currency)}</span></Link></li>)}</ul></details>}</div>
       {item.href && <Link href={item.href} className={secondary + " inline-flex items-center"}>Open</Link>}
       <button type="button" disabled={pending} className={secondary} onClick={() => dismiss([item])}>It&apos;s fine</button>
@@ -105,7 +105,7 @@ export function UncategorizedSheet({ total }: { total: number }) {
         <details className="text-xs text-muted-foreground"><summary className="cursor-pointer hover:text-foreground">{group.count} {group.count === 1 ? "transaction" : "transactions"}{group.suggested ? " · suggestion preselected" : ""}</summary>
           <ul className="mt-1 divide-y divide-border rounded-lg border border-border bg-background">{group.recent.map(row => <li key={row.id}>
             <Link href={`/money/transactions?transaction=${row.id}`} className="flex items-baseline gap-3 px-3 py-1.5 hover:bg-muted">
-              <span className="shrink-0 font-mono">{row.date}</span><span className="min-w-0 flex-1 truncate text-foreground">{row.description}</span>
+              <span className="flex-1 font-mono">{row.date}</span>
               <span className="shrink-0 font-mono text-foreground">{formatMoney(row.amountMinor, row.currency)}</span></Link></li>)}</ul>
           {group.count > group.recent.length && <p className="mt-1">…and {group.count - group.recent.length} more.</p>}
         </details></div>

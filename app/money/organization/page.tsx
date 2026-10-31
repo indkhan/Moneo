@@ -2,7 +2,7 @@ import Link from 'next/link';
 import {z} from 'zod';
 import {requireWorkspace} from '@/lib/auth';
 import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
-import {MAX_ORGANIZATION_RULES} from '@/lib/import/organization';
+import {MAX_ORGANIZATION_RULES,organizationDisplayName} from '@/lib/import/organization';
 import {loadLoanPayoutIds} from '@/lib/finance/iou';
 import {formatMoney} from '@/lib/finance/format';
 import {versionedRows} from '../transactions/input';
@@ -51,6 +51,8 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
  const patchMerchant=review?(review.merchant_name??(Object.hasOwn(review.patch,'merchant_id')?merchantName(review.patch.merchant_id)??'no merchant':undefined)):undefined;
  const patchCategory=review&&Object.hasOwn(review.patch,'category_id')?categoryName(review.patch.category_id)??'uncategorized':undefined;
  const card='rounded-xl border border-border bg-card p-6';
+ // A rule shows the payee's cleaned name, not the bank text it matches; the full key stays in the tooltip.
+ const ruleItem=(rule:typeof rules.data[number])=><li key={rule.id} className="flex flex-wrap items-center justify-between gap-2 py-2"><span className={rule.enabled?'':'text-muted-foreground'}><span className="font-medium" title={rule.description_key}>{merchantName(rule.merchant_id)??organizationDisplayName(rule.description_key)}</span> → {categoryName(rule.category_id)??'no category'}</span><form action={toggleRule}><input type="hidden" name="key" value={rule.description_key} /><input type="hidden" name="merchant" value={rule.merchant_id??''} /><input type="hidden" name="category" value={rule.category_id??''} /><input type="hidden" name="version" value={rule.version} /><input type="hidden" name="enabled" value={String(!rule.enabled)} /><button className="text-xs underline">{rule.enabled?'Disable':'Enable'}</button></form></li>;
  return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 text-foreground sm:px-8 lg:py-8">
   <header><p className="eyebrow">Money</p><h1 className="mt-1 page-title">Organize spending</h1>
    <p className="mt-2 text-sm text-muted-foreground">Tick entries, pick a category, press Apply. Every batch can be undone.</p></header>
@@ -73,8 +75,10 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
    {next&&<Link className="inline-block text-sm underline" href={'/money/organization?'+next}>Older entries</Link>}
    <p className="text-xs text-muted-foreground">Suggestions compare up to 2,000 recent posted entries and 2,000 rules. For one-off fixes use <Link className="underline" href="/money/transactions">Manual correction in Transactions</Link>.</p>
   </section>
-  <details className={card}><summary className="cursor-pointer text-sm font-medium">Rules ({rules.data.length}) and recent reviews</summary>
-   <ul className="mt-3 divide-y divide-border text-sm">{rules.data.map(rule=><li key={rule.id} className="flex flex-wrap items-center justify-between gap-2 py-2"><span className={rule.enabled?'':'text-muted-foreground'}><span className="font-medium">“{rule.description_key}”</span> → {[merchantName(rule.merchant_id),categoryName(rule.category_id)].filter(Boolean).join(' · ')}{rule.enabled?'':' (off)'}</span><form action={toggleRule}><input type="hidden" name="key" value={rule.description_key} /><input type="hidden" name="merchant" value={rule.merchant_id??''} /><input type="hidden" name="category" value={rule.category_id??''} /><input type="hidden" name="version" value={rule.version} /><input type="hidden" name="enabled" value={String(!rule.enabled)} /><button className="text-xs underline">{rule.enabled?'Disable':'Enable'}</button></form></li>)}</ul>
+  <details className={card}><summary className="cursor-pointer text-sm font-medium">Rules ({rules.data.filter(rule=>rule.enabled).length}) and recent reviews</summary>
+   <ul className="mt-3 divide-y divide-border text-sm">{rules.data.filter(rule=>rule.enabled).map(ruleItem)}</ul>
+   {rules.data.some(rule=>!rule.enabled)&&<details className="mt-2"><summary className="cursor-pointer text-sm text-muted-foreground">Disabled ({rules.data.filter(rule=>!rule.enabled).length})</summary>
+    <ul className="mt-2 divide-y divide-border text-sm">{rules.data.filter(rule=>!rule.enabled).map(ruleItem)}</ul></details>}
    {!rules.data.length&&<p className="mt-2 text-sm text-muted-foreground">No rules yet.</p>}
    <ul className="mt-3 space-y-1 border-t border-border pt-3 text-sm">{reviews.data.map(row=><li key={row.id}><Link className="underline" href={'/money/organization?review='+row.id}>{reviewStatus[row.status]??row.status} · {new Date(row.created_at).toLocaleString(workspace.locale,{timeZone:workspace.timezone})}</Link></li>)}</ul>
    {!reviews.data.length&&<p className="mt-2 text-sm text-muted-foreground">No reviews yet.</p>}

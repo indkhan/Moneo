@@ -68,7 +68,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
    const box=queue().getByRole('checkbox',{name:'Do the same for future entries',exact:false});if(saveRule)await box.check();else await box.uncheck();
    await queue().getByRole('button',{name:/^Apply to \d+$/}).click();await expect(impact().getByRole('heading',{name:/^Applied/})).toBeVisible();
   };
-  const rules=async()=>{const details=page.locator('details').filter({hasText:'Rules ('});if(!await details.evaluate(node=>(node as HTMLDetailsElement).open))await details.locator('summary').click();return details.locator('li').filter({hasText:'cedar cooperative'});};
+  const rules=async()=>{const details=page.locator('details').filter({hasText:'Rules ('});if(!await details.evaluate(node=>(node as HTMLDetailsElement).open))await details.locator('summary').first().click();const disabled=details.locator('details');if(await disabled.count()&&!await disabled.evaluate(node=>(node as HTMLDetailsElement).open))await disabled.locator('summary').click();return details.locator('li').filter({hasText:'cedar cooperative'});};
   await selectCedar();
   await queue().getByRole('button',{name:'Suggest with AI',exact:true}).click();
   await expect(queue().getByRole('status')).toContainText('unavailable');
@@ -109,9 +109,9 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await importCsv('organization-rule-reuse.csv','date,description,amount,id\n2026-09-04,CARD PAYMENT CEDAR COOPERATIVE REF:103,-3.00,cedar-103\n');
   const suggested=()=>cedar().getByRole('button',{name:'Cedar Cooperative · QA Groceries',exact:true});
   await expect(suggested()).toBeVisible();
-  await (await rules()).getByRole('button',{name:'Disable',exact:true}).click();await expect(await rules()).toContainText('(off)');
+  await (await rules()).getByRole('button',{name:'Disable',exact:true}).click();await expect(page.getByText('Disabled (1)')).toBeVisible();
   await expect(suggested()).toHaveCount(0);
-  await (await rules()).getByRole('button',{name:'Enable',exact:true}).click();await expect(await rules()).not.toContainText('(off)');
+  await (await rules()).getByRole('button',{name:'Enable',exact:true}).click();await expect(page.getByText('Disabled (1)')).toHaveCount(0);
   await expect(suggested()).toBeVisible();
   // Using the suggestion selects the entry and fills the bar.
   await suggested().click();await expect(queue().getByRole('combobox',{name:'Category',exact:true})).toHaveValue('QA Groceries');await expect(queue()).toContainText('1 selected');
