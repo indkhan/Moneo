@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b79d01tla</task-id>
+<tool-use-id>toolu_01VbsyyoJfHPBrRxaowDWWkE</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-e3f3c549\517f77c1-a6bd-4507-b776-2df6f4cc1973\tasks\b79d01tla.output</output-file>
+<status>failed</status>
+<summary>Background command "Restart production server" failed with exit code 127</summary>
+</task-notification>
