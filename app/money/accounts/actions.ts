@@ -6,6 +6,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { calendarDate } from "@/lib/finance/calendar";
 import { parseManualAmount } from "@/app/money/transactions/input";
+import { reviewedCoverage } from "@/app/balance-input";
 import { accountTypes } from "./naming";
 import { minorDigits } from "@/lib/finance/fx";
 import { linkOwnTransfers, normalizeIban } from "@/lib/finance/own-transfers";
@@ -42,18 +43,20 @@ export async function undoMoneyMetadata(form: FormData) {
   redirect("/money/accounts");
 }
 
-// Same RPC as Home's manual balance, date-only (no reviewed-activity coverage), returning here.
+// Same RPC and confirmation of today's activity as Home's manual balance, returning here.
 export async function updateBalance(_state: { error?: string }, form: FormData): Promise<{ error?: string }> {
   try {
     const { supabase, workspace } = await requireWorkspace();
     const accountId = z.uuid().parse(form.get("accountId"));
     const asOf = z.iso.date().parse(form.get("asOf"));
-    if (asOf > calendarDate(new Date(), workspace.timezone)) throw new Error("Balance date cannot be in the future");
+    const today = calendarDate(new Date(), workspace.timezone);
+    if (asOf > today) throw new Error("Balance date cannot be in the future");
+    const { reviewed, covered } = reviewedCoverage(form, asOf, today);
     const { data: account } = await supabase.from("accounts").select("currency_code").eq("workspace_id", workspace.id).eq("id", accountId).maybeSingle();
     if (!account) throw new Error("Account not found");
     const { error } = await supabase.rpc("record_manual_balance", {
       p_account_id: accountId, p_amount_minor: parseManualAmount(String(form.get("amount") ?? ""), account.currency_code).toString(),
-      p_date: asOf, p_reviewed: false, p_covered_transactions: null,
+      p_date: asOf, p_reviewed: reviewed, p_covered_transactions: covered,
       p_expected_snapshot_id: z.uuid().nullable().parse(form.get("expectedSnapshotId") || null),
       p_expected_version: z.coerce.number().int().nonnegative().parse(form.get("expectedVersion")),
       p_request_id: z.uuid().parse(form.get("requestId")),

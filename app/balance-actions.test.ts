@@ -43,3 +43,15 @@ it("does not turn yesterday's confirmation into current coverage after midnight"
   await expect(confirmRecordedBalance(f)).rejects.toThrow("only to today's booked balance");
   expect(fixture.rpc).not.toHaveBeenCalled();
 });
+
+it("lets the Accounts balance form confirm today's activity too", async () => {
+  vi.doMock("next/cache", () => ({ revalidatePath: vi.fn() }));
+  const { updateBalance } = await import("./money/accounts/actions");
+  const f = form(true);
+  f.set("coveredTransactions", JSON.stringify([{ id, version: 1, amount_minor: "-100", currency_code: "EUR", posted_on: "2026-10-06", posted_at: null }]));
+  await updateBalance({}, f);
+  expect(fixture.rpc).toHaveBeenCalledWith("record_manual_balance", expect.objectContaining({ p_reviewed: true, p_covered_transactions: [expect.objectContaining({ id })] }));
+  fixture.rpc.mockClear();
+  await updateBalance({}, form(false));
+  expect(fixture.rpc.mock.calls[0][1]).toMatchObject({ p_reviewed: false, p_covered_transactions: null });
+});
