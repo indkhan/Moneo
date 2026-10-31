@@ -1,0 +1,12 @@
+45 transactions need a category
+
+Each choice also teaches a rule, so the next sync sorts these by itself. Every batch can be undone.
+
+Minified React error #441; visit https://react.dev/errors/441 for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+
+
+why this error tell me that
+
+---
+
+sure do that and also find the porblme and fix hat and then push to main
