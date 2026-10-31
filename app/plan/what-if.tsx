@@ -41,7 +41,7 @@ export function WhatIfSection({ scenarios, selected, href, real, scenario, accou
   scenarios: Scenario[]; selected?: Scenario; href: (id?: string) => string; real: Projection; scenario: Projection;
   accounts: { id: string; name: string }[]; currency: string; locale?: string; today: string; horizon: number;
 }) {
-  const tab = (active: boolean) => `inline-flex h-[38px] items-center rounded-[10px] border px-3.5 text-[13px] font-medium ${active ? "border-foreground bg-foreground text-background" : "border-input text-muted-foreground hover:text-foreground"}`;
+  const tab = (active: boolean) => `inline-flex h-11 items-center rounded-[10px] border px-3.5 lg:h-[38px] text-[13px] font-medium ${active ? "border-foreground bg-foreground text-background" : "border-input text-muted-foreground hover:text-foreground"}`;
   return <section id="what-if" className={`${card} scroll-mt-24`} aria-labelledby="what-if-heading">
     <div><p className={eyebrow}>What if</p><h2 id="what-if-heading" className="mt-1 text-sm font-medium">What-if scenarios</h2><p className="mt-1 text-sm text-muted-foreground">Try a change side by side with your real plan. Nothing here touches real accounts.</p></div>
     <nav aria-label="Scenarios" className="flex flex-wrap gap-2"><Link href={href()} className={tab(!selected)}>Real plan</Link>{scenarios.map(item => <Link key={item.id} href={href(item.id)} className={tab(item.id === selected?.id)}>{item.name}</Link>)}</nav>
