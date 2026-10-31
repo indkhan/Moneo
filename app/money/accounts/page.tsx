@@ -43,7 +43,8 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
   const { timezone: timeZone, locale } = workspace;
   const today = calendarDate(evidence.asOf, timeZone);
   const trendFrom = calendarDate(new Date(Date.parse(evidence.asOf) - TREND_DAYS * 86400000), timeZone);
-  const accounts = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, timeZone)
+  // Same balance basis as Overview and Wealth, so the totals match across screens.
+  const accounts = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, timeZone, undefined, { preferLatestRecorded: true })
     .sort((a, b) => a.name.localeCompare(b.name, locale));
   const active = accounts.filter(account => !account.archived_at), archived = accounts.filter(account => account.archived_at);
   const snapshotsByAccount = new Map<string, BalanceSnapshot[]>();
@@ -89,8 +90,8 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
           <Sparkline points={trend} label={`${account.name} recorded balance, last ${TREND_DAYS} days`} />
           <div className="min-w-36 text-right">
             <p className="font-mono text-base font-semibold tabular-nums">{amount === null ? "—" : formatMoney(amount, account.currency_code, locale)}</p>
-            {account.balance.status === "ambiguous" ? null : <p className={`text-xs ${account.balance.status === "missing" ? "text-warning" : "text-muted-foreground"}`}>
-              {label}{asOf ? ` · as of ${asOf}` : ""}</p>}
+            <p className={`text-xs ${account.balance.status === "missing" || account.balance.status === "ambiguous" ? "text-warning" : "text-muted-foreground"}`}>
+              {account.balance.status === "ambiguous" ? `${label} · not in total` : `${label}${asOf ? ` · as of ${asOf}` : ""}`}</p>
           </div>
         </div>
       </div>
