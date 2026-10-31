@@ -50,7 +50,7 @@ it("starts a delegating session seeded with the last ten messages, without cards
   expect(sessionConfig.providerOptions.openai).toMatchObject({ delegation: { type: "client" } });
 });
 it("uses the voice chosen in settings", async () => {
-  vi.mocked(requireWorkspace).mockResolvedValueOnce({ supabase: { from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) }) }, workspace: { id: "workspace" }, settings: { ...DEFAULT_SETTINGS, voice: "cedar" } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
+  vi.mocked(requireWorkspace).mockResolvedValueOnce({ supabase: { from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }), order: () => ({ limit: async () => ({ data: [], error: null }) }) }) }) }) }) }, workspace: { id: "workspace" }, settings: { ...DEFAULT_SETTINGS, voice: "cedar" } } as unknown as Awaited<ReturnType<typeof requireWorkspace>>);
   expect((await POST(request({ sdp: "offer", conversationId }))).status).toBe(200);
   expect(doCreateWebRTCSession.mock.calls[0][0].sessionConfig.voice).toBe("cedar");
 });

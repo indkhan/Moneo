@@ -11,6 +11,7 @@ vi.mock("./insights/panel", () => ({ WeeklyBriefing: () => null, loadInsightEvid
 vi.mock("./agent-briefing", () => ({ AgentBriefing: () => null, loadAgentBriefing: async () => null }));
 vi.mock("./manual-balance-form", () => ({ ManualBalanceForm: () => null }));
 vi.mock("next/link", () => ({ default: "a" }));
+vi.mock("@/components/intent-link", () => ({ IntentLink: "a" }));
 vi.mock("@/lib/finance/tools", () => ({ cashflow: async () => ({ sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07" }, []), unavailable: "Synthetic period" }) }));
 vi.mock("@/lib/finance/wealth", () => ({ loadWealthItems: async () => [], wealthEvidence: () => ({ included: [], missingInputs: [], sourceCoverage: buildSourceCoverage({ from: "2026-10-01", to: "2026-10-07", recordBasis: "manual_wealth" }, []) }) }));
 vi.mock("@/lib/finance/balances", async original => ({ ...await original<typeof import("@/lib/finance/balances")>(), loadBalanceEvidence: async () => ({ accounts: [{ id: "checking", name: "Checking", currency_code: "EUR" }, { id: "savings", name: "Savings", currency_code: "EUR" }], snapshots: [], ledger: [], asOf: "2026-10-07T12:00:00Z" }) }));
