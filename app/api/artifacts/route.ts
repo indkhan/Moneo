@@ -47,9 +47,11 @@ export async function POST(request: Request) {
   }
   const latest = previous[0];
 
+  // The build's data reads share one entity lookup.
+  const shared = {};
   const dataTools = Object.fromEntries(Object.entries(ARTIFACT_SOURCES).map(([source, definition]) => [source, tool({
     description: `${definition.description} Read-only.`, inputSchema: definition.input as z.ZodType<Record<string, unknown>>,
-    execute: input => runArtifactSource(source as ArtifactSource, input, context),
+    execute: input => runArtifactSource(source as ArtifactSource, input, context, shared),
   })]));
   let saved: { title: string; html: string; queries: z.infer<typeof artifactQueriesSchema> } | undefined;
   const save_artifact = tool({
