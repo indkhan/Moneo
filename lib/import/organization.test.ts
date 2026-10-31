@@ -1,5 +1,5 @@
 import {expect, it} from 'vitest';
-import {mergeOrganizationSuggestions, organizationDescriptionKey, organizationProposals} from '@/lib/import/organization';
+import {mergeOrganizationSuggestions, organizationDescriptionKey, organizationDisplayName, organizationProposals} from '@/lib/import/organization';
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const row = (n: number, description = 'CARD PAYMENT NORTHSTAR MARKET REF:93821') => ({id: id(n), version: 1, description, merchantId: null, categoryId: null, kind: 'ordinary' as const, reviewReasons: [], userCorrected: false});
 const history = [1, 2, 3].map(n => ({...row(n, `CARD PAYMENT NORTHSTAR MARKET REF:${n}`), merchantId: id(20), categoryId: id(21)}));
@@ -30,8 +30,8 @@ it('makes user-approved rules take precedence over learned history without chang
   expect(result[0]).not.toHaveProperty('kind');
 });
 it('keeps suggesting once a workspace has saved more than 200 rules', () => {
-  const rules = Array.from({length: 250}, (_, n) => ({id: id(1000 + n), version: 1, descriptionKey: `shop ${n}`, merchantId: null, categoryId: id(23), approvedBy: id(40), enabled: true}));
-  expect(organizationProposals([row(4, 'shop 249')], [], rules)[0]).toMatchObject({categoryId: id(23), basis: 'approved-rule'});
+  const rules = Array.from({length: 250}, (_, n) => ({id: id(1000 + n), version: 1, descriptionKey: `shop ${'abcdefghij'[n % 10]}${'abcdefghijklmnopqrstuvwxyz'[Math.floor(n / 10)]}`, merchantId: null, categoryId: id(23), approvedBy: id(40), enabled: true}));
+  expect(organizationProposals([row(4, 'shop jy')], [], rules)[0]).toMatchObject({categoryId: id(23), basis: 'approved-rule'});
 });
 it('rejects oversized selections and unapproved rule data before suggesting anything', () => {
   expect(() => organizationProposals(Array.from({length: 51}, (_, n) => row(n + 50)), [], [])).toThrow();
@@ -41,6 +41,19 @@ it('preserves meaningful merchant words instead of treating them as transaction 
   expect(organizationDescriptionKey('Orderly Market')).toBe('orderly market');
   expect(organizationDescriptionKey('Payment Labs')).toBe('payment labs');
   expect(organizationDescriptionKey('REFRESH COFFEE')).toBe('refresh coffee');
+});
+it('gives monthly bank payments one key without dates, references, IBANs or SEPA fields', () => {
+  expect(organizationDescriptionKey('TK-BuchNr 04508339262 Monat 12/25 D147735193 Beitraege Techniker Krankenkasse TK-BuchNr 04508339262 Monat 12/25 D 147735193 Beitraege End-to-End-Ref.: 4508339262 Mandatsref: MD710248658 Gläubiger-ID: DE51TK100000031158 SEPA-BASISLASTSCHRIFT wiederholend'))
+    .toBe(organizationDescriptionKey('TK-BuchNr 04508339262 Monat 01/26 D147735194 Beitraege Techniker Krankenkasse End-to-End-Ref.: 4508339263'));
+  expect(organizationDescriptionKey('Ard and netto Mohammed Esam Saleh Halboup COBADEFF DE35590400000523312700 Ard and netto End-to-End-Ref.: MOB.015.EE.POS00073075')).toBe('ard and netto mohammed esam saleh halboup');
+  expect(organizationDescriptionKey('NETTO MARKEN-DISCOU/AM MARKT 1/SAAR 2026-01-29T14:07:06 KFN 0 VJ 2812 Kartenzahlung')).toBe('netto marken discou am markt saar');
+  expect(organizationDescriptionKey('Rossmann 1125')).toBe(organizationDescriptionKey('Rossmann 2816'));
+  expect(organizationDescriptionKey('KAUFLAND SAARBRUECKEN')).toBe('kaufland saarbruecken');
+  expect(organizationDescriptionKey('O2')).toBe('o2');
+});
+it('names a matching key for people instead of showing bank text', () => {
+  expect(organizationDisplayName('netto marken discou am markt saar')).toBe('Netto Marken Discou Am Markt…');
+  expect(organizationDisplayName('rossmann')).toBe('Rossmann');
 });
 it('offers a reviewable description-derived merchant label for unfamiliar rows without inventing categories', () => {
   expect(organizationProposals([row(4)], [], [])[0]).toMatchObject({merchantName: 'northstar market', categoryId: null, basis: 'review-required'});

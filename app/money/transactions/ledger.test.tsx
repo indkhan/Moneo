@@ -6,7 +6,7 @@ import { requireWorkspace } from "@/lib/auth";
 
 vi.mock("@/lib/auth", () => ({ requireWorkspace: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn(), useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
-vi.mock("./actions", () => Object.fromEntries(["bulkEditTransactions", "clearLink", "createManualTransaction", "markRefund", "quickEditTransaction", "splitTransaction", "undoCorrection", "undoTransactionSplits", "undoVerifiedLink", "verifiedLink"].map(name => [name, vi.fn()])));
+vi.mock("./actions", () => Object.fromEntries(["applyCategoryToSimilar", "bulkEditTransactions", "clearLink", "createManualTransaction", "markRefund", "quickEditTransaction", "splitTransaction", "undoCorrection", "undoTransactionSplits", "undoVerifiedLink", "verifiedLink"].map(name => [name, vi.fn()])));
 vi.mock("../views/actions", () => ({ deleteTransactionView: vi.fn(), renameTransactionView: vi.fn(), saveTransactionView: vi.fn(), updateTransactionViewFilters: vi.fn() }));
 vi.mock("./editing-history", () => ({ EditingHistory: () => null }));
 
