@@ -90,8 +90,9 @@ export function UncategorizedSheet({ total }: { total: number }) {
   if (!data) return <p role="status" className="mt-3 text-sm text-muted-foreground">Grouping {total} transactions…</p>;
   const pick = (group: UncategorizedGroup) => chosen[group.key] ?? group.suggested ?? "";
   const apply = (groups: UncategorizedGroup[]) => run(async () => {
-    const { applied } = await categorizeGroups(groups.map(group => ({ rows: group.rows, categoryId: pick(group), key: group.key })));
+    const { applied, error } = await categorizeGroups(groups.map(group => ({ rows: group.rows, categoryId: pick(group), key: group.key })));
     setDone(current => ({ ...current, ...Object.fromEntries(Object.entries(applied).map(([key, count]) => [key, `${count} categorized`])) }));
+    return error;
   });
   const open = data.groups.filter(group => !done[group.key]);
   const suggested = open.filter(group => group.suggested && pick(group) === group.suggested);

@@ -60,15 +60,23 @@ const groupInput = z.object({ rows: z.array(z.object({ id: z.uuid(), version: z.
 /**
  * Categorizes a group through the audited organization review, 50 rows per batch, and saves a rule so later syncs
  * categorize the same description by themselves. Rows a person corrected meanwhile are left alone; each batch can be undone.
+ * A failure comes back as `error` with the groups applied before it, because production hides a thrown action's message.
  */
-export async function categorizeGroups(inputs: z.input<typeof groupInput>[]) {
-  const groups = z.array(groupInput).min(1).max(30).parse(inputs);
+export async function categorizeGroups(inputs: z.input<typeof groupInput>[]): Promise<{ applied: Record<string, number>; error?: string }> {
+  const groups = z.array(groupInput).min(1).max(30).safeParse(inputs);
+  if (!groups.success) return { applied: {}, error: "These transactions could not be categorized. Reload and try again." };
   const context = await requireWorkspace();
   // One request and one refresh for the whole batch: each refresh re-renders Home, which is slow on a phone.
   const applied: Record<string, number> = {};
-  for (const group of groups) applied[group.key] = await categorize(context, group);
-  revalidatePath("/", "layout");
-  return { applied };
+  let error: string | undefined;
+  try {
+    for (const group of groups.data) applied[group.key] = await categorize(context, group);
+  } catch (cause) {
+    console.error("categorizeGroups failed", cause);
+    error = cause instanceof z.ZodError || !(cause instanceof Error) ? "Could not categorize these transactions. Reload and try again." : cause.message;
+  }
+  if (Object.keys(applied).length) revalidatePath("/", "layout");
+  return { applied, error };
 }
 
 async function categorize({ supabase, workspace }: Awaited<ReturnType<typeof requireWorkspace>>, { rows, categoryId, key }: z.infer<typeof groupInput>) {
