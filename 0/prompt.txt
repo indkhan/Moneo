@@ -1,0 +1,31 @@
+**Financial totals don't reconcile across screens — High**
+
+Two independent reproductions:
+
+- Personal account: Overview showed net worth **€3,101.32**, cash/accounts **€2,101.32**. Wealth showed net worth **€3,113.80**, accounts **€2,113.80** — a €12.48 gap. Accounts also showed an aggregate of **€2,077.36** while its three visible account cards summed to **€2,101.32**.
+- Seeded QA account: Accounts showed **−€58.75**; Overview split that into **€0 cash / −€58.75 debt**; Wealth reported **€1,000** in accounts.
+
+Cause found in source: Wealth is deliberately built from dated balance snapshots (`lib/finance/balances.ts`), while Accounts/Overview resolve later ledger activity. The underlying math is intentional per screen, but the summaries don't state their different scope or as-of date, so users cannot safely compare them.
+
+Why not fixed: changing it means either changing financial semantics or adding explicit scope/as-of labeling — a product decision, not a bug fix.
+
+**4. A same-day manual balance can look fully current — Medium**
+
+Saving a €100 balance without confirming the same-day activity listed on the sheet leaves the card showing **€100.00** and "set this minute", with only a generic incomplete-data warning. It never displays an ambiguous/unconfirmed state. Reproduced in a focused rerun.
+
+Why open: the implementation intentionally retains the best-known amount and marks it stale; the question is whether the display adequately warns the user, which needs a design decision.
+
+**5. Mobile tap targets are undersized — Low (UX)**
+
+At a 393×852 viewport, several header icon buttons measure 40×40 CSS px and section tabs are 36 px tall, below the ~44 px touch-target guideline.
+
+**6. Call feature unverified — Unknown**
+
+The Call action immediately showed "Call dropped"/"Not supported" in the preview browser. I could not separate a real app defect from a browser/mic/call capability limit. Needs a real, mic-enabled browser retest.
+
+
+especially the amount being dfferent at different places is a really big problme can you fix it and then cehck everywere money is mentiined and it makes sensse and is correct 
+
+
+
+fix each one of these then check how it also is there for other numbers and then file the pr once everytyhing works
