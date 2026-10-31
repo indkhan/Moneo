@@ -1,0 +1,14 @@
+imagine you are a user and you go throgh the applicaiton one feature after another first importing your stuff and then click on different hting and also click on differnet page and all and switching different pages and all of that it is still slow and can we try to make the chat faster as in call it has to wait and all and whenever u open a page really slow and then coming back is really slow as well and artifact is actually very slow i just see a blank screen also when i add on home page and it starts it is white screen for the artifact and all so takes alot of time 
+
+for each thing find the best industry thing what will improve the quality of the speed the most remove code if you want and add if you want just make each different thing really smooth so that user does not feel really laggy , try to make it really snappy find the most creative and smart ways 
+check each single thing each single thing on the applciaiton that affects and also the call 
+keep doing and ask me if anything and once done give a list of things that before and after time it takes should be really snappy as if they didnt have to wait and make a pr towards main
+
+---
+
+another thing if you think that removing dead code and other things will make it faster and all remove them as well or code that is repeated or 2 different code which almost does the same thing and one can be edited to do both and then that will make it faster do it as well
+
+---
+
+even if it does not make things faster but dead code or duplicated code then remove it
+and do something wheere there is a ui ux problme you can fix that as well
