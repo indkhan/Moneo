@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { Skeleton } from "@/components/skeleton";
+import { cn } from "@/lib/utils";
 
 type Theme = "light" | "dark" | "system";
 
@@ -18,13 +20,17 @@ function readTheme(): Theme {
 const FIT_MIN = 160, FIT_MAX = 560, FIT_START = 320;
 
 /**
- * A sandboxed artifact from its frame route, in the app's current theme. Server pages pass the theme they
- * rendered, so the frame is in the HTML and starts loading before hydration. `fit` sizes it to the page's reported content height.
+ * A sandboxed artifact from its frame route, in the app's current theme. It starts loading once mounted, so it
+ * loads once; a later theme change reloads it. A skeleton covers it until it has loaded.
+ * `fit` sizes it to the page's reported content height.
  */
-export function ArtifactFrame({ src, title, theme: rendered = "system", fit = false, loading, className, style }: { src: string; title: string; theme?: Theme; fit?: boolean; loading?: "lazy"; className?: string; style?: CSSProperties }) {
-  const theme = useSyncExternalStore(subscribeTheme, readTheme, () => rendered);
+export function ArtifactFrame({ src, title, fit = false, loading, className, style }: { src: string; title: string; fit?: boolean; loading?: "lazy"; className?: string; style?: CSSProperties }) {
+  // Null in the server HTML: a streamed page moves its markup into place, and moving a loading iframe restarts it.
+  const theme = useSyncExternalStore(subscribeTheme, readTheme, () => null);
   const frame = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(FIT_START);
+  const url = theme && (theme === "system" ? src : `${src}${src.includes("?") ? "&" : "?"}theme=${theme}`);
+  const [loaded, setLoaded] = useState<string | null>(null);
   useEffect(() => {
     if (!fit) return;
     const onMessage = (event: MessageEvent) => {
@@ -35,9 +41,17 @@ export function ArtifactFrame({ src, title, theme: rendered = "system", fit = fa
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [fit]);
-  const sized = fit ? { height, ...style } : style;
-  return <iframe ref={frame} title={title} sandbox="allow-scripts" loading={loading} src={theme === "system" ? src : `${src}${src.includes("?") ? "&" : "?"}theme=${theme}`}
-    className={`border-0 ${className ?? ""}`} style={{ colorScheme: theme === "system" ? "light dark" : theme, ...sized }} />;
+  const ready = !!url && loaded === url;
+  return <div className={cn("relative", className)} style={fit ? { height, ...style } : style}>
+    <iframe ref={frame} title={title} sandbox="allow-scripts" loading={loading} src={url ?? undefined} onLoad={() => { if (url) setLoaded(url); }}
+      className="size-full border-0" style={{ colorScheme: !theme || theme === "system" ? "light dark" : theme }} />
+    {!ready && <div aria-hidden="true" className="pointer-events-none absolute inset-0 flex flex-col gap-4 overflow-hidden bg-background p-6">
+      <Skeleton className="h-3 w-32" /><Skeleton className="h-8 w-56 max-w-full" />
+      <div className="grid grid-cols-3 gap-3">{[0, 1, 2].map(key => <Skeleton key={key} className="h-20" />)}</div>
+      <Skeleton className="min-h-24 flex-1" />
+    </div>}
+    {!ready && <p role="status" className="sr-only">Loading {title}…</p>}
+  </div>;
 }
 
 const THUMB_WIDTH = 800, THUMB_HEIGHT = 500;
