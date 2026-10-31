@@ -22,7 +22,7 @@ export function WaitingForYouList({ proposals: all, review = { uncategorized: 0,
   const proposals = all.filter(proposal => proposal.kind !== "recurring_edit");
   const count = all.length + review.findings.length + review.uncategorized;
   const present = FILTERS.filter(([key]) => proposals.some(proposal => filterOf(proposal.kind) === key));
-  const chip = (active: boolean) => `h-9 rounded-full border px-3.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai ${active ? "border-foreground bg-foreground text-background" : "border-input text-muted-foreground hover:bg-muted hover:text-foreground"}`;
+  const chip = (active: boolean) => `h-11 rounded-full border px-3.5 lg:h-9 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai ${active ? "border-foreground bg-foreground text-background" : "border-input text-muted-foreground hover:bg-muted hover:text-foreground"}`;
   return <details open aria-label="Waiting for you" className="group">
     <summary className="-mx-1 flex min-h-11 cursor-pointer list-none items-center gap-2.5 rounded-lg px-1 focus-visible:outline-2 focus-visible:outline-ai [&::-webkit-details-marker]:hidden">
       <span className="font-display text-lg font-semibold">Waiting for you</span>

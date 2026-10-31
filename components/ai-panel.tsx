@@ -29,7 +29,7 @@ export function AiPanel() {
   }, [open]);
   return <>
     <button type="button" onClick={() => { setLoaded(true); setOpen(!open); }} aria-expanded={open} aria-haspopup="dialog" aria-controls={loaded ? "moneo-ai-panel" : undefined} aria-label="Ask Moneo" title="Open or close the assistant"
-      className={cn("flex size-10 shrink-0 items-center justify-center rounded-xl border border-input text-ai hover:bg-muted", open && "bg-muted")}><Sparkle className="size-[18px] fill-current" aria-hidden="true" /></button>
+      className={cn("flex size-11 shrink-0 items-center justify-center rounded-xl border border-input text-ai hover:bg-muted", open && "bg-muted")}><Sparkle className="size-[18px] fill-current" aria-hidden="true" /></button>
     {/* Portaled: the sticky header's backdrop blur would otherwise confine the fixed panel. */}
     {loaded && createPortal(<AiPanelDialog open={open} seed={seed} onClose={() => setOpen(false)} />, document.body)}
   </>;

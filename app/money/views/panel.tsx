@@ -21,7 +21,7 @@ export function SavedViewsPanel({ views, activeViewId, activeViewName, saveDefau
 }) {
   const filterInputs = Object.entries(saveDefaults).map(([name, value]) => value !== undefined ? <input key={name} type="hidden" name={name} value={value} /> : null);
   const identity = (view: SavedViewRow) => <><input type="hidden" name="viewId" value={view.id} /><input type="hidden" name="version" value={view.version} /><input type="hidden" name="requestId" value={randomUUID()} /></>;
-  const tab = (active: boolean) => `flex h-9 items-center rounded-[10px] px-3.5 text-[13px] ${active ? "bg-foreground font-medium text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`;
+  const tab = (active: boolean) => `flex h-11 items-center rounded-[10px] px-3.5 lg:h-9 text-[13px] ${active ? "bg-foreground font-medium text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`;
   return <section aria-label="Saved views" className="space-y-2 text-sm">
     <div className="flex flex-wrap items-center gap-1.5 border-b border-border pb-3">
       <h2 className="sr-only">Saved views</h2>
