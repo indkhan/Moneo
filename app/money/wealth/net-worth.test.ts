@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { dayRange, monthEnds, netWorth, netWorthSeries } from "./net-worth";
+import { currentNetWorth, dayRange, monthEnds, netWorth, netWorthSeries } from "./net-worth";
 
 it("lists month ends then today", () => {
   expect(monthEnds("2026-03-15", 3)).toEqual(["2025-12-31", "2026-01-31", "2026-02-28", "2026-03-15"]);
@@ -48,6 +48,24 @@ it("works balances back from the first recorded one through posted transactions,
     ["2026-07-31", true, 50000n],
     ["2026-08-31", true, 30000n],
     ["2026-09-30", true, 30000n],
-    ["2026-10-26", true, 2711n],
+    ["2026-10-26", true, 2211n],
   ]);
+});
+
+it("rolls a recorded balance forward through later posted transactions", () => {
+  const series = netWorthSeries({ dates: ["2026-10-14", "2026-10-15", "2026-10-31"], timeZone: "UTC", accountIds: new Set(["bank"]),
+    snapshots: [{ account_id: "bank", amount_minor: "100000", currency_code: "EUR", as_of: "2026-10-01T00:00:00Z" }], valuations: [], removedOn: new Map(),
+    ledger: [
+      { account_id: "bank", amount_minor: "-105875", currency_code: "EUR", posted_on: "2026-10-15", status: "posted" },
+      { account_id: "bank", amount_minor: "-1", currency_code: "EUR", posted_on: "2026-10-01", status: "posted" },
+      { account_id: "bank", amount_minor: "-999", currency_code: "EUR", posted_on: "2026-10-20", status: "pending" },
+    ] });
+  expect(series.map(point => netWorth(point).get("EUR"))).toEqual([100000n, -5875n, -5875n]);
+});
+
+it("builds today's net worth from resolved balances and current valuations only", () => {
+  const point = currentNetWorth("2026-10-31", [
+    { currency_code: "EUR", balance: { amount_minor: "-5875" } }, { currency_code: "EUR", balance: { amount_minor: "210132" } }, { currency_code: "EUR", balance: { amount_minor: null } },
+  ], [{ amountMinor: 100000n, currencyCode: "EUR", debt: false }, { amountMinor: -20000n, currencyCode: "EUR", debt: true }]);
+  expect([point.accounts.get("EUR"), point.assets.get("EUR"), point.debts.get("EUR"), netWorth(point).get("EUR")]).toEqual([204257n, 100000n, -20000n, 284257n]);
 });

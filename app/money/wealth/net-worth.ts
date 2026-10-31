@@ -23,11 +23,12 @@ export function dayRange(from: string, to: string): string[] {
   return dates;
 }
 
-// Recorded net worth on each date: the latest recorded account balance and the latest standalone
-// valuation dated on or before it. No FX and no interpolation; values carry forward until re-recorded.
+// Recorded net worth on each date: the latest recorded account balance plus the posted transactions after
+// its day, and the latest standalone valuation dated on or before it. No FX and no interpolation.
 // With a ledger, a date before an account's first recorded balance is worked back from that balance by
 // removing the posted transactions after the date, but only from the day before its first posting, since
 // earlier activity is not on record. `known` is false when nothing covers the date.
+// Today's point should come from `currentNetWorth`, which uses the exact resolved balances every screen shows.
 // ponytail: archived accounts are left out (matching Home); include them if history must show closed accounts.
 export function netWorthSeries({ dates, timeZone, accountIds, snapshots, valuations, removedOn, ledger = [] }: {
   dates: string[]; timeZone: string; accountIds: Set<string>; snapshots: Snapshot[]; valuations: Valuation[]; removedOn: Map<string, string>; ledger?: Posting[];
@@ -52,7 +53,8 @@ export function netWorthSeries({ dates, timeZone, accountIds, snapshots, valuati
   return dates.map(date => {
     const point: NetWorthPoint = { date, accounts: new Map(), assets: new Map(), debts: new Map(), known: false };
     const recorded = [...latest(balances, date)];
-    for (const row of recorded) add(point.accounts, row.currency, row.amount);
+    for (const row of recorded) add(point.accounts, row.currency, row.amount + posted.filter(item => item.account_id === row.key && item.currency_code === row.currency && item.posted_on > row.date && item.posted_on <= date)
+      .reduce((sum, item) => sum + BigInt(item.amount_minor), 0n));
     for (const key of accountIds) {
       const first = firstPosted.get(key);
       if (recorded.some(row => row.key === key) || !first || date < dayBefore(first)) continue;
@@ -70,6 +72,17 @@ export function netWorthSeries({ dates, timeZone, accountIds, snapshots, valuati
     point.known = point.accounts.size + point.assets.size + point.debts.size > 0;
     return point;
   });
+}
+
+// Net worth now, from the same inputs as the Overview total: resolved account balances (one without a usable balance
+// is left out, as there) and the valuations that count today.
+export function currentNetWorth(date: string, accounts: { currency_code: string; balance: { amount_minor: string | null } }[],
+  valuations: { amountMinor: bigint; currencyCode: string; debt: boolean }[]): NetWorthPoint {
+  const point: NetWorthPoint = { date, accounts: new Map(), assets: new Map(), debts: new Map(), known: false };
+  for (const account of accounts) if (account.balance.amount_minor !== null) add(point.accounts, account.currency_code, BigInt(account.balance.amount_minor));
+  for (const valuation of valuations) add(valuation.debt ? point.debts : point.assets, valuation.currencyCode, valuation.amountMinor);
+  point.known = point.accounts.size + point.assets.size + point.debts.size > 0;
+  return point;
 }
 
 export function netWorth(point: NetWorthPoint): Map<string, bigint> {
