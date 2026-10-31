@@ -1,3 +1,4 @@
+import { allPages } from "@/lib/all-pages";
 import { z } from "zod";
 import { accountLiquidity, availableToSpend, forecastDaily, withInternalFunding, serializeAccountLiquidity, summarizeCashflow } from "./calculations";
 import { requireWorkspace } from "@/lib/auth";
@@ -40,19 +41,13 @@ export async function cashflow(input: unknown, context?: FinanceContext, canRead
   const { from, to, currencyCode, view, accountIds } = periodInput.parse(input);
   if (from > to) throw new Error("From date is after to date");
   const { supabase, workspace } = context ?? await requireWorkspace();
-  async function loadRows() {
-    const rows = [];
-    for (let offset = 0; ; offset += 1000) {
-      let query = supabase.from("effective_transactions")
-        .select("id, parent_transaction_id, account_id, posted_on, version, amount_minor::text, currency_code, status, kind, review_reasons")
-        .eq("workspace_id", workspace.id).gte("posted_on", from).lte("posted_on", to)
-        .order("id");
-      if (accountIds) query = query.in("account_id", accountIds);
-      const { data, error } = await query.range(offset, offset + 999);
-      if (error) throw error;
-      rows.push(...(data ?? []));
-      if (!data || data.length < 1000) return rows;
-    }
+  function loadRows() {
+    return allPages<{ id: string; parent_transaction_id: string; account_id: string; posted_on: string; version: number; amount_minor: string; currency_code: string; status: string; kind: string; review_reasons: string[] }>((start, end, count) => {
+      const query = supabase.from("effective_transactions")
+        .select("id, parent_transaction_id, account_id, posted_on, version, amount_minor::text, currency_code, status, kind, review_reasons", count ? { count } : undefined)
+        .eq("workspace_id", workspace.id).gte("posted_on", from).lte("posted_on", to);
+      return (accountIds ? query.in("account_id", accountIds) : query).order("id").range(start, end);
+    });
   }
   // Rows, source metadata and rates are independent reads, so they load together.
   const [rows, sourceMetadata, rates] = await Promise.all([loadRows(), loadSourceCoverageMetadata(supabase, workspace.id, canReadImports),

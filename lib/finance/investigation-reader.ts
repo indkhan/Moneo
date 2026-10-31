@@ -7,13 +7,12 @@ import { investigate, investigationIdentity, investigationSchema, resolveInvesti
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
 
 type Context = { supabase: SupabaseClient; workspace: { id: string } };
-const PAGE_SIZE = 500;
 const MAX_ROWS = 100_000;
 
 /** A resource bound is an explicit error, never a silently incomplete result. */
 // `query` builds a fresh ordered query for each page; `count` goes to its select.
 async function allRows<T>(query: (count?: "exact") => { range(from: number, to: number): PromiseLike<{ data: unknown[] | null; error: unknown; count?: number | null }> }): Promise<T[]> {
-  const result = await allPages<T>((from, to, count) => query(count).range(from, to), PAGE_SIZE);
+  const result = await allPages<T>((from, to, count) => query(count).range(from, to));
   if (result.length > MAX_ROWS) throw new Error("Investigation exceeds 100,000 records; narrow its dates or filters");
   return result;
 }
