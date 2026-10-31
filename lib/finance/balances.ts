@@ -46,7 +46,7 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
       estimated_amount_minor: null as string | null, currency_code: account.currency_code,
       snapshot_currency_code: snapshot?.currency_code ?? null, as_of: snapshot?.as_of ?? null,
       evaluated_at: asOf, provenance: snapshot?.provenance ?? null, status: "missing" as "current" | "stale" | "ambiguous" | "missing",
-      warnings: [] as string[], reconciled_rows: 0, snapshot_valid: false };
+      warnings: [] as string[], reconciled_rows: 0, unconfirmed_rows: 0, snapshot_valid: false };
     if (!snapshot) { balance.warnings.push("No dated balance at or before the evaluation time"); return { ...account, balance }; }
     try {
       const amount = exactMinor(snapshot.amount_minor);
@@ -91,7 +91,11 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
             if (row.source_transaction_ids?.includes(snapshot.source_transaction_id)) continue;
             throw new Error("Same-timestamp ledger has no evidenced order relative to the snapshot");
           }
-        } else if (postingDate === boundaryDate && !(row.posted_at && observedDuringDay && Date.parse(row.posted_at) > Date.parse(snapshot.as_of))) continue;
+        } else if (postingDate === boundaryDate && !(row.posted_at && observedDuringDay && Date.parse(row.posted_at) > Date.parse(snapshot.as_of))) {
+          // A balance typed in today without confirming today's postings may or may not include them.
+          if (boundaryDate === today && snapshot.actor_id && (snapshot.boundary_kind ?? "date_only") === "date_only") balance.unconfirmed_rows++;
+          continue;
+        }
         // A date-only balance is that day's closing balance, unless it was observed during the day: then later timed rows still move it.
         if (row.currency_code !== account.currency_code) throw new Error("Ledger currency differs from account currency");
         estimate += delta;
@@ -99,6 +103,7 @@ export function resolveBalances<T extends BalanceAccount>(accounts: T[], snapsho
       }
       balance.estimated_amount_minor = estimate.toString();
       balance.status = boundaryDate === today ? "current" : "stale";
+      if (balance.unconfirmed_rows) balance.warnings.push(`Not confirmed to include today's ${balance.unconfirmed_rows === 1 ? "posting" : `${balance.unconfirmed_rows} postings`}; confirm today's activity when you set the balance`);
       // Older balance plus recorded later activity is still the best known balance; status keeps it labelled.
       balance.amount_minor = estimate.toString();
     } catch (error) {

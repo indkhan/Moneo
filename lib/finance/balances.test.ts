@@ -41,6 +41,14 @@ describe("evidenced account balances", () => {
     expect(resolveBalances(accounts, [dated], [included, later], now)[0].balance).toMatchObject({ amount_minor: "8750", reconciled_rows: 1, status: "current" });
     expect(resolveBalances(accounts, [dated], [included, { ...later, posted_at: dated.as_of }], now)[0].balance?.status).toBe("ambiguous");
   });
+  it("flags a balance typed in today that was not confirmed to include today's postings", () => {
+    const typed = { ...snapshot, as_of: "2026-10-01T11:00:00Z", boundary_kind: "date_only", actor_id: "user" };
+    const earlier = { ...transaction, posted_on: "2026-10-01", posted_at: "2026-10-01T09:00:00Z" };
+    expect(resolveBalances(accounts, [typed], [earlier], now)[0].balance).toMatchObject({ amount_minor: "10000", status: "current", unconfirmed_rows: 1,
+      warnings: ["Not confirmed to include today's posting; confirm today's activity when you set the balance"] });
+    expect(resolveBalances(accounts, [{ ...typed, actor_id: null }], [earlier], now)[0].balance).toMatchObject({ unconfirmed_rows: 0, warnings: [] });
+    expect(resolveBalances(accounts, [typed], [], now)[0].balance).toMatchObject({ unconfirmed_rows: 0, warnings: [] });
+  });
   it("labels old snapshots stale, uses them plus reconciled only later posted dates", () => {
     const [balance] = resolveBalances(accounts, [snapshot], [transaction,
       { ...transaction, id: "pending", status: "pending", amount_minor: "-500" },
