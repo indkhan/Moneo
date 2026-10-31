@@ -1,5 +1,8 @@
 # Backlog
 
+## Durable chat and artifact generation
+Chat replies and artifact builds currently run inside the browser's API request, so navigating away or reloading can interrupt work before it is saved. Move generation into durable workflows, persist running/completed/failed state and results, and let the UI reconnect to progress and display finished results when the user returns. Preserve chat tool side effects and approval behavior; decide how to reconnect or replace live chat streaming.
+
 ## Multi-currency on Home
 Home is built for one currency (the workspace display currency) for now.
 - Recorded net worth by currency: Home used to list each currency's recorded total and the observations behind it (removed with the redesign; the Wealth page still shows net worth per currency).
