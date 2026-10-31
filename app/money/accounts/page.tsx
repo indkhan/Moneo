@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { randomUUID } from "node:crypto";
 import { requireWorkspace } from "@/lib/auth";
-import { loadBalanceEvidence, resolveBalances, type BalanceSnapshot } from "@/lib/finance/balances";
+import { balanceReviewRows, loadBalanceEvidence, resolveBalances, type BalanceSnapshot } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatInputAmount, formatMoney } from "@/lib/finance/format";
 import { addAccount, undoBalance, undoMoneyMetadata } from "./actions";
@@ -43,9 +43,11 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
   const { timezone: timeZone, locale } = workspace;
   const today = calendarDate(evidence.asOf, timeZone);
   const trendFrom = calendarDate(new Date(Date.parse(evidence.asOf) - TREND_DAYS * 86400000), timeZone);
-  const accounts = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, timeZone)
+  // Same balance basis as Overview and Wealth, so the totals match across screens.
+  const accounts = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, timeZone, undefined, { preferLatestRecorded: true })
     .sort((a, b) => a.name.localeCompare(b.name, locale));
   const active = accounts.filter(account => !account.archived_at), archived = accounts.filter(account => account.archived_at);
+  const descriptions = new Map(evidence.ledger.map(row => [row.id, row.description]));
   const snapshotsByAccount = new Map<string, BalanceSnapshot[]>();
   for (const snapshot of evidence.snapshots) snapshotsByAccount.set(snapshot.account_id, [...(snapshotsByAccount.get(snapshot.account_id) ?? []), snapshot]);
 
@@ -89,19 +91,22 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
           <Sparkline points={trend} label={`${account.name} recorded balance, last ${TREND_DAYS} days`} />
           <div className="min-w-36 text-right">
             <p className="font-mono text-base font-semibold tabular-nums">{amount === null ? "—" : formatMoney(amount, account.currency_code, locale)}</p>
-            {account.balance.status === "ambiguous" ? null : <p className={`text-xs ${account.balance.status === "missing" ? "text-warning" : "text-muted-foreground"}`}>
-              {label}{asOf ? ` · as of ${asOf}` : ""}</p>}
+            <p className={`text-xs ${account.balance.status === "missing" || account.balance.status === "ambiguous" ? "text-warning" : "text-muted-foreground"}`}>
+              {account.balance.status === "ambiguous" ? `${label} · not in total` : `${label}${asOf ? ` · as of ${asOf}` : ""}`}</p>
           </div>
         </div>
       </div>
       {account.balance.status === "stale" ? <p className="mt-2 px-2 text-xs text-muted-foreground">Last recorded balance plus later activity; update it to confirm.</p> : null}
+      {account.balance.unconfirmed_rows ? <p className="mt-2 px-2 text-xs text-warning">{account.balance.warnings.at(-1)}.</p> : null}
       {suggestion ? <div className="mt-2 px-2"><RenameSuggestion account={{ id: account.id, name: account.name, type: account.type ?? "checking", version: account.version ?? 1, archived_at: account.archived_at ?? null }} suggestion={suggestion} requestId={randomUUID()} /></div> : null}
       {!account.archived_at && !synced.has(JSON.stringify([account.name, account.currency_code])) ? <details className="mt-2 px-2 text-sm" open={account.balance.status === "missing" && active.length === 1}>
         <summary className="cursor-pointer text-xs font-medium text-brand">Update balance</summary>
         <div className="mt-3 space-y-3">
           <BalanceForm accountId={account.id} name={account.name} currency={account.currency_code} today={today} requestId={randomUUID()}
             expectedSnapshotId={latest?.id ?? ""} expectedVersion={latest?.version ?? 0}
-            placeholder={amount !== null ? formatInputAmount(amount, account.currency_code) : "0.00"} />
+            placeholder={amount !== null ? formatInputAmount(amount, account.currency_code) : "0.00"}
+            review={balanceReviewRows(evidence.ledger, account.id, evidence.asOf, timeZone).map(covered => ({ id: covered.id, covered,
+              label: `${descriptions.get(covered.id) ?? "Recorded posting"} · ${formatMoney(covered.amount_minor, covered.currency_code, locale)}` }))} />
           <p className="text-xs text-muted-foreground">The booked balance your bank shows. Earlier balances stay in history.</p>
           {manual.length ? <ul className="divide-y divide-border text-xs">{manual.map(snapshot => <li key={snapshot.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
             <span className={snapshot.undone_at ? "text-muted-foreground line-through" : ""}>{formatMoney(snapshot.amount_minor, snapshot.currency_code, locale)} · as of {calendarDate(snapshot.as_of, timeZone)}{snapshot.boundary_kind === "reviewed_activity" ? " · activity reviewed" : ""}</span>

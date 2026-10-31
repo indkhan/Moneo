@@ -37,8 +37,9 @@ export function RenameSuggestion({ account, suggestion, requestId }: { account: 
   </form>;
 }
 
-export function BalanceForm({ accountId, name, currency, today, expectedSnapshotId, expectedVersion, requestId, placeholder }: {
+export function BalanceForm({ accountId, name, currency, today, expectedSnapshotId, expectedVersion, requestId, placeholder, review = [] }: {
   accountId: string; name: string; currency: string; today: string; expectedSnapshotId: string; expectedVersion: number; requestId: string; placeholder: string;
+  review?: { id: string; label: string; covered: unknown }[];
 }) {
   const [state, action, pending] = useActionState(updateBalance, {});
   return <form action={action} className="flex flex-wrap items-end gap-2">
@@ -49,6 +50,12 @@ export function BalanceForm({ accountId, name, currency, today, expectedSnapshot
     <label className="grid gap-1 text-xs text-muted-foreground">As of
       <input name="asOf" type="date" required defaultValue={today} max={today} aria-label="Balance as of" className={`${field} text-foreground`} /></label>
     <button disabled={pending} className="min-h-9 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">Save balance</button>
+    {review.length ? <details className="w-full text-xs" open>
+      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Today&apos;s activity ({review.length})</summary>
+      <input type="hidden" name="coveredTransactions" value={JSON.stringify(review.map(row => row.covered))} />
+      <ul className="mt-2 max-h-40 divide-y divide-border overflow-auto">{review.map(row => <li key={row.id} className="py-1">{row.label}</li>)}</ul>
+      <label className="mt-2 flex items-start gap-2"><input type="checkbox" name="reviewedActivity" className="mt-0.5" /><span>For today&apos;s balance: it includes all {review.length} postings listed.</span></label>
+    </details> : null}
     <ErrorText error={state.error} />
   </form>;
 }

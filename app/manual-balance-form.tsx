@@ -51,7 +51,7 @@ export function ManualBalanceForm({ account, snapshots, ledger, asOf, timeZone, 
       <input name="amount" required placeholder="Booked balance" aria-label={`${account.name} balance`} className="min-h-10 w-32 rounded-lg border border-border bg-card px-3 py-2 text-sm" />
       <input name="asOf" required type="date" defaultValue={today} max={today} aria-label="Balance as of" className="min-h-10 min-w-0 rounded-lg border border-border bg-card px-3 py-2 text-sm" />
       <button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">Save</button>
-      <details className="w-full">
+      <details className="w-full" open={balance.unconfirmed_rows > 0}>
         <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Confirm today&apos;s activity ({review.length})</summary>
         <p className="mt-3 text-muted-foreground">Tick the box below if your bank&apos;s booked balance includes every posting listed here.</p>
         <ul className="mt-3 max-h-60 divide-y divide-border overflow-auto">

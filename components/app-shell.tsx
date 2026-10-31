@@ -157,13 +157,13 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
           <div className="ml-auto flex items-center gap-2">
             <AiPanel />
             <Link href={notificationsItem.href} aria-label="Notifications" aria-current={current === notificationsItem ? "page" : undefined}
-              className={cn("flex size-10 items-center justify-center rounded-xl border border-input hover:bg-muted", current === notificationsItem && "bg-muted")}><Bell className="size-[18px]" strokeWidth={1.6} aria-hidden="true" /></Link>
-            <Link href={settingsItem.href} aria-label="Settings" className="flex size-10 items-center justify-center rounded-full bg-input text-muted-foreground hover:text-foreground lg:hidden"><SlidersHorizontal className="size-[18px]" aria-hidden="true" /></Link>
+              className={cn("flex size-11 items-center justify-center rounded-xl border border-input hover:bg-muted", current === notificationsItem && "bg-muted")}><Bell className="size-[18px]" strokeWidth={1.6} aria-hidden="true" /></Link>
+            <Link href={settingsItem.href} aria-label="Settings" className="flex size-11 items-center justify-center rounded-full bg-input text-muted-foreground hover:text-foreground lg:hidden"><SlidersHorizontal className="size-[18px]" aria-hidden="true" /></Link>
           </div>
         </div>
         {section?.items && <nav aria-label={section.label} className="scrollbar-none flex gap-1 overflow-x-auto px-4 pb-3 sm:px-6 lg:px-8">
           {section.items.map(item => <IntentLink key={item.href} href={item.href} aria-current={current === item ? "page" : undefined}
-            className={cn("flex h-9 shrink-0 items-center gap-2 rounded-[10px] px-3.5 text-[13px]", current === item ? "bg-foreground font-medium text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
+            className={cn("flex h-11 shrink-0 items-center gap-2 rounded-[10px] lg:h-9 px-3.5 text-[13px]", current === item ? "bg-foreground font-medium text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
             {item.label}<Suspense><Count shell={shell} hrefs={[item.href]} /></Suspense>
           </IntentLink>)}
         </nav>}

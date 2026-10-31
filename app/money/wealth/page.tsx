@@ -2,26 +2,17 @@ import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireWorkspace } from "@/lib/auth";
 import { calendarDate } from "@/lib/finance/calendar";
-import { currentOn, debtPayments, loadWealthItems, type WealthItem } from "@/lib/finance/wealth";
+import { currentOn, debtPayments, loadWealthItems, wealthEvidence, type WealthItem } from "@/lib/finance/wealth";
+import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { formatMoney as formatCurrency } from "@/lib/finance/format";
 import { SourceCoverageDetails } from "@/app/source-coverage";
 import { Sparkline } from "@/app/money/accounts/sparkline";
 import { WealthForm } from "./form";
 import { removeWealthItem, undoWealthEvent } from "./actions";
-import { loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./net-worth";
+import { currentNetWorth, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./net-worth";
 
 const MONTHS = 12;
 const sections = [["holding", "Investments"], ["asset", "Assets"], ["debt", "Debts"]] as const;
-
-async function all<T>(query: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>): Promise<T[]> {
-  const rows: T[] = [];
-  for (let offset = 0; ; offset += 1000) {
-    const { data, error } = await query(offset, offset + 999);
-    if (error) throw error;
-    rows.push(...(data ?? []) as T[]);
-    if (!data || data.length < 1000) return rows;
-  }
-}
 
 function sum(items: WealthItem[]) {
   const totals = new Map<string, bigint>();
@@ -36,13 +27,13 @@ export default async function WealthPage() {
   const db = supabase as SupabaseClient;
   const formatMoney = (amount: Parameters<typeof formatCurrency>[0], currency: string) => formatCurrency(amount, currency, workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);
-  const [items, accounts, assumptions, pending, events, snapshots] = await Promise.all([
+  const [items, accounts, assumptions, pending, events, evidence] = await Promise.all([
     loadWealthItems(supabase, workspace.id, true),
     supabase.from("accounts").select("id, name, type, currency_code, archived_at").eq("workspace_id", workspace.id).order("name"),
     supabase.from("financial_assumptions").select("id, name, amount_minor::text, currency_code, starts_on").eq("workspace_id", workspace.id).eq("confirmed", true).eq("enabled", true).eq("cadence", "monthly").is("removed_at", null).order("name"),
     supabase.from("transactions").select("id, description, amount_minor::text, currency_code, posted_on").eq("workspace_id", workspace.id).eq("status", "pending").order("posted_on", { ascending: false }).limit(100),
     loadWealthEvents(db, workspace.id),
-    all<{ account_id: string; amount_minor: string; currency_code: string; as_of: string; undone_at: string | null }>((from, to) => db.from("balance_snapshots").select("account_id, amount_minor::text, currency_code, as_of, undone_at").eq("workspace_id", workspace.id).order("id").range(from, to)),
+    loadBalanceEvidence(db, workspace.id),
   ]);
   for (const result of [accounts, assumptions, pending]) if (result.error) throw result.error;
   const active = items.filter(item => !item.removed_at);
@@ -51,9 +42,13 @@ export default async function WealthPage() {
   const itemById = new Map(items.map(item => [item.id, item]));
 
   const series = netWorthSeries({ dates: monthEnds(today, MONTHS), timeZone: workspace.timezone,
-    accountIds: new Set((accounts.data ?? []).filter(account => !account.archived_at).map(account => account.id)), snapshots, valuations: valuationHistory(events, items),
-    removedOn: removedOn(items, workspace.timezone) });
-  const now = series.at(-1)!;
+    accountIds: new Set((accounts.data ?? []).filter(account => !account.archived_at).map(account => account.id)), snapshots: evidence.snapshots, ledger: evidence.ledger,
+    valuations: valuationHistory(events, items), removedOn: removedOn(items, workspace.timezone) });
+  // Today uses the balances Accounts and Overview show and only valuations that count today, so the totals match theirs.
+  const resolved = resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone, undefined, { preferLatestRecorded: true }).filter(account => !account.archived_at);
+  const now = currentNetWorth(today, resolved, wealthEvidence(active, today).included.map(valuation => ({ ...valuation, debt: itemById.get(valuation.id)?.kind === "debt" })));
+  series[series.length - 1] = now;
+  const unbalanced = resolved.filter(account => account.balance.amount_minor === null).length;
   const totals = netWorth(now);
   const currencies = [...totals.keys()].sort((a, b) => Number(b === workspace.display_currency) - Number(a === workspace.display_currency) || a.localeCompare(b));
   const dated = active.filter(item => !item.linked_account_id && !currentOn(item, today)).length;
@@ -73,7 +68,7 @@ export default async function WealthPage() {
           points={series.map(point => ({ date: point.date, value: netWorth(point).get(currency) ?? 0n }))} />
         <p className="mt-1 flex justify-between text-xs text-muted-foreground"><span>{series[0].date}</span><span>{today}</span></p>
       </div>) : <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No recorded balances or valuations yet.</p>}
-      <p className="text-xs text-muted-foreground">Latest recorded values per currency, carried forward; no exchange rates. Values inside an account balance aren’t counted twice.{dated > 0 ? ` ${dated} valuation${dated === 1 ? " is" : "s are"} dated before today and left out of current net worth.` : ""}</p>
+      <p className="text-xs text-muted-foreground">Per currency, no exchange rates. Accounts are the balances shown on Accounts, including activity recorded since each balance was set; earlier months use the balances recorded then. Values inside an account balance aren’t counted twice.{unbalanced > 0 ? ` ${unbalanced} account${unbalanced === 1 ? " has" : "s have"} no usable balance and ${unbalanced === 1 ? "is" : "are"} left out.` : ""}{dated > 0 ? ` ${dated} valuation${dated === 1 ? " is" : "s are"} dated before today and left out of current net worth.` : ""}</p>
     </section>
 
     <section aria-label="Add wealth" className="flex flex-wrap gap-2">{sections.map(([kind, title]) => <details key={kind} className="group rounded-lg border border-border bg-card open:basis-full open:p-5"><summary className="cursor-pointer px-3 py-1.5 text-sm font-medium group-open:p-0">Add {kind === "holding" ? "investment" : kind}<span className="sr-only"> ({title})</span></summary><WealthForm kind={kind} {...choices} /></details>)}</section>

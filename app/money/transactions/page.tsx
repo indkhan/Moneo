@@ -151,7 +151,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             <nav aria-label="Group by" className="flex items-center gap-1 text-xs"><span className="text-muted-foreground">Group</span>
               {GROUPS.map(option => <Link key={option.value} scroll={false} aria-current={(filters.group ?? "") === option.value ? "true" : undefined}
                 href={withParams(viewBase, { group: option.value || null, cursor: null })}
-                className={`rounded-md px-2 py-1 max-lg:whitespace-nowrap ${(filters.group ?? "") === option.value ? "bg-muted font-medium" : "text-muted-foreground hover:bg-muted"}`}>{option.label}</Link>)}
+                className={`inline-flex min-h-11 items-center rounded-md px-2 py-1 max-lg:whitespace-nowrap lg:min-h-0 ${(filters.group ?? "") === option.value ? "bg-muted font-medium" : "text-muted-foreground hover:bg-muted"}`}>{option.label}</Link>)}
             </nav>
           </div>
         </div>

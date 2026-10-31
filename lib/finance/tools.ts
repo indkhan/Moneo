@@ -31,7 +31,8 @@ export async function listAccounts(context?: FinanceContext) {
 export async function getBalances(context?: FinanceContext, canReadImports = true, retainSupport = false) {
   const { supabase, workspace } = context ?? await requireWorkspace();
   const [evidence, sourceMetadata] = await Promise.all([loadBalanceEvidence(supabase, workspace.id), loadSourceCoverageMetadata(supabase, workspace.id, canReadImports)]);
-  return resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone, sourceMetadata).map(account => retainSupport ? { ...account,
+  // Same basis as Overview, Accounts and Wealth, so chat quotes the balances the screens show.
+  return resolveBalances(evidence.accounts, evidence.snapshots, evidence.ledger, evidence.asOf, workspace.timezone, sourceMetadata, { preferLatestRecorded: true }).map(account => retainSupport ? { ...account,
     calculationEvidence: { snapshots: evidence.snapshots.filter(snapshot => snapshot.account_id === account.id), ledger: evidence.ledger.filter(row => row.account_id === account.id) } } : account);
 }
 

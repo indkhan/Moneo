@@ -23,8 +23,9 @@ import { RecurringDetection, WaitingForYou, detectRecurring, loadReview, loadWai
 import { loadPriceChanges } from "@/lib/finance/price-changes";
 import { loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
-import { dayRange, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
+import { currentNetWorth, dayRange, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
 import { NetWorthChart } from "./net-worth-chart";
+import { shownBalance } from "./money/accounts/history";
 import { LayoutGrid, Phone, Sparkle } from "lucide-react";
 
 // Six columns: a wide card pairs with a narrow one and half cards pair up; dense flow fills the gaps whatever order the layout picks.
@@ -95,16 +96,16 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const missingInputs: string[] = [];
   let netWorthMinor = 0n;
   let convertedCount = 0;
-  // Split by sign for the hero: positive accounts, positive valuations, and everything owed.
+  // Split by source, as on Wealth: every account balance (overdrawn ones too), assets and investments, and debts.
   const parts = { cash: 0n, assets: 0n, debts: 0n };
-  const addConverted = (amountMinor: bigint, from: string, asOf: string, source: string, name: string, part: "cash" | "assets") => {
+  const addConverted = (amountMinor: bigint, from: string, asOf: string, source: string, name: string, part: keyof typeof parts) => {
     const rate = from === displayCurrency ? undefined : fxRates.find(row => row.from_currency === from && String(row.rate_date).slice(0, 10) <= asOf);
     try {
       const result = convertFx({ amountMinor, from, to: displayCurrency, rate: rate?.rate_text, source: rate?.source ?? source, date: rate ? String(rate.rate_date).slice(0, 10) : asOf });
       if (result.status === "available") {
         const converted = result.converted.amountMinor;
         netWorthMinor += converted; convertedCount += 1;
-        parts[converted < 0n ? "debts" : part] += converted;
+        parts[part] += converted;
       }
       else missingInputs.push(...result.missingInputs.map(input => `${input} for ${name}`));
     } catch {
@@ -118,13 +119,16 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   }
   const valuations = wealthEvidence(wealthItems, today);
   missingInputs.push(...valuations.missingInputs);
-  for (const valuation of valuations.included) addConverted(valuation.amountMinor, valuation.currencyCode, valuation.asOf, valuation.provenance, valuation.name, "assets");
+  const kinds = new Map(wealthItems.map(item => [item.id, item.kind]));
+  for (const valuation of valuations.included) addConverted(valuation.amountMinor, valuation.currencyCode, valuation.asOf, valuation.provenance, valuation.name, kinds.get(valuation.id) === "debt" ? "debts" : "assets");
   const missing = describeMissingInputs(missingInputs);
 
   // Daily net worth over the last year for the chart (hover any day) and the month-end "this month" change; display currency only for now (see BACKLOG.md).
-  const trend = netWorthSeries({ dates: dayRange(monthEnds(today, 12)[0], today), timeZone: workspace.timezone, accountIds: new Set(accounts.map(account => account.id)),
-    snapshots: balanceEvidence.snapshots, valuations: valuationHistory(wealthEvents, allWealth), removedOn: removedOn(allWealth, workspace.timezone), ledger: balanceEvidence.ledger })
-    .filter(point => point.known).map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n }));
+  const series = netWorthSeries({ dates: dayRange(monthEnds(today, 12)[0], today), timeZone: workspace.timezone, accountIds: new Set(accounts.map(account => account.id)),
+    snapshots: balanceEvidence.snapshots, valuations: valuationHistory(wealthEvents, allWealth), removedOn: removedOn(allWealth, workspace.timezone), ledger: balanceEvidence.ledger });
+  // Today's point is the headline's own inputs, so the chart ends on the number above it.
+  series[series.length - 1] = currentNetWorth(today, accounts, valuations.included.map(valuation => ({ ...valuation, debt: kinds.get(valuation.id) === "debt" })));
+  const trend = series.filter(point => point.known).map(point => ({ date: point.date, value: netWorth(point).get(displayCurrency) ?? 0n }));
   // The change needs last month's end on record; without it there is nothing to compare with.
   const monthBase = trend.find(point => point.date === monthEnds(today, 1)[0])?.value ?? null;
   const monthChange = monthBase === null ? 0n : trend.at(-1)!.value - monthBase;
@@ -169,7 +173,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
             points={trend.map(point => ({ date: point.date, label: point.date === today ? `Today, ${fullDate(today)}` : fullDate(point.date), amount: money(point.value, displayCurrency), y: Number(point.value) }))} />
           <p className="mt-2 flex justify-between font-mono text-[11px] text-subtle"><span>{monthLabel(trend[0].date)}</span>{trend.length > 2 && <span>{monthLabel(trend[Math.floor(trend.length / 2)].date)}</span>}<span>{monthLabel(today)}</span></p></div>}
         {convertedCount > 0 && <dl className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] bg-border sm:grid-cols-3">
-          {([["Cash & accounts", parts.cash, "/money/accounts"], ["Assets", parts.assets, "/money/wealth"], ["Debts", parts.debts, "/money/wealth"]] as const).map(([label, amount, href]) =>
+          {([["Accounts", parts.cash, "/money/accounts"], ["Investments & assets", parts.assets, "/money/wealth"], ["Debts", parts.debts, "/money/wealth"]] as const).map(([label, amount, href]) =>
             <div key={label} className="bg-card"><Link href={href} className="flex flex-col gap-1 px-4 py-3.5 hover:bg-muted"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-mono">{money(amount, displayCurrency)}</dd></Link></div>)}
         </dl>}
       </div>
@@ -190,10 +194,10 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
       <ul className="mt-3 divide-y divide-border border-t border-border">{accounts.map(account => { const { balance } = account; const isSynced = synced.has(JSON.stringify([account.name, account.currency_code])); return <li key={account.id}><article className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
         <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-semibold">{account.name.trim().charAt(0).toUpperCase()}</span>
         <div className="min-w-0 flex-1"><h3 className="truncate text-sm font-medium">{account.name}</h3><p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground"><span className="rounded border border-input px-1 font-mono text-[9px] uppercase">{isSynced ? "Bank" : "Manual"}</span>{balance.as_of ? `${isSynced ? "synced" : "set"} ${ago(balance.as_of)}` : "Add a dated balance"}</p></div>
-        <p className="font-mono text-sm">{balance.snapshot_amount_minor !== null ? money(balance.snapshot_amount_minor, balance.snapshot_currency_code!) : "Balance unknown"}</p>
+        {(({ amount, label }) => <p className="text-right font-mono text-sm">{amount !== null ? money(amount, account.currency_code) : "Balance unknown"}{label !== "Current" && amount !== null && <span className="block font-sans text-[11px] text-muted-foreground">{balance.amount_minor === null ? `${label} · not in total` : label}</span>}</p>)(shownBalance(balance))}
         {!isSynced && <details className="w-full [&:not([open])]:-mt-1"><summary className="cursor-pointer text-xs font-medium text-brand hover:underline">Update balance</summary><div className="mt-2 rounded-lg border border-border p-3"><ManualBalanceForm account={account} snapshots={balanceEvidence.snapshots} ledger={balanceEvidence.ledger} asOf={balanceEvidence.asOf} timeZone={workspace.timezone} locale={locale} /></div></details>}
         {balance.warnings.length > 0 && <p className="w-full text-xs text-warning">{balance.warnings.join("; ")}</p>}
-        {balance.status === "stale" && balance.estimated_amount_minor !== null && <p className="w-full text-xs text-muted-foreground">Recent activity suggests about {money(balance.estimated_amount_minor, balance.currency_code)}. Update the balance to confirm.</p>}
+        {balance.status === "stale" && balance.snapshot_amount_minor !== null && <p className="w-full text-xs text-muted-foreground">Last set to {money(balance.snapshot_amount_minor, balance.currency_code)}, plus activity recorded since. Update the balance to confirm.</p>}
       </article></li>; })}</ul>
     </section>,
     upcoming: <section aria-labelledby="home-upcoming" className={card}>

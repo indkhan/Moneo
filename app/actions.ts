@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { parseManualAmount } from "@/app/money/transactions/input";
 import { calendarDate } from "@/lib/finance/calendar";
+import { reviewedCoverage } from "./balance-input";
 
 export async function setManualBalance(form: FormData) {
   const { supabase, workspace } = await requireWorkspace();
@@ -17,12 +18,7 @@ export async function setManualBalance(form: FormData) {
     .eq("workspace_id", workspace.id).eq("id", accountId).maybeSingle();
   if (!account) throw new Error("Account not found");
   const amount = parseManualAmount(String(form.get("amount") ?? ""), account.currency_code);
-  const reviewed = form.get("reviewedActivity") === "on";
-  if (reviewed && asOf !== today) throw new Error("Reviewed activity applies only to today's booked balance");
-  const covered = reviewed ? z.array(z.object({ id: z.uuid(), version: z.number().int().nonnegative(),
-    amount_minor: z.string().regex(/^-?\d+$/), currency_code: z.string().regex(/^[A-Z]{3}$/),
-    posted_on: z.iso.date(), posted_at: z.iso.datetime({ offset: true }).nullable(),
-  }).strict()).max(5000).parse(JSON.parse(z.string().max(2_000_000).parse(form.get("coveredTransactions")))) : null;
+  const { reviewed, covered } = reviewedCoverage(form, asOf, today);
   const { error } = await supabase.rpc("record_manual_balance", {
     p_account_id: accountId, p_amount_minor: amount.toString(), p_date: asOf, p_reviewed: reviewed,
     p_covered_transactions: covered, p_expected_snapshot_id: z.uuid().nullable().parse(form.get("expectedSnapshotId") || null),

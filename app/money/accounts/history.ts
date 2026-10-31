@@ -2,7 +2,7 @@ import type { BalanceSnapshot, resolveBalances } from "@/lib/finance/balances";
 
 // The one number to show per account, with an honest label for how it was derived.
 export function shownBalance(balance: ReturnType<typeof resolveBalances>[number]["balance"]) {
-  if (balance.status === "current") return { amount: balance.amount_minor, label: "Current" };
+  if (balance.status === "current") return { amount: balance.amount_minor, label: balance.unconfirmed_rows ? "Unconfirmed" : "Current" };
   if (balance.status === "stale") return { amount: balance.estimated_amount_minor, label: "Estimated" };
   if (balance.status === "ambiguous") return { amount: balance.snapshot_amount_minor, label: "Needs review" };
   return { amount: null, label: "No balance yet" };

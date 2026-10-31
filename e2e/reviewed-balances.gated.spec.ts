@@ -43,15 +43,14 @@ test("explicit booked-balance review covers timestamped and date-only activity, 
     await card.getByText("Update balance", { exact: true }).click();
     await card.getByLabel("Synthetic reviewed cash balance", { exact: true }).fill("100.00");
     await card.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(async () => { await page.reload(); await expect(card).toContainText("ambiguous"); }).toPass({ timeout: 30_000 });
+    await expect(async () => { await page.reload(); await expect(card).toContainText("Unconfirmed"); }).toPass({ timeout: 30_000 });
     await card.getByText("Update balance", { exact: true }).click();
-    await card.getByText(/Confirm today's activity/).click();
     await expect(card).toContainText("Synthetic morning posting");
     await expect(card).toContainText("Synthetic date-only posting");
     await card.getByLabel(/I checked today's booked balance/).check();
     await card.getByLabel("Synthetic reviewed cash balance", { exact: true }).fill("100.00");
     await card.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(async () => { await page.reload(); await expect(card).toContainText("current"); }).toPass({ timeout: 30_000 });
+    await expect(async () => { await page.reload(); await expect(card).not.toContainText("Unconfirmed"); }).toPass({ timeout: 30_000 });
     async function cash() {
       // SQL fixtures use the database clock; local Node time can lag behind a new posting.
       const [{ as_of: asOf }] = await db`select clock_timestamp()::text as as_of`;
@@ -66,7 +65,7 @@ test("explicit booked-balance review covers timestamped and date-only activity, 
     await card.getByText("Update balance", { exact: true }).click();
     await card.getByText("Manual balance history and undo", { exact: true }).click();
     await card.getByRole("button", { name: "Undo balance", exact: true }).first().click();
-    await expect(async () => { await page.reload(); await expect(card).toContainText("ambiguous"); }).toPass({ timeout: 30_000 });
+    await expect(async () => { await page.reload(); await expect(card).toContainText("Unconfirmed"); }).toPass({ timeout: 30_000 });
     const history = await db`select boundary_kind,undone_at,covered_transactions from public.balance_snapshots where account_id=${account} order by created_at desc`;
     expect(history).toHaveLength(2); expect(history[0].undone_at).not.toBeNull(); expect(history[0].covered_transactions).toHaveLength(2);
     expect((await db`select count(*)::integer count from public.transactions where account_id=${account}`)[0].count).toBe(3);

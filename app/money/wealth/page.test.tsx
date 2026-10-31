@@ -9,6 +9,7 @@ const tables: Record<string, unknown[]> = {
   wealth_items: [item("fund", "holding", "Index fund", "2000", "2026-10-16"), item("loan", "debt", "Car loan", "-1500", "2026-05-01")],
   wealth_events: [{ id: "e1", item_id: "fund", before: null, after: item("fund", "holding", "Index fund", "1000", "2026-06-01"), created_at: "2026-06-01T00:00:00Z", undone_at: null }],
   balance_snapshots: [{ account_id: "acc", amount_minor: "5000", currency_code: "EUR", as_of: "2026-04-01T00:00:00Z", undone_at: null }],
+  transactions: [{ id: "t1", account_id: "acc", amount_minor: "-1000", currency_code: "EUR", posted_on: "2026-10-10", posted_at: null, status: "posted", version: 1 }],
   accounts: [{ id: "acc", name: "Checking", type: "checking", currency_code: "EUR", archived_at: null }],
 };
 const query = (data: unknown[]) => { const q = { select: () => q, eq: () => q, is: () => q, order: () => q, limit: () => q, range: async () => ({ data, error: null }),
@@ -22,7 +23,9 @@ it("summarizes accounts, assets and debts and charts recorded net worth", async 
   const html = renderToStaticMarkup(await WealthPage());
   vi.useRealTimers();
   expect(html).toContain("Net worth (EUR)");
-  expect(html).toContain("EUR 55.00"); // 50.00 account + 20.00 fund - 15.00 loan
+  // The account rolls forward like on Accounts (50.00 - 10.00); the loan valued in May is outdated and left out, as on Overview.
+  expect(html).toContain("EUR 60.00");
+  expect(html).toMatch(/Accounts<\/dt><dd[^>]*>EUR 40.00/);
   expect(html).toContain("<polyline");
   expect(html).toContain("2025-10-31");
   expect(html).toContain("Investments");
