@@ -4,7 +4,7 @@ import type { WealthItem } from "@/lib/finance/wealth";
 
 type Snapshot = { account_id: string; amount_minor: string | number; currency_code: string; as_of: string; undone_at?: string | null };
 type Valuation = { item_id: string; created_at: string; kind: string; amount_minor: string; currency_code: string; as_of: string; linked_account_id: string | null };
-type Posting = { account_id: string; amount_minor: string | number; currency_code: string; posted_on: string; status: string };
+type Posting = { account_id: string; amount_minor: string | number; currency_code: string; posted_on: string; posted_at?: string | null; status: string };
 type NetWorthPoint = { date: string; accounts: Map<string, bigint>; assets: Map<string, bigint>; debts: Map<string, bigint>; known: boolean };
 
 const add = (map: Map<string, bigint>, currency: string, amount: bigint) => map.set(currency, (map.get(currency) ?? 0n) + amount);
@@ -34,7 +34,9 @@ export function netWorthSeries({ dates, timeZone, accountIds, snapshots, valuati
   dates: string[]; timeZone: string; accountIds: Set<string>; snapshots: Snapshot[]; valuations: Valuation[]; removedOn: Map<string, string>; ledger?: Posting[];
 }): NetWorthPoint[] {
   const balances = snapshots.filter(row => !row.undone_at && accountIds.has(row.account_id))
-    .map(row => ({ key: row.account_id, date: calendarDate(row.as_of, timeZone), at: row.as_of, amount: BigInt(row.amount_minor), currency: row.currency_code }));
+    .map(row => ({ key: row.account_id, date: calendarDate(row.as_of, timeZone), at: row.as_of, amount: BigInt(row.amount_minor), currency: row.currency_code,
+      // As in resolveBalances: a balance typed in during the day is moved by later timed postings that day; a dated one is that day's closing balance.
+      observed: calendarDate(new Date(Date.parse(row.as_of) - 1).toISOString(), timeZone) === calendarDate(row.as_of, timeZone) }));
   const values = valuations.filter(row => !row.linked_account_id)
     .map(row => ({ key: row.item_id, date: row.as_of, at: row.created_at, amount: BigInt(row.amount_minor), currency: row.currency_code, debt: row.kind === "debt" }));
   const latest = <T extends { key: string; date: string; at: string }>(rows: T[], date: string) => {
@@ -46,23 +48,24 @@ export function netWorthSeries({ dates, timeZone, accountIds, snapshots, valuati
     }
     return pick.values();
   };
-  const posted = ledger.filter(row => row.status === "posted" && accountIds.has(row.account_id));
+  const posted = ledger.filter(row => row.status === "posted" && accountIds.has(row.account_id))
+    .map(row => ({ ...row, day: row.posted_at ? calendarDate(row.posted_at, timeZone) : row.posted_on, amount: BigInt(row.amount_minor) }));
+  const afterBalance = (row: typeof posted[number], balance: typeof balances[number]) => row.day > balance.date ||
+    (row.day === balance.date && balance.observed && !!row.posted_at && Date.parse(row.posted_at) > Date.parse(balance.at));
+  const sum = (rows: typeof posted) => rows.reduce((total, row) => total + row.amount, 0n);
   const firstPosted = new Map<string, string>();
   for (const row of posted) if (!firstPosted.has(row.account_id) || row.posted_on < firstPosted.get(row.account_id)!) firstPosted.set(row.account_id, row.posted_on);
   const dayBefore = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
   return dates.map(date => {
     const point: NetWorthPoint = { date, accounts: new Map(), assets: new Map(), debts: new Map(), known: false };
     const recorded = [...latest(balances, date)];
-    for (const row of recorded) add(point.accounts, row.currency, row.amount + posted.filter(item => item.account_id === row.key && item.currency_code === row.currency && item.posted_on > row.date && item.posted_on <= date)
-      .reduce((sum, item) => sum + BigInt(item.amount_minor), 0n));
+    for (const row of recorded) add(point.accounts, row.currency, row.amount + sum(posted.filter(item => item.account_id === row.key && item.currency_code === row.currency && afterBalance(item, row) && item.day <= date)));
     for (const key of accountIds) {
       const first = firstPosted.get(key);
       if (recorded.some(row => row.key === key) || !first || date < dayBefore(first)) continue;
       const next = balances.filter(row => row.key === key && row.date > date).sort((a, b) => a.date.localeCompare(b.date) || a.at.localeCompare(b.at))[0];
       if (!next) continue;
-      const after = posted.filter(row => row.account_id === key && row.currency_code === next.currency && row.posted_on > date && row.posted_on <= next.date)
-        .reduce((sum, row) => sum + BigInt(row.amount_minor), 0n);
-      add(point.accounts, next.currency, next.amount - after);
+      add(point.accounts, next.currency, next.amount - sum(posted.filter(row => row.account_id === key && row.currency_code === next.currency && row.day > date && !afterBalance(row, next))));
     }
     for (const row of latest(values, date)) {
       const removed = removedOn.get(row.key);

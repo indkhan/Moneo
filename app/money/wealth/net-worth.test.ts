@@ -63,6 +63,17 @@ it("rolls a recorded balance forward through later posted transactions", () => {
   expect(series.map(point => netWorth(point).get("EUR"))).toEqual([100000n, -5875n, -5875n]);
 });
 
+it("keeps postings made after a balance typed in during the day on the far side of it", () => {
+  const series = netWorthSeries({ dates: ["2026-09-30", "2026-10-30", "2026-10-31"], timeZone: "UTC", accountIds: new Set(["bank"]),
+    snapshots: [{ account_id: "bank", amount_minor: "100000", currency_code: "EUR", as_of: "2026-10-31T13:14:00Z" }], valuations: [], removedOn: new Map(),
+    ledger: [
+      { account_id: "bank", amount_minor: "250000", currency_code: "EUR", posted_on: "2026-10-01", status: "posted" },
+      { account_id: "bank", amount_minor: "-10000", currency_code: "EUR", posted_on: "2026-10-31", posted_at: "2026-10-31T09:00:00Z", status: "posted" },
+      { account_id: "bank", amount_minor: "-105875", currency_code: "EUR", posted_on: "2026-10-31", posted_at: "2026-10-31T13:18:00Z", status: "posted" },
+    ] });
+  expect(series.map(point => netWorth(point).get("EUR"))).toEqual([-140000n, 110000n, -5875n]);
+});
+
 it("builds today's net worth from resolved balances and current valuations only", () => {
   const point = currentNetWorth("2026-10-31", [
     { currency_code: "EUR", balance: { amount_minor: "-5875" } }, { currency_code: "EUR", balance: { amount_minor: "210132" } }, { currency_code: "EUR", balance: { amount_minor: null } },
