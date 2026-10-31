@@ -8,6 +8,9 @@ import { ARTIFACT_SOURCES, artifactQueriesSchema, runArtifactSource, type Artifa
 
 export const maxDuration = 300;
 
+const READING: Record<ArtifactSource, string> = { investigate: "Reading your spending", cashflow: "Reading your cash flow", transactions: "Reading your transactions",
+  balances: "Reading your balances", accounts: "Reading your accounts", recurring: "Reading your recurring payments", goals: "Reading your goals" };
+
 const inputSchema = z.object({
   artifactId: z.uuid().optional(),
   message: z.string().trim().min(1).max(4000),
@@ -47,11 +50,14 @@ export async function POST(request: Request) {
   }
   const latest = previous[0];
 
+  // Opt-in NDJSON: what the build is doing (which data it reads, then writing the page) arrives while it runs.
+  const streaming = request.headers.get("accept")?.includes("application/x-ndjson") ?? false;
+  let progress: (step: string) => void = () => {};
   // The build's data reads share one entity lookup.
   const shared = {};
   const dataTools = Object.fromEntries(Object.entries(ARTIFACT_SOURCES).map(([source, definition]) => [source, tool({
     description: `${definition.description} Read-only.`, inputSchema: definition.input as z.ZodType<Record<string, unknown>>,
-    execute: input => runArtifactSource(source as ArtifactSource, input, context, shared),
+    execute: input => { progress(READING[source as ArtifactSource]); return runArtifactSource(source as ArtifactSource, input, context, shared); },
   })]));
   let saved: { title: string; html: string; queries: z.infer<typeof artifactQueriesSchema> } | undefined;
   const save_artifact = tool({
@@ -78,6 +84,8 @@ export async function POST(request: Request) {
         model, prompt, tools: { ...dataTools, save_artifact },
         instructions: `${INSTRUCTIONS}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}.`,
         stopWhen: [hasToolCall("save_artifact"), stepCountIs(12)],
+        // After the first step the model has read data and is designing or writing the page.
+        experimental_onStepStart: ({ stepNumber }) => progress(stepNumber ? "Writing the page" : "Planning the page"),
         maxOutputTokens: 32000,
         abortSignal: AbortSignal.timeout(280_000),
       });
@@ -108,6 +116,11 @@ export async function POST(request: Request) {
   });
   // Not tied to this request: closing the tab or leaving the page lets the build finish and save.
   after(() => finished);
-  const [body, status] = await finished;
-  return Response.json(body, { status });
+  if (!streaming) { const [body, status] = await finished; return Response.json(body, { status }); }
+  const encoder = new TextEncoder();
+  return new Response(new ReadableStream({ start(controller) {
+    const write = (event: object) => { try { controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); } catch { /* the reader went away; the build continues */ } };
+    progress = step => write({ type: "step", step });
+    void finished.then(([body, status]) => { write({ type: "result", status, body }); try { controller.close(); } catch { /* already closed */ } });
+  } }), { headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" } });
 }

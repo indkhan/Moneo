@@ -51,3 +51,20 @@ it("records why a build failed so it is visible later", async () => {
   expect(build()).toMatchObject({ status: "failed", error: "Provider unavailable" });
   expect(writes.some(write => write.table === "artifacts" || write.table === "artifact_versions")).toBe(false);
 });
+
+it("streams what the build is doing before its result when asked", async () => {
+  vi.mocked(generateText).mockImplementationOnce(async options => {
+    const start = (options as unknown as { experimental_onStepStart: (step: { stepNumber: number }) => void }).experimental_onStepStart;
+    start({ stepNumber: 0 });
+    await options.tools.cashflow.execute({ from: "2026-10-01", to: "2026-10-31", currencyCode: "EUR" }).catch(() => undefined);
+    start({ stepNumber: 1 });
+    await options.tools.save_artifact.execute(page);
+    return {};
+  });
+  const response = await POST(new Request("http://localhost/api/artifacts", { method: "POST", headers: { Accept: "application/x-ndjson" }, body: JSON.stringify({ message: "Show my rent" }) }));
+  const events = (await response.text()).trim().split("\n").map(line => JSON.parse(line));
+  expect(events).toEqual([
+    { type: "step", step: "Planning the page" }, { type: "step", step: "Reading your cash flow" }, { type: "step", step: "Writing the page" },
+    { type: "result", status: 200, body: { id: "artifact", version: 1 } },
+  ]);
+});
