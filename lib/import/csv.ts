@@ -131,6 +131,23 @@ export function proposeKnownStatementMapping(rows: SourceRow[], accountName: str
   return proposed.accountRoutes ? { ...proposed, accountRoutes: distinctRouteNames(proposed.accountRoutes.map(route => ({ ...route, accountName: known.routeName(route) }))) } : proposed;
 }
 
+/**
+ * The number format when the file itself proves it: exactly one convention reads every amount, debit, credit,
+ * balance and fee cell. Otherwise it stays unset for the user to choose; a proven one still shows for review.
+ */
+export function provenNumericConvention(rows: SourceRow[], mapping: ImportMapping): ImportMapping["numericConvention"] {
+  const columns = [mapping.amountColumn, mapping.debitColumn, mapping.creditColumn, mapping.balanceColumn, mapping.feeColumn].filter((column): column is string => !!column);
+  const cells = rows.flatMap(row => {
+    const currency = ((mapping.currencyColumn ? row[mapping.currencyColumn] : mapping.currencyCode) ?? "").trim().toUpperCase();
+    return columns.flatMap(column => row[column]?.trim() ? [{ value: row[column], currency: /^[A-Z]{3}$/.test(currency) ? currency : "EUR" }] : []);
+  });
+  const readsAll = (convention: NonNullable<ImportMapping["numericConvention"]>) => cells.every(cell => {
+    try { parseAmountMinor(cell.value, cell.currency, convention); return true; } catch { return false; }
+  });
+  const valid = cells.length ? (["decimal-dot", "decimal-comma"] as const).filter(readsAll) : [];
+  return valid.length === 1 ? valid[0] : undefined;
+}
+
 export function validateImportConfirmation(rows: SourceRow[], input: unknown): ImportMapping {
   const mapping = validateMapping(input, rows);
   if (!mapping.numericConvention) throw new Error("Review and select the source numeric convention before importing");

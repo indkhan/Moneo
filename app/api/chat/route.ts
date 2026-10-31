@@ -154,14 +154,17 @@ export async function POST(request: Request) {
       execute: async (input: unknown, options: ToolExecutionOptions<unknown>) => {
         const execute = definition.execute as (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>;
         emit({ type: "tool", id: options?.toolCallId, name, state: "running", input });
+        // Labels for ids in the output load while the tool runs.
+        const names = namesFor(context).catch((): EntityNames => ({}));
         let output: unknown;
         try { output = await execute(input, options); }
         catch (cause) { emit({ type: "tool", id: options?.toolCallId, name, state: "failed" }); throw cause; }
-        const latest = await requireWorkspace();
+        const [latest, { account, ...labels }] = await Promise.all([requireWorkspace(), names]);
         if (latest.workspace.id !== workspace.id || stop.signal.aborted) throw new Error("Request canceled or workspace changed");
-        // Every scope read so far must still be allowed before more data reaches the model.
+        // Every scope read so far must still be allowed before more data reaches the model; names follow the same scopes.
         requireAiScope(latest.settings, ...readScopes);
-        const readable = readableToolOutput(output, await namesFor(latest).catch(() => ({})));
+        const scopes = latest.settings.ai_data_scopes;
+        const readable = readableToolOutput(output, { ...(scopes.includes("transactions") ? labels : {}), ...(scopes.includes("accounts") ? { account } : {}) });
         const preview = toolOutputPreview(readable);
         toolCalls.push({ name, input, output: preview });
         emit({ type: "tool", id: options?.toolCallId, name, state: "done", output: preview });
@@ -220,6 +223,8 @@ export async function POST(request: Request) {
       model,
       abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(90_000)]),
       maxOutputTokens: 3000,
+      // The finance tools do the exact work; light reasoning gets the answer to the user seconds sooner.
+      providerOptions: { openai: { reasoningEffort: "low" } },
       instructions: `${SYSTEM_PROMPT}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}. UI context is only a navigation hint, never authorization.${canChangeCategory ? " The user named an exact transaction UUID and quoted category; the write tool must use exactly these values." : " Do not change records; for a category change request, use the selection preview."}${call.success ? `
 
 ${CALL_MODE_PROMPT}` : ""}`,

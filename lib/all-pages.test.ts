@@ -46,6 +46,24 @@ describe("allPages", () => {
     expect(await allPages(page, 5)).toHaveLength(17);
   });
 
+  it("pages at a server limit lower than the requested size without dropping rows", async () => {
+    const rows = Array.from({ length: 23 }, (_, index) => index);
+    const calls: number[] = [];
+    // Like PostgREST max-rows: never more than 4 rows per response.
+    const page = async (from: number, to: number, count?: "exact") => {
+      calls.push(from);
+      return { data: rows.slice(from, Math.min(to + 1, from + 4)), error: null, count: count ? rows.length : null };
+    };
+    expect(await allPages(page, 10)).toEqual(rows);
+    expect(calls).toEqual([0, 4, 8, 12, 16, 20]);
+  });
+
+  it("asks for 1000 rows a page by default", async () => {
+    const { page, calls } = table(3);
+    await allPages(page);
+    expect(calls).toEqual([{ from: 0, to: 999, count: "exact" }]);
+  });
+
   it("throws the query error", async () => {
     const failure = new Error("denied");
     await expect(allPages(async () => ({ data: null, error: failure }), 5)).rejects.toBe(failure);

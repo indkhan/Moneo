@@ -2,17 +2,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 import { allPages } from "@/lib/all-pages";
+import { perClient } from "@/lib/per-client";
 import { investigate, investigationIdentity, investigationSchema, resolveInvestigation, type InvestigationEntities, type InvestigationRow, type InvestigationSpec } from "./investigation";
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "./source-coverage";
 
 type Context = { supabase: SupabaseClient; workspace: { id: string } };
-const PAGE_SIZE = 500;
 const MAX_ROWS = 100_000;
 
 /** A resource bound is an explicit error, never a silently incomplete result. */
 // `query` builds a fresh ordered query for each page; `count` goes to its select.
 async function allRows<T>(query: (count?: "exact") => { range(from: number, to: number): PromiseLike<{ data: unknown[] | null; error: unknown; count?: number | null }> }): Promise<T[]> {
-  const result = await allPages<T>((from, to, count) => query(count).range(from, to), PAGE_SIZE);
+  const result = await allPages<T>((from, to, count) => query(count).range(from, to));
   if (result.length > MAX_ROWS) throw new Error("Investigation exceeds 100,000 records; narrow its dates or filters");
   return result;
 }
@@ -30,6 +30,11 @@ type LedgerRow = {
   posted_on: string; amount_minor: string; currency_code: string; status: InvestigationRow["status"]; kind: InvestigationRow["kind"];
   tags: string[]; event_name: string | null; review_reasons: string[]; version: number; description: string; refund_of_id: string | null;
 };
+// Investigations in one request (an artifact's saved queries) share these whole-workspace reads.
+const sourcesFor = perClient((supabase: SupabaseClient, workspaceId: string) =>
+  allRows<Source>(count => supabase.from("source_transactions").select("id, import_id, status, review_reasons, normalized_row, fee_evidence, imports(run_version, status, undone_at), transaction_sources(transaction_id)", counted(count)).eq("workspace_id", workspaceId).order("id")));
+const ratesFor = perClient((supabase: SupabaseClient, workspaceId: string) =>
+  allRows<{ id: string; from_currency: string; to_currency: string; rate_text: string; rate_date: string; source: string }>(count => supabase.from("fx_rates").select("id, from_currency, to_currency, rate_text, rate_date, source", counted(count)).eq("workspace_id", workspaceId).order("id")));
 type Source = { id: string; import_id: string; status: string; review_reasons: string[]; normalized_row: unknown; fee_evidence: unknown;
   imports: { run_version: number; status: string; undone_at: string | null } | null; transaction_sources: { transaction_id: string }[] | { transaction_id: string } | null };
 
@@ -45,7 +50,7 @@ async function loadRows(context: Context, spec: InvestigationSpec, includeAll = 
   };
   const [effective, sources] = await Promise.all([
     allRows<LedgerRow>(ledger),
-    canReadImports ? allRows<Source>(count => supabase.from("source_transactions").select("id, import_id, status, review_reasons, normalized_row, fee_evidence, imports(run_version, status, undone_at), transaction_sources(transaction_id)", counted(count)).eq("workspace_id", workspace.id).order("id")) : [],
+    canReadImports ? sourcesFor(supabase, workspace.id) : [],
   ]);
   const byParent = new Map<string, unknown[]>();
   for (const source of sources) for (const link of Array.isArray(source.transaction_sources) ? source.transaction_sources : source.transaction_sources ? [source.transaction_sources] : []) {
@@ -81,7 +86,7 @@ export async function loadInvestigationDataset(input: unknown, context?: Context
   const spec = resolveInvestigation(input, entities);
   const canReadImports = options.canReadImports ?? true;
   const [rows, metadata, rates] = await Promise.all([loadRows(ctx, spec, options.includeAll ?? false, canReadImports), loadSourceCoverageMetadata(ctx.supabase, ctx.workspace.id, canReadImports),
-    spec.currencyPolicy.mode === "base" ? allRows<{ id: string; from_currency: string; to_currency: string; rate_text: string; rate_date: string; source: string }>(count => ctx.supabase.from("fx_rates").select("id, from_currency, to_currency, rate_text, rate_date, source", counted(count)).eq("workspace_id", ctx.workspace.id).order("id")) : []]);
+    spec.currencyPolicy.mode === "base" ? ratesFor(ctx.supabase, ctx.workspace.id) : []]);
   const accountIds = spec.accounts?.include?.flatMap(ref => "id" in ref ? [ref.id] : []);
   const scope = { ...(accountIds?.length ? { accountIds } : {}), ...(spec.currencyPolicy.mode === "original" && spec.currencyPolicy.currencies?.length === 1 ? { currencyCode: spec.currencyPolicy.currencies[0] } : {}) };
   const effective = rows.map(r => ({ account_id: r.accountId, posted_on: r.date, currency_code: r.currency, status: r.status, kind: r.kind, review_reasons: r.reviewReasons }));

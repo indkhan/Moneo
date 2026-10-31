@@ -78,13 +78,8 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
     const lock = () => { if (document.visibilityState === "visible") navigator.wakeLock?.request("screen").then(sentinel => { if (closed) void sentinel.release(); else wakeLock = sentinel; }, () => {}); };
     async function connect() {
       if (!pc || !navigator.mediaDevices?.getUserMedia) throw new Error("This browser cannot make voice calls. Try a recent Chrome, Safari or Firefox.");
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-      if (closed) { stream.getTracks().forEach(track => track.stop()); return; }
-      live.set({ mic: stream });
-      context = new AudioContext();
-      const analyser = (source: MediaStream) => { const node = context!.createAnalyser(); node.fftSize = 512; context!.createMediaStreamSource(source).connect(node); return node; };
-      live.set({ micLevel: analyser(stream) });
-      pc.addTrack(stream.getAudioTracks()[0], stream);
+      // The offer needs only an audio slot, not the mic, so the session starts while the browser asks for the mic.
+      const slot = pc.addTransceiver("audio", { direction: "sendrecv" });
       pc.ontrack = event => { audio.srcObject = event.streams[0]; live.set({ moneoLevel: analyser(event.streams[0]) }); };
       const dc = pc.createDataChannel("oai-events");
       live.set({ channel: dc });
@@ -98,11 +93,19 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       pc.onconnectionstatechange = () => { if (!closed && pc.connectionState === "failed") { setStatus("error"); setError("The call dropped. Check your connection and try again."); } };
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      const response = await fetch("/api/voice/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: offer.sdp, conversationId }) });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error ?? "Could not start the call");
-      if (!closed) await pc.setRemoteDescription({ type: "answer", sdp: body.sdp });
+      const answer = fetch("/api/voice/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: offer.sdp, conversationId }) })
+        .then(async response => { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error ?? "Could not start the call"); return body.sdp as string; });
+      answer.catch(() => {});
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      if (closed) { stream.getTracks().forEach(track => track.stop()); return; }
+      live.set({ mic: stream });
+      context = new AudioContext();
+      live.set({ micLevel: analyser(stream) });
+      await slot.sender.replaceTrack(stream.getAudioTracks()[0]);
+      const sdp = await answer;
+      if (!closed) await pc.setRemoteDescription({ type: "answer", sdp });
     }
+    const analyser = (source: MediaStream) => { const node = context!.createAnalyser(); node.fftSize = 512; context!.createMediaStreamSource(source).connect(node); return node; };
     /** Hanging up saves the call in the chat; keepalive lets it finish even if the tab is closing. */
     function saveRecord() {
       const transcript = boundTranscript(controller.captions);
