@@ -6,7 +6,7 @@ import { loadWorkspaceSettings, requireAiScope, type WorkspaceSettings } from "@
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatMoney } from "@/lib/finance/format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
-import { mergeOrganizationSuggestions, organizationProposals, organizationRuleSchema, type OrganizationProposal, type OrganizationRow } from "@/lib/import/organization";
+import { MAX_ORGANIZATION_RULES, mergeOrganizationSuggestions, organizationProposals, organizationRuleSchema, type OrganizationProposal, type OrganizationRow } from "@/lib/import/organization";
 import { proposeRepayments } from "@/lib/ai/iou-proposals";
 import { loadLoanPayoutIds } from "@/lib/finance/iou";
 import { openRecurringProposals, syncRecurringProposals } from "@/lib/ai/recurring-proposals";
@@ -137,7 +137,7 @@ async function categorizer(context: Context): Promise<{ proposals: Proposal[]; s
     pages(offset => db.from("transactions").select(columns).eq("workspace_id", workspace.id).eq("status", "posted").or("merchant_id.is.null,category_id.is.null").order("posted_on", { ascending: false }).order("id").range(offset, offset + 999)),
     db.from("transactions").select(columns).eq("workspace_id", workspace.id).eq("status", "posted").order("posted_on", { ascending: false }).order("id", { ascending: false }).limit(2000),
     db.from("correction_events").select("transaction_id").eq("workspace_id", workspace.id).eq("undone", false).limit(5000),
-    db.from("organization_rules").select("id,version,description_key,merchant_id,category_id,approved_by,enabled").eq("workspace_id", workspace.id).order("description_key").limit(200),
+    db.from("organization_rules").select("id,version,description_key,merchant_id,category_id,approved_by,enabled").eq("workspace_id", workspace.id).order("description_key").limit(MAX_ORGANIZATION_RULES),
     names(db, workspace.id),
   ]);
   const corrected = new Set((checked(corrections) as { transaction_id: string }[]).map(row => row.transaction_id));

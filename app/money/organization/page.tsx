@@ -2,6 +2,7 @@ import Link from 'next/link';
 import {z} from 'zod';
 import {requireWorkspace} from '@/lib/auth';
 import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
+import {MAX_ORGANIZATION_RULES} from '@/lib/import/organization';
 import {loadLoanPayoutIds} from '@/lib/finance/iou';
 import {formatMoney} from '@/lib/finance/format';
 import {versionedRows} from '../transactions/input';
@@ -25,13 +26,13 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
   query.order('posted_on',{ascending:false}).order('id',{ascending:false}).limit(51),
   supabase.from('merchants').select('id,name').eq('workspace_id',workspace.id).order('name').limit(501),
   supabase.from('categories').select('id,name').eq('workspace_id',workspace.id).order('name').limit(501),
-  supabase.from('organization_rules').select('id,description_key,merchant_id,category_id,enabled,version').eq('workspace_id',workspace.id).order('description_key').limit(201),
+  supabase.from('organization_rules').select('id,description_key,merchant_id,category_id,enabled,version').eq('workspace_id',workspace.id).order('description_key').limit(MAX_ORGANIZATION_RULES+1),
   supabase.from('organization_reviews').select('id,status,created_at').eq('workspace_id',workspace.id).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(10),
   reviewId?supabase.from('organization_reviews').select('*').eq('workspace_id',workspace.id).eq('id',reviewId).maybeSingle():{data:null,error:null},
  ]);
  if(queue.error||merchants.error||categories.error||rules.error||reviews.error||selectedReview.error)throw queue.error??merchants.error??categories.error??rules.error??reviews.error??selectedReview.error;
  const queueRows=z.array(z.object({id:z.uuid(),version:z.number().int().nonnegative(),posted_on:z.iso.date()})).parse(queue.data);
- if(merchants.data.length>500||categories.data.length>500||rules.data.length>200)throw new Error('Organization target coverage exceeded; use Transactions for manual correction');
+ if(merchants.data.length>500||categories.data.length>500||rules.data.length>MAX_ORGANIZATION_RULES)throw new Error('Organization target coverage exceeded; use Transactions for manual correction');
  const selected=queueRows.slice(0,50).map(({id,version})=>({id,version}));
  const suggestions=selected.length?await loadOrganizationSuggestions(supabase,workspace.id,selected):null;
  const items=(suggestions?.proposals??[]).map(proposal=>({proposal,row:suggestions!.rows.find(row=>row.id===proposal.transactionId)!}));
@@ -70,7 +71,7 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
    <h2 className="text-sm font-medium">{items.length?`${items.length}${queueRows.length>50?'+':''} to organize`:'Everything here is organized'}</h2>
    {items.length>0&&<OrganizationQueue key={items.map(item=>item.row.id+':'+item.row.version).join(',')} items={items} merchants={merchants.data} categories={categories.data} requestId={crypto.randomUUID()} locale={workspace.locale} />}
    {next&&<Link className="inline-block text-sm underline" href={'/money/organization?'+next}>Older entries</Link>}
-   <p className="text-xs text-muted-foreground">Suggestions compare up to 2,000 recent posted entries and 200 rules. For one-off fixes use <Link className="underline" href="/money/transactions">Manual correction in Transactions</Link>.</p>
+   <p className="text-xs text-muted-foreground">Suggestions compare up to 2,000 recent posted entries and 2,000 rules. For one-off fixes use <Link className="underline" href="/money/transactions">Manual correction in Transactions</Link>.</p>
   </section>
   <details className={card}><summary className="cursor-pointer text-sm font-medium">Rules ({rules.data.length}) and recent reviews</summary>
    <ul className="mt-3 divide-y divide-border text-sm">{rules.data.map(rule=><li key={rule.id} className="flex flex-wrap items-center justify-between gap-2 py-2"><span className={rule.enabled?'':'text-muted-foreground'}><span className="font-medium">“{rule.description_key}”</span> → {[merchantName(rule.merchant_id),categoryName(rule.category_id)].filter(Boolean).join(' · ')}{rule.enabled?'':' (off)'}</span><form action={toggleRule}><input type="hidden" name="key" value={rule.description_key} /><input type="hidden" name="merchant" value={rule.merchant_id??''} /><input type="hidden" name="category" value={rule.category_id??''} /><input type="hidden" name="version" value={rule.version} /><input type="hidden" name="enabled" value={String(!rule.enabled)} /><button className="text-xs underline">{rule.enabled?'Disable':'Enable'}</button></form></li>)}</ul>

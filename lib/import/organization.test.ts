@@ -29,6 +29,10 @@ it('makes user-approved rules take precedence over learned history without chang
   expect(result[0]).toMatchObject({merchantId: id(22), categoryId: id(23), basis: 'approved-rule', rule: {id: id(30), version: 2}});
   expect(result[0]).not.toHaveProperty('kind');
 });
+it('keeps suggesting once a workspace has saved more than 200 rules', () => {
+  const rules = Array.from({length: 250}, (_, n) => ({id: id(1000 + n), version: 1, descriptionKey: `shop ${n}`, merchantId: null, categoryId: id(23), approvedBy: id(40), enabled: true}));
+  expect(organizationProposals([row(4, 'shop 249')], [], rules)[0]).toMatchObject({categoryId: id(23), basis: 'approved-rule'});
+});
 it('rejects oversized selections and unapproved rule data before suggesting anything', () => {
   expect(() => organizationProposals(Array.from({length: 51}, (_, n) => row(n + 50)), [], [])).toThrow();
   expect(() => organizationProposals([row(4)], [], [{id: id(30), descriptionKey: 'northstar market', merchantId: id(22), categoryId: null, version: 1, enabled: true} as never])).toThrow();

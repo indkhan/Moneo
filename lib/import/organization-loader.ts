@@ -1,7 +1,7 @@
 import type {SupabaseClient} from '@supabase/supabase-js';
 import {z} from 'zod';
 import {versionedRows} from '@/app/money/transactions/input';
-import {organizationProposals,organizationRuleSchema,type OrganizationRow} from '@/lib/import/organization';
+import {MAX_ORGANIZATION_RULES,organizationProposals,organizationRuleSchema,type OrganizationRow} from '@/lib/import/organization';
 
 const columns='id,version,description,merchant_id,category_id,kind,review_reasons,posted_on,amount_minor::text,currency_code,status';
 export async function loadOrganizationSuggestions(db:SupabaseClient,workspaceId:string,selection:unknown) {
@@ -10,7 +10,7 @@ export async function loadOrganizationSuggestions(db:SupabaseClient,workspaceId:
   db.from('transactions').select(columns).eq('workspace_id',workspaceId).neq('status','voided').in('id',ids),
   db.from('transactions').select(columns).eq('workspace_id',workspaceId).eq('status','posted').order('posted_on',{ascending:false}).order('id',{ascending:false}).limit(2000),
   db.from('correction_events').select('transaction_id').eq('workspace_id',workspaceId).eq('undone',false).in('transaction_id',ids),
-  db.from('organization_rules').select('id,version,description_key,merchant_id,category_id,approved_by,enabled').eq('workspace_id',workspaceId).order('description_key').limit(201),
+  db.from('organization_rules').select('id,version,description_key,merchant_id,category_id,approved_by,enabled').eq('workspace_id',workspaceId).order('description_key').limit(MAX_ORGANIZATION_RULES),
  ]);
  if(current.error||history.error||corrections.error||rules.error)throw current.error??history.error??corrections.error??rules.error;
  const byId=new Map(current.data.map(row=>[row.id,row]));

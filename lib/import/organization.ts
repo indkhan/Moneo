@@ -3,6 +3,8 @@ import {z} from 'zod';
 const rowSchema = z.object({id: z.uuid(), version: z.number().int().min(0).max(2147483647), description: z.string().min(1).max(1000),
   merchantId: z.uuid().nullable(), categoryId: z.uuid().nullable(), kind: z.enum(['ordinary', 'refund', 'transfer']),
   reviewReasons: z.array(z.string().max(200)).max(20), userCorrected: z.boolean()}).strict();
+/** Every saved Apply teaches a rule, so a workspace collects many; suggestions read all of them up to this bound. */
+export const MAX_ORGANIZATION_RULES = 2000;
 export const organizationRuleSchema = z.object({id: z.uuid(), version: z.number().int().min(1), descriptionKey: z.string().min(3).max(1000),
   merchantId: z.uuid().nullable(), categoryId: z.uuid().nullable(), approvedBy: z.uuid(), enabled: z.boolean()}).strict();
 export type OrganizationRow = z.infer<typeof rowSchema>;
@@ -44,7 +46,7 @@ export function organizationDescriptionKey(description: string) {
 export function organizationProposals(rows: OrganizationRow[], history: OrganizationRow[], rules: OrganizationRule[]): OrganizationProposal[] {
   z.array(rowSchema).max(50).refine(values => new Set(values.map(row => row.id)).size === values.length).parse(rows);
   z.array(rowSchema).max(2000).refine(values => new Set(values.map(row => row.id)).size === values.length).parse(history);
-  z.array(organizationRuleSchema).max(200).refine(values => new Set(values.filter(rule => rule.enabled).map(rule => rule.descriptionKey)).size === values.filter(rule => rule.enabled).length).parse(rules);
+  z.array(organizationRuleSchema).max(MAX_ORGANIZATION_RULES).refine(values => new Set(values.filter(rule => rule.enabled).map(rule => rule.descriptionKey)).size === values.filter(rule => rule.enabled).length).parse(rules);
   const approved = new Map(rules.filter(rule => rule.enabled).map(rule => [rule.descriptionKey, rule]));
   const grouped = new Map<string, OrganizationRow[]>();
   for (const row of history) {
