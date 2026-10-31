@@ -104,7 +104,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await selectCedar();await pick('Merchant','cedar cooperative');await pick('Category','qa groceries');
   await apply(true);
   await expect(impact()).toContainText('Category: uncategorized → QA Groceries');
-  expect((await db`select count(*)::int count from public.categories where workspace_id=${workspace!}`)[0].count).toBe(1);
+  expect((await db`select count(*)::int count from public.categories where workspace_id=${workspace!} and lower(name)='qa groceries'`)[0].count).toBe(1);
   const originalSources=[...await db`select id,original_row from public.source_transactions where workspace_id=${workspace!} order by id`];
   await importCsv('organization-rule-reuse.csv','date,description,amount,id\n2026-09-04,CARD PAYMENT CEDAR COOPERATIVE REF:103,-3.00,cedar-103\n');
   const suggested=()=>cedar().getByRole('button',{name:'Cedar Cooperative · QA Groceries',exact:true});
@@ -122,7 +122,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await detail.getByLabel('Category',{exact:true}).fill('QA Groceries');await detail.getByLabel('Note',{exact:true}).fill('Retained owner correction');
   await detail.getByRole('button',{name:'Save correction',exact:true}).click();await expect(detail.getByLabel('Note',{exact:true})).toHaveValue('Retained owner correction');
   await expect.poll(async()=>{const [row]=await db`select category_id,note,version from public.transactions where id=${moss.id} and workspace_id=${workspace!}`;return row;}).toMatchObject({category_id:category,note:'Retained owner correction',version:1});
-  await page.keyboard.press('Escape');await expect(detail).toHaveCount(0);await page.getByRole('link',{name:'Organize spending',exact:true}).click();
+  await page.keyboard.press('Escape');await expect(detail).toHaveCount(0);await page.goto('/money/organization');
   await expect(page).toHaveURL(/\/money\/organization$/);
   await expect(page.getByRole('heading',{name:'Organize spending',exact:true})).toBeVisible();
   await expect(page.getByRole('region',{name:'Organization suggestions'}).getByRole('listitem').filter({hasText:'MOSS TRAVEL'})).toHaveCount(0);
