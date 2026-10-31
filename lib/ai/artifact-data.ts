@@ -3,20 +3,23 @@ import { requireWorkspace } from "@/lib/auth";
 import { requireAiScope, type AiDataScope } from "@/lib/settings";
 import { cashflow, financeToolSchemas, getBalances, listAccounts, listGoals, searchTransactions } from "@/lib/finance/tools";
 import { investigationSchema } from "@/lib/finance/investigation";
-import { runInvestigation } from "@/lib/finance/investigation-reader";
+import { loadInvestigationEntities, runInvestigation } from "@/lib/finance/investigation-reader";
+import type { InvestigationEntities } from "@/lib/finance/investigation";
 import { listRecurring } from "@/lib/ai/recurring-proposals";
 import { calendarDate } from "@/lib/finance/calendar";
-import { readableToolOutput } from "@/lib/ai/tool-output";
+import { readableToolOutput, type EntityNames } from "@/lib/ai/tool-output";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
 const empty = z.object({}).strict();
+/** Reads shared by the saved queries of one artifact run. */
+type Shared = { entities?: Promise<InvestigationEntities> };
 const imports = (context: Context) => context.settings.ai_data_scopes.includes("imports");
 
 // The only data an artifact can see: read-only finance queries the app runs itself. The same
 // sources are the builder's tools and the viewer's refresh, so a saved query always reruns.
 export const ARTIFACT_SOURCES = {
   investigate: { description: "Spending/income totals, groupings and rankings over exact dates, accounts, categories and merchants.", input: investigationSchema, scopes: ["accounts", "transactions"],
-    run: (input: unknown, context: Context) => runInvestigation(input, context, { canReadImports: imports(context) }) },
+    run: (input: unknown, context: Context, shared?: Shared) => runInvestigation(input, context, { canReadImports: imports(context), entities: shared && (shared.entities ??= loadInvestigationEntities(context)) }) },
   cashflow: { description: "Posted income and spending for a period in one currency.", input: financeToolSchemas.periodInput, scopes: ["transactions"],
     run: (input: unknown, context: Context) => cashflow(input, context, imports(context)) },
   transactions: { description: "Transactions, newest first, filtered by text, dates and amounts (max 50).", input: financeToolSchemas.searchInput, scopes: ["transactions"],
@@ -26,7 +29,7 @@ export const ARTIFACT_SOURCES = {
   recurring: { description: "Confirmed recurring payments and income (name, amount, direction, cadence, next date, category) plus detected patterns still awaiting confirmation.", input: empty, scopes: ["planning", "transactions"],
     run: (_: unknown, context: Context) => listRecurring(context) },
   goals: { description: "The user's savings goals.", input: empty, scopes: ["planning"], run: (_: unknown, context: Context) => listGoals(context) },
-} satisfies Record<string, { description: string; input: z.ZodType; scopes: AiDataScope[]; run: (input: unknown, context: Context) => Promise<unknown> }>;
+} satisfies Record<string, { description: string; input: z.ZodType; scopes: AiDataScope[]; run: (input: unknown, context: Context, shared?: Shared) => Promise<unknown> }>;
 export type ArtifactSource = keyof typeof ARTIFACT_SOURCES;
 const SOURCE_KEYS = Object.keys(ARTIFACT_SOURCES) as [ArtifactSource, ...ArtifactSource[]];
 
@@ -43,10 +46,20 @@ export const artifactQueriesSchema = z.array(artifactQuerySchema).max(12)
 export type ArtifactQuery = z.infer<typeof artifactQuerySchema>;
 
 /** One source's result as the artifact (and builder) reads it: formatted money, no internal evidence. */
-export async function runArtifactSource(source: ArtifactSource, input: unknown, context: Context) {
+export async function runArtifactSource(source: ArtifactSource, input: unknown, context: Context, shared: Shared = {}) {
   const definition = ARTIFACT_SOURCES[source];
   requireAiScope(context.settings, ...definition.scopes);
-  return readableToolOutput(await definition.run(definition.input.parse(input), context));
+  const [output, names] = await Promise.all([definition.run(definition.input.parse(input), context, shared), entityNames(context, shared)]);
+  return readableToolOutput(output, names);
+}
+
+/** Owned names for the ids in a result (as chat gets them), limited to the scopes AI may read. */
+async function entityNames(context: Context, shared: Shared): Promise<EntityNames> {
+  const scopes = context.settings.ai_data_scopes;
+  if (!scopes.includes("accounts") && !scopes.includes("transactions")) return {};
+  const entities = await (shared.entities ??= loadInvestigationEntities(context));
+  const byId = (rows: { id: string; name: string }[]) => new Map(rows.map(row => [row.id, row.name]));
+  return { ...(scopes.includes("accounts") ? { account: byId(entities.accounts) } : {}), ...(scopes.includes("transactions") ? { category: byId(entities.categories), merchant: byId(entities.merchants) } : {}) };
 }
 
 const DATE_VALUE = /^\d{4}-\d{2}-\d{2}$/;
@@ -72,8 +85,9 @@ export function rollQueryDates(input: unknown, days: number): unknown {
 export async function runArtifactQueries(queries: ArtifactQuery[], context: Context, savedOn?: string): Promise<Record<string, unknown>> {
   // Saved periods keep their length and move with time, so an artifact always shows the latest window.
   const days = savedOn ? Math.round((Date.parse(calendarDate(new Date(), context.settings.timezone)) - Date.parse(savedOn)) / DAY_MS) : 0;
+  const shared: Shared = {};
   return Object.fromEntries(await Promise.all(queries.map(async query => {
-    try { return [query.name, await runArtifactSource(query.source, days > 0 ? rollQueryDates(query.input, days) : query.input, context)]; }
+    try { return [query.name, await runArtifactSource(query.source, days > 0 ? rollQueryDates(query.input, days) : query.input, context, shared)]; }
     catch (cause) { return [query.name, { error: cause instanceof Error ? cause.message : "Data unavailable" }]; }
   })));
 }
