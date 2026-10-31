@@ -35,35 +35,6 @@ export function useThemeColors() {
   }, [theme]);
 }
 
-export function SpendingChart({ values, labels, type = "bar", height = 280, ariaLabel, formatValue, onSelect }: {
-  values: number[];
-  labels?: string[];
-  type?: "bar" | "line";
-  height?: number;
-  ariaLabel?: string;
-  formatValue?: (value: number) => string;
-  onSelect?: (index: number) => void;
-}) {
-  const colors = useThemeColors();
-  const axis = { axisLine: { lineStyle: { color: colors.border } }, axisLabel: { color: colors.muted }, splitLine: { lineStyle: { color: colors.border, type: "dashed" } } };
-  return (
-    <div role={ariaLabel ? "img" : undefined} aria-label={ariaLabel}>
-      <ReactECharts
-        option={{
-          color: [colors.brand],
-          grid: { left: 8, right: 8, top: 16, bottom: 8, containLabel: true },
-          tooltip: { trigger: "axis", ...(formatValue ? { valueFormatter: formatValue } : {}) },
-          xAxis: { type: "category", data: labels ?? values.map((_, i) => `W${i + 1}`), ...axis },
-          yAxis: { type: "value", ...axis, ...(formatValue ? { axisLabel: { color: colors.muted, formatter: formatValue } } : {}) },
-          series: [{ type, data: values, ...(type === "line" ? { smooth: true, showSymbol: false, areaStyle: { opacity: 0.12 } } : { barMaxWidth: 28, itemStyle: { borderRadius: [4, 4, 4, 4] } }) }],
-        }}
-        style={{ height, cursor: onSelect ? "pointer" : undefined }}
-        onEvents={onSelect ? { click: (event: { dataIndex: number }) => onSelect(event.dataIndex) } : undefined}
-      />
-    </div>
-  );
-}
-
 /** Money in vs money out per month; `flow` shows one side only. Bars are major units for pixel scale only. */
 export function CashFlowChart({ labels, income, spending, flow, selected, picked, height = 240, formatValue, onSelect }: {
   labels: string[]; income: number[]; spending: number[]; flow?: "in" | "out"; selected?: number; picked?: "in" | "out"; height?: number;
