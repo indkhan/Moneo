@@ -49,7 +49,7 @@ it("never reads denied source data and scopes/project-only metadata for permitte
   const from = (table: string) => {
     const query = { select: (columns: string) => { calls.push(["select", table, columns]); return query; },
       eq: (field: string, value: string) => { calls.push(["eq", table, field, value]); return query; }, order: () => query,
-      range: async (start: number) => ({ data: table === "imports" ? imports : start === 0 ? Array.from({ length: 500 }, () => source("new")) : [source("review")], error: null }) };
+      range: async (start: number, end: number) => ({ data: table === "imports" ? imports : [...Array.from({ length: 500 }, () => source("new")), source("review")].slice(start, end + 1), error: null }) };
     return query;
   };
   const db = { from } as unknown as SupabaseClient;
