@@ -5,7 +5,7 @@ export type CallTask = { requestId: string; text: string; step: string; status: 
 export type CallAsk = (payload: { conversationId: string; requestId: string; message: string; context: Record<string, unknown> }, onEvent: (event: ChatStreamEvent) => void)
   => Promise<{ ok: boolean; status?: number; body: { error?: string } & Partial<ChatAnswer> }>;
 
-type ServerEvent = { type: string; delta?: string; end_ms?: number; offset_ms?: number | null; delegation?: { id: string }; error?: { message?: string }; message?: string };
+type ServerEvent = { type: string; delta?: string; start_ms?: number; end_ms?: number; offset_ms?: number | null; delegation?: { id: string }; error?: { message?: string }; message?: string };
 type Deps = {
   conversationId: string;
   /** Sends a client event on the oai-events data channel. */
@@ -45,23 +45,34 @@ export function spokenAnswer(answer: string, max = 1500) {
 export const SPEAKING_HOLD_MS = 700;
 /** Words still unclaimed after the user has been quiet this long were a request GPT-Live said yes to but never handed off. */
 export const UNCLAIMED_MS = 4000;
+/** GPT-Live taking words on ("on that one too", "let me check"), unlike "mm-hm" or "take your time". */
+const TAKES_ON = /\b(on (it|that|this)|too|as well|also|let me|i'?ll|checking|looking|making|adding|noted)\b/i;
 const SMALL_TALK = /\b(hi|hey|hello|yo|thanks|thank you|bye|good (morning|evening|night)|how are you( doing)?( today)?|i'?m (good|fine|okay)|okay|ok|yeah|yes|no|um+|uh+|mm+|mm-?hm|(can|could|would|will) you( also)?( please)?( tell me| say)?)\b/gi;
 const ASKS = /\?|\b(how much|what|when|where|who|which|why|check|show|tell|add|spent|spend|paid|pay|lent|lend|borrowed?|owe|bought|received|transfer|budget|save|balance|cancel|remove|change)\b/i;
+/** Transcript text as plain words, without sound tags like "[scoff]". */
+const plain = (text: string) => text.replace(/\[[^\]]*\]/g, "").replace(/\s+/g, " ").trim();
 /** Whether unclaimed words ask for something, rather than being small talk GPT-Live answered itself. */
 export function looksLikeRequest(text: string) {
   const rest = text.replace(SMALL_TALK, " ").trim();
   return rest.split(/\s+/).filter(Boolean).length >= 3 && ASKS.test(rest);
 }
+/** How long a hand-off with no new words waits for them to be transcribed. */
+export const LATE_WORDS_MS = 1500;
 export const SLOW_TASK_MS = 8000;
 /** Moneo silent this long after it began saying a result means it said all of it. The user's words are transcribed
  * about a second late, so words arriving sooner than this were said over the result. */
 export const RESULT_DONE_MS = 2500;
+/** Moneo silent this long, with the mic quiet since, also means it said all of it: the mic hears the user at once,
+ * so nobody talked over it, and the next result follows without a long gap. */
+export const RESULT_PAUSE_MS = 1200;
 /** Longest wait for Moneo to start saying a result before the next is handed over anyway. */
 export const RESULT_TURN_MS = 20_000;
 /** A pause this long ends the user's turn for handing over a result; people pause mid-sentence ("uh… like…"). */
 export const USER_PAUSE_MS = 1500;
 /** How long Moneo gets to answer an interruption before it is asked to finish the result it was cut off in. */
 export const RESUME_AFTER_MS = 3000;
+/** Added to every result handed over: what is still running is said once the result has been, as it stands then. */
+export const ONLY_THIS_RESULT = "Say only this; don't mention other requests, you'll be told what is still running.";
 
 /**
  * Runs a voice call's tasks: each GPT-Live delegation (or typed message) becomes one /api/chat request, and its
@@ -71,9 +82,10 @@ export class VoiceCallController {
   captions: CallCaption[] = [];
   tasks: CallTask[] = [];
   error = "";
-  /** Words the user said that no hand-off has claimed yet, with when each piece ended in the session. */
-  private heard: { text: string; end: number }[] = [];
-  private lastUserTurn = "";
+  /** Words the user said that no hand-off has claimed yet, with when each piece began in the session. */
+  private heard: { text: string; start: number }[] = [];
+  /** What Moneo has said since the user last spoke. */
+  private reply = "";
   private lastDelegation: string | null = null;
   /** A request started from unclaimed words, which a late hand-off of the same words takes over instead of repeating. */
   private unclaimedTask: string | null = null;
@@ -84,12 +96,17 @@ export class VoiceCallController {
    * metered it, not the transcript, says whether Moneo is talking. */
   private lastAudible = -Infinity;
   private metered = false;
-  private outbox: { delegationId: string | null; content: string }[] = [];
+  /** When the user was last loud on the mic, once it is metered. */
+  private lastMic = -Infinity;
+  private micMetered = false;
+  private outbox: { requestId?: string; delegationId: string | null; content: string }[] = [];
   private flushing = false;
   /** The result Moneo was last handed and when, until it has said all of it or was talked over. */
-  private current: { delegationId: string | null; content: string; at: number } | null = null;
+  private current: { requestId?: string; delegationId: string | null; content: string; at: number } | null = null;
   /** A result the user talked over, with what they said since, until Moneo is asked to finish it. */
-  private cut: { delegationId: string | null; content: string; words: string } | null = null;
+  private cut: { requestId?: string; delegationId: string | null; content: string; words: string } | null = null;
+  /** Requests the user has been told are still running, so they hear it once. */
+  private announced = new Set<string>();
   private captionId = 0;
   /** A sound tag ("[scoff]") still open at the end of a role's last words, held until it closes. */
   private openTag: Record<CallCaption["role"], string> = { user: "", assistant: "" };
@@ -108,54 +125,58 @@ export class VoiceCallController {
   /** When Moneo last made a sound: its metered voice once there is one, else its transcript. */
   private get lastMoneo() { return this.metered ? this.lastAudible : this.lastAssistantSpeech; }
   /** Someone is talking right now. */
-  speaking(by: "user" | "any" = "any") {
-    const last = by === "user" ? this.lastUserSpeech : Math.max(this.lastUserSpeech, this.lastMoneo);
+  speaking(by: "user" | "moneo" | "any" = "any") {
+    const last = by === "user" ? this.lastUserSpeech : by === "moneo" ? this.lastMoneo : Math.max(this.lastUserSpeech, this.lastMoneo);
     return this.now() - last < SPEAKING_HOLD_MS;
   }
   /** Called while Moneo's voice is audible in the call. */
   heardMoneo() { this.metered = true; this.lastAudible = this.now(); }
+  /** Called while the user is loud on the mic. */
+  heardUser() { this.micMetered = true; this.lastMic = this.now(); }
 
   /** Whether Moneo has said the result it was handed: it began, then went quiet with nobody talking over it. */
   private resultSaid() {
     const current = this.current;
     if (!current) return true;
-    const began = this.lastMoneo > current.at;
-    return began ? this.now() - this.lastMoneo >= RESULT_DONE_MS : this.now() - current.at > RESULT_TURN_MS;
+    if (this.lastMoneo <= current.at) return this.now() - current.at > RESULT_TURN_MS;
+    const micQuiet = this.micMetered && this.lastMic < this.lastMoneo;
+    return this.now() - this.lastMoneo >= (micQuiet ? RESULT_PAUSE_MS : RESULT_DONE_MS);
   }
 
   handle(event: ServerEvent) {
     switch (event.type) {
-      case "session.input_transcript.delta":
+      case "session.input_transcript.delta": {
+        // GPT-Live's transcript sometimes marks a break with "|" ("when is my| rent due").
+        const delta = (event.delta ?? "").replace(/\|/g, " ");
         // Talking over a result GPT-Live is saying stops it, and the rest would be lost.
         if (this.current && this.lastMoneo > this.current.at && !this.resultSaid()) {
-          this.cut = { delegationId: this.current.delegationId, content: this.current.content, words: "" };
+          this.cut = { ...this.current, words: "" };
           this.deps.log?.(`cut off: ${this.current.content.slice(0, 60)}`);
           this.current = null;
           this.resume();
         }
-        if (this.cut) this.cut.words += event.delta ?? "";
+        if (this.cut) this.cut.words += delta;
         this.lastUserSpeech = this.now();
-        this.heard.push({ text: event.delta ?? "", end: event.end_ms ?? Infinity });
-        this.caption("user", event.delta ?? "");
+        this.reply = "";
+        // Words without timing belong to the next hand-off, whatever its offset.
+        this.heard.push({ text: delta, start: event.start_ms ?? event.end_ms ?? -Infinity });
+        this.caption("user", delta);
         this.schedule(() => this.claimUnheard(), UNCLAIMED_MS);
         break;
+      }
       case "session.output_transcript.delta":
         this.lastAssistantSpeech = this.now();
         this.caption("assistant", event.delta ?? "");
+        this.reply += event.delta ?? "";
+        this.claimTakenOn();
         break;
       case "session.delegation.created": {
         // The delegation carries no task text: it is what the user said up to its offset since the previous one;
         // words said after the offset belong to the next request.
-        const offset = event.offset_ms ?? Infinity;
-        const claimed = this.heard.some(piece => piece.end <= offset) ? this.heard.filter(piece => piece.end <= offset) : this.heard;
-        this.heard = this.heard.filter(piece => !claimed.includes(piece));
-        const words = claimed.map(piece => piece.text).join("").replace(/\[[^\]]*\]/g, "").trim();
-        if (event.delegation?.id) this.lastDelegation = event.delegation.id;
-        // A late hand-off for words already started as their own request answers through that one.
-        if (event.delegation?.id && !words && this.unclaimedTask) { this.update(this.unclaimedTask, { delegationId: event.delegation.id }); this.unclaimedTask = null; break; }
-        this.unclaimedTask = null;
-        const text = words || this.lastUserTurn;
-        if (event.delegation?.id && text) this.start(text, event.delegation.id);
+        const id = event.delegation?.id;
+        if (!id) break;
+        this.lastDelegation = id;
+        this.claim(id, event.offset_ms ?? Infinity);
         break;
       }
       case "error":
@@ -166,18 +187,51 @@ export class VoiceCallController {
   }
 
   /**
-   * GPT-Live sometimes says it is on a request ("sure, I'll check that too") without handing it off. Words that stay
-   * unclaimed once the user has been quiet a while, and ask for something, become their own request, answered
-   * through the latest hand-off. Small talk GPT-Live answered itself stays with it.
+   * Starts a hand-off's request from the words up to its offset. With none yet, a request already started from the
+   * same unclaimed words answers through it; otherwise its words may still be on their way from the transcriber. A
+   * hand-off that never gets words of its own starts nothing, so a request never runs twice.
+   */
+  private claim(delegationId: string, offset: number, wait = true) {
+    // A word the user began before the hand-off is part of its request, even if it ended just after; later words
+    // belong to the next one.
+    const claimed = this.heard.filter(piece => piece.start < offset);
+    this.heard = this.heard.filter(piece => piece.start >= offset);
+    const words = plain(claimed.map(piece => piece.text).join(""));
+    if (words) { this.unclaimedTask = null; this.start(words, delegationId); }
+    else if (this.unclaimedTask) { this.update(this.unclaimedTask, { delegationId }); this.unclaimedTask = null; }
+    else if (wait) this.schedule(() => this.claim(delegationId, offset, false), LATE_WORDS_MS);
+    else this.deps.log?.("hand-off with no new words: nothing to start");
+  }
+
+  /**
+   * GPT-Live sometimes says it is on a request ("sure, I'll check that too") without handing it off. Once it says so,
+   * the user's words since the last hand-off become their own request right away, apart from whatever they say next,
+   * answered through the latest hand-off. If GPT-Live hands them off after all, that hand-off takes the request over.
+   */
+  private claimTakenOn() {
+    if (!this.lastDelegation || !TAKES_ON.test(this.reply.slice(0, 80))) return;
+    const text = plain(this.heard.map(piece => piece.text).join(""));
+    // A word or two left after an early hand-off ("month") is not a request of its own.
+    if (text.replace(SMALL_TALK, " ").trim().split(/\s+/).filter(Boolean).length < 3) return;
+    this.heard = [];
+    this.deps.log?.(`claimed words GPT-Live took on without a hand-off: ${text.slice(0, 60)}`);
+    this.unclaimedTask = this.start(text, this.lastDelegation);
+  }
+
+  /**
+   * Words still unclaimed once the user has been quiet a while: a request GPT-Live never handed off becomes its own,
+   * and small talk GPT-Live answered itself is dropped, so the next request doesn't start with it.
    */
   private claimUnheard() {
-    if (this.now() - this.lastUserSpeech < UNCLAIMED_MS || !this.lastDelegation) return;
-    const text = this.heard.map(piece => piece.text).join("").replace(/\[[^\]]*\]/g, "").trim();
-    if (!looksLikeRequest(text)) return;
+    if (this.now() - this.lastUserSpeech < UNCLAIMED_MS) return;
+    const text = plain(this.heard.map(piece => piece.text).join(""));
+    if (!looksLikeRequest(text)) { this.heard = []; return; }
+    if (!this.lastDelegation) return;
     this.heard = [];
     this.deps.log?.(`claimed words GPT-Live never handed off: ${text.slice(0, 60)}`);
     this.unclaimedTask = this.start(text, this.lastDelegation);
   }
+
 
   /** A typed message starts a task directly; its answer is spoken the same way. */
   typed(text: string) {
@@ -199,7 +253,6 @@ export class VoiceCallController {
     const last = this.captions.at(-1);
     if (last?.role === role) this.captions = [...this.captions.slice(0, -1), { ...last, text: last.text + delta }];
     else this.captions = [...this.captions, { id: ++this.captionId, role, text: delta.trimStart() }];
-    if (role === "user") this.lastUserTurn = this.captions.at(-1)!.text.trim();
     this.deps.onChange();
   }
 
@@ -217,7 +270,10 @@ export class VoiceCallController {
       via: "call", input: "voice",
       runningTasks: this.running.slice(-5).map(task => ({ requestId: task.requestId, text: task.text.slice(0, 300) })),
       recentTurns: this.captions.slice(-6).map(caption => ({ role: caption.role, text: caption.text.slice(-300) })),
-      answered: this.tasks.filter(task => this.answers.has(task.requestId)).slice(-4).map(task => ({ text: task.text.slice(0, 150), answer: this.answers.get(task.requestId)!.slice(0, 300) })),
+      answered: this.tasks.flatMap(task => {
+        const answer = this.answers.get(task.requestId);
+        return answer ? [{ text: task.text.slice(0, 150), answer: answer.slice(0, 300) }] : [];
+      }).slice(-4),
     };
   }
 
@@ -238,13 +294,15 @@ export class VoiceCallController {
     try {
       const result = await this.deps.ask({ conversationId: this.deps.conversationId, requestId, message: text.slice(0, 4000), context }, event => {
         if (event.type !== "tool" || event.state !== "running") return;
+        if (event.name === "call_replace_task") this.replaced((event.input as { requestId?: unknown } | undefined)?.requestId);
         const step = stepFor(event.name);
         this.update(requestId, { step });
         if (via()) this.deps.send({ type: "session.thinking.append", delegation_id: via(), content: `Working on ${label}: ${step}.` });
       });
       const task = this.tasks.find(item => item.requestId === requestId);
       // Canceled from the list, or stopped because a correction replaced it: nothing to say.
-      if (task?.status === "canceled" || result.status === 409) { this.update(requestId, { status: "canceled", step: "stopped" }); return; }
+      if (task?.status === "canceled") return;
+      if (result.status === 409) { this.update(requestId, { status: "canceled", step: "stopped" }); return; }
       if (!result.ok || !result.body.answer) throw new Error(result.body.error ?? "No answer");
       const cards = answerCards(result.body.answer);
       this.answers.set(requestId, spokenAnswer(result.body.answer));
@@ -252,35 +310,68 @@ export class VoiceCallController {
       this.deps.onAnswer?.(text, result.body as ChatAnswer);
       // A typed request has no hand-off to answer through, so the result says outright that it is to be spoken.
       const delegationId = via();
-      this.deliver(delegationId, [`Result for ${label}${delegationId ? "" : " (typed by the user in the call; say the result to them now, in the language they typed)"}: ${spokenAnswer(result.body.answer)}`,
+      this.deliver(requestId, delegationId, [`Result for ${label}${delegationId ? "" : " (typed by the user in the call; say the result to them now, in the language of their quoted words)"}: ${spokenAnswer(result.body.answer)}`,
         cards.length ? `${cards.length} card${cards.length > 1 ? "s" : ""} on screen to tap; nothing is saved until then.` : ""].filter(Boolean).join(" "));
     } catch {
       if (this.tasks.find(item => item.requestId === requestId)?.status === "canceled") return;
       this.update(requestId, { status: "failed", step: "failed" });
-      this.deliver(via(), `Moneo couldn't get an answer for ${label}. Tell the user briefly and ask if they want you to try again.`);
+      this.deliver(requestId, via(), `Moneo couldn't get an answer for ${label}. Tell the user briefly and ask if they want you to try again.`);
     }
   }
 
-  /** One short spoken update for a task that runs long, once nobody is talking. */
+  /** One short spoken update for a task that runs long, once nobody is talking. Re-checks every second; ends when the task does. */
   private watchSlow(requestId: string, delay = SLOW_TASK_MS) {
     this.schedule(() => {
       const task = this.tasks.find(item => item.requestId === requestId);
-      if (task?.status !== "running") return;
+      if (task?.status !== "running" || this.announced.has(requestId)) return;
       // Never in the middle of saying a result, or before one waiting to be said.
-      if (this.speaking() || this.current || this.cut || this.outbox.length) return this.watchSlow(requestId, 1000);
-      this.deps.send({ type: "session.commentary.append", delegation_id: task.delegationId, content: `Still working on "${task.text.slice(0, 120)}" (${task.step}). Say so in a few words${task.delegationId ? "" : ", in the language they typed"}.` });
+      if (this.speaking() || !this.resultSaid() || this.cut || this.outbox.length) return this.watchSlow(requestId, 1000);
+      this.stillWorking([task]);
     }, delay);
   }
 
+  /**
+   * Once Moneo has said a result and has no other to say next, it says what is still running, read right then, so it
+   * never says it is waiting on a request that has finished. Re-checks every 300 ms; ends once a newer result goes out.
+   */
+  private followUp(handed: VoiceCallController["current"]) {
+    this.schedule(() => {
+      if (this.current !== handed || this.cut || this.outbox.length) return;
+      if (this.speaking() || !this.resultSaid()) return this.followUp(handed);
+      const waiting = this.running.filter(task => !this.announced.has(task.requestId));
+      if (waiting.length) this.stillWorking(waiting);
+    }, 300);
+  }
+
+  private stillWorking(tasks: CallTask[]) {
+    tasks.forEach(task => this.announced.add(task.requestId));
+    const names = tasks.map(task => `"${task.text.slice(0, 120)}" (${task.step})`).join(", ");
+    this.deps.send({ type: "session.commentary.append", delegation_id: tasks[0].delegationId,
+      content: `Still working on ${names}. Say so in a few words${tasks.some(task => task.delegationId) ? "" : ", in the language of their quoted words"}.` });
+  }
+
   /** Results queue in the order they finish. */
-  private deliver(delegationId: string | null, content: string) {
-    this.outbox.push({ delegationId, content });
+  private deliver(requestId: string, delegationId: string | null, content: string) {
+    this.outbox.push({ requestId, delegationId, content });
     this.flush();
   }
 
   /**
-   * Hands over the next result once Moneo has said the previous one and nobody is talking. What is still running is
-   * read when it goes out, so a result never says another is pending after that one has finished.
+   * A correction is replacing an earlier request: its result is not said, so Moneo never gives the old answer before
+   * the corrected one. The server stops it or dismisses its cards.
+   */
+  private replaced(requestId: unknown) {
+    const task = this.tasks.find(item => item.requestId === requestId);
+    if (!task || task.status === "failed" || task.status === "canceled") return;
+    this.outbox = this.outbox.filter(item => item.requestId !== task.requestId);
+    // Nor is the rest of it said if the user cut it off.
+    if (this.cut?.requestId === task.requestId) this.cut = null;
+    this.update(task.requestId, { status: "canceled", step: "replaced" });
+  }
+
+  /**
+   * Hands over the next result once Moneo has said the previous one and nobody is talking. A result never says what
+   * else is still running: by the time Moneo reaches the end of it, that may have finished too.
    */
   private flush() {
     if (this.flushing || !this.outbox.length || this.cut) return;
@@ -289,11 +380,11 @@ export class VoiceCallController {
       this.schedule(() => { this.flushing = false; this.flush(); }, 300);
       return;
     }
-    const { delegationId, content } = this.outbox.shift()!;
-    const others = this.running.map(item => `"${item.text.slice(0, 80)}"`);
-    this.current = { delegationId, content, at: this.now() };
+    const { requestId, delegationId, content } = this.outbox.shift()!;
+    this.current = { requestId, delegationId, content, at: this.now() };
     this.deps.log?.(`handed over: ${content.slice(0, 60)}`);
-    this.deps.send({ type: "session.commentary.append", delegation_id: delegationId, content: others.length ? `${content} Still working on ${others.join(", ")}.` : content });
+    this.deps.send({ type: "session.commentary.append", delegation_id: delegationId, content: `${content} ${ONLY_THIS_RESULT}` });
+    this.followUp(this.current);
     this.flush();
   }
 
@@ -310,12 +401,12 @@ export class VoiceCallController {
       this.cut = null;
       const words = cut.words.trim().split(/\s+/).length;
       this.deps.log?.(words >= 3 ? "resuming the cut-off result" : "not resuming: only a backchannel");
-      if (words >= 3) this.outbox.unshift({ delegationId: cut.delegationId,
+      if (words >= 3) this.outbox.unshift({ requestId: cut.requestId, delegationId: cut.delegationId,
         content: `The user talked over you while you were giving this result. If you hadn't finished it, finish the part you hadn't said yet, without repeating what you already said; if you had, or they asked you to stop or skip it, say nothing more about it. ${cut.content}` });
       this.flush();
     }, 300);
   }
 
   /** Marks a task canceled; the caller asks the server to stop it. */
-  cancel(requestId: string) { this.update(requestId, { status: "canceled", step: "canceled" }); }
+  cancel(requestId: string) { this.update(requestId, { status: "canceled", step: "stopped" }); }
 }

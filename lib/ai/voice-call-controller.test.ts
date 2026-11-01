@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { VoiceCallController, answerCards, looksLikeRequest, spokenAnswer, type CallAsk } from "./voice-call-controller";
+import { ONLY_THIS_RESULT, VoiceCallController, answerCards, looksLikeRequest, spokenAnswer, type CallAsk } from "./voice-call-controller";
 
 const card = "11111111-1111-4111-8111-111111111111";
 function setup() {
@@ -18,7 +18,7 @@ function setup() {
       for (const timer of due) { timers.splice(timers.indexOf(timer), 1); timer.run(); }
     await new Promise(resolve => setTimeout(resolve));
   };
-  const say = (text: string, endMs?: number) => call.handle({ type: "session.input_transcript.delta", delta: text, end_ms: endMs });
+  const say = (text: string, endMs?: number, startMs?: number) => call.handle({ type: "session.input_transcript.delta", delta: text, start_ms: startMs, end_ms: endMs });
   const delegate = (id: string, offsetMs?: number) => call.handle({ type: "session.delegation.created", offset_ms: offsetMs, delegation: { id } });
   const answer = async (message: string, text: string, status = 200) => { pending[message]({ ok: status < 400, status, body: status < 400 ? { answer: text, conversationId: "c" } : { error: "x" } }); await new Promise(resolve => setTimeout(resolve)); };
   // Time passes in small steps, so retries the controller schedules run too; Moneo's voice is metered every 100 ms.
@@ -57,10 +57,69 @@ ${card}
   expect(spoken()).toHaveLength(1);
   await wait(2700);
   expect(spoken()).toEqual([
-    { type: "session.commentary.append", delegation_id: "d2", content: 'Result for "Rent?": Rent is EUR 850.00 on Nov 1. Still working on "Netto?".' },
-    { type: "session.commentary.append", delegation_id: "d1", content: 'Result for "Netto?": I spent it. 1 card on screen to tap; nothing is saved until then.' },
+    { type: "session.commentary.append", delegation_id: "d2", content: `Result for "Rent?": Rent is EUR 850.00 on Nov 1. ${ONLY_THIS_RESULT}` },
+    { type: "session.commentary.append", delegation_id: "d1", content: `Result for "Netto?": I spent it. 1 card on screen to tap; nothing is saved until then. ${ONLY_THIS_RESULT}` },
   ]);
   expect(onAnswer).toHaveBeenCalledTimes(2);
+});
+
+it("never says a request is still running once it has finished while another result is being said", async () => {
+  const { sent, say, delegate, answer, wait, moneoTalks } = setup();
+  say("Netto?"); delegate("d1"); say("Rent?"); delegate("d2");
+  await answer("Netto?", "42 euros.");
+  await wait(1600);
+  await moneoTalks(1000);
+  // Rent finishes while Moneo is still saying the Netto result.
+  await answer("Rent?", "EUR 850.");
+  // Nothing about it reaches GPT-Live before its result: a note that it finished made GPT-Live announce an amount it made up.
+  expect(sent.some(event => String(event.content).startsWith("Finished"))).toBe(false);
+  await moneoTalks(1000);
+  await wait(2700);
+  const spoken = sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content));
+  expect(spoken).toEqual([`Result for "Netto?": 42 euros. ${ONLY_THIS_RESULT}`, `Result for "Rent?": EUR 850. ${ONLY_THIS_RESULT}`]);
+});
+
+it("hands over the next result after a short pause when the mic stayed quiet, and waits for late words when it didn't", async () => {
+  const { call, sent, say, delegate, answer, wait, moneoTalks } = setup();
+  const spoken = () => sent.filter(event => event.type === "session.commentary.append");
+  call.heardUser();
+  say("A?"); delegate("d1"); say("B?"); delegate("d2"); say("C?"); delegate("d3");
+  await answer("A?", "one"); await answer("B?", "two"); await answer("C?", "three");
+  await wait(1600);
+  await moneoTalks(1000);
+  await wait(1300);
+  expect(spoken()).toHaveLength(2);
+  await moneoTalks(1000);
+  // The user is loud on the mic as Moneo stops; their words are not transcribed yet.
+  call.heardUser();
+  await wait(1300);
+  expect(spoken()).toHaveLength(2);
+});
+
+it("says what is still running once a result has been said, as it stands then, and only once", async () => {
+  const { sent, say, delegate, answer, wait, moneoTalks } = setup();
+  const spoken = () => sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content));
+  say("Netto?"); delegate("d1"); say("Rent?"); delegate("d2");
+  await answer("Netto?", "42 euros.");
+  await wait(1600);
+  await moneoTalks(1000);
+  expect(spoken()).toHaveLength(1);
+  await wait(2700);
+  expect(spoken()[1]).toMatch(/^Still working on "Rent\?"/);
+  await wait(10_000);
+  expect(spoken()).toHaveLength(2);
+});
+
+it("still gives a slow request its spoken update after an earlier result was said", async () => {
+  const { sent, say, delegate, answer, wait, moneoTalks } = setup();
+  say("Netto?"); delegate("d1");
+  await answer("Netto?", "42 euros.");
+  await wait(1600);
+  await moneoTalks(1000);
+  await wait(2700);
+  say("Forecast?"); delegate("d2");
+  await wait(9500);
+  expect(sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content))[1]).toMatch(/^Still working on "Forecast\?"/);
 });
 
 it("holds results while the user is speaking", async () => {
@@ -98,13 +157,24 @@ it("says a failure briefly, and stays quiet for canceled or replaced requests", 
   expect(sent.filter(event => event.type === "session.commentary.append")).toEqual([{ type: "session.commentary.append", delegation_id: null, content: expect.stringContaining("couldn't get an answer") }]);
 });
 
+it("never says the result of a request a correction replaced", async () => {
+  const { call, sent, asks, say, delegate, answer, wait } = setup();
+  say("Add 12 at Netto"); delegate("d1"); say("No, make it 15"); delegate("d2");
+  asks[1][1]({ type: "tool", name: "call_replace_task", state: "running", input: { requestId: "r1" } });
+  await answer("Add 12 at Netto", "Card for 12 euros is on screen.");
+  await answer("No, make it 15", "Card for 15 euros is on screen.");
+  await wait(2000);
+  expect(call.tasks.map(task => [task.status, task.step])).toEqual([["canceled", "replaced"], ["done", "answered"]]);
+  expect(sent.filter(event => event.type === "session.commentary.append").map(event => event.content)).toEqual([`Result for "No, make it 15": Card for 15 euros is on screen. ${ONLY_THIS_RESULT}`]);
+});
+
 it("hands a typed message's result to GPT-Live to say, without a delegation", async () => {
   const { call, sent, answer } = setup();
   call.typed("What did I spend?");
   await answer("What did I spend?", "42 euros", 200);
   expect(call.captions).toEqual([{ id: 1, role: "user", text: "What did I spend?" }]);
   expect(sent.filter(event => event.type === "session.commentary.append")).toEqual([
-    { type: "session.commentary.append", delegation_id: null, content: 'Result for "What did I spend?" (typed by the user in the call; say the result to them now, in the language they typed): 42 euros' }]);
+    { type: "session.commentary.append", delegation_id: null, content: `Result for "What did I spend?" (typed by the user in the call; say the result to them now, in the language of their quoted words): 42 euros ${ONLY_THIS_RESULT}` }]);
   expect(sent.filter(event => event.type === "session.thinking.append")).toEqual([]);
 });
 
@@ -120,11 +190,26 @@ it("cuts each request at its hand-off's offset, leaving later words for the next
   expect(asks.map(([payload]) => payload.message)).toEqual(["Analyze last month.", "Also how much did I spend?"]);
 });
 
-it("never turns small talk GPT-Live answered itself into a request", async () => {
-  const { asks, say, advance } = setup();
+it("keeps a word the user began before the hand-off in its request, even if it ended just after", () => {
+  const { asks, say, delegate } = setup();
+  say("How much did I spend at Netto this", 3300, 2000); say(" month?", 3800, 3400); delegate("d1", 3600);
+  say(" And when is my rent due?", 6000, 4500); delegate("d2", 6100);
+  expect(asks.map(([payload]) => payload.message)).toEqual(["How much did I spend at Netto this month?", "And when is my rent due?"]);
+});
+
+it("leaves GPT-Live's \"|\" break marks out of requests", () => {
+  const { asks, say, delegate } = setup();
+  say("And when is my|"); say(" rent due?"); delegate("d1");
+  expect(asks.map(([payload]) => payload.message)).toEqual(["And when is my rent due?"]);
+});
+
+it("never turns small talk GPT-Live answered itself into a request, or into the start of the next one", async () => {
+  const { asks, say, delegate, advance } = setup();
   say("Hey, how are you doing today?");
   await advance(10_000);
   expect(asks).toHaveLength(0);
+  say("How much at Netto?"); delegate("d1");
+  expect(asks.map(([payload]) => payload.message)).toEqual(["How much at Netto?"]);
 });
 
 it("briefs each request with the call so far and what it already answered", async () => {
@@ -158,6 +243,29 @@ it("asks Moneo to finish a result the user cut off, after it has answered them, 
   await moneoTalks(1500);
   await wait(2700);
   expect(spoken()[2]).toContain('Result for "Total?"');
+});
+
+it("finishes a cut-off result without saying a request that finished meanwhile is still running", async () => {
+  const { sent, say, delegate, answer, wait, moneoTalks } = setup();
+  say("Netto?"); delegate("d1"); say(" Rent?"); delegate("d2");
+  await answer("Netto?", "You spent EUR 42.00 at Netto this month.");
+  await wait(1600);
+  await moneoTalks(1000);
+  await wait(1000);
+  say("wait, and my savings goal?"); delegate("d3");
+  await wait(1600);
+  await moneoTalks(800);
+  await wait(800);
+  const spoken = () => sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content));
+  expect(spoken()).toHaveLength(2);
+  expect(spoken()[1]).toMatch(/Result for "Netto\?"/);
+  expect(spoken()[1]).not.toMatch(/Still working/);
+  // Rent finishes while Moneo is finishing the Netto result.
+  await moneoTalks(500);
+  await answer("Rent?", "Rent is EUR 850.00 on Nov 1.");
+  await moneoTalks(1000);
+  await wait(2700);
+  expect(spoken()[2]).toBe(`Result for "Rent?": Rent is EUR 850.00 on Nov 1. ${ONLY_THIS_RESULT}`);
 });
 
 it("does not resume over a short mm-hm", async () => {
@@ -207,6 +315,82 @@ it("starts a request GPT-Live agreed to but never handed off, once the user has 
   delegate("d2");
   expect(asks).toHaveLength(2);
   expect(call.tasks[1].delegationId).toBe("d2");
+});
+
+it("starts a request GPT-Live agreed to without a hand-off as soon as it replied, so the next words stay apart", async () => {
+  const { call, asks, say, delegate } = setup();
+  say("How much did I spend at Netto this month?"); delegate("d1");
+  say(" And when is my rent due?");
+  call.handle({ type: "session.output_transcript.delta", delta: "Mm-hm, on that one too." });
+  // The user goes on before a pause of any length.
+  say(" Oh, by the way, I spent 12.40 in cash at Netto."); delegate("d2");
+  expect(asks.map(([payload]) => payload.message)).toEqual(["How much did I spend at Netto this month?", "And when is my rent due?", "Oh, by the way, I spent 12.40 in cash at Netto."]);
+});
+
+it("never runs a request twice for a second hand-off of the same words, but waits for words transcribed late", async () => {
+  const { asks, say, delegate, wait } = setup();
+  say("How much at Netto?", 2000); delegate("d1", 2500); delegate("d2", 2500);
+  await wait(2000);
+  expect(asks.map(([payload]) => payload.message)).toEqual(["How much at Netto?"]);
+  delegate("d3", 6000);
+  await wait(500);
+  say("And rent?", 5800);
+  await wait(1500);
+  expect(asks.map(([payload]) => payload.message)).toEqual(["How much at Netto?", "And rent?"]);
+});
+
+it("keeps a request whole when GPT-Live says \"take your time\" in the user's pause", async () => {
+  const { call, asks, say, delegate, wait } = setup();
+  say("Rent?"); delegate("d0");
+  say("I paid twenty euros", 3000, 2000);
+  call.handle({ type: "session.output_transcript.delta", delta: "Mm-hm. Take your time." });
+  await wait(2000);
+  say(" for groceries at Rewe", 6000, 5000); delegate("d1", 6100);
+  expect(asks.map(([payload]) => payload.message)).toEqual(["Rent?", "I paid twenty euros for groceries at Rewe"]);
+});
+
+it("never makes a request of a word left after an early hand-off", () => {
+  const { call, asks, say, delegate } = setup();
+  say("Netto?"); delegate("d0");
+  say("How much did I spend at Netto this", 3000, 2000); delegate("d1", 3100);
+  say(" month", 3500, 3200);
+  call.handle({ type: "session.output_transcript.delta", delta: "Sure, let me look through your transactions." });
+  expect(asks.map(([payload]) => payload.message)).toEqual(["Netto?", "How much did I spend at Netto this"]);
+});
+
+it("never loses a request GPT-Live answers before its hand-off arrives", async () => {
+  const { call, asks, say, delegate, wait } = setup();
+  say("Rewe groceries twenty euros", 2000, 500);
+  call.handle({ type: "session.output_transcript.delta", delta: "Got it, making a card." });
+  await wait(500);
+  delegate("d1", 2100);
+  expect(asks.map(([payload]) => payload.message)).toEqual(["Rewe groceries twenty euros"]);
+});
+
+it("lets a late hand-off take over the request GPT-Live agreed to, not the words said after it", async () => {
+  const { call, asks, say, delegate } = setup();
+  say("Netto?", 1000, 500); delegate("d0", 1100);
+  say(" Check my rent", 3000, 2000);
+  call.handle({ type: "session.output_transcript.delta", delta: "Sure, on that one too." });
+  say(" And my savings goal?", 5000, 4000);
+  delegate("dA", 3100); delegate("dB", 5100);
+  expect(asks.map(([payload]) => payload.message)).toEqual(["Netto?", "Check my rent", "And my savings goal?"]);
+  expect(call.tasks.map(task => task.delegationId)).toEqual(["d0", "dA", "dB"]);
+});
+
+it("doesn't finish a cut-off result that a correction replaced", async () => {
+  const { sent, asks, say, delegate, answer, wait, moneoTalks } = setup();
+  say("Add coffee 5"); delegate("d1");
+  await answer("Add coffee 5", "Card for 5 euros on screen.");
+  await wait(1600);
+  await moneoTalks(800);
+  await wait(1000);
+  say("No, make it fifteen"); delegate("d2");
+  asks[1][1]({ type: "tool", name: "call_replace_task", state: "running", input: { requestId: "r1" } });
+  await wait(1600);
+  await moneoTalks(800);
+  await wait(4000);
+  expect(sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content))).toHaveLength(1);
 });
 
 it("tells requests from small talk among unclaimed words", () => {

@@ -121,15 +121,18 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
         .then(response => { if (response.ok) finished?.(); }, () => {});
     }
     connect().catch(cause => { if (!closed) { setStatus("error"); setError(failure(cause)); } });
-    // Moneo's voice, metered: what the user actually hears decides when a result has been said.
+    // Both voices, metered: what the user actually hears, and whether they talked over it, decide when a result has been said.
     const buffer = new Uint8Array(512);
-    let moneoOn = false, micOn = false;
+    let moneoOn = false, micOn = false, talking = false;
     const meter = setInterval(() => {
       const moneo = level(live.moneoLevel, buffer) > 0.02, mic = level(live.micLevel, buffer) > 0.08;
       if (moneo) controller.heardMoneo();
+      if (mic) controller.heardUser();
       if (trace && moneo !== moneoOn) trace(moneo ? "Moneo audible" : "Moneo quiet");
       if (trace && mic !== micOn) trace(mic ? "mic loud" : "mic quiet");
       moneoOn = moneo; micOn = mic;
+      // The call screen shows when Moneo is talking; it re-renders only when that changes.
+      if (controller.speaking("moneo") !== talking) { talking = !talking; render(); }
     }, 100);
     document.addEventListener("visibilitychange", lock);
     return () => {
@@ -176,5 +179,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
     typed: (text: string) => controller.typed(text),
     /** Moneo is answering or working; used for the orb's thinking state. */
     thinking: controller.running.length > 0,
+    /** Moneo's voice is audible right now. */
+    talking: controller.speaking("moneo"),
   };
 }
