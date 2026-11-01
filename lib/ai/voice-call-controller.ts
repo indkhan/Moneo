@@ -90,7 +90,7 @@ export class VoiceCallController {
   /** When the user was last loud on the mic, once it is metered. */
   private lastMic = -Infinity;
   private micMetered = false;
-  private outbox: { delegationId: string | null; content: string }[] = [];
+  private outbox: { requestId?: string; delegationId: string | null; content: string }[] = [];
   private flushing = false;
   /** The result Moneo was last handed and when, until it has said all of it or was talked over. */
   private current: { delegationId: string | null; content: string; at: number } | null = null;
@@ -249,13 +249,15 @@ export class VoiceCallController {
     try {
       const result = await this.deps.ask({ conversationId: this.deps.conversationId, requestId, message: text.slice(0, 4000), context }, event => {
         if (event.type !== "tool" || event.state !== "running") return;
+        if (event.name === "call_replace_task") this.replaced((event.input as { requestId?: unknown } | undefined)?.requestId);
         const step = stepFor(event.name);
         this.update(requestId, { step });
         if (via()) this.deps.send({ type: "session.thinking.append", delegation_id: via(), content: `Working on ${label}: ${step}.` });
       });
       const task = this.tasks.find(item => item.requestId === requestId);
       // Canceled from the list, or stopped because a correction replaced it: nothing to say.
-      if (task?.status === "canceled" || result.status === 409) { this.update(requestId, { status: "canceled", step: "stopped" }); return; }
+      if (task?.status === "canceled") return;
+      if (result.status === 409) { this.update(requestId, { status: "canceled", step: "stopped" }); return; }
       if (!result.ok || !result.body.answer) throw new Error(result.body.error ?? "No answer");
       const cards = answerCards(result.body.answer);
       this.answers.set(requestId, spokenAnswer(result.body.answer));
@@ -265,12 +267,12 @@ export class VoiceCallController {
       this.deps.onAnswer?.(text, result.body as ChatAnswer);
       // A typed request has no hand-off to answer through, so the result says outright that it is to be spoken.
       const delegationId = via();
-      this.deliver(delegationId, [`Result for ${label}${delegationId ? "" : " (typed by the user in the call; say the result to them now, in the language they typed)"}: ${spokenAnswer(result.body.answer)}`,
+      this.deliver(requestId, delegationId, [`Result for ${label}${delegationId ? "" : " (typed by the user in the call; say the result to them now, in the language they typed)"}: ${spokenAnswer(result.body.answer)}`,
         cards.length ? `${cards.length} card${cards.length > 1 ? "s" : ""} on screen to tap; nothing is saved until then.` : ""].filter(Boolean).join(" "));
     } catch {
       if (this.tasks.find(item => item.requestId === requestId)?.status === "canceled") return;
       this.update(requestId, { status: "failed", step: "failed" });
-      this.deliver(via(), `Moneo couldn't get an answer for ${label}. Tell the user briefly and ask if they want you to try again.`);
+      this.deliver(requestId, via(), `Moneo couldn't get an answer for ${label}. Tell the user briefly and ask if they want you to try again.`);
     }
   }
 
@@ -286,9 +288,20 @@ export class VoiceCallController {
   }
 
   /** Results queue in the order they finish. */
-  private deliver(delegationId: string | null, content: string) {
-    this.outbox.push({ delegationId, content });
+  private deliver(requestId: string, delegationId: string | null, content: string) {
+    this.outbox.push({ requestId, delegationId, content });
     this.flush();
+  }
+
+  /**
+   * A correction is replacing an earlier request: its result is not said, so Moneo never gives the old answer before
+   * the corrected one. The server stops it or dismisses its cards.
+   */
+  private replaced(requestId: unknown) {
+    const task = this.tasks.find(item => item.requestId === requestId);
+    if (!task || task.status === "failed" || task.status === "canceled") return;
+    this.outbox = this.outbox.filter(item => item.requestId !== task.requestId);
+    this.update(task.requestId, { status: "canceled", step: "replaced" });
   }
 
   /**
@@ -329,5 +342,5 @@ export class VoiceCallController {
   }
 
   /** Marks a task canceled; the caller asks the server to stop it. */
-  cancel(requestId: string) { this.update(requestId, { status: "canceled", step: "canceled" }); }
+  cancel(requestId: string) { this.update(requestId, { status: "canceled", step: "stopped" }); }
 }

@@ -130,6 +130,17 @@ it("says a failure briefly, and stays quiet for canceled or replaced requests", 
   expect(sent.filter(event => event.type === "session.commentary.append")).toEqual([{ type: "session.commentary.append", delegation_id: null, content: expect.stringContaining("couldn't get an answer") }]);
 });
 
+it("never says the result of a request a correction replaced", async () => {
+  const { call, sent, asks, say, delegate, answer, wait } = setup();
+  say("Add 12 at Netto"); delegate("d1"); say("No, make it 15"); delegate("d2");
+  asks[1][1]({ type: "tool", name: "call_replace_task", state: "running", input: { requestId: "r1" } });
+  await answer("Add 12 at Netto", "Card for 12 euros is on screen.");
+  await answer("No, make it 15", "Card for 15 euros is on screen.");
+  await wait(2000);
+  expect(call.tasks.map(task => [task.status, task.step])).toEqual([["canceled", "replaced"], ["done", "answered"]]);
+  expect(sent.filter(event => event.type === "session.commentary.append").map(event => event.content)).toEqual(['Result for "No, make it 15": Card for 15 euros is on screen.']);
+});
+
 it("hands a typed message's result to GPT-Live to say, without a delegation", async () => {
   const { call, sent, answer } = setup();
   call.typed("What did I spend?");
