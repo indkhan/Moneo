@@ -1,0 +1,3 @@
+can you audit the call feature with moneo 
+find problems in it and fix them there might be bugs and all and if there is something that is over complicating or over engineering it then show that as well and fix it you can test the application as the api key is there 
+it should allow updating ur query so you can stop the old one , you can queue  , you can interrupt and add another things and all of that check into the full codebase of it and find problems and fix them and give me the list of it
