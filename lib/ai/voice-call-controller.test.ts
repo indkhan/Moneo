@@ -277,6 +277,16 @@ it("starts a request GPT-Live agreed to but never handed off, once the user has 
   expect(call.tasks[1].delegationId).toBe("d2");
 });
 
+it("starts a request GPT-Live agreed to without a hand-off as soon as it replied, so the next words stay apart", async () => {
+  const { call, asks, say, delegate, wait } = setup();
+  say("How much did I spend at Netto this month?"); delegate("d1");
+  say(" And when is my rent due?");
+  call.handle({ type: "session.output_transcript.delta", delta: "Mm-hm, on that one too." });
+  await wait(1600);
+  say(" Oh, by the way, I spent 12.40 in cash at Netto."); delegate("d2");
+  expect(asks.map(([payload]) => payload.message)).toEqual(["How much did I spend at Netto this month?", "And when is my rent due?", "Oh, by the way, I spent 12.40 in cash at Netto."]);
+});
+
 it("tells requests from small talk among unclaimed words", () => {
   expect(looksLikeRequest("Hey, how are you doing today?")).toBe(false);
   expect(looksLikeRequest("Mm uh, can you also tell me how are you")).toBe(false);

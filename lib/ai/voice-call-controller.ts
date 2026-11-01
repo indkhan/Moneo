@@ -43,7 +43,8 @@ export function spokenAnswer(answer: string, max = 1500) {
 }
 
 export const SPEAKING_HOLD_MS = 700;
-/** Words still unclaimed after the user has been quiet this long were a request GPT-Live said yes to but never handed off. */
+/** Words still unclaimed after the user has been quiet this long were a request GPT-Live said yes to but never handed off.
+ * Once GPT-Live has replied to them ("on that one too"), a short pause is enough, so the user's next words stay apart. */
 export const UNCLAIMED_MS = 4000;
 const SMALL_TALK = /\b(hi|hey|hello|yo|thanks|thank you|bye|good (morning|evening|night)|how are you( doing)?( today)?|i'?m (good|fine|okay)|okay|ok|yeah|yes|no|um+|uh+|mm+|mm-?hm|(can|could|would|will) you( also)?( please)?( tell me| say)?)\b/gi;
 const ASKS = /\?|\b(how much|what|when|where|who|which|why|check|show|tell|add|spent|spend|paid|pay|lent|lend|borrowed?|owe|bought|received|transfer|budget|save|balance|cancel|remove|change)\b/i;
@@ -77,6 +78,8 @@ export class VoiceCallController {
   /** Words the user said that no hand-off has claimed yet, with when each piece ended in the session. */
   private heard: { text: string; end: number }[] = [];
   private lastUserTurn = "";
+  /** What Moneo has said since the user last spoke. */
+  private reply = "";
   private lastDelegation: string | null = null;
   /** A request started from unclaimed words, which a late hand-off of the same words takes over instead of repeating. */
   private unclaimedTask: string | null = null;
@@ -144,6 +147,7 @@ export class VoiceCallController {
         }
         if (this.cut) this.cut.words += event.delta ?? "";
         this.lastUserSpeech = this.now();
+        this.reply = "";
         this.heard.push({ text: event.delta ?? "", end: event.end_ms ?? Infinity });
         this.caption("user", event.delta ?? "");
         this.schedule(() => this.claimUnheard(), UNCLAIMED_MS);
@@ -151,6 +155,8 @@ export class VoiceCallController {
       case "session.output_transcript.delta":
         this.lastAssistantSpeech = this.now();
         this.caption("assistant", event.delta ?? "");
+        this.reply += event.delta ?? "";
+        if (this.replied()) this.schedule(() => this.claimUnheard(), USER_PAUSE_MS);
         break;
       case "session.delegation.created": {
         // The delegation carries no task text: it is what the user said up to its offset since the previous one;
@@ -181,7 +187,8 @@ export class VoiceCallController {
    * request doesn't start with it.
    */
   private claimUnheard() {
-    if (this.now() - this.lastUserSpeech < UNCLAIMED_MS) return;
+    const quiet = this.now() - this.lastUserSpeech;
+    if (quiet < UNCLAIMED_MS && !(this.replied() && quiet >= USER_PAUSE_MS)) return;
     const text = this.heard.map(piece => piece.text).join("").replace(/\[[^\]]*\]/g, "").trim();
     if (!looksLikeRequest(text)) { this.heard = []; return; }
     if (!this.lastDelegation) return;
@@ -189,6 +196,9 @@ export class VoiceCallController {
     this.deps.log?.(`claimed words GPT-Live never handed off: ${text.slice(0, 60)}`);
     this.unclaimedTask = this.start(text, this.lastDelegation);
   }
+
+  /** GPT-Live has answered the user's last words with more than a backchannel. */
+  private replied() { return this.reply.replace(/\[[^\]]*\]/g, "").replace(SMALL_TALK, " ").trim().split(/\s+/).filter(Boolean).length >= 3; }
 
   /** A typed message starts a task directly; its answer is spoken the same way. */
   typed(text: string) {
