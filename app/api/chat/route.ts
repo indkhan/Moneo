@@ -99,8 +99,11 @@ export async function POST(request: Request) {
   const runningTasks = call.success ? (call.data.runningTasks ?? []).filter(task => task.requestId !== requestId) : [];
   // Other requests from this call are still being answered on their own; leaving their questions out keeps this answer to its own request.
   const running = new Set(runningTasks.map(task => task.requestId));
-  // Only the latest running request can be replaced, and never by one that adds to it ("also do last month").
-  const replaceable = ADDS_TO_RUNNING.test(message) ? undefined : runningTasks.at(-1);
+  // Only the latest running request, or with none running the last answered one ("actually make it 15" after its card
+  // was made), can be replaced, and never by one that adds to it ("also do last month").
+  const lastAnswered = call.success ? call.data.answered?.at(-1) : undefined;
+  const replaceable = ADDS_TO_RUNNING.test(message) ? undefined
+    : runningTasks.at(-1) ?? (lastAnswered?.requestId && lastAnswered.requestId !== requestId ? { requestId: lastAnswered.requestId, text: lastAnswered.text } : undefined);
   // History was read before the claim saved this message, so append it exactly as the claim stores it.
   const submitted = { role: "user", content: message, context: capturedContext ?? {}, attachments: [] };
   const replayed = (history ?? []).filter(item => !running.has(item.request_id)).reverse().map(item => item.context?.via === "call" ? { ...item, context: withoutCallBrief(item.context) } : item);
@@ -249,9 +252,9 @@ ${CALL_MODE_PROMPT}` : ""}`,
           finance_detail: tool({ description: "Read an owned canonical transaction with its effective split/fee components, or a recurring series with complete paginated source transactions. Classification warnings remain explicit.", inputSchema: investigationDetailSchema, execute: input => aiEvidence(input.kind === "recurring" ? ["accounts", "transactions", "planning"] : ["accounts", "transactions"], latest => investigationDetail(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
           finance_scenario: tool({ description: "Compare the same investigation against at most 100 hypothetical effective-record amount/date/category overrides. Read-only; canonical ledger, sources, balances and recurrence remain unchanged. Use exact minor-unit strings and owned effective IDs.", inputSchema: investigationScenarioSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => evaluateInvestigationScenario(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
         } : {}),
-        ...(replaceable ? { call_replace_task: tool({ description: `Only when the user explicitly drops their latest still-running request from this call ("${replaceable.text.slice(0, 80)}", requestId ${replaceable.requestId}) for this one, as in "leave that, do this" or "no, I meant last month". Otherwise both run. Stops it, or lets it finish and dismisses its cards. Call before answering this request.`,
+        ...(replaceable ? { call_replace_task: tool({ description: `Only when the user explicitly drops their latest request from this call ("${replaceable.text.slice(0, 80)}", requestId ${replaceable.requestId}) for this one, as in "leave that, do this" or "no, I meant last month". Otherwise both run. Stops it, or lets it finish and dismisses its cards. Call before answering this request.`,
           inputSchema: z.object({ requestId: z.uuid() }).strict(), execute: async ({ requestId: target }) => {
-            if (target !== replaceable.requestId) throw new Error("Only the latest running request from this call can be replaced");
+            if (target !== replaceable.requestId) throw new Error("Only the latest request from this call can be replaced");
             return replaceCallTask(supabase, { workspaceId: workspace.id, conversationId, requestId: target });
           } }) } : {}),
         ...(settings.ai_data_scopes.includes("transactions") ? { agents_findings: tool({ description: "Read what the agent team found in its recent runs: open proposals (categorizations, recurring bills, budgets, anomaly findings) with ids, plus each run's briefing and page link. Set includeDecided to also see accepted and dismissed ones.",
