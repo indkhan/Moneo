@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
 import { compareReviewEvidence } from "@/lib/finance/review-freshness";
-import { mapRows, parseAmountMinor, parseCsv, parseExcel, parseTransactionStatus, previewImport, validateMapping, validateAiMapping, proposeAccountRoutes, validateImportConfirmation, detectStatementFormat, proposeKnownStatementMapping, friendlyAccountName } from "@/lib/import/csv";
+import { mapRows, parseAmountMinor, provenNumericConvention, parseCsv, parseExcel, parseTransactionStatus, previewImport, validateMapping, validateAiMapping, proposeAccountRoutes, validateImportConfirmation, detectStatementFormat, proposeKnownStatementMapping, friendlyAccountName } from "@/lib/import/csv";
 
 const mapping = {
   accountName: "Checking",
@@ -420,5 +420,17 @@ describe("financial import parsing", () => {
     const rows = await parseExcel(bytes as ArrayBuffer);
     expect(rows).toEqual([{ Date: "2026-09-01", Description: "Coffee", Amount: "-2.49" }]);
     expect(mapRows(rows, { ...mapping, dateFormat: "iso" })[0].amountMinor).toBe(-249n);
+  });
+});
+
+describe("provenNumericConvention", () => {
+  const base = { accountName: "Checking", currencyCode: "EUR", dateColumn: "Date", descriptionColumn: "Description", amountColumn: "Amount", dateFormat: "iso", amountSign: "signed" } as const;
+  const csv = (...amounts: string[]) => parseCsv(["Date,Description,Amount", ...amounts.map(amount => `2026-09-01,Shop,"${amount}"`)].join("\n"));
+  it("proposes the only format that reads every amount", () => {
+    expect(provenNumericConvention(csv("-73.64", "4200.00"), base)).toBe("decimal-dot");
+    expect(provenNumericConvention(csv("-73,64", "4.200,00"), base)).toBe("decimal-comma");
+  });
+  it("leaves the choice to the user when both formats read the file (whole amounts)", () => {
+    expect(provenNumericConvention(csv("-73", "4200"), base)).toBeUndefined();
   });
 });

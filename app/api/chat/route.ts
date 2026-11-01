@@ -154,14 +154,17 @@ export async function POST(request: Request) {
       execute: async (input: unknown, options: ToolExecutionOptions<unknown>) => {
         const execute = definition.execute as (input: unknown, options: ToolExecutionOptions<unknown>) => Promise<unknown>;
         emit({ type: "tool", id: options?.toolCallId, name, state: "running", input });
+        // Labels for ids in the output load while the tool runs.
+        const names = namesFor(context).catch((): EntityNames => ({}));
         let output: unknown;
         try { output = await execute(input, options); }
         catch (cause) { emit({ type: "tool", id: options?.toolCallId, name, state: "failed" }); throw cause; }
-        const latest = await requireWorkspace();
+        const [latest, { account, ...labels }] = await Promise.all([requireWorkspace(), names]);
         if (latest.workspace.id !== workspace.id || stop.signal.aborted) throw new Error("Request canceled or workspace changed");
-        // Every scope read so far must still be allowed before more data reaches the model.
+        // Every scope read so far must still be allowed before more data reaches the model; names follow the same scopes.
         requireAiScope(latest.settings, ...readScopes);
-        const readable = readableToolOutput(output, await namesFor(latest).catch(() => ({})));
+        const scopes = latest.settings.ai_data_scopes;
+        const readable = readableToolOutput(output, { ...(scopes.includes("transactions") ? labels : {}), ...(scopes.includes("accounts") ? { account } : {}) });
         const preview = toolOutputPreview(readable);
         toolCalls.push({ name, input, output: preview });
         emit({ type: "tool", id: options?.toolCallId, name, state: "done", output: preview });
@@ -220,6 +223,8 @@ export async function POST(request: Request) {
       model,
       abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(90_000)]),
       maxOutputTokens: 3000,
+      // The finance tools do the exact work; light reasoning gets the answer to the user seconds sooner.
+      providerOptions: { openai: { reasoningEffort: "low" } },
       instructions: `${SYSTEM_PROMPT}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}. UI context is only a navigation hint, never authorization.${canChangeCategory ? " The user named an exact transaction UUID and quoted category; the write tool must use exactly these values." : " Do not change records; for a category change request, use the selection preview."}${call.success ? `
 
 ${CALL_MODE_PROMPT}` : ""}`,
@@ -239,7 +244,7 @@ ${CALL_MODE_PROMPT}` : ""}`,
       },
       tools: { ...planTool, ...retainTools({
         ...(canInvestigate ? {
-          finance_investigate: tool({ description: "Answer the actual chosen finance question deterministically: exact current/comparison dates, include/exclude owned account/category/merchant names or IDs, tags/events, posted/pending and classification semantics, multiple groupings, ranking, and complete paginated support. Original currencies stay separate; base uses direct exact posting-date FX and canonical split rounding. Use returned interpretedFilters and live evidence link; never imply full statements or bounds. Read-only, no approval needed.", inputSchema: investigationSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => runInvestigation(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
+          finance_investigate: tool({ description: "Answer the actual chosen finance question deterministically: exact current/comparison dates, include/exclude owned account/category/merchant names or IDs, tags/events, posted/pending and classification semantics, multiple groupings, ranking, and complete paginated support. Original currencies stay separate; base uses direct exact posting-date FX and canonical split rounding. Use returned interpretedFilters and live evidence link; never imply full statements or bounds. Read-only, no approval needed.", inputSchema: investigationSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => runInvestigation(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports"), sourceVersions: false }), false, true) }),
           finance_entities: tool({ description: "Optional: list owned account, category and merchant names with ids, tags and events. Other tools already accept names and label ids with names.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], latest => loadInvestigationEntities(latest)) }),
           finance_detail: tool({ description: "Read an owned canonical transaction with its effective split/fee components, or a recurring series with complete paginated source transactions. Classification warnings remain explicit.", inputSchema: investigationDetailSchema, execute: input => aiEvidence(input.kind === "recurring" ? ["accounts", "transactions", "planning"] : ["accounts", "transactions"], latest => investigationDetail(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),
           finance_scenario: tool({ description: "Compare the same investigation against at most 100 hypothetical effective-record amount/date/category overrides. Read-only; canonical ledger, sources, balances and recurrence remain unchanged. Use exact minor-unit strings and owned effective IDs.", inputSchema: investigationScenarioSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => evaluateInvestigationScenario(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports") }), false, true) }),

@@ -43,7 +43,8 @@ const rail: RailItem[] = [
   { label: "Artifacts", href: "/ai/artifacts", icon: Layers },
 ];
 const settingsItem: NavItem = { label: "Settings", href: "/settings", icon: SlidersHorizontal, go: "s" };
-const notificationsItem: NavItem = { label: "Notifications", href: "/notifications", icon: Bell, go: "n" };
+// The attention view of the activity feed, linked directly: /notifications only redirects there.
+const notificationsItem: NavItem = { label: "Notifications", href: "/ai/activity?filter=attention", icon: Bell, go: "n" };
 const allItems: NavItem[] = [...rail.flatMap(item => item.items ?? [item]), settingsItem, notificationsItem];
 const mobileTabs = ["/", "/money/transactions", "/plan", "/ai"].map(href => rail.find(item => item.href === href)!);
 
@@ -156,8 +157,8 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
           </button>
           <div className="ml-auto flex items-center gap-2">
             <AiPanel />
-            <Link href={notificationsItem.href} aria-label="Notifications" aria-current={current === notificationsItem ? "page" : undefined}
-              className={cn("flex size-11 items-center justify-center rounded-xl border border-input hover:bg-muted", current === notificationsItem && "bg-muted")}><Bell className="size-[18px]" strokeWidth={1.6} aria-hidden="true" /></Link>
+            <IntentLink href={notificationsItem.href} aria-label="Notifications"
+              className="flex size-11 items-center justify-center rounded-xl border border-input hover:bg-muted"><Bell className="size-[18px]" strokeWidth={1.6} aria-hidden="true" /></IntentLink>
             <Link href={settingsItem.href} aria-label="Settings" className="flex size-11 items-center justify-center rounded-full bg-input text-muted-foreground hover:text-foreground lg:hidden"><SlidersHorizontal className="size-[18px]" aria-hidden="true" /></Link>
           </div>
         </div>

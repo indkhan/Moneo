@@ -6,6 +6,7 @@ import { CashFlowPanel, Figure, MonthCashFlow, RecentTransactions, SectionFallba
 import { Suspense, type ReactNode } from "react";
 import { artifactIdFromKey, dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
 import { ArtifactFrame } from "@/components/artifact-frame";
+import { IntentLink } from "@/components/intent-link";
 import { loadHomeSpending } from "@/lib/finance/dashboard-spending";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
@@ -154,7 +155,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const widgets: Record<string, ReactNode> = {
     ...Object.fromEntries([...pinnedTitles].map(([id, title]) => [`artifact:${id}`, <section key={id} aria-label={title} className={`${card} flex flex-col gap-3`}>
       <div className="flex items-baseline justify-between gap-2"><h2 className="truncate text-sm font-medium">{title}</h2><Link href={`/ai/artifacts/${id}`} className="shrink-0 text-sm font-medium text-brand hover:underline">Open</Link></div>
-      <ArtifactFrame src={`/ai/artifacts/${id}/frame?view=widget`} title={title} theme={context.settings.theme} loading="lazy" fit className="w-full" />
+      <ArtifactFrame src={`/ai/artifacts/${id}/frame?view=widget`} title={title} loading="lazy" fit className="w-full" />
     </section>])),
     overview: <section aria-label="Overview" className="grid gap-4 lg:grid-cols-3">
       <div className={`${card} flex flex-col gap-5 lg:col-span-2`}>
@@ -230,7 +231,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         <div className="flex flex-col gap-1"><p className="eyebrow">{new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))} · {new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))}</p><h1 className="page-title">Overview</h1></div>
         <div className="flex gap-2">
           {/* One tap to a live call in a new chat; cards it makes land in Waiting for you. */}
-          <Link href="/ai?conversation=new&call=1" className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" strokeWidth={1.8} aria-hidden="true" />Call Moneo</Link>
+          <IntentLink href="/ai?conversation=new&call=1" className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" strokeWidth={1.8} aria-hidden="true" />Call Moneo</IntentLink>
           <Link href="/settings#home" className="inline-flex h-11 items-center gap-2 rounded-xl border border-input px-4 text-[13px] hover:bg-muted"><LayoutGrid className="size-4" strokeWidth={1.6} aria-hidden="true" />Edit layout</Link>
         </div>
       </header>

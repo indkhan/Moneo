@@ -2,7 +2,7 @@ import { generateObject } from "ai";
 import { modelForSettings } from "@/lib/ai/provider";
 import { requireAiScope, type WorkspaceSettings } from "@/lib/settings";
 import { requireWorkspace } from "@/lib/auth";
-import { mappingSchema, parseCsv, inspectExcel, workbookScopeSchema, previewImport, proposeAccountRoutes, proposeKnownStatementMapping, proposeStatementTimezones, validateAiMapping, detectStatementFormat, friendlyAccountName } from "@/lib/import/csv";
+import { mappingSchema, parseCsv, inspectExcel, workbookScopeSchema, previewImport, proposeAccountRoutes, proposeKnownStatementMapping, proposeStatementTimezones, validateAiMapping, detectStatementFormat, provenNumericConvention, friendlyAccountName } from "@/lib/import/csv";
 
 export async function POST(request: Request) {
   let workspaceCurrency: string;
@@ -61,6 +61,8 @@ export async function POST(request: Request) {
         mapping = undefined;
       }
     }
+    // A CSV whose amounts only one number format can read needs no choice (spreadsheet cells carry their own numbers).
+    if (mapping && !workbook && typeof supplied !== "string" && !mapping.numericConvention) mapping = { ...mapping, numericConvention: provenNumericConvention(rows, mapping) };
     if (mapping && workbookScope) mapping = { ...mapping, workbookScope };
     if (mapping) {
       try { preview = previewImport(rows, mapping); }

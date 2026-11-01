@@ -1,4 +1,4 @@
-import { cache } from "react";
+import { perClient } from "@/lib/per-client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { allPages } from "@/lib/all-pages";
 
@@ -86,8 +86,8 @@ export async function loadSourceCoverage(db: SupabaseClient, workspaceId: string
 
 // Internal shared read for readers with several periods/currencies. Consumers
 // receive the envelope, never these individual observations or import identities.
-// Memoized per request: Home, its cashflow and its insights all read the same metadata.
-export const loadSourceCoverageMetadata = cache(async (db: SupabaseClient, workspaceId: string, canReadImports: boolean) => {
+// Memoized per request: Home, its cashflow and insights, and an artifact's saved queries all read the same metadata.
+export const loadSourceCoverageMetadata = perClient(async (db: SupabaseClient, workspaceId: string, canReadImports: boolean) => {
   if (!canReadImports) return undefined;
   const all = <T>(table: string, columns: string) =>
     allPages<T>((from, to, count) => db.from(table).select(columns, count ? { count } : undefined).eq("workspace_id", workspaceId).order("id").range(from, to));

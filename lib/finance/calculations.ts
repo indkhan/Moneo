@@ -31,20 +31,6 @@ export function summarizeCashflow(transactions: CashflowTransaction[], currencyC
     ...(excludedReviewRows ? { excludedReviewRows, partial: true as const } : {}) };
 }
 
-// Same posted, nontransfer, single-currency rows as the period cashflow.
-export function dailySpending(rows: { date: string; amountMinor: bigint; kind: string }[], from: string, to: string) {
-  const byDay = new Map<string, bigint>();
-  const end = parseDate(to);
-  for (let day = parseDate(from); day <= end; day += 86400000) {
-    byDay.set(new Date(day).toISOString().slice(0, 10), 0n);
-  }
-  for (const row of rows) {
-    if (!byDay.has(row.date)) continue;
-    if (row.kind === "refund" || row.amountMinor < 0n) byDay.set(row.date, byDay.get(row.date)! - row.amountMinor);
-  }
-  return [...byDay].map(([date, spendingMinor]) => ({ date, spendingMinor: spendingMinor.toString() }));
-}
-
 export type ForecastAccount = {
   id: string;
   currencyCode: string;
