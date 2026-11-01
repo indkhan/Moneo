@@ -78,6 +78,23 @@ it("never says a request is still running once it has finished while another res
   expect(spoken).toEqual(['Result for "Netto?": 42 euros.', 'Result for "Rent?": EUR 850.']);
 });
 
+it("hands over the next result after a short pause when the mic stayed quiet, and waits for late words when it didn't", async () => {
+  const { call, sent, say, delegate, answer, wait, moneoTalks } = setup();
+  const spoken = () => sent.filter(event => event.type === "session.commentary.append");
+  call.heardUser();
+  say("A?"); delegate("d1"); say("B?"); delegate("d2"); say("C?"); delegate("d3");
+  await answer("A?", "one"); await answer("B?", "two"); await answer("C?", "three");
+  await wait(1600);
+  await moneoTalks(1000);
+  await wait(1300);
+  expect(spoken()).toHaveLength(2);
+  await moneoTalks(1000);
+  // The user is loud on the mic as Moneo stops; their words are not transcribed yet.
+  call.heardUser();
+  await wait(1300);
+  expect(spoken()).toHaveLength(2);
+});
+
 it("holds results while the user is speaking", async () => {
   const { sent, say, delegate, answer, advance } = setup();
   say("Netto?"); delegate("d1");

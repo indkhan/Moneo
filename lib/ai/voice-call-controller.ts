@@ -56,6 +56,9 @@ export const SLOW_TASK_MS = 8000;
 /** Moneo silent this long after it began saying a result means it said all of it. The user's words are transcribed
  * about a second late, so words arriving sooner than this were said over the result. */
 export const RESULT_DONE_MS = 2500;
+/** Moneo silent this long, with the mic quiet since, also means it said all of it: the mic hears the user at once,
+ * so nobody talked over it, and the next result follows without a long gap. */
+export const RESULT_PAUSE_MS = 1200;
 /** Longest wait for Moneo to start saying a result before the next is handed over anyway. */
 export const RESULT_TURN_MS = 20_000;
 /** A pause this long ends the user's turn for handing over a result; people pause mid-sentence ("uh… like…"). */
@@ -84,6 +87,9 @@ export class VoiceCallController {
    * metered it, not the transcript, says whether Moneo is talking. */
   private lastAudible = -Infinity;
   private metered = false;
+  /** When the user was last loud on the mic, once it is metered. */
+  private lastMic = -Infinity;
+  private micMetered = false;
   private outbox: { delegationId: string | null; content: string }[] = [];
   private flushing = false;
   /** The result Moneo was last handed and when, until it has said all of it or was talked over. */
@@ -114,13 +120,16 @@ export class VoiceCallController {
   }
   /** Called while Moneo's voice is audible in the call. */
   heardMoneo() { this.metered = true; this.lastAudible = this.now(); }
+  /** Called while the user is loud on the mic. */
+  heardUser() { this.micMetered = true; this.lastMic = this.now(); }
 
   /** Whether Moneo has said the result it was handed: it began, then went quiet with nobody talking over it. */
   private resultSaid() {
     const current = this.current;
     if (!current) return true;
-    const began = this.lastMoneo > current.at;
-    return began ? this.now() - this.lastMoneo >= RESULT_DONE_MS : this.now() - current.at > RESULT_TURN_MS;
+    if (this.lastMoneo <= current.at) return this.now() - current.at > RESULT_TURN_MS;
+    const micQuiet = this.micMetered && this.lastMic < this.lastMoneo;
+    return this.now() - this.lastMoneo >= (micQuiet ? RESULT_PAUSE_MS : RESULT_DONE_MS);
   }
 
   handle(event: ServerEvent) {
