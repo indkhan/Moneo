@@ -53,6 +53,8 @@ export function looksLikeRequest(text: string) {
   const rest = text.replace(SMALL_TALK, " ").trim();
   return rest.split(/\s+/).filter(Boolean).length >= 3 && ASKS.test(rest);
 }
+/** How long a hand-off with no new words waits for them to be transcribed. */
+export const LATE_WORDS_MS = 1500;
 export const SLOW_TASK_MS = 8000;
 /** Moneo silent this long after it began saying a result means it said all of it. The user's words are transcribed
  * about a second late, so words arriving sooner than this were said over the result. */
@@ -77,7 +79,6 @@ export class VoiceCallController {
   error = "";
   /** Words the user said that no hand-off has claimed yet, with when each piece ended in the session. */
   private heard: { text: string; end: number }[] = [];
-  private lastUserTurn = "";
   /** What Moneo has said since the user last spoke. */
   private reply = "";
   private lastDelegation: string | null = null;
@@ -161,16 +162,10 @@ export class VoiceCallController {
       case "session.delegation.created": {
         // The delegation carries no task text: it is what the user said up to its offset since the previous one;
         // words said after the offset belong to the next request.
-        const offset = event.offset_ms ?? Infinity;
-        const claimed = this.heard.some(piece => piece.end <= offset) ? this.heard.filter(piece => piece.end <= offset) : this.heard;
-        this.heard = this.heard.filter(piece => !claimed.includes(piece));
-        const words = claimed.map(piece => piece.text).join("").replace(/\[[^\]]*\]/g, "").trim();
-        if (event.delegation?.id) this.lastDelegation = event.delegation.id;
-        // A late hand-off for words already started as their own request answers through that one.
-        if (event.delegation?.id && !words && this.unclaimedTask) { this.update(this.unclaimedTask, { delegationId: event.delegation.id }); this.unclaimedTask = null; break; }
-        this.unclaimedTask = null;
-        const text = words || this.lastUserTurn;
-        if (event.delegation?.id && text) this.start(text, event.delegation.id);
+        const id = event.delegation?.id;
+        if (!id) break;
+        this.lastDelegation = id;
+        this.claim(id, event.offset_ms ?? Infinity);
         break;
       }
       case "error":
@@ -178,6 +173,21 @@ export class VoiceCallController {
         this.deps.onChange();
         break;
     }
+  }
+
+  /**
+   * Starts a hand-off's request from the words up to its offset. With none yet, a request already started from the
+   * same unclaimed words answers through it; otherwise its words may still be on their way from the transcriber. A
+   * hand-off that never gets words of its own starts nothing, so a request never runs twice.
+   */
+  private claim(delegationId: string, offset: number, wait = true) {
+    const claimed = this.heard.some(piece => piece.end <= offset) ? this.heard.filter(piece => piece.end <= offset) : wait ? this.heard : [];
+    this.heard = this.heard.filter(piece => !claimed.includes(piece));
+    const words = claimed.map(piece => piece.text).join("").replace(/\[[^\]]*\]/g, "").trim();
+    if (words) { this.unclaimedTask = null; this.start(words, delegationId); }
+    else if (this.unclaimedTask) { this.update(this.unclaimedTask, { delegationId }); this.unclaimedTask = null; }
+    else if (wait) this.schedule(() => this.claim(delegationId, offset, false), LATE_WORDS_MS);
+    else this.deps.log?.("hand-off with no new words: nothing to start");
   }
 
   /**
@@ -220,7 +230,6 @@ export class VoiceCallController {
     const last = this.captions.at(-1);
     if (last?.role === role) this.captions = [...this.captions.slice(0, -1), { ...last, text: last.text + delta }];
     else this.captions = [...this.captions, { id: ++this.captionId, role, text: delta.trimStart() }];
-    if (role === "user") this.lastUserTurn = this.captions.at(-1)!.text.trim();
     this.deps.onChange();
   }
 

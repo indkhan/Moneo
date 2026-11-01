@@ -287,6 +287,18 @@ it("starts a request GPT-Live agreed to without a hand-off as soon as it replied
   expect(asks.map(([payload]) => payload.message)).toEqual(["How much did I spend at Netto this month?", "And when is my rent due?", "Oh, by the way, I spent 12.40 in cash at Netto."]);
 });
 
+it("never runs a request twice for a second hand-off of the same words, but waits for words transcribed late", async () => {
+  const { asks, say, delegate, wait } = setup();
+  say("How much at Netto?", 2000); delegate("d1", 2500); delegate("d2", 2500);
+  await wait(2000);
+  expect(asks.map(([payload]) => payload.message)).toEqual(["How much at Netto?"]);
+  delegate("d3", 6000);
+  await wait(500);
+  say("And rent?", 5800);
+  await wait(1500);
+  expect(asks.map(([payload]) => payload.message)).toEqual(["How much at Netto?", "And rent?"]);
+});
+
 it("tells requests from small talk among unclaimed words", () => {
   expect(looksLikeRequest("Hey, how are you doing today?")).toBe(false);
   expect(looksLikeRequest("Mm uh, can you also tell me how are you")).toBe(false);
