@@ -60,6 +60,28 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await expect(card.getByText("Picked b at S")).toBeVisible({ timeout: 30_000 });
     await expect(card.getByRole("button", { name: "Beta" })).toHaveAttribute("aria-pressed", "true");
 
+    // An older resize response arriving last must not replace the latest body.
+    await page.route(`**/api/cards/${cardId}?*`, async route => {
+      const response = await route.fetch();
+      if (new URL(route.request().url()).searchParams.get("size") === "M") await new Promise(resolve => setTimeout(resolve, 800));
+      await route.fulfill({ response });
+    });
+    const resize = page.getByRole("button", { name: new RegExp(`^Resize ${title} card`) });
+    await resize.focus();
+    const firstRequest = page.waitForRequest(request => request.url().includes(`/api/cards/${cardId}?`) && new URL(request.url()).searchParams.get("size") === "M");
+    await page.keyboard.press("ArrowRight");
+    await firstRequest;
+    await page.keyboard.press("ArrowRight");
+    await expect(card.getByText("Picked b at L")).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(1200);
+    await expect(card.getByText("Picked b at L")).toBeVisible();
+    await page.unroute(`**/api/cards/${cardId}?*`);
+    // Return to S for the existing publish/restore checks below.
+    await resize.focus();
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    await expect(card.getByText("Picked b at S")).toBeVisible({ timeout: 30_000 });
+
     // Hide, reload past Undo, then restore the published card directly from Home.
     const widget = page.locator(`[data-widget="card:${cardId}"]`);
     await widget.hover();
