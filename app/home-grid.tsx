@@ -18,6 +18,8 @@ export type HomeGridProps = Layout & { version: number; widgets: Record<string, 
 const CARD_KEY = "card:";
 // Widgets never shift under the dragged one: the order itself changes as it moves, and the grid lays out for real.
 const stay = () => null;
+// The page scrolls only when a widget is held right at the screen's edge: the default 20% band is most of a phone screen.
+const autoScroll = { threshold: { x: 0, y: 0.12 }, acceleration: 6 };
 const nearest = (options: CardSize[], columns: number) => options.reduce((best, size) => Math.abs(CARD_SIZES[size].columns - columns) < Math.abs(CARD_SIZES[best].columns - columns) ? size : best);
 
 /**
@@ -199,7 +201,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     onDragCancel: ({ active }) => `Moving ${name(active.id)} was cancelled.`,
   };
 
-  return <DndContext id="home-grid" sensors={sensors} collisionDetection={pointerWithin} onDragStart={dragStart} onDragOver={dragOver} onDragEnd={dragEnd} onDragCancel={() => dragEnd(null)}
+  return <DndContext id="home-grid" sensors={sensors} autoScroll={autoScroll} collisionDetection={pointerWithin} onDragStart={dragStart} onDragOver={dragOver} onDragEnd={dragEnd} onDragCancel={() => dragEnd(null)}
     accessibility={{ announcements, screenReaderInstructions: { draggable: "Use the arrow keys to move this widget one place at a time." } }}>
     <SortableContext items={shown} strategy={stay}>
       <div ref={grid} className="grid gap-4 lg:grid-cols-6">
@@ -225,7 +227,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
         className="pointer-events-none rotate-[0.6deg] scale-[1.02] cursor-grabbing rounded-2xl shadow-2xl ring-1 ring-border [&>*]:h-full [&>*>section]:h-full" />}
     </DragOverlay>
     <p aria-live="polite" className="sr-only">{said}</p>
-    {notice && <div role="status" className="fixed inset-x-0 bottom-6 z-50 mx-auto flex w-fit max-w-[calc(100%-2rem)] items-center gap-4 rounded-xl bg-foreground px-4 py-3 text-sm text-background shadow-lg">
+    {notice && <div role="status" className="fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-50 lg:bottom-6 mx-auto flex w-fit max-w-[calc(100%-2rem)] items-center gap-4 rounded-xl bg-foreground px-4 py-3 text-sm text-background shadow-lg">
       <span>{notice.text}</span>
       {notice.action && <button type="button" onClick={notice.action.run} className="font-medium underline-offset-2 hover:underline">{notice.action.label}</button>}
     </div>}
