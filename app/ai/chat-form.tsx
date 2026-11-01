@@ -68,10 +68,11 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
   }
   const { queue, enqueue, remove, steer, withSteers, canSteer } = useChatQueue(chat, conversationId, startQueued);
 
-  const autoSent = useRef(false);
+  const autoSent = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!autoSend || autoSent.current) return;
-    autoSent.current = true;
+    if (!autoSend) { autoSent.current = undefined; return; }
+    if (autoSent.current === autoSend) return;
+    autoSent.current = autoSend;
     void sendMessage(autoSend);
   });
 

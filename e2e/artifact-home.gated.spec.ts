@@ -72,6 +72,7 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     page.once("dialog", dialog => dialog.accept());
     await page.getByRole("button", { name: `Delete ${title}` }).click();
     await expect(page.getByRole("link", { name: title, exact: true })).toHaveCount(0, { timeout: 30_000 });
+    await expect(tile).toHaveCount(0);
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
     await expect(page.getByRole("region", { name: `${title} card`, exact: true })).toHaveCount(0);
@@ -79,6 +80,35 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     // Restore the QA workspace: its previous Home layout and no test artifact.
     if (layout) await db`update public.dashboard_layouts set items = ${layout.items}, version = version + 1 where workspace_id = ${workspaceId}`;
     else await db`delete from public.dashboard_layouts where workspace_id = ${workspaceId}`;
+    await db`delete from public.artifacts where id = ${id}`;
+    await db.end();
+  }
+});
+
+test("an empty Home cards tab sends the build request and shows progress", async ({ page }) => {
+  const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
+  const [{ id: workspaceId }] = await db`select w.id from public.workspaces w join auth.users u on u.id = w.owner_id where u.email = ${process.env.E2E_USER_EMAIL!}`;
+  const [{ id }] = await db`insert into public.artifacts (workspace_id, title) values (${workspaceId}, 'Home card start QA') returning id`;
+  let finish!: () => void;
+  const waiting = new Promise<void>(resolve => { finish = resolve; });
+  const requests: { message: string }[] = [];
+  await page.route("**/api/chat", async route => {
+    requests.push(route.request().postDataJSON());
+    await waiting;
+    await route.fulfill({ json: { answer: "Build test complete", conversationId: route.request().postDataJSON().conversationId } });
+  });
+  try {
+    await page.goto(`/ai/artifacts/${id}`);
+    await page.getByRole("link", { name: "Home cards", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Building your Home card" })).toBeVisible();
+    await expect.poll(() => requests.length).toBe(1);
+    expect(requests[0].message).toContain("Create a Home card from this artifact");
+    await expect(page.getByText(requests[0].message, { exact: true })).toBeVisible();
+    finish();
+    await expect(page.getByText("Build test complete", { exact: true })).toBeVisible();
+  } finally {
+    finish();
+    await page.unrouteAll({ behavior: "wait" });
     await db`delete from public.artifacts where id = ${id}`;
     await db.end();
   }

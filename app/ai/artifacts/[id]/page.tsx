@@ -57,7 +57,8 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   const homeItems = dashboardItems(saved?.success ? saved.data : null);
   // Neighbours in the preview are the user's own Home widgets, so the card is seen where it will sit.
   const neighbours = homeItems.filter(key => Object.hasOwn(BUILTIN_WIDGETS, key) && key !== "overview").map(key => BUILTIN_WIDGETS[key as keyof typeof BUILTIN_WIDGETS].split(",")[0]);
-  const tabLink = (name: "page" | "cards", label: string) => <Link href={at({ tab: name })} aria-current={tab === name ? "page" : undefined}
+  const buildCard = "Create a Home card from this artifact, keeping its purpose, design and live data. Use the existing page and conversation as context. Save it as a draft for me to preview before adding it to Home.";
+  const tabLink = (name: "page" | "cards", label: string) => <Link href={at({ tab: name, start: name === "cards" && !cards.data?.length && !history.running ? buildCard : undefined })} aria-current={tab === name ? "page" : undefined}
     className="rounded-md px-3 py-1 text-muted-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground">{label}</Link>;
 
   return <main className="grid gap-4 p-4 lg:h-[calc(100dvh-1rem)] lg:grid-cols-[minmax(300px,400px)_1fr]">
@@ -83,7 +84,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
       </div>
       {tab === "page" ? <div className="min-h-0 flex-1">{frame ?? <p className="p-6 text-sm text-muted-foreground">The page shows here once it is built. Describe it in the chat.</p>}</div>
         : <div className="min-h-0 flex-1 space-y-8 overflow-y-auto bg-background p-4">
-          {!cards.data?.length && <p className="text-sm text-muted-foreground">No Home cards yet. Ask in the chat, e.g. “Add this to Home as a small card with the monthly total”.</p>}
+          {!cards.data?.length && <p role="status" className="text-sm text-muted-foreground">{history.running || search.start ? "Building your Home card… Follow the progress in the chat." : "No Home card was created. Click Home cards to build one."}</p>}
           {(cards.data as CardRow[] | null)?.map(card => {
             const all = card.artifact_card_versions.map(item => item.version).sort((a, b) => a - b);
             const newest = all.at(-1) ?? 0;
