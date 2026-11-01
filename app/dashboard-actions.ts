@@ -54,12 +54,15 @@ async function setCardOnHome(context: Workspace, cardId: string, on: boolean) {
 export async function publishCard(id: string, version: number, shown: number | null) {
   const cardId = z.uuid().parse(id);
   const target = z.number().int().min(1).parse(version);
+  const previous = z.number().int().min(1).nullable().parse(shown);
   const context = await requireWorkspace();
   const { supabase, workspace } = context;
-  const exists = await supabase.from("artifact_card_versions").select("id").eq("workspace_id", workspace.id).eq("card_id", cardId).eq("version", target).maybeSingle();
+  const exists = await supabase.from("artifact_card_versions").select("title").eq("workspace_id", workspace.id).eq("card_id", cardId).eq("version", target).maybeSingle();
   if (exists.error || !exists.data) throw new Error("That card version is not available");
-  let update = supabase.from("artifact_cards").update({ published_version: target, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("id", cardId).is("deleted_at", null);
-  update = shown === null ? update.is("published_version", null) : update.eq("published_version", shown);
+  let update = supabase.from("artifact_cards").update({ published_version: target, title: exists.data.title, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("id", cardId).is("deleted_at", null);
+  // Publishing the same version again is allowed: if the Home layout write below failed (Home full, another tab),
+  // the card is published but not on Home, the page says so, and pressing Add to Home again finishes the job.
+  update = update.or(`${previous === null ? "published_version.is.null" : `published_version.eq.${previous}`},published_version.eq.${target}`);
   const { data, error } = await update.select("artifact_id").maybeSingle();
   if (error) throw new Error("Card could not be published; try again");
   if (!data) throw new Error("Home changed in another tab; reload before publishing");
