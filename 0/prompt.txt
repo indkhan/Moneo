@@ -1,0 +1,3 @@
+OK, so the problem now is that the firstly, it did not say when I interrupted it after interrupting something like it should pick it up from last time like if like it exactly picked up from last time I think it should say a bit more about it like yeah so now I will continue with the first thing so yeah this month, another problem is once it’s done with one answer, even though i did not say something it will go to listening and then start with the second answer and then go to listening and then start with third answer, even tho it should keep continuing and was continuing before but now does this 
+
+first tell me in summary the problem am facing and the cause of it and then fix it
