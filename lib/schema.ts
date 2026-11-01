@@ -4,11 +4,13 @@ import { pgTable, pgSchema, uuid, text, timestamp, date, bigint, integer, jsonb,
 export const dashboardLayouts = pgTable("dashboard_layouts", {
   workspaceId: uuid("workspace_id").primaryKey().references((): AnyPgColumn => workspaces.id, { onDelete: "cascade" }),
   items: text("items").array().notNull(),
+  sizes: jsonb("sizes").notNull().default({}),
   version: integer("version").notNull().default(1),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   check("dashboard_layouts_items_check", sql`cardinality(${table.items}) <= 50`),
   check("dashboard_layouts_version_check", sql`${table.version} > 0`),
+  check("dashboard_layouts_sizes_check", sql`jsonb_typeof(${table.sizes}) = 'object'`),
 ]);
 
 // Supabase owns the rest of auth.users; only its referenced primary key belongs here.
