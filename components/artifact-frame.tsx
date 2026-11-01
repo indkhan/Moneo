@@ -17,33 +17,18 @@ function readTheme(): Theme {
   return theme === "light" || theme === "dark" ? theme : "system";
 }
 
-const FIT_MIN = 160, FIT_MAX = 560, FIT_START = 320;
-
 /**
- * A sandboxed artifact from its frame route, in the app's current theme. It starts loading once mounted, so it
+ * A sandboxed artifact page from its frame route, in the app's current theme. It starts loading once mounted, so it
  * loads once; a later theme change reloads it. A skeleton covers it until it has loaded.
- * `fit` sizes it to the page's reported content height.
  */
-export function ArtifactFrame({ src, title, fit = false, loading, className, style }: { src: string; title: string; fit?: boolean; loading?: "lazy"; className?: string; style?: CSSProperties }) {
+export function ArtifactFrame({ src, title, loading, className, style }: { src: string; title: string; loading?: "lazy"; className?: string; style?: CSSProperties }) {
   // Null in the server HTML: a streamed page moves its markup into place, and moving a loading iframe restarts it.
   const theme = useSyncExternalStore(subscribeTheme, readTheme, () => null);
-  const frame = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState(FIT_START);
   const url = theme && (theme === "system" ? src : `${src}${src.includes("?") ? "&" : "?"}theme=${theme}`);
   const [loaded, setLoaded] = useState<string | null>(null);
-  useEffect(() => {
-    if (!fit) return;
-    const onMessage = (event: MessageEvent) => {
-      if (event.source !== frame.current?.contentWindow) return;
-      const reported = Number(event.data?.moneoHeight);
-      if (Number.isFinite(reported)) setHeight(Math.min(FIT_MAX, Math.max(FIT_MIN, Math.ceil(reported))));
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [fit]);
   const ready = !!url && loaded === url;
-  return <div className={cn("relative", className)} style={fit ? { height, ...style } : style}>
-    <iframe ref={frame} title={title} sandbox="allow-scripts" loading={loading} src={url ?? undefined} onLoad={() => { if (url) setLoaded(url); }}
+  return <div className={cn("relative", className)} style={style}>
+    <iframe title={title} sandbox="allow-scripts" loading={loading} src={url ?? undefined} onLoad={() => { if (url) setLoaded(url); }}
       className="size-full border-0" style={{ colorScheme: !theme || theme === "system" ? "light dark" : theme }} />
     {!ready && <div aria-hidden="true" className="pointer-events-none absolute inset-0 flex flex-col gap-4 overflow-hidden bg-background p-6">
       <Skeleton className="h-3 w-32" /><Skeleton className="h-8 w-56 max-w-full" />
