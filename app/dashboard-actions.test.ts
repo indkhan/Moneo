@@ -10,17 +10,23 @@ vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id:
   };
   return query;
 } } }) }));
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
-import { revalidatePath } from "next/cache";
+import { refresh, revalidatePath } from "next/cache";
 import { saveHomeLayout } from "./dashboard-actions";
 
-beforeEach(() => { fixture.writes = []; fixture.result = { data: { version: 4 }, error: null }; vi.mocked(revalidatePath).mockClear(); });
+beforeEach(() => { fixture.writes = []; fixture.result = { data: { version: 4 }, error: null }; vi.mocked(revalidatePath).mockClear(); vi.mocked(refresh).mockClear(); });
 
 it("saves the grid's order and widths against the version it loaded, without re-rendering Home", async () => {
   await expect(saveHomeLayout(3, ["accounts", "overview"], { accounts: "L", overview: "S", unknown: "M" })).resolves.toEqual({ version: 4 });
   expect(fixture.writes).toEqual([{ op: "update", values: expect.objectContaining({ items: ["accounts", "overview"], sizes: { accounts: "L" }, version: 4 }), version: 3 }]);
   expect(revalidatePath).not.toHaveBeenCalled();
+  expect(refresh).not.toHaveBeenCalled();
+});
+
+it("refreshes Home only when a widget was added, so its content arrives", async () => {
+  await saveHomeLayout(3, ["accounts", "goals"], {}, true);
+  expect(refresh).toHaveBeenCalledOnce();
 });
 
 it("creates the first layout and reports another tab's save instead of overwriting it", async () => {

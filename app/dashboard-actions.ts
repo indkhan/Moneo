@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { refresh, revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
@@ -20,11 +20,16 @@ async function writeLayout({ supabase, workspace }: Workspace, version: number, 
   return result.data ? result.data.version as number : null;
 }
 
-/** Saves Home's widgets, order and widths from the grid. Home already shows the change, so nothing re-renders. */
-export async function saveHomeLayout(version: number, items: string[], sizes: Record<string, string>): Promise<{ version: number } | { error: string }> {
+/**
+ * Saves Home's widgets, order and widths from the grid. Home already shows the change, so nothing re-renders,
+ * except when a widget was added: its content comes with the refreshed page.
+ */
+export async function saveHomeLayout(version: number, items: string[], sizes: Record<string, string>, added = false): Promise<{ version: number } | { error: string }> {
   const context = await requireWorkspace();
   const saved = await writeLayout(context, z.number().int().min(0).max(2147483646).parse(version), dashboardLayoutSchema.parse(items), widgetSizesSchema.parse(sizes));
-  return saved === null ? { error: "Home changed in another tab" } : { version: saved };
+  if (saved === null) return { error: "Home changed in another tab" };
+  if (z.boolean().parse(added)) refresh();
+  return { version: saved };
 }
 
 export async function saveDashboard(form: FormData) {
