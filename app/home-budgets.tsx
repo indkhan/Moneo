@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatMoney } from "@/lib/finance/format";
 import { budgetsThisMonth, loadInsightEvidence } from "./insights/panel";
-import { card } from "./home-sections";
+import { card } from "./section-fallback";
 
 /** This month's budgets in the display currency: spent of allowance, with what is left or over (see BACKLOG.md for other currencies). */
 export async function HomeBudgets({ db, workspaceId, currency, today, locale }: { db: SupabaseClient; workspaceId: string; currency: string; today: string; locale: string }) {

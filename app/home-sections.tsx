@@ -9,16 +9,12 @@ import { CashFlowLink, CashFlowView } from "./cash-flow-view";
 
 type SectionProps = { db: SupabaseClient; workspaceId: string; currency: string; today: string; locale: string };
 
-export const card = "min-w-0 rounded-xl border border-border bg-card p-6 sm:p-7";
+import { card } from "./section-fallback";
 
 /** A formatted amount with its minor units dimmed, like the design's hero figures. */
 export function Figure({ value, digits, className }: { value: string; digits: number; className?: string }) {
   const match = digits > 0 ? value.match(new RegExp(`^(.*\\d)([.,]\\d{${digits}})(\\D*)$`)) : null;
   return <p className={className}>{match ? <>{match[1]}<span className="text-[0.5em] tracking-tight text-subtle">{match[2]}</span>{match[3]}</> : value}</p>;
-}
-
-export function SectionFallback({ title }: { title: string }) {
-  return <section aria-busy="true" className={card}><h2 className="text-sm font-medium">{title}</h2><p role="status" className="mt-3 text-sm text-muted-foreground">Loading…</p></section>;
 }
 
 const monthName = (from: string, locale: string, month: "short" | "long" = "long") => new Intl.DateTimeFormat(locale, { month, timeZone: "UTC" }).format(new Date(`${from}T00:00:00Z`));

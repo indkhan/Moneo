@@ -2,11 +2,13 @@ import Link from "next/link";
 import { HomeLiquidity } from "./account-liquidity-summary";
 import { ManualBalanceForm } from "./manual-balance-form";
 import { WeeklyBriefing, loadInsightEvidence } from "./insights/panel";
-import { CashFlowPanel, Figure, MonthCashFlow, RecentTransactions, SectionFallback, card } from "./home-sections";
+import { CashFlowPanel, Figure, MonthCashFlow, RecentTransactions } from "./home-sections";
+import { SectionFallback, card } from "./section-fallback";
 import { Suspense, type ReactNode } from "react";
-import { cardIdFromKey, dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
+import { BUILTIN_WIDGETS, cardIdFromKey, homeLayout, isBuiltinWidget, sizeOptions, widgetLabel, widgetSize } from "@/lib/finance/dashboard";
 import { CardSkeleton, HomeCard, type HomeCardRow } from "@/components/cards/home-card";
-import { CARD_SIZES, isCardSize } from "@/lib/cards/sizes";
+import { cardSize, type CardSize } from "@/lib/cards/sizes";
+import { HomeGrid } from "./home-grid";
 import type { QueryShared } from "@/lib/ai/artifact-data";
 import { IntentLink } from "@/components/intent-link";
 import { loadHomeSpending } from "@/lib/finance/dashboard-spending";
@@ -29,13 +31,7 @@ import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { currentNetWorth, dayRange, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
 import { NetWorthChart } from "./net-worth-chart";
 import { shownBalance } from "./money/accounts/history";
-import { LayoutGrid, Phone, Sparkle } from "lucide-react";
-
-// Six columns: a wide card pairs with a narrow one and half cards pair up; dense flow fills the gaps whatever order the layout picks.
-const FULL = new Set(["overview", "history"]);
-const WIDE = new Set(["spending", "insights", "recent"]);
-const HALF = new Set(["accounts", "agents"]);
-const span = (key: string) => FULL.has(key) ? "lg:col-span-6" : WIDE.has(key) ? "lg:col-span-4" : HALF.has(key) ? "lg:col-span-3" : "lg:col-span-2";
+import { Phone, Sparkle } from "lucide-react";
 
 export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string }> } = {}) {
   const params = await searchParams;
@@ -63,13 +59,10 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   loadHomeHistory(supabase, workspace.id).catch(() => undefined);
   loadAgentBriefing(supabase, workspace.id).catch(() => undefined);
   detectRecurring(supabase, workspace);
-  const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle());
-  // Artifact cards chain onto the layout read, so they finish inside the slower forecast; each card then streams in on its own.
-  const pinnedPromise = layoutPromise.then(async ({ data }) => {
-    const ids = (Array.isArray(data?.items) ? data.items : []).map(cardIdFromKey).filter(id => id !== null);
-    return ids.length ? supabase.from("artifact_cards").select("id, artifact_id, title, size, published_version, artifacts!inner(deleted_at)").eq("workspace_id", workspace.id).in("id", ids)
-      .is("deleted_at", null).is("artifacts.deleted_at", null).not("published_version", "is", null) : { data: [], error: null };
-  });
+  const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version, sizes").eq("workspace_id", workspace.id).maybeSingle());
+  // Include published cards hidden from Home so Add widget can restore them without rendering their bodies.
+  const pinnedPromise = supabase.from("artifact_cards").select("id, artifact_id, title, size, published_version, artifacts!inner(deleted_at)").eq("workspace_id", workspace.id)
+    .is("deleted_at", null).is("artifacts.deleted_at", null).not("published_version", "is", null);
   const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges, waiting, review] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
@@ -148,14 +141,17 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const upcoming = (projection.input?.events ?? []).filter(event => event.expectedMinor < 0n && event.source !== "estimated").sort((a, b) => a.date.localeCompare(b.date));
   const upcomingMinor = upcoming.reduce((sum, event) => sum + event.expectedMinor, 0n);
   const available = projection.available;
-  const parsedLayout = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
-  if (parsedLayout && !parsedLayout.success) throw new Error("Dashboard preferences are invalid; review them in Settings");
+  const saved = homeLayout(layout.data);
+  if (!saved) throw new Error("Dashboard preferences are invalid; try again");
   const cards = new Map((pinned.data ?? []).map(row => [row.id as string, row as unknown as HomeCardRow & { artifact_id: string }]));
   // A deleted artifact simply drops off Home; its key is cleaned up the next time the layout is saved.
-  const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null).filter(key => { const id = cardIdFromKey(key); return !id || cards.has(id); });
+  const ordered = saved.items.filter(key => { const id = cardIdFromKey(key); return !id || cards.has(id); });
   // Cards on one Home share their reads: the same query runs once however many cards ask for it.
   const shared: QueryShared = {};
-  const spanOf = (key: string) => { const id = cardIdFromKey(key); const size = id && cards.get(id)?.size; return isCardSize(size) ? CARD_SIZES[size].span : span(key); };
+  // Every built-in widget can be added back from the grid, so each gets a label and width; cards only once on Home.
+  const keys = [...new Set([...ordered, ...[...cards.keys()].map(id => `card:${id}`), ...Object.keys(BUILTIN_WIDGETS)])];
+  const sizes: Record<string, CardSize> = Object.fromEntries(keys.map(key => [key, isBuiltinWidget(key) ? widgetSize(key, saved.sizes) : cardSize(cards.get(cardIdFromKey(key)!)!.size)]));
+  const labels = Object.fromEntries(keys.map(key => [key, isBuiltinWidget(key) ? widgetLabel(key) : cards.get(cardIdFromKey(key)!)!.title]));
   const sectionProps = { db: supabase, workspaceId: workspace.id, currency: displayCurrency, today, locale };
 
   const widgets: Record<string, ReactNode> = {
@@ -234,18 +230,14 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     <main className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
       <header className="mb-2 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1"><p className="eyebrow">{new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))} · {new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))}</p><h1 className="page-title">Overview</h1></div>
-        <div className="flex gap-2">
-          {/* One tap to a live call in a new chat; cards it makes land in Waiting for you. */}
-          <IntentLink href="/ai?conversation=new&call=1" className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" strokeWidth={1.8} aria-hidden="true" />Call Moneo</IntentLink>
-          <Link href="/settings#home" className="inline-flex h-11 items-center gap-2 rounded-xl border border-input px-4 text-[13px] hover:bg-muted"><LayoutGrid className="size-4" strokeWidth={1.6} aria-hidden="true" />Edit layout</Link>
-        </div>
+        {/* One tap to a live call in a new chat; cards it makes land in Waiting for you. */}
+        <IntentLink href="/ai?conversation=new&call=1" className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" strokeWidth={1.8} aria-hidden="true" />Call Moneo</IntentLink>
       </header>
       {/* Stored cards come with the page, so they never push the grid down; the slow detection streams after and reloads only if it changed a card. */}
       <WaitingForYou proposals={waiting} review={review} />
       <Suspense fallback={null}><RecurringDetection supabase={supabase} workspace={workspace} /></Suspense>
-      <div className="grid grid-flow-dense gap-4 lg:grid-cols-6">
-        {ordered.map(key => <div key={key} className={`min-w-0 ${spanOf(key)} [&>section]:h-full`}>{widgets[key]}</div>)}
-      </div>
+      <HomeGrid version={saved.version} items={ordered} sizes={sizes} labels={labels} options={Object.fromEntries(keys.map(key => [key, sizeOptions(key)]))}
+        widgets={Object.fromEntries(ordered.map(key => [key, widgets[key]]))} />
     </main>
   );
 }

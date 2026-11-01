@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { CARD_SIZE_KEYS, type CardSize } from "@/lib/cards/sizes";
 
-// Keys are stored in saved layouts; never rename one. Key order is the order offered in Settings.
+// Keys are stored in saved layouts; never rename one. Key order is the order offered under Add widget.
 export const BUILTIN_WIDGETS = { overview: "Overview", insights: "Weekly briefing", upcoming: "Coming up", spending: "Cash flow over six months, with where money came from and went",
   budgets: "Budgets", accounts: "Accounts", agents: "Agent team", history: "History of recent changes", recent: "Recent transactions", planning: "Available funds by account", goals: "Goals" };
-// Home without a saved layout; the rest stay available in Settings.
+// Home without a saved layout; the rest stay available under Add widget.
 const DEFAULT_WIDGETS = ["overview", "insights", "upcoming", "spending", "budgets", "accounts", "agents", "history"];
 // Artifact cards on Home are stored as "card:<uuid>" next to the built-in keys.
 const CARD_KEY = /^card:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
@@ -27,3 +28,33 @@ export function setWidget(items: string[], key: string, on: boolean) {
   const at = items.indexOf("overview") + 1;
   return [...items.slice(0, at), key, ...items.slice(at)];
 }
+
+type BuiltinWidget = keyof typeof BUILTIN_WIDGETS;
+export const isBuiltinWidget = (key: string): key is BuiltinWidget => Object.hasOwn(BUILTIN_WIDGETS, key);
+// Width of each built-in widget until the user resizes it, and the narrowest that still fits its layout.
+const DEFAULT_SIZES: Record<BuiltinWidget, CardSize> = { overview: "XL", history: "XL", spending: "L", insights: "L", recent: "L", accounts: "M", agents: "M",
+  upcoming: "S", budgets: "S", planning: "S", goals: "S" };
+const MIN_SIZES: Partial<Record<BuiltinWidget, CardSize>> = { overview: "L", spending: "M", insights: "M" };
+
+/** Saved widths of built-in widgets; unknown keys or sizes are dropped rather than rejected, like retired widgets. */
+export const widgetSizesSchema = z.record(z.string(), z.unknown()).transform(saved =>
+  Object.fromEntries(Object.entries(saved).filter((entry): entry is [BuiltinWidget, CardSize] =>
+    isBuiltinWidget(entry[0]) && sizeOptions(entry[0]).includes(entry[1] as CardSize))));
+
+/** The sizes a widget can take, narrowest first. Artifact cards take any size. */
+export function sizeOptions(key: string): CardSize[] {
+  return isBuiltinWidget(key) && MIN_SIZES[key] ? CARD_SIZE_KEYS.slice(CARD_SIZE_KEYS.indexOf(MIN_SIZES[key])) : CARD_SIZE_KEYS;
+}
+
+/** A widget's short name: the label up to its first comma. */
+export const widgetLabel = (key: BuiltinWidget) => BUILTIN_WIDGETS[key].split(",")[0];
+
+/** A saved layout row (or none yet) as Home shows it; null when its widgets are invalid. */
+export function homeLayout(row: { items: unknown; sizes?: unknown; version?: number } | null) {
+  const items = row ? dashboardLayoutSchema.safeParse(row.items) : null;
+  if (items && !items.success) return null;
+  return { items: dashboardItems(items?.data ?? null), sizes: widgetSizesSchema.safeParse(row?.sizes ?? {}).data ?? {}, version: row?.version ?? 0 };
+}
+
+/** A built-in widget's width: what the user picked, else its default. */
+export const widgetSize = (key: BuiltinWidget, sizes: Partial<Record<string, CardSize>>): CardSize => sizes[key] ?? DEFAULT_SIZES[key];

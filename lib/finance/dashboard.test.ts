@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { cardIdFromKey, cardWidgetKey, dashboardItems, dashboardLayoutSchema, setWidget } from "@/lib/finance/dashboard";
+import { cardIdFromKey, cardWidgetKey, dashboardItems, dashboardLayoutSchema, homeLayout, setWidget, sizeOptions, widgetSize, widgetSizesSchema } from "@/lib/finance/dashboard";
 
 const id = "11111111-1111-4111-8111-111111111111";
 
@@ -32,4 +32,20 @@ it("pins a widget just below the overview and unpins it", () => {
   expect(setWidget(["spending", "goals"], key, true)).toEqual([key, "spending", "goals"]);
   expect(setWidget(["overview", key], key, true)).toEqual(["overview", key]);
   expect(setWidget(["overview", key, "goals"], key, false)).toEqual(["overview", "goals"]);
+});
+
+it("keeps saved widget widths and drops unknown widgets or sizes too narrow for them", () => {
+  expect(widgetSizesSchema.parse({ accounts: "L", overview: "S", goals: "XXL", unknown: "M", [`card:${id}`]: "S" })).toEqual({ accounts: "L" });
+  expect(widgetSizesSchema.safeParse(["accounts"]).success).toBe(false);
+  expect(widgetSize("accounts", {})).toBe("M");
+  expect(widgetSize("accounts", { accounts: "XL" })).toBe("XL");
+  expect(sizeOptions("overview")).toEqual(["L", "XL"]);
+  expect(sizeOptions(cardWidgetKey(id))).toEqual(["S", "M", "L", "XL"]);
+});
+
+it("reads a saved layout row the way Home shows it", () => {
+  expect(homeLayout(null)).toMatchObject({ version: 0, sizes: {} });
+  expect(homeLayout(null)?.items).toContain("overview");
+  expect(homeLayout({ items: ["goals", "accounts"], sizes: { goals: "XL", overview: "S" }, version: 7 })).toEqual({ items: ["goals", "accounts"], sizes: { goals: "XL" }, version: 7 });
+  expect(homeLayout({ items: ["goals", "goals"], version: 2 })).toBeNull();
 });

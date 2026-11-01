@@ -1,50 +1,52 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { refresh, revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { cardWidgetKey, dashboardItems, dashboardLayoutSchema, setWidget } from "@/lib/finance/dashboard";
+import { cardWidgetKey, dashboardLayoutSchema, homeLayout, setWidget, widgetSizesSchema } from "@/lib/finance/dashboard";
 import { CARD_SIZE_KEYS, type CardSize } from "@/lib/cards/sizes";
 
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 
-/** Version-checked write, so two tabs editing Home cannot overwrite each other. */
-async function writeLayout({ supabase, workspace }: Workspace, version: number, items: string[]) {
+/** Version-checked write, so two tabs editing Home cannot overwrite each other. Returns the new version, or null when another tab saved first. */
+async function writeLayout({ supabase, workspace }: Workspace, version: number, items: string[], sizes?: Record<string, CardSize>) {
   const result = version === 0
-    ? await supabase.from("dashboard_layouts").insert({ workspace_id: workspace.id, items }).select("version").single()
-    : await supabase.from("dashboard_layouts").update({ items, version: version + 1, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("version", version).select("version").maybeSingle();
-  if (result.error) throw new Error("Dashboard could not be saved; reload before retrying");
-  if (!result.data) throw new Error("Dashboard changed; reload before saving");
-  revalidatePath("/");
+    ? await supabase.from("dashboard_layouts").insert({ workspace_id: workspace.id, items, ...(sizes && { sizes }) }).select("version").single()
+    : await supabase.from("dashboard_layouts").update({ items, ...(sizes && { sizes }), version: version + 1, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("version", version).select("version").maybeSingle();
+  // A second tab's first save collides on the primary key instead of the version.
+  if (result.error?.code === "23505") return null;
+  if (result.error) throw new Error("Dashboard could not be saved; try again");
+  return result.data ? result.data.version as number : null;
 }
 
-export async function saveDashboard(form: FormData) {
+/**
+ * Saves Home's widgets, order and widths from the grid. Home already shows the change, so nothing re-renders,
+ * except when a widget was added: its content comes with the refreshed page.
+ */
+export async function saveHomeLayout(version: number, items: string[], sizes: Record<string, string>, added = false): Promise<{ version: number } | { error: string }> {
   const context = await requireWorkspace();
-  const version = z.coerce.number().int().min(0).max(2147483646).parse(form.get("version"));
-  const items = dashboardLayoutSchema.parse(form.getAll("enabled"));
-  const positions = new Map(items.map(key => [key, z.coerce.number().int().min(1).max(50).parse(form.get(`position:${key}`))]));
-  items.sort((a, b) => positions.get(a)! - positions.get(b)!);
-  await writeLayout(context, version, items);
-  revalidatePath("/settings");
-  redirect("/settings");
+  const saved = await writeLayout(context, z.number().int().min(0).max(2147483646).parse(version), dashboardLayoutSchema.parse(items), widgetSizesSchema.parse(sizes));
+  if (saved === null) return { error: "Home changed in another tab" };
+  if (z.boolean().parse(added)) refresh();
+  return { version: saved };
 }
 
 /** The saved Home layout, ready to change. */
 async function loadLayout({ supabase, workspace }: Workspace) {
   const layout = await supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle();
   if (layout.error) throw new Error("Dashboard could not be loaded; try again");
-  const saved = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
-  if (saved && !saved.success) throw new Error("Dashboard preferences are invalid; review them in Settings");
-  return { items: dashboardItems(saved?.data ?? null), version: layout.data?.version ?? 0 };
+  const saved = homeLayout(layout.data);
+  if (!saved) throw new Error("Dashboard preferences are invalid; try again");
+  return saved;
 }
 
 async function setCardOnHome(context: Workspace, cardId: string, on: boolean) {
   const { items, version } = await loadLayout(context);
   const next = setWidget(items, cardWidgetKey(cardId), on);
   if (next.length === items.length) return;
-  if (next.length > 50) throw new Error("Home is full; remove a widget in Settings first");
-  await writeLayout(context, version, next);
+  if (next.length > 50) throw new Error("Home is full; hide a widget on Home first");
+  if (await writeLayout(context, version, next) === null) throw new Error("Dashboard changed; reload before saving");
+  revalidatePath("/");
 }
 
 /**
@@ -81,13 +83,22 @@ export async function unpublishCard(id: string) {
   revalidatePath(`/ai/artifacts/${data.artifact_id}`);
 }
 
-/** A card's size on Home (and in its preview). */
-export async function setCardSize(id: string, size: string) {
+async function writeCardSize(id: string, size: string) {
   const cardId = z.uuid().parse(id);
   const parsed = z.enum(CARD_SIZE_KEYS as [CardSize, ...CardSize[]]).parse(size);
   const { supabase, workspace } = await requireWorkspace();
   const { data, error } = await supabase.from("artifact_cards").update({ size: parsed, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("id", cardId).select("artifact_id").maybeSingle();
   if (error || !data) throw new Error("Card size could not be saved; try again");
-  revalidatePath(`/ai/artifacts/${data.artifact_id}`);
+  return data.artifact_id as string;
+}
+
+/** A card's size on Home (and in its preview), set from its artifact. */
+export async function setCardSize(id: string, size: string) {
+  revalidatePath(`/ai/artifacts/${await writeCardSize(id, size)}`);
   revalidatePath("/");
+}
+
+/** A card resized on Home: the grid already shows the new width and the card fetches its new body, so nothing re-renders. */
+export async function resizeHomeCard(id: string, size: string) {
+  await writeCardSize(id, size);
 }

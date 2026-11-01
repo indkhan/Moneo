@@ -60,6 +60,47 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await expect(card.getByText("Picked b at S")).toBeVisible({ timeout: 30_000 });
     await expect(card.getByRole("button", { name: "Beta" })).toHaveAttribute("aria-pressed", "true");
 
+    // An older resize response arriving last must not replace the latest body.
+    await page.route(`**/api/cards/${cardId}?*`, async route => {
+      const response = await route.fetch();
+      if (new URL(route.request().url()).searchParams.get("size") === "M") await new Promise(resolve => setTimeout(resolve, 800));
+      await route.fulfill({ response });
+    });
+    const resize = page.getByRole("button", { name: new RegExp(`^Resize ${title} card`) });
+    await resize.focus();
+    const firstRequest = page.waitForRequest(request => request.url().includes(`/api/cards/${cardId}?`) && new URL(request.url()).searchParams.get("size") === "M");
+    await page.keyboard.press("ArrowRight");
+    await firstRequest;
+    await page.keyboard.press("ArrowRight");
+    await expect(card.getByText("Picked b at L")).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(1200);
+    await expect(card.getByText("Picked b at L")).toBeVisible();
+    // Returning to the already displayed width must also invalidate the pending request.
+    await resize.focus();
+    const returning = page.waitForRequest(request => request.url().includes(`/api/cards/${cardId}?`) && new URL(request.url()).searchParams.get("size") === "M");
+    await page.keyboard.press("ArrowLeft");
+    await returning;
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(1200);
+    await expect(card.getByText("Picked b at L")).toBeVisible();
+    await page.unroute(`**/api/cards/${cardId}?*`);
+    // Return to S for the existing publish/restore checks below.
+    await resize.focus();
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    await expect(card.getByText("Picked b at S")).toBeVisible({ timeout: 30_000 });
+
+    // Hide, reload past Undo, then restore the published card directly from Home.
+    const widget = page.locator(`[data-widget="card:${cardId}"]`);
+    await widget.hover();
+    await widget.getByRole("button", { name: `Hide ${title} card` }).click();
+    await expect(widget).toHaveCount(0);
+    await page.waitForLoadState("networkidle");
+    await page.reload({ waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Add widget", exact: true }).click();
+    await page.getByRole("list", { name: "Hidden widgets" }).getByRole("button", { name: `${title} card`, exact: true }).click();
+    await expect(card.getByText("Picked a at S")).toBeVisible({ timeout: 30_000 });
+
     // A draft (here, renamed) doesn't change Home until it is published.
     await db`insert into public.artifact_card_versions (workspace_id, card_id, version, title, kind, source, compiled, queries, params, prompt)
       values (${workspaceId}, ${cardId}, 2, ${`${title} renamed`}, 'code', ${CARD}, ${compileCard(CARD)}, ${queries}, ${db.json(PARAMS)}, 'Rename it')`;
