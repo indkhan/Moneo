@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
 
@@ -22,5 +23,7 @@ export async function deleteArtifact(id: string) {
   const { supabase, workspace } = await requireWorkspace();
   const { error } = await supabase.from("artifacts").update({ deleted_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("id", artifactId);
   if (error) throw error;
+  revalidatePath("/ai/artifacts");
+  revalidatePath("/");
   redirect("/ai/artifacts");
 }
