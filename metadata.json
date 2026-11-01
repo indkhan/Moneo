@@ -1,0 +1,47 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6AKADA6GP9PD7J8A369H3CE",
+  "strategy": "manual-commit",
+  "branch": "t3/fix-voice-call-response-order",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "app/ai/page.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 20,
+    "cache_creation_tokens": 10992,
+    "cache_read_tokens": 2692411,
+    "output_tokens": 7554,
+    "api_call_count": 10,
+    "subagent_tokens": {
+      "input_tokens": 2,
+      "cache_creation_tokens": 379,
+      "cache_read_tokens": 63627,
+      "output_tokens": 2465,
+      "api_call_count": 1
+    }
+  },
+  "redaction": {
+    "replacements": 261,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 2,
+      "credentialed_uri": 0,
+      "entropy": 255,
+      "key_context": 4,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
