@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { compileCard, runCard } from "./sandbox";
 import { CardTreeError, sanitizeTree, scopeCss } from "./tree";
 import { resolveParams } from "./params";
-import { PRESETS, presetSource } from "./presets";
+import { PRESETS, checkPresetBindings, presetSource } from "./presets";
+import { checkCard } from "./render";
+import { format as chartValue } from "@/components/cards/card-chart";
 
 const render = async (source: string, data: unknown = {}, params: Record<string, string> = {}, size = "M") =>
   sanitizeTree(await runCard(compileCard(source), { data, params, size }), { scope: "c1" });
@@ -90,5 +92,37 @@ describe("presets", () => {
       expect(JSON.stringify(tree), name).toMatch(/€1,240\.00|Food/);
     }
     expect(() => presetSource("stat", { label: "x", value: "a;b" })).toThrow();
+  });
+
+  it("refuses preset settings that show cents as text or point at nothing, as a live run did", () => {
+    const data = { cats: { groups: [{ dimensions: { categoryName: "Housing" }, currentMinor: "135000", currentFormatted: "EUR 1350.00" }] }, empty: { groups: [] } };
+    expect(checkPresetBindings("bar_list", { rows: "cats.groups", label: "dimensions.categoryName", value: "currentMinor", amount: "current_minor" }, data)).toEqual([
+      "value: currentMinor is in minor units (cents); use its Formatted / _formatted field", "amount: no row has current_minor", "amount: current_minor is not a number in the rows"]);
+    expect(checkPresetBindings("bar_list", { rows: "cats.groups", label: "dimensions.categoryName", value: "currentFormatted", amount: "currentMinor" }, data)).toEqual([]);
+    expect(checkPresetBindings("stat", { label: "x", value: "cats.totalMinor" }, data)).toEqual(["cats.totalMinor is in minor units (cents); show its Formatted / _formatted field instead"]);
+    expect(checkPresetBindings("list", { rows: "nope.rows", primary: "a", trailing: "b" }, data)).toEqual(["rows: nope.rows is not in the data"]);
+    // An empty month can't be checked row by row, so it passes.
+    expect(checkPresetBindings("bar_list", { rows: "empty.groups", label: "x", value: "y", amount: "z" }, data)).toEqual([]);
+  });
+
+  it("charts minor units as money: 40000 cents shows as 400 euros, not 40,000", async () => {
+    const tree = await render(presetSource("trend", { rows: "cats.rows", label: "name", amount: "total_minor", currency: "EUR" }), { cats: { rows: [{ name: "Oct", total_minor: "40000" }] } });
+    expect(JSON.stringify(tree)).toContain('"minor":true');
+    expect(chartValue(40000, "EUR", true)).toBe(new Intl.NumberFormat(undefined, { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(400));
+    expect(chartValue(400, "EUR")).toBe(new Intl.NumberFormat(undefined, { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(400));
+  });
+
+  it("every preset shows its declared controls, and a card that hides one is refused", async () => {
+    const month = [{ kind: "month" as const, name: "month", months: 12, default: "current" as const }];
+    const context = { settings: { timezone: "UTC" }, workspace: { locale: "en" } } as never;
+    for (const name of Object.keys(PRESETS) as (keyof typeof PRESETS)[]) {
+      const config = { stat: { label: "x", value: "a" }, stat_row: { items: [{ label: "a", value: "a" }, { label: "b", value: "b" }] }, bar_list: { rows: "r", label: "l", value: "v", amount: "a" },
+        trend: { rows: "r", label: "l", amount: "a" }, progress: { rows: "r", label: "l", current: "c", target: "t" }, list: { rows: "r", primary: "p", trailing: "t" } }[name];
+      const tree = await render(presetSource(name, config), {}, { month: "2026-11" });
+      expect(JSON.stringify(tree), name).toContain('"type":"kit:Param","props":{"name":"month"}');
+    }
+    expect((await checkCard(presetSource("stat", { label: "x", value: "a" }), [], month, context)).errors).toEqual([]);
+    const hidden = await checkCard(`export default function Card({ size }) { return size === "S" ? <p>small</p> : <div><Kit.Param name="month" /></div>; }`, [], month, context);
+    expect(hidden.errors).toEqual(['S: declared params without a <Kit.Param name="…" /> control: month']);
   });
 });

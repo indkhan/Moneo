@@ -6,7 +6,7 @@ import { modelForSettings } from "@/lib/ai/provider";
 import { calendarDate } from "@/lib/finance/calendar";
 import { SOURCE_GUIDE, artifactQueriesSchema, checkQueries, resolveToken, runArtifactQueries, type ArtifactQuery } from "@/lib/ai/artifact-data";
 import { cardParamsSchema, resolveParams, type CardParam } from "@/lib/cards/params";
-import { PRESETS, PRESET_GUIDE, PRESET_NAMES, presetSource, type PresetName } from "@/lib/cards/presets";
+import { PRESETS, PRESET_GUIDE, PRESET_NAMES, checkPresetBindings, presetSource, type PresetName } from "@/lib/cards/presets";
 import { checkCard } from "@/lib/cards/render";
 import { CARD_BODY_HEIGHT, CARD_SIZES } from "@/lib/cards/sizes";
 
@@ -48,9 +48,9 @@ const CARD_DESIGNER = `You write one Moneo Home card as a TSX module: \`export d
 - Style with style={{ … }} objects and <Kit.Style css={"…"} /> for classes, :hover, @keyframes and @media; its CSS applies only inside this card. No url() or @import. Colours: var(--color-foreground), --color-muted-foreground, --color-card, --color-muted, --color-border, --color-brand, --color-ai, --color-success, --color-warning, --color-danger, --color-chart-input, --color-chart-out (they follow light and dark). Fonts: var(--font-sans), var(--font-display), var(--font-mono). Utility classes that exist: eyebrow, font-display, font-mono, tabular-nums, truncate, text-muted-foreground, text-sm, text-xs, font-medium, font-semibold.
 - Kit components (the only interactive parts; the app draws them):
   <Kit.Money minor currency signed? compact? />
-  <Kit.Chart type="line|area|bar|hbar|donut|sparkline" labels={string[]} series={[{ name, values: number[], color? }]} stacked? axis? currency? height? />
+  <Kit.Chart type="line|area|bar|hbar|donut|sparkline" labels={string[]} series={[{ name, values: number[], color? }]} stacked? axis? currency? minor? height? />  (with currency, set minor when values are minor units such as cents, so €400.00 sent as 40000 shows as €400)
   <Kit.Tabs tabs={[{ label, content: <div>…</div> }]} />  (2–6 panels, switch instantly)
-  <Kit.Param name="…" variant?="pills|select" />  (the control for a declared param; changing it re-renders the card with new data)
+  <Kit.Param name="…" variant?="pills|select" />  (the control for a declared param; changing it re-renders the card with new data. Every declared param must have one at every size, or the card is refused)
   <Kit.Link to={{ page: "transactions", category?, merchant?, account?, from?, to?, q?, direction? }}>…</Kit.Link>  (page also: budgets, recurring, goals, accounts, wealth, plan, forecast, artifacts)
   <Kit.Style css={"…"} />
 - Text must fit: big figures get white-space: nowrap and a size the longest value fits at that width (about 28px at S, 36–44px from M up); labels truncate with an ellipsis.
@@ -148,7 +148,7 @@ export function artifactTools(run: Run) {
       execute: input => writePage(run, input),
     }),
     card_preset: tool({
-      description: `Make or change a Home card from one of our preset shapes, when one fits exactly. config paths point into the card's data (e.g. "month.spending_formatted", "byCategory.rows").\n${PRESET_GUIDE}`,
+      description: `Make or change a Home card from one of our preset shapes, when one fits exactly. config paths point into the card's data (e.g. "month.spending_formatted", "byCategory.rows"). Declared params (e.g. a month switch) show as controls above the preset automatically. Text settings take display fields (…Formatted / …_formatted, names); amount/current/target take numbers (minor units are fine); every path is checked against the live data.\n${PRESET_GUIDE}`,
       inputSchema: z.object({ ...cardBase, preset: z.enum(PRESET_NAMES), config: z.record(z.string(), z.unknown()) }).strict(),
       execute: async ({ cardId, title, preset, config, queries, params, fixedDates: fixed }) => {
         const frozen = frozenDates(queries, fixed);
@@ -158,6 +158,8 @@ export function artifactTools(run: Run) {
         const source = presetSource(preset, parsed.data);
         const checked = await checkCard(source, queries, params, run.context);
         if (!checked.compiled) return { saved: false, errors: checked.errors };
+        const bindings = checkPresetBindings(preset, parsed.data as Record<string, unknown>, checked.data);
+        if (bindings.length) return { saved: false, errors: bindings };
         return saveCard(run, { cardId, title, kind: "preset", preset, source, compiled: checked.compiled, queries, params, prompt: `${preset}: ${title}` });
       },
     }),

@@ -17,7 +17,7 @@ export const PRESETS = {
     config: z.object({ items: z.array(z.object({ label: text, value: path, tone }).strict()).min(2).max(4) }).strict() },
   bar_list: { description: "A ranked list with a bar per row, e.g. spending by category or top merchants.",
     config: z.object({ rows: path, label: field, value: field, amount: field, limit: z.number().int().min(1).max(12).default(5), headline: path.optional() }).strict() },
-  trend: { description: "A headline figure over a line, area or bar chart of a series, e.g. monthly spending.",
+  trend: { description: "A headline figure over a line, area or bar chart of a series, e.g. monthly spending. With currency set, amount must be a minor-unit field (e.g. total_minor).",
     config: z.object({ rows: path, label: field, amount: field, kind: z.enum(["line", "area", "bar"]).default("area"), headline: path.optional(), caption: text.optional(), currency: z.string().regex(/^[A-Z]{3}$/).optional() }).strict() },
   progress: { description: "Progress bars toward targets, e.g. savings goals or budgets.",
     config: z.object({ rows: path, label: field, current: field, target: field, note: field.optional(), limit: z.number().int().min(1).max(6).default(3) }).strict() },
@@ -35,6 +35,8 @@ const num = (value: any) => { const n = Number(value); return Number.isFinite(n)
 const toneColor = (tone?: string) => tone === "positive" ? "var(--color-success)" : tone === "negative" ? "var(--color-danger)" : undefined;
 const big = "font-display text-4xl font-semibold tracking-tight tabular-nums";
 const rowsOf = (data: any, path: string) => { const rows = get(data, path); return Array.isArray(rows) ? rows : []; };
+// Every declared control (month, period, choice) shows above the preset, so a preset never drops one.
+const Controls = ({ params }: { params?: Record<string, string> }) => { const names = Object.keys(params ?? {}); return names.length ? <div className="mb-2 flex justify-end gap-1.5">{names.map(name => <Kit.Param key={name} name={name} />)}</div> : null; };
 `;
 
 const TEMPLATES: Record<PresetName, string> = {
@@ -70,7 +72,7 @@ const TEMPLATES: Record<PresetName, string> = {
   return <div className="flex h-full flex-col justify-end gap-2">
     {config.headline && <p className="text-3xl font-semibold tabular-nums">{show(get(data, config.headline))}</p>}
     {config.caption && <p className="text-xs text-muted-foreground">{config.caption}</p>}
-    {rows.length ? <Kit.Chart type={config.kind} height={config.headline ? 110 : 160} currency={config.currency} labels={rows.map(row => String(show(get(row, config.label))))} series={[{ name: config.caption ?? "Value", values: rows.map(row => num(get(row, config.amount))) }]} />
+    {rows.length ? <Kit.Chart type={config.kind} height={config.headline ? 110 : 160} currency={config.currency} minor={!!config.currency} labels={rows.map(row => String(show(get(row, config.label))))} series={[{ name: config.caption ?? "Value", values: rows.map(row => num(get(row, config.amount))) }]} />
       : <p className="text-sm text-muted-foreground">Nothing to show yet.</p>}
   </div>;
 }`,
@@ -100,5 +102,45 @@ const TEMPLATES: Record<PresetName, string> = {
 /** The card source for a preset: the settings, our helpers and the template. */
 export function presetSource(preset: PresetName, config: unknown) {
   const parsed = PRESETS[preset].config.parse(config);
-  return `const config = ${JSON.stringify(parsed)};\n${HELPERS}\n${TEMPLATES[preset]}\n`;
+  const body = TEMPLATES[preset].replace("export default function Card(", "function Body(");
+  return `const config = ${JSON.stringify(parsed)};\n${HELPERS}\n${body}\nexport default function Card(props) {
+  return <div className="flex h-full flex-col"><Controls params={props.params} /><div className="min-h-0 flex-1">{Body(props)}</div></div>;
+}\n`;
+}
+
+// Which settings a preset shows as text (display), uses as numbers (bar lengths, chart points), or reads rows from.
+const BINDINGS: Record<PresetName, { display: string[]; numeric: string[]; top: string[] }> = {
+  stat: { display: [], numeric: [], top: ["value", "note"] },
+  stat_row: { display: [], numeric: [], top: ["items.value"] },
+  bar_list: { display: ["label", "value"], numeric: ["amount"], top: ["headline"] },
+  trend: { display: ["label"], numeric: ["amount"], top: ["headline"] },
+  progress: { display: ["label", "note"], numeric: ["current", "target"], top: [] },
+  list: { display: ["primary", "secondary", "trailing"], numeric: [], top: [] },
+};
+const MINOR = /(_minor|Minor)$/;
+const at = (from: unknown, path: string) => path.split(".").reduce<unknown>((value, key) => value == null ? undefined : (value as Record<string, unknown>)[key], from);
+
+/**
+ * Checks a preset's settings against the card's live data: every path must lead somewhere, numbers must be numbers,
+ * and text must not be raw minor units (cents shown as 135000). Lists that are empty today can't be checked.
+ */
+export function checkPresetBindings(preset: PresetName, config: Record<string, unknown>, data: Record<string, unknown>) {
+  const errors: string[] = [];
+  const { display, numeric, top } = BINDINGS[preset];
+  const shownTop = top.flatMap(key => key === "items.value" ? ((config.items as { value: string }[]) ?? []).map(item => item.value) : config[key] ? [config[key] as string] : []);
+  for (const path of shownTop) {
+    if (MINOR.test(path)) errors.push(`${path} is in minor units (cents); show its Formatted / _formatted field instead`);
+    else if (at(data, path) === undefined && !(at(data, path.split(".")[0]) as { error?: unknown } | undefined)?.error) errors.push(`${path} is not in the data`);
+  }
+  if (typeof config.rows === "string") {
+    const rows = at(data, config.rows);
+    if (rows === undefined) errors.push(`rows: ${config.rows} is not in the data`);
+    else if (!Array.isArray(rows)) errors.push(`rows: ${config.rows} is not a list`);
+    else if (rows.length) {
+      for (const key of display) if (typeof config[key] === "string" && MINOR.test(config[key] as string)) errors.push(`${key}: ${config[key]} is in minor units (cents); use its Formatted / _formatted field`);
+      for (const key of [...display, ...numeric]) if (typeof config[key] === "string" && rows.every(row => at(row, config[key] as string) === undefined)) errors.push(`${key}: no row has ${config[key]}`);
+      for (const key of numeric) if (typeof config[key] === "string" && !rows.some(row => Number.isFinite(Number(at(row, config[key] as string))) && at(row, config[key] as string) !== null)) errors.push(`${key}: ${config[key]} is not a number in the rows`);
+    }
+  }
+  return errors;
 }

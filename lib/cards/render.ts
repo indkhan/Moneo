@@ -53,6 +53,15 @@ export async function renderCard(version: CardVersion, context: Context, { size,
   }
 }
 
+/** The param names a checked tree has a Kit.Param control for, tab panels included. */
+function controls(node: CardNode, found = new Set<string>()): Set<string> {
+  if (typeof node === "string") return found;
+  if (node.type === "kit:Param") found.add(String(node.props.name));
+  if (node.type === "kit:Tabs") for (const tab of node.props.tabs as { content: CardNode }[]) controls(tab.content, found);
+  for (const child of node.children) controls(child, found);
+  return found;
+}
+
 /**
  * Checks a new card before it is saved: it compiles, its queries are valid, and it renders a clean tree at
  * every size with today's data. The errors go back to the designer to fix.
@@ -67,10 +76,16 @@ export async function checkCard(source: string, queries: ArtifactQuery[], params
   const data = await runArtifactQueries(queries, context, today, { params: resolved });
   const errors: string[] = [];
   for (const size of CARD_SIZE_KEYS) {
-    try { sanitizeTree(await runCard(compiled, { data, params: resolved.values, size }), { scope: "check" }); }
+    try {
+      const tree = sanitizeTree(await runCard(compiled, { data, params: resolved.values, size }), { scope: "check" });
+      // A control the card declares must be on it, at every size; otherwise the user asked for it and never sees it.
+      const shown = controls(tree);
+      const missing = params.filter(param => !shown.has(param.name)).map(param => param.name);
+      if (missing.length) errors.push(`${size}: declared params without a <Kit.Param name="…" /> control: ${missing.join(", ")}`);
+    }
     catch (cause) { errors.push(`${size}: ${cause instanceof CardTreeError ? "" : "runtime "}${cause instanceof Error ? cause.message : String(cause)}`); }
   }
-  return errors.length ? { errors } : { compiled, errors };
+  return errors.length ? { errors } : { compiled, errors, data };
 }
 
 /** The version a card shows: the one asked for (a draft preview), or the published one. */
