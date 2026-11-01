@@ -115,13 +115,14 @@ async function writePage(run: Run, input: { title: string; brief: string; querie
   return { saved: true, pageVersion: version, note: "The Page tab shows it now." };
 }
 
-/** Saves a checked card as a new version: a new card, or the next version of one of this artifact's cards. */
+/** Saves a checked card as a new version: a new card, or the next version of one of this artifact's cards. A new title stays with
+ * its version; the card itself takes it on publish, so Home never shows a draft's title. */
 async function saveCard(run: Run, card: { cardId?: string; title: string; kind: "preset" | "code"; preset?: PresetName; source: string; compiled: string; queries: ArtifactQuery[]; params: CardParam[]; prompt: string; model?: string }) {
   const { supabase, workspace } = run.context;
   await run.ensureActive();
   let cardId = card.cardId;
   if (cardId) {
-    const updated = await supabase.from("artifact_cards").update({ title: card.title, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("artifact_id", run.artifactId).eq("id", cardId).is("deleted_at", null).select("id").maybeSingle();
+    const updated = await supabase.from("artifact_cards").update({ updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("artifact_id", run.artifactId).eq("id", cardId).is("deleted_at", null).select("id").maybeSingle();
     if (updated.error) throw updated.error;
     if (!updated.data) return { saved: false, errors: [`Card ${cardId} is not one of this artifact's cards`] };
   } else {
@@ -130,7 +131,7 @@ async function saveCard(run: Run, card: { cardId?: string; title: string; kind: 
     cardId = created.data.id as string;
   }
   const version = await nextVersion(supabase, "artifact_card_versions", "card_id", cardId, workspace.id);
-  const saved = await supabase.from("artifact_card_versions").insert({ workspace_id: workspace.id, card_id: cardId, version, kind: card.kind, preset: card.preset ?? null,
+  const saved = await supabase.from("artifact_card_versions").insert({ workspace_id: workspace.id, card_id: cardId, version, title: card.title, kind: card.kind, preset: card.preset ?? null,
     source: card.source, compiled: card.compiled, queries: card.queries, params: card.params, prompt: card.prompt.slice(0, 4000), model: card.model ?? null });
   if (saved.error) return { saved: false, errors: [saved.error.code === "23505" ? "Another change finished first; try again" : "Could not save the card"] };
   return { saved: true, cardId, version, note: "It shows as a draft in the Home card tab; the user adds it to Home (or updates Home) from there." };

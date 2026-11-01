@@ -9,10 +9,10 @@ import { CardTreeError, sanitizeTree } from "./tree";
 import { CARD_SIZE_KEYS, type CardSize } from "./sizes";
 
 type Context = Awaited<ReturnType<typeof requireWorkspace>>;
-export type CardVersion = { id: string; card_id: string; version: number; kind: "preset" | "code"; preset: string | null; compiled: string; queries: unknown; params: unknown };
+export type CardVersion = { id: string; card_id: string; version: number; title: string; kind: "preset" | "code"; preset: string | null; compiled: string; queries: unknown; params: unknown };
 export type CardRow = { id: string; artifact_id: string; title: string; size: string; published_version: number | null };
 export type RenderedCard = { tree: CardNode | null; error: string | null; params: ParamState[] };
-export const CARD_VERSION_COLUMNS = "id, card_id, version, kind, preset, compiled, queries, params";
+export const CARD_VERSION_COLUMNS = "id, card_id, version, title, kind, preset, compiled, queries, params";
 
 /** Each card's CSS and ids are namespaced by this, so two cards never clash. */
 export const cardScope = (cardId: string) => `c${cardId.replace(/-/g, "").slice(0, 12)}`;

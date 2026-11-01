@@ -32,8 +32,8 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     const queries = db.json([{ name: "accounts", source: "accounts", input: {} }]);
     await db`insert into public.artifact_versions (workspace_id, artifact_id, version, prompt, html, queries) values (${workspaceId}, ${id}, 1, 'Count my accounts', ${HTML}, ${queries})`;
     const [{ id: cardId }] = await db`insert into public.artifact_cards (workspace_id, artifact_id, title) values (${workspaceId}, ${id}, ${`${title} card`}) returning id`;
-    await db`insert into public.artifact_card_versions (workspace_id, card_id, version, kind, source, compiled, queries, params, prompt)
-      values (${workspaceId}, ${cardId}, 1, 'code', ${CARD}, ${compileCard(CARD)}, ${queries}, ${db.json(PARAMS)}, 'Count my accounts on Home')`;
+    await db`insert into public.artifact_card_versions (workspace_id, card_id, version, title, kind, source, compiled, queries, params, prompt)
+      values (${workspaceId}, ${cardId}, 1, ${`${title} card`}, 'code', ${CARD}, ${compileCard(CARD)}, ${queries}, ${db.json(PARAMS)}, 'Count my accounts on Home')`;
 
     // Gallery: a live preview of the page and the original request.
     await page.goto("/ai/artifacts");
@@ -59,6 +59,13 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await card.getByRole("button", { name: "Beta" }).click();
     await expect(card.getByText("Picked b at S")).toBeVisible({ timeout: 30_000 });
     await expect(card.getByRole("button", { name: "Beta" })).toHaveAttribute("aria-pressed", "true");
+
+    // A draft (here, renamed) doesn't change Home until it is published.
+    await db`insert into public.artifact_card_versions (workspace_id, card_id, version, title, kind, source, compiled, queries, params, prompt)
+      values (${workspaceId}, ${cardId}, 2, ${`${title} renamed`}, 'code', ${CARD}, ${compileCard(CARD)}, ${queries}, ${db.json(PARAMS)}, 'Rename it')`;
+    await page.reload();
+    await expect(page.getByRole("region", { name: `${title} card`, exact: true }).getByText("Picked a at S")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("region", { name: `${title} renamed`, exact: true })).toHaveCount(0);
 
     // Deleting the artifact takes its card off Home.
     await page.goto("/ai/artifacts");

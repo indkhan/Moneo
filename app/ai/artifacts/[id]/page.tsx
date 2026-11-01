@@ -13,7 +13,7 @@ import { DeleteArtifactButton } from "../delete-artifact-button";
 import { ArtifactChat } from "./artifact-chat";
 
 type Search = { v?: string; full?: string; tab?: string; start?: string; card?: string; cv?: string };
-type CardRow = { id: string; title: string; size: string; published_version: number | null; artifact_card_versions: { version: number; prompt: string }[] };
+type CardRow = { id: string; title: string; size: string; published_version: number | null; artifact_card_versions: { version: number; title: string }[] };
 
 export default async function ArtifactPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -24,7 +24,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   const [artifact, versions, cards, layout, chat] = await Promise.all([
     supabase.from("artifacts").select("id, title").eq("workspace_id", workspace.id).eq("id", id).is("deleted_at", null).maybeSingle(),
     supabase.from("artifact_versions").select("version, prompt").eq("workspace_id", workspace.id).eq("artifact_id", id).order("version"),
-    supabase.from("artifact_cards").select("id, title, size, published_version, artifact_card_versions(version, prompt)").eq("workspace_id", workspace.id).eq("artifact_id", id).is("deleted_at", null).order("created_at"),
+    supabase.from("artifact_cards").select("id, title, size, published_version, artifact_card_versions(version, title)").eq("workspace_id", workspace.id).eq("artifact_id", id).is("deleted_at", null).order("created_at"),
     supabase.from("dashboard_layouts").select("items").eq("workspace_id", workspace.id).maybeSingle(),
     supabase.from("conversations").select("id").eq("workspace_id", workspace.id).eq("artifact_id", id).maybeSingle(),
   ]);
@@ -95,7 +95,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
             return <article key={card.id} aria-label={card.title} className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">{card.title}</span>
+                  <span className="font-medium text-sm">{card.artifact_card_versions.find(item => item.version === shown)?.title ?? card.title}</span>
                   <span className="inline-flex items-center gap-1 text-muted-foreground">
                     {shown > 1 ? <Link href={cardAt(shown - 1)} aria-label="Previous card version" className="rounded p-0.5 hover:bg-muted"><ChevronLeft className="size-3.5" /></Link> : <span className="p-0.5 opacity-30"><ChevronLeft className="size-3.5" /></span>}
                     v{shown} of {newest}

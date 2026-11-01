@@ -671,6 +671,7 @@ export const artifactCardVersions = pgTable("artifact_card_versions", {
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   cardId: uuid("card_id").notNull(),
   version: integer("version").notNull(),
+  title: text("title").notNull(),
   kind: text("kind").notNull(),
   preset: text("preset"),
   source: text("source").notNull(),
@@ -684,6 +685,7 @@ export const artifactCardVersions = pgTable("artifact_card_versions", {
   unique("artifact_card_versions_card_id_version_key").on(table.cardId, table.version),
   foreignKey({ name: "artifact_card_versions_card_id_workspace_id_fkey", columns: [table.cardId, table.workspaceId], foreignColumns: [artifactCards.id, artifactCards.workspaceId] }).onDelete("cascade"),
   check("artifact_card_versions_version_check", sql`${table.version} >= 1`),
+  check("artifact_card_versions_title_check", sql`length(btrim(${table.title})) between 1 and 80`),
   check("artifact_card_versions_kind_check", sql`${table.kind} in ('preset','code')`),
 ]);
 
