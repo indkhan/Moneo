@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moneo artifacts and Home cards: how it works</title>
+<style>
+  :root {
+    --bg: #f7f6f2; --card: #ffffff; --ink: #17181c; --muted: #5d6170; --line: #e3e1da;
+    --ai: #5b4bdb; --ai-soft: #eeebff; --lime: #3f8f2f; --lime-soft: #e9f6e3;
+    --amber: #b86a00; --amber-soft: #fff3df; --rose: #c2334d; --rose-soft: #fde9ec;
+    --sky: #1f6fb8; --sky-soft: #e5f1fc; --slate-soft: #f0efea;
+    --radius: 18px; --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  main { max-width: 1120px; margin: 0 auto; padding: 0 28px 120px; }
+  nav { position: sticky; top: 0; z-index: 10; background: color-mix(in oklab, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  nav div { max-width: 1120px; margin: 0 auto; padding: 12px 28px; display: flex; gap: 22px; overflow-x: auto; font-size: 14px; white-space: nowrap; }
+  nav a { color: var(--muted); text-decoration: none; font-weight: 500; }
+  nav a:hover { color: var(--ink); }
+  nav b { margin-right: 8px; }
+  header { padding: 88px 0 48px; }
+  .eyebrow { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; color: var(--ai); margin: 0 0 14px; }
+  h1 { font-size: clamp(38px, 6vw, 64px); line-height: 1.04; letter-spacing: -.03em; margin: 0 0 22px; max-width: 15ch; }
+  h2 { font-size: clamp(28px, 3.6vw, 40px); line-height: 1.1; letter-spacing: -.02em; margin: 0 0 14px; }
+  h3 { font-size: 19px; margin: 0 0 8px; letter-spacing: -.01em; }
+  .lede { font-size: 20px; color: var(--muted); max-width: 62ch; margin: 0; }
+  section { padding: 72px 0 8px; scroll-margin-top: 60px; }
+  section > p.intro { color: var(--muted); font-size: 18px; max-width: 70ch; margin: 0 0 32px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 44px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 22px; }
+  .stat strong { display: block; font-size: 34px; letter-spacing: -.02em; line-height: 1.1; }
+  .stat span { color: var(--muted); font-size: 14px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 24px; padding: 28px; box-shadow: 0 1px 0 rgba(0,0,0,.02), 0 20px 50px -30px rgba(30,30,60,.25); }
+  .diagram { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 18px; font-size: 13px; color: var(--muted); }
+  .legend i { display: inline-block; width: 22px; height: 0; border-top: 2.5px solid; vertical-align: middle; margin-right: 6px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 24px; }
+  .card p { margin: 0; color: var(--muted); }
+  .card p + p { margin-top: 10px; }
+  .tag { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 4px 10px; border-radius: 99px; margin-bottom: 12px; }
+  .t-ai { background: var(--ai-soft); color: var(--ai); } .t-lime { background: var(--lime-soft); color: var(--lime); }
+  .t-amber { background: var(--amber-soft); color: var(--amber); } .t-rose { background: var(--rose-soft); color: var(--rose); }
+  .t-sky { background: var(--sky-soft); color: var(--sky); }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 14px 0 12px; font-size: 13px; }
+  .flow span { background: var(--slate-soft); border-radius: 8px; padding: 4px 9px; }
+  .flow span.you { background: var(--sky-soft); color: var(--sky); font-weight: 600; }
+  .flow span.mo { background: var(--lime-soft); color: var(--lime); font-weight: 600; }
+  .flow span.x { background: var(--rose-soft); color: var(--rose); font-weight: 600; text-decoration: line-through; }
+  .flow em { color: var(--muted); font-style: normal; }
+  code { font-family: var(--mono); font-size: .88em; background: var(--slate-soft); padding: 1px 6px; border-radius: 6px; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 15px; }
+  th { text-align: left; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 700; padding: 0 16px 12px; }
+  td { padding: 16px; border-top: 1px solid var(--line); vertical-align: top; }
+  td:first-child { font-weight: 600; width: 25%; }
+  td small { display: block; color: var(--muted); font-size: 13.5px; margin-top: 4px; font-weight: 400; }
+  .no { color: var(--rose); font-weight: 700; } .yes { color: var(--lime); font-weight: 700; }
+  .cost { white-space: nowrap; font-family: var(--mono); font-size: 13px; color: var(--amber); }
+  .timing { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .timing div { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .timing b { font-family: var(--mono); font-size: 20px; color: var(--ai); display: block; }
+  .timing span { font-size: 14px; color: var(--muted); }
+  .bar { height: 10px; border-radius: 99px; background: var(--slate-soft); overflow: hidden; margin-top: 10px; }
+  .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--ai), #8a7cf0); border-radius: 99px; }
+  .quote { border-left: 4px solid var(--ai); padding: 4px 0 4px 18px; margin: 0; font-size: 18px; color: var(--ink); }
+  .principles { counter-reset: p; display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .principles .card { position: relative; padding-left: 70px; }
+  .principles .card::before { counter-increment: p; content: counter(p); position: absolute; left: 22px; top: 20px; width: 32px; height: 32px; border-radius: 10px; background: var(--ai-soft); color: var(--ai); font-weight: 800; display: grid; place-items: center; }
+  footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  @media (max-width: 860px) { .stats, .grid3 { grid-template-columns: 1fr 1fr; } .grid2, .principles { grid-template-columns: 1fr; } td:first-child { width: auto; } }
+</style>
+</head>
+<body>
+<nav><div><b>Moneo · artifacts &amp; Home cards</b><a href="#architecture">Architecture</a><a href="#lifecycle">A card's life</a><a href="#render">Rendering</a><a href="#safety">Safety</a><a href="#data">Data</a><a href="#decisions">Decisions</a><a href="#evidence">Tested live</a><a href="#limits">Limits</a></div></nav>
+<main>
+
+<header>
+  <p class="eyebrow">Moneo · personal finance · artifacts</p>
+  <h1>Build it from your data, then live with it on Home.</h1>
+  <p class="lede">An artifact is a page Moneo builds from your real finances, in its own chat. Any part of it can become a card on your Home: previewed in place, sized, published when you're happy, and drawn by the app itself — not an iframe. The model can design anything, but every number still comes from the app.</p>
+  <div class="stats">
+    <div class="stat"><strong>~1 ms</strong><span>to run a busy card's code in the sandbox (warm)</span></div>
+    <div class="stat"><strong>0</strong><span>lines of AI code that run in your browser</span></div>
+    <div class="stat"><strong>1 chat</strong><span>builds the page and every card, with all chat tools</span></div>
+    <div class="stat"><strong>~1.5 s</strong><span>Home with a published card, production build</span></div>
+  </div>
+</header>
+
+<section id="architecture">
+  <p class="eyebrow">Architecture</p>
+  <h2>One chat, two outputs, one data contract</h2>
+  <p class="intro">The artifact's chat is the normal Moneo chat with four extra tools. A designer model writes the Page (HTML) or a card (React). The app saves the queries the work needs, never the numbers, and reruns them every time anything is shown.</p>
+  <div class="panel">
+    <svg class="diagram" viewBox="0 0 1060 470" role="img" aria-label="Architecture diagram">
+      <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#5d6170"/></marker></defs>
+      <g font-family="Inter, Segoe UI, sans-serif" font-size="13">
+        <rect x="20" y="20" width="250" height="190" rx="16" fill="#e5f1fc" stroke="#1f6fb8"/>
+        <text x="40" y="48" font-weight="700" fill="#1f6fb8">Artifact page</text>
+        <rect x="40" y="62" width="210" height="40" rx="10" fill="#fff" stroke="#1f6fb8"/><text x="55" y="87">Chat (mic, steer, cancel)</text>
+        <rect x="40" y="110" width="100" height="40" rx="10" fill="#fff" stroke="#1f6fb8"/><text x="55" y="135">Page tab</text>
+        <rect x="150" y="110" width="100" height="40" rx="10" fill="#fff" stroke="#1f6fb8"/><text x="158" y="135">Home cards</text>
+        <text x="40" y="180" fill="#5d6170">size S/M/L/XL · draft vs Home</text><text x="40" y="198" fill="#5d6170">Add / Update / Remove</text>
+
+        <rect x="20" y="260" width="250" height="190" rx="16" fill="#e5f1fc" stroke="#1f6fb8"/>
+        <text x="40" y="288" font-weight="700" fill="#1f6fb8">Home</text>
+        <rect x="40" y="302" width="100" height="56" rx="10" fill="#fff" stroke="#1f6fb8"/><text x="52" y="334">Net worth</text>
+        <rect x="150" y="302" width="100" height="56" rx="10" fill="#fff" stroke="#3f8f2f" stroke-width="2"/><text x="160" y="326" fill="#3f8f2f" font-weight="700">AI card</text><text x="160" y="344" fill="#3f8f2f">native DOM</text>
+        <text x="40" y="390" fill="#5d6170">param change → GET /api/cards/:id</text><text x="40" y="408" fill="#5d6170">each card streams in on its own</text>
+
+        <rect x="340" y="20" width="300" height="190" rx="16" fill="#eeebff" stroke="#5b4bdb"/>
+        <text x="360" y="48" font-weight="700" fill="#5b4bdb">/api/chat (artifact conversation)</text>
+        <text x="360" y="74">all chat read tools</text>
+        <text x="360" y="96">+ write_page · card_preset</text>
+        <text x="360" y="118">+ write_card · remove_card</text>
+        <text x="360" y="146" fill="#5d6170">chat_requests row + after(): keeps</text>
+        <text x="360" y="164" fill="#5d6170">running when the tab closes; resumes</text>
+        <text x="360" y="182" fill="#5d6170">on reopen; 280 s budget</text>
+
+        <rect x="700" y="20" width="340" height="190" rx="16" fill="#fff3df" stroke="#b86a00"/>
+        <text x="720" y="48" font-weight="700" fill="#b86a00">Designer model (artifacts setting)</text>
+        <text x="720" y="74">brief + live data sample → HTML or TSX</text>
+        <text x="720" y="100" fill="#5d6170">cards: compiled + rendered at every size</text>
+        <text x="720" y="120" fill="#5d6170">with real data; errors go back to it</text>
+        <text x="720" y="140" fill="#5d6170">(up to 3 tries) before anything saves</text>
+        <text x="720" y="168" fill="#5d6170">checks the request wasn't canceled</text>
+        <text x="720" y="186" fill="#5d6170">right before saving</text>
+
+        <rect x="340" y="260" width="300" height="190" rx="16" fill="#e9f6e3" stroke="#3f8f2f"/>
+        <text x="360" y="288" font-weight="700" fill="#3f8f2f">Card renderer (server)</text>
+        <text x="360" y="314">1 run saved queries for today</text>
+        <text x="360" y="336">2 run card code in QuickJS (WASM)</text>
+        <text x="360" y="358">3 check the element tree</text>
+        <text x="360" y="380">4 our React draws it</text>
+        <text x="360" y="410" fill="#5d6170">cached by version · size · params · data</text>
+
+        <rect x="700" y="260" width="340" height="190" rx="16" fill="#f0efea" stroke="#5d6170"/>
+        <text x="720" y="288" font-weight="700">Postgres (Supabase, RLS)</text>
+        <text x="720" y="314">artifacts · artifact_versions (Page)</text>
+        <text x="720" y="336">artifact_cards (stable, size, published)</text>
+        <text x="720" y="358">artifact_card_versions (append-only)</text>
+        <text x="720" y="380">conversations.artifact_id · dashboard_layouts</text>
+        <text x="720" y="410" fill="#5d6170">composite keys keep links in one workspace</text>
+
+        <path d="M270 82 H340" stroke="#5d6170" stroke-width="2" marker-end="url(#a)"/>
+        <path d="M640 110 H700" stroke="#5d6170" stroke-width="2" marker-end="url(#a)"/>
+        <path d="M870 210 V260" stroke="#5d6170" stroke-width="2" marker-end="url(#a)"/>
+        <path d="M270 330 H340" stroke="#5d6170" stroke-width="2" marker-end="url(#a)"/>
+        <path d="M640 350 H700" stroke="#5d6170" stroke-width="2" marker-end="url(#a)"/>
+        <path d="M250 130 H300 V230 H470 V260" stroke="#5d6170" stroke-width="2" fill="none" stroke-dasharray="5 4" marker-end="url(#a)"/>
+        <text x="310" y="224" fill="#5d6170" font-size="12">preview renders the draft version</text>
+      </g>
+    </svg>
+  </div>
+</section>
+
+<section id="lifecycle">
+  <p class="eyebrow">A card's life</p>
+  <h2>From “add this to Home” to a card you can trust</h2>
+  <p class="intro">Every step is a normal chat request, so it keeps going if you close the tab and shows as working when you come back.</p>
+  <div class="grid3">
+    <div class="card"><span class="tag t-sky">1 · ask</span><h3>Say it in the chat</h3><p>“Add a small card with last month's total and top categories, with a month switch.”</p></div>
+    <div class="card"><span class="tag t-ai">2 · read</span><h3>The agent reads real data</h3><p>It uses the same read tools as chat, then writes queries with dates as meaning (<code>@param:month.from</code>), never fixed dates.</p></div>
+    <div class="card"><span class="tag t-amber">3 · design</span><h3>Preset or its own React</h3><p>If one of six shapes fits, it fills a preset. Otherwise a designer writes the card's own TSX, with any layout, several charts or custom SVG.</p></div>
+    <div class="card"><span class="tag t-lime">4 · check</span><h3>Rendered before it's saved</h3><p>It's compiled and run at S, M, L and XL with live data, and the tree is checked. Failures go back to the designer up to 3 times.</p></div>
+    <div class="card"><span class="tag t-sky">5 · preview</span><h3>A draft, in place</h3><p>The Home cards tab shows it in its Home slot between your own widgets, live and interactive. Pick a size, then ask for changes.</p></div>
+    <div class="card"><span class="tag t-lime">6 · publish</span><h3>You decide when Home changes</h3><p>Add to Home publishes that exact version. Later edits are drafts until “Update on Home”, and every version is kept to go back to.</p></div>
+  </div>
+</section>
+
+<section id="render">
+  <p class="eyebrow">Rendering</p>
+  <h2>AI-written React that never runs in your browser</h2>
+  <p class="intro">The card's code runs once on the server inside QuickJS, a JavaScript engine compiled to WASM. Its only output is a tree of plain data, <code>{ type, props, children }</code>. The app checks that tree and draws it with its own React, so it gets your fonts and theme, switches dark mode instantly, and has no iframe.</p>
+  <div class="grid2">
+    <div class="panel">
+      <h3>Measured (benchmark script in the repo)</h3>
+      <div class="timing" style="margin-top:14px">
+        <div><b>9 ms</b><span>compile TSX → JS (sucrase), once at save</span></div>
+        <div><b>44 ms</b><span>first render; the WASM engine starts</span></div>
+        <div><b>1.1 ms</b><span>warm render p50 (p95 2.9 ms): two charts, 12 rows</span></div>
+        <div><b>7 ms</b><span>8 cards at once</span></div>
+      </div>
+      <p style="color:var(--muted);margin:16px 0 0">The cost on Home is the data queries, which every widget already pays. Cards on one Home share reads: the same query runs once.</p>
+    </div>
+    <div class="panel">
+      <h3>What a card can use</h3>
+      <p style="color:var(--muted)">HTML and SVG (gradients, filters, clip paths), <code>style</code> objects, and scoped CSS with <code>:hover</code>, <code>@keyframes</code> and <code>@media</code>. The kit, which the app draws:</p>
+      <div class="flow"><span class="mo">Kit.Money</span><span class="mo">Kit.Chart</span><span class="mo">Kit.Tabs</span><span class="mo">Kit.Param</span><span class="mo">Kit.Link</span><span class="mo">Kit.Style</span></div>
+      <p style="color:var(--muted);margin:0">Tabs switch instantly in the browser. A Param (month, period or choice) re-renders the card on the server with new data in about 100 ms. Links are built by the app from a typed target.</p>
+    </div>
+  </div>
+</section>
+
+<section id="safety">
+  <p class="eyebrow">Safety</p>
+  <h2>Five walls between the model and your Home</h2>
+  <p class="intro">The model writes the code, and text in your transactions could try to steer it, so we treat both the code and its output as untrusted.</p>
+  <table>
+    <tr><th>Layer</th><th>What it stops</th></tr>
+    <tr><td>QuickJS sandbox<small>fresh runtime per render</small></td><td>No network, files, env, timers or imports. A 1 s deadline and a 64 MB memory ceiling stop a runaway loop from stalling Home; they aren't design limits.</td></tr>
+    <tr><td>Tree check<small>allowlist</small></td><td>Only known HTML/SVG elements and attributes get through: no script, iframe, img, a, <code>use</code>, <code>foreignObject</code>, event handlers or <code>dangerouslySetInnerHTML</code>. No <code>url()</code> except to the card's own namespaced ids, so data can't leave through a stylesheet.</td></tr>
+    <tr><td>Kit schemas<small>strict Zod per component</small></td><td>Unknown props are refused. Charts take numbers and labels only, never chart-library options that accept HTML or functions. Links take a typed page plus ids, never a URL.</td></tr>
+    <tr><td>Scoped CSS<small>postcss</small></td><td>Every selector is prefixed with the card, keyframes are renamed, <code>@import</code> and <code>url()</code> are dropped, and <code>&lt;</code> is escaped so CSS can't close its own style tag.</td></tr>
+    <tr><td>Containment<small>the app's wrapper</small></td><td>A fixed height with <code>overflow: clip</code>, <code>contain: layout paint style</code> and <code>isolation</code>. Even <code>position: fixed</code> stays inside the card, so it can't draw a fake overlay over Home.</td></tr>
+  </table>
+</section>
+
+<section id="data">
+  <p class="eyebrow">Data</p>
+  <h2>Numbers come from the app, and they stay current</h2>
+  <div class="grid2">
+    <div class="card"><span class="tag t-lime">persistable reads</span><h3>Every chat read tool, behind an adapter</h3><p>Investigate, cashflow, transactions, detail, scenario, entities, balances, accounts, recurring, goals, wealth, forecast and agent findings. Each declares its input schema and AI scopes, which are checked again on every view. Output is made readable (formatted money, names for ids) with internal evidence stripped.</p></div>
+    <div class="card"><span class="tag t-amber">dates as meaning</span><h3>“This month” stays this month</h3><p>Queries save tokens such as <code>@month_start</code>, <code>@days_ago:29</code> and <code>@param:month.from</code>, resolved in your timezone each view. A literal date is refused unless you asked for a fixed past period. The old approach shifted saved dates by elapsed days, so “this month” slowly became a sliding window.</p></div>
+    <div class="card"><span class="tag t-ai">params</span><h3>Controls can't widen what a card reads</h3><p>A request can only pick a declared option: one of the last N months, a listed period, or a listed choice. Anything else falls back to the default.</p></div>
+    <div class="card"><span class="tag t-rose">financial truth</span><h3>Designers don't do money maths</h3><p>Totals come from their own query. Cards show money as the app's formatted strings or through Kit.Money, which uses bigint minor units. Minor amounts become numbers only for bar lengths.</p></div>
+  </div>
+</section>
+
+<section id="decisions">
+  <p class="eyebrow">Decisions</p>
+  <h2>What we could have built, and why we didn't</h2>
+  <table>
+    <tr><th>Option</th><th>Why not (or why)</th></tr>
+    <tr><td>Keep one HTML doing two views<small>the old widget</small></td><td><span class="no">No.</span> The widget was an afterthought of the page, an iframe of varying height that scrolled, loaded charts from a CDN and reloaded on theme change. And you couldn't see it on Home before pinning.</td></tr>
+    <tr><td>Card iframe with our CSS kit<small>sandboxed, fixed size</small></td><td><span class="no">No.</span> It's safe, but it's an extra request, document and skeleton per card, and it still isn't native DOM.</td></tr>
+    <tr><td>JSON card document only<small>reviewer's suggestion</small></td><td><span class="no">Not alone.</span> It's simpler and safe, but caps how expressive a card can be. We kept its safety ideas (strict schemas, typed links, money through trusted components) and let the AI write real React.</td></tr>
+    <tr><td>Run AI React in the page<small>fastest to build</small></td><td><span class="no">Never.</span> The code would run with your session and could call any server action.</td></tr>
+    <tr><td>AI React in QuickJS on the server<small>chosen</small></td><td><span class="yes">Yes.</span> It's as free as code, as fast and native as built-in widgets, and no AI code reaches the browser. The six presets go through the same pipeline from trusted source.</td></tr>
+    <tr><td>A separate artifact builder<small>the old route</small></td><td><span class="no">Replaced.</span> The artifact's chat is the chat, which gives it every read tool, durability, steering, cancel, the mic and attachments at no extra cost. Its build tracker table is gone.</td></tr>
+    <tr><td>Vercel Workflow for builds</td><td><span class="no">Not now.</span> Artifacts match chat exactly (<code>after()</code> + a request row). Surviving a deploy or crash mid-run is a later upgrade for both.</td></tr>
+  </table>
+</section>
+
+<section id="evidence">
+  <p class="eyebrow">Tested live</p>
+  <h2>What real runs found that unit tests didn't</h2>
+  <div class="grid2">
+    <div class="card"><span class="tag t-rose">bundling</span><h3>The WASM moved</h3><p>The production build copied QuickJS's WASM file to a path that didn't exist at runtime. Fix: load the sandbox packages from <code>node_modules</code> (<code>serverExternalPackages</code>). The card e2e test now runs against <code>next start</code>.</p></div>
+    <div class="card"><span class="tag t-amber">frozen dates</span><h3>Six queries for six months</h3><p>The first month switch came back as six queries with literal dates, so it would have frozen at November. Fix: a month param with tokens, and literal dates refused unless intended.</p></div>
+    <div class="card"><span class="tag t-amber">empty sample</span><h3>Guessing field names</h3><p>On the 1st of the month the sample data was empty, so the designer guessed <code>row.categoryName</code> and every bar read “Uncategorized”. Fix: it now also sees another option's data (last month) as a shape reference.</p></div>
+    <div class="card"><span class="tag t-rose">money</span><h3>Hand-made totals</h3><p>The designer summed amounts and formatted them itself. Fix: totals come from their own query, and money is shown only as app-formatted values.</p></div>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>What still isn't perfect</h2>
+  <div class="grid2">
+    <div class="card"><h3>No live browser maths on Home</h3><p>A slider on a card asks the server to re-render, which is fast but not 60 fps. The Page (sandboxed iframe) keeps full client-side interactivity.</p></div>
+    <div class="card"><h3>Durability equals chat's</h3><p>A deploy or crash mid-build loses that run. The request shows as failed, and you ask again.</p></div>
+    <div class="card"><h3>A designer can still mislabel</h3><p>The sandbox stops capabilities, not wrong labels. The preview, drafts and version history are how you catch and undo that.</p></div>
+    <div class="card"><h3>Tailwind classes</h3><p>Only classes the app already uses exist, so designed cards style themselves with style objects and scoped CSS.</p></div>
+  </div>
+</section>
+
+<section>
+  <p class="eyebrow">Principles</p>
+  <h2>The rules behind every decision</h2>
+  <div class="principles">
+    <div class="card"><h3>Money facts come from code</h3><p>Pages and cards save queries, not numbers. Totals and formatting come from the app.</p></div>
+    <div class="card"><h3>Untrusted by default</h3><p>AI code runs only in a sandbox, and its output is checked before it reaches React.</p></div>
+    <div class="card"><h3>See it where it will live</h3><p>The preview is the real card in its Home slot. Home changes only when you publish.</p></div>
+    <div class="card"><h3>Reuse, don't fork</h3><p>One chat and one set of read tools. Presets and designed cards share one render pipeline.</p></div>
+  </div>
+</section>
+
+<footer>Moneo · artifacts and Home cards · Next.js 16, React 19, Supabase, QuickJS (WASM), sucrase, postcss, Vercel AI SDK</footer>
+</main>
+</body>
+</html>
