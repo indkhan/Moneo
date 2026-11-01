@@ -399,3 +399,23 @@ it("tells requests from small talk among unclaimed words", () => {
   expect(looksLikeRequest("Can you also check where all did I spend my money last month")).toBe(true);
   expect(looksLikeRequest("btw I spent 12 at Rewe")).toBe(true);
 });
+
+it("stops an answered result that is still waiting to be said, and ignores a stopped request's progress", async () => {
+  const { call, sent, asks, say, delegate, answer, wait, moneoTalks } = setup();
+  say("Netto?"); delegate("d1"); say("Rent?"); delegate("d2");
+  await wait(2000);
+  await answer("Netto?", "Netto was EUR 12.40.");
+  await answer("Rent?", "Rent is EUR 850.00.");
+  expect([...call.unsaid]).toEqual(["r2"]);
+  call.cancel("r2");
+  expect(call.unsaid.size).toBe(0);
+  expect(call.tasks[1]).toMatchObject({ status: "canceled", step: "stopped" });
+  await moneoTalks(2000); await wait(5000);
+  expect(sent.filter(event => event.type === "session.commentary.append" && String(event.content).includes("Rent"))).toEqual([]);
+
+  say("Groceries this month?"); delegate("d3");
+  call.cancel("r3");
+  asks[2][1]({ type: "tool", name: "finance_investigate", state: "running" });
+  expect(call.tasks[2].step).toBe("stopped");
+  expect(sent.filter(event => event.type === "session.thinking.append" && event.delegation_id === "d3")).toEqual([]);
+});

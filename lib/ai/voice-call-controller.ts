@@ -122,6 +122,8 @@ export class VoiceCallController {
 
   get running() { return this.tasks.filter(task => task.status === "running"); }
   get cards() { return this.tasks.flatMap(task => task.cards); }
+  /** Requests whose result is answered but not yet said, so the user can still stop it. */
+  get unsaid() { return new Set([...this.outbox.map(item => item.requestId), this.cut?.requestId].filter(Boolean)); }
   /** When Moneo last made a sound: its metered voice once there is one, else its transcript. */
   private get lastMoneo() { return this.metered ? this.lastAudible : this.lastAssistantSpeech; }
   /** Someone is talking right now. */
@@ -298,7 +300,8 @@ export class VoiceCallController {
     const via = () => this.tasks.find(item => item.requestId === requestId)?.delegationId ?? null;
     try {
       const result = await this.deps.ask({ conversationId: this.deps.conversationId, requestId, message: text.slice(0, 4000), context }, event => {
-        if (event.type !== "tool" || event.state !== "running") return;
+        // A stopped request's last progress notes are not shown or said.
+        if (event.type !== "tool" || event.state !== "running" || this.tasks.find(item => item.requestId === requestId)?.status === "canceled") return;
         if (event.name === "call_replace_task") this.replaced((event.input as { requestId?: unknown } | undefined)?.requestId);
         const step = stepFor(event.name);
         this.update(requestId, { step });
@@ -368,10 +371,8 @@ export class VoiceCallController {
   private replaced(requestId: unknown) {
     const task = this.tasks.find(item => item.requestId === requestId);
     if (!task || task.status === "failed" || task.status === "canceled") return;
-    this.outbox = this.outbox.filter(item => item.requestId !== task.requestId);
-    // Nor is the rest of it said if the user cut it off.
-    if (this.cut?.requestId === task.requestId) this.cut = null;
-    this.update(task.requestId, { status: "canceled", step: "replaced" });
+    // Its cards are dismissed by the server, so they leave the tray.
+    this.drop(task.requestId, { status: "canceled", step: "replaced", cards: [] });
   }
 
   /**
@@ -387,6 +388,8 @@ export class VoiceCallController {
     }
     const { requestId, delegationId, content } = this.outbox.shift()!;
     this.current = { requestId, delegationId, content, at: this.now() };
+    // It is no longer waiting to be said, so it can't be stopped from the list.
+    this.deps.onChange();
     this.deps.log?.(`handed over: ${content.slice(0, 60)}`);
     this.deps.send({ type: "session.commentary.append", delegation_id: delegationId, content: `${content} ${ONLY_THIS_RESULT}` });
     this.followUp(this.current);
@@ -412,6 +415,13 @@ export class VoiceCallController {
     }, 300);
   }
 
-  /** Marks a task canceled; the caller asks the server to stop it. */
-  cancel(requestId: string) { this.update(requestId, { status: "canceled", step: "stopped" }); }
+  /** Marks a task canceled and drops its result if it is still to be said; the caller asks the server to stop a running one. */
+  cancel(requestId: string) { this.drop(requestId, { status: "canceled", step: "stopped" }); }
+
+  /** A result that is not to be said: neither waiting in line nor, if the user cut it off, the rest of it. */
+  private drop(requestId: string, change: Partial<CallTask>) {
+    this.outbox = this.outbox.filter(item => item.requestId !== requestId);
+    if (this.cut?.requestId === requestId) this.cut = null;
+    this.update(requestId, change);
+  }
 }
