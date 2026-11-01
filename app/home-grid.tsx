@@ -29,6 +29,8 @@ const nearest = (options: CardSize[], columns: number) => options.reduce((best, 
 export function HomeGrid({ version, items, sizes, widgets, labels, options }: HomeGridProps) {
   const [layout, setLayout] = useState<Layout>({ items, sizes });
   const currentLayout = useRef(layout);
+  const currentWidgets = useRef(widgets);
+  useLayoutEffect(() => { currentWidgets.current = widgets; }, [widgets]);
   useLayoutEffect(() => { currentLayout.current = layout; }, [layout]);
   // The grid owns the layout once shown: a later server render (an added widget's content arriving) can carry an older one.
   // Another tab's change surfaces as a conflict on the next save.
@@ -186,7 +188,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     const before = layout;
     setSelected(null);
     change({ ...layout, items: layout.items.filter(item => item !== key) });
-    setNotice({ text: `${labels[key] ?? "Widget"} hidden`, action: { label: "Undo", run: () => { setNotice(null); const current = currentLayout.current; const items = current.items.filter(item => item !== key); items.splice(Math.min(before.items.indexOf(key), items.length), 0, key); if (!Object.hasOwn(widgets, key)) setAdding(current => [...current, key]); change({ ...current, items }, !Object.hasOwn(widgets, key)); } } });
+    setNotice({ text: `${labels[key] ?? "Widget"} hidden`, action: { label: "Undo", run: () => { setNotice(null); const current = currentLayout.current; const items = current.items.filter(item => item !== key); items.splice(Math.min(before.items.indexOf(key), items.length), 0, key); if (!Object.hasOwn(currentWidgets.current, key)) setAdding(current => [...current, key]); change({ ...current, items }, !Object.hasOwn(currentWidgets.current, key)); } } });
   }
   function add(key: string) {
     setMenu(false);
