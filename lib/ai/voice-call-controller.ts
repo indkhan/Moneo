@@ -211,7 +211,8 @@ export class VoiceCallController {
   private claimTakenOn() {
     if (!this.lastDelegation || !TAKES_ON.test(this.reply.slice(0, 80))) return;
     const text = plain(this.heard.map(piece => piece.text).join(""));
-    if (!text.replace(SMALL_TALK, " ").trim()) return;
+    // A word or two left after an early hand-off ("month") is not a request of its own.
+    if (text.replace(SMALL_TALK, " ").trim().split(/\s+/).filter(Boolean).length < 3) return;
     this.heard = [];
     this.deps.log?.(`claimed words GPT-Live took on without a hand-off: ${text.slice(0, 60)}`);
     this.unclaimedTask = this.start(text, this.lastDelegation);

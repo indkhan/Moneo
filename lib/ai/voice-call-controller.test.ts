@@ -349,6 +349,15 @@ it("keeps a request whole when GPT-Live says \"take your time\" in the user's pa
   expect(asks.map(([payload]) => payload.message)).toEqual(["Rent?", "I paid twenty euros for groceries at Rewe"]);
 });
 
+it("never makes a request of a word left after an early hand-off", () => {
+  const { call, asks, say, delegate } = setup();
+  say("Netto?"); delegate("d0");
+  say("How much did I spend at Netto this", 3000, 2000); delegate("d1", 3100);
+  say(" month", 3500, 3200);
+  call.handle({ type: "session.output_transcript.delta", delta: "Sure, let me look through your transactions." });
+  expect(asks.map(([payload]) => payload.message)).toEqual(["Netto?", "How much did I spend at Netto this"]);
+});
+
 it("never loses a request GPT-Live answers before its hand-off arrives", async () => {
   const { call, asks, say, delegate, wait } = setup();
   say("Rewe groceries twenty euros", 2000, 500);
