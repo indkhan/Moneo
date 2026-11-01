@@ -1,10 +1,9 @@
 "use server";
 
 import { refresh, revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { cardWidgetKey, dashboardItems, dashboardLayoutSchema, setWidget, widgetSizesSchema } from "@/lib/finance/dashboard";
+import { cardWidgetKey, dashboardLayoutSchema, homeLayout, setWidget, widgetSizesSchema } from "@/lib/finance/dashboard";
 import { CARD_SIZE_KEYS, type CardSize } from "@/lib/cards/sizes";
 
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
@@ -32,25 +31,13 @@ export async function saveHomeLayout(version: number, items: string[], sizes: Re
   return { version: saved };
 }
 
-export async function saveDashboard(form: FormData) {
-  const context = await requireWorkspace();
-  const version = z.coerce.number().int().min(0).max(2147483646).parse(form.get("version"));
-  const items = dashboardLayoutSchema.parse(form.getAll("enabled"));
-  const positions = new Map(items.map(key => [key, z.coerce.number().int().min(1).max(50).parse(form.get(`position:${key}`))]));
-  items.sort((a, b) => positions.get(a)! - positions.get(b)!);
-  if (await writeLayout(context, version, items) === null) throw new Error("Dashboard changed; reload before saving");
-  revalidatePath("/");
-  revalidatePath("/settings");
-  redirect("/settings");
-}
-
 /** The saved Home layout, ready to change. */
 async function loadLayout({ supabase, workspace }: Workspace) {
   const layout = await supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle();
   if (layout.error) throw new Error("Dashboard could not be loaded; try again");
-  const saved = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
-  if (saved && !saved.success) throw new Error("Dashboard preferences are invalid; try again");
-  return { items: dashboardItems(saved?.data ?? null), version: layout.data?.version ?? 0 };
+  const saved = homeLayout(layout.data);
+  if (!saved) throw new Error("Dashboard preferences are invalid; try again");
+  return saved;
 }
 
 async function setCardOnHome(context: Workspace, cardId: string, on: boolean) {

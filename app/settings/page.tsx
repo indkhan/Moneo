@@ -1,6 +1,4 @@
 import { Suspense } from "react";
-import { BUILTIN_WIDGETS, cardIdFromKey, dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
-import { saveDashboard } from "../dashboard-actions";
 import { InsightSettings } from "./insights";
 import { requireWorkspace } from "@/lib/auth";
 import { SkeletonCard } from "@/components/skeleton";
@@ -15,22 +13,8 @@ type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 const card = "scroll-mt-20 rounded-xl border border-border bg-card p-6";
 const sectionNav = [
   ["display", "Display and calendar"], ["ai", "AI and your data"], ["insights", "Insights and summaries"], ["relevance", "Insight relevance"],
-  ["home", "Customize Home"], ["banks", "Connected banks"], ["summaries", "Scheduled summaries"], ["usage", "AI usage"], ["danger", "Danger zone"],
+  ["banks", "Connected banks"], ["summaries", "Scheduled summaries"], ["usage", "AI usage"], ["danger", "Danger zone"],
 ] as const;
-
-async function loadDashboard({ supabase, workspace }: Workspace) {
-  const layout = await supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle();
-  if (layout.error) throw layout.error;
-  const parsedLayout = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
-  const saved = dashboardItems(parsedLayout?.success ? parsedLayout.data : null);
-  // Artifact cards are listed by title; deleted ones are left out, so saving drops them.
-  const ids = saved.map(cardIdFromKey).filter(id => id !== null);
-  const pinned = ids.length ? await supabase.from("artifact_cards").select("id, title").eq("workspace_id", workspace.id).in("id", ids).is("deleted_at", null) : { data: [], error: null };
-  if (pinned.error) throw pinned.error;
-  const labels: Record<string, string> = { ...BUILTIN_WIDGETS, ...Object.fromEntries(pinned.data.map(card => [`card:${card.id}`, `Card: ${card.title}`])) };
-  const ordered = saved.filter(key => Object.hasOwn(labels, key));
-  return { version: layout.data?.version ?? 0, ordered, labels, choices: [...new Set([...ordered, ...Object.keys(BUILTIN_WIDGETS)])] };
-}
 
 async function loadRuns({ supabase, workspace }: Workspace): Promise<SummaryRun[] | null> {
   const scheduled = await supabase.from("summary_runs").select("id,job_id,cadence,period_start").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(5);
@@ -47,7 +31,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const context = await requireWorkspace();
   const usageWindow = parseUsageWindow((await searchParams).usage);
   const { user, workspace, settings } = context;
-  const [dashboard, runs] = await Promise.all([loadDashboard(context), loadRuns(context)]);
+  const runs = await loadRuns(context);
   return <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 lg:py-8">
     <div className="flex flex-col gap-1"><p className="eyebrow">Workspace</p><h1 className="page-title">Settings</h1><p className="mt-1 break-words text-sm text-muted-foreground">Your private workspace · {user.email ?? "Signed in"}</p></div>
     <div className="mt-8 grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)]">
@@ -59,7 +43,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <div className="min-w-0 space-y-8">
         <SettingsForm settings={settings} currency={workspace.display_currency} />
         <div id="relevance" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={4} />}><InsightSettings /></Suspense></div>
-        <details id="home" className={card}><summary className="cursor-pointer text-base font-semibold">Customize Home</summary><form action={saveDashboard} className="mt-4 space-y-4"><input type="hidden" name="version" value={dashboard.version} />{dashboard.choices.map((key, index) => <div key={key} className="flex flex-wrap items-center gap-3 border-b border-border pb-3 last:border-0"><label className="flex flex-1 items-center gap-2 text-sm"><input type="checkbox" name="enabled" value={key} defaultChecked={dashboard.ordered.includes(key)} />{dashboard.labels[key]}</label><label className="flex items-center gap-2 text-sm">Position<input type="number" name={`position:${key}`} min="1" max="50" defaultValue={dashboard.ordered.includes(key) ? dashboard.ordered.indexOf(key) + 1 : index + 1} className="min-h-10 w-20 rounded-lg border border-border bg-card px-3 py-2 text-sm" /></label></div>)}<button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Save dashboard</button><p className="text-sm text-muted-foreground">Lower positions appear first.</p></form></details>
         <div id="banks" className="scroll-mt-20"><ConnectedBanks /></div>
         <section id="summaries" className={card}><h2 className="text-sm font-medium">Scheduled summaries</h2>
           <p className="mt-1 text-sm text-muted-foreground">Recent summary runs. Change the schedule under Insights and summaries.</p>

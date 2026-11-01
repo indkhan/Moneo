@@ -46,5 +46,15 @@ export function sizeOptions(key: string): CardSize[] {
   return isBuiltinWidget(key) && MIN_SIZES[key] ? CARD_SIZE_KEYS.slice(CARD_SIZE_KEYS.indexOf(MIN_SIZES[key])) : CARD_SIZE_KEYS;
 }
 
+/** A widget's short name: the label up to its first comma. */
+export const widgetLabel = (key: BuiltinWidget) => BUILTIN_WIDGETS[key].split(",")[0];
+
+/** A saved layout row (or none yet) as Home shows it; null when its widgets are invalid. */
+export function homeLayout(row: { items: unknown; sizes?: unknown; version?: number } | null) {
+  const items = row ? dashboardLayoutSchema.safeParse(row.items) : null;
+  if (items && !items.success) return null;
+  return { items: dashboardItems(items?.data ?? null), sizes: widgetSizesSchema.safeParse(row?.sizes ?? {}).data ?? {}, version: row?.version ?? 0 };
+}
+
 /** A built-in widget's width: what the user picked, else its default. */
 export const widgetSize = (key: BuiltinWidget, sizes: Partial<Record<string, CardSize>>): CardSize => sizes[key] ?? DEFAULT_SIZES[key];

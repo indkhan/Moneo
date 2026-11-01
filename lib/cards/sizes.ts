@@ -11,5 +11,5 @@ export const CARD_SIZE_KEYS = Object.keys(CARD_SIZES) as CardSize[];
 export const CARD_HEIGHT = 300;
 /** Height left for the card's own content under the title row. */
 export const CARD_BODY_HEIGHT = 236;
-export const isCardSize = (value: unknown): value is CardSize => typeof value === "string" && Object.hasOwn(CARD_SIZES, value);
+const isCardSize = (value: unknown): value is CardSize => typeof value === "string" && Object.hasOwn(CARD_SIZES, value);
 export const cardSize = (value: string): CardSize => isCardSize(value) ? value : "M";

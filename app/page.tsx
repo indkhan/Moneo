@@ -4,7 +4,7 @@ import { ManualBalanceForm } from "./manual-balance-form";
 import { WeeklyBriefing, loadInsightEvidence } from "./insights/panel";
 import { CashFlowPanel, Figure, MonthCashFlow, RecentTransactions, SectionFallback, card } from "./home-sections";
 import { Suspense, type ReactNode } from "react";
-import { BUILTIN_WIDGETS, cardIdFromKey, dashboardItems, dashboardLayoutSchema, isBuiltinWidget, sizeOptions, widgetSize, widgetSizesSchema } from "@/lib/finance/dashboard";
+import { BUILTIN_WIDGETS, cardIdFromKey, homeLayout, isBuiltinWidget, sizeOptions, widgetLabel, widgetSize } from "@/lib/finance/dashboard";
 import { CardSkeleton, HomeCard, type HomeCardRow } from "@/components/cards/home-card";
 import { cardSize, type CardSize } from "@/lib/cards/sizes";
 import { HomeGrid } from "./home-grid";
@@ -30,7 +30,7 @@ import { loadWealthItems, wealthEvidence } from "@/lib/finance/wealth";
 import { currentNetWorth, dayRange, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./money/wealth/net-worth";
 import { NetWorthChart } from "./net-worth-chart";
 import { shownBalance } from "./money/accounts/history";
-import { LayoutGrid, Phone, Sparkle } from "lucide-react";
+import { Phone, Sparkle } from "lucide-react";
 
 export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string }> } = {}) {
   const params = await searchParams;
@@ -143,18 +143,17 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const upcoming = (projection.input?.events ?? []).filter(event => event.expectedMinor < 0n && event.source !== "estimated").sort((a, b) => a.date.localeCompare(b.date));
   const upcomingMinor = upcoming.reduce((sum, event) => sum + event.expectedMinor, 0n);
   const available = projection.available;
-  const parsedLayout = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
-  if (parsedLayout && !parsedLayout.success) throw new Error("Dashboard preferences are invalid; review them in Settings");
+  const saved = homeLayout(layout.data);
+  if (!saved) throw new Error("Dashboard preferences are invalid; try again");
   const cards = new Map((pinned.data ?? []).map(row => [row.id as string, row as unknown as HomeCardRow & { artifact_id: string }]));
   // A deleted artifact simply drops off Home; its key is cleaned up the next time the layout is saved.
-  const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null).filter(key => { const id = cardIdFromKey(key); return !id || cards.has(id); });
+  const ordered = saved.items.filter(key => { const id = cardIdFromKey(key); return !id || cards.has(id); });
   // Cards on one Home share their reads: the same query runs once however many cards ask for it.
   const shared: QueryShared = {};
-  const savedSizes = widgetSizesSchema.safeParse(layout.data?.sizes ?? {}).data ?? {};
   // Every built-in widget can be added back from the grid, so each gets a label and width; cards only once on Home.
   const keys = [...new Set([...ordered, ...Object.keys(BUILTIN_WIDGETS)])];
-  const sizes: Record<string, CardSize> = Object.fromEntries(keys.map(key => [key, isBuiltinWidget(key) ? widgetSize(key, savedSizes) : cardSize(cards.get(cardIdFromKey(key)!)!.size)]));
-  const labels = Object.fromEntries(keys.map(key => [key, isBuiltinWidget(key) ? BUILTIN_WIDGETS[key].split(",")[0] : cards.get(cardIdFromKey(key)!)!.title]));
+  const sizes: Record<string, CardSize> = Object.fromEntries(keys.map(key => [key, isBuiltinWidget(key) ? widgetSize(key, saved.sizes) : cardSize(cards.get(cardIdFromKey(key)!)!.size)]));
+  const labels = Object.fromEntries(keys.map(key => [key, isBuiltinWidget(key) ? widgetLabel(key) : cards.get(cardIdFromKey(key)!)!.title]));
   const sectionProps = { db: supabase, workspaceId: workspace.id, currency: displayCurrency, today, locale };
 
   const widgets: Record<string, ReactNode> = {
@@ -233,16 +232,13 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     <main className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
       <header className="mb-2 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1"><p className="eyebrow">{new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))} · {new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))}</p><h1 className="page-title">Overview</h1></div>
-        <div className="flex gap-2">
-          {/* One tap to a live call in a new chat; cards it makes land in Waiting for you. */}
-          <IntentLink href="/ai?conversation=new&call=1" className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" strokeWidth={1.8} aria-hidden="true" />Call Moneo</IntentLink>
-          <Link href="/settings#home" className="inline-flex h-11 items-center gap-2 rounded-xl border border-input px-4 text-[13px] hover:bg-muted"><LayoutGrid className="size-4" strokeWidth={1.6} aria-hidden="true" />Edit layout</Link>
-        </div>
+        {/* One tap to a live call in a new chat; cards it makes land in Waiting for you. */}
+        <IntentLink href="/ai?conversation=new&call=1" className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" strokeWidth={1.8} aria-hidden="true" />Call Moneo</IntentLink>
       </header>
       {/* Stored cards come with the page, so they never push the grid down; the slow detection streams after and reloads only if it changed a card. */}
       <WaitingForYou proposals={waiting} review={review} />
       <Suspense fallback={null}><RecurringDetection supabase={supabase} workspace={workspace} /></Suspense>
-      <HomeGrid version={layout.data?.version ?? 0} items={ordered} sizes={sizes} labels={labels} options={Object.fromEntries(keys.map(key => [key, sizeOptions(key)]))}
+      <HomeGrid version={saved.version} items={ordered} sizes={sizes} labels={labels} options={Object.fromEntries(keys.map(key => [key, sizeOptions(key)]))}
         widgets={Object.fromEntries(ordered.map(key => [key, widgets[key]]))} />
     </main>
   );

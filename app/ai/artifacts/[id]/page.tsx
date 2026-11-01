@@ -6,7 +6,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { ArtifactFrame } from "@/components/artifact-frame";
 import { CardSkeleton, HomeCard } from "@/components/cards/home-card";
 import { loadConversation } from "@/lib/ai/conversation-history";
-import { BUILTIN_WIDGETS, cardWidgetKey, dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
+import { cardWidgetKey, homeLayout, isBuiltinWidget, widgetLabel } from "@/lib/finance/dashboard";
 import { CARD_SIZES, CARD_SIZE_KEYS, cardSize } from "@/lib/cards/sizes";
 import { publishCard, setCardSize, unpublishCard } from "@/app/dashboard-actions";
 import { DeleteArtifactButton } from "../delete-artifact-button";
@@ -53,10 +53,9 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
       <Minimize2 className="size-3.5" aria-hidden="true" />Exit</Link>
   </div>;
 
-  const saved = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
-  const homeItems = dashboardItems(saved?.success ? saved.data : null);
+  const homeItems = homeLayout(layout.data)?.items ?? [];
   // Neighbours in the preview are the user's own Home widgets, so the card is seen where it will sit.
-  const neighbours = homeItems.filter(key => Object.hasOwn(BUILTIN_WIDGETS, key) && key !== "overview").map(key => BUILTIN_WIDGETS[key as keyof typeof BUILTIN_WIDGETS].split(",")[0]);
+  const neighbours = homeItems.filter(isBuiltinWidget).filter(key => key !== "overview").map(widgetLabel);
   const buildCard = "Create a Home card from this artifact, keeping its purpose, design and live data. Use the existing page and conversation as context. Save it as a draft for me to preview before adding it to Home.";
   const tabLink = (name: "page" | "cards", label: string) => <Link href={at({ tab: name, start: name === "cards" && !cards.data?.length && !history.running ? buildCard : undefined })} aria-current={tab === name ? "page" : undefined}
     className="rounded-md px-3 py-1 text-muted-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground">{label}</Link>;
