@@ -18,7 +18,7 @@ function setup() {
       for (const timer of due) { timers.splice(timers.indexOf(timer), 1); timer.run(); }
     await new Promise(resolve => setTimeout(resolve));
   };
-  const say = (text: string, endMs?: number) => call.handle({ type: "session.input_transcript.delta", delta: text, end_ms: endMs });
+  const say = (text: string, endMs?: number, startMs?: number) => call.handle({ type: "session.input_transcript.delta", delta: text, start_ms: startMs, end_ms: endMs });
   const delegate = (id: string, offsetMs?: number) => call.handle({ type: "session.delegation.created", offset_ms: offsetMs, delegation: { id } });
   const answer = async (message: string, text: string, status = 200) => { pending[message]({ ok: status < 400, status, body: status < 400 ? { answer: text, conversationId: "c" } : { error: "x" } }); await new Promise(resolve => setTimeout(resolve)); };
   // Time passes in small steps, so retries the controller schedules run too; Moneo's voice is metered every 100 ms.
@@ -161,6 +161,13 @@ it("cuts each request at its hand-off's offset, leaving later words for the next
   say("Analyze last month.", 2000); say(" Also how much", 4000); delegate("d1", 2500);
   say(" did I spend?", 5000); delegate("d2", 5200);
   expect(asks.map(([payload]) => payload.message)).toEqual(["Analyze last month.", "Also how much did I spend?"]);
+});
+
+it("keeps a word the user began before the hand-off in its request, even if it ended just after", () => {
+  const { asks, say, delegate } = setup();
+  say("How much did I spend at Netto this", 3300, 2000); say(" month?", 3800, 3400); delegate("d1", 3600);
+  say(" And when is my rent due?", 6000, 4500); delegate("d2", 6100);
+  expect(asks.map(([payload]) => payload.message)).toEqual(["How much did I spend at Netto this month?", "And when is my rent due?"]);
 });
 
 it("never turns small talk GPT-Live answered itself into a request, or into the start of the next one", async () => {

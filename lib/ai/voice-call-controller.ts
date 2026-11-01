@@ -5,7 +5,7 @@ export type CallTask = { requestId: string; text: string; step: string; status: 
 export type CallAsk = (payload: { conversationId: string; requestId: string; message: string; context: Record<string, unknown> }, onEvent: (event: ChatStreamEvent) => void)
   => Promise<{ ok: boolean; status?: number; body: { error?: string } & Partial<ChatAnswer> }>;
 
-type ServerEvent = { type: string; delta?: string; end_ms?: number; offset_ms?: number | null; delegation?: { id: string }; error?: { message?: string }; message?: string };
+type ServerEvent = { type: string; delta?: string; start_ms?: number; end_ms?: number; offset_ms?: number | null; delegation?: { id: string }; error?: { message?: string }; message?: string };
 type Deps = {
   conversationId: string;
   /** Sends a client event on the oai-events data channel. */
@@ -77,8 +77,8 @@ export class VoiceCallController {
   captions: CallCaption[] = [];
   tasks: CallTask[] = [];
   error = "";
-  /** Words the user said that no hand-off has claimed yet, with when each piece ended in the session. */
-  private heard: { text: string; end: number }[] = [];
+  /** Words the user said that no hand-off has claimed yet, with when each piece began in the session. */
+  private heard: { text: string; start: number }[] = [];
   /** What Moneo has said since the user last spoke. */
   private reply = "";
   private lastDelegation: string | null = null;
@@ -149,7 +149,7 @@ export class VoiceCallController {
         if (this.cut) this.cut.words += event.delta ?? "";
         this.lastUserSpeech = this.now();
         this.reply = "";
-        this.heard.push({ text: event.delta ?? "", end: event.end_ms ?? Infinity });
+        this.heard.push({ text: event.delta ?? "", start: event.start_ms ?? event.end_ms ?? Infinity });
         this.caption("user", event.delta ?? "");
         this.schedule(() => this.claimUnheard(), UNCLAIMED_MS);
         break;
@@ -181,7 +181,9 @@ export class VoiceCallController {
    * hand-off that never gets words of its own starts nothing, so a request never runs twice.
    */
   private claim(delegationId: string, offset: number, wait = true) {
-    const claimed = this.heard.some(piece => piece.end <= offset) ? this.heard.filter(piece => piece.end <= offset) : wait ? this.heard : [];
+    // A word the user began before the hand-off is part of its request, even if it ended just after.
+    const before = (piece: { start: number }) => offset === Infinity || piece.start < offset;
+    const claimed = this.heard.some(before) ? this.heard.filter(before) : wait ? this.heard : [];
     this.heard = this.heard.filter(piece => !claimed.includes(piece));
     const words = claimed.map(piece => piece.text).join("").replace(/\[[^\]]*\]/g, "").trim();
     if (words) { this.unclaimedTask = null; this.start(words, delegationId); }
