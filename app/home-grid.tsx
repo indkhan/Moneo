@@ -8,6 +8,7 @@ import { GripHorizontal, Plus, X } from "lucide-react";
 import { HomeCardSize } from "@/components/cards/card-view";
 import { CARD_SIZES, type CardSize } from "@/lib/cards/sizes";
 import { resizeHomeCard, saveHomeLayout } from "./dashboard-actions";
+import { SectionFallback } from "./section-fallback";
 
 type Layout = { items: string[]; sizes: Record<string, CardSize> };
 type Drag = { id: string; from: string[]; clone: HTMLElement; width: number; height: number; touch: boolean };
@@ -43,7 +44,6 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
   );
-
 
   /** Widget positions relative to the grid, so the next change can animate from them. */
   function measure() {
@@ -207,7 +207,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
           const size = resizing?.key === key ? resizing.size : layout.sizes[key] ?? "M";
           return <Widget key={key} id={key} label={labels[key] ?? "Widget"} size={size} lifted={drag?.id === key} options={options[key] ?? []} selected={selected === key} resizing={resizing?.key === key}
             onHide={() => hide(key)} onMoveKey={event => moveKey(key, event)} onResizeStart={event => startResize(key, event)} onResizeKey={event => resizeKey(key, event)}>
-            <HomeCardSize.Provider value={layout.sizes[key] ?? null}>{widgets[key] ?? <Pending label={labels[key] ?? "Widget"} />}</HomeCardSize.Provider>
+            <HomeCardSize.Provider value={layout.sizes[key] ?? null}>{widgets[key] ?? <SectionFallback title={labels[key] ?? "Widget"} />}</HomeCardSize.Provider>
           </Widget>;
         })}
         {hidden.length > 0 && <div className="relative lg:col-span-2">
@@ -254,8 +254,4 @@ function Widget({ id, label, size, lifted, options, selected, resizing, children
       className={`absolute top-1/2 -right-2 z-10 hidden h-12 w-4 -translate-y-1/2 cursor-ew-resize touch-none items-center justify-center lg:flex ${tools}`}>
       <span className="h-10 w-1.5 rounded-full bg-input group-hover:bg-muted-foreground/60" aria-hidden="true" /></button>}
   </div>;
-}
-
-function Pending({ label }: { label: string }) {
-  return <section aria-busy="true" className="min-w-0 rounded-xl border border-border bg-card p-6 sm:p-7"><h2 className="text-sm font-medium">{label}</h2><p role="status" className="mt-3 text-sm text-muted-foreground">Loading…</p></section>;
 }
