@@ -64,7 +64,7 @@ export const SLOW_TASK_MS = 8000;
 export const RESULT_DONE_MS = 2500;
 /** Moneo silent this long, with the mic quiet since, also means it said all of it: the mic hears the user at once,
  * so nobody talked over it, and the next result follows without a long gap. */
-export const RESULT_PAUSE_MS = 700;
+export const RESULT_PAUSE_MS = 300;
 /** Longest wait for Moneo to start saying a result before the next is handed over anyway. */
 export const RESULT_TURN_MS = 20_000;
 /** A pause this long ends the user's turn for handing over a result; people pause mid-sentence ("uh… like…"). */
@@ -128,6 +128,11 @@ export class VoiceCallController {
   speaking(by: "user" | "moneo" | "any" = "any") {
     const last = by === "user" ? this.lastUserSpeech : by === "moneo" ? this.lastMoneo : Math.max(this.lastUserSpeech, this.lastMoneo);
     return this.now() - last < SPEAKING_HOLD_MS;
+  }
+  /** Moneo is talking, or between results it still has to say, so the call screen doesn't flick to listening. */
+  get answering() {
+    if (this.speaking("moneo") || this.outbox.length) return true;
+    return !!this.current && this.lastMoneo <= this.current.at && this.now() - this.current.at < RESULT_TURN_MS;
   }
   /** Called while Moneo's voice is audible in the call. */
   heardMoneo() { this.metered = true; this.lastAudible = this.now(); }
@@ -375,7 +380,7 @@ export class VoiceCallController {
    */
   private flush() {
     if (this.flushing || !this.outbox.length || this.cut) return;
-    if (this.speaking() || this.now() - this.lastUserSpeech < USER_PAUSE_MS || !this.resultSaid()) {
+    if (this.speaking("user") || this.now() - this.lastUserSpeech < USER_PAUSE_MS || !this.resultSaid()) {
       this.flushing = true;
       this.schedule(() => { this.flushing = false; this.flush(); }, 300);
       return;

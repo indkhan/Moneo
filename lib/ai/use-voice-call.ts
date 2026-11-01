@@ -132,7 +132,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
       if (trace && mic !== micOn) trace(mic ? "mic loud" : "mic quiet");
       moneoOn = moneo; micOn = mic;
       // The call screen shows when Moneo is talking; it re-renders only when that changes.
-      if (controller.speaking("moneo") !== talking) { talking = !talking; render(); }
+      if (controller.answering !== talking) { talking = !talking; render(); }
     }, 100);
     document.addEventListener("visibilitychange", lock);
     return () => {
@@ -179,7 +179,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
     typed: (text: string) => controller.typed(text),
     /** Moneo is answering or working; used for the orb's thinking state. */
     thinking: controller.running.length > 0,
-    /** Moneo's voice is audible right now. */
-    talking: controller.speaking("moneo"),
+    /** Moneo is talking, or about to go on with its next result. */
+    talking: controller.answering,
   };
 }
