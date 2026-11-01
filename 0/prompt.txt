@@ -1,0 +1,5 @@
+Okay, so the thing is, the application is still building, so the only reason you did not do some changes because of some earlier data, that's no problem at all, you can remove the older data.  Let the older data be, because right now the only one using the application is me, who is building it, because once it gets to that state, then we will do it.  So if artefact still takes 12nd to load, if you think Vite is a way to make it faster, but it will make the whole lot of acts go bad, that's fine. The same thing is for all part of the application.  So if they say something like that for the whole application, but that makes it really fast, then do it.
+
+---
+
+Continue where you left off.
