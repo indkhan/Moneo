@@ -157,7 +157,10 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
   }
 
   async function cancel(requestId: string) {
+    const running = controller.running.some(task => task.requestId === requestId);
     controller.cancel(requestId);
+    // An answered request has nothing left to stop on the server.
+    if (!running) return;
     // Cancellation can arrive before the server has claimed the request.
     for (let attempt = 0; attempt < 10; attempt++) {
       const response = await fetch("/api/chat", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId }) }).catch(() => null);
@@ -175,7 +178,7 @@ export function useVoiceCall(conversationId: string, onAnswer?: (question: strin
 
   return {
     status, error: error || controller.error, muted, toggleMute, cancel, levels,
-    captions: controller.captions, tasks: controller.tasks, cards: controller.cards,
+    captions: controller.captions, tasks: controller.tasks, cards: controller.cards, unsaid: controller.unsaid,
     typed: (text: string) => controller.typed(text),
     /** Moneo is answering or working; used for the orb's thinking state. */
     thinking: controller.running.length > 0,
