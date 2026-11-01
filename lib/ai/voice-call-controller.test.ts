@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { ONLY_THIS_RESULT, VoiceCallController, answerCards, looksLikeRequest, spokenAnswer, type CallAsk } from "./voice-call-controller";
+import { ONLY_THIS_RESULT, VoiceCallController, answerCards, isSkip, spokenAnswer, type CallAsk } from "./voice-call-controller";
 
 const card = "11111111-1111-4111-8111-111111111111";
 function setup() {
@@ -96,7 +96,7 @@ it("hands over the next result after a short pause when the mic stayed quiet, an
   expect(spoken()).toHaveLength(2);
 });
 
-it("says what is still running once a result has been said, as it stands then, and only once", async () => {
+it("says what is still running once a result has been said and it runs long, and only once", async () => {
   const { sent, say, delegate, answer, wait, moneoTalks } = setup();
   const spoken = () => sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content));
   say("Netto?"); delegate("d1"); say("Rent?"); delegate("d2");
@@ -104,7 +104,7 @@ it("says what is still running once a result has been said, as it stands then, a
   await wait(1600);
   await moneoTalks(1000);
   expect(spoken()).toHaveLength(1);
-  await wait(2700);
+  await wait(5500);
   expect(spoken()[1]).toMatch(/^Still working on "Rent\?"/);
   await wait(10_000);
   expect(spoken()).toHaveLength(2);
@@ -203,15 +203,6 @@ it("leaves GPT-Live's \"|\" break marks out of requests", () => {
   expect(asks.map(([payload]) => payload.message)).toEqual(["And when is my rent due?"]);
 });
 
-it("never turns small talk GPT-Live answered itself into a request, or into the start of the next one", async () => {
-  const { asks, say, delegate, advance } = setup();
-  say("Hey, how are you doing today?");
-  await advance(10_000);
-  expect(asks).toHaveLength(0);
-  say("How much at Netto?"); delegate("d1");
-  expect(asks.map(([payload]) => payload.message)).toEqual(["How much at Netto?"]);
-});
-
 it("briefs each request with the call so far and what it already answered", async () => {
   const { asks, say, delegate, answer, call } = setup();
   call.handle({ type: "session.output_transcript.delta", delta: "Hi there!" });
@@ -302,31 +293,6 @@ it("leaves sound tags out of captions, even when they arrive in pieces between t
   expect(call.captions.map(caption => caption.text)).toEqual(["Sure. ", "are", "I'm good."]);
 });
 
-it("starts a request GPT-Live agreed to but never handed off, once the user has been quiet", async () => {
-  const { call, asks, say, delegate, advance } = setup();
-  say("Where did I spend my money this month?"); delegate("d1");
-  say("Can you also check where I spent my money last month");
-  await advance(3000);
-  expect(asks).toHaveLength(1);
-  await advance(1500);
-  expect(asks.map(([payload]) => payload.message)).toEqual(["Where did I spend my money this month?", "Can you also check where I spent my money last month"]);
-  expect(call.tasks[1].delegationId).toBe("d1");
-  // GPT-Live hands it off after all: the running request answers through that hand-off instead of starting again.
-  delegate("d2");
-  expect(asks).toHaveLength(2);
-  expect(call.tasks[1].delegationId).toBe("d2");
-});
-
-it("starts a request GPT-Live agreed to without a hand-off as soon as it replied, so the next words stay apart", async () => {
-  const { call, asks, say, delegate } = setup();
-  say("How much did I spend at Netto this month?"); delegate("d1");
-  say(" And when is my rent due?");
-  call.handle({ type: "session.output_transcript.delta", delta: "Mm-hm, on that one too." });
-  // The user goes on before a pause of any length.
-  say(" Oh, by the way, I spent 12.40 in cash at Netto."); delegate("d2");
-  expect(asks.map(([payload]) => payload.message)).toEqual(["How much did I spend at Netto this month?", "And when is my rent due?", "Oh, by the way, I spent 12.40 in cash at Netto."]);
-});
-
 it("never runs a request twice for a second hand-off of the same words, but waits for words transcribed late", async () => {
   const { asks, say, delegate, wait } = setup();
   say("How much at Netto?", 2000); delegate("d1", 2500); delegate("d2", 2500);
@@ -393,13 +359,6 @@ it("doesn't finish a cut-off result that a correction replaced", async () => {
   expect(sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content))).toHaveLength(1);
 });
 
-it("tells requests from small talk among unclaimed words", () => {
-  expect(looksLikeRequest("Hey, how are you doing today?")).toBe(false);
-  expect(looksLikeRequest("Mm uh, can you also tell me how are you")).toBe(false);
-  expect(looksLikeRequest("Can you also check where all did I spend my money last month")).toBe(true);
-  expect(looksLikeRequest("btw I spent 12 at Rewe")).toBe(true);
-});
-
 it("stops an answered result that is still waiting to be said, and ignores a stopped request's progress", async () => {
   const { call, sent, asks, say, delegate, answer, wait, moneoTalks } = setup();
   say("Netto?"); delegate("d1"); say("Rent?"); delegate("d2");
@@ -418,4 +377,27 @@ it("stops an answered result that is still waiting to be said, and ignores a sto
   asks[2][1]({ type: "tool", name: "finance_investigate", state: "running" });
   expect(call.tasks[2].step).toBe("stopped");
   expect(sent.filter(event => event.type === "session.thinking.append" && event.delegation_id === "d3")).toEqual([]);
+});
+
+it("drops a result the user stops mid-way for the next one in line, and never runs \"stop\" as a request", async () => {
+  const { sent, asks, say, delegate, answer, wait, moneoTalks } = setup();
+  say("Netto?"); delegate("d1"); say(" Rent?"); delegate("d2");
+  await answer("Netto?", "You spent EUR 42.00 at Netto this month.");
+  await answer("Rent?", "Rent is EUR 850.00 on Nov 1.");
+  await wait(1600);
+  await moneoTalks(1000);
+  await wait(1000);
+  say("Stop, go to the next one"); delegate("d3");
+  await wait(1600);
+  await moneoTalks(500);
+  await wait(4000);
+  const spoken = sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content));
+  expect(spoken).toHaveLength(2);
+  expect(spoken[1]).toBe(`Result for "Rent?": Rent is EUR 850.00 on Nov 1. ${ONLY_THIS_RESULT}`);
+  expect(asks).toHaveLength(2);
+});
+
+it("tells a stop or skip command from a request", () => {
+  for (const text of ["Stop", "okay skip that", "stop and continue to the next one", "next one please", "nevermind", "stopp, weiter"]) expect(isSkip(text)).toBe(true);
+  for (const text of ["What about next month?", "How much did I spend at the bus stop kiosk on snacks last week"]) expect(isSkip(text)).toBe(false);
 });
