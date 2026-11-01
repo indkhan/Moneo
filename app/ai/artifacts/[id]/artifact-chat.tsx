@@ -21,8 +21,8 @@ export function ArtifactChat({ conversationId, initial, running: initialRunning,
   const [running, setRunning] = useState(initialRunning);
   const [pending, setPending] = useState<PendingExchange | null>(null);
   const live = useRef<PendingExchange | null>(null);
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [messages.length, pending]);
+  const scroll = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; }, [messages.length, pending]);
   // The first request came in the URL; drop it so a reload doesn't send it again.
   useEffect(() => {
     if (!start) return;
@@ -58,10 +58,9 @@ export function ArtifactChat({ conversationId, initial, running: initialRunning,
   }
 
   return <div className="flex min-h-0 flex-1 flex-col">
-    <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+    <div ref={scroll} aria-label="Artifact chat messages" className="relative min-h-0 flex-1 overflow-y-auto pr-1">
       {messages.length || pending || resuming ? <ChatMessages compact messages={messages} pending={pending ?? (resuming ? RESUMED_RUN : undefined)} />
         : <p className="text-sm text-muted-foreground">Describe what to build. Ask for a Home card any time, e.g. “add this to Home as a small card”.</p>}
-      <div ref={end} />
     </div>
     <ChatForm conversationId={conversationId} selectionKey={`moneo-artifact-${conversationId}`} autoSend={start} placeholder="Change the page or a card…" onStart={onStart} onEvent={onEvent} onDone={onDone} />
   </div>;

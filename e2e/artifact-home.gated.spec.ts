@@ -113,3 +113,37 @@ test("an empty Home cards tab sends the build request and shows progress", async
     await db.end();
   }
 });
+
+test("an unfinished artifact shows progress on return and keeps scrolling inside chat", async ({ page }) => {
+  const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
+  const [{ id: workspaceId }] = await db`select w.id from public.workspaces w join auth.users u on u.id = w.owner_id where u.email = ${process.env.E2E_USER_EMAIL!}`;
+  const title = `Building QA ${randomUUID().slice(0, 8)}`;
+  const [{ id }] = await db`insert into public.artifacts (workspace_id, title) values (${workspaceId}, ${title}) returning id`;
+  const [{ id: conversationId }] = await db`insert into public.conversations (workspace_id, artifact_id, title) values (${workspaceId}, ${id}, ${title}) returning id`;
+  const requestId = randomUUID();
+  try {
+    await db`insert into public.chat_requests (id, workspace_id, conversation_id, message, status) values (${requestId}, ${workspaceId}, ${conversationId}, 'Build my page', 'running')`;
+    for (let i = 0; i < 12; i++) await db`insert into public.messages (workspace_id, conversation_id, role, content) values (${workspaceId}, ${conversationId}, 'user', ${`Message ${i}: ${'Long conversation content. '.repeat(30)}`})`;
+    await page.goto('/ai/artifacts');
+    const tile = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: title, exact: true }) });
+    await expect(tile.getByRole('status')).toHaveText('Building your artifact…');
+    await expect(tile.locator('iframe')).toHaveCount(0);
+    await page.getByRole('link', { name: title, exact: true }).click();
+    await expect(page.getByRole('region', { name: 'Artifact', exact: true }).getByRole('status')).toContainText('Building your artifact');
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect.poll(() => page.evaluate(() => {
+        const chat = document.querySelector('[aria-label="Artifact chat messages"]')!;
+        return { pageFits: document.documentElement.scrollHeight <= innerHeight + 1, chatScrolls: chat.scrollHeight > chat.clientHeight };
+      })).toEqual({ pageFits: true, chatScrolls: true });
+    }
+    await page.goto('/ai/artifacts');
+    await db`insert into public.artifact_versions (workspace_id, artifact_id, version, prompt, html, queries) values (${workspaceId}, ${id}, 1, 'Build my page', '<html><body>Finished page</body></html>', '[]')`;
+    await db`update public.chat_requests set status='completed' where id=${requestId}`;
+    await expect(tile.frameLocator('iframe').getByText('Finished page')).toBeVisible({ timeout: 15000 });
+  } finally {
+    await db`delete from public.messages where conversation_id=${conversationId}`;
+    await db`delete from public.artifacts where id=${id}`;
+    await db.end();
+  }
+});

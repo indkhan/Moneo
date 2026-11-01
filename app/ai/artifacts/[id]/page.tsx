@@ -61,8 +61,8 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   const tabLink = (name: "page" | "cards", label: string) => <Link href={at({ tab: name, start: name === "cards" && !cards.data?.length && !history.running ? buildCard : undefined })} aria-current={tab === name ? "page" : undefined}
     className="rounded-md px-3 py-1 text-muted-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground">{label}</Link>;
 
-  return <main className="grid gap-4 p-4 lg:h-[calc(100dvh-1rem)] lg:grid-cols-[minmax(300px,400px)_1fr]">
-    <aside className="flex min-h-[60dvh] flex-col gap-3 lg:min-h-0">
+  return <main className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-4 overflow-hidden p-4 lg:grid-cols-[minmax(300px,400px)_1fr] lg:grid-rows-1">
+    <aside className="flex min-h-0 min-w-0 flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <Link href="/ai/artifacts" className="text-xs text-muted-foreground hover:underline">← Artifacts</Link>
@@ -72,7 +72,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
       </div>
       <ArtifactChat conversationId={conversationId} initial={history.messages} running={history.running ?? null} start={search.start?.slice(0, 4000)} />
     </aside>
-    <section aria-label="Artifact" className="flex min-h-[70dvh] flex-col overflow-hidden rounded-xl border border-border">
+    <section aria-label="Artifact" className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border">
       <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-1.5 text-xs">
         <nav aria-label="View" className="flex gap-1">{tabLink("page", "Page")}{tabLink("cards", `Home cards${cards.data?.length ? ` · ${cards.data.length}` : ""}`)}</nav>
         {tab === "page" && current && <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap">
@@ -82,7 +82,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
           <Link href={at({ full: "1" })} className="ml-2 inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted"><Maximize2 className="size-3.5" aria-hidden="true" />Full screen</Link>
         </span>}
       </div>
-      {tab === "page" ? <div className="min-h-0 flex-1">{frame ?? <p className="p-6 text-sm text-muted-foreground">The page shows here once it is built. Describe it in the chat.</p>}</div>
+      {tab === "page" ? <div className="min-h-0 flex-1">{frame ?? <p role="status" className="p-6 text-sm text-muted-foreground">{history.running || search.start ? "Building your artifact… Follow the progress in the chat." : "No page yet. Describe what to build in the chat."}</p>}</div>
         : <div className="min-h-0 flex-1 space-y-8 overflow-y-auto bg-background p-4">
           {!cards.data?.length && <p role="status" className="text-sm text-muted-foreground">{history.running || search.start ? "Building your Home card… Follow the progress in the chat." : "No Home card was created. Click Home cards to build one."}</p>}
           {(cards.data as CardRow[] | null)?.map(card => {
