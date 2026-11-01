@@ -11,7 +11,7 @@ type Proposal = Pick<ChatProposal, "id" | "title" | "detail" | "status"> & Parti
 const NEW_CASH = "";
 
 /** A loan, repayment or expense waiting for a yes/no. Nothing is saved until Add is pressed. */
-export function IouCard({ id, initial, onAccount }: { id: string; initial?: Proposal; onAccount?: (id: string, accountId: string | undefined) => void }) {
+export function IouCard({ id, initial, onAccount, onDecided }: { id: string; initial?: Proposal; onAccount?: (id: string, accountId: string | undefined) => void; onDecided?: (id: string, undone?: boolean) => void }) {
   const [proposal, setProposal] = useState<Proposal | null | undefined>(initial);
   const [account, setAccount] = useState<string>();
   const [error, setError] = useState<string>();
@@ -27,14 +27,18 @@ export function IouCard({ id, initial, onAccount }: { id: string; initial?: Prop
   const balance = proposal.kind === "balance_set";
   const recurring = proposal.kind === "recurring_edit";
   const chosen = account ?? proposal.selected ?? NEW_CASH;
+  // Shows the decision at once (the action also re-renders the slow Home page) and puts the card back if saving fails.
   const decide = (decision: "accept" | "reject") => start(async () => {
+    const before = proposal;
     setError(undefined);
+    setProposal({ ...proposal, status: decision === "accept" ? "accepted" : "rejected" });
+    onDecided?.(id);
     try {
       const [outcome] = await decideAgentProposals([id], decision, transaction && chosen ? chosen : undefined);
-      if (outcome.error) setError(outcome.error);
+      if (outcome.error) { setProposal(before); setError(outcome.error); onDecided?.(id, true); }
       // Reload so an accepted card links to what it created.
-      else setProposal(await loadIouProposal(id));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save"); }
+      else if (decision === "accept") loadIouProposal(id).then(loaded => loaded && setProposal(loaded), () => {});
+    } catch (cause) { setProposal(before); setError(cause instanceof Error ? cause.message : "Could not save"); onDecided?.(id, true); }
   });
   const open = proposal.status === "proposed" || proposal.status === "failed";
   const done = transaction ? <>Added. {proposal.result?.href && <Link href={proposal.result.href} className="underline">Open transaction</Link>}

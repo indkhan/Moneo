@@ -20,7 +20,7 @@ const detected = (card: Card) => /^recurring_(new|price):/.test(card.conflict_ke
  * Recurring patterns detection raised. Each card shows the payments behind it, and saying yes always opens the dialog
  * to check the amount, next date and category first, so a payment whose price or day moved is saved as it really is.
  */
-export function RecurringCards({ cards }: { cards: Card[] }) {
+export function RecurringCards({ cards, onDecided }: { cards: Card[]; onDecided?: (id: string, undone?: boolean) => void }) {
   const [loaded, setLoaded] = useState<Loaded>();
   const ids = cards.filter(detected).map(card => card.id).join(",");
   useEffect(() => {
@@ -28,23 +28,27 @@ export function RecurringCards({ cards }: { cards: Card[] }) {
     loadRecurringCards(ids.split(",")).then(setLoaded, () => setLoaded({ details: {}, categories: [], locale: undefined }));
   }, [ids]);
   return <div>{cards.map(card => detected(card)
-    ? <RecurringCard key={card.id} card={card} loaded={loaded} />
-    : <IouCard key={card.id} id={card.id} initial={{ ...card, status: "proposed", kind: "recurring_edit" }} />)}</div>;
+    ? <RecurringCard key={card.id} card={card} loaded={loaded} onDecided={onDecided} />
+    : <IouCard key={card.id} id={card.id} initial={{ ...card, status: "proposed", kind: "recurring_edit" }} onDecided={onDecided} />)}</div>;
 }
 
-function RecurringCard({ card, loaded }: { card: Card; loaded?: Loaded }) {
+function RecurringCard({ card, loaded, onDecided }: { card: Card; loaded?: Loaded; onDecided?: (id: string, undone?: boolean) => void }) {
   const [outcome, setOutcome] = useState<"saved" | "dismissed">();
   const [error, setError] = useState<string>();
   const [pending, start] = useBusy();
   const price = card.conflict_key?.startsWith("recurring_price:");
   const details = loaded?.details[card.id];
   const money = (minor: string, currency: string) => formatMoney(minor, currency, loaded?.locale);
+  // Dismissed at once; the card comes back if saving fails.
   const dismiss = () => start(async () => {
     setError(undefined);
+    setOutcome("dismissed");
+    onDecided?.(card.id);
+    const fail = (message: string) => { setOutcome(undefined); setError(message); onDecided?.(card.id, true); };
     try {
       const [result] = await decideAgentProposals([card.id], "reject");
-      if (result?.error) setError(result.error); else setOutcome("dismissed");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save"); }
+      if (result?.error) fail(result.error);
+    } catch (cause) { fail(cause instanceof Error ? cause.message : "Could not save"); }
   });
   return <section aria-label="Recurring proposal" className="my-3 rounded-xl border border-ai-border bg-ai-soft p-4">
     <p className="font-medium">{card.title}</p>
@@ -65,7 +69,7 @@ function RecurringCard({ card, loaded }: { card: Card; loaded?: Loaded }) {
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {details ? <ScheduleDialog title={price ? `Update ${details.name}` : `Confirm ${details.name}`} trigger={price ? "Update amount" : "Yes, recurring"} triggerClassName={primary}
           submitLabel={price ? "Save" : "Confirm recurring"} action={confirmRecurringCard} hidden={{ proposalId: card.id }} categories={loaded?.categories ?? []}
-          defaults={details} onDone={() => setOutcome("saved")} />
+          defaults={details} onDone={() => { setOutcome("saved"); onDecided?.(card.id); }} />
           : <button type="button" disabled className={primary}>{loaded ? (price ? "Update amount" : "Yes, recurring") : "Loading…"}</button>}
         <button type="button" disabled={pending} onClick={dismiss} className={secondary}>{price ? "Keep current amount" : "Not recurring"}</button>
       </div>
