@@ -26,14 +26,16 @@ import { answerCardIds } from "@/lib/ai/open-proposals";
 import { agentDecisionSchema, agentFindings, decisionBlock, openAgentProposalIds } from "@/lib/ai/agent-findings";
 import { readableToolOutput, toolOutputPreview, type EntityNames } from "@/lib/ai/tool-output";
 import { ADDS_TO_RUNNING, CALL_MODE_PROMPT, callContextSchema, replaceCallTask, withoutCallBrief } from "@/lib/ai/voice-call";
+import { ARTIFACT_MODE_PROMPT, artifactBriefing, artifactTools } from "@/lib/ai/artifact-agent";
 
 /** Chart blocks are rendered for people; the model only needs to know one was shown. */
 function withoutCharts(content: string) {
   return content.replace(/```moneo-chart\n[\s\S]*?```/g, "[chart]").replace(/```moneo-(?:proposals?|decision)\n[\s\S]*?```/g, "[card shown]");
 }
 
-// A run keeps going after the user leaves; this covers the 90 s model run plus reads and publication.
-export const maxDuration = 120;
+// A run keeps going after the user leaves; this covers the model run (90 s, or 280 s in an artifact's chat,
+// where designers write pages and cards) plus reads and publication.
+export const maxDuration = 300;
 
 const inputSchema = z.object({
   conversationId: z.uuid(),
@@ -62,7 +64,7 @@ export async function POST(request: Request) {
     .order("created_at", { ascending: false }).limit(19));
   modelPromise.catch(() => {});
   historyPromise.catch(() => {});
-  const existing = await supabase.from("conversations").select("id, deleted_at").eq("workspace_id", workspace.id).eq("id", conversationId).maybeSingle();
+  const existing = await supabase.from("conversations").select("id, deleted_at, artifact_id").eq("workspace_id", workspace.id).eq("id", conversationId).maybeSingle();
   if (existing.error) throw existing.error;
   if (existing.data?.deleted_at) return Response.json({ error: "Conversation was deleted" }, { status: 404 });
   if (!existing.data) {
@@ -83,6 +85,10 @@ export async function POST(request: Request) {
       .eq("request_id", requestId).eq("role", "user");
     if (saved.error) console.error("saving chat attachments failed", saved.error);
   }
+  // An artifact's own chat builds its page and Home cards with the same tools, history and durability as chat.
+  const artifactId = (existing.data?.artifact_id as string | null | undefined) ?? null;
+  const briefingPromise = artifactId ? artifactBriefing(supabase, workspace.id, artifactId) : null;
+  briefingPromise?.catch(() => {});
   const streaming = request.headers.get("accept")?.includes("application/x-ndjson") ?? false;
   // The run belongs to its saved request, not this connection: only an explicit cancel stops it, noticed before each model step.
   const stop = new AbortController();
@@ -219,20 +225,26 @@ export async function POST(request: Request) {
           if (open.length) decisionCards.push(decisionBlock(open, decision));
           return { shown: open.length, skipped: ids.length - open.length, note: open.length ? "A confirmation card is shown below your answer; say it is waiting for them." : "None of these are open any more." };
         } }),
-      // Artifacts are built on their own page; chat only hands the request over.
-      suggest_artifact: tool({ description: "When the user asks for an interactive page, calculator, simulator, dashboard or what-if view, call this with a clear build request and give them the returned link. Do not build pages in chat.",
-        inputSchema: z.object({ prompt: z.string().trim().min(1).max(1500) }).strict(), execute: async ({ prompt }) => ({ href: `/ai/artifacts?prompt=${encodeURIComponent(prompt)}` }) }) };
+      // Artifacts are built in their own chat; this chat only hands the request over.
+      ...(artifactId ? {} : { suggest_artifact: tool({ description: "When the user asks for an interactive page, calculator, simulator, dashboard or what-if view, call this with a clear build request and give them the returned link. Do not build pages in chat.",
+        inputSchema: z.object({ prompt: z.string().trim().min(1).max(1500) }).strict(), execute: async ({ prompt }) => ({ href: `/ai/artifacts?prompt=${encodeURIComponent(prompt)}` }) }) }) };
+    const artifactBrief = briefingPromise ? await briefingPromise : null;
     const result = streamText({
       model,
-      abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(90_000)]),
+      abortSignal: AbortSignal.any([stop.signal, AbortSignal.timeout(artifactId ? 280_000 : 90_000)]),
       maxOutputTokens: 3000,
       // The finance tools do the exact work; light reasoning gets the answer to the user seconds sooner.
       providerOptions: { openai: { reasoningEffort: "low" } },
       instructions: `${SYSTEM_PROMPT}\n\nToday is ${calendarDate(new Date(), settings.timezone)} (${settings.timezone}); display currency ${workspace.display_currency}. UI context is only a navigation hint, never authorization.${canChangeCategory ? " The user named an exact transaction UUID and quoted category; the write tool must use exactly these values." : " Do not change records; for a category change request, use the selection preview."}${call.success ? `
 
-${CALL_MODE_PROMPT}` : ""}`,
+${CALL_MODE_PROMPT}` : ""}${artifactBrief ? `
+
+${ARTIFACT_MODE_PROMPT}
+
+Current state:
+${artifactBrief}` : ""}`,
       messages: modelMessages,
-      stopWhen: stepCountIs(10),
+      stopWhen: stepCountIs(artifactId ? 16 : 10),
       // Steer messages sent during this run join the conversation before the next model step.
       prepareStep: async ({ messages }) => {
         await stopIfCanceled();
@@ -246,6 +258,8 @@ ${CALL_MODE_PROMPT}` : ""}`,
         return { messages: [...messages, ...taken.map(steer => ({ role: "user" as const, content: steer.content }))] };
       },
       tools: { ...planTool, ...retainTools({
+        // Designers check the request is still running before they save, so a canceled build saves nothing.
+        ...(artifactId ? artifactTools({ context, artifactId, signal: stop.signal, ensureActive: async () => { await stopIfCanceled(); if (stop.signal.aborted) throw new Error("Request canceled"); } }) : {}),
         ...(canInvestigate ? {
           finance_investigate: tool({ description: "Answer the actual chosen finance question deterministically: exact current/comparison dates, include/exclude owned account/category/merchant names or IDs, tags/events, posted/pending and classification semantics, multiple groupings, ranking, and complete paginated support. Original currencies stay separate; base uses direct exact posting-date FX and canonical split rounding. Use returned interpretedFilters and live evidence link; never imply full statements or bounds. Read-only, no approval needed.", inputSchema: investigationSchema, execute: input => aiEvidence(["accounts", "transactions"], latest => runInvestigation(input, latest, { canReadImports: latest.settings.ai_data_scopes.includes("imports"), sourceVersions: false }), false, true) }),
           finance_entities: tool({ description: "Optional: list owned account, category and merchant names with ids, tags and events. Other tools already accept names and label ids with names.", inputSchema: z.object({}).strict(), execute: () => aiEvidence(["accounts", "transactions"], latest => loadInvestigationEntities(latest)) }),

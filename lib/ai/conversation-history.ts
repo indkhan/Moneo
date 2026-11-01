@@ -14,8 +14,8 @@ const MESSAGE_PAGE = 30;
 // Saved tool outputs can be tens of KB each; history shows a preview, the full record stays in chat_requests.
 const OUTPUT_PREVIEW = 2000;
 const preview = (output?: string) => output && output.length > OUTPUT_PREVIEW ? `${output.slice(0, OUTPUT_PREVIEW)}\n… (truncated)` : output;
-// A chat run outlives its tab for up to the chat route's maxDuration (120 s); an older "running" row was cut off, not working.
-const RUN_WINDOW_MS = 3 * 60_000;
+// A chat run outlives its tab for up to the chat route's maxDuration (300 s); an older "running" row was cut off, not working.
+const RUN_WINDOW_MS = 6 * 60_000;
 export const conversationTitleSchema = z.string().trim().min(1).max(120);
 
 function before(value?: string) {
@@ -28,7 +28,8 @@ function likePattern(query: string) { return `%${query.replace(/[\\%_]/g, "\\$&"
 
 /** Newest-first saved chats, keyset-paged; `query` searches titles and message text instead. */
 export async function loadThreads(supabase: SupabaseClient, workspace: string, threadsBefore?: string, query?: string) {
-  const live = () => supabase.from("conversations").select("id,title,created_at").eq("workspace_id", workspace).is("deleted_at", null);
+  // An artifact's chat lives on the artifact's page, not in the chat list.
+  const live = () => supabase.from("conversations").select("id,title,created_at").eq("workspace_id", workspace).is("deleted_at", null).is("artifact_id", null);
   const q = query?.trim().slice(0, 100);
   if (q) {
     const pattern = likePattern(q);
