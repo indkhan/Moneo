@@ -290,8 +290,6 @@ export class VoiceCallController {
       const cards = answerCards(result.body.answer);
       this.answers.set(requestId, spokenAnswer(result.body.answer));
       this.update(requestId, { status: "done", step: "answered", cards });
-      // Quiet context, so GPT-Live never tells the user it is still waiting on a request that has finished.
-      if (via()) this.deps.send({ type: "session.thinking.append", delegation_id: via(), content: `Finished ${label}; its result is next in line.` });
       this.deps.onAnswer?.(text, result.body as ChatAnswer);
       // A typed request has no hand-off to answer through, so the result says outright that it is to be spoken.
       const delegationId = via();

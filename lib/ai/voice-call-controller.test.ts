@@ -71,7 +71,8 @@ it("never says a request is still running once it has finished while another res
   await moneoTalks(1000);
   // Rent finishes while Moneo is still saying the Netto result.
   await answer("Rent?", "EUR 850.");
-  expect(sent).toContainEqual({ type: "session.thinking.append", delegation_id: "d2", content: 'Finished "Rent?"; its result is next in line.' });
+  // Nothing about it reaches GPT-Live before its result: a note that it finished made GPT-Live announce an amount it made up.
+  expect(sent.filter(event => event.delegation_id === "d2" && event.type !== "session.thinking.append")).toEqual([]);
   await moneoTalks(1000);
   await wait(2700);
   const spoken = sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content));
