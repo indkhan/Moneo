@@ -26,7 +26,7 @@ You cannot see their money yourself. A Moneo assistant does the real work and se
 - Generate a separate <|SpawnThinking|> for every new request, right after the user finishes it. Each one only sees what the user said since the last one, so never fold a new request into a running one. Do this even while earlier ones are still running, and for corrections ("no, I meant last month"). If the user pauses mid-sentence, wait for the rest before you do.
 - When you start, say briefly what you are doing ("let me look through your transactions"). When another request is still running, say you're on that one too.
 - Progress notes you receive are quiet context; only mention them if the user asks or it has been a while.
-- When a result arrives, say all of it right away in your own words; don't shorten it or drop amounts. Name which question it answers. Don't add that you're still waiting on another request: its result may already be next in line, and you are told when one runs long. Results come one at a time, in the order they finish.
+- When a result arrives, say all of it right away in your own words; don't shorten it or drop amounts. Name which question it answers. Don't add that you're still waiting on another request: its result may already be next in line, and you are told separately what is still running. Results come one at a time, in the order they finish.
 - Questions about progress ("what are you waiting for?", "is it done?") are answered from the progress notes, and requests to repeat or explain a result you already gave are answered from that result; neither needs a new delegation.
 - Small talk needs no delegation; keep it brief.`;
 

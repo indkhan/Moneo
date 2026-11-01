@@ -68,6 +68,8 @@ export const RESULT_TURN_MS = 20_000;
 export const USER_PAUSE_MS = 1500;
 /** How long Moneo gets to answer an interruption before it is asked to finish the result it was cut off in. */
 export const RESUME_AFTER_MS = 3000;
+/** Added to every result handed over: what is still running is said once the result has been, as it stands then. */
+export const ONLY_THIS_RESULT = "Say only this; don't mention other requests, you'll be told what is still running.";
 
 /**
  * Runs a voice call's tasks: each GPT-Live delegation (or typed message) becomes one /api/chat request, and its
@@ -100,6 +102,8 @@ export class VoiceCallController {
   private current: { delegationId: string | null; content: string; at: number } | null = null;
   /** A result the user talked over, with what they said since, until Moneo is asked to finish it. */
   private cut: { delegationId: string | null; content: string; words: string } | null = null;
+  /** Requests the user has been told are still running, so they hear it once. */
+  private announced = new Set<string>();
   private captionId = 0;
   /** A sound tag ("[scoff]") still open at the end of a role's last words, held until it closes. */
   private openTag: Record<CallCaption["role"], string> = { user: "", assistant: "" };
@@ -301,11 +305,31 @@ export class VoiceCallController {
   private watchSlow(requestId: string, delay = SLOW_TASK_MS) {
     this.schedule(() => {
       const task = this.tasks.find(item => item.requestId === requestId);
-      if (task?.status !== "running") return;
+      if (task?.status !== "running" || this.announced.has(requestId)) return;
       // Never in the middle of saying a result, or before one waiting to be said.
-      if (this.speaking() || this.current || this.cut || this.outbox.length) return this.watchSlow(requestId, 1000);
-      this.deps.send({ type: "session.commentary.append", delegation_id: task.delegationId, content: `Still working on "${task.text.slice(0, 120)}" (${task.step}). Say so in a few words${task.delegationId ? "" : ", in the language of their quoted words"}.` });
+      if (this.speaking() || !this.resultSaid() || this.cut || this.outbox.length) return this.watchSlow(requestId, 1000);
+      this.stillWorking([task]);
     }, delay);
+  }
+
+  /**
+   * Once Moneo has said a result and has no other to say next, it says what is still running, read right then, so it
+   * never says it is waiting on a request that has finished.
+   */
+  private followUp(handed: VoiceCallController["current"]) {
+    this.schedule(() => {
+      if (this.current !== handed || this.cut || this.outbox.length) return;
+      if (this.speaking() || !this.resultSaid()) return this.followUp(handed);
+      const waiting = this.running.filter(task => !this.announced.has(task.requestId));
+      if (waiting.length) this.stillWorking(waiting);
+    }, 300);
+  }
+
+  private stillWorking(tasks: CallTask[]) {
+    tasks.forEach(task => this.announced.add(task.requestId));
+    const names = tasks.map(task => `"${task.text.slice(0, 120)}" (${task.step})`).join(", ");
+    this.deps.send({ type: "session.commentary.append", delegation_id: tasks[0].delegationId,
+      content: `Still working on ${names}. Say so in a few words${tasks.some(task => task.delegationId) ? "" : ", in the language of their quoted words"}.` });
   }
 
   /** Results queue in the order they finish. */
@@ -339,7 +363,8 @@ export class VoiceCallController {
     const { delegationId, content } = this.outbox.shift()!;
     this.current = { delegationId, content, at: this.now() };
     this.deps.log?.(`handed over: ${content.slice(0, 60)}`);
-    this.deps.send({ type: "session.commentary.append", delegation_id: delegationId, content });
+    this.deps.send({ type: "session.commentary.append", delegation_id: delegationId, content: `${content} ${ONLY_THIS_RESULT}` });
+    this.followUp(this.current);
     this.flush();
   }
 
