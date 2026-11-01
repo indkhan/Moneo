@@ -60,6 +60,17 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await expect(card.getByText("Picked b at S")).toBeVisible({ timeout: 30_000 });
     await expect(card.getByRole("button", { name: "Beta" })).toHaveAttribute("aria-pressed", "true");
 
+    // Hide, reload past Undo, then restore the published card directly from Home.
+    const widget = page.locator(`[data-widget="card:${cardId}"]`);
+    await widget.hover();
+    await widget.getByRole("button", { name: `Hide ${title} card` }).click();
+    await expect(widget).toHaveCount(0);
+    await page.waitForLoadState("networkidle");
+    await page.reload({ waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Add widget", exact: true }).click();
+    await page.getByRole("list", { name: "Hidden widgets" }).getByRole("button", { name: `${title} card`, exact: true }).click();
+    await expect(card.getByText("Picked a at S")).toBeVisible({ timeout: 30_000 });
+
     // A draft (here, renamed) doesn't change Home until it is published.
     await db`insert into public.artifact_card_versions (workspace_id, card_id, version, title, kind, source, compiled, queries, params, prompt)
       values (${workspaceId}, ${cardId}, 2, ${`${title} renamed`}, 'code', ${CARD}, ${compileCard(CARD)}, ${queries}, ${db.json(PARAMS)}, 'Rename it')`;

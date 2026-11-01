@@ -11,7 +11,7 @@ vi.mock("@/lib/env", () => ({ hasSupabase: () => true, getSupabaseConfig: () => 
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => {
   return { supabase: { from: (table: string) => {
     const result = () => { fixture.started.push(table); return { data: [], count: 0, error: fixture.errorTable === table ? new Error(`${table} unavailable`) : null }; };
-    const query = { select: () => query, eq: () => query, in: () => query, is: () => query, range: async () => result(), order: () => query, limit: () => query, maybeSingle: async () => ({ ...result(), data: null }), then: (resolve: (value: unknown) => unknown) => Promise.resolve(result()).then(resolve) };
+    const query = { select: () => query, eq: () => query, in: () => query, is: () => query, not: () => query, range: async () => result(), order: () => query, limit: () => query, maybeSingle: async () => ({ ...result(), data: null }), then: (resolve: (value: unknown) => unknown) => Promise.resolve(result()).then(resolve) };
     return query;
   } }, workspace: { id: "workspace", display_currency: "EUR", timezone: "Europe/Berlin" } };
 } }));
