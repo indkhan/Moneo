@@ -339,6 +339,51 @@ it("never runs a request twice for a second hand-off of the same words, but wait
   expect(asks.map(([payload]) => payload.message)).toEqual(["How much at Netto?", "And rent?"]);
 });
 
+it("keeps a request whole when GPT-Live says \"take your time\" in the user's pause", async () => {
+  const { call, asks, say, delegate, wait } = setup();
+  say("Rent?"); delegate("d0");
+  say("I paid twenty euros", 3000, 2000);
+  call.handle({ type: "session.output_transcript.delta", delta: "Mm-hm. Take your time." });
+  await wait(2000);
+  say(" for groceries at Rewe", 6000, 5000); delegate("d1", 6100);
+  expect(asks.map(([payload]) => payload.message)).toEqual(["Rent?", "I paid twenty euros for groceries at Rewe"]);
+});
+
+it("never loses a request GPT-Live answers before its hand-off arrives", async () => {
+  const { call, asks, say, delegate, wait } = setup();
+  say("Rewe groceries twenty euros", 2000, 500);
+  call.handle({ type: "session.output_transcript.delta", delta: "Got it, making a card." });
+  await wait(500);
+  delegate("d1", 2100);
+  expect(asks.map(([payload]) => payload.message)).toEqual(["Rewe groceries twenty euros"]);
+});
+
+it("lets a late hand-off take over the request GPT-Live agreed to, not the words said after it", async () => {
+  const { call, asks, say, delegate } = setup();
+  say("Netto?", 1000, 500); delegate("d0", 1100);
+  say(" Check my rent", 3000, 2000);
+  call.handle({ type: "session.output_transcript.delta", delta: "Sure, on that one too." });
+  say(" And my savings goal?", 5000, 4000);
+  delegate("dA", 3100); delegate("dB", 5100);
+  expect(asks.map(([payload]) => payload.message)).toEqual(["Netto?", "Check my rent", "And my savings goal?"]);
+  expect(call.tasks.map(task => task.delegationId)).toEqual(["d0", "dA", "dB"]);
+});
+
+it("doesn't finish a cut-off result that a correction replaced", async () => {
+  const { sent, asks, say, delegate, answer, wait, moneoTalks } = setup();
+  say("Add coffee 5"); delegate("d1");
+  await answer("Add coffee 5", "Card for 5 euros on screen.");
+  await wait(1600);
+  await moneoTalks(800);
+  await wait(1000);
+  say("No, make it fifteen"); delegate("d2");
+  asks[1][1]({ type: "tool", name: "call_replace_task", state: "running", input: { requestId: "r1" } });
+  await wait(1600);
+  await moneoTalks(800);
+  await wait(4000);
+  expect(sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content))).toHaveLength(1);
+});
+
 it("tells requests from small talk among unclaimed words", () => {
   expect(looksLikeRequest("Hey, how are you doing today?")).toBe(false);
   expect(looksLikeRequest("Mm uh, can you also tell me how are you")).toBe(false);
