@@ -24,8 +24,9 @@ const ATTRIBUTES = new Set(["className", "style", "title", "role", "id", "colSpa
   "floodColor", "floodOpacity", "operator", "k1", "k2", "k3", "k4", "vectorEffect", "overflow", "display", "visibility"]);
 // Only url(#local-id) may appear in a value; anything else that can load or run something is refused.
 const LOCAL_URL = /^url\(#([A-Za-z][\w-]{0,60})\)$/;
-// No element here takes a link (no href, src or <use>), so url() and legacy expression() are the only ways out.
-const UNSAFE_VALUE = /url\(|expression\(|@import/i;
+// No element here takes a link (no href, src or <use>), so CSS functions that load something are the only ways out.
+// A backslash is refused outright: CSS escapes (u\72l(...)) would spell those functions past any pattern.
+const UNSAFE_VALUE = /\\|\b(?:-webkit-)?(?:url|src|image|image-set|cross-fade|element|expression)\s*\(|@import/i;
 const ID = /^[A-Za-z][\w-]{0,60}$/;
 
 export type TreeContext = { scope: string };
@@ -103,7 +104,7 @@ export function scopeCss(css: string, scope: string) {
     rule.selectors = rule.selectors.map(selector => selector.replace(/^\s*(:root|html|body)\b/, "").trim()).map(selector => selector ? `[data-card="${scope}"] ${selector}` : `[data-card="${scope}"]`);
   });
   root.walkDecls(decl => {
-    if (UNSAFE_VALUE.test(decl.value) || /^(behavior|-moz-binding)$/i.test(decl.prop)) { decl.remove(); return; }
+    if (UNSAFE_VALUE.test(decl.value) || UNSAFE_VALUE.test(decl.prop) || /^(behavior|-moz-binding)$/i.test(decl.prop)) { decl.remove(); return; }
     if (/^animation(-name)?$/i.test(decl.prop)) decl.value = decl.value.replace(/[\w-]+/g, word => keyframes.get(word) ?? word);
   });
   // "<" can never close the <style> element the CSS is rendered in.

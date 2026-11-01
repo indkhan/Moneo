@@ -7,7 +7,8 @@ import { PRESETS, presetSource } from "./presets";
 const render = async (source: string, data: unknown = {}, params: Record<string, string> = {}, size = "M") =>
   sanitizeTree(await runCard(compileCard(source), { data, params, size }), { scope: "c1" });
 
-describe("card sandbox", () => {
+// The first render starts the WASM engine and one test waits out the runaway-loop deadline; give them room on a busy machine.
+describe("card sandbox", { timeout: 20_000 }, () => {
   it("runs a card's React in QuickJS and returns plain elements, Kit names included", async () => {
     const tree = await render(`export default function Card({ data, size }) {
       const Row = ({ label }: { label: string }) => <li>{label}</li>;
@@ -36,7 +37,8 @@ describe("card tree checks", () => {
   it("refuses elements and attributes that could run code or load anything", () => {
     for (const bad of [tree("script"), tree("iframe"), tree("img", { src: "x" }), tree("a", { href: "https://x" }), tree("use", { href: "#a" }), tree("foreignObject"),
       tree("div", { onClick: "x" }), tree("div", { dangerouslySetInnerHTML: { __html: "<b>" } }), tree("div", { style: { background: "url(https://evil/?d=1)" } }),
-      tree("rect", { fill: "url(https://evil)" }), tree("kit:Unknown"), tree("kit:Chart", { type: "line", series: [{ name: "a", values: [1] }], tooltip: { formatter: "<img>" } }),
+      tree("rect", { fill: "url(https://evil)" }), tree("div", { style: { background: String.raw`u\72l(https://evil/?d=1)` } }), tree("rect", { fill: String.raw`\75rl(https://evil)` }),
+      tree("div", { style: { background: 'image-set("https://evil/a.png" 1x)' } }), tree("kit:Unknown"), tree("kit:Chart", { type: "line", series: [{ name: "a", values: [1] }], tooltip: { formatter: "<img>" } }),
       tree("kit:Link", { to: { page: "https://evil" } }), tree("kit:Money", { minor: "1.5", currency: "EUR" })])
       expect(() => sanitizeTree(bad, { scope: "c1" }), JSON.stringify(bad)).toThrow(CardTreeError);
   });
@@ -49,11 +51,11 @@ describe("card tree checks", () => {
   });
 
   it("scopes card CSS to the card, renames keyframes and drops anything that loads or escapes", () => {
-    const css = scopeCss(`body{color:red} .hero{animation:pop 1s} @keyframes pop{from{opacity:0}} @import "x.css"; .bg{background:url(https://evil)} @font-face{src:url(x)} p::after{content:"</style><script>"}`, "c1");
+    const css = scopeCss(String.raw`body{color:red} .hero{animation:pop 1s} @keyframes pop{from{opacity:0}} @import "x.css"; .bg{background:url(https://evil)} .e{background:u\72l("https://evil/e")} .f{background:\75rl("https://evil/f")} .g{background:image-set("https://evil/g" 1x)} @font-face{src:url(x)} p::after{content:"</style><script>"}`, "c1");
     expect(css).toContain('[data-card="c1"]{color:red}');
     expect(css).toContain('[data-card="c1"] .hero{animation:c1-pop 1s}');
     expect(css).toContain("@keyframes c1-pop");
-    expect(css).not.toMatch(/@import|url\(|@font-face|<\//);
+    expect(css).not.toMatch(/@import|url\(|@font-face|<\/|evil/);
   });
 });
 
