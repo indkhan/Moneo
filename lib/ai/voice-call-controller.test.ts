@@ -147,7 +147,7 @@ it("hands a typed message's result to GPT-Live to say, without a delegation", as
   await answer("What did I spend?", "42 euros", 200);
   expect(call.captions).toEqual([{ id: 1, role: "user", text: "What did I spend?" }]);
   expect(sent.filter(event => event.type === "session.commentary.append")).toEqual([
-    { type: "session.commentary.append", delegation_id: null, content: 'Result for "What did I spend?" (typed by the user in the call; say the result to them now, in the language they typed): 42 euros' }]);
+    { type: "session.commentary.append", delegation_id: null, content: 'Result for "What did I spend?" (typed by the user in the call; say the result to them now, in the language of their quoted words): 42 euros' }]);
   expect(sent.filter(event => event.type === "session.thinking.append")).toEqual([]);
 });
 
