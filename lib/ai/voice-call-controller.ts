@@ -64,7 +64,7 @@ export const SLOW_TASK_MS = 8000;
 export const RESULT_DONE_MS = 2500;
 /** Moneo silent this long, with the mic quiet since, also means it said all of it: the mic hears the user at once,
  * so nobody talked over it, and the next result follows without a long gap. */
-export const RESULT_PAUSE_MS = 1200;
+export const RESULT_PAUSE_MS = 700;
 /** Longest wait for Moneo to start saying a result before the next is handed over anyway. */
 export const RESULT_TURN_MS = 20_000;
 /** A pause this long ends the user's turn for handing over a result; people pause mid-sentence ("uh… like…"). */
@@ -72,7 +72,7 @@ export const USER_PAUSE_MS = 1500;
 /** How long Moneo gets to answer an interruption before it is asked to finish the result it was cut off in. */
 export const RESUME_AFTER_MS = 3000;
 /** Added to every result handed over: what is still running is said once the result has been, as it stands then. */
-export const ONLY_THIS_RESULT = "Say only this; don't mention other requests, you'll be told what is still running.";
+export const ONLY_THIS_RESULT = "Say this result now and don't mention other requests. Don't end with a question or wait for the user: if another result comes, go straight on with it.";
 
 /**
  * Runs a voice call's tasks: each GPT-Live delegation (or typed message) becomes one /api/chat request, and its
@@ -402,7 +402,7 @@ export class VoiceCallController {
       const words = cut.words.trim().split(/\s+/).length;
       this.deps.log?.(words >= 3 ? "resuming the cut-off result" : "not resuming: only a backchannel");
       if (words >= 3) this.outbox.unshift({ requestId: cut.requestId, delegationId: cut.delegationId,
-        content: `The user talked over you while you were giving this result. If you hadn't finished it, finish the part you hadn't said yet, without repeating what you already said; if you had, or they asked you to stop or skip it, say nothing more about it. ${cut.content}` });
+        content: `The user talked over you while you were giving this result. If you hadn't finished it, first say in a few words that you're going back to it (like "Anyway, back to your September spending…"), then finish the part you hadn't said yet, without repeating what you already said; if you had, or they asked you to stop or skip it, say nothing more about it. ${cut.content}` });
       this.flush();
     }, 300);
   }
