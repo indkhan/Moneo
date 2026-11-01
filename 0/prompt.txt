@@ -1,0 +1,11 @@
+<task-notification>
+<task-id>bf9d50q6u</task-id>
+<tool-use-id>toolu_01TDUD8URS3QhSqe34TCYPBH</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-62fa644d\d5a47289-52b6-4b46-8d11-41d1ec373b2c\tasks\bf9d50q6u.output</output-file>
+<status>completed</status>
+<summary>Background command "Run real GPT-Live call check" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+i tried it and liked it merge it to main
