@@ -196,6 +196,12 @@ it("keeps a word the user began before the hand-off in its request, even if it e
   expect(asks.map(([payload]) => payload.message)).toEqual(["How much did I spend at Netto this month?", "And when is my rent due?"]);
 });
 
+it("leaves GPT-Live's \"|\" break marks out of requests", () => {
+  const { asks, say, delegate } = setup();
+  say("And when is my|"); say(" rent due?"); delegate("d1");
+  expect(asks.map(([payload]) => payload.message)).toEqual(["And when is my rent due?"]);
+});
+
 it("never turns small talk GPT-Live answered itself into a request, or into the start of the next one", async () => {
   const { asks, say, delegate, advance } = setup();
   say("Hey, how are you doing today?");

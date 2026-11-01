@@ -142,7 +142,9 @@ export class VoiceCallController {
 
   handle(event: ServerEvent) {
     switch (event.type) {
-      case "session.input_transcript.delta":
+      case "session.input_transcript.delta": {
+        // GPT-Live's transcript sometimes marks a break with "|" ("when is my| rent due").
+        const delta = (event.delta ?? "").replace(/\|/g, " ");
         // Talking over a result GPT-Live is saying stops it, and the rest would be lost.
         if (this.current && this.lastMoneo > this.current.at && !this.resultSaid()) {
           this.cut = { delegationId: this.current.delegationId, content: this.current.content, words: "" };
@@ -150,13 +152,14 @@ export class VoiceCallController {
           this.current = null;
           this.resume();
         }
-        if (this.cut) this.cut.words += event.delta ?? "";
+        if (this.cut) this.cut.words += delta;
         this.lastUserSpeech = this.now();
         this.reply = "";
-        this.heard.push({ text: event.delta ?? "", start: event.start_ms ?? event.end_ms ?? Infinity });
-        this.caption("user", event.delta ?? "");
+        this.heard.push({ text: delta, start: event.start_ms ?? event.end_ms ?? Infinity });
+        this.caption("user", delta);
         this.schedule(() => this.claimUnheard(), UNCLAIMED_MS);
         break;
+      }
       case "session.output_transcript.delta":
         this.lastAssistantSpeech = this.now();
         this.caption("assistant", event.delta ?? "");
@@ -189,7 +192,7 @@ export class VoiceCallController {
     const before = (piece: { start: number }) => offset === Infinity || piece.start < offset;
     const claimed = this.heard.some(before) ? this.heard.filter(before) : wait ? this.heard : [];
     this.heard = this.heard.filter(piece => !claimed.includes(piece));
-    const words = claimed.map(piece => piece.text).join("").replace(/\[[^\]]*\]/g, "").trim();
+    const words = claimed.map(piece => piece.text).join("").replace(/\[[^\]]*\]/g, "").replace(/\s+/g, " ").trim();
     if (words) { this.unclaimedTask = null; this.start(words, delegationId); }
     else if (this.unclaimedTask) { this.update(this.unclaimedTask, { delegationId }); this.unclaimedTask = null; }
     else if (wait) this.schedule(() => this.claim(delegationId, offset, false), LATE_WORDS_MS);
@@ -205,7 +208,7 @@ export class VoiceCallController {
   private claimUnheard() {
     const quiet = this.now() - this.lastUserSpeech;
     if (quiet < UNCLAIMED_MS && !(this.replied() && quiet >= USER_PAUSE_MS)) return;
-    const text = this.heard.map(piece => piece.text).join("").replace(/\[[^\]]*\]/g, "").trim();
+    const text = this.heard.map(piece => piece.text).join("").replace(/\[[^\]]*\]/g, "").replace(/\s+/g, " ").trim();
     if (!looksLikeRequest(text)) { this.heard = []; return; }
     if (!this.lastDelegation) return;
     this.heard = [];
