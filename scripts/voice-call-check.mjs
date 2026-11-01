@@ -1,6 +1,6 @@
 // Real end-to-end check of the chat voice call. Costs real GPT-Live, TTS and chat-model usage.
 // Call 1 speaks test sentences (OpenAI TTS) into a fake mic and checks that delegations ran /api/chat, a card reached
-// the tray, Moneo's spoken answers show in the captions, the voice chosen in Settings is the session's voice, and that
+// the tray, Moneo spoke answers, the voice chosen in Settings is the session's voice, and that
 // after hang-up the chat shows one call summary card (summary, cards, transcript) that survives a reload.
 // Call 2 has a silent mic, types a message and checks that GPT-Live speaks the answer to it.
 // Run with the app up and e2e/.auth.json present (see scripts/e2e-auth.mjs); APP_URL defaults to http://localhost:3000:
@@ -98,6 +98,8 @@ async function open(wav) {
   });
   return { browser, page, log, chats, timing };
 }
+/** What Moneo said in a call, from its transcript; the call screen shows requests, not captions. */
+const spokenWords = log => log.filter(line => line.startsWith("[call] spoke ")).map(line => line.slice("[call] spoke ".length)).join("");
 /** Clicks Call and waits until the call is live; `timing` gets when each step happened (ms after the click). */
 async function startCall(page, timing) {
   await page.goto(`${base}/ai?conversation=new`);
@@ -120,7 +122,7 @@ while (Date.now() < deadline) {
   cards = await call.getByRole("region", { name: "Cards to review" }).getByRole("button").count();
   if (first.chats.length >= 3 && cards > 0 && !(await call.getByRole("list", { name: "Tasks" }).locator("svg.lucide-loader-circle, svg.lucide-loader2").count())) { await first.page.waitForTimeout(12_000); break; }
 }
-const captions = await call.getByLabel("Live captions").innerText();
+const captions = spokenWords(first.log);
 const tasks = await call.getByRole("list", { name: "Tasks" }).innerText().catch(() => "");
 await first.page.screenshot({ path: ".qa/voice-call-check.png", fullPage: true });
 await call.getByRole("button", { name: /End call|Close/ }).click();
@@ -149,7 +151,7 @@ console.log(`timings: live ${first.timing.liveMs} ms; session started ${afterCli
 const voiceStarted = first.log.find(line => line.startsWith("[call] started"));
 await first.browser.close();
 
-console.log("\n--- captions ---\n" + captions + "\n--- tasks ---\n" + tasks + "\n--- summary ---\n" + summary + "\n--- transcript ---\n" + transcript.slice(0, 600));
+console.log("\n--- Moneo said ---\n" + captions + "\n--- tasks ---\n" + tasks + "\n--- summary ---\n" + summary + "\n--- transcript ---\n" + transcript.slice(0, 600));
 
 // --- Call 2: a typed message must be spoken ---
 const second = await open(quiet);
@@ -162,10 +164,9 @@ await quietCall.getByRole("button", { name: "Send" }).click();
 let spoken = false;
 for (const end = Date.now() + 90_000; Date.now() < end && !spoken; await second.page.waitForTimeout(2000)) {
   const results = second.log.findIndex(line => line.startsWith("[call] sent") && line.includes("commentary.append") && line.includes("Result for"));
-  spoken = results >= 0 && second.log.slice(results).filter(line => line.startsWith("[call] spoke")).length >= 12;
+  spoken = results >= 0 && spokenWords(second.log.slice(results)).trim().split(/\s+/).length >= 6;
 }
-const typedCaptions = await quietCall.getByLabel("Live captions").innerText();
-console.log("\n--- typed call captions ---\n" + typedCaptions);
+console.log("\n--- typed call, Moneo said ---\n" + spokenWords(second.log));
 await second.browser.close();
 
 if (db) {
@@ -176,7 +177,7 @@ const checks = {
   "delegations ran /api/chat in call mode": first.chats.length >= 2 && first.chats.every(chat => chat.via === "call"),
   "chat requests completed": first.chats.filter(chat => chat.status === 200).length >= 2,
   "a card is in the tray": cards > 0,
-  "Moneo spoke answers": /Moneo: /.test(captions) || captions.split("\n").length > 3,
+  "Moneo spoke answers": captions.trim().split(/\s+/).length > 20,
   [`the call used the chosen voice (${VOICE})`]: voiceStarted === `[call] started voice=${VOICE}`,
   "hanging up shows one call summary card": cardShown,
   "the card has a 2-4 bullet summary": summary.split("\n").filter(Boolean).length >= 1 && summary.split("\n").filter(Boolean).length <= 4,
