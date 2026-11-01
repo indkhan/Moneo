@@ -85,11 +85,15 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
     const addedOther = saved(page);
     await other.click();
     await addedOther;
+    const restored = saved(page);
     await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await restored;
     await expect(goals.getByRole("heading", { name: "Goals", exact: true })).toBeVisible({ timeout: 30_000 });
   } else {
     await page.getByRole("button", { name: "Add widget", exact: true }).click();
+    const restored = saved(page);
     await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await restored;
   }
 
   await goals.hover();
