@@ -1,0 +1,115 @@
+<task-notification>
+<task-id>bpy3d1azp</task-id>
+<tool-use-id>toolu_019rnU3zyUPsptDCRgZCdWdj</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-62fa644d\d5a47289-52b6-4b46-8d11-41d1ec373b2c\tasks\bpy3d1azp.output</output-file>
+<status>completed</status>
+<summary>Background command "Run real GPT-Live call check" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+can you call a reviewer subagent on this pr and tell it to find problems and also tell it it can test it with different scenarios how a user can use it and then find if there are any problme and all and if not merge to main
+
+---
+
+can you run the applicaiton itself as well so i can test it
+
+---
+
+<task-notification>
+<task-id>ada0f84b747d8d690</task-id>
+<tool-use-id>toolu_01ASruEF2ZAefU9A66wJK7mu</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-62fa644d\d5a47289-52b6-4b46-8d11-41d1ec373b2c\tasks\ada0f84b747d8d690.output</output-file>
+<status>completed</status>
+<summary>Agent "Review voice call PR" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>**Verdict: DO NOT MERGE yet.** The main fix works: Moneo no longer says a finished request is still running, and results come one at a time in finish order. But the new rule that starts a request as soon as GPT-Live replies (items 4 and 6) can split a request in two or lose it entirely. That needs fixing first.
+
+## Findings (most severe first)
+
+1. **A GPT-Live reply mid-request splits the request in two.** Confirmed with a test. `lib/ai/voice-call-controller.ts:168` calls `claimUnheard()` (lines 209-217) as soon as GPT-Live's reply has 3 or more non-backchannel words.
+   - **Scenario:** an earlier hand-off exists. The user says "I paid twenty euros", pauses, and GPT-Live says "Mm-hm. Take your time." The user goes on "for groceries at Rewe" and the hand-off arrives.
+   - **What happens:** two requests start, "I paid twenty euros" and "for groceries at Rewe". The first one is answered through the old hand-off, so you get an incomplete card for 20 euros plus a broken second request.
+   - **Cause:** "take your time" counts as a reply, and "paid" makes the half sentence look like a request. Your scenario "GPT-Live replying with a real sentence to half a request" hits exactly this.
+   - **Fix:** only claim on a reply once the user has really finished, for example after `USER_PAUSE_MS` since their last word. Or start the claim only when GPT-Live says it is on it, and keep the 4 s fallback otherwise.
+
+2. **A request can be lost when GPT-Live speaks before its hand-off arrives.** Confirmed in a unit test. Whether real calls send events in this order is unconfirmed. Code: lines 168 and 212, then 199-200.
+   - **Scenario:** the user says "Rewe groceries twenty euros". GPT-Live says "Got it, making a card." and only then does the hand-off arrive.
+   - **What happens:** no request runs at all. `looksLikeRequest` is false because none of the words are in its list, so `claimUnheard` drops the words as small talk. The hand-off then finds no words, waits 1.5 s and starts nothing.
+   - **Fix:** don't throw words away on a reply alone. Keep them until a hand-off arrives or the 4 s quiet timer runs, and only drop them then.
+
+3. **A late hand-off takes the next request's words, and answers go out under the wrong hand-off.** Confirmed with a test. Line 194: `wait ? this.heard : []`.
+   - **Scenario:** hand-off d0 already exists. The user says "Check my rent" and GPT-Live replies "Sure, on that one too", so a request starts under d0. The user goes on "And Netto spend?" (heard after dA's offset). Then dA arrives late, then dB.
+   - **What happens:** dA takes "And Netto spend?" because no words came before its offset and it falls back to all heard words. The rent request keeps d0, and dB finds no words and starts nothing. Every answer goes out under the wrong hand-off.
+   - **Fix:** when `wait` is true and nothing came before the offset, claim nothing yet. Hand over `unclaimedTask` first, and use `this.heard` only for `offset === Infinity`. The same thing happens when `start_ms` and `end_ms` are both missing, because the word then gets `start = Infinity`.
+
+4. **A correction doesn't silence a result the user cut off.** Confirmed with a test. `replaced()` (lines 346-351) only clears the queue, not `this.cut` or `this.current`.
+   - **Scenario:** "Add coffee 5". The card result starts being spoken, and the user cuts in with "No, make it fifteen", which calls `call_replace_task` on r1.
+   - **What happens:** after the reply, `resume()` (line 385) still asks GPT-Live to finish the old "Card for 5" result. That is exactly what item 3 of the PR is meant to stop.
+   - **Fix:** in `replaced()`, clear `this.cut` if it belongs to that request. Storing `requestId` on `cut` and `current` would make the match straightforward.
+
+5. **Hard-to-read code for the showcase.**
+   - `claim()` line 194 packs three cases into one ternary. Finding 3 hides there.
+   - The strip-tags-and-collapse-spaces regex appears three times (lines 196, 211, 220). One small `words(text)` helper would do.
+   - `brief()` on line 259 uses `this.answers.get(...)!`.
+   - `followUp` and `watchSlow` both re-check in loops that are hard to follow. A comment saying each one ends on its own would help.
+   - Nothing on the controller stops its timers when the call ends. Tasks still in flight can keep handing results to a closed channel after hang-up. The timers do all end on their own, so this is minor and partly predates the PR.
+
+Nothing breaks the "financial truth only from app code" rule. Results pass through unchanged, removing the "finished" note is right, and cards stay tap-only. Finding 1 can still produce a wrong but unsaved card.
+
+## Scenarios tested (temporary file, now deleted)
+
+| Scenario | Result |
+|---|---|
+| One request | OK |
+| Second request finishes while the first is being said | OK (existing test) |
+| Ask A, ask B, cut in on A with C | OK: A finished, then B, then C; never said a finished request was still running |
+| Correction "make it 15" replacing a card request | Replaced result stays silent when queued (existing test); **fails if the user cut it off (finding 4)** |
+| Small talk and greetings, then a request | OK: only the request was sent |
+| Mid-sentence pause with GPT-Live "mm-hm" | OK on its own |
+| Same pause, but GPT-Live adds "take your time" | **Split into two requests (finding 1)** |
+| Request with none of the listed request words, GPT-Live replies first | **Lost (finding 2)** |
+| GPT-Live agrees without a hand-off, then a late hand-off | **Wrong hand-offs (finding 3)** |
+| Hand-off before its transcript, plus a duplicate hand-off | OK: one request, no duplicate |
+| Typed message (German) | OK: spoken under no hand-off, with the language instruction |
+| Cancel with ✕ | OK: silent |
+| Failed request | OK: short failure message |
+| 5 parallel requests | OK: all said in order |
+| User says "mm-hm" over Moneo | OK: not treated as a cut, no resume |
+| Slow task before and after another result | OK: one "still working" note per request, and the result follows |
+
+## Results
+- `npm test`: 1181 passed, 9 skipped.
+- `npm run lint`: clean.
+- `git status`: clean.
+- I didn't run the paid real-call check: every finding was reproduced in unit tests. Finding 2 is the one where a real call would show whether GPT-Live really speaks before the hand-off.
+
+All findings are in `C:\Users\mgsuk\.t3\worktrees\Moneo\t3-62fa644d\lib\ai\voice-call-controller.ts`.</result>
+<usage><subagent_tokens>66473</subagent_tokens><tool_uses>14</tool_uses><duration_ms>260413</duration_ms></usage>
+</task-notification>
+
+---
+
+also this 
+Console Error
+
+
+Each child in a list should have a unique "key" prop.
+
+Check the render method of `ChatForm`. It was passed a child from AiPage. See https://react.dev/link/warning-keys for more information.
+app\ai\page.tsx (22:17) @ AiPage
+
+
+  20 |   try { history = await loadConversationHistory(supabase, workspace.id, requested, params.threadsBefore, params.messagesBefore); }
+  21 |   catch (cause) { return <main className="mx-auto max-w-3xl p-8"><ConversationSelection selectionKey={selectionKey} id={requested ?? "new"} /><h1>Conversation unavailable</h1><p role="alert">{cause instanceof Error ? cause.message : "Could not load conversation"}</p><Link href="/ai?conversation=new">New conversation</Link><Link className="ml-4" href="/ai">Try again</Link></main>; }
+> 22 |   const scope = <p className="mt-2 text-center text-xs text-muted-foreground" aria-label="AI data access">Moneo can use: {settings.ai_data_scopes.map(scope => scope.replaceAll("_", " ")).join(", ") || "none"} · {workspace.display_currency} · {workspace.timezone}</p>;
+
+     |                 ^
+  23 |   return <ChatWorkspace initial={history} newConversationId={crypto.randomUUID()} selectionKey={selectionKey} locale={workspace.locale} timezone={workspace.timezone} scope={scope} />;
+  24 | }
+  25 |
+Call Stack
+23
+
+Show 21 ignore-listed frame(s)
+p
