@@ -87,6 +87,7 @@ export async function POST(request: Request) {
         // After the first step the model has read data and is designing or writing the page.
         experimental_onStepStart: ({ stepNumber }) => progress(stepNumber ? "Writing the page" : "Planning the page"),
         maxOutputTokens: 32000,
+        providerOptions: { openai: { reasoningEffort: "low" } },
         abortSignal: AbortSignal.timeout(280_000),
       });
     } catch (cause) { return [{ error: cause instanceof Error ? cause.message : "AI request failed" }, 502]; }
