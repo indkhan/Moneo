@@ -1,0 +1,21 @@
+i want to have that i can have the widgets in overview and all draggable and all so i can change the layout as i like and it should be really simple just a drag and drop and also it should be possible for you to resize it 
+
+and it should work in website and on phone 
+
+what do you think is the best way to implement it in the simplest and the most effiecient way possible which also stays fast 
+
+then we will remove the edit layout and also the thing in settings for that thing so it becomes really nice witha  nice ui and ux 
+
+in phone as well you should be able to drag and drop by holiding somehting for a bit and then moving it and all think the best way and tell me
+
+---
+
+Yes go ahead and once done file a pr with a video of it how it is supposed to be used and how will it look 
+
+Also remove the dead and duplicated code after the thing 
+
+Check the speed and all 
+
+After done also remove the button edit layout and the relevant thing from setting page 
+
+Then file  pr as asked
