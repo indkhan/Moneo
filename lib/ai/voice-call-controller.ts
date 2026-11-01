@@ -44,7 +44,8 @@ export function spokenAnswer(answer: string, max = 1500) {
 
 export const SPEAKING_HOLD_MS = 700;
 /** Words still unclaimed after the user has been quiet this long were a request GPT-Live said yes to but never handed off.
- * Once GPT-Live has replied to them ("on that one too"), a short pause is enough, so the user's next words stay apart. */
+ * Once GPT-Live has replied to them ("on that one too"), it has taken them as said, so they become a request right away,
+ * apart from whatever the user says next. */
 export const UNCLAIMED_MS = 4000;
 const SMALL_TALK = /\b(hi|hey|hello|yo|thanks|thank you|bye|good (morning|evening|night)|how are you( doing)?( today)?|i'?m (good|fine|okay)|okay|ok|yeah|yes|no|um+|uh+|mm+|mm-?hm|(can|could|would|will) you( also)?( please)?( tell me| say)?)\b/gi;
 const ASKS = /\?|\b(how much|what|when|where|who|which|why|check|show|tell|add|spent|spend|paid|pay|lent|lend|borrowed?|owe|bought|received|transfer|budget|save|balance|cancel|remove|change)\b/i;
@@ -164,7 +165,7 @@ export class VoiceCallController {
         this.lastAssistantSpeech = this.now();
         this.caption("assistant", event.delta ?? "");
         this.reply += event.delta ?? "";
-        if (this.replied()) this.schedule(() => this.claimUnheard(), USER_PAUSE_MS);
+        if (this.replied()) this.claimUnheard();
         break;
       case "session.delegation.created": {
         // The delegation carries no task text: it is what the user said up to its offset since the previous one;
@@ -206,8 +207,7 @@ export class VoiceCallController {
    * request doesn't start with it.
    */
   private claimUnheard() {
-    const quiet = this.now() - this.lastUserSpeech;
-    if (quiet < UNCLAIMED_MS && !(this.replied() && quiet >= USER_PAUSE_MS)) return;
+    if (this.now() - this.lastUserSpeech < UNCLAIMED_MS && !this.replied()) return;
     const text = this.heard.map(piece => piece.text).join("").replace(/\[[^\]]*\]/g, "").replace(/\s+/g, " ").trim();
     if (!looksLikeRequest(text)) { this.heard = []; return; }
     if (!this.lastDelegation) return;
