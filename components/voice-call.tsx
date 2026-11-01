@@ -79,7 +79,7 @@ export function VoiceCallView({ call, onClose }: { call: ReturnType<typeof useVo
           {call.tasks.slice(-6).map(task => <li key={task.requestId} className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card py-1.5 pr-1 pl-3.5 text-sm">
             <TaskIcon status={task.status} />
             <span className="min-w-0 flex-1"><span className="block truncate font-medium">{task.text}</span><span className={`block text-xs ${task.status === "failed" ? "text-danger" : "text-muted-foreground"}`}>{task.step}</span></span>
-            {task.status === "running" && <button type="button" onClick={() => void call.cancel(task.requestId)} aria-label={`Stop “${task.text}”`} className="grid size-11 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ai"><X className="size-4" aria-hidden="true" /></button>}
+            {(task.status === "running" || call.unsaid.has(task.requestId)) && <button type="button" onClick={() => void call.cancel(task.requestId)} aria-label={`Stop “${task.text}”`} className="grid size-11 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ai"><X className="size-4" aria-hidden="true" /></button>}
           </li>)}
         </ul>
       </div>}
@@ -90,7 +90,8 @@ export function VoiceCallView({ call, onClose }: { call: ReturnType<typeof useVo
       <div className="h-4 shrink-0" />
     </div>
     <footer className="border-t border-border px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-8">
-      {open && <form onSubmit={event => { event.preventDefault(); call.typed(text); setText(""); }} className="mx-auto mb-4 flex max-w-[720px] items-center gap-2">
+      {/* Typed before the call is live, the answer would have no voice to say it. */}
+      {live && <form onSubmit={event => { event.preventDefault(); call.typed(text); setText(""); }} className="mx-auto mb-4 flex max-w-[720px] items-center gap-2">
         <label className="sr-only" htmlFor="call-text">Type to Moneo</label>
         <input id="call-text" value={text} onChange={event => setText(event.target.value)} maxLength={4000} placeholder="Or type a message…" autoComplete="off"
           className="h-11 min-w-0 flex-1 rounded-full border border-input bg-card px-4 text-[15px] transition-colors focus:border-muted-foreground/60 focus:outline-none" />
