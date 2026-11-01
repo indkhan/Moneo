@@ -60,12 +60,9 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   loadAgentBriefing(supabase, workspace.id).catch(() => undefined);
   detectRecurring(supabase, workspace);
   const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version, sizes").eq("workspace_id", workspace.id).maybeSingle());
-  // Artifact cards chain onto the layout read, so they finish inside the slower forecast; each card then streams in on its own.
-  const pinnedPromise = layoutPromise.then(async ({ data }) => {
-    const ids = (Array.isArray(data?.items) ? data.items : []).map(cardIdFromKey).filter(id => id !== null);
-    return ids.length ? supabase.from("artifact_cards").select("id, artifact_id, title, size, published_version, artifacts!inner(deleted_at)").eq("workspace_id", workspace.id).in("id", ids)
-      .is("deleted_at", null).is("artifacts.deleted_at", null).not("published_version", "is", null) : { data: [], error: null };
-  });
+  // Include published cards hidden from Home so Add widget can restore them without rendering their bodies.
+  const pinnedPromise = supabase.from("artifact_cards").select("id, artifact_id, title, size, published_version, artifacts!inner(deleted_at)").eq("workspace_id", workspace.id)
+    .is("deleted_at", null).is("artifacts.deleted_at", null).not("published_version", "is", null);
   const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges, waiting, review] = await Promise.all([
     balanceEvidencePromise,
     evaluatePlanForWorkspace(supabase, workspace, 30, undefined, { balanceEvidence: balanceEvidencePromise, wealth: wealthPromise, sourceMetadata: sourceMetadataPromise }),
@@ -152,7 +149,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   // Cards on one Home share their reads: the same query runs once however many cards ask for it.
   const shared: QueryShared = {};
   // Every built-in widget can be added back from the grid, so each gets a label and width; cards only once on Home.
-  const keys = [...new Set([...ordered, ...Object.keys(BUILTIN_WIDGETS)])];
+  const keys = [...new Set([...ordered, ...[...cards.keys()].map(id => `card:${id}`), ...Object.keys(BUILTIN_WIDGETS)])];
   const sizes: Record<string, CardSize> = Object.fromEntries(keys.map(key => [key, isBuiltinWidget(key) ? widgetSize(key, saved.sizes) : cardSize(cards.get(cardIdFromKey(key)!)!.size)]));
   const labels = Object.fromEntries(keys.map(key => [key, isBuiltinWidget(key) ? widgetLabel(key) : cards.get(cardIdFromKey(key)!)!.title]));
   const sectionProps = { db: supabase, workspaceId: workspace.id, currency: displayCurrency, today, locale };

@@ -196,7 +196,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
   }
 
   const shown = layout.items.filter(key => Object.hasOwn(widgets, key) || adding.includes(key));
-  const hidden = Object.keys(options).filter(key => !key.startsWith(CARD_KEY) && !layout.items.includes(key));
+  const hidden = Object.keys(options).filter(key => !layout.items.includes(key));
   const name = (id: UniqueIdentifier) => labels[String(id)] ?? "Widget";
   const announcements: Announcements = {
     onDragStart: ({ active }) => `Picked up ${name(active.id)}.`,
