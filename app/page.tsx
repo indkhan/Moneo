@@ -4,9 +4,10 @@ import { ManualBalanceForm } from "./manual-balance-form";
 import { WeeklyBriefing, loadInsightEvidence } from "./insights/panel";
 import { CashFlowPanel, Figure, MonthCashFlow, RecentTransactions, SectionFallback, card } from "./home-sections";
 import { Suspense, type ReactNode } from "react";
-import { cardIdFromKey, dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
+import { BUILTIN_WIDGETS, cardIdFromKey, dashboardItems, dashboardLayoutSchema, isBuiltinWidget, sizeOptions, widgetSize, widgetSizesSchema } from "@/lib/finance/dashboard";
 import { CardSkeleton, HomeCard, type HomeCardRow } from "@/components/cards/home-card";
-import { CARD_SIZES, isCardSize } from "@/lib/cards/sizes";
+import { cardSize, type CardSize } from "@/lib/cards/sizes";
+import { HomeGrid } from "./home-grid";
 import type { QueryShared } from "@/lib/ai/artifact-data";
 import { IntentLink } from "@/components/intent-link";
 import { loadHomeSpending } from "@/lib/finance/dashboard-spending";
@@ -30,12 +31,6 @@ import { currentNetWorth, dayRange, loadWealthEvents, monthEnds, netWorth, netWo
 import { NetWorthChart } from "./net-worth-chart";
 import { shownBalance } from "./money/accounts/history";
 import { LayoutGrid, Phone, Sparkle } from "lucide-react";
-
-// Six columns: a wide card pairs with a narrow one and half cards pair up; dense flow fills the gaps whatever order the layout picks.
-const FULL = new Set(["overview", "history"]);
-const WIDE = new Set(["spending", "insights", "recent"]);
-const HALF = new Set(["accounts", "agents"]);
-const span = (key: string) => FULL.has(key) ? "lg:col-span-6" : WIDE.has(key) ? "lg:col-span-4" : HALF.has(key) ? "lg:col-span-3" : "lg:col-span-2";
 
 export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string }> } = {}) {
   const params = await searchParams;
@@ -63,7 +58,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   loadHomeHistory(supabase, workspace.id).catch(() => undefined);
   loadAgentBriefing(supabase, workspace.id).catch(() => undefined);
   detectRecurring(supabase, workspace);
-  const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle());
+  const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version, sizes").eq("workspace_id", workspace.id).maybeSingle());
   // Artifact cards chain onto the layout read, so they finish inside the slower forecast; each card then streams in on its own.
   const pinnedPromise = layoutPromise.then(async ({ data }) => {
     const ids = (Array.isArray(data?.items) ? data.items : []).map(cardIdFromKey).filter(id => id !== null);
@@ -155,7 +150,11 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null).filter(key => { const id = cardIdFromKey(key); return !id || cards.has(id); });
   // Cards on one Home share their reads: the same query runs once however many cards ask for it.
   const shared: QueryShared = {};
-  const spanOf = (key: string) => { const id = cardIdFromKey(key); const size = id && cards.get(id)?.size; return isCardSize(size) ? CARD_SIZES[size].span : span(key); };
+  const savedSizes = widgetSizesSchema.safeParse(layout.data?.sizes ?? {}).data ?? {};
+  // Every built-in widget can be added back from the grid, so each gets a label and width; cards only once on Home.
+  const keys = [...new Set([...ordered, ...Object.keys(BUILTIN_WIDGETS)])];
+  const sizes: Record<string, CardSize> = Object.fromEntries(keys.map(key => [key, isBuiltinWidget(key) ? widgetSize(key, savedSizes) : cardSize(cards.get(cardIdFromKey(key)!)!.size)]));
+  const labels = Object.fromEntries(keys.map(key => [key, isBuiltinWidget(key) ? BUILTIN_WIDGETS[key].split(",")[0] : cards.get(cardIdFromKey(key)!)!.title]));
   const sectionProps = { db: supabase, workspaceId: workspace.id, currency: displayCurrency, today, locale };
 
   const widgets: Record<string, ReactNode> = {
@@ -243,9 +242,8 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
       {/* Stored cards come with the page, so they never push the grid down; the slow detection streams after and reloads only if it changed a card. */}
       <WaitingForYou proposals={waiting} review={review} />
       <Suspense fallback={null}><RecurringDetection supabase={supabase} workspace={workspace} /></Suspense>
-      <div className="grid grid-flow-dense gap-4 lg:grid-cols-6">
-        {ordered.map(key => <div key={key} className={`min-w-0 ${spanOf(key)} [&>section]:h-full`}>{widgets[key]}</div>)}
-      </div>
+      <HomeGrid version={layout.data?.version ?? 0} items={ordered} sizes={sizes} labels={labels} options={Object.fromEntries(keys.map(key => [key, sizeOptions(key)]))}
+        widgets={Object.fromEntries(ordered.map(key => [key, widgets[key]]))} />
     </main>
   );
 }
