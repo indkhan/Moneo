@@ -149,10 +149,12 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
       const next = nearest(options[key], (startWidth + moved.clientX - startX + gap) / column);
       if (next !== size) { size = next; remember(); setResizing({ key, size }); }
     };
-    const end = () => {
+    const end = (event: PointerEvent) => {
       handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
       setResizing(null);
-      if (size !== from) resize(key, size);
+      if (event.type !== "pointercancel" && size !== from) resize(key, size);
     };
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", end, { once: true });
