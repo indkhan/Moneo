@@ -36,7 +36,7 @@ export const ARTIFACT_SOURCES = {
     run: (_: unknown, context: Context, shared: QueryShared) => shared.entities ??= loadInvestigationEntities(context) },
   balances: { description: "Current dated account balances.", input: empty, scopes: ["accounts"], run: (_: unknown, context: Context) => getBalances(context, imports(context)) },
   accounts: { description: "The user's accounts.", input: empty, scopes: ["accounts"], run: (_: unknown, context: Context) => listAccounts(context) },
-  recurring: { description: "Confirmed recurring payments and income (name, amount, direction, cadence, next date, category) plus detected patterns still awaiting confirmation.", input: empty, scopes: ["planning", "transactions"],
+  recurring: { description: "Confirmed recurring payments and income in schedules (name, formatted amount, exact signed amount_minor, currency_code, direction, cadence, next date, category), plus suggestions still awaiting confirmation. Generated code can calculate requested totals and cadence equivalents from schedules; keep currencies separate.", input: empty, scopes: ["planning", "transactions"],
     run: (_: unknown, context: Context) => listRecurring(context) },
   goals: { description: "The user's savings goals.", input: empty, scopes: ["planning"], run: (_: unknown, context: Context) => listGoals(context) },
   wealth: { description: "Money lent to and owed to people, other assets, holdings and debts, with totals per currency.", input: empty, scopes: ["planning"], run: (_: unknown, context: Context) => listWealth(context) },

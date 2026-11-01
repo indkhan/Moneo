@@ -11,6 +11,13 @@ const render = async (source: string, data: unknown = {}, params: Record<string,
 
 // The first render starts the WASM engine and one test waits out the runaway-loop deadline; give them room on a busy machine.
 describe("card sandbox", { timeout: 20_000 }, () => {
+  it("runs user-requested money calculations in the generated card code", async () => {
+    const tree = await render(`export default function Card({ data }) {
+      const total = data.rows.reduce((sum, row) => sum + BigInt(row.amount_minor), 0n);
+      return <Kit.Money minor={total.toString()} currency="EUR" />;
+    }`, { rows: [{ amount_minor: "9007199254740993" }, { amount_minor: "7" }] });
+    expect(tree).toEqual({ type: "kit:Money", props: { minor: "9007199254741000", currency: "EUR" }, children: [] });
+  });
   it("runs a card's React in QuickJS and returns plain elements, Kit names included", async () => {
     const tree = await render(`export default function Card({ data, size }) {
       const Row = ({ label }: { label: string }) => <li>{label}</li>;
