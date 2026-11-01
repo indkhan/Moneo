@@ -75,6 +75,14 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await expect(card.getByText("Picked b at L")).toBeVisible({ timeout: 30_000 });
     await page.waitForTimeout(1200);
     await expect(card.getByText("Picked b at L")).toBeVisible();
+    // Returning to the already displayed width must also invalidate the pending request.
+    await resize.focus();
+    const returning = page.waitForRequest(request => request.url().includes(`/api/cards/${cardId}?`) && new URL(request.url()).searchParams.get("size") === "M");
+    await page.keyboard.press("ArrowLeft");
+    await returning;
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(1200);
+    await expect(card.getByText("Picked b at L")).toBeVisible();
     await page.unroute(`**/api/cards/${cardId}?*`);
     // Return to S for the existing publish/restore checks below.
     await resize.focus();
