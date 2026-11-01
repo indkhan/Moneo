@@ -54,10 +54,9 @@ export function VoiceCallView({ call, onClose }: { call: ReturnType<typeof useVo
   const [text, setText] = useState("");
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => { body.current?.scrollTo({ top: body.current.scrollHeight }); }, [call.tasks]);
-  const last = call.captions.at(-1);
   const live = call.status === "live";
   const open = live || call.status === "connecting";
-  const state: OrbState = call.status === "connecting" ? "connecting" : !live ? "idle" : last?.role === "assistant" && !call.thinking ? "speaking" : call.thinking ? "thinking" : call.muted ? "muted" : "listening";
+  const state: OrbState = call.status === "connecting" ? "connecting" : !live ? "idle" : call.talking ? "speaking" : call.thinking ? "thinking" : call.muted ? "muted" : "listening";
   const label = { connecting: "Connecting…", listening: "Listening", muted: "You're muted", thinking: "Working on it", speaking: "Moneo is talking", idle: call.status === "ended" ? "Call ended" : "Call dropped" }[state];
   const running = call.tasks.filter(task => task.status === "running");
   const round = "grid size-16 place-items-center rounded-full transition-[background-color,transform] active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai disabled:opacity-40";

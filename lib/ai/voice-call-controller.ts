@@ -114,8 +114,8 @@ export class VoiceCallController {
   /** When Moneo last made a sound: its metered voice once there is one, else its transcript. */
   private get lastMoneo() { return this.metered ? this.lastAudible : this.lastAssistantSpeech; }
   /** Someone is talking right now. */
-  speaking(by: "user" | "any" = "any") {
-    const last = by === "user" ? this.lastUserSpeech : Math.max(this.lastUserSpeech, this.lastMoneo);
+  speaking(by: "user" | "moneo" | "any" = "any") {
+    const last = by === "user" ? this.lastUserSpeech : by === "moneo" ? this.lastMoneo : Math.max(this.lastUserSpeech, this.lastMoneo);
     return this.now() - last < SPEAKING_HOLD_MS;
   }
   /** Called while Moneo's voice is audible in the call. */
