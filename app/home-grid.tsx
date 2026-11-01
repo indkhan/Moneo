@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
-import { DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor, closestCenter, pointerWithin, useSensor, useSensors,
-  type Announcements, type CollisionDetection, type DragEndEvent, type DragOverEvent, type DragStartEvent, type UniqueIdentifier } from "@dnd-kit/core";
-import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
+import { DndContext, DragOverlay, MouseSensor, TouchSensor, pointerWithin, useSensor, useSensors,
+  type Announcements, type DragEndEvent, type DragOverEvent, type DragStartEvent, type UniqueIdentifier } from "@dnd-kit/core";
+import { SortableContext, arrayMove, useSortable } from "@dnd-kit/sortable";
 import { GripHorizontal, Plus, X } from "lucide-react";
 import { HomeCardSize } from "@/components/cards/card-view";
 import { CARD_SIZES, type CardSize } from "@/lib/cards/sizes";
@@ -15,8 +15,6 @@ type Notice = { text: string; action?: { label: string; run: () => void } };
 export type HomeGridProps = Layout & { version: number; widgets: Record<string, ReactNode>; labels: Record<string, string>; options: Record<string, CardSize[]> };
 
 const CARD_KEY = "card:";
-// The pointer picks the widget under it; the keyboard has no pointer, so it moves to the nearest one.
-const collision: CollisionDetection = args => args.pointerCoordinates ? pointerWithin(args) : closestCenter(args);
 // Widgets never shift under the dragged one: the order itself changes as it moves, and the grid lays out for real.
 const stay = () => null;
 const nearest = (options: CardSize[], columns: number) => options.reduce((best, size) => Math.abs(CARD_SIZES[size].columns - columns) < Math.abs(CARD_SIZES[best].columns - columns) ? size : best);
@@ -37,13 +35,13 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
   const [notice, setNotice] = useState<Notice | null>(null);
   const [adding, setAdding] = useState<string[]>([]);
   const [menu, setMenu] = useState(false);
+  const [said, setSaid] = useState("");
   const grid = useRef<HTMLDivElement>(null);
   const rects = useRef(new Map<string, { x: number; y: number }>());
   const skip = useRef<UniqueIdentifier | null>(null);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
 
@@ -156,12 +154,26 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     handle.addEventListener("pointerup", end, { once: true });
     handle.addEventListener("pointercancel", end, { once: true });
   }
+  /** Arrow keys on the grip move a widget one place; widths differ too much for keyboard dragging to land where expected. */
+  function moveKey(key: string, event: KeyboardEvent) {
+    const by = ({ ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 } as Record<string, number>)[event.key];
+    if (!by) return;
+    event.preventDefault();
+    const from = layout.items.indexOf(key), to = from + by;
+    if (to < 0 || to >= layout.items.length) return;
+    change({ ...layout, items: arrayMove(layout.items, from, to) });
+    setSaid(`${labels[key] ?? "Widget"} moved to position ${to + 1} of ${layout.items.length}.`);
+    // Moving the widget's node drops focus; give it back to the grip.
+    requestAnimationFrame(() => grid.current?.querySelector<HTMLElement>(`:scope > [data-widget="${CSS.escape(key)}"] [data-grip]`)?.focus());
+  }
   function resizeKey(key: string, event: KeyboardEvent) {
     const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
     const choices = options[key], next = choices[choices.indexOf(layout.sizes[key]) + step];
     if (!step) return;
     event.preventDefault();
-    if (next) resize(key, next);
+    if (!next) return;
+    resize(key, next);
+    setSaid(`${labels[key] ?? "Widget"} is now ${next}.`);
   }
 
   function hide(key: string) {
@@ -187,14 +199,14 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     onDragCancel: ({ active }) => `Moving ${name(active.id)} was cancelled.`,
   };
 
-  return <DndContext id="home-grid" sensors={sensors} collisionDetection={collision} onDragStart={dragStart} onDragOver={dragOver} onDragEnd={dragEnd} onDragCancel={() => dragEnd(null)}
-    accessibility={{ announcements, screenReaderInstructions: { draggable: "To move a widget, press Space or Enter, use the arrow keys, then press Space or Enter again. Escape cancels." } }}>
+  return <DndContext id="home-grid" sensors={sensors} collisionDetection={pointerWithin} onDragStart={dragStart} onDragOver={dragOver} onDragEnd={dragEnd} onDragCancel={() => dragEnd(null)}
+    accessibility={{ announcements, screenReaderInstructions: { draggable: "Use the arrow keys to move this widget one place at a time." } }}>
     <SortableContext items={shown} strategy={stay}>
       <div ref={grid} className="grid gap-4 lg:grid-cols-6">
         {shown.map(key => {
           const size = resizing?.key === key ? resizing.size : layout.sizes[key] ?? "M";
           return <Widget key={key} id={key} label={labels[key] ?? "Widget"} size={size} lifted={drag?.id === key} options={options[key] ?? []} selected={selected === key} resizing={resizing?.key === key}
-            onHide={() => hide(key)} onResizeStart={event => startResize(key, event)} onResizeKey={event => resizeKey(key, event)}>
+            onHide={() => hide(key)} onMoveKey={event => moveKey(key, event)} onResizeStart={event => startResize(key, event)} onResizeKey={event => resizeKey(key, event)}>
             <HomeCardSize.Provider value={layout.sizes[key] ?? null}>{widgets[key] ?? <Pending label={labels[key] ?? "Widget"} />}</HomeCardSize.Provider>
           </Widget>;
         })}
@@ -212,6 +224,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
       {drag && <div ref={node => { if (node && !node.firstChild) node.append(drag.clone); }} style={{ width: drag.width, height: drag.height }}
         className="pointer-events-none rotate-[0.6deg] scale-[1.02] cursor-grabbing rounded-2xl shadow-2xl ring-1 ring-border [&>*]:h-full [&>*>section]:h-full" />}
     </DragOverlay>
+    <p aria-live="polite" className="sr-only">{said}</p>
     {notice && <div role="status" className="fixed inset-x-0 bottom-6 z-50 mx-auto flex w-fit max-w-[calc(100%-2rem)] items-center gap-4 rounded-xl bg-foreground px-4 py-3 text-sm text-background shadow-lg">
       <span>{notice.text}</span>
       {notice.action && <button type="button" onClick={notice.action.run} className="font-medium underline-offset-2 hover:underline">{notice.action.label}</button>}
@@ -220,19 +233,19 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
 }
 
 type WidgetProps = { id: string; label: string; size: CardSize; lifted: boolean; options: CardSize[]; selected: boolean; resizing: boolean; children: ReactNode;
-  onHide: () => void; onResizeStart: (event: ReactPointerEvent<HTMLElement>) => void; onResizeKey: (event: KeyboardEvent) => void };
+  onHide: () => void; onMoveKey: (event: KeyboardEvent) => void; onResizeStart: (event: ReactPointerEvent<HTMLElement>) => void; onResizeKey: (event: KeyboardEvent) => void };
 
-function Widget({ id, label, size, lifted, options, selected, resizing, children, onHide, onResizeStart, onResizeKey }: WidgetProps) {
+function Widget({ id, label, size, lifted, options, selected, resizing, children, onHide, onMoveKey, onResizeStart, onResizeKey }: WidgetProps) {
   const { setNodeRef, setActivatorNodeRef, listeners, attributes } = useSortable({ id });
-  // One sensor per event: touch on the whole widget, mouse and keyboard on the grip.
-  const { onTouchStart, onMouseDown, onKeyDown } = (listeners ?? {}) as Record<string, (event: SyntheticEvent) => void>;
+  // One sensor per event: touch on the whole widget, the mouse on the grip.
+  const { onTouchStart, onMouseDown } = (listeners ?? {}) as Record<string, (event: SyntheticEvent) => void>;
   const tools = `transition-opacity ${lifted ? "invisible" : selected || resizing ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"}`;
   // A mouse drags by the grip, so text and links inside stay usable; a finger holds anywhere on the widget.
   return <div ref={setNodeRef} data-widget={id} onTouchStart={onTouchStart}
     className={`group relative min-w-0 ${CARD_SIZES[size].span} touch-manipulation [-webkit-touch-callout:none] pointer-coarse:select-none [&>section]:h-full ${lifted ? "rounded-2xl bg-muted/50 outline-2 outline-offset-0 outline-dashed outline-input [&>*]:opacity-0" : ""} ${selected ? "rounded-2xl outline-2 outline-brand" : ""}`}>
     {children}
     <div className={`absolute -top-3 left-1/2 z-10 flex -translate-x-1/2 items-center rounded-full border border-border bg-card shadow-sm ${tools}`}>
-      <button type="button" ref={setActivatorNodeRef} {...attributes} aria-label={`Move ${label}`} title="Drag to move" onMouseDown={onMouseDown} onKeyDown={onKeyDown}
+      <button type="button" ref={setActivatorNodeRef} {...attributes} aria-label={`Move ${label}`} data-grip title="Drag to move" onMouseDown={onMouseDown} onKeyDown={onMoveKey}
         className="flex h-7 cursor-grab items-center rounded-l-full px-2.5 text-muted-foreground hover:text-foreground active:cursor-grabbing"><GripHorizontal className="size-4" aria-hidden="true" /></button>
       <button type="button" aria-label={`Hide ${label}`} title="Hide" onClick={onHide}
         className="flex h-7 items-center rounded-r-full border-l border-border px-2 text-muted-foreground hover:text-foreground"><X className="size-3.5" aria-hidden="true" /></button>
