@@ -152,11 +152,13 @@ it("cuts each request at its hand-off's offset, leaving later words for the next
   expect(asks.map(([payload]) => payload.message)).toEqual(["Analyze last month.", "Also how much did I spend?"]);
 });
 
-it("never turns small talk GPT-Live answered itself into a request", async () => {
-  const { asks, say, advance } = setup();
+it("never turns small talk GPT-Live answered itself into a request, or into the start of the next one", async () => {
+  const { asks, say, delegate, advance } = setup();
   say("Hey, how are you doing today?");
   await advance(10_000);
   expect(asks).toHaveLength(0);
+  say("How much at Netto?"); delegate("d1");
+  expect(asks.map(([payload]) => payload.message)).toEqual(["How much at Netto?"]);
 });
 
 it("briefs each request with the call so far and what it already answered", async () => {

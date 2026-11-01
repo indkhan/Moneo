@@ -177,12 +177,14 @@ export class VoiceCallController {
   /**
    * GPT-Live sometimes says it is on a request ("sure, I'll check that too") without handing it off. Words that stay
    * unclaimed once the user has been quiet a while, and ask for something, become their own request, answered
-   * through the latest hand-off. Small talk GPT-Live answered itself stays with it.
+   * through the latest hand-off. Small talk GPT-Live answered itself stays with it, and is dropped so the next
+   * request doesn't start with it.
    */
   private claimUnheard() {
-    if (this.now() - this.lastUserSpeech < UNCLAIMED_MS || !this.lastDelegation) return;
+    if (this.now() - this.lastUserSpeech < UNCLAIMED_MS) return;
     const text = this.heard.map(piece => piece.text).join("").replace(/\[[^\]]*\]/g, "").trim();
-    if (!looksLikeRequest(text)) return;
+    if (!looksLikeRequest(text)) { this.heard = []; return; }
+    if (!this.lastDelegation) return;
     this.heard = [];
     this.deps.log?.(`claimed words GPT-Live never handed off: ${text.slice(0, 60)}`);
     this.unclaimedTask = this.start(text, this.lastDelegation);
