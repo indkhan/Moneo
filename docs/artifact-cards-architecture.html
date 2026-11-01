@@ -81,7 +81,7 @@
 <header>
   <p class="eyebrow">Moneo · personal finance · artifacts</p>
   <h1>Build it from your data, then live with it on Home.</h1>
-  <p class="lede">An artifact is a page Moneo builds from your real finances, in its own chat. Any part of it can become a card on your Home: previewed in place, sized, published when you're happy, and drawn by the app itself — not an iframe. The model can design anything, but every number still comes from the app.</p>
+  <p class="lede">An artifact is a page Moneo builds from your real finances, in its own chat. Any part of it can become a card on your Home: previewed in place, sized, published when you're happy, and drawn by the app itself — not an iframe. The model can design anything. The data always comes from the app; how a card presents it is checked by you in the preview, not by code.</p>
   <div class="stats">
     <div class="stat"><strong>~1 ms</strong><span>to run a busy card's code in the sandbox (warm)</span></div>
     <div class="stat"><strong>0</strong><span>lines of AI code that run in your browser</span></div>
@@ -93,7 +93,7 @@
 <section id="architecture">
   <p class="eyebrow">Architecture</p>
   <h2>One chat, two outputs, one data contract</h2>
-  <p class="intro">The artifact's chat is the normal Moneo chat with four extra tools. A designer model writes the Page (HTML) or a card (React). The app saves the queries the work needs, never the numbers, and reruns them every time anything is shown.</p>
+  <p class="intro">The artifact's chat is the normal Moneo chat with four extra tools. A designer model writes the Page (HTML) or a card (React). The app saves the queries the work needs and reruns them every time anything is shown, so the data is always current and app-made.</p>
   <div class="panel">
     <svg class="diagram" viewBox="0 0 1060 470" role="img" aria-label="Architecture diagram">
       <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#5d6170"/></marker></defs>
@@ -202,21 +202,21 @@
   <table>
     <tr><th>Layer</th><th>What it stops</th></tr>
     <tr><td>QuickJS sandbox<small>fresh runtime per render</small></td><td>No network, files, env, timers or imports. A 1 s deadline and a 64 MB memory ceiling stop a runaway loop from stalling Home; they aren't design limits.</td></tr>
-    <tr><td>Tree check<small>allowlist</small></td><td>Only known HTML/SVG elements and attributes get through: no script, iframe, img, a, <code>use</code>, <code>foreignObject</code>, event handlers or <code>dangerouslySetInnerHTML</code>. No <code>url()</code> except to the card's own namespaced ids, so data can't leave through a stylesheet.</td></tr>
+    <tr><td>Tree check<small>allowlist</small></td><td>Only known HTML/SVG elements and attributes get through: no script, iframe, img, a, <code>use</code>, <code>foreignObject</code>, event handlers or <code>dangerouslySetInnerHTML</code>. No loading function (<code>url()</code>, <code>image-set()</code>, <code>src()</code> …) except <code>url(#id)</code> to the card's own namespaced ids, and no backslash at all, so CSS escapes can't spell one. Data can't leave through a style.</td></tr>
     <tr><td>Kit schemas<small>strict Zod per component</small></td><td>Unknown props are refused. Charts take numbers and labels only, never chart-library options that accept HTML or functions. Links take a typed page plus ids, never a URL.</td></tr>
-    <tr><td>Scoped CSS<small>postcss</small></td><td>Every selector is prefixed with the card, keyframes are renamed, <code>@import</code> and <code>url()</code> are dropped, and <code>&lt;</code> is escaped so CSS can't close its own style tag.</td></tr>
+    <tr><td>Scoped CSS<small>postcss</small></td><td>Every selector is prefixed with the card, keyframes are renamed, <code>@import</code>, loading functions and any declaration with a backslash escape are dropped, and <code>&lt;</code> is escaped so CSS can't close its own style tag.</td></tr>
     <tr><td>Containment<small>the app's wrapper</small></td><td>A fixed height with <code>overflow: clip</code>, <code>contain: layout paint style</code> and <code>isolation</code>. Even <code>position: fixed</code> stays inside the card, so it can't draw a fake overlay over Home.</td></tr>
   </table>
 </section>
 
 <section id="data">
   <p class="eyebrow">Data</p>
-  <h2>Numbers come from the app, and they stay current</h2>
+  <h2>Data comes from the app and stays current; presentation is the model's</h2>
   <div class="grid2">
     <div class="card"><span class="tag t-lime">persistable reads</span><h3>Every chat read tool, behind an adapter</h3><p>Investigate, cashflow, transactions, detail, scenario, entities, balances, accounts, recurring, goals, wealth, forecast and agent findings. Each declares its input schema and AI scopes, which are checked again on every view. Output is made readable (formatted money, names for ids) with internal evidence stripped.</p></div>
     <div class="card"><span class="tag t-amber">dates as meaning</span><h3>“This month” stays this month</h3><p>Queries save tokens such as <code>@month_start</code>, <code>@days_ago:29</code> and <code>@param:month.from</code>, resolved in your timezone each view. A literal date is refused unless you asked for a fixed past period. The old approach shifted saved dates by elapsed days, so “this month” slowly became a sliding window.</p></div>
     <div class="card"><span class="tag t-ai">params</span><h3>Controls can't widen what a card reads</h3><p>A request can only pick a declared option: one of the last N months, a listed period, or a listed choice. Anything else falls back to the default.</p></div>
-    <div class="card"><span class="tag t-rose">financial truth</span><h3>Designers don't do money maths</h3><p>Totals come from their own query. Cards show money as the app's formatted strings or through Kit.Money, which uses bigint minor units. Minor amounts become numbers only for bar lengths.</p></div>
+    <div class="card"><span class="tag t-rose">financial truth · not enforced</span><h3>Money maths is instructed, not guaranteed</h3><p><b>Enforced:</b> the only data a card can read is the app's query results; it cannot fetch anything else. <b>Instructed only:</b> totals should come from their own query, and money should be shown as the app's formatted strings or via Kit.Money. The card is code, so it <em>can</em> still add amounts, mix currencies or hard-code a figure, and no check catches that. The safeguards are the agent and designer prompts, a preview of every version before it reaches Home, and version history to undo.</p></div>
   </div>
 </section>
 
@@ -239,10 +239,11 @@
   <p class="eyebrow">Tested live</p>
   <h2>What real runs found that unit tests didn't</h2>
   <div class="grid2">
+    <div class="card"><span class="tag t-rose">CSS escapes</span><h3>u&#92;72l( spelled url(</h3><p>Review found that CSS escapes slipped past the url() filter, so a card could have sent data to another site through a stylesheet. Any backslash in card CSS, styles or attributes is now refused, along with every loading function (url, image-set, src, …).</p></div>
     <div class="card"><span class="tag t-rose">bundling</span><h3>The WASM moved</h3><p>The production build copied QuickJS's WASM file to a path that didn't exist at runtime. Fix: load the sandbox packages from <code>node_modules</code> (<code>serverExternalPackages</code>). The card e2e test now runs against <code>next start</code>.</p></div>
     <div class="card"><span class="tag t-amber">frozen dates</span><h3>Six queries for six months</h3><p>The first month switch came back as six queries with literal dates, so it would have frozen at November. Fix: a month param with tokens, and literal dates refused unless intended.</p></div>
     <div class="card"><span class="tag t-amber">empty sample</span><h3>Guessing field names</h3><p>On the 1st of the month the sample data was empty, so the designer guessed <code>row.categoryName</code> and every bar read “Uncategorized”. Fix: it now also sees another option's data (last month) as a shape reference.</p></div>
-    <div class="card"><span class="tag t-rose">money</span><h3>Hand-made totals</h3><p>The designer summed amounts and formatted them itself. Fix: totals come from their own query, and money is shown only as app-formatted values.</p></div>
+    <div class="card"><span class="tag t-rose">money</span><h3>Hand-made totals</h3><p>The designer summed amounts and formatted them itself. The prompts now require totals from their own query and app-formatted money, and the next run complied. That is an instruction the model followed, not a check that would stop it.</p></div>
   </div>
 </section>
 
@@ -252,7 +253,7 @@
   <div class="grid2">
     <div class="card"><h3>No live browser maths on Home</h3><p>A slider on a card asks the server to re-render, which is fast but not 60 fps. The Page (sandboxed iframe) keeps full client-side interactivity.</p></div>
     <div class="card"><h3>Durability equals chat's</h3><p>A deploy or crash mid-build loses that run. The request shows as failed, and you ask again.</p></div>
-    <div class="card"><h3>A designer can still mislabel</h3><p>The sandbox stops capabilities, not wrong labels. The preview, drafts and version history are how you catch and undo that.</p></div>
+    <div class="card"><h3>A card can show a wrong number</h3><p>The sandbox stops capabilities, not wrong arithmetic or labels: a card can compute or hard-code an amount and nothing rejects it. The preview, drafts and version history are how you catch and undo that. Enforcing it would mean cards bind to values instead of rendering them, which would cost the design freedom this version was built for.</p></div>
     <div class="card"><h3>Tailwind classes</h3><p>Only classes the app already uses exist, so designed cards style themselves with style objects and scoped CSS.</p></div>
   </div>
 </section>
@@ -261,7 +262,7 @@
   <p class="eyebrow">Principles</p>
   <h2>The rules behind every decision</h2>
   <div class="principles">
-    <div class="card"><h3>Money facts come from code</h3><p>Pages and cards save queries, not numbers. Totals and formatting come from the app.</p></div>
+    <div class="card"><h3>Data comes from code</h3><p>Pages and cards save queries, not numbers. What a card shows from that data is the model's work, so you review it before it reaches Home.</p></div>
     <div class="card"><h3>Untrusted by default</h3><p>AI code runs only in a sandbox, and its output is checked before it reaches React.</p></div>
     <div class="card"><h3>See it where it will live</h3><p>The preview is the real card in its Home slot. Home changes only when you publish.</p></div>
     <div class="card"><h3>Reuse, don't fork</h3><p>One chat and one set of read tools. Presets and designed cards share one render pipeline.</p></div>
