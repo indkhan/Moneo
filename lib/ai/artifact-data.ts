@@ -19,7 +19,7 @@ const imports = (context: Context) => context.settings.ai_data_scopes.includes("
 // sources are the builder's tools and the viewer's refresh, so a saved query always reruns.
 export const ARTIFACT_SOURCES = {
   investigate: { description: "Spending/income totals, groupings and rankings over exact dates, accounts, categories and merchants.", input: investigationSchema, scopes: ["accounts", "transactions"],
-    run: (input: unknown, context: Context, shared?: Shared) => runInvestigation(input, context, { canReadImports: imports(context), entities: shared && (shared.entities ??= loadInvestigationEntities(context)) }) },
+    run: (input: unknown, context: Context, shared?: Shared) => runInvestigation(input, context, { canReadImports: imports(context), sourceVersions: false, entities: shared && (shared.entities ??= loadInvestigationEntities(context)) }) },
   cashflow: { description: "Posted income and spending for a period in one currency.", input: financeToolSchemas.periodInput, scopes: ["transactions"],
     run: (input: unknown, context: Context) => cashflow(input, context, imports(context)) },
   transactions: { description: "Transactions, newest first, filtered by text, dates and amounts (max 50).", input: financeToolSchemas.searchInput, scopes: ["transactions"],

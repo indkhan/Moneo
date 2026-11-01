@@ -38,7 +38,7 @@ const ratesFor = perClient((supabase: SupabaseClient, workspaceId: string) =>
 type Source = { id: string; import_id: string; status: string; review_reasons: string[]; normalized_row: unknown; fee_evidence: unknown;
   imports: { run_version: number; status: string; undone_at: string | null } | null; transaction_sources: { transaction_id: string }[] | { transaction_id: string } | null };
 
-async function loadRows(context: Context, spec: InvestigationSpec, includeAll = false, canReadImports = true) {
+async function loadRows(context: Context, spec: InvestigationSpec, includeAll = false, canReadImports = true, withSources = canReadImports) {
   const { supabase, workspace } = context;
   const from = [spec.period.from, spec.comparison?.from].filter((v): v is string => Boolean(v)).sort()[0];
   const to = [spec.period.to, spec.comparison?.to].filter((v): v is string => Boolean(v)).sort().at(-1)!;
@@ -50,7 +50,7 @@ async function loadRows(context: Context, spec: InvestigationSpec, includeAll = 
   };
   const [effective, sources] = await Promise.all([
     allRows<LedgerRow>(ledger),
-    canReadImports ? sourcesFor(supabase, workspace.id) : [],
+    withSources ? sourcesFor(supabase, workspace.id) : [],
   ]);
   const byParent = new Map<string, unknown[]>();
   for (const source of sources) for (const link of Array.isArray(source.transaction_sources) ? source.transaction_sources : source.transaction_sources ? [source.transaction_sources] : []) {
@@ -79,13 +79,14 @@ async function loadRows(context: Context, spec: InvestigationSpec, includeAll = 
 /**
  * Internal dataset is retained in full for evidence receipts; outward supporting access is paginated.
  * `entities` lets a caller that already reads them (the Investigations page) share that read.
+ * `sourceVersions: false` skips each record's import sources, for readers that never show them (chat, artifacts).
  */
-export async function loadInvestigationDataset(input: unknown, context?: Context, options: { canReadImports?: boolean; includeAll?: boolean; entities?: Promise<InvestigationEntities> } = {}) {
+export async function loadInvestigationDataset(input: unknown, context?: Context, options: { canReadImports?: boolean; includeAll?: boolean; entities?: Promise<InvestigationEntities>; sourceVersions?: boolean } = {}) {
   const ctx = context ?? await requireWorkspace();
   const entities = await (options.entities ?? loadInvestigationEntities(ctx));
   const spec = resolveInvestigation(input, entities);
   const canReadImports = options.canReadImports ?? true;
-  const [rows, metadata, rates] = await Promise.all([loadRows(ctx, spec, options.includeAll ?? false, canReadImports), loadSourceCoverageMetadata(ctx.supabase, ctx.workspace.id, canReadImports),
+  const [rows, metadata, rates] = await Promise.all([loadRows(ctx, spec, options.includeAll ?? false, canReadImports, canReadImports && (options.sourceVersions ?? true)), loadSourceCoverageMetadata(ctx.supabase, ctx.workspace.id, canReadImports),
     spec.currencyPolicy.mode === "base" ? ratesFor(ctx.supabase, ctx.workspace.id) : []]);
   const accountIds = spec.accounts?.include?.flatMap(ref => "id" in ref ? [ref.id] : []);
   const scope = { ...(accountIds?.length ? { accountIds } : {}), ...(spec.currencyPolicy.mode === "original" && spec.currencyPolicy.currencies?.length === 1 ? { currencyCode: spec.currencyPolicy.currencies[0] } : {}) };
@@ -97,7 +98,7 @@ export async function loadInvestigationDataset(input: unknown, context?: Context
     rates: rates.map(r => ({ id: r.id, fromCurrency: r.from_currency, toCurrency: r.to_currency, rateText: r.rate_text, rateDate: r.rate_date, source: r.source })) },
     sourceRevision: investigationIdentity({ rows, metadata, rates, entities }) };
 }
-export async function runInvestigation(input: unknown, context?: Context, options: { canReadImports?: boolean; entities?: Promise<InvestigationEntities> } = {}) {
+export async function runInvestigation(input: unknown, context?: Context, options: { canReadImports?: boolean; entities?: Promise<InvestigationEntities>; sourceVersions?: boolean } = {}) {
   const data = await loadInvestigationDataset(input, context, options);
   const result = investigate(data.spec, data.rows, data.context);
   return { ...result, sourceRevision: data.sourceRevision,
