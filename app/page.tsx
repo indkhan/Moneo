@@ -4,8 +4,10 @@ import { ManualBalanceForm } from "./manual-balance-form";
 import { WeeklyBriefing, loadInsightEvidence } from "./insights/panel";
 import { CashFlowPanel, Figure, MonthCashFlow, RecentTransactions, SectionFallback, card } from "./home-sections";
 import { Suspense, type ReactNode } from "react";
-import { artifactIdFromKey, dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
-import { ArtifactFrame } from "@/components/artifact-frame";
+import { cardIdFromKey, dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
+import { CardSkeleton, HomeCard, type HomeCardRow } from "@/components/cards/home-card";
+import { CARD_SIZES, isCardSize } from "@/lib/cards/sizes";
+import type { QueryShared } from "@/lib/ai/artifact-data";
 import { IntentLink } from "@/components/intent-link";
 import { loadHomeSpending } from "@/lib/finance/dashboard-spending";
 import { redirect } from "next/navigation";
@@ -33,7 +35,7 @@ import { LayoutGrid, Phone, Sparkle } from "lucide-react";
 const FULL = new Set(["overview", "history"]);
 const WIDE = new Set(["spending", "insights", "recent"]);
 const HALF = new Set(["accounts", "agents"]);
-const span = (key: string) => FULL.has(key) ? "lg:col-span-6" : WIDE.has(key) || artifactIdFromKey(key) ? "lg:col-span-4" : HALF.has(key) ? "lg:col-span-3" : "lg:col-span-2";
+const span = (key: string) => FULL.has(key) ? "lg:col-span-6" : WIDE.has(key) ? "lg:col-span-4" : HALF.has(key) ? "lg:col-span-3" : "lg:col-span-2";
 
 export default async function Home({ searchParams }: { searchParams?: Promise<{ account?: string }> } = {}) {
   const params = await searchParams;
@@ -62,10 +64,11 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   loadAgentBriefing(supabase, workspace.id).catch(() => undefined);
   detectRecurring(supabase, workspace);
   const layoutPromise = Promise.resolve(supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle());
-  // Pinned artifact titles chain onto the layout read, so they finish inside the slower forecast; the frames load their data themselves.
+  // Artifact cards chain onto the layout read, so they finish inside the slower forecast; each card then streams in on its own.
   const pinnedPromise = layoutPromise.then(async ({ data }) => {
-    const ids = (Array.isArray(data?.items) ? data.items : []).map(artifactIdFromKey).filter(id => id !== null);
-    return ids.length ? supabase.from("artifacts").select("id, title").eq("workspace_id", workspace.id).in("id", ids).is("deleted_at", null) : { data: [], error: null };
+    const ids = (Array.isArray(data?.items) ? data.items : []).map(cardIdFromKey).filter(id => id !== null);
+    return ids.length ? supabase.from("artifact_cards").select("id, artifact_id, title, size, published_version, artifacts!inner(deleted_at)").eq("workspace_id", workspace.id).in("id", ids)
+      .is("deleted_at", null).is("artifacts.deleted_at", null).not("published_version", "is", null) : { data: [], error: null };
   });
   const [balanceEvidence, projection, wealthItems, rates, layout, pinned, goals, allocations, sourceMetadata, allWealth, wealthEvents, bankAccounts, priceChanges, waiting, review] = await Promise.all([
     balanceEvidencePromise,
@@ -147,16 +150,18 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const available = projection.available;
   const parsedLayout = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
   if (parsedLayout && !parsedLayout.success) throw new Error("Dashboard preferences are invalid; review them in Settings");
-  const pinnedTitles = new Map((pinned.data ?? []).map(artifact => [artifact.id as string, artifact.title as string]));
+  const cards = new Map((pinned.data ?? []).map(row => [row.id as string, row as unknown as HomeCardRow & { artifact_id: string }]));
   // A deleted artifact simply drops off Home; its key is cleaned up the next time the layout is saved.
-  const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null).filter(key => { const id = artifactIdFromKey(key); return !id || pinnedTitles.has(id); });
+  const ordered = dashboardItems(parsedLayout?.success ? parsedLayout.data : null).filter(key => { const id = cardIdFromKey(key); return !id || cards.has(id); });
+  // Cards on one Home share their reads: the same query runs once however many cards ask for it.
+  const shared: QueryShared = {};
+  const spanOf = (key: string) => { const id = cardIdFromKey(key); const size = id && cards.get(id)?.size; return isCardSize(size) ? CARD_SIZES[size].span : span(key); };
   const sectionProps = { db: supabase, workspaceId: workspace.id, currency: displayCurrency, today, locale };
 
   const widgets: Record<string, ReactNode> = {
-    ...Object.fromEntries([...pinnedTitles].map(([id, title]) => [`artifact:${id}`, <section key={id} aria-label={title} className={`${card} flex flex-col gap-3`}>
-      <div className="flex items-baseline justify-between gap-2"><h2 className="truncate text-sm font-medium">{title}</h2><Link href={`/ai/artifacts/${id}`} className="shrink-0 text-sm font-medium text-brand hover:underline">Open</Link></div>
-      <ArtifactFrame src={`/ai/artifacts/${id}/frame?view=widget`} title={title} loading="lazy" fit className="w-full" />
-    </section>])),
+    ...Object.fromEntries([...cards.values()].map(row => [`card:${row.id}`, <Suspense key={row.id} fallback={<CardSkeleton title={row.title} />}>
+      <HomeCard card={row} context={context} shared={shared} open={`/ai/artifacts/${row.artifact_id}?tab=cards`} />
+    </Suspense>])),
     overview: <section aria-label="Overview" className="grid gap-4 lg:grid-cols-3">
       <div className={`${card} flex flex-col gap-5 lg:col-span-2`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -239,7 +244,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
       <WaitingForYou proposals={waiting} review={review} />
       <Suspense fallback={null}><RecurringDetection supabase={supabase} workspace={workspace} /></Suspense>
       <div className="grid grid-flow-dense gap-4 lg:grid-cols-6">
-        {ordered.map(key => <div key={key} className={`min-w-0 ${span(key)} [&>section]:h-full`}>{widgets[key]}</div>)}
+        {ordered.map(key => <div key={key} className={`min-w-0 ${spanOf(key)} [&>section]:h-full`}>{widgets[key]}</div>)}
       </div>
     </main>
   );

@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { artifactWidgetKey, dashboardItems, dashboardLayoutSchema, setWidget } from "@/lib/finance/dashboard";
+import { cardWidgetKey, dashboardItems, dashboardLayoutSchema, setWidget } from "@/lib/finance/dashboard";
+import { CARD_SIZE_KEYS, type CardSize } from "@/lib/cards/sizes";
 
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 
@@ -29,23 +30,61 @@ export async function saveDashboard(form: FormData) {
   redirect("/settings");
 }
 
-/** Pins an artifact to Home (its compact widget view) or takes it off. */
-export async function setArtifactOnHome(id: string, onHome: boolean) {
-  const artifactId = z.uuid().parse(id);
-  const context = await requireWorkspace();
-  const { supabase, workspace } = context;
-  const [layout, artifact] = await Promise.all([
-    supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle(),
-    supabase.from("artifacts").select("id").eq("workspace_id", workspace.id).eq("id", artifactId).is("deleted_at", null).maybeSingle(),
-  ]);
-  if (layout.error || artifact.error) throw new Error("Dashboard could not be loaded; try again");
-  if (onHome && !artifact.data) throw new Error("Artifact not found");
+/** The saved Home layout, ready to change. */
+async function loadLayout({ supabase, workspace }: Workspace) {
+  const layout = await supabase.from("dashboard_layouts").select("items, version").eq("workspace_id", workspace.id).maybeSingle();
+  if (layout.error) throw new Error("Dashboard could not be loaded; try again");
   const saved = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
   if (saved && !saved.success) throw new Error("Dashboard preferences are invalid; review them in Settings");
-  const current = dashboardItems(saved?.data ?? null);
-  const items = setWidget(current, artifactWidgetKey(artifactId), onHome);
-  if (items.length === current.length) return;
-  if (items.length > 50) throw new Error("Home is full; remove a widget in Settings first");
-  await writeLayout(context, layout.data?.version ?? 0, items);
-  revalidatePath(`/ai/artifacts/${artifactId}`);
+  return { items: dashboardItems(saved?.data ?? null), version: layout.data?.version ?? 0 };
+}
+
+async function setCardOnHome(context: Workspace, cardId: string, on: boolean) {
+  const { items, version } = await loadLayout(context);
+  const next = setWidget(items, cardWidgetKey(cardId), on);
+  if (next.length === items.length) return;
+  if (next.length > 50) throw new Error("Home is full; remove a widget in Settings first");
+  await writeLayout(context, version, next);
+}
+
+/**
+ * Puts a card version on Home, or moves Home to a newer version. Only the version the user previewed is
+ * published, and only if Home still shows what they saw, so two tabs can't publish over each other.
+ */
+export async function publishCard(id: string, version: number, shown: number | null) {
+  const cardId = z.uuid().parse(id);
+  const target = z.number().int().min(1).parse(version);
+  const context = await requireWorkspace();
+  const { supabase, workspace } = context;
+  const exists = await supabase.from("artifact_card_versions").select("id").eq("workspace_id", workspace.id).eq("card_id", cardId).eq("version", target).maybeSingle();
+  if (exists.error || !exists.data) throw new Error("That card version is not available");
+  let update = supabase.from("artifact_cards").update({ published_version: target, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("id", cardId).is("deleted_at", null);
+  update = shown === null ? update.is("published_version", null) : update.eq("published_version", shown);
+  const { data, error } = await update.select("artifact_id").maybeSingle();
+  if (error) throw new Error("Card could not be published; try again");
+  if (!data) throw new Error("Home changed in another tab; reload before publishing");
+  await setCardOnHome(context, cardId, true);
+  revalidatePath(`/ai/artifacts/${data.artifact_id}`);
+}
+
+/** Takes a card off Home; it stays in the artifact to add again. */
+export async function unpublishCard(id: string) {
+  const cardId = z.uuid().parse(id);
+  const context = await requireWorkspace();
+  const { supabase, workspace } = context;
+  const { data, error } = await supabase.from("artifact_cards").update({ published_version: null, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("id", cardId).select("artifact_id").maybeSingle();
+  if (error || !data) throw new Error("Card could not be removed from Home; try again");
+  await setCardOnHome(context, cardId, false);
+  revalidatePath(`/ai/artifacts/${data.artifact_id}`);
+}
+
+/** A card's size on Home (and in its preview). */
+export async function setCardSize(id: string, size: string) {
+  const cardId = z.uuid().parse(id);
+  const parsed = z.enum(CARD_SIZE_KEYS as [CardSize, ...CardSize[]]).parse(size);
+  const { supabase, workspace } = await requireWorkspace();
+  const { data, error } = await supabase.from("artifact_cards").update({ size: parsed, updated_at: new Date().toISOString() }).eq("workspace_id", workspace.id).eq("id", cardId).select("artifact_id").maybeSingle();
+  if (error || !data) throw new Error("Card size could not be saved; try again");
+  revalidatePath(`/ai/artifacts/${data.artifact_id}`);
+  revalidatePath("/");
 }

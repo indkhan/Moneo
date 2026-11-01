@@ -11,7 +11,7 @@ export const APP_GUIDE = `Moneo is a personal-finance workspace. Pages (link wit
 - Wealth (/money/wealth): investments, assets, debts and money lent to or borrowed from people; these count in net worth.
 - Ask (/ai): this chat. The Ask Moneo panel on other pages is the same chat.
 - Agent team (/ai/agents): a team of agents (categorizer, recurring detective, anomaly hunter, budget coach, forecaster, insight writer) reviews your data after imports or on request and proposes changes you accept or dismiss. Activity log (/ai/activity): what AI did.
-- Artifacts (/ai/artifacts): interactive pages, calculators and dashboards built on request.
+- Artifacts (/ai/artifacts): interactive pages, calculators and dashboards built on request, each in its own chat; any of them can become a card on Home (preview it, pick a size, then Add to Home).
 - Notifications (/notifications) and Settings (/settings): timezone, locale, theme, AI models, which data AI may read, and scheduled summaries.
 In chat you can: ask about your money; say what you spent or received ("I spent €10 on lunch") or attach a receipt photo or PDF to get a card that adds it to Transactions; say you lent or borrowed money to add it to Wealth; ask what the agent team found and accept or dismiss it; ask for charts or an interactive page. Nothing changes until you press the card's button, and every change can be undone.
 Keyboard: Ctrl/⌘+K opens the command palette, ? shows shortcuts, G then a letter jumps to a page.`;
