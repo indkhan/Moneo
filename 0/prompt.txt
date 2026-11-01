@@ -1,0 +1,21 @@
+ok i want you to test it youruself as a user and see if you face any problems try diffferent scenarios and all
+
+---
+
+<task-notification>
+<task-id>bvt6e43nq</task-id>
+<tool-use-id>toolu_01MjZc6ci9sfm32wHDx9BXFF</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-03840b08\20d85e35-e8b7-460d-9f3c-37224e24020c\tasks\bvt6e43nq.output</output-file>
+<status>failed</status>
+<summary>Background command "Run dev server in background" failed with exit code 1</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b49jmhfap</task-id>
+<tool-use-id>toolu_013SA3Ep83uMTnAeWyouZrbG</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-03840b08\20d85e35-e8b7-460d-9f3c-37224e24020c\tasks\b49jmhfap.output</output-file>
+<status>failed</status>
+<summary>Background command "Start fresh dev server" failed with exit code 127</summary>
+</task-notification>
