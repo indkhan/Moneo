@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, createElement, Fragment, useContext, useState, useTransition, type ComponentProps, type ReactNode } from "react";
+import { createContext, createElement, Fragment, useContext, useEffect, useState, useTransition, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
 import { formatMoney } from "@/lib/finance/format";
 import { minorDigits } from "@/lib/finance/fx";
@@ -13,6 +13,8 @@ import { CardChart, type CardChartProps } from "./card-chart";
 
 type Live = { params: ParamState[]; setParam: (name: string, value: string) => void; busy: boolean; locale?: string };
 const LiveCard = createContext<Live>({ params: [], setParam: () => {}, busy: false });
+/** The size Home's grid gives a card; when the user resizes it there, the card fetches its body for the new size. */
+export const HomeCardSize = createContext<CardSize | null>(null);
 
 const PAGES: Record<z.infer<typeof linkTarget>["page"], string> = { transactions: "/money/transactions", budgets: "/plan/spending", recurring: "/money/recurring",
   goals: "/plan", accounts: "/money/accounts", wealth: "/money/wealth", plan: "/plan", forecast: "/plan", artifacts: "/ai/artifacts" };
@@ -77,21 +79,25 @@ export type CardViewProps = { cardId: string; title: string; size: CardSize; tre
  * A Home card: the app's own title row, then the card's checked tree in a fixed-height, clipped, isolated box.
  * Nothing in the tree can paint outside the box or cover the rest of Home. Changing a param re-renders it on the server.
  */
-export function CardView({ cardId, title, size, tree: initialTree, error: initialError, params: initialParams, scope, version, open, locale }: CardViewProps) {
-  const [view, setView] = useState({ tree: initialTree, error: initialError ?? null, params: initialParams });
+export function CardView({ cardId, title, size: renderedSize, tree: initialTree, error: initialError, params: initialParams, scope, version, open, locale }: CardViewProps) {
+  const size = useContext(HomeCardSize) ?? renderedSize;
+  const [view, setView] = useState({ tree: initialTree, error: initialError ?? null, params: initialParams, size: renderedSize });
   const [busy, start] = useTransition();
   const [seen, setSeen] = useState(initialTree);
   // A server re-render (a new version, another size) replaces what this card showed.
-  if (seen !== initialTree) { setSeen(initialTree); setView({ tree: initialTree, error: initialError ?? null, params: initialParams }); }
-  function setParam(name: string, value: string) {
+  if (seen !== initialTree) { setSeen(initialTree); setView({ tree: initialTree, error: initialError ?? null, params: initialParams, size: renderedSize }); }
+  function load(values: ParamState[]) {
     const query = new URLSearchParams({ size, ...(version ? { v: String(version) } : {}) });
-    for (const param of view.params) query.set(`p.${param.name}`, param.name === name ? value : param.value);
+    for (const param of values) query.set(`p.${param.name}`, param.value);
     start(async () => {
       const response = await fetch(`/api/cards/${cardId}?${query}`, { cache: "no-store" });
       const body = await response.json().catch(() => ({ error: "Could not load the card" }));
-      setView(current => response.ok ? { tree: body.tree, error: body.error ?? null, params: body.params } : { ...current, error: body.error ?? "Could not load the card" });
+      setView(current => response.ok ? { tree: body.tree, error: body.error ?? null, params: body.params, size } : { ...current, error: body.error ?? "Could not load the card" });
     });
   }
+  const setParam = (name: string, value: string) => load(view.params.map(param => param.name === name ? { ...param, value } : param));
+  // Resized on Home: the body was laid out for the old width.
+  useEffect(() => { if (size !== view.size) load(view.params); }, [size]); // eslint-disable-line react-hooks/exhaustive-deps
   return <section aria-label={title} className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card" style={{ height: CARD_HEIGHT }}>
     <div className="flex items-baseline justify-between gap-2 px-5 pt-4 pb-2"><h2 className="truncate text-sm font-medium">{title}</h2>{open && <Link href={open} className="shrink-0 text-sm font-medium text-brand hover:underline">Open</Link>}</div>
     <div data-card={scope} className={`relative isolate min-h-0 flex-1 overflow-clip px-5 pb-4 transition-opacity [contain:layout_paint_style] ${busy ? "opacity-60" : ""}`}>
