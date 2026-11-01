@@ -47,3 +47,10 @@ it("retains listening socket ports for the actual Workflow lookup", async () => 
     expect(await getAllPorts()).toContain((server.address() as AddressInfo).port);
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); }
 });
+it("keeps server connections open between page loads", async () => {
+  vi.stubEnv("NEXT_RUNTIME", "nodejs"); vi.stubEnv("VERCEL", "1");
+  const { getGlobalDispatcher } = await import("undici");
+  const before = getGlobalDispatcher();
+  await register();
+  expect(getGlobalDispatcher()).not.toBe(before);
+});
