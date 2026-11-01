@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, createElement, Fragment, useContext, useEffect, useState, useTransition, type ComponentProps, type ReactNode } from "react";
+import { createContext, createElement, Fragment, useContext, useEffect, useRef, useState, useTransition, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
 import { formatMoney } from "@/lib/finance/format";
 import { minorDigits } from "@/lib/finance/fx";
@@ -86,12 +86,16 @@ export function CardView({ cardId, title, size: renderedSize, tree: initialTree,
   const [seen, setSeen] = useState(initialTree);
   // A server re-render (a new version, another size) replaces what this card showed.
   if (seen !== initialTree) { setSeen(initialTree); setView({ tree: initialTree, error: initialError ?? null, params: initialParams, size: renderedSize }); }
+  const request = useRef(0);
+  useEffect(() => () => { request.current++; }, []);
   function load(values: ParamState[]) {
+    const ticket = ++request.current;
     const query = new URLSearchParams({ size, ...(version ? { v: String(version) } : {}) });
     for (const param of values) query.set(`p.${param.name}`, param.value);
     start(async () => {
       const response = await fetch(`/api/cards/${cardId}?${query}`, { cache: "no-store" });
       const body = await response.json().catch(() => ({ error: "Could not load the card" }));
+      if (ticket !== request.current) return;
       setView(current => response.ok ? { tree: body.tree, error: body.error ?? null, params: body.params, size } : { ...current, error: body.error ?? "Could not load the card" });
     });
   }
