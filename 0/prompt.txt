@@ -1,0 +1,17 @@
+<task-notification>
+<task-id>bbepmuggo</task-id>
+<tool-use-id>toolu_01Ma2YbMK8H9YczkRY2SseV9</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-62fa644d\d5a47289-52b6-4b46-8d11-41d1ec373b2c\tasks\bbepmuggo.output</output-file>
+<status>failed</status>
+<summary>Background command "Start dev server on port 3100" failed with exit code 1</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>blc75iov5</task-id>
+<tool-use-id>toolu_01S1uZp8cNs6NuPt9r2JbrAL</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-62fa644d\d5a47289-52b6-4b46-8d11-41d1ec373b2c\tasks\blc75iov5.output</output-file>
+<status>completed</status>
+<summary>Background command "Run real GPT-Live call check again" completed (exit code 0)</summary>
+</task-notification>
