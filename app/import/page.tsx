@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { ImportMapping, SourceRow, WorkbookScope } from "@/lib/import/csv";
 import { WorkbookScopeReview, type WorkbookSheet } from "./workbook-scope";
 import { formatMoney } from "@/lib/finance/format";
@@ -96,15 +95,6 @@ export default function ImportPage() {
   const [error, setError] = useState("");
   const [rowsReviewed, setRowsReviewed] = useState(false);
   const [history, setHistory] = useState<ImportStatus[]>([]);
-  // Pages visited in the last 30 s are reused from the client cache (next.config.ts); a finished, failed or
-  // undone import changes money everywhere, so it clears that cache.
-  const router = useRouter();
-  const settled = history.filter(item => !["pending", "queued", "running"].includes(item.status)).map(item => `${item.id}:${item.status}`).join();
-  const seenSettled = useRef<string | null>(null);
-  useEffect(() => {
-    if (seenSettled.current !== null && seenSettled.current !== settled) router.refresh();
-    seenSettled.current = settled;
-  }, [settled, router]);
   const [confirmedIds, setConfirmedIds] = useState<string[]>([]);
   const [undoId, setUndoId] = useState<string | null>(null);
   const [preview, setPreview] = useState<UndoPreview | null>(null);
