@@ -188,7 +188,15 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     const before = layout;
     setSelected(null);
     change({ ...layout, items: layout.items.filter(item => item !== key) });
-    setNotice({ text: `${labels[key] ?? "Widget"} hidden`, action: { label: "Undo", run: () => { setNotice(null); const current = currentLayout.current; const items = current.items.filter(item => item !== key); items.splice(Math.min(before.items.indexOf(key), items.length), 0, key); if (!Object.hasOwn(currentWidgets.current, key)) setAdding(current => [...current, key]); change({ ...current, items }, !Object.hasOwn(currentWidgets.current, key)); } } });
+    setNotice({ text: `${labels[key] ?? "Widget"} hidden`, action: { label: "Undo", run: () => {
+      setNotice(null);
+      const current = currentLayout.current;
+      const items = current.items.filter(item => item !== key);
+      items.splice(Math.min(before.items.indexOf(key), items.length), 0, key);
+      const needsContent = !Object.hasOwn(currentWidgets.current, key);
+      if (needsContent) setAdding(current => [...current, key]);
+      change({ ...current, items }, needsContent);
+    } } });
   }
   function add(key: string) {
     setMenu(false);
