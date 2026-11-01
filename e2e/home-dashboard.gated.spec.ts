@@ -74,6 +74,24 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
   await expect(goals).toBeVisible();
   await undone;
   await expect(overviewResize).toHaveAttribute("aria-label", overviewAfter!);
+  // A server refresh for another addition must not prevent Undo restoring content.
+  await goals.hover();
+  const hideAgain = saved(page);
+  await goals.getByRole("button", { name: "Hide Goals" }).click();
+  await hideAgain;
+  await page.getByRole("button", { name: "Add widget", exact: true }).click();
+  const other = page.getByRole("list", { name: "Hidden widgets" }).getByRole("button").filter({ hasNotText: /^Goals$/ }).first();
+  if (await other.count()) {
+    const addedOther = saved(page);
+    await other.click();
+    await addedOther;
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await expect(goals.getByRole("heading", { name: "Goals", exact: true })).toBeVisible({ timeout: 30_000 });
+  } else {
+    await page.getByRole("button", { name: "Add widget", exact: true }).click();
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+  }
+
   await goals.hover();
   const hidden = saved(page);
   await goals.getByRole("button", { name: "Hide Goals" }).click();
