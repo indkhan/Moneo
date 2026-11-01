@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { applyRecurringProposal, proposeRecurring } from "@/lib/ai/recurring-proposals";
+import { applyRecurringProposal, listRecurring, proposeRecurring } from "@/lib/ai/recurring-proposals";
 
 type Rows = Record<string, unknown[]>;
 function fakeDb(rows: Rows) {
@@ -19,6 +19,12 @@ function fakeDb(rows: Rows) {
 }
 const bank = { id: "00000000-0000-4000-8000-0000000000bb", name: "N26", type: "checking", currency_code: "EUR" };
 const gym = { id: "00000000-0000-4000-8000-0000000000cc", version: 3, name: "Gym", amount_minor: "-2990", currency_code: "EUR", cadence: "monthly", starts_on: "2026-10-01", schedule_anchor_on: null, account_id: bank.id, category: null };
+
+it("supplies exact recurring amounts and currencies for artifact-defined calculations", async () => {
+  const { context } = fakeDb({ financial_assumptions: [gym] });
+  const result = await listRecurring(context);
+  expect(result.schedules[0]).toMatchObject({ amount_minor: "-2990", currency_code: "EUR", amount: "-EUR 29.90", cadence: "monthly" });
+});
 
 it("proposes incoming salary with a category in exact minor units and changes nothing yet", async () => {
   const { inserts, calls, context } = fakeDb({ accounts: [bank] });

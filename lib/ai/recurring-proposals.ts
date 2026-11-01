@@ -57,7 +57,7 @@ export async function listRecurring(context: Context) {
   const money = (minor: string | bigint, currency: string) => formatMoney(minor, currency, context.workspace.locale);
   const [schedules, suggestions] = await Promise.all([activeSchedules(context), loadSuggestions(context.supabase, context.workspace)]);
   return {
-    schedules: schedules.map(item => ({ id: item.id, name: item.name, amount: money(item.amount_minor, item.currency_code), direction: item.amount_minor.startsWith("-") ? "out" : "in",
+    schedules: schedules.map(item => ({ id: item.id, name: item.name, amount: money(item.amount_minor, item.currency_code), amount_minor: item.amount_minor, currency_code: item.currency_code, direction: item.amount_minor.startsWith("-") ? "out" : "in",
       cadence: item.cadence, next: expandSchedule({ ...item, account_id: item.account_id ?? "unassigned", ends_on: null }, today, 400)[0]?.date ?? null, category: item.category?.name ?? null })),
     suggestions: suggestions.pending.filter(item => item.related.length <= 1).map(({ series }) => ({ id: series.runAnchorId, label: series.label, cadence: series.cadence,
       amount: series.amountMinMinor === series.amountMaxMinor ? money(series.amountMinMinor, series.currencyCode) : `${money(series.amountMinMinor, series.currencyCode)} to ${money(series.amountMaxMinor, series.currencyCode)}`,
