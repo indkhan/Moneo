@@ -101,7 +101,7 @@ export function CardView({ cardId, title, size: renderedSize, tree: initialTree,
   }
   const setParam = (name: string, value: string) => load(view.params.map(param => param.name === name ? { ...param, value } : param));
   // Resized on Home: the body was laid out for the old width.
-  useEffect(() => { if (size !== view.size) load(view.params); }, [size]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { request.current++; if (size !== view.size) load(view.params); }, [size]); // eslint-disable-line react-hooks/exhaustive-deps
   return <section aria-label={title} className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card" style={{ height: CARD_HEIGHT }}>
     <div className="flex items-baseline justify-between gap-2 px-5 pt-4 pb-2"><h2 className="truncate text-sm font-medium">{title}</h2>{open && <Link href={open} className="shrink-0 text-sm font-medium text-brand hover:underline">Open</Link>}</div>
     <div data-card={scope} className={`relative isolate min-h-0 flex-1 overflow-clip px-5 pb-4 transition-opacity [contain:layout_paint_style] ${busy ? "opacity-60" : ""}`}>
