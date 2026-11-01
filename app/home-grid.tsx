@@ -28,6 +28,8 @@ const nearest = (options: CardSize[], columns: number) => options.reduce((best, 
  */
 export function HomeGrid({ version, items, sizes, widgets, labels, options }: HomeGridProps) {
   const [layout, setLayout] = useState<Layout>({ items, sizes });
+  const currentLayout = useRef(layout);
+  currentLayout.current = layout;
   // The grid owns the layout once shown: a later server render (an added widget's content arriving) can carry an older one.
   // Another tab's change surfaces as a conflict on the next save.
   const saved = useRef(version);
@@ -182,7 +184,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options }: Ho
     const before = layout;
     setSelected(null);
     change({ ...layout, items: layout.items.filter(item => item !== key) });
-    setNotice({ text: `${labels[key] ?? "Widget"} hidden`, action: { label: "Undo", run: () => { setNotice(null); change(before); } } });
+    setNotice({ text: `${labels[key] ?? "Widget"} hidden`, action: { label: "Undo", run: () => { setNotice(null); const current = currentLayout.current; const items = current.items.filter(item => item !== key); items.splice(Math.min(before.items.indexOf(key), items.length), 0, key); change({ ...current, items }); } } });
   }
   function add(key: string) {
     setMenu(false);

@@ -61,10 +61,19 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
   await goals.getByRole("button", { name: "Hide Goals" }).click();
   await expect(goals).toHaveCount(0);
   await hiding;
+  // Undo must preserve a later resize of a different widget.
+  const overviewResize = page.getByRole("button", { name: /^Resize Overview/ });
+  const overviewBefore = await overviewResize.getAttribute("aria-label");
+  const laterSave = saved(page);
+  await overviewResize.focus();
+  await page.keyboard.press(overviewBefore!.endsWith("XL") ? "ArrowLeft" : "ArrowRight");
+  await laterSave;
+  const overviewAfter = await overviewResize.getAttribute("aria-label");
   const undone = saved(page);
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(goals).toBeVisible();
   await undone;
+  await expect(overviewResize).toHaveAttribute("aria-label", overviewAfter!);
   await goals.hover();
   const hidden = saved(page);
   await goals.getByRole("button", { name: "Hide Goals" }).click();
