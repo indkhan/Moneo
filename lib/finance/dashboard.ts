@@ -8,7 +8,10 @@ const DEFAULT_WIDGETS = ["overview", "insights", "upcoming", "spending", "budget
 // Artifact cards on Home are stored as "card:<uuid>" next to the built-in keys.
 const CARD_KEY = /^card:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 const isWidgetKey = (key: string) => Object.hasOwn(BUILTIN_WIDGETS, key) || CARD_KEY.test(key);
-export const dashboardLayoutSchema = z.array(z.string().refine(isWidgetKey)).max(50).refine(items => new Set(items).size === items.length, "Widgets must be unique");
+// Retired page widgets may remain in saved layouts; discard them before validating current widgets.
+export const dashboardLayoutSchema = z.array(z.string()).max(50)
+  .transform(items => items.filter(key => !/^artifact:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)))
+  .pipe(z.array(z.string().refine(isWidgetKey)).refine(items => new Set(items).size === items.length, "Widgets must be unique"));
 
 export const cardWidgetKey = (id: string) => `card:${id.toLowerCase()}`;
 export const cardIdFromKey = (key: string) => CARD_KEY.exec(key)?.[1] ?? null;

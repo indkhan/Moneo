@@ -3,6 +3,11 @@ import { cardIdFromKey, cardWidgetKey, dashboardItems, dashboardLayoutSchema, se
 
 const id = "11111111-1111-4111-8111-111111111111";
 
+it("ignores retired artifact widgets without rejecting the saved Home layout", () => {
+  expect(dashboardLayoutSchema.parse(["overview", `artifact:${id}`, "accounts"])).toEqual(["overview", "accounts"]);
+  expect(dashboardLayoutSchema.safeParse(["artifact:invalid"]).success).toBe(false);
+});
+
 it("keeps saved widget order and visibility and drops unknown widgets", () => {
   expect(dashboardItems(["unknown", "accounts", "accounts", "goals"])).toEqual(["accounts", "goals"]);
   expect(dashboardItems([])).toEqual([]);
