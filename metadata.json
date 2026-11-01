@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6A84446GSG8W5KD25C9ABN0",
+  "strategy": "manual-commit",
+  "branch": "t3/fix-voice-call-response-order",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "components/voice-call.tsx",
+    "lib/ai/use-voice-call.ts",
+    "lib/ai/voice-call-controller.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 6,
+    "cache_creation_tokens": 2501,
+    "cache_read_tokens": 321713,
+    "output_tokens": 1753,
+    "api_call_count": 3
+  },
+  "redaction": {
+    "replacements": 1,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
