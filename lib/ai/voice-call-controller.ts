@@ -249,6 +249,8 @@ export class VoiceCallController {
       const cards = answerCards(result.body.answer);
       this.answers.set(requestId, spokenAnswer(result.body.answer));
       this.update(requestId, { status: "done", step: "answered", cards });
+      // Quiet context, so GPT-Live never tells the user it is still waiting on a request that has finished.
+      if (via()) this.deps.send({ type: "session.thinking.append", delegation_id: via(), content: `Finished ${label}; its result is next in line.` });
       this.deps.onAnswer?.(text, result.body as ChatAnswer);
       // A typed request has no hand-off to answer through, so the result says outright that it is to be spoken.
       const delegationId = via();
@@ -279,8 +281,8 @@ export class VoiceCallController {
   }
 
   /**
-   * Hands over the next result once Moneo has said the previous one and nobody is talking. What is still running is
-   * read when it goes out, so a result never says another is pending after that one has finished.
+   * Hands over the next result once Moneo has said the previous one and nobody is talking. A result never says what
+   * else is still running: by the time Moneo reaches the end of it, that may have finished too.
    */
   private flush() {
     if (this.flushing || !this.outbox.length || this.cut) return;
@@ -290,10 +292,9 @@ export class VoiceCallController {
       return;
     }
     const { delegationId, content } = this.outbox.shift()!;
-    const others = this.running.map(item => `"${item.text.slice(0, 80)}"`);
     this.current = { delegationId, content, at: this.now() };
     this.deps.log?.(`handed over: ${content.slice(0, 60)}`);
-    this.deps.send({ type: "session.commentary.append", delegation_id: delegationId, content: others.length ? `${content} Still working on ${others.join(", ")}.` : content });
+    this.deps.send({ type: "session.commentary.append", delegation_id: delegationId, content });
     this.flush();
   }
 

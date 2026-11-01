@@ -57,10 +57,25 @@ ${card}
   expect(spoken()).toHaveLength(1);
   await wait(2700);
   expect(spoken()).toEqual([
-    { type: "session.commentary.append", delegation_id: "d2", content: 'Result for "Rent?": Rent is EUR 850.00 on Nov 1. Still working on "Netto?".' },
+    { type: "session.commentary.append", delegation_id: "d2", content: 'Result for "Rent?": Rent is EUR 850.00 on Nov 1.' },
     { type: "session.commentary.append", delegation_id: "d1", content: 'Result for "Netto?": I spent it. 1 card on screen to tap; nothing is saved until then.' },
   ]);
   expect(onAnswer).toHaveBeenCalledTimes(2);
+});
+
+it("never says a request is still running once it has finished while another result is being said", async () => {
+  const { sent, say, delegate, answer, wait, moneoTalks } = setup();
+  say("Netto?"); delegate("d1"); say("Rent?"); delegate("d2");
+  await answer("Netto?", "42 euros.");
+  await wait(1600);
+  await moneoTalks(1000);
+  // Rent finishes while Moneo is still saying the Netto result.
+  await answer("Rent?", "EUR 850.");
+  expect(sent).toContainEqual({ type: "session.thinking.append", delegation_id: "d2", content: 'Finished "Rent?"; its result is next in line.' });
+  await moneoTalks(1000);
+  await wait(2700);
+  const spoken = sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content));
+  expect(spoken).toEqual(['Result for "Netto?": 42 euros.', 'Result for "Rent?": EUR 850.']);
 });
 
 it("holds results while the user is speaking", async () => {
