@@ -1,0 +1,8 @@
+<task-notification>
+<task-id>bjq8yzsi1</task-id>
+<tool-use-id>toolu_01DwgvMFKLzNheFyt5Eor6YY</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-6f5aa5e9\4b708ad9-7ed8-4b63-80fd-3698986e0036\tasks\bjq8yzsi1.output</output-file>
+<status>killed</status>
+<summary>Background command "npx next dev -p 3100 &gt; .qa-dev.log 2&gt;&amp;1" was stopped after reaching its background time limit</summary>
+<note>If the work in progress still needs it, start it again with `run_in_background` and a longer `timeout`. If it already had the longest `timeout` allowed, do not restart it. Either way, report that it was stopped.</note>
+</task-notification>
