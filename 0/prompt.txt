@@ -1,0 +1,35 @@
+ok i would be honest the call feature works really nice there is just one small problm 
+i tell it to do something 
+i tell it to do something else 
+it is done with the first thing 
+it starts answering first thing 
+it continues
+it is done with the second thing 
+it continues the first thing 
+till now it is fine 
+then it gets done with the first thing
+then says i am still waiting for the second thing even tho it in the ui shows it is done with the second thing
+after waiting abit it starts answerign the second thing 
+
+this is the only bug i am facing right now 
+
+other then that i really like how it is 
+
+can you check other small buggy things that could be there and tell me abotu it 
+
+i am actaully planning showcase this feature and its code so just check that there is no more bug and it is straightforward 
+
+
+if you need decison or anythiig ask me otherwise fix it and file a pr to main 
+
+it should feel like having a conversation to a real human
+
+---
+
+<task-notification>
+<task-id>bnl0om7xt</task-id>
+<tool-use-id>toolu_01MuGNWLXohhekfVyFVhN3Aw</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-62fa644d\d5a47289-52b6-4b46-8d11-41d1ec373b2c\tasks\bnl0om7xt.output</output-file>
+<status>completed</status>
+<summary>Background command "Install dependencies in worktree" completed (exit code 0)</summary>
+</task-notification>
