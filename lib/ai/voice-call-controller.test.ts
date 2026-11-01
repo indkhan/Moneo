@@ -205,6 +205,29 @@ it("asks Moneo to finish a result the user cut off, after it has answered them, 
   expect(spoken()[2]).toContain('Result for "Total?"');
 });
 
+it("finishes a cut-off result without saying a request that finished meanwhile is still running", async () => {
+  const { sent, say, delegate, answer, wait, moneoTalks } = setup();
+  say("Netto?"); delegate("d1"); say(" Rent?"); delegate("d2");
+  await answer("Netto?", "You spent EUR 42.00 at Netto this month.");
+  await wait(1600);
+  await moneoTalks(1000);
+  await wait(1000);
+  say("wait, and my savings goal?"); delegate("d3");
+  await wait(1600);
+  await moneoTalks(800);
+  await wait(800);
+  const spoken = () => sent.filter(event => event.type === "session.commentary.append").map(event => String(event.content));
+  expect(spoken()).toHaveLength(2);
+  expect(spoken()[1]).toMatch(/Result for "Netto\?"/);
+  expect(spoken()[1]).not.toMatch(/Still working/);
+  // Rent finishes while Moneo is finishing the Netto result.
+  await moneoTalks(500);
+  await answer("Rent?", "Rent is EUR 850.00 on Nov 1.");
+  await moneoTalks(1000);
+  await wait(2700);
+  expect(spoken()[2]).toBe('Result for "Rent?": Rent is EUR 850.00 on Nov 1.');
+});
+
 it("does not resume over a short mm-hm", async () => {
   const { sent, say, delegate, answer, wait, moneoTalks } = setup();
   say("Rent?"); delegate("d1");
