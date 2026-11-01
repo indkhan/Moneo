@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bf0gx7zvh</task-id>
+<tool-use-id>toolu_013RbyJ5qcvFEVsXKz8xvw6x</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-d5a479a1\c8e54f01-e87f-48cc-9ab8-c9b953ce4fcd\tasks\bf0gx7zvh.output</output-file>
+<status>failed</status>
+<summary>Background command "npx next dev -p 3000 &gt; .qa/dev.log 2&gt;&amp;1" failed with exit code 1</summary>
+</task-notification>

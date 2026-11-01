@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6A8YG7HJ9S7H9R668FEQ9PJ",
+  "session_id": "c8e54f01-e87f-48cc-9ab8-c9b953ce4fcd",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-01T00:43:01.8528456Z",
+  "branch": "t3/speed-up-app-navigation-and-chat",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "app/import/page.test.ts",
+    "app/import/page.tsx",
+    "next.config.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "4992f36327ae",
+  "checkpoint_transcript_start": 2403,
+  "transcript_lines_at_start": 2403,
+  "compact_transcript_start": 279,
+  "token_usage": {
+    "input_tokens": 20,
+    "cache_creation_tokens": 9703,
+    "cache_read_tokens": 3982134,
+    "output_tokens": 6442,
+    "api_call_count": 10
+  },
+  "redaction": {
+    "replacements": 5,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 2,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 3,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 2
+  }
+}
