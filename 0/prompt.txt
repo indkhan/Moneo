@@ -1,0 +1,4 @@
+Also, do take in mind when I was testing it, it might also be that I ask it for one thing.  It starts.  I ask for another thing that starts, and when it starts, saying for the 1st thing, I interrupted and ask it for a 3rd thing.  So that is sometimes how I test it as well.  So that thing is working as well.  If I ask it for the 3rd thing, it says, yeah, I'm checking into this as well and then continues from where it left off in the 1st thing, which is good.  The only thing is once it's done with the 1st time.  Then the things it says is like, okay, now I'm still waiting for the 2nd thing or something like this, which is not wrong.  Correct?
+
+
+And the things you found  fix them as well
