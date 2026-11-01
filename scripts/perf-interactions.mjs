@@ -108,7 +108,7 @@ let conversationId;
   if (times.length) { out.micToRecordingMs = median(times); out.recordingLongTasks = median(longTasks); out.recordingCls = median(shifts); }
 }
 
-// Background polling: requests during 12 s on a chat and on the artifacts page, with and without a running job.
+// Background polling: requests during 12 s on a chat, with and without a running request.
 async function count(page, path, match, hidden = false) {
   let requests = 0;
   page.on("request", request => { if (match(request.url())) requests++; });
@@ -120,24 +120,15 @@ async function count(page, path, match, hidden = false) {
 }
 {
   const isChat = url => url.includes(`/api/conversations/${conversationId}`);
-  const isRsc = url => url.includes("_rsc=");
   const requestId = crypto.randomUUID();
-  const [{ id: build }] = await db`insert into public.artifact_builds(workspace_id, prompt) values (${workspace}, 'perf probe') returning id`;
   const polling = {};
   try {
     const idle = await open(); polling.chatIdle = await count(idle.page, `/ai?conversation=${conversationId}`, isChat); await idle.context.close();
-    const artifactsIdle = await open();
-    await db`update public.artifact_builds set status='completed' where id=${build}`;
-    polling.artifactsIdle = await count(artifactsIdle.page, "/ai/artifacts", isRsc); await artifactsIdle.context.close();
-    await db`update public.artifact_builds set status='running', created_at=now() where id=${build}`;
     await db`insert into public.chat_requests(id, workspace_id, conversation_id, message, status) values (${requestId}, ${workspace}, ${conversationId}, 'perf probe', 'running')`;
     const chat = await open(); polling.chatRunning = await count(chat.page, `/ai?conversation=${conversationId}`, isChat); await chat.context.close();
     const chatHidden = await open(); polling.chatRunningHiddenTab = await count(chatHidden.page, `/ai?conversation=${conversationId}`, isChat, true); await chatHidden.context.close();
-    const artifacts = await open(); polling.artifactsRunning = await count(artifacts.page, "/ai/artifacts", isRsc); await artifacts.context.close();
-    const artifactsHidden = await open(); polling.artifactsRunningHiddenTab = await count(artifactsHidden.page, "/ai/artifacts", isRsc, true); await artifactsHidden.context.close();
   } finally {
     await db`delete from public.chat_requests where id=${requestId}`;
-    await db`delete from public.artifact_builds where id=${build}`;
   }
   out.pollingRequestsPer12s = polling;
 }

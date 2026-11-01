@@ -80,7 +80,8 @@ it("searches live titles and message text with escaped wildcards", async () => {
   expect(found.threads.map(thread => thread.id)).toEqual(["b", "a"]);
   expect(found.threadsCursor).toBeNull();
   expect(calls.filter(call => call[1] === "ilike").map(call => call[2][1])).toEqual(["%100\\%\\_rent_%", "%100\\%\\_rent_%"]);
-  expect(calls.filter(call => call[0] === "conversations" && call[1] === "is")).toHaveLength(2);
+  // Both reads keep to live chats and leave out artifacts' own chats.
+  expect(calls.filter(call => call[0] === "conversations" && call[1] === "is").map(call => call[2][0])).toEqual(["deleted_at", "artifact_id", "deleted_at", "artifact_id"]);
   expect(calls.find(call => call[1] === "in")?.[2]).toEqual(["id", ["b"]]);
 });
 

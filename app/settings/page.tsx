@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { BUILTIN_WIDGETS, artifactIdFromKey, dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
+import { BUILTIN_WIDGETS, cardIdFromKey, dashboardItems, dashboardLayoutSchema } from "@/lib/finance/dashboard";
 import { saveDashboard } from "../dashboard-actions";
 import { InsightSettings } from "./insights";
 import { requireWorkspace } from "@/lib/auth";
@@ -23,11 +23,11 @@ async function loadDashboard({ supabase, workspace }: Workspace) {
   if (layout.error) throw layout.error;
   const parsedLayout = layout.data ? dashboardLayoutSchema.safeParse(layout.data.items) : null;
   const saved = dashboardItems(parsedLayout?.success ? parsedLayout.data : null);
-  // Pinned artifacts are listed by title; deleted ones are left out, so saving drops them.
-  const ids = saved.map(artifactIdFromKey).filter(id => id !== null);
-  const pinned = ids.length ? await supabase.from("artifacts").select("id, title").eq("workspace_id", workspace.id).in("id", ids).is("deleted_at", null) : { data: [], error: null };
+  // Artifact cards are listed by title; deleted ones are left out, so saving drops them.
+  const ids = saved.map(cardIdFromKey).filter(id => id !== null);
+  const pinned = ids.length ? await supabase.from("artifact_cards").select("id, title").eq("workspace_id", workspace.id).in("id", ids).is("deleted_at", null) : { data: [], error: null };
   if (pinned.error) throw pinned.error;
-  const labels: Record<string, string> = { ...BUILTIN_WIDGETS, ...Object.fromEntries(pinned.data.map(artifact => [`artifact:${artifact.id}`, `Artifact: ${artifact.title}`])) };
+  const labels: Record<string, string> = { ...BUILTIN_WIDGETS, ...Object.fromEntries(pinned.data.map(card => [`card:${card.id}`, `Card: ${card.title}`])) };
   const ordered = saved.filter(key => Object.hasOwn(labels, key));
   return { version: layout.data?.version ?? 0, ordered, labels, choices: [...new Set([...ordered, ...Object.keys(BUILTIN_WIDGETS)])] };
 }

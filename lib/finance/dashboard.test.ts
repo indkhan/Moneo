@@ -1,7 +1,12 @@
 import { expect, it } from "vitest";
-import { artifactIdFromKey, artifactWidgetKey, dashboardItems, dashboardLayoutSchema, setWidget } from "@/lib/finance/dashboard";
+import { cardIdFromKey, cardWidgetKey, dashboardItems, dashboardLayoutSchema, setWidget } from "@/lib/finance/dashboard";
 
 const id = "11111111-1111-4111-8111-111111111111";
+
+it("ignores retired artifact widgets without rejecting the saved Home layout", () => {
+  expect(dashboardLayoutSchema.parse(["overview", `artifact:${id}`, "accounts"])).toEqual(["overview", "accounts"]);
+  expect(dashboardLayoutSchema.safeParse(["artifact:invalid"]).success).toBe(false);
+});
 
 it("keeps saved widget order and visibility and drops unknown widgets", () => {
   expect(dashboardItems(["unknown", "accounts", "accounts", "goals"])).toEqual(["accounts", "goals"]);
@@ -11,18 +16,18 @@ it("keeps saved widget order and visibility and drops unknown widgets", () => {
   expect(dashboardLayoutSchema.safeParse(["tool:11111111-1111-4111-8111-111111111111"]).success).toBe(false);
 });
 
-it("stores pinned artifacts beside built-in widgets", () => {
-  const key = artifactWidgetKey(id.toUpperCase());
-  expect(key).toBe(`artifact:${id}`);
-  expect(artifactIdFromKey(key)).toBe(id);
-  expect(artifactIdFromKey("accounts")).toBeNull();
-  expect(dashboardItems(["accounts", key, "artifact:nope"])).toEqual(["accounts", key]);
+it("stores artifact cards beside built-in widgets", () => {
+  const key = cardWidgetKey(id.toUpperCase());
+  expect(key).toBe(`card:${id}`);
+  expect(cardIdFromKey(key)).toBe(id);
+  expect(cardIdFromKey("accounts")).toBeNull();
+  expect(dashboardItems(["accounts", key, "card:nope"])).toEqual(["accounts", key]);
   expect(dashboardLayoutSchema.safeParse([key, "goals"]).success).toBe(true);
   expect(dashboardLayoutSchema.safeParse([key, key]).success).toBe(false);
 });
 
 it("pins a widget just below the overview and unpins it", () => {
-  const key = artifactWidgetKey(id);
+  const key = cardWidgetKey(id);
   expect(setWidget(["overview", "spending"], key, true)).toEqual(["overview", key, "spending"]);
   expect(setWidget(["spending", "goals"], key, true)).toEqual([key, "spending", "goals"]);
   expect(setWidget(["overview", key], key, true)).toEqual(["overview", key]);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARTIFACT_FRAME_CSP, artifactDocument, artifactQueriesSchema, rollQueryDates } from "./artifact-data";
+import { ARTIFACT_FRAME_CSP, artifactDocument, artifactQueriesSchema, checkQueries, resolveQueryInput, resolveToken } from "./artifact-data";
 
 describe("artifact data", () => {
   it("puts the CSP and escaped data before the generated page", () => {
@@ -10,14 +10,12 @@ describe("artifact data", () => {
     expect(artifactDocument("<p>hi</p>", {})).toMatch(/^<meta[^>]+Content-Security-Policy/);
   });
 
-  it("tells the page its view and the app theme, defaulting to a full page that follows the OS", () => {
-    const widget = artifactDocument("<p>hi</p>", {}, { view: "widget", theme: "dark" });
-    expect(widget).toContain('window.MONEO_VIEW="widget"');
-    expect(widget).toContain("color-scheme:dark");
-    expect(widget).toContain("--moneo-accent:");
-    const page = artifactDocument("<p>hi</p>", {});
-    expect(page).toContain('window.MONEO_VIEW="page"');
-    expect(page).toContain("color-scheme:light dark");
+  it("loads the app theme and the Moneo kit, defaulting to a page that follows the OS", () => {
+    const dark = artifactDocument("<p>hi</p>", {}, { theme: "dark" });
+    expect(dark).toContain("color-scheme:dark");
+    expect(dark).toContain("--moneo-accent:");
+    expect(dark).toContain(".m-card{");
+    expect(artifactDocument("<p>hi</p>", {})).toContain("color-scheme:light dark");
   });
 
   it("keeps a directly opened frame sandboxed and frameable only by the app", () => {
@@ -26,27 +24,25 @@ describe("artifact data", () => {
     expect(ARTIFACT_FRAME_CSP).toContain("frame-ancestors 'self'");
   });
 
-  it("accepts only known sources with valid input and unique names", () => {
+  it("accepts only known sources and unique names, and checks each input once its dates are resolved", () => {
     expect(artifactQueriesSchema.safeParse([{ name: "bal", source: "balances", input: {} }]).success).toBe(true);
     expect(artifactQueriesSchema.safeParse([{ name: "x", source: "sql", input: {} }]).success).toBe(false);
-    expect(artifactQueriesSchema.safeParse([{ name: "cf", source: "cashflow", input: { from: "nope" } }]).success).toBe(false);
     expect(artifactQueriesSchema.safeParse([{ name: "a", source: "accounts" }, { name: "a", source: "goals" }]).success).toBe(false);
-  });
-  it("moves saved from/to dates forward, nested or top level, and leaves other strings alone", () => {
-    const input = { period: { from: "2026-04-27", to: "2026-10-27" }, groupKey: "2026-04-27", note: "2026-04-27", to: "2026-05-01", list: [{ from: "2026-01-31" }] };
-    expect(rollQueryDates(input, 3)).toEqual({ period: { from: "2026-04-30", to: "2026-10-30" }, groupKey: "2026-04-27", note: "2026-04-27", to: "2026-05-04", list: [{ from: "2026-02-03" }] });
-    expect(input.period.from).toBe("2026-04-27");
+    expect(checkQueries([{ name: "cf", source: "cashflow", input: { from: "nope", to: "@today", currencyCode: "EUR" } }], "2026-11-01")).toHaveLength(1);
+    expect(checkQueries([{ name: "cf", source: "cashflow", input: { from: "@month_start", to: "@today", currencyCode: "EUR" } }], "2026-11-01")).toEqual([]);
   });
 
-  it("drops page cursors, since they pin the old evidence set", () => {
-    const input = { period: { from: "2026-04-27", to: "2026-10-27" }, page: { size: 20, cursor: "abc" } };
-    expect(rollQueryDates(input, 1)).toEqual({ period: { from: "2026-04-28", to: "2026-10-28" }, page: { size: 20 } });
-    expect(input.page.cursor).toBe("abc");
+  it("keeps a saved period's meaning: this month stays the calendar month, literal dates stay fixed", () => {
+    const input = { period: { from: "@month_start", to: "@month_end" }, last: { from: "@month_start:-1", to: "@month_end:-1" }, fixed: "2026-04-27", note: "@unknown" };
+    expect(resolveQueryInput(input, "2026-03-15")).toEqual({ period: { from: "2026-03-01", to: "2026-03-31" }, last: { from: "2026-02-01", to: "2026-02-28" }, fixed: "2026-04-27", note: "@unknown" });
+    expect(resolveQueryInput({ from: "@days_ago:29", to: "@today", y: "@year_start", w: "@week_start" }, "2026-11-04")).toEqual({ from: "2026-10-06", to: "2026-11-04", y: "2026-01-01", w: "2026-11-02" });
+    expect(resolveToken("@year_end:-1", "2026-11-04")).toBe("2025-12-31");
   });
 
-  it("returns an unchanged copy when no days have passed", () => {
-    const input = { period: { from: "2026-04-27", to: "2026-10-27" }, page: { size: 20, cursor: "abc" } };
-    expect(rollQueryDates(input, 0)).toEqual(input);
-    expect(rollQueryDates(input, 0)).not.toBe(input);
+  it("fills params and drops page cursors, since they pin an old evidence set", () => {
+    const params = { values: { account: "acc-1" }, ranges: { month: { from: "2026-09-01", to: "2026-09-30" } } };
+    expect(resolveQueryInput({ accountId: "@param:account", period: { from: "@param:month.from", to: "@param:month.to" }, page: { size: 20, cursor: "abc" } }, "2026-11-01", params))
+      .toEqual({ accountId: "acc-1", period: { from: "2026-09-01", to: "2026-09-30" }, page: { size: 20 } });
+    expect(() => resolveToken("@param:missing", "2026-11-01", params)).toThrow("Unknown param");
   });
 });

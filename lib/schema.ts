@@ -589,9 +589,13 @@ export const conversations = pgTable("conversations", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
   title: text("title").notNull(),
+  // Set for an artifact's own chat, which stays out of the chat list.
+  artifactId: uuid("artifact_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 }, (table) => [
+  foreignKey({ name: "conversations_artifact_fkey", columns: [table.artifactId, table.workspaceId], foreignColumns: [artifacts.id, artifacts.workspaceId] }).onDelete("cascade"),
+  uniqueIndex("conversations_artifact").on(table.artifactId).where(sql`${table.artifactId} is not null`),
   index("conversations_workspace_live").on(table.workspaceId, table.createdAt.desc(), table.id.desc()).where(sql`${table.deletedAt} is null`),
 ]);
 
@@ -624,6 +628,7 @@ export const artifacts = pgTable("artifacts", {
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 }, (table) => [
   index("artifacts_workspace_live").on(table.workspaceId, table.updatedAt.desc()).where(sql`${table.deletedAt} is null`),
+  unique("artifacts_id_workspace_key").on(table.id, table.workspaceId),
   check("artifacts_title_check", sql`length(btrim(${table.title})) between 1 and 120`),
 ]);
 
@@ -642,22 +647,46 @@ export const artifactVersions = pgTable("artifact_versions", {
   unique("artifact_versions_artifact_id_version_key").on(table.artifactId, table.version),
 ]);
 
-export const artifactBuilds = pgTable("artifact_builds", {
+export const artifactCards = pgTable("artifact_cards", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
-  artifactId: uuid("artifact_id").references(() => artifacts.id, { onDelete: "cascade" }),
-  prompt: text("prompt").notNull(),
-  status: text("status").notNull().default("running"),
-  version: integer("version"),
-  error: text("error"),
+  artifactId: uuid("artifact_id").notNull(),
+  title: text("title").notNull(),
+  size: text("size").notNull().default("M"),
+  publishedVersion: integer("published_version"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 }, (table) => [
-  index("artifact_builds_workspace_created").on(table.workspaceId, table.createdAt.desc()),
-  check("artifact_builds_prompt_check", sql`length(btrim(${table.prompt})) between 1 and 4000`),
-  check("artifact_builds_status_check", sql`${table.status} in ('running','completed','failed')`),
-  check("artifact_builds_version_check", sql`${table.version} >= 1`),
-  check("artifact_builds_error_check", sql`length(${table.error}) <= 500`),
+  unique("artifact_cards_id_workspace_id_key").on(table.id, table.workspaceId),
+  foreignKey({ name: "artifact_cards_artifact_id_workspace_id_fkey", columns: [table.artifactId, table.workspaceId], foreignColumns: [artifacts.id, artifacts.workspaceId] }).onDelete("cascade"),
+  index("artifact_cards_artifact").on(table.artifactId, table.createdAt).where(sql`${table.deletedAt} is null`),
+  check("artifact_cards_title_check", sql`length(btrim(${table.title})) between 1 and 80`),
+  check("artifact_cards_size_check", sql`${table.size} in ('S','M','L','XL')`),
+  check("artifact_cards_published_version_check", sql`${table.publishedVersion} >= 1`),
+]);
+
+export const artifactCardVersions = pgTable("artifact_card_versions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  cardId: uuid("card_id").notNull(),
+  version: integer("version").notNull(),
+  title: text("title").notNull(),
+  kind: text("kind").notNull(),
+  preset: text("preset"),
+  source: text("source").notNull(),
+  compiled: text("compiled").notNull(),
+  queries: jsonb("queries").notNull().default([]),
+  params: jsonb("params").notNull().default([]),
+  prompt: text("prompt").notNull(),
+  model: text("model"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  unique("artifact_card_versions_card_id_version_key").on(table.cardId, table.version),
+  foreignKey({ name: "artifact_card_versions_card_id_workspace_id_fkey", columns: [table.cardId, table.workspaceId], foreignColumns: [artifactCards.id, artifactCards.workspaceId] }).onDelete("cascade"),
+  check("artifact_card_versions_version_check", sql`${table.version} >= 1`),
+  check("artifact_card_versions_title_check", sql`length(btrim(${table.title})) between 1 and 80`),
+  check("artifact_card_versions_kind_check", sql`${table.kind} in ('preset','code')`),
 ]);
 
 export const recurringSeries = pgTable("recurring_series", {

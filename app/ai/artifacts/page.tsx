@@ -1,34 +1,37 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
-import { ArtifactThumbnail } from "@/components/artifact-frame";
+import { ArtifactPreview } from "./artifact-preview";
 import { artifactExamples } from "@/lib/ai/artifact-examples";
-import { loadArtifactBuilds } from "@/lib/ai/artifact-builds";
 import { ArtifactPrompt } from "./artifact-prompt";
-import { ArtifactBuilds } from "./artifact-builds";
 import { DeleteArtifactButton } from "./delete-artifact-button";
+
+// Match chat's recovery window: older running requests were interrupted.
+const runningSince = () => new Date(Date.now() - 6 * 60_000).toISOString();
 
 export default async function ArtifactsPage({ searchParams }: { searchParams: Promise<{ prompt?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { redirect("/login"); }
   const { supabase, workspace } = context;
   const { prompt } = await searchParams;
-  const [{ data, error }, builds] = await Promise.all([
-    supabase.from("artifacts").select("id, title, updated_at, artifact_versions(prompt)")
-      .eq("workspace_id", workspace.id).is("deleted_at", null).eq("artifact_versions.version", 1).order("updated_at", { ascending: false }).limit(200),
-    loadArtifactBuilds(supabase, workspace.id),
-  ]);
+  const { data, error } = await supabase.from("artifacts").select("id, title, updated_at, artifact_versions(prompt), conversations(id)")
+    .eq("workspace_id", workspace.id).is("deleted_at", null).eq("artifact_versions.version", 1).order("updated_at", { ascending: false }).limit(200);
+  const conversationIds = (data ?? []).flatMap(artifact => artifact.conversations.map(chat => chat.id));
+  const requests = conversationIds.length ? await supabase.from("chat_requests").select("conversation_id")
+    .eq("workspace_id", workspace.id).in("conversation_id", conversationIds).eq("status", "running")
+    .gt("created_at", runningSince()) : null;
+  if (requests?.error) throw requests.error;
+  const running = new Set(requests?.data?.map(request => request.conversation_id));
   const date = new Intl.DateTimeFormat(workspace.locale, { dateStyle: "medium", timeZone: workspace.timezone });
   return <main className="mx-auto grid w-full max-w-[1400px] gap-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="grid gap-1">
       <p className="eyebrow">Built from your data</p>
       <h1 className="page-title">Artifacts</h1>
-      <p className="text-sm text-muted-foreground">Interactive pages built from your real data. They refresh every time you open them and never change your records.</p>
+      <p className="text-sm text-muted-foreground">Interactive pages built from your real data, each with its own chat, and cards you can put on Home. They refresh every time you open them and never change your records.</p>
     </header>
     <section aria-label="New artifact" className="rounded-xl border border-border bg-card p-4">
       <ArtifactPrompt key={prompt} defaultValue={prompt?.slice(0, 4000)} placeholder="Describe what to build, e.g. “What if my rent goes up €300 — how does my monthly budget look?”" />
     </section>
-    <ArtifactBuilds builds={builds} />
     <section aria-label="Examples" className="grid gap-3">
       <h2 className="text-sm font-medium text-muted-foreground">Start from an example</h2>
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{artifactExamples.map(example => <li key={example.title}>
@@ -39,7 +42,7 @@ export default async function ArtifactsPage({ searchParams }: { searchParams: Pr
     </section>
     {error ? <p role="alert">Could not load artifacts.</p> : !data.length ? <p className="text-sm text-muted-foreground">No artifacts yet.</p> :
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{data.map(artifact => <li key={artifact.id} className="relative flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card hover:bg-muted">
-        <ArtifactThumbnail src={`/ai/artifacts/${artifact.id}/frame`} title={artifact.title} />
+        <ArtifactPreview id={artifact.id} title={artifact.title} hasPage={!!artifact.artifact_versions.length} building={artifact.conversations.some(chat => running.has(chat.id))} />
         <div className="flex items-start gap-2 border-t border-border p-4">
           <div className="min-w-0 flex-1">
             {/* The stretched link makes the whole card clickable while the delete button stays its own control. */}

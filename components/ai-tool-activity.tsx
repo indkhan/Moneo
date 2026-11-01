@@ -9,6 +9,7 @@ const labels: Record<string, string> = {
   transactions_setCategory: "Apply selected category change",
   finance_investigate: "Investigate transactions", finance_entities: "Resolve accounts, categories and merchants",
   finance_detail: "Read transaction detail", finance_scenario: "Compare a what-if scenario", plan_investigation: "Plan the investigation",
+  write_page: "Design the page", card_preset: "Make a Home card", write_card: "Design a Home card", remove_card: "Remove a Home card",
 };
 
 export type ToolStep = { id?: string; name: string; state: "running" | "done" | "failed"; input?: unknown; output?: string };
