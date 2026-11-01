@@ -29,7 +29,7 @@ const nearest = (options: CardSize[], columns: number) => options.reduce((best, 
 export function HomeGrid({ version, items, sizes, widgets, labels, options }: HomeGridProps) {
   const [layout, setLayout] = useState<Layout>({ items, sizes });
   const currentLayout = useRef(layout);
-  currentLayout.current = layout;
+  useLayoutEffect(() => { currentLayout.current = layout; }, [layout]);
   // The grid owns the layout once shown: a later server render (an added widget's content arriving) can carry an older one.
   // Another tab's change surfaces as a conflict on the next save.
   const saved = useRef(version);
