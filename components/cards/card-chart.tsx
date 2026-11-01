@@ -1,29 +1,33 @@
 "use client";
 
 import { useState } from "react";
+import { minorDigits } from "@/lib/finance/fx";
 
 type Series = { name: string; values: (number | null)[]; color?: string };
-export type CardChartProps = { type: "line" | "area" | "bar" | "hbar" | "donut" | "sparkline"; labels: string[]; series: Series[]; stacked?: boolean; axis?: boolean; currency?: string; height?: number; className?: string; style?: React.CSSProperties };
+export type CardChartProps = { type: "line" | "area" | "bar" | "hbar" | "donut" | "sparkline"; labels: string[]; series: Series[]; stacked?: boolean; axis?: boolean; currency?: string; minor?: boolean; height?: number; className?: string; style?: React.CSSProperties };
 
 // The app's own chart colours, in order, for series that don't pick one.
 const PALETTE = ["var(--color-brand)", "var(--color-ai)", "var(--color-chart-out)", "var(--color-warning)", "var(--color-chart-input)", "var(--color-success)", "var(--color-danger)", "var(--color-muted-foreground)"];
 const W = 600;
 
-function format(value: number | null | undefined, currency?: string) {
+/** A chart value as shown: minor-unit values (cents) are divided down to the currency's major unit first. */
+export function format(value: number | null | undefined, currency?: string, minor?: boolean) {
   if (value === null || value === undefined) return "–";
+  if (currency && minor) value = value / 10 ** minorDigits(currency);
   return currency ? new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: Math.abs(value) >= 1000 ? 0 : 2 }).format(value)
     : new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
 }
 
 /** Charts drawn as SVG by the app from the card's numbers; the card never passes code or HTML to a chart. */
-export function CardChart({ type, labels, series, stacked, axis, currency, height, className, style }: CardChartProps) {
+export function CardChart({ type, labels, series, stacked, axis, currency, minor, height, className, style }: CardChartProps) {
+  const shown = (value: number | null | undefined) => format(value, currency, minor);
   const [active, setActive] = useState<number | null>(null);
   const colors = series.map((item, index) => item.color ?? PALETTE[index % PALETTE.length]);
   const count = Math.max(labels.length, ...series.map(item => item.values.length));
   const tooltip = active !== null && <div role="status" className="pointer-events-none absolute top-0 z-10 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs shadow-lg"
     style={{ left: `clamp(0px, calc(${((active + 0.5) / count) * 100}% - 4rem), calc(100% - 8rem))` }}>
     {labels[active] && <p className="text-muted-foreground">{labels[active]}</p>}
-    {series.map((item, index) => <p key={item.name} className="flex items-center gap-1.5 whitespace-nowrap font-mono"><span className="size-2 rounded-full" style={{ background: colors[index] }} />{series.length > 1 && `${item.name} `}{format(item.values[active], currency)}</p>)}
+    {series.map((item, index) => <p key={item.name} className="flex items-center gap-1.5 whitespace-nowrap font-mono"><span className="size-2 rounded-full" style={{ background: colors[index] }} />{series.length > 1 && `${item.name} `}{shown(item.values[active])}</p>)}
   </div>;
 
   if (type === "donut") {
@@ -42,7 +46,7 @@ export function CardChart({ type, labels, series, stacked, axis, currency, heigh
         })}
       </svg>
       <ul className="min-w-0 flex-1 space-y-1 text-xs">{values.map((value, index) => <li key={index} onPointerEnter={() => setActive(index)} className={`flex items-center gap-2 ${active === null || active === index ? "" : "opacity-50"}`}>
-        <span className="size-2 shrink-0 rounded-full" style={{ background: PALETTE[index % PALETTE.length] }} /><span className="min-w-0 flex-1 truncate">{labels[index]}</span><span className="font-mono">{format(value, currency)}</span></li>)}</ul>
+        <span className="size-2 shrink-0 rounded-full" style={{ background: PALETTE[index % PALETTE.length] }} /><span className="min-w-0 flex-1 truncate">{labels[index]}</span><span className="font-mono">{shown(value)}</span></li>)}</ul>
     </div>;
   }
 
@@ -50,7 +54,7 @@ export function CardChart({ type, labels, series, stacked, axis, currency, heigh
     const values = series[0].values;
     const max = Math.max(...values.map(value => Math.abs(value ?? 0)), 1);
     return <ul className={`space-y-2 text-sm ${className ?? ""}`} style={style}>{values.map((value, index) => <li key={index}>
-      <div className="flex justify-between gap-3"><span className="truncate">{labels[index]}</span><span className="shrink-0 font-mono text-xs">{format(value, currency)}</span></div>
+      <div className="flex justify-between gap-3"><span className="truncate">{labels[index]}</span><span className="shrink-0 font-mono text-xs">{shown(value)}</span></div>
       <div className="mt-1 h-1.5 rounded-full bg-muted"><div className="h-full rounded-full" style={{ width: `${(Math.abs(value ?? 0) / max) * 100}%`, background: colors[0] }} /></div>
     </li>)}</ul>;
   }

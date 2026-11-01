@@ -49,7 +49,7 @@ const KIT = {
     type: z.enum(["line", "area", "bar", "hbar", "donut", "sparkline"]),
     labels: z.array(z.string().max(80)).max(400).default([]),
     series: z.array(z.object({ name: z.string().max(80), values: z.array(z.number().finite().nullable()).max(400), color: color.optional() }).strict()).min(1).max(8),
-    stacked: z.boolean().optional(), axis: z.boolean().optional(), currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+    stacked: z.boolean().optional(), axis: z.boolean().optional(), currency: z.string().regex(/^[A-Z]{3}$/).optional(), minor: z.boolean().optional(),
     height: z.number().min(24).max(600).optional(), ...look,
   }).strict(),
   Tabs: z.object({ tabs: z.array(z.object({ label: z.string().min(1).max(40), content: z.unknown() }).strict()).min(2).max(6), ...look }).strict(),
