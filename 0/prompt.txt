@@ -1,0 +1,19 @@
+You know what we are building. Take the whole codebase and make a testing CSV file of how it is going to be for different users. It should be a really really really detailed user testing CSV file with each thing tested one by one, each user's walkthrough, and all of that. Those things are there.
+
+Once you have generated a really detailed one, call a subagent to test all those walkthroughs, each testing instance, and all of those things. Once that is done as well, take note of all the problems, the things that partially passed, the things which did not pass, the things which did not work, the UI/UX failure, and the things which are not clear for the user. Take note of all of that in a really detailed way.
+
+The task of this agent would be to think from a user perspective, even for things which are not that clear or not that good-looking as per UI or UX, and then create the list of all the findings that you could find. To do that first make a list of all the things to test and then call a subagent to do the check on it like a user would do it if you have access to my browser. If you want anything you can ask for it as well and you can run the application and test it from there.
+
+Once that is done, from there create a list of things. Not only the testing but also have in mind to tell the subagent to also see things which are not very clear, which do not look that UI or UX friendly, which look shit, or which look too cluttered and could be fixed. At the end give me the list of things that need to be fixed. 
+
+if any question ask me
+
+---
+
+<task-notification>
+<task-id>bat5strhx</task-id>
+<tool-use-id>toolu_01441v1oya68Zx3FhEV82KGP</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-7d9fff38\1f5b93db-242e-445e-8356-5b7733cbccb3\tasks\bat5strhx.output</output-file>
+<status>completed</status>
+<summary>Background command "Copy git-ignored env into worktree and install dependencies" completed (exit code 0)</summary>
+</task-notification>
