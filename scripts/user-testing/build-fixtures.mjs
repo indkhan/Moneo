@@ -12,7 +12,7 @@ save('f02-revolut.csv','Type,Product,Started Date,Completed Date,Description,Amo
 save('f03-iban-bank.csv','Booking date,Value date,Transaction type,Booking text,Amount,Currency,Account IBAN,Category,Sender,Recipient,Transfer purpose\n2026-10-01,2026-10-01,Transfer,QA Salary,3000.00,EUR,DE89370400440532013000,Income,QA Employer,QA Person,Synthetic test only\n2026-10-02,2026-10-02,Debit,QA Rent,-900.00,EUR,DE89370400440532013000,Housing,QA Person,QA Landlord,Synthetic test only\n');
 save('f04-overlap.csv','date,description,amount\n2026-10-02,QA Rent,-900.00\n2026-10-05,QA Bus,-5.00\n');
 save('f05-messy.csv','date,description,amount\nnot-a-date,QA Bad date,-10.00\n2026-10-03,QA Bad number,abc\n2026-10-03,,12.00\n2026-10-03,QA Blank amount,\n2026-10-04,QA Valid,-2.00\n');
-save('f06-debit-credit-semicolon.csv','date;description;debit;credit\n01.10.2026;QA Salary;;3000,00\n02.10.2026;QA Rent;900,00;\n');
+save('f06-debit-credit-semicolon.csv','date;description;debit;credit\n01/10/2026;QA Salary;;3000,00\n02/10/2026;QA Rent;900,00;\n');
 save('f07-outflow-positive.csv','date,description,amount\n2026-10-02,QA Rent,900.00\n2026-10-03,QA Groceries,60.00\n');
 save('f08-unicode.csv','date,description,amount\n2026-10-03,QA Café München 東京 🥐,-12.50\n');
 save('f09-usd.csv','date,description,amount,currency\n2026-10-01,QA Salary,2000.00,USD\n2026-10-02,QA Meal,-20.00,USD\n');
