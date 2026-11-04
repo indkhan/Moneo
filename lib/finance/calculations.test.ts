@@ -83,7 +83,7 @@ describe("exact financial calculations", () => {
 describe("usableForecastInput", () => {
   const base = { startDate: "2026-11-04", horizonDays: 3, currencyCode: "EUR",
     accounts: [{ id: "a", currencyCode: "EUR", balanceMinor: 1000n }, { id: "b", currencyCode: "EUR", balanceMinor: null }],
-    events: [{ date: "2026-11-05", accountId: "a", name: "Rent", expectedMinor: -100n, source: "assumption" as const }, { date: "2026-11-05", accountId: "b", name: "Pay", expectedMinor: 900n, source: "assumption" as const }],
+    events: [{ date: "2026-11-05", accountId: "a", name: "Rent", expectedMinor: -100n, source: "confirmed" as const }, { date: "2026-11-05", accountId: "b", name: "Pay", expectedMinor: 900n, source: "confirmed" as const }],
     missingInputs: ["balance:b:missing"] };
   it("forecasts the known account and names the one left out with its money", () => {
     const { input, excluded } = usableForecastInput(base);

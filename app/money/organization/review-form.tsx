@@ -61,7 +61,7 @@ export function OrganizationQueue({items,merchants,categories,requestId,locale}:
    <datalist id="organize-categories">{categories.map(target=><option key={target.id} value={target.name} />)}</datalist>
    <datalist id="organize-merchants">{merchants.map(target=><option key={target.id} value={target.name} />)}</datalist>
    <button disabled={pending||providerBusy||!rows.length||(merchantValue==='keep'&&categoryValue==='keep')} className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{pending?'Applying…':rows.length?`Apply to ${rows.length}`:'Apply'}</button>
-   <label className="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" name="saveRule" value="true" defaultChecked />Do the same for future entries like these</label>
+   <label className="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" name="saveRule" value="true" />Do the same for future entries like these</label>
    <button type="button" disabled={providerBusy||pending||!rows.length} onClick={requestSuggestions} className="min-h-10 text-sm text-muted-foreground underline disabled:opacity-40">{providerBusy?'Asking AI…':'Suggest with AI'}</button>
    {created&&<p className="basis-full text-xs text-muted-foreground">New {created} will be created.</p>}
    {assistance&&<p role="status" className="basis-full text-sm">{assistance}</p>}
