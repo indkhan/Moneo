@@ -326,7 +326,7 @@ export default function ImportPage() {
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="space-y-5">
-      <div><p className="eyebrow">Money · Import</p><h1 className="mt-2 page-title">Import financial data</h1><p className="mt-2 text-sm text-muted-foreground">Drop CSV or XLSX statements. Only rows that need a decision are shown, and every import can be undone.</p></div>
+      <div><p className="eyebrow">Money · Import</p><h1 className="mt-2 page-title">Import financial data</h1><p className="mt-2 text-sm text-muted-foreground">Drop CSV or XLSX statements. Only rows that need a decision are shown. Afterwards you can review each import and undo it if nothing depends on it.</p></div>
       {file && <ol className="flex flex-wrap gap-x-6 gap-y-2 text-sm" aria-label="Import steps">{STEPS.map((label, i) =>
         <li key={label} aria-current={i === step ? "step" : undefined} className={`flex items-center gap-2 ${i === step ? "font-medium text-foreground" : i < step ? "text-foreground" : "text-muted-foreground"}`}>
           <span className={`grid size-6 place-items-center rounded-full text-xs ${i === step ? "bg-brand text-white" : i < step ? "bg-muted text-brand" : "border border-border"}`}>{i < step ? "✓" : i + 1}</span>{label}
@@ -457,6 +457,7 @@ export default function ImportPage() {
       </div>}
 
       <div className="flex flex-wrap items-center gap-3 border-t border-border pt-5">
+        {result && !stale && <p className="w-full text-sm text-muted-foreground">This is the last step before anything is saved. Start import adds up to {result.acceptedRows ?? result.totalRows} rows to {mapping?.accountRoutes?.length ? `${mapping.accountRoutes.length} accounts` : mapping?.accountName || result.accountName}{result.excludedRows?.length ? ` and leaves out ${result.excludedRows.length}` : ""}. Rows you already imported are skipped, and rows that may overlap are held for your review. It runs in the background, so you can leave this page.</p>}
         {result && !stale && <button type="button" className={primary} disabled={busy || !mappingReady || !flaggedReady} onClick={() => void confirm()}>Start import</button>}
         {mapping && (editorOpen || stale) && <button type="button" className={stale ? primary : secondary} disabled={busy} onClick={() => void inspect(file, mapping)}>Preview correction</button>}
         {result && !editorOpen && <button type="button" className={secondary} onClick={() => setEditorOpen(true)}>Correct</button>}
@@ -484,7 +485,7 @@ export default function ImportPage() {
               {active(item.status) && <div className="space-y-1"><progress className="h-2 w-full overflow-hidden rounded-full accent-brand" aria-label={`Progress for ${item.filename}`} max={Math.max(item.total_rows, 1)} value={Math.min(processed, item.total_rows)} />
                 <p className="text-xs text-muted-foreground">{item.status === "queued" ? "Waiting to start" : `${Math.min(processed, item.total_rows)} of ${item.total_rows} processed`}. You can leave this page; the import keeps running.</p></div>}
               <p className="text-sm text-muted-foreground">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows + (item.classification_review_rows ?? 0)} to review · {item.rejected_rows} rejected · {item.total_rows} total</p>
-              {recent && item.status === "completed" && <p className="text-sm">{item.review_rows || item.classification_review_rows ? "Imported. A few rows need your decision before totals are complete." : "Imported. Nothing needs review. Undo is available if anything looks wrong."}</p>}
+              {recent && item.status === "completed" && <p className="text-sm">{item.review_rows || item.classification_review_rows ? "Imported. A few rows need your decision before totals are complete." : "Imported. Nothing needs review. If anything looks wrong, Undo import shows what it would remove."}</p>}
               {item.error && <p className="text-sm text-danger">{item.error}</p>}
               {item.status === "canceled" && <p className="text-sm text-muted-foreground">Stopped. Rows already imported are kept, and resuming will not duplicate them.</p>}
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm"><Link className="underline" href={`/import/${item.id}/review`}>Review rows and source coverage{item.classification_review_rows ? ` · ${item.classification_review_rows} to categorize` : ""}</Link>
