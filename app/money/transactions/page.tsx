@@ -159,15 +159,16 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             </nav>
           </div>
         </div>
-        {groups && (groups.by === "category" || (grouped?.data && count !== null && count > grouped.data.length)) ? <p className="text-xs text-muted-foreground">
-          {grouped?.data && count !== null && count > grouped.data.length ? `Subtotals cover the ${grouped.data.length.toLocaleString(workspace.locale)} most recent matches; narrow the dates for complete totals. ` : ""}
-          {groups.by === "category" ? "Split transactions are grouped under their original category." : ""}</p> : null}
+        {groups ? <p className="text-xs text-muted-foreground">
+          {grouped?.data && count !== null && count > grouped.data.length ? `Subtotals cover the ${grouped.data.length.toLocaleString(workspace.locale)} most recent matches, not everything; narrow the dates for complete totals. ` : "Subtotals cover every match, including rows on other pages. "}
+          {groups.by === "category" ? "Split transactions are grouped under their original category, so these can differ from spending reports, which use the allocations." : ""}</p> : null}
         {error ? <p role="alert">Could not load transactions: {error.message}</p> : <LedgerTable rows={rows} accountNames={accountNames} categories={categories ?? []} merchants={merchants ?? []}
           query={current.toString()} sort={filters.sort} sortHrefs={{ date: sortHref("date"), amount: sortHref("amount") }} groups={groups} openId={filters.transactionId ?? null}
           closeHref={`/money/transactions${current.size ? `?${current}` : ""}`} locale={workspace.locale} requestId={crypto.randomUUID()} />}
         <div className="flex flex-wrap items-center gap-4 text-sm">
           {filters.cursor ? <Link className="underline" href={withParams(viewBase, {})}>First page</Link> : null}
           {next ? <Link className="underline" href={withParams(viewBase, { cursor: next })}>Next page</Link> : null}
+          <span className="text-xs text-muted-foreground">{filters.cursor ? `Showing ${pageRows.length} from here` : count !== null && count > pageRows.length ? `Showing 1–${pageRows.length} of ${count.toLocaleString(workspace.locale)}` : ""}</span>
           <p className="ml-auto hidden text-xs text-muted-foreground sm:block"><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>Enter</kbd> open · <kbd>x</kbd> select · <kbd>/</kbd> search · <kbd>Esc</kbd> close</p>
         </div>
         <details id="add-transaction" open={params.add === "1"} className="scroll-mt-24 rounded-xl border border-border bg-card p-5">
