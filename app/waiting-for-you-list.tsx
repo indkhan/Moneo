@@ -63,7 +63,7 @@ export function WaitingForYouList({ proposals: all, review = { uncategorized: 0,
     ...review.findings.length > 0 ? [{ key: "findings", node: <SummaryCard title={`${plural(review.findings.length, "thing looks", "things look")} off`} detail="Possible duplicates, fees and unusual charges from your latest syncs."><FindingsSheet findings={review.findings} locale={locale} /></SummaryCard> }] : [],
     ...groupRepeats(proposals).map(group => ({ key: group[0].id, filter: filterOf(group[0].kind), node: group.length === 1 ? <IouCard id={group[0].id} initial={group[0]} locale={locale} /> : <RepeatGroup proposals={group} locale={locale} /> })),
   ];
-  const count = entries.length;
+  const count = filter ? entries.filter(entry => entry.filter === filter).length : entries.length;
   const present = FILTERS.filter(([key]) => proposals.some(proposal => filterOf(proposal.kind) === key));
   const chip = (active: boolean) => `h-11 rounded-full border px-3.5 lg:h-9 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai ${active ? "border-foreground bg-foreground text-background" : "border-input text-muted-foreground hover:bg-muted hover:text-foreground"}`;
   return <details open aria-label="Waiting for you" className="group">
