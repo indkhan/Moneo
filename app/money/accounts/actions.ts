@@ -1,5 +1,6 @@
 "use server";
 
+import { safely, type SafeState } from "@/lib/safe-action";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -123,3 +124,6 @@ export async function findTransfersBetweenOwnAccounts() {
   const { supabase, workspace } = await requireWorkspace();
   transfersRedirect(await linkOwnTransfers(supabase, workspace.id));
 }
+
+export async function addAccountSafely(_state: SafeState, form: FormData) { return safely(form, addAccount); }
+export async function addOwnAccountSafely(_state: SafeState, form: FormData) { return safely(form, addOwnAccount); }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SafeForm } from "@/components/safe-form";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -8,7 +9,7 @@ import { monthPrefix, nextMonthStart, budgetProgress, type MonthlyLimit, type Sp
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { SourceCoverageDetails } from "@/app/source-coverage";
 import { formatMoney } from "@/lib/finance/format";
-import { saveSpendingPlan, setRollover, toggleSpendingPlan } from "./actions";
+import { saveSpendingPlan, saveSpendingPlanSafely, setRollover, toggleSpendingPlan } from "./actions";
 import { PlanningHistory } from "../history";
 import { button, card, field, linkButton, percentOf } from "../ui";
 
@@ -114,12 +115,12 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
           <SourceCoverageDetails coverage={plan.sourceCoverage} />
           <details><summary className="cursor-pointer text-sm underline">Edit limit and rollover</summary>
             <div className="mt-3 flex flex-wrap items-start gap-x-6 gap-y-3">
-              <form action={saveSpendingPlan} className="flex flex-wrap items-end gap-2">
+              <SafeForm action={saveSpendingPlanSafely} className="flex flex-wrap items-end gap-2">
                 <input type="hidden" name="planId" value={plan.id} /><input type="hidden" name="version" value={plan.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} />
                 <input type="hidden" name="categoryId" value={plan.category_id} /><input type="hidden" name="currency" value={plan.currency_code} />
                 <input name="amount" required inputMode="decimal" aria-label={`Edit ${plan.name} limit`} placeholder="0.00" className={field + " w-28"} />
                 <button className={linkButton}>Update limit</button>
-              </form>
+              </SafeForm>
               <form action={toggleSpendingPlan}><input type="hidden" name="planId" value={plan.id} /><input type="hidden" name="version" value={plan.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><input type="hidden" name="enabled" value={plan.enabled ? "false" : "true"} /><button className={linkButton}>{plan.enabled ? "Disable" : "Enable"}</button></form>
               <form action={setRollover} className="flex w-full flex-wrap items-end gap-3 text-sm"><input type="hidden" name="planId" value={plan.id} /><input type="hidden" name="version" value={plan.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><label className="flex gap-2"><input type="checkbox" name="rollover" defaultChecked={plan.rollover} />Carry remaining budget into the next month</label><label className="grid gap-1 text-xs">Rollover starts<input type="month" name="rolloverFrom" required defaultValue={plan.rollover_from.slice(0, 7)} className={field} /></label><button className={linkButton}>Save rollover rule</button><p className="w-full text-sm text-muted-foreground">Leftover and overspent amounts both carry over. Disabled months reset the carry.</p></form>
             </div>
@@ -129,12 +130,12 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
     </section>
     {!!categories.length && <section className={card} aria-labelledby="new-limit-heading">
       <h2 id="new-limit-heading" className="text-sm font-medium">Set a monthly limit</h2>
-      <form action={saveSpendingPlan} className="flex flex-wrap items-end gap-3">
+      <SafeForm action={saveSpendingPlanSafely} className="flex flex-wrap items-end gap-3">
         <label className="grid gap-1 text-sm font-medium">Category<select name="categoryId" aria-label="Category" className={field}>{categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label className="grid gap-1 text-sm">Currency<input name="currency" defaultValue={workspace.display_currency} required maxLength={3} aria-label="Currency code" className={field + " w-20"} /></label>
         <label className="grid gap-1 text-sm">Monthly limit<input name="amount" required inputMode="decimal" placeholder="400.00" aria-label="Monthly limit" className={field + " w-32"} /></label>
         <button className={button}>Save plan</button>
-      </form>
+      </SafeForm>
     </section>}
     <Suspense fallback={<p className="text-sm text-muted-foreground">Loading history…</p>}><PlanningHistory entityType="spending_plan" destination="/plan/spending" /></Suspense>
   </main>;

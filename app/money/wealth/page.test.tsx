@@ -1,7 +1,8 @@
 import { expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-vi.mock("./actions", () => ({ saveWealthItem: async () => {}, removeWealthItem: async () => {}, undoWealthEvent: async () => {} }));
+vi.mock("@/components/safe-form", () => ({ SafeForm: ({ children }: { children: React.ReactNode }) => children }));
+vi.mock("./actions", () => ({ saveWealthItem: async () => {}, saveWealthItemSafely: async () => ({}), removeWealthItem: async () => {}, undoWealthEvent: async () => {} }));
 const item = (id: string, kind: string, name: string, amount_minor: string, as_of: string) => ({ id, kind, name, amount_minor, as_of, currency_code: "EUR", quantity_text: kind === "holding" ? "1" : null, unit_price_text: kind === "holding" ? "20.00" : null,
   cost_basis_minor: null, linked_account_id: null, payment_account_id: null, annual_rate_text: kind === "debt" ? "0" : null, monthly_payment_minor: null, next_payment_on: null,
   payment_assumption_id: null, payment_transaction_id: null, version: 1, removed_at: null });

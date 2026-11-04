@@ -1,8 +1,9 @@
 import { SourceCoverageDetails } from "@/app/source-coverage";
+import { SafeForm } from "@/components/safe-form";
 import { buildSourceCoverage } from "@/lib/finance/source-coverage";
 import { goalContributionProjection } from "@/lib/finance/goals";
 import { formatInputAmount, formatMoney } from "@/lib/finance/format";
-import { createGoal, setAllocation } from "./actions";
+import { createGoal, createGoalSafely, setAllocation } from "./actions";
 import { GoalPlanEditor, type Goal } from "./goal-plan";
 import { button, card, eyebrow, field, linkButton, percentOf } from "./ui";
 
@@ -55,6 +56,6 @@ export function GoalsSection({ goals, allocations, accounts, currency, locale, t
     <p className="text-sm text-muted-foreground">A goal only sets money aside once you reserve cash for it.</p>
     {goals.length ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{goals.map(goal => <GoalCard key={goal.id} goal={goal} allocations={allocations.filter(item => item.goal_id === goal.id)} accounts={accounts} locale={locale} today={today} />)}</div>
       : <p className="text-sm text-muted-foreground">No goals yet. Add one below.</p>}
-    <form action={createGoal} className="flex flex-wrap items-end gap-3 rounded-[14px] border border-dashed border-input p-4"><input type="hidden" name="requestId" value={crypto.randomUUID()} /><input name="name" required maxLength={120} placeholder="Goal name" aria-label="Goal name" className={field} /><input name="target" required inputMode="decimal" placeholder="Target amount" aria-label="Target amount" className={field} /><input name="currency" defaultValue={currency} required maxLength={3} aria-label="Currency code" className={field + " w-20"} /><input name="targetDate" type="date" aria-label="Target date" className={field} /><button className={button}>Add goal</button></form>
+    <SafeForm action={createGoalSafely} className="flex flex-wrap items-end gap-3 rounded-[14px] border border-dashed border-input p-4"><input type="hidden" name="requestId" value={crypto.randomUUID()} /><input name="name" required maxLength={120} placeholder="Goal name" aria-label="Goal name" className={field} /><input name="target" required inputMode="decimal" placeholder="Target amount" aria-label="Target amount" className={field} /><input name="currency" defaultValue={currency} required maxLength={3} aria-label="Currency code" className={field + " w-20"} /><input name="targetDate" type="date" aria-label="Target date" className={field} /><button className={button}>Add goal</button></SafeForm>
   </section>;
 }

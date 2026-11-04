@@ -1,5 +1,6 @@
 "use server";
 
+import { safely, type SafeState } from "@/lib/safe-action";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
@@ -57,3 +58,5 @@ export async function setRollover(form: FormData) {
   const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).parse(form.get("rolloverFrom"));
   await editPlan(form, { rollover: form.get("rollover") === "on", rollover_from: `${month}-01` });
 }
+
+export async function saveSpendingPlanSafely(_state: SafeState, form: FormData) { return safely(form, saveSpendingPlan); }

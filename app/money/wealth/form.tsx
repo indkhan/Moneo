@@ -1,4 +1,5 @@
-import { saveWealthItem } from "./actions";
+import { saveWealthItem, saveWealthItemSafely } from "./actions";
+import { SafeForm } from "@/components/safe-form";
 import type { WealthItem } from "@/lib/finance/wealth";
 import { formatInputAmount } from "@/lib/finance/format";
 
@@ -6,7 +7,7 @@ export function WealthForm({ kind, item, accounts, assumptions, pending, today, 
   accounts: { id: string; name: string; type: string; currency_code: string; archived_at?:string|null }[]; assumptions: { id: string; label: string }[]; pending: { id: string; label: string }[]; today: string; currency: string }) {
   const code = item?.currency_code ?? currency;
   const field = "mt-1 block min-h-10 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground";
-  return <form action={saveWealthItem} className="mt-4 grid gap-x-4 gap-y-3 text-sm sm:grid-cols-2 [&_label]:text-muted-foreground">
+  return <SafeForm action={saveWealthItemSafely} className="mt-4 grid gap-x-4 gap-y-3 text-sm sm:grid-cols-2 [&_label]:text-muted-foreground">
     <input type="hidden" name="id" value={item?.id ?? crypto.randomUUID()} /><input type="hidden" name="version" value={item?.version ?? 0} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><input type="hidden" name="kind" value={kind} />
     <label>Name<input name="name" required maxLength={120} defaultValue={item?.name} className={field} /></label>
     <label>Currency<input name="currency" required maxLength={3} readOnly={!!item} defaultValue={code} className={field} /></label>
@@ -22,5 +23,5 @@ export function WealthForm({ kind, item, accounts, assumptions, pending, today, 
       <label>Already held as a pending payment<select name="paymentTransactionId" defaultValue={item?.payment_transaction_id ?? ""} className={field}><option value="">No matching pending hold</option>{pending.map(transaction => <option key={transaction.id} value={transaction.id}>{transaction.label}</option>)}</select></label>
       <p className="text-xs text-muted-foreground sm:col-span-2">Interest uses the yearly rate ÷ 12. A linked repayment or pending payment must match account, currency, date and amount.</p></>}
     <button className="min-h-10 justify-self-start rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground sm:col-span-2">{item ? "Save wealth edit" : `Add ${kind}`}</button>
-  </form>;
+  </SafeForm>;
 }

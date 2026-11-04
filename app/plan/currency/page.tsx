@@ -1,8 +1,9 @@
 import { calendarDate } from "@/lib/finance/calendar";
+import { SafeForm } from "@/components/safe-form";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
-import { addFxRate, setDisplayCurrency } from "./actions";
+import { addFxRate, addFxRateSafely, setDisplayCurrency, setDisplayCurrencySafely } from "./actions";
 
 export default async function CurrencyPage() {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -42,19 +43,19 @@ export default async function CurrencyPage() {
       <section className="rounded-xl border border-border bg-card p-6">
         <h2 className="text-sm font-medium">Display currency</h2>
         <p className="mt-1 text-sm text-muted-foreground">Currently {workspace.display_currency}. Enter a 3-letter currency code.</p>
-        <form action={setDisplayCurrency} className="mt-4 flex flex-wrap items-end gap-3">
+        <SafeForm action={setDisplayCurrencySafely} className="mt-4 flex flex-wrap items-end gap-3">
           <label className="grid gap-1 text-sm font-medium">Currency
             <input name="currency" list="currency-codes" defaultValue={workspace.display_currency} pattern="[A-Za-z]{3}" maxLength={3} required aria-label="Display currency" className="min-h-10 w-24 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
           </label>
           <button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">Save display currency</button>
-        </form>
+        </SafeForm>
       </section>
 
       <section className="rounded-xl border border-border bg-card p-6">
         <h2 className="text-sm font-medium">Manual FX rate</h2>
         <p className="mt-1 text-sm text-muted-foreground">How many units of the second currency you get for 1 unit of the first.</p>
         <datalist id="currency-codes">{currencies.map((code) => <option key={code} value={code} />)}</datalist>
-        <form action={addFxRate} className="mt-4 flex flex-wrap items-end gap-3">
+        <SafeForm action={addFxRateSafely} className="mt-4 flex flex-wrap items-end gap-3">
           <label className="grid gap-1 text-sm font-medium">From
             <input name="from" list="currency-codes" defaultValue={currencies[0] ?? "EUR"} pattern="[A-Za-z]{3}" maxLength={3} required aria-label="From currency" className="min-h-10 w-24 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
           </label>
@@ -71,7 +72,7 @@ export default async function CurrencyPage() {
             <input name="source" defaultValue="manual" maxLength={120} aria-label="Rate source" className="min-h-10 w-32 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
           </label>
           <button className="min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">Add rate</button>
-        </form>
+        </SafeForm>
       </section>
 
       <section className="rounded-xl border border-border bg-card p-6">

@@ -1,11 +1,12 @@
 import Link from "next/link";
+import { SafeForm } from "@/components/safe-form";
 import { CoverageNote } from "@/components/coverage-note";
 import { randomUUID } from "node:crypto";
 import { requireWorkspace } from "@/lib/auth";
 import { balanceReviewRows, loadBalanceEvidence, resolveBalances, type BalanceSnapshot } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatInputAmount, formatMoney } from "@/lib/finance/format";
-import { addAccount, undoBalance, undoMoneyMetadata } from "./actions";
+import { addAccount, addAccountSafely, undoBalance, undoMoneyMetadata } from "./actions";
 import { AccountForm, BalanceForm, RenameSuggestion } from "./account-form";
 import { accountTypes, suggestAccountName } from "./naming";
 import { balanceTrend, shownBalance } from "./history";
@@ -128,7 +129,7 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
         <div className="flex flex-col gap-1"><p className="eyebrow">Money · balances and sources</p><h1 className="page-title">Accounts</h1></div>
         <details className="group relative">
           <summary className="inline-flex h-11 cursor-pointer list-none items-center rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90">Add account</summary>
-          <form action={addAccount} className="absolute right-0 z-10 mt-2 grid w-72 gap-3 rounded-xl border border-border bg-card p-4 shadow-lg">
+          <SafeForm action={addAccountSafely} className="absolute right-0 z-10 mt-2 grid w-72 gap-3 rounded-xl border border-border bg-card p-4 shadow-lg">
             <label className="grid gap-1 text-sm">Name<input name="name" className={field} maxLength={120} required /></label>
             <div className="flex gap-3">
               <label className="grid flex-1 gap-1 text-sm">Type<select name="type" className={field}>{accountTypes.map(type => <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}</select></label>
@@ -136,7 +137,7 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
             </div>
             <p className="text-xs text-muted-foreground">Currency can’t be changed later.</p>
             <button className="min-h-9 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">Add account</button>
-          </form>
+          </SafeForm>
         </details>
       </div>
       {totals.size ? <dl className="rounded-xl border border-border bg-card px-5 py-4"><dt className="text-xs text-muted-foreground">Total{counted === active.length ? ` across ${active.length} active ${active.length === 1 ? "account" : "accounts"}` : ""}</dt>

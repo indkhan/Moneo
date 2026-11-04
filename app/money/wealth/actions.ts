@@ -1,5 +1,6 @@
 "use server";
 
+import { safely, type SafeState } from "@/lib/safe-action";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -46,3 +47,5 @@ export async function undoWealthEvent(form: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout"); redirect("/money/wealth");
 }
+
+export async function saveWealthItemSafely(_state: SafeState, form: FormData) { return safely(form, saveWealthItem); }

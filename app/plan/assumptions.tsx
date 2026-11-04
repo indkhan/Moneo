@@ -1,6 +1,7 @@
 import { scheduleCadences } from "@/lib/finance/cadences";
+import { SafeForm } from "@/components/safe-form";
 import { formatInputAmount, formatMoney } from "@/lib/finance/format";
-import { addAssumption, deleteAssumption, toggleAssumption, updateAssumption } from "./actions";
+import { addAssumption, addAssumptionSafely, deleteAssumption, toggleAssumption, updateAssumption } from "./actions";
 import { button, cadenceLabels, field, linkButton } from "./ui";
 
 type Assumption = { id: string; account_id: string | null; name: string; amount_minor: string; currency_code: string; cadence: string; starts_on: string; schedule_anchor_on: string | null; ends_on: string | null; source: string; confirmed: boolean; enabled: boolean; version: number };
@@ -37,6 +38,6 @@ export function AssumptionList({ assumptions, error, accounts, names, locale, to
       </div>
     </li>)}</ul>
     {!accounts.length ? <p className="text-muted-foreground">Add an account before creating a dated assumption.</p>
-      : <form action={addAssumption} className="flex flex-wrap items-end gap-3 rounded-lg bg-muted/50 p-4"><input name="name" required aria-label="Assumption name" placeholder="Rent, salary…" maxLength={120} className={field} /><input name="amount" required inputMode="decimal" aria-label="Assumption amount" placeholder="-1200.00" className={field} /><select name="accountId" aria-label="Account" className={field}>{accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select><select name="cadence" aria-label="Cadence" defaultValue="monthly" className={field}>{cadenceOptions}</select><input type="date" name="startsOn" defaultValue={today} required aria-label="Start date" className={field} /><button className={button}>Add assumption</button></form>}
+      : <SafeForm action={addAssumptionSafely} className="flex flex-wrap items-end gap-3 rounded-lg bg-muted/50 p-4"><input name="name" required aria-label="Assumption name" placeholder="Rent, salary…" maxLength={120} className={field} /><input name="amount" required inputMode="decimal" aria-label="Assumption amount" placeholder="-1200.00" className={field} /><select name="accountId" aria-label="Account" className={field}>{accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select><select name="cadence" aria-label="Cadence" defaultValue="monthly" className={field}>{cadenceOptions}</select><input type="date" name="startsOn" defaultValue={today} required aria-label="Start date" className={field} /><button className={button}>Add assumption</button></SafeForm>}
   </>;
 }

@@ -7,6 +7,7 @@ import { evaluatePlan } from "@/lib/finance/model";
 import { accountLiquidity, availableToSpend, forecastDaily, type ForecastInput } from "@/lib/finance/calculations";
 import { evaluateForecast } from "@/lib/finance/tools";
 
+vi.mock("@/components/safe-form", () => ({ SafeForm: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("@/lib/finance/model", () => ({ evaluatePlan: vi.fn() }));
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("./history", () => ({ PlanningHistory: () => null }));

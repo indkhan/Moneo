@@ -1,5 +1,6 @@
 "use server";
 
+import { safely, type SafeState } from "@/lib/safe-action";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
@@ -54,3 +55,6 @@ export async function addFxRate(form: FormData) {
   if (error) throw error;
   redirect("/plan/currency");
 }
+
+export async function addFxRateSafely(_state: SafeState, form: FormData) { return safely(form, addFxRate); }
+export async function setDisplayCurrencySafely(_state: SafeState, form: FormData) { return safely(form, setDisplayCurrency); }

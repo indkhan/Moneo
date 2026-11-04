@@ -1,5 +1,6 @@
 import { maskAccountNumber } from "@/lib/import/csv";
-import { addOwnAccount, findTransfersBetweenOwnAccounts, removeOwnAccount } from "./actions";
+import { SafeForm } from "@/components/safe-form";
+import { addOwnAccount, addOwnAccountSafely, findTransfersBetweenOwnAccounts, removeOwnAccount } from "./actions";
 
 const field = "min-h-9 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm";
 const quiet = "min-h-9 rounded-lg px-2.5 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground";
@@ -32,12 +33,12 @@ export function OwnAccounts({ identifiers, banked, accounts, transfers }: {
         <form action={removeOwnAccount}><input type="hidden" name="id" value={item.id} /><button className={quiet}>Remove</button></form>
       </li>)}
     </ul>
-    <form action={addOwnAccount} className="flex flex-wrap items-end gap-2">
+    <SafeForm action={addOwnAccountSafely} className="flex flex-wrap items-end gap-2">
       <label className="grid gap-1 text-xs text-muted-foreground">IBAN<input name="iban" required maxLength={42} className={`${field} w-64 font-mono text-foreground`} /></label>
       <label className="grid gap-1 text-xs text-muted-foreground">Name<input name="label" required maxLength={120} className={`${field} text-foreground`} /></label>
       <label className="grid gap-1 text-xs text-muted-foreground">In Moneo as<select name="accountId" className={`${field} text-foreground`}>
         <option value="">Not tracked in Moneo</option>{accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
       <button className="min-h-9 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">Add my account</button>
-    </form>
+    </SafeForm>
   </section>;
 }

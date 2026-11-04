@@ -22,3 +22,14 @@ for (const path of ["/ai/activity/not-a-uuid", "/does-not-exist", "/ai/activity/
   await expect(page.getByRole("link", { name: "Go to Overview" })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("invalid input syntax");
 });
+
+test("a refused money form explains why beside the form and keeps what was typed", async ({ page }) => {
+  await page.goto("/money/accounts");
+  const form = page.locator("#own-accounts form").filter({ hasText: "Add my account" });
+  await form.getByLabel("IBAN").fill("NOT-AN-IBAN");
+  await form.getByLabel("Name").fill("Test bank");
+  await form.getByRole("button", { name: "Add my account", exact: true }).click();
+  await expect(form.getByRole("alert")).toBeVisible();
+  await expect(form.getByLabel("IBAN")).toHaveValue("NOT-AN-IBAN");
+  await expect(page.getByRole("heading", { name: "This page couldn’t load" })).toHaveCount(0);
+});

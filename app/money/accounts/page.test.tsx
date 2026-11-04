@@ -1,7 +1,8 @@
 import { expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-vi.mock("./actions", () => ({ editAccount: async () => ({}), updateBalance: async () => ({}), undoBalance: async () => {}, undoMoneyMetadata: async () => {}, addAccount: async () => {}, addOwnAccount: async () => {}, removeOwnAccount: async () => {}, findTransfersBetweenOwnAccounts: async () => {} }));
+vi.mock("@/components/safe-form", () => ({ SafeForm: ({ children }: { children: React.ReactNode }) => children }));
+vi.mock("./actions", () => ({ editAccount: async () => ({}), updateBalance: async () => ({}), undoBalance: async () => {}, undoMoneyMetadata: async () => {}, addAccount: async () => {}, addAccountSafely: async () => ({}), addOwnAccountSafely: async () => ({}), addOwnAccount: async () => {}, removeOwnAccount: async () => {}, findTransfersBetweenOwnAccounts: async () => {} }));
 const query = (data: unknown[]) => { const q = { select: () => q, eq: () => q, order: () => q, limit: () => q, then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data, error: null }).then(resolve) }; return q; };
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({
   workspace: { id: "w", locale: "en-US", timezone: "UTC", display_currency: "EUR" },

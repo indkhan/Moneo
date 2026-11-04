@@ -1,5 +1,6 @@
 "use server";
 
+import { safely, type SafeState } from "@/lib/safe-action";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { scheduleCadences } from "@/lib/finance/cadences";
@@ -188,3 +189,6 @@ export async function addScenarioEvent(form: FormData) {
   if (error) throw error;
   redirect(`/plan?scenario=${scenarioId}`);
 }
+
+export async function createGoalSafely(_state: SafeState, form: FormData) { return safely(form, createGoal); }
+export async function addAssumptionSafely(_state: SafeState, form: FormData) { return safely(form, addAssumption); }
