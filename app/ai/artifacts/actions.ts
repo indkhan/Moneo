@@ -39,4 +39,16 @@ export async function deleteArtifact(id: string) {
   redirect("/ai/artifacts");
 }
 
+/** Your own name for an artifact; the first name is just the start of the request. */
+export async function renameArtifact(form: FormData) {
+  const { id, title } = z.object({ id: z.uuid(), title: z.string().trim().min(1, "Enter a name").max(120) }).parse({ id: form.get("id"), title: form.get("title") });
+  const { supabase, workspace } = await requireWorkspace();
+  const { error } = await supabase.from("artifacts").update({ title }).eq("workspace_id", workspace.id).eq("id", id).is("deleted_at", null);
+  if (error) throw new Error("Could not rename the artifact; try again");
+  revalidatePath(`/ai/artifacts/${id}`);
+  revalidatePath("/ai/artifacts");
+}
+
+export async function renameArtifactSafely(_state: SafeState, form: FormData) { return safely(form, renameArtifact); }
+
 export async function createArtifactSafely(_state: SafeState, form: FormData) { return safely(form, createArtifact); }

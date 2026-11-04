@@ -21,6 +21,6 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<{
   let history: Awaited<ReturnType<typeof loadConversationHistory>>;
   try { history = await loadConversationHistory(supabase, workspace.id, requested, params.threadsBefore, params.messagesBefore); }
   catch (cause) { return <main className="mx-auto max-w-3xl p-8"><ConversationSelection selectionKey={selectionKey} id={requested ?? "new"} /><h1>Conversation unavailable</h1><p role="alert">{cause instanceof Error ? cause.message : "Could not load conversation"}</p><Link href="/ai?conversation=new">New conversation</Link><Link className="ml-4" href="/ai">Try again</Link></main>; }
-  const scope = <p key="scope" className="mt-2 text-center text-xs text-muted-foreground" aria-label="AI data access">Moneo can use: {settings.ai_data_scopes.map(scope => scope.replaceAll("_", " ")).join(", ") || "none"} · {workspace.display_currency} · {workspace.timezone}</p>;
+  const scope = <p key="scope" className="mt-2 text-center text-xs text-muted-foreground" aria-label="AI data access">Moneo can use: {settings.ai_data_scopes.map(scope => scope.replaceAll("_", " ")).join(", ") || "none"} · {workspace.display_currency} · {workspace.timezone} · <Link href="/settings" className="underline">Change</Link></p>;
   return <ChatWorkspace initial={history} newConversationId={crypto.randomUUID()} selectionKey={selectionKey} locale={workspace.locale} timezone={workspace.timezone} scope={scope} />;
 }

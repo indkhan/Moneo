@@ -10,8 +10,13 @@ import { formatMoney } from "@/lib/finance/format";
 import { decideAgentProposals } from "@/app/ai/agents/actions";
 import { AskAbout } from "./ask-about";
 import { TeamFlow } from "./team-flow";
+import { PhoneCollapse } from "./phone-collapse";
 
 const ACTIVE = new Set(["queued", "running"]);
+// Category limits score 75 when all three months have spending and 55 when one is empty.
+const HIGH_CONFIDENCE = 75;
+// Long runs stay readable: the rest of a group is one press away.
+const GROUP_PREVIEW = 5;
 const WAVE_LABELS = ["Analysts · in parallel", "Builders · read the analysts' results", "Writer · after the lead merges"];
 const KIND_LABELS: Record<ProposalKind, string> = { finding: "Findings", categorize: "Merchants and categories", recurring: "Recurring schedules", budget: "Category limits" };
 const STATUS_TONE: Record<string, string> = {
@@ -44,7 +49,7 @@ function AgentCard({ task }: { task: AgentTaskView }) {
       <div className="min-w-0 flex-1"><h3 className="text-sm font-medium">{meta.name}</h3><p className="text-xs text-muted-foreground">{meta.role}</p></div>
       {pill(task.status)}
     </header>
-    {task.step && task.status !== "done" && <p className="mt-2 text-sm" aria-live="polite">{task.step}</p>}
+    {task.step && task.status !== "done" && <p className="mt-2 text-sm">{task.step}</p>}
     {task.events.length > 0 && <ol className="mt-2 max-h-40 space-y-1 overflow-y-auto border-l-2 border-border pl-3 text-xs text-muted-foreground">
       {task.events.filter(event => event.type !== "step" || event.text !== "Done").slice(-8).map((event, index) => {
         const Icon = EVENT_ICON[event.type as keyof typeof EVENT_ICON] ?? ChevronRight;
@@ -58,11 +63,11 @@ function AgentCard({ task }: { task: AgentTaskView }) {
 function EvidenceView({ proposal, locale }: { proposal: AgentProposalView; locale: string }) {
   const { facts, transactions, links } = proposal.evidence;
   return <details className="mt-2 text-xs">
-    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Evidence</summary>
+    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Evidence<span className="sr-only"> for {proposal.title}</span></summary>
     <div className="mt-2 space-y-2 rounded-lg bg-muted/50 p-3">
-      {facts.length > 0 && <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">{facts.map(fact => <div key={fact.label} className="contents"><dt className="text-muted-foreground">{fact.label}</dt><dd className="font-mono">{fact.value}</dd></div>)}</dl>}
-      {transactions.length > 0 && <ul className="divide-y divide-border">{transactions.map(row => <li key={row.id}><Link href={`/money/transactions?transaction=${row.id}`} className="flex gap-3 py-1 hover:underline">
-        <span className="w-20 shrink-0 font-mono text-muted-foreground">{row.date}</span><span className="min-w-0 flex-1 truncate">{row.description}</span><span className="shrink-0 font-mono">{formatMoney(row.amountMinor, row.currency, locale)}</span></Link></li>)}</ul>}
+      {facts.length > 0 && <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">{facts.map(fact => <div key={fact.label} className="contents"><dt className="text-muted-foreground">{fact.label}</dt><dd className="min-w-0 break-words font-mono">{fact.value}</dd></div>)}</dl>}
+      {transactions.length > 0 && <ul className="divide-y divide-border">{transactions.map(row => <li key={row.id}><Link href={`/money/transactions?transaction=${row.id}`} className="flex flex-wrap gap-x-3 py-1 hover:underline">
+        <span className="shrink-0 font-mono text-muted-foreground">{row.date}</span><span className="min-w-0 flex-1 basis-40 break-words">{row.description}</span><span className="shrink-0 font-mono">{formatMoney(row.amountMinor, row.currency, locale)}</span></Link></li>)}</ul>}
       {links.length > 0 && <p className="flex flex-wrap gap-3">{links.map(link => <Link key={link.href + link.label} href={link.href} className="text-brand underline">{link.label}</Link>)}</p>}
     </div>
   </details>;
@@ -75,6 +80,10 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
   const [pending, startTransition] = useTransition();
   const [lost, setLost] = useState(false);
   const [controlling, setControlling] = useState<"cancel" | "resume" | null>(null);
+  const [agentFilter, setAgentFilter] = useState<string>("all");
+  // Accepting several at once always shows the list first.
+  const [bulk, setBulk] = useState<{ ids: string[]; label: string } | null>(null);
+  const [expanded, setExpanded] = useState<ProposalKind[]>([]);
   const router = useRouter();
   const active = ACTIVE.has(run.status);
 
@@ -113,7 +122,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
 
   function decide(ids: string[], decision: "accept" | "reject") {
     if (!ids.length) return;
-    setNotice("");
+    setNotice(""); setBulk(null);
     startTransition(async () => {
       try {
         const outcomes = await decideAgentProposals(ids, decision);
@@ -131,13 +140,19 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
   const manual = run.proposals.filter(item => !item.result?.auto);
   const open = manual.filter(item => item.status === "proposed" || item.status === "failed");
   const reviewable = !active;
-  const kinds = (Object.keys(KIND_LABELS) as ProposalKind[]).filter(kind => manual.some(item => item.kind === kind));
+  const agents = [...new Set(manual.map(item => item.agent))];
+  const shown = manual.filter(item => agentFilter === "all" || item.agent === agentFilter);
+  const kinds = (Object.keys(KIND_LABELS) as ProposalKind[]).filter(kind => shown.some(item => item.kind === kind));
+  const openHere = open.filter(item => item.kind === "budget");
+  const openOnHome = open.length - openHere.length;
+  const sureThings = reviewable ? openHere.filter(item => item.status === "proposed" && item.confidence >= HIGH_CONFIDENCE) : [];
+  const finishedTasks = run.tasks.filter(task => ["done", "failed", "skipped", "canceled"].includes(task.status)).length;
   // Only category limits are decided here; everything else waits on Home, so a decision has one place.
   const openIds = (kind: ProposalKind) => open.filter(item => item.kind === kind && kind === "budget").map(item => item.id);
   const model = run.model_status === "available" || run.model_status === "budget_exhausted" ? `Free model · ${run.model_calls}/${run.model_budget} calls`
     : run.model_status === "unknown" ? "Checking model…" : "Deterministic only (no free model)";
 
-  const team = <>
+  const team = <PhoneCollapse label={active ? "Show activity" : "How the team worked"}><div className="space-y-6">
     {!active && run.tasks.length > 0 && <h2 className="eyebrow">How the team worked</h2>}
     {run.tasks.length > 0 && <TeamFlow statuses={Object.fromEntries(run.tasks.map(task => [task.agent, task.status]))} finished={run.status === "completed"} />}
     {lead && <section aria-label="Lead agent" className="rounded-xl border border-ai-border bg-ai-soft p-5">
@@ -153,19 +168,23 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       </section>;
     })}
     {!run.tasks.length && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" aria-hidden="true" />The lead is planning the work…</p>}
-  </>;
+  </div></PhoneCollapse>;
 
   return <div className="space-y-6">
     <header className="flex flex-wrap items-center gap-3">
       <div className="mr-auto min-w-0">
-        <h1 className="flex flex-wrap items-center gap-3 page-title">Agent team {pill(run.status)}</h1>
-        <p className="text-sm text-muted-foreground">{run.trigger === "import" ? "Started when your import finished" : "Started manually"} · {new Date(run.created_at).toLocaleString(locale)} · {model}</p>
+        <Link href="/ai/agents" className="text-sm text-muted-foreground hover:underline">← All runs</Link>
+        <h1 className="mt-1 flex flex-wrap items-center gap-3 page-title">Agent team {pill(run.status)}</h1>
+        <p className="text-sm text-muted-foreground">{run.trigger === "import" ? <>Started when {run.import_id ? <Link href={`/import/${run.import_id}/review`} className="underline">your import</Link> : "your import"} finished</> : "Started manually"} · {new Date(run.created_at).toLocaleString(locale)} · {model}</p>
       </div>
       {active && <button type="button" disabled={!!controlling} onClick={() => void control("cancel")} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"><Square className="size-3.5" aria-hidden="true" />{controlling === "cancel" ? "Stopping…" : "Stop"}</button>}
       {(run.status === "canceled" || run.status === "failed") && <button type="button" disabled={!!controlling} onClick={() => void control("resume")} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"><Play className="size-3.5" aria-hidden="true" />{controlling === "resume" ? "Resuming…" : "Resume"}</button>}
     </header>
+    {/* One calm announcement for the whole run, rather than one per agent. */}
+    <p role="status" className="sr-only">Run {run.status}. {finishedTasks} of {run.tasks.length} agents finished. {open.length} open {open.length === 1 ? "decision" : "decisions"}.</p>
     {lost && active && <p role="alert" className="rounded-lg bg-warning-soft p-3 text-sm text-warning">Lost contact with this run, so its progress may be out of date. Moneo keeps trying.</p>}
-    {active && <p className="text-xs text-muted-foreground">Stopping keeps changes already made; they stay in history with Undo. Sure category changes are made automatically. Everything else waits for your decision.</p>}
+    <p className="text-xs text-muted-foreground">{active ? "Stopping keeps changes already made; they stay in history with Undo. " : ""}Category changes the team is sure of are made automatically and can be undone. Flagged items and recurring payments wait on Home. Category limits wait here.</p>
+    {active && <p className="text-sm text-muted-foreground">{finishedTasks} of {run.tasks.length} agents finished · {manual.length} found so far</p>}
     {active && team}
     {run.error && <p role="alert" className="rounded-lg bg-danger-soft p-3 text-sm text-danger">{run.error}</p>}
 
@@ -180,20 +199,35 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
         <h2 id="review-heading" className="mr-auto font-display text-2xl font-semibold tracking-tight">What the team found <span className="font-sans text-sm font-normal text-muted-foreground">({manual.length})</span></h2>
         {open.some(item => item.kind !== "budget") && <Link href="/" className="h-10 rounded-[10px] bg-primary px-4 py-2.5 text-[13px] font-medium text-primary-foreground hover:opacity-90">Decide on Home</Link>}
       </div>
-      <p className="text-xs text-muted-foreground">{reviewable ? "Flagged items and recurring payments are decided on Home; category limits here. Accepted changes use the same audited actions as the rest of Moneo, so history and Undo keep working." : "Results stream in as agents work."}</p>
+      <p className="text-xs text-muted-foreground">{reviewable ? "Accepted changes use the same audited actions as the rest of Moneo, so history and Undo keep working." : "Results stream in as agents work."}</p>
       {notice && <p role="status" className="text-sm">{notice}</p>}
+      {reviewable && (open.length > 0 || manual.length > 0) && <div className="sticky top-19 z-10 space-y-2 rounded-xl border border-border bg-card p-3 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="mr-auto font-medium">{open.length ? <>{open.length} open {open.length === 1 ? "decision" : "decisions"}{openHere.length > 0 && openOnHome > 0 ? <span className="font-normal text-muted-foreground"> · {openHere.length} here, {openOnHome} on Home</span> : openOnHome > 0 ? <span className="font-normal text-muted-foreground"> · on Home</span> : null}</> : "No open decisions"}</p>
+          {sureThings.length > 0 && <button type="button" disabled={pending} onClick={() => setBulk({ ids: sureThings.map(item => item.id), label: "high-confidence limits" })} className="min-h-11 rounded-[10px] bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 sm:min-h-9">Accept {sureThings.length} high confidence…</button>}
+        </div>
+        {bulk && <div role="group" aria-label="Confirm accepting these" className="space-y-2 border-t border-border pt-2">
+          <p>Accept these {bulk.ids.length} {bulk.label}? Each stays in history with Undo. Nothing is accepted until you confirm.</p>
+          <ul className="max-h-40 list-disc space-y-0.5 overflow-y-auto pl-5 text-[13px]">{manual.filter(item => bulk.ids.includes(item.id)).map(item => <li key={item.id}>{item.title}</li>)}</ul>
+          <div className="flex gap-2"><button type="button" disabled={pending} onClick={() => decide(bulk.ids, "accept")} className="min-h-10 rounded-[10px] bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">Confirm {bulk.ids.length}</button><button type="button" onClick={() => setBulk(null)} className="min-h-10 rounded-[10px] border border-input px-3 text-[13px] hover:bg-muted">Cancel</button></div>
+        </div>}
+      </div>}
+      {agents.length > 1 && <div role="group" aria-label="Show results from" className="flex flex-wrap gap-1.5">{["all", ...agents].map(agent => {
+        const count = agent === "all" ? manual.length : manual.filter(item => item.agent === agent).length;
+        return <button key={agent} type="button" aria-pressed={agentFilter === agent} onClick={() => setAgentFilter(agent)} className="min-h-11 rounded-full border border-input px-3 text-[13px] hover:bg-muted aria-pressed:border-brand aria-pressed:bg-brand aria-pressed:text-white sm:min-h-8">{agent === "all" ? "All" : AGENTS[agent as AgentId]?.name ?? agent} ({count})</button>;
+      })}</div>}
       {kinds.map((kind, index) => <details key={kind} open={index === 0 || openIds(kind).length > 0} className="space-y-2 group">
-        <summary className="flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden"><ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden="true" /><h3 className="eyebrow">{KIND_LABELS[kind]} ({manual.filter(item => item.kind === kind).length})</h3>{reviewable && openIds(kind).length > 0 && <span className="ml-auto flex gap-1.5">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden"><ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden="true" /><h3 className="eyebrow">{KIND_LABELS[kind]} ({shown.filter(item => item.kind === kind).length})</h3>{reviewable && openIds(kind).length > 0 && <span className="ml-auto flex gap-1.5">
           <button type="button" disabled={pending} onClick={event => { event.preventDefault(); decide(openIds(kind), "reject"); }} className="h-8 rounded-[10px] border border-input px-3 text-xs hover:bg-muted disabled:opacity-50">Reject all</button>
-          <button type="button" disabled={pending} onClick={event => { event.preventDefault(); decide(openIds(kind), "accept"); }} className="h-8 rounded-[10px] bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">Accept all</button>
+          <button type="button" disabled={pending} onClick={event => { event.preventDefault(); setBulk({ ids: openIds(kind).slice(0, 100), label: KIND_LABELS[kind].toLowerCase() }); }} className="h-8 rounded-[10px] bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">Accept all…</button>
         </span>}</summary>
-        <ul className="space-y-2">{manual.filter(item => item.kind === kind).map(item => {
+        <ul className="space-y-2">{shown.filter(item => item.kind === kind).sort((a, b) => Number(openIds(kind).includes(b.id)) - Number(openIds(kind).includes(a.id))).slice(0, expanded.includes(kind) ? undefined : GROUP_PREVIEW).map(item => {
           const decidable = reviewable && kind === "budget" && (item.status === "proposed" || item.status === "failed");
           return <li key={item.id} className={`rounded-2xl border bg-card px-5 py-[18px] ${item.status === "accepted" ? "border-brand/40" : "border-border"} ${item.status === "rejected" ? "opacity-60" : ""}`}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2"><p className="text-[15px] font-medium">{item.title}</p>
-                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title="Heuristic confidence, not a probability"><span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted"><span className="block h-full bg-brand" style={{ width: `${item.confidence}%` }} /></span>{item.confidence}</span>
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title="A rule-of-thumb score from the pattern, not a probability">Pattern strength <span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted"><span className="block h-full bg-brand" style={{ width: `${item.confidence}%` }} /></span>{item.confidence}</span>
                   {item.status !== "proposed" ? pill(item.status, item.result?.movedToHome ? "moved to Home" : item.status) : kind !== "budget" && pill("proposed", "on Home")}</div>
                 <p className="mt-1 text-[13px] text-muted-foreground text-pretty">{item.detail}</p>
                 {item.notes.map(note => <p key={note} className="mt-1 text-xs text-warning">Lead: {note}</p>)}
@@ -209,11 +243,12 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
             </div>
           </li>;
         })}</ul>
+        {!expanded.includes(kind) && shown.filter(item => item.kind === kind).length > GROUP_PREVIEW && <button type="button" onClick={() => setExpanded(current => [...current, kind])} className="min-h-11 text-sm underline">Show all {shown.filter(item => item.kind === kind).length}</button>}
       </details>)}
       {!run.proposals.length && !active && <p className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">The team found nothing that needs a decision.</p>}
     </section>
 
-    {decided.length > 0 && <section aria-labelledby="decided-heading" className="space-y-2">
+    {decided.length > 0 && <PhoneCollapse label={`Decided automatically (${decided.length})`}><section aria-labelledby="decided-heading" className="space-y-2">
       <h2 id="decided-heading" className="text-sm font-medium">Decided automatically <span className="text-muted-foreground">({decided.length})</span></h2>
       <p className="text-xs text-muted-foreground">The Categorizer applied these itself. Each one is an audited batch; open it to check the rows or Undo.</p>
       <ul className="space-y-2">{decided.map(item => <li key={item.id} className="rounded-2xl border border-border bg-card px-5 py-4">
@@ -222,7 +257,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
         {item.result?.href && <p className="mt-1 text-xs"><Link href={item.result.href} className="text-brand underline">Open · Undo</Link></p>}
         <EvidenceView proposal={item} locale={locale} />
       </li>)}</ul>
-    </section>}
+    </section></PhoneCollapse>}
 
     {!active && team}
   </div>;

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
-import { Check, ChevronLeft, ChevronRight, HousePlus, Maximize2, Minimize2, RefreshCw, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, HousePlus, Maximize2, RefreshCw, X } from "lucide-react";
 import { requireWorkspace } from "@/lib/auth";
 import { ArtifactFrame } from "@/components/artifact-frame";
 import { CardSkeleton, HomeCard } from "@/components/cards/home-card";
@@ -11,6 +11,7 @@ import { CARD_SIZES, CARD_SIZE_KEYS, cardSize } from "@/lib/cards/sizes";
 import { publishCard, setCardSize, unpublishCard } from "@/app/dashboard-actions";
 import { DeleteArtifactButton } from "../delete-artifact-button";
 import { ArtifactChat, SendButton } from "./artifact-chat";
+import { ExitFullScreen, PendingSubmit, RenameArtifact } from "./artifact-controls";
 
 export const metadata = { title: "Artifact" };
 
@@ -50,13 +51,19 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   const latest = pages.at(-1)?.version ?? 0;
   const tab = search.tab === "cards" ? "cards" : "page";
   const at = (query: Partial<Search>) => `/ai/artifacts/${id}?${new URLSearchParams(Object.entries({ tab, ...(current ? { v: String(current.version) } : {}), ...query }).filter((entry): entry is [string, string] => !!entry[1]))}`;
-  // The frame reruns the saved queries on every open, so the page always shows today's data.
+  // The frame reruns the saved queries on every open, so even an older design shows today's data. Say both, separately.
+  const dataAsOf = new Intl.DateTimeFormat(workspace.locale, { dateStyle: "medium", timeStyle: "short", timeZone: workspace.timezone }).format(new Date());
+  const older = !!current && current.version < latest;
+  const dataLabel = `${older ? "Older design, current data" : "Data"} as of ${dataAsOf}`;
   const frame = current && <ArtifactFrame src={`/ai/artifacts/${id}/frame?v=${current.version}`} title={artifact.data.title} className="size-full" />;
 
-  if (search.full && frame) return <div className="fixed inset-0 z-50 bg-background">
-    {frame}
-    <Link href={at({ full: undefined })} aria-label="Exit full screen" className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-lg border border-border bg-card/90 px-3 py-1.5 text-xs shadow hover:bg-muted">
-      <Minimize2 className="size-3.5" aria-hidden="true" />Exit</Link>
+  if (search.full && frame) return <div className="fixed inset-0 z-50 flex flex-col bg-background">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-card px-3 py-1.5 text-xs">
+      <h1 className="min-w-0 flex-1 basis-40 truncate text-sm font-medium">{artifact.data.title}</h1>
+      <span>Design v{current.version} of {latest}</span><span className="text-muted-foreground">{dataLabel}</span>
+      <ExitFullScreen href={at({ full: undefined })} />
+    </div>
+    <div className="min-h-0 flex-1">{frame}</div>
   </div>;
 
   const homeItems = homeLayout(layout.data)?.items ?? [];
@@ -71,18 +78,20 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <Link href="/ai/artifacts" className="text-xs text-muted-foreground hover:underline">← Artifacts</Link>
-          <h1 className="mt-1 truncate font-display text-2xl font-semibold tracking-tight">{artifact.data.title}</h1>
+          <h1 title={artifact.data.title} className="mt-1 truncate font-display text-2xl font-semibold tracking-tight">{artifact.data.title}</h1>
+          <RenameArtifact id={id} title={artifact.data.title} />
         </div>
         <DeleteArtifactButton id={id} title={artifact.data.title} label="" className="mt-6" />
       </div>
       <ArtifactChat conversationId={conversationId} initial={history.messages} running={history.running ?? null} artifactId={start ? id : undefined} />
     </aside>
     <section aria-label="Artifact" className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border max-lg:h-[85dvh] lg:min-h-0">
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-1.5 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-3 py-1.5 text-xs">
         <nav aria-label="View" className="flex gap-1">{tabLink("page", "Page")}{tabLink("cards", `Home cards${cards.data?.length ? ` · ${cards.data.length}` : ""}`)}</nav>
-        {tab === "page" && current && <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap">
+        {tab === "page" && current && <span className="inline-flex flex-wrap items-center gap-1">
+          <span className="mr-2 text-muted-foreground">{dataLabel}</span>
           {current.version > 1 ? <Link href={at({ v: String(current.version - 1) })} aria-label="Previous version" className="rounded p-1 hover:bg-muted"><ChevronLeft className="size-3.5" /></Link> : <span className="p-1 opacity-30"><ChevronLeft className="size-3.5" /></span>}
-          <span title="Older designs still show today’s data">Design v{current.version} of {latest}</span>
+          <span>Design v{current.version} of {latest}</span>
           {current.version < latest ? <Link href={at({ v: String(current.version + 1) })} aria-label="Next version" className="rounded p-1 hover:bg-muted"><ChevronRight className="size-3.5" /></Link> : <span className="p-1 opacity-30"><ChevronRight className="size-3.5" /></span>}
           <Link href={at({ full: "1" })} className="ml-2 inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted"><Maximize2 className="size-3.5" aria-hidden="true" />Full screen</Link>
         </span>}
@@ -100,23 +109,23 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
             const cardAt = (version: number) => at({ card: card.id, cv: String(version) });
             return <article key={card.id} aria-label={card.title} className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-sm">{card.artifact_card_versions.find(item => item.version === shown)?.title ?? card.title}</span>
                   <span className="inline-flex items-center gap-1 text-muted-foreground">
-                    {shown > 1 ? <Link href={cardAt(shown - 1)} aria-label="Previous card version" className="rounded p-0.5 hover:bg-muted"><ChevronLeft className="size-3.5" /></Link> : <span className="p-0.5 opacity-30"><ChevronLeft className="size-3.5" /></span>}
+                    {shown > 1 ? <Link href={cardAt(shown - 1)} aria-label={`Previous version of ${card.title}`} className="rounded p-1.5 hover:bg-muted"><ChevronLeft className="size-3.5" /></Link> : <span className="p-1.5 opacity-30"><ChevronLeft className="size-3.5" /></span>}
                     v{shown} of {newest}
-                    {shown < newest ? <Link href={cardAt(shown + 1)} aria-label="Next card version" className="rounded p-0.5 hover:bg-muted"><ChevronRight className="size-3.5" /></Link> : <span className="p-0.5 opacity-30"><ChevronRight className="size-3.5" /></span>}
+                    {shown < newest ? <Link href={cardAt(shown + 1)} aria-label={`Next version of ${card.title}`} className="rounded p-1.5 hover:bg-muted"><ChevronRight className="size-3.5" /></Link> : <span className="p-1.5 opacity-30"><ChevronRight className="size-3.5" /></span>}
                   </span>
                   <span className={onHome ? "text-brand" : "text-muted-foreground"}>{onHome ? card.published_version === shown ? "On Home" : `Home shows v${card.published_version}` : "Not on Home"}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span role="group" aria-label="Size" className="inline-flex rounded-lg border border-border p-0.5">{CARD_SIZE_KEYS.map(key => <form key={key} action={setCardSize.bind(null, card.id, key)}>
-                    <button type="submit" aria-pressed={size === key} className="rounded-md px-2 py-0.5 font-mono text-[11px] text-muted-foreground aria-pressed:bg-primary aria-pressed:text-primary-foreground">{CARD_SIZES[key].label}</button></form>)}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span role="group" aria-label={`Size of ${card.title}. Applies on Home straight away.`} title="Applies on Home straight away" className="inline-flex rounded-lg border border-border p-0.5">{CARD_SIZE_KEYS.map(key => <form key={key} action={setCardSize.bind(null, card.id, key)}>
+                    <PendingSubmit aria-pressed={size === key} className="min-h-7 min-w-7 rounded-md px-2 py-0.5 font-mono text-xs text-muted-foreground aria-pressed:bg-primary aria-pressed:text-primary-foreground">{CARD_SIZES[key].label}</PendingSubmit></form>)}</span>
                   {!onHome || card.published_version !== shown
-                    ? <form action={publishCard.bind(null, card.id, shown, card.published_version)}><button type="submit" className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 font-medium text-primary-foreground hover:opacity-90">
-                      {onHome ? <><RefreshCw className="size-3.5" aria-hidden="true" />Update on Home</> : <><HousePlus className="size-3.5" aria-hidden="true" />Add to Home</>}</button></form>
+                    ? <form action={publishCard.bind(null, card.id, shown, card.published_version)}><PendingSubmit className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 font-medium text-primary-foreground hover:opacity-90">
+                      {onHome ? <><RefreshCw className="size-3.5" aria-hidden="true" />Update on Home</> : <><HousePlus className="size-3.5" aria-hidden="true" />Add to Home</>}</PendingSubmit></form>
                     : <span className="inline-flex items-center gap-1 px-2 text-brand"><Check className="size-3.5" aria-hidden="true" />On Home</span>}
-                  {onHome && <form action={unpublishCard.bind(null, card.id)}><button type="submit" className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 hover:bg-muted"><X className="size-3.5" aria-hidden="true" />Remove from Home</button></form>}
+                  {onHome && <form action={unpublishCard.bind(null, card.id)}><PendingSubmit className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 hover:bg-muted"><X className="size-3.5" aria-hidden="true" />Remove from Home</PendingSubmit></form>}
                 </div>
               </div>
               {/* The card in its Home slot, between the user's own widgets, with live data. */}
