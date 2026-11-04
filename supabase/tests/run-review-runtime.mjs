@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import postgres from "postgres";
-import { replayMigrations } from "./migration-replay.mjs";
+import { applicationMigrationSql, replayMigrations } from "./migration-replay.mjs";
 import { reviewRuntimeRaces } from "./review-runtime-races.mjs";
 if (existsSync(".env")) process.loadEnvFile(".env");
 if (!process.env.SUPABASE_DB_URL) throw new Error("SUPABASE_DB_URL required for disposable-schema SQL acceptance");
@@ -19,7 +19,7 @@ try {
       await tx.unsafe(`create schema ${schema}; create table ${schema}.auth_users(id uuid primary key,email text); grant usage on schema ${schema} to authenticated,service_role`);
       const migrations = readdirSync("supabase/migrations").filter(file => file.endsWith(".sql")).sort().map(file => {
         let sql = readFileSync(`supabase/migrations/${file}`, "utf8");
-        if (file.endsWith("_initial.sql")) sql = sql.slice(0, sql.indexOf("insert into storage.buckets"));
+        sql = applicationMigrationSql(file, sql);
         return { file, sql: isolated(sql) };
       });
       await replayMigrations(tx, migrations, "MNE020 disposable replay");

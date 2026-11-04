@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import postgres from "postgres";
-import { replayMigrations } from "./migration-replay.mjs";
+import { applicationMigrationSql, replayMigrations } from "./migration-replay.mjs";
 import { sourceCoverageReaderProof } from "./source-coverage-reader.mjs";
 if (existsSync(".env")) process.loadEnvFile(".env");
 if (!process.env.SUPABASE_DB_URL) throw new Error("SUPABASE_DB_URL required for disposable-schema SQL acceptance");
@@ -21,7 +21,7 @@ try {
       !(process.argv.includes("--baseline") && file.startsWith("202610060011"))).sort();
     await replayMigrations(tx, files.map(file => {
       let sql = readFileSync(`supabase/migrations/${file}`, "utf8");
-      if (file.endsWith("_initial.sql")) sql = sql.slice(0, sql.indexOf("insert into storage.buckets"));
+      sql = applicationMigrationSql(file, sql);
       return { file, sql: isolated(sql) };
     }), "MNE008 disposable replay");
     for (const file of ["source-coverage.sql", "atomic-review.sql", "import-review.sql", "import-row-exclusions.sql"]) {

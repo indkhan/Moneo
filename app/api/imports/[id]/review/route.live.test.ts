@@ -1,3 +1,4 @@
+import { applicationMigrationSql } from "../../../../../supabase/tests/migration-replay.mjs";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import postgres from "postgres";
@@ -43,7 +44,7 @@ it.skipIf(process.env.RUN_IMPORT_EXCLUSION_DB_TESTS !== "1")("runs hash-verified
       const isolated = (sql: string) => sql.replace(/\bpublic\./g, `${schema}.`).replace(/\bauth\.users\b/g, `${schema}.auth_users`);
       for (const file of readdirSync("supabase/migrations").filter(file => file.endsWith(".sql")).sort()) {
         let sql = readFileSync(`supabase/migrations/${file}`, "utf8");
-        if (file.endsWith("_initial.sql")) sql = sql.slice(0, sql.indexOf("insert into storage.buckets"));
+        sql = applicationMigrationSql(file, sql);
         await tx.unsafe(isolated(sql));
       }
       await tx.unsafe(`insert into ${schema}.auth_users(id,email) values($1,'synthetic@example.invalid')`, [actor]);

@@ -55,3 +55,23 @@ export function canonicalFunctionDefinition(definition) {
   }
   return definition.slice(0, start) + normalized + definition.slice(end);
 }
+// Disposable application replays must not change Supabase-owned storage setup.
+export function applicationMigrationSql(file, sql) {
+  if (file.endsWith("_initial.sql")) {
+    const boundary = sql.indexOf("insert into storage.buckets");
+    if (boundary < 0) throw new Error("Initial storage boundary changed; review disposable replay isolation");
+    return sql.slice(0, boundary);
+  }
+  if (file === "202610270003_chat_attachments.sql") {
+    const boundary = sql.indexOf("alter table public.messages");
+    if (boundary < 0) throw new Error("Chat storage boundary changed; review disposable replay isolation");
+    return sql.slice(boundary);
+  }
+  if (file === "202610200003_remove_artifacts_and_library.sql") {
+    const start = sql.indexOf("drop policy private_finance_files on storage.objects;");
+    const end = sql.indexOf("create or replace function public.reset_workspace()", start);
+    if (start < 0 || end < 0) throw new Error("Storage policy boundary changed; review disposable replay isolation");
+    return sql.slice(0, start) + sql.slice(end);
+  }
+  return sql;
+}

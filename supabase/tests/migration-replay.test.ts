@@ -1,5 +1,17 @@
 import { expect, it } from "vitest";
-import { canonicalFunctionDefinition, replayMigrations } from "./migration-replay.mjs";
+import { applicationMigrationSql, canonicalFunctionDefinition, replayMigrations } from "./migration-replay.mjs";
+import { readFileSync, readdirSync } from "node:fs";
+
+it("keeps application changes while excluding Supabase storage from fresh replay", () => {
+  const migrations = readdirSync("supabase/migrations").filter(file => file.endsWith(".sql"));
+  for (const file of migrations) {
+    const sql = applicationMigrationSql(file, readFileSync(`supabase/migrations/${file}`, "utf8"));
+    expect(sql, file).not.toMatch(/\bstorage\./);
+    if (file === "202610270003_chat_attachments.sql") expect(sql).toContain("messages_attachments_check");
+    if (file === "202610200003_remove_artifacts_and_library.sql") expect(sql).toContain("function public.reset_workspace()");
+  }
+  expect(() => applicationMigrationSql("202610270003_chat_attachments.sql", "changed")).toThrow(/boundary changed/);
+});
 
 it("identifies a missing upgrade constraint without treating unrecorded SQL as applied", async () => {
   const cause = Object.assign(new Error("missing constraint"), { code: "42704" });
