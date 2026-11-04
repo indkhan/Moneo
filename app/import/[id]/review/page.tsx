@@ -137,7 +137,8 @@ export default async function ImportReviewPage({ params, searchParams }: { param
         const events = decisionEvents?.data?.filter(event => event.source_id === row.id) ?? [];
         const activeDecision = events.find(event => !event.undone_at);
         const interpreted = (row.normalized_row as { row?: { postedOn: string; description: string; amountMinor: string; currencyCode: string } } | null)?.row;
-        const transactionId = (row.transaction_sources as unknown as { transaction_id: string }[])[0]?.transaction_id;
+        const links = row.transaction_sources as unknown as { transaction_id: string } | { transaction_id: string }[] | null;
+        const transactionId = (Array.isArray(links) ? links[0] : links)?.transaction_id;
         return <article key={row.id} className="space-y-2 rounded-lg border border-border p-4 text-sm">
           <h3 className="font-medium">Row {row.row_number} · {row.status === "rejected" ? "Rejected, not in your totals" : "Accepted"}</h3>
           {interpreted && <p className="break-words">{interpreted.description} · {interpreted.postedOn} · {formatMoney(BigInt(interpreted.amountMinor), interpreted.currencyCode, workspace.locale)}</p>}
