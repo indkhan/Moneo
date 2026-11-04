@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b79swlt5n</task-id>
+<tool-use-id>toolu_01DPtRkR7b8itc2HrNbUGsXt</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\bdb49bc3b4b3e01d\64d783ab-53ac-41ca-8d34-df07b2fe9ba1\tasks\b79swlt5n.output</output-file>
+<status>failed</status>
+<summary>Background command "Start dev server for final browser checks" failed with exit code 1</summary>
+</task-notification>
