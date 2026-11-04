@@ -1,0 +1,24 @@
+import { expect, test } from "@playwright/test";
+import { e2eStorageStatePath, gatedSkipReason, hasSupabaseEnv } from "./fixtures";
+
+const state = e2eStorageStatePath();
+if (state) test.use({ storageState: state });
+test.skip(!hasSupabaseEnv() || !state, gatedSkipReason());
+
+for (const [path, text] of [
+  ["/plan/spending?month=2026-13", "invalid month"],
+  ["/money/organization?review=not-a-uuid", "out of date"],
+  ["/money/organization?cursor=not-a-cursor", "out of date"],
+  ["/money/investigations?from=not-a-date&to=2026-13-40", "use real dates"],
+] as const) test(`${path} recovers in place`, async ({ page }) => {
+  await page.goto(path);
+  await expect(page.locator("main").getByRole("alert").first()).toContainText(text);
+  await expect(page.locator("body")).not.toContainText(/invalid_format|ZodError|This page couldn.t load|pattern/);
+});
+
+for (const path of ["/ai/activity/not-a-uuid", "/does-not-exist", "/ai/activity/00000000-0000-4000-8000-000000000000"]) test(`${path} offers a way back`, async ({ page }) => {
+  await page.goto(path);
+  await expect(page.getByRole("heading", { name: "This page isn’t here" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Go to Overview" })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("invalid input syntax");
+});

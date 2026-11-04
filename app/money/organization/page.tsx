@@ -12,10 +12,14 @@ import {OrganizationQueue,ApprovalForm,UndoReviewForm} from './review-form';
 const snapshotSchema=z.object({id:z.uuid(),version:z.number().int().nonnegative(),description:z.string(),posted_on:z.iso.date(),amount_minor:z.string().regex(/^-?\d+$/),currency_code:z.string().regex(/^[A-Z]{3}$/),merchant_id:z.uuid().nullable(),category_id:z.uuid().nullable()}).passthrough();
 export default async function OrganizationPage({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}) {
  const {supabase,workspace}=await requireWorkspace();const params=await searchParams;
- const reviewId=params.review===undefined?null:z.uuid().parse(params.review);
- const importId=params.import===undefined?null:z.uuid().parse(params.import);
+ const requestedReview=z.uuid().safeParse(params.review);
+ const reviewId=requestedReview.success?requestedReview.data:null;
+ let invalidLink=params.review!==undefined&&!requestedReview.success;
+ const requestedImport=z.uuid().safeParse(params.import);
+ const importId=requestedImport.success?requestedImport.data:null;
+ if(params.import!==undefined&&!requestedImport.success)invalidLink=true;
  let cursor:{date:string;id:string}|null=null;
- if(params.cursor){const parts=z.string().parse(params.cursor).split(':');if(parts.length!==2)throw new Error('Invalid organization cursor');cursor={date:z.iso.date().parse(parts[0]),id:z.uuid().parse(parts[1])};}
+ if(params.cursor){const parts=String(params.cursor).split(':');const date=z.iso.date().safeParse(parts[0]),id=z.uuid().safeParse(parts[1]);if(parts.length===2&&date.success&&id.success)cursor={date:date.data,id:id.data};else invalidLink=true;}
  let query=supabase.from('transactions').select(importId?'id,version,posted_on,transaction_sources!inner(source_transactions!inner(import_id))':'id,version,posted_on').eq('workspace_id',workspace.id).neq('status','voided').neq('kind','transfer');
  query=query.or(cursor?`and(or(merchant_id.is.null,category_id.is.null),or(posted_on.lt.${cursor.date},and(posted_on.eq.${cursor.date},id.lt.${cursor.id})))`:'merchant_id.is.null,category_id.is.null');
  if(importId)query=query.eq('transaction_sources.source_transactions.import_id',importId);
@@ -54,6 +58,7 @@ export default async function OrganizationPage({searchParams}:{searchParams:Prom
  // A rule shows the payee's cleaned name, not the bank text it matches; the full key stays in the tooltip.
  const ruleItem=(rule:typeof rules.data[number])=><li key={rule.id} className="flex flex-wrap items-center justify-between gap-2 py-2"><span className={rule.enabled?'':'text-muted-foreground'}><span className="font-medium" title={rule.description_key}>{merchantName(rule.merchant_id)??organizationDisplayName(rule.description_key)}</span> → {categoryName(rule.category_id)??'no category'}</span><form action={toggleRule}><input type="hidden" name="key" value={rule.description_key} /><input type="hidden" name="merchant" value={rule.merchant_id??''} /><input type="hidden" name="category" value={rule.category_id??''} /><input type="hidden" name="version" value={rule.version} /><input type="hidden" name="enabled" value={String(!rule.enabled)} /><button className="text-xs underline">{rule.enabled?'Disable':'Enable'}</button></form></li>;
  return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 text-foreground sm:px-8 lg:py-8">
+  {invalidLink&&<p role="alert" className="text-sm">That link is out of date, so this is the start of your queue.</p>}
   <header><p className="eyebrow">Money</p><h1 className="mt-1 page-title">Organize spending</h1>
    <p className="mt-2 text-sm text-muted-foreground">Tick entries, pick a category, press Apply. Every batch can be undone.</p></header>
   {reviewId&&!review&&<p role="alert" className="text-sm">This review is no longer available.</p>}

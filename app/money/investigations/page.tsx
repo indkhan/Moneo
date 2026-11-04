@@ -1,3 +1,4 @@
+import { z } from "zod";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
@@ -42,7 +43,7 @@ export default async function InvestigationPage({ searchParams }: { searchParams
     spec = parseInvestigationParams(params, { from: monthStart, to: today });
     result = await runInvestigation(spec, context, { entities: entitiesRead });
     spec = { ...result.interpretedFilters, page: spec.page };
-  } catch (e) { error = e instanceof Error ? e.message : "Investigation unavailable"; }
+  } catch (e) { error = e instanceof z.ZodError ? "Check the period: use real dates, with From on or before To." : e instanceof Error ? e.message : "This investigation couldn’t run. Try again."; }
   const entities = await entitiesRead;
   const names = new Map([entities.accounts, entities.categories, entities.merchants].flat().map(e => [e.id, e.name]));
   const display = (key: string, value: unknown) => Array.isArray(value) ? value.join(", ") || "No tags" : value === null ? "Unassigned"

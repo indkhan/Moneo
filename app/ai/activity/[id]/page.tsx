@@ -18,6 +18,7 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
     redirect("/login");
   }
   const { id } = await params;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const { supabase, workspace } = context;
   const { data: job, error: jobError } = await supabase
     .from("background_jobs")
@@ -33,7 +34,7 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
           ← Activity
         </Link>
         <p role="alert" className="mt-4 text-danger">
-          Could not load this analysis: {truncate(jobError.message, 200)}
+          Could not load this analysis. Try again.
         </p>
       </main>
     );

@@ -51,7 +51,9 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
   const { supabase, workspace } = context;
   const currentMonth = monthPrefix(new Date(), workspace.timezone);
   const params = await searchParams;
-  const month = params.month ? z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).parse(params.month) : currentMonth;
+  const requestedMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).safeParse(params.month);
+  const invalidMonth = !!params.month && !requestedMonth.success;
+  const month = requestedMonth.success ? requestedMonth.data : currentMonth;
   const from = `${month}-01`;
   const next = nextMonthStart(month);
 
@@ -87,6 +89,7 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
         <p className="mt-2 text-sm text-muted-foreground">Monthly category limits for {month}. Counts posted spending minus refunds; transfers, pending items and income are left out.</p></div>
       <form method="get" className="flex flex-wrap items-end gap-2"><label className="grid gap-1 text-xs font-medium text-muted-foreground">Calendar month<input type="month" name="month" defaultValue={month} required className={field} /></label><button className={button}>View month</button></form>
     </header>
+    {invalidMonth && <p role="alert" className="text-sm">That link has an invalid month, so this is the current month.</p>}
     {month !== currentMonth && <p className="text-sm text-muted-foreground">Viewing a {month > currentMonth ? "future" : "past"} month. Edits apply to the current month ({currentMonth}).</p>}
     {needsReview > 0 && <p role="status" className="text-sm text-warning">Some spending is not counted yet: {needsReview} transactions need review. <Link href="/import" className="underline">Review imports</Link></p>}
     <section className={card} aria-labelledby="limits-heading">
