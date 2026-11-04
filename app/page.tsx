@@ -237,10 +237,9 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
         <IntentLink href="/ai?conversation=new&call=1" className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" strokeWidth={1.8} aria-hidden="true" />Call Moneo</IntentLink>
       </header>
       {/* Stored cards come with the page, so they never push the grid down; the slow detection streams after and reloads only if it changed a card. */}
-      <WaitingForYou proposals={waiting} review={review} />
       <Suspense fallback={null}><RecurringDetection supabase={supabase} workspace={workspace} /></Suspense>
       <HomeGrid version={saved.version} items={ordered} sizes={sizes} labels={labels} options={Object.fromEntries(keys.map(key => [key, sizeOptions(key)]))}
-        widgets={Object.fromEntries(ordered.map(key => [key, widgets[key]]))} />
+        widgets={Object.fromEntries(ordered.map(key => [key, widgets[key]]))} afterFirst={<WaitingForYou proposals={waiting} review={review} />} />
     </main>
   );
 }

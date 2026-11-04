@@ -28,7 +28,7 @@ it("lists transaction and balance cards with their count, open and filterable", 
   ]);
   const html = await render();
   expect(html).toMatch(/<details open="" aria-label="Waiting for you"/);
-  expect(html).toMatch(/Waiting for you<\/span><span[^>]*>2<\/span>/);
+  expect(html).toMatch(/Waiting for you<\/span><span[^>]*>2<span/);
   expect(html).toContain("aria-label=\"Transaction proposal\"");
   expect(html).toContain("Spent €12.00 · Lunch");
   expect(html).toContain("Wallet");
@@ -57,7 +57,7 @@ it("folds recurring cards, uncategorized rows and findings into one summary card
       { id: "r2", kind: "recurring_edit", title: "Rent went up", detail: "", status: "proposed" }, { id: "b", kind: "balance_set", title: "Cash is €40.00", detail: "", status: "proposed" }],
     review: { uncategorized: 310, findings: [{ ids: ["f1", "f2"], title: "Possible duplicate", detail: "", href: null, transactions: [] }] },
   }));
-  expect(html).toMatch(/Waiting for you<\/span><span[^>]*>314<\/span>/);
+  expect(html).toMatch(/Waiting for you<\/span><span[^>]*>4<span/);
   expect(html).toContain("310 transactions need a category");
   expect(html).toContain("2 recurring changes to confirm");
   expect(html).toContain("1 thing looks off");
