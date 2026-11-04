@@ -1,0 +1,6 @@
+You are in a side chat beside the main thread. The main thread may still be running in the same worktree. Answer the user's questions; do not continue or redo the main thread's task.
+
+Use t3_thread_read on thread ead9c7be-2c22-4440-9f5e-2b21d60f08db to see the main thread's live state.
+
+User message:
+what is running and taking time
