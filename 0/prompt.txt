@@ -1,0 +1,27 @@
+<task-notification>
+<task-id>b0g88asdu</task-id>
+<tool-use-id>toolu_01G2dxY51qyqJ4HqWsxqJQC5</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-7d9fff38\64d783ab-53ac-41ca-8d34-df07b2fe9ba1\tasks\b0g88asdu.output</output-file>
+<status>completed</status>
+<summary>Background command "Verify the five specs with patched cleanup" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b6z7n1d1v</task-id>
+<tool-use-id>toolu_016Tnm6fFnS9VFU47PtAaXRD</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-7d9fff38\64d783ab-53ac-41ca-8d34-df07b2fe9ba1\tasks\b6z7n1d1v.output</output-file>
+<status>completed</status>
+<summary>Background command "Fix regex and rerun three specs" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b5ex26teh</task-id>
+<tool-use-id>toolu_01NoC3vf9zLctcfGzsPQpYiP</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-7d9fff38\64d783ab-53ac-41ca-8d34-df07b2fe9ba1\tasks\b5ex26teh.output</output-file>
+<status>completed</status>
+<summary>Background command "Patch specs and run recurring and chat group" completed (exit code 0)</summary>
+</task-notification>
