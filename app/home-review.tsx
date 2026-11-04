@@ -110,9 +110,13 @@ export function UncategorizedSheet({ total }: { total: number }) {
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [done, setDone] = useState<Record<string, string>>({});
   const { pending, error, run } = useDecide();
-  useEffect(() => { loadUncategorizedGroups().then(setData, () => setData({ groups: [], total: 0, categories: [] })); }, []);
+  // A failed load says so; treating it as empty would report everything as reviewed.
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => { loadUncategorizedGroups().then(setData, () => setFailed(true)); }, [attempt]);
   const shown = data?.groups.reduce((sum, group) => sum + group.count, 0) ?? 0;
   useReportCleared(!!data && data.total <= shown && data.groups.every(group => done[group.key] && done[group.key] !== "Skipped"));
+  if (failed) return <p role="alert" className="mt-3 text-sm text-danger">Could not load these {total} transactions. <button type="button" onClick={() => { setFailed(false); setAttempt(count => count + 1); }} className="underline">Try again</button></p>;
   if (!data) return <p role="status" className="mt-3 text-sm text-muted-foreground">Grouping {total} transactions…</p>;
   const pick = (group: UncategorizedGroup) => chosen[group.key] ?? group.suggested ?? "";
   // Marked done at once; groups that fail to save are put back with the error.

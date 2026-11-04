@@ -15,7 +15,7 @@ export default async function CurrencyPage() {
     redirect("/login");
   }
   const { supabase, workspace } = context;
-  const [{ data: accounts }, { data: rates }] = await Promise.all([
+  const [{ data: accounts, error: accountsError }, { data: rates, error: ratesError }] = await Promise.all([
     supabase.from("accounts").select("id, name, currency_code").eq("workspace_id", workspace.id).order("name"),
     supabase.from("fx_rates")
       .select("from_currency, to_currency, rate_text, rate_date, source")
@@ -24,6 +24,8 @@ export default async function CurrencyPage() {
       .order("created_at", { ascending: false })
       .limit(100),
   ]);
+  // A failed read must not claim there are no rates: the error page offers a retry instead.
+  if (accountsError || ratesError) throw new Error("Currency data could not be loaded");
   const currencies = [...new Set([
     workspace.display_currency,
     ...(accounts ?? []).map((account) => account.currency_code),

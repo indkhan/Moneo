@@ -39,7 +39,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const requestedHorizon = z.coerce.number().int().min(1).max(365).safeParse(params.horizon ?? 30);
   const horizon = requestedHorizon.success ? requestedHorizon.data : 30;
   // The real-plan forecast loads alongside the page's own rows; only a selected scenario waits for them.
-  const [realPlan, { data: goals }, { data: allocations }, { data: accounts }, { data: assumptions, error: assumptionsError }, { data: scenarios }] = await Promise.all([
+  const [realPlan, { data: goals, error: goalsError }, { data: allocations, error: allocationsError }, { data: accounts, error: accountsError }, { data: assumptions, error: assumptionsError }, { data: scenarios, error: scenariosError }] = await Promise.all([
     evaluatePlan(horizon),
     supabase.from("goals").select("id, name, target_minor::text, currency_code, target_date, priority, status, notes, version, planned_monthly_minor::text, contribution_starts_on, recorded_saved_minor::text, saved_as_of")
       .eq("workspace_id", workspace.id).order("priority").order("created_at", { ascending: false }),
@@ -49,6 +49,9 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
       .eq("workspace_id", workspace.id).is("removed_at", null).order("created_at", { ascending: false }),
     supabase.from("scenarios").select("id, name, description, version").eq("workspace_id", workspace.id).is("removed_at", null).order("created_at", { ascending: false }),
   ]);
+  // A failed read must not look like having no goals or accounts: the error page offers a retry instead.
+  const planError = goalsError ?? allocationsError ?? accountsError ?? scenariosError;
+  if (planError) throw new Error("Plan data could not be loaded");
   const accountNames = new Map((accounts ?? []).map(account => [account.id, account.name]));
   const activeAccounts = (accounts ?? []).filter(account => !account.archived_at);
   const selectedScenario = scenarios?.find(item => item.id === params.scenario);
