@@ -16,7 +16,7 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
   await open(page);
   await expect(page.getByRole("link", { name: "Edit layout" })).toHaveCount(0);
   const grid = page.locator("[data-widget]");
-  await expect(grid.first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("[data-widget]:visible").first()).toBeVisible({ timeout: 30_000 });
   // Start from Goals at the end, so the moves below are predictable.
   if (!(await order(page)).includes("goals")) {
     await page.getByRole("button", { name: "Add widget" }).click();
@@ -101,7 +101,7 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
   await goals.getByRole("button", { name: "Hide Goals" }).click();
   await hidden;
   await page.reload({ waitUntil: "networkidle" });
-  await expect(grid.first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("[data-widget]:visible").first()).toBeVisible({ timeout: 30_000 });
   await expect(goals).toHaveCount(0);
   await page.getByRole("button", { name: "Add widget" }).click();
   await page.getByRole("list", { name: "Hidden widgets" }).getByRole("button", { name: "Goals", exact: true }).click();
@@ -112,7 +112,7 @@ test("a long press drags a widget on a phone, and a swipe still scrolls", async 
   const context = await browser.newContext({ storageState: state!, viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const page = await context.newPage();
   await open(page);
-  await expect(page.locator("[data-widget]").nth(1)).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("[data-widget]:visible").nth(1)).toBeVisible({ timeout: 30_000 });
   const cdp = await context.newCDPSession(page);
   // One touch point per frame, as a finger moves.
   const touch = async (type: "touchStart" | "touchMove" | "touchEnd", x = 0, y = 0) => {
@@ -120,7 +120,8 @@ test("a long press drags a widget on a phone, and a swipe still scrolls", async 
     await page.waitForTimeout(20);
   };
   const before = await order(page);
-  const [first, second] = before;
+  // An empty workspace leaves some widgets without content, and so without height.
+  const [first, second] = await page.locator("[data-widget]:visible").evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.widget));
   await page.locator(`[data-widget="${first}"]`).evaluate(node => node.scrollIntoView({ block: "start" }));
   await page.evaluate(() => scrollBy(0, -120));
   const start = (await page.locator(`[data-widget="${first}"]`).boundingBox())!;
@@ -144,7 +145,7 @@ test("a long press drags a widget on a phone, and a swipe still scrolls", async 
   expect(await order(page)).toEqual(after);
 
   await page.reload({ waitUntil: "networkidle" });
-  await expect(page.locator("[data-widget]").first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("[data-widget]:visible").first()).toBeVisible({ timeout: 30_000 });
   expect((await order(page)).indexOf(first)).toBeGreaterThan(0);
   await context.close();
 });
