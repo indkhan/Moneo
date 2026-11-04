@@ -5,12 +5,12 @@ import { useBusy } from "@/components/use-busy";
 import Link from "next/link";
 import { decideAgentProposals } from "@/app/ai/agents/actions";
 import { loadIouProposal, type ChatProposal } from "@/app/ai/iou-actions";
-import { formatMoney } from "@/lib/finance/format";
+import { displayFormat } from "@/lib/display-format";
 
 type Proposal = Pick<ChatProposal, "id" | "title" | "detail" | "status"> & Partial<ChatProposal> & { conflict_key?: string };
 
 /** A loan, repayment or expense waiting for a yes/no. Nothing is saved until Add is pressed. */
-export function IouCard({ id, initial, onAccount, onDecided }: { id: string; initial?: Proposal; onAccount?: (id: string, accountId: string | undefined) => void; onDecided?: (id: string, undone?: boolean) => void }) {
+export function IouCard({ id, initial, locale = "en-GB", onAccount, onDecided }: { id: string; initial?: Proposal; locale?: string; onAccount?: (id: string, accountId: string | undefined) => void; onDecided?: (id: string, undone?: boolean) => void }) {
   const [proposal, setProposal] = useState<Proposal | null | undefined>(initial);
   const [account, setAccount] = useState<string>();
   const [error, setError] = useState<string>();
@@ -22,6 +22,7 @@ export function IouCard({ id, initial, onAccount, onDecided }: { id: string; ini
   if (unavailable) return <p role="alert" className="my-3 text-sm text-danger">Could not load this card. <button type="button" onClick={() => { setUnavailable(false); setAttempt(count => count + 1); }} className="underline">Try again</button></p>;
   if (proposal === undefined) return <p className="my-3 text-sm text-muted-foreground" role="status">Loading…</p>;
   if (!proposal) return null;
+  const { date, money } = displayFormat(locale);
   const transaction = proposal.kind === "transaction_create";
   const balance = proposal.kind === "balance_set";
   const recurring = proposal.kind === "recurring_edit";
@@ -55,8 +56,8 @@ export function IouCard({ id, initial, onAccount, onDecided }: { id: string; ini
       <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Show the {proposal.transactions.length === 1 ? "transaction" : `${proposal.transactions.length} transactions`}</summary>
       <ul className="mt-2 divide-y divide-border rounded-lg border border-border bg-background">{proposal.transactions.map(row => <li key={row.id}>
         <Link href={`/money/transactions?transaction=${row.id}`} className="flex items-baseline gap-3 px-3 py-2 hover:bg-muted">
-          <span className="shrink-0 font-mono text-xs text-muted-foreground">{row.date}</span><span className="min-w-0 flex-1 truncate">{row.description}</span>
-          <span className="shrink-0 font-mono">{formatMoney(row.amountMinor, row.currency)}</span></Link></li>)}</ul>
+          <span className="shrink-0 font-mono text-xs text-muted-foreground">{date(row.date)}</span><span className="min-w-0 flex-1 truncate">{row.description}</span>
+          <span className="shrink-0 font-mono">{money(row.amountMinor, row.currency)}</span></Link></li>)}</ul>
     </details>}
     {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
     {open ? <div className="mt-3 flex flex-wrap items-center gap-2">

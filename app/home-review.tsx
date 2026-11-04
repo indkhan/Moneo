@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, X } from "lucide-react";
 import { RecurringCards } from "@/app/money/recurring/cards";
 import { decideAgentProposals } from "@/app/ai/agents/actions";
-import { formatMoney } from "@/lib/finance/format";
+import { displayFormat } from "@/lib/display-format";
 import { categorizeGroups, loadUncategorizedGroups, type UncategorizedGroup } from "./home-review-actions";
 import type { OpenProposal } from "@/lib/ai/open-proposals";
 import type { HomeFinding } from "@/lib/ai/home-review";
@@ -69,7 +69,8 @@ export function RecurringSheet({ proposals }: { proposals: OpenProposal[] }) {
 }
 
 /** Things the checks flagged; “It's fine” closes one for good, Open shows the transaction behind it. */
-export function FindingsSheet({ findings }: { findings: HomeFinding[] }) {
+export function FindingsSheet({ findings, locale = "en-GB" }: { findings: HomeFinding[]; locale?: string }) {
+  const { date, money } = displayFormat(locale);
   const { pending, error, run } = useDecide();
   const [cleared, setCleared] = useState<Set<string>>(new Set());
   // Cleared at once; any that fail to save come back with the error.
@@ -95,8 +96,8 @@ export function FindingsSheet({ findings }: { findings: HomeFinding[] }) {
         {item.transactions.length > 0 && <details className="mt-1 text-xs text-muted-foreground"><summary className="cursor-pointer hover:text-foreground">Show the {item.transactions.length === 1 ? "transaction" : `${item.transactions.length} transactions`}</summary>
           <ul className="mt-1 divide-y divide-border rounded-lg border border-border bg-background">{item.transactions.map(row => <li key={row.id}>
             <Link href={`/money/transactions?transaction=${row.id}`} className="flex items-baseline gap-3 px-3 py-1.5 hover:bg-muted">
-              <span className="flex-1 font-mono">{row.date}</span>
-              <span className="shrink-0 font-mono text-foreground">{formatMoney(row.amountMinor, row.currency)}</span></Link></li>)}</ul></details>}</div>
+              <span className="flex-1 font-mono">{date(row.date)}</span>
+              <span className="shrink-0 font-mono text-foreground">{money(row.amountMinor, row.currency)}</span></Link></li>)}</ul></details>}</div>
       {item.href && <Link href={item.href} className={secondary + " inline-flex items-center"}>Open</Link>}
       <button type="button" disabled={pending} className={secondary} onClick={() => dismiss([item])}>It&apos;s fine</button>
     </li>)}</ul>
@@ -105,7 +106,8 @@ export function FindingsSheet({ findings }: { findings: HomeFinding[] }) {
 }
 
 /** Uncategorized spending grouped by description: pick a category per group (the suggestion is preselected) or skip it. */
-export function UncategorizedSheet({ total }: { total: number }) {
+export function UncategorizedSheet({ total, locale = "en-GB" }: { total: number; locale?: string }) {
+  const { date, money } = displayFormat(locale);
   const [data, setData] = useState<Awaited<ReturnType<typeof loadUncategorizedGroups>>>();
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [done, setDone] = useState<Record<string, string>>({});
@@ -142,8 +144,8 @@ export function UncategorizedSheet({ total }: { total: number }) {
         <details className="text-xs text-muted-foreground"><summary className="cursor-pointer hover:text-foreground">{group.count} {group.count === 1 ? "transaction" : "transactions"}{group.suggested ? " · suggestion preselected" : ""}</summary>
           <ul className="mt-1 divide-y divide-border rounded-lg border border-border bg-background">{group.recent.map(row => <li key={row.id}>
             <Link href={`/money/transactions?transaction=${row.id}`} className="flex items-baseline gap-3 px-3 py-1.5 hover:bg-muted">
-              <span className="flex-1 font-mono">{row.date}</span>
-              <span className="shrink-0 font-mono text-foreground">{formatMoney(row.amountMinor, row.currency)}</span></Link></li>)}</ul>
+              <span className="flex-1 font-mono">{date(row.date)}</span>
+              <span className="shrink-0 font-mono text-foreground">{money(row.amountMinor, row.currency)}</span></Link></li>)}</ul>
           {group.count > group.recent.length && <p className="mt-1">…and {group.count - group.recent.length} more.</p>}
         </details></div>
       {done[group.key] ? <p role="status" className="text-sm">{done[group.key]}</p> : <>

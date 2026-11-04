@@ -1,7 +1,9 @@
+import { displayFormat } from "@/lib/display-format";
 import type { SourceCoverage } from "@/lib/finance/source-coverage";
-export function SourceCoverageDetails({ coverage }: { coverage: SourceCoverage }) {
+export function SourceCoverageDetails({ coverage, locale }: { coverage: SourceCoverage; locale?: string }) {
+  const date = locale ? displayFormat(locale).date : (value: string) => value;
   const { scope } = coverage;
-  const period = scope.from === "0001-01-01" ? `All recorded history up to ${scope.to}` : `${scope.from} to ${scope.to}`;
+  const period = scope.from === "0001-01-01" ? `All recorded history up to ${date(scope.to)}` : `${date(scope.from)} to ${date(scope.to)}`;
   const unresolved = coverage.unresolvedSourceRows;
   return <details className="text-sm text-muted-foreground">
     <summary className="cursor-pointer select-none hover:text-foreground">How this was calculated</summary>
