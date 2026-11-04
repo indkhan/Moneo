@@ -257,7 +257,9 @@ async function loadWorkbook(file: ArrayBuffer) {
 export async function inspectExcel(file: ArrayBuffer, scope?: WorkbookScope) {
   const workbook = await loadWorkbook(file);
   const inventory = workbook.worksheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name, state: sheet.state, rowCount: sheet.rowCount, columnCount: sheet.columnCount,
-    preview: Array.from({length: Math.min(sheet.rowCount, 20)}, (_, index) => ({rowNumber: index + 1, values: Array.from({length: Math.min(sheet.columnCount, 50)}, (_, column) => cellText(sheet.getRow(index + 1).getCell(column + 1), true)) })) }));
+    // The first rows show the header; the last ones show footers and totals to leave out.
+    preview: [...new Set([...Array.from({length: Math.min(sheet.rowCount, 20)}, (_, index) => index + 1), ...Array.from({length: Math.min(sheet.rowCount, 5)}, (_, index) => sheet.rowCount - index).reverse()])]
+      .map(rowNumber => ({rowNumber, values: Array.from({length: Math.min(sheet.columnCount, 50)}, (_, column) => cellText(sheet.getRow(rowNumber).getCell(column + 1), true)) })) }));
   return { inventory, rows: scope ? workbookRows(workbook, scope) : null };
 }
 
