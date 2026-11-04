@@ -3,7 +3,9 @@ import { z } from "zod";
 import { redirect } from "next/navigation";
 import { CalendarDays } from "lucide-react";
 import { requireWorkspace } from "@/lib/auth";
+import { accountLiquidity, availableToSpend, forecastDaily, usableForecastInput } from "@/lib/finance/calculations";
 import { evaluatePlan } from "@/lib/finance/model";
+import { CoverageNote } from "@/components/coverage-note";
 import { calendarDate } from "@/lib/finance/calendar";
 import { SourceCoverageDetails } from "@/app/source-coverage";
 import { PlanningHistory } from "./history";
@@ -19,6 +21,13 @@ import { AssumptionList } from "./assumptions";
 import { button, card, eyebrow, field } from "./ui";
 
 const pill = "inline-flex h-11 items-center gap-1 rounded-xl border border-input px-4 text-[13px] font-medium hover:bg-muted";
+
+type Plan = Awaited<ReturnType<typeof evaluatePlan>>;
+/** The forecast from the accounts it can use, with the ones left out named on the page. */
+function fromUsableAccounts(plan: Plan): Plan {
+  const { input, excluded } = usableForecastInput(plan.input);
+  return excluded.length ? { ...plan, input, forecast: forecastDaily(input), available: availableToSpend(input), liquidity: accountLiquidity(input) } : plan;
+}
 
 export default async function PlanPage({ searchParams }: { searchParams: Promise<LiquidityParams> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
@@ -42,11 +51,14 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const activeAccounts = (accounts ?? []).filter(account => !account.archived_at);
   const selectedScenario = scenarios?.find(item => item.id === params.scenario);
   const scenarioId = selectedScenario?.id;
-  const realProjection = scenarioId ? await evaluatePlan(horizon, scenarioId) : realPlan;
+  const realUsable = fromUsableAccounts(realPlan);
+  const fullProjection = scenarioId ? await evaluatePlan(horizon, scenarioId) : realPlan;
+  const realProjection = scenarioId ? fromUsableAccounts(fullProjection) : realUsable;
+  const leftOut = fullProjection.input.accounts.filter(account => !realProjection.input.accounts.some(used => used.id === account.id));
   const liquidityParams = { ...params, horizon: String(horizon), scenario: scenarioId };
   const result = planLiquidity(realProjection.input, liquidityParams);
   const projection = { ...realProjection, forecast: result.forecast, available: result.liquidity.status === "available" ? result.liquidity.aggregate : result.liquidity };
-  const baseline = scenarioId ? realPlan : projection;
+  const baseline = scenarioId ? realUsable : projection;
   const scenarioHref = (id?: string) => {
     const query = new URLSearchParams(Object.entries(liquidityParams).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
     if (id) query.set("scenario", id); else query.delete("scenario");
@@ -66,6 +78,8 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
     <section className={card} aria-labelledby="forecast-heading">
       <div className="flex flex-wrap items-end justify-between gap-4"><div><p className={eyebrow}>Projection{selectedScenario ? ` · ${selectedScenario.name}` : ""}</p><h2 id="forecast-heading" className="mt-1 text-sm font-medium">Liquid balance horizon</h2></div>
         <form method="get" className="flex flex-wrap items-end gap-2"><label className="grid gap-1 text-xs font-medium text-muted-foreground">Horizon in days <input name="horizon" type="number" min="1" max="365" defaultValue={horizon} className={field + " w-24 font-mono"} /></label>{Object.entries(liquidityParams).filter(([key, value]) => key !== "horizon" && value !== undefined).map(([key, value]) => <input key={key} type="hidden" name={key} value={value} />)}<button className={button}><CalendarDays className="size-4" />Update</button></form></div>
+      {leftOut.length > 0 && <div className="mt-3 space-y-1"><CoverageNote counted={input.accounts.length} total={fullProjection.input.accounts.length} />
+        <p className="text-xs text-muted-foreground">Not included: {leftOut.map(account => accountNames.get(account.id) ?? "An account").join(", ")}. Their balances and scheduled money are left out until each has a usable balance.</p></div>}
       {projection.forecast.status === "available" && <ForecastView days={projection.forecast.days} events={[...input.events, ...(input.scenarioEvents ?? [])]} currency={input.currencyCode} locale={workspace.locale} names={accountNames}
         compare={scenarioId && baseline.forecast.status === "available" ? { name: "Real plan", days: baseline.forecast.days } : undefined} />}
       <div className="border-t border-border pt-4"><AccountHeadroom input={input} params={liquidityParams} names={accountNames} locale={workspace.locale} result={result} /></div>

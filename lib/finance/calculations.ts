@@ -139,6 +139,27 @@ export function availableToSpend(input: ForecastInput):
 }
 
 // These amounts are in input.currencyCode, after explicit dated FX conversion by the loader.
+// Inputs that make one account's own cash unknown, as opposed to the plan's as a whole.
+const ACCOUNT_INPUT = /^(?:balance|available-balance|fx:balance|fx:allocation|fx:pending|fx:assumption|fx:debt|debt|fx):([^:]+)/;
+
+/**
+ * The forecast limited to accounts whose cash is known, for a person who asked for an answer with its coverage stated.
+ * A left-out account's balance and scheduled money are absent, so callers must show `excluded`. Gaps that are not
+ * tied to one account (a schedule with no account, a missing spending account) still stop the forecast.
+ */
+export function usableForecastInput(input: ForecastInput) {
+  const known = new Set(input.accounts.map(account => account.id));
+  const named = (key: string) => { const id = ACCOUNT_INPUT.exec(key)?.[1]; return id && known.has(id) ? id : null; };
+  const excluded = new Set(input.accounts.filter(account => account.availableMinor == null && account.balanceMinor === null).map(account => account.id));
+  for (const key of input.missingInputs ?? []) { const id = named(key); if (id) excluded.add(id); }
+  if (!excluded.size || excluded.size === input.accounts.length) return { input, excluded: [] as string[] };
+  return { excluded: [...excluded], input: { ...input,
+    accounts: input.accounts.filter(account => !excluded.has(account.id)),
+    events: input.events.filter(event => !excluded.has(event.accountId)),
+    scenarioEvents: input.scenarioEvents?.filter(event => !excluded.has(event.accountId)),
+    missingInputs: (input.missingInputs ?? []).filter(key => !named(key)) } };
+}
+
 export function accountLiquidity(input: ForecastInput) {
   const forecast = forecastDaily(input);
   if (forecast.status === "unavailable") return forecast;

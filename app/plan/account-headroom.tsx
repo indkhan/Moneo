@@ -32,7 +32,7 @@ export function AccountHeadroom({ input, params, names, locale, result }: {
     <form method="get" className="flex flex-wrap items-end gap-3">
       <input type="hidden" name="horizon" value={params.horizon ?? input.horizonDays} />
       {params.scenario && <input type="hidden" name="scenario" value={params.scenario} />}
-      <label className="grid gap-1 text-sm font-medium">Paying account<select name="account" defaultValue={params.account ?? ""} className={field}>
+      <label className="grid gap-1 text-sm font-medium">Paying account<select name="account" required defaultValue={params.account ?? ""} className={field}>
         <option value="">Choose a paying account</option>{invalidAccount && <option value={params.account}>Unavailable account</option>}
         {input.accounts.map(account => <option key={account.id} value={account.id}>{names.get(account.id) ?? account.id}</option>)}
       </select></label>
