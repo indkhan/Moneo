@@ -44,7 +44,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
     ...(imports.data ?? []).map(row => {
       const review = row.review_rows + (row.classification_review_rows ?? 0);
       return { key: `import:${row.id}`, kind: "imports" as const, at: row.created_at, badge: "Import", title: `${row.filename} · ${row.status}`,
-        detail: row.status === "failed" ? truncate(row.error) || "Failed" : `${row.new_rows} new · ${row.matched_rows} matched · ${row.review_rows} for review · ${row.rejected_rows} rejected · ${row.total_rows} total`,
+        detail: row.status === "failed" ? truncate(row.error) || "Failed" : `${row.new_rows} new · ${row.matched_rows} matched · ${review} to review · ${row.rejected_rows} rejected · ${row.total_rows} total`,
         href: review > 0 ? `/import/${row.id}/review` : "/import", attention: row.status === "failed" || (row.status === "completed" && review > 0) };
     }),
     ...(jobs.data ?? []).map(row => ({ key: `analysis:${row.id}`, kind: "analyses" as const, at: row.updated_at ?? row.created_at, badge: "Analysis",

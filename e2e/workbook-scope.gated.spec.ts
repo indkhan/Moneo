@@ -66,7 +66,7 @@ test("reviewed workbook scope imports only selected financial tables with exact 
     await expect(page.getByLabel("Source timestamp timezone",{exact:true})).toHaveValue("Europe/Berlin");
     await page.getByRole("checkbox",{name:"This timezone matches the statement."}).check();
     const confirm=page.waitForResponse(r=>r.url().endsWith("/api/imports/confirm")&&r.request().method()==="POST");
-    await page.getByRole("button",{name:"Continue",exact:true}).click();const response=await confirm;expect(response.ok()).toBe(true);const {importId}=await response.json();
+    await page.getByRole("button",{name:"Start import",exact:true}).click();const response=await confirm;expect(response.ok()).toBe(true);const {importId}=await response.json();
     await expect.poll(async()=> (await db`select status from public.imports where id=${importId} and workspace_id=${workspace}`)[0].status,{timeout:90_000}).toBe("completed");
     const [stored]=await db`select mapping,total_rows,file_hash,storage_path from public.imports where id=${importId} and workspace_id=${workspace}`;
     expect(stored.total_rows).toBe(3);expect(stored.mapping.workbookScope).toEqual({version:"xlsx-scope-v1",tables:[{sheetId:checking.id,headerRow:3,endRow:4},{sheetId:checking.id,headerRow:6,endRow:7},{sheetId:savings.id,headerRow:1,endRow:2}]});

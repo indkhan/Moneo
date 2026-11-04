@@ -72,7 +72,7 @@ export function OrganizationQueue({items,merchants,categories,requestId,locale}:
     <input type="checkbox" aria-label={'Select '+row.description} checked={selected.includes(row.id)} onChange={event=>toggle([row.id],event.target.checked)} />
     <span className="font-mono text-xs text-muted-foreground">{row.posted_on}</span>
     <a className="min-w-0 flex-1 break-words hover:underline" href={'/money/transactions?transaction='+row.id}>{row.description}</a>
-    {proposal.financialReviewRequired&&<span className="text-xs text-muted-foreground">Check amount in Transactions</span>}
+    {proposal.financialReviewRequired&&<a className="text-xs text-muted-foreground underline" href={'/money/transactions?transaction='+row.id}>Review its amount first</a>}
     {hint&&<button type="button" onClick={()=>applySuggestion(proposal)} title="Select similar entries and use this suggestion" className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground">{hint}</button>}
     <span className="font-mono">{formatMoney(row.amount_minor,row.currency_code,locale)}</span>
    </li>;})}</ul>

@@ -86,8 +86,8 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
       {decisionRows?.data?.length === 100 && <p className="text-sm text-muted-foreground">Showing the first 100 reviewed source observations.</p>}
     </section>
     <section className="space-y-4" aria-label="Financial classification review">
-      <h2 className="text-sm font-medium">Financial meaning</h2>
-      <p className="text-sm text-muted-foreground">{imported.classification_review_rows} rows still need a category. Their amounts are already in your balances, but income and spending totals are incomplete until you review them.</p>
+      <h2 className="text-sm font-medium">Transaction type</h2>
+      <p className="text-sm text-muted-foreground">{imported.classification_review_rows} rows still need a type: ordinary, refund or transfer between your accounts. Their amounts are already in your balances, but income and spending totals are incomplete until you review them.</p>
       {classifications.error && <p role="alert" className="text-sm text-danger">Could not load classifications: {classifications.error.message}</p>}
       {classifications.data?.map(transaction => <article className="space-y-3 rounded-xl border border-border bg-card p-6" key={transaction.id}>
         <h3 className="text-base font-semibold">{transaction.description} · {formatMoney(transaction.amount_minor, transaction.currency_code)}</h3>

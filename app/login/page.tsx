@@ -90,10 +90,10 @@ export default function LoginPage() {
         </form>
         <p role="status" className="mt-4 min-h-5 text-sm text-muted-foreground">{message ?? (failedCallback ? "The sign-in link could not be verified. Request a new link and try again." : deleted ? "Your account and data were deleted." : "")}</p>
         <div className="mt-4 flex flex-col items-center gap-2 text-sm text-muted-foreground">
-          {mode !== "sign-in" && <button type="button" onClick={() => switchTo("sign-in")} className={link}>Sign in with password</button>}
-          {mode !== "sign-up" && <button type="button" onClick={() => switchTo("sign-up")} className={link}>Create an account</button>}
-          {mode !== "magic-link" && <button type="button" onClick={() => switchTo("magic-link")} className={link}>Email me a sign-in link</button>}
-          {mode !== "forgot" && <button type="button" onClick={() => switchTo("forgot")} className={link}>Forgot password?</button>}
+          {mode !== "sign-in" && <button type="button" disabled={pending} onClick={() => switchTo("sign-in")} className={link}>Sign in with password</button>}
+          {mode !== "sign-up" && <button type="button" disabled={pending} onClick={() => switchTo("sign-up")} className={link}>Create an account</button>}
+          {mode !== "magic-link" && <button type="button" disabled={pending} onClick={() => switchTo("magic-link")} className={link}>Email me a sign-in link</button>}
+          {mode !== "forgot" && <button type="button" disabled={pending} onClick={() => switchTo("forgot")} className={link}>Forgot password?</button>}
         </div>
         <p className="mt-4 text-center text-xs text-muted-foreground"><a href="/privacy" className={link}>Privacy</a><span aria-hidden="true"> · </span><a href="/terms" className={link}>Terms</a></p>
         {process.env.NODE_ENV === "development" && <form method="post" action="/auth/dev" className="mt-6 border-t border-border pt-6">

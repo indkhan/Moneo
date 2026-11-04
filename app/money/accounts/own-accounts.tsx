@@ -21,7 +21,7 @@ export function OwnAccounts({ identifiers, banked, accounts, transfers }: {
   return <section id="own-accounts" aria-label="Your own accounts" className="space-y-3 rounded-xl border border-border bg-card p-5">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h2 className="font-medium">Your own accounts</h2>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Money you move between these accounts is a transfer: it isn’t counted as income, spending or cashflow. Add the IBAN of each account that is yours, including accounts Moneo doesn’t track.</p></div>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Money you move between these accounts is a transfer: it isn’t counted as income, spending or cashflow. Adding an IBAN also marks matching transactions you already have as transfers. Add the IBAN of each account that is yours, including accounts Moneo doesn’t track.</p></div>
       <form action={findTransfersBetweenOwnAccounts}><button className={field}>Find transfers between my accounts</button></form>
     </div>
     {result ? <p role="status" className="text-sm">{result}</p> : null}

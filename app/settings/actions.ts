@@ -76,7 +76,7 @@ export async function deleteAccount(_previous: { error?: string }, form: FormDat
     // The user is gone, so only this browser's session is left to clear.
     await context.supabase.auth.signOut({ scope: "local" });
   } catch {
-    return { error: "Your account could not be deleted. Try again." };
+    return { error: "Your account could not be deleted. Some files or bank connections may already be gone, so try again to finish." };
   }
   revalidatePath("/", "layout");
   redirect("/login?deleted=1");
@@ -91,7 +91,7 @@ export async function resetAllData(_previous: { error?: string }, form: FormData
     const result = await context.supabase.rpc("reset_workspace");
     if (result.error) throw result.error;
   } catch {
-    return { error: "Your data could not be reset. Try again." };
+    return { error: "Your data could not be reset completely. Some files or bank connections may already be gone, so try again to finish." };
   }
   revalidatePath("/", "layout");
   redirect("/");

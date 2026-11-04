@@ -32,7 +32,7 @@ test("explicit Unicode merchants import without splitting a character and retain
   }
   await page.getByRole("button", { name: "Preview correction", exact: true }).click();
   await expect(page.getByText("1 accepted", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByRole("button", { name: "Start import", exact: true }).click();
   const history = page.getByRole("region", { name: "Import history" }).locator("article").filter({ hasText: filename });
   await expect(history.getByRole("status")).toHaveText("completed", { timeout: 120_000 });
   await expect(history).toContainText("1 new");

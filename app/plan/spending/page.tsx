@@ -87,7 +87,7 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
         <p className="mt-2 text-sm text-muted-foreground">Monthly category limits for {month}. Counts posted spending minus refunds; transfers, pending items and income are left out.</p></div>
       <form method="get" className="flex flex-wrap items-end gap-2"><label className="grid gap-1 text-xs font-medium text-muted-foreground">Calendar month<input type="month" name="month" defaultValue={month} required className={field} /></label><button className={button}>View month</button></form>
     </header>
-    {month !== currentMonth && <p className="text-sm text-muted-foreground">Viewing a past month. Edits apply to the current month ({currentMonth}).</p>}
+    {month !== currentMonth && <p className="text-sm text-muted-foreground">Viewing a {month > currentMonth ? "future" : "past"} month. Edits apply to the current month ({currentMonth}).</p>}
     {needsReview > 0 && <p role="status" className="text-sm text-warning">Some spending is not counted yet: {needsReview} transactions need review. <Link href="/import" className="underline">Review imports</Link></p>}
     <section className={card} aria-labelledby="limits-heading">
       <h2 id="limits-heading" className="text-sm font-medium">Category limits</h2>
@@ -99,7 +99,7 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
         return <li key={`${plan.id}:${plan.version}`} className="space-y-2 py-4 first:pt-0 last:pb-0">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h3 className="font-medium">{plan.name}{plan.periodEnabled === false ? " (disabled that month)" : ""}</h3>
-            <p className="font-mono text-sm text-muted-foreground">{money(plan.spent)} of {plan.limit === null ? "Unknown historical target" : money(plan.limit)}</p>
+            <p className="font-mono text-sm text-muted-foreground">{money(plan.spent)} of {cap === null ? "Unknown historical target" : money(cap)}</p>
           </div>
           {plan.periodEnabled !== false && cap !== null && cap > 0n && <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={`${plan.name} plan used`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentOf(plan.spent, cap)}>
             <div className={`h-full rounded-full ${over ? "bg-foreground" : plan.partial ? "bg-muted-foreground" : "bg-brand"}`} style={{ width: `${percentOf(plan.spent, cap)}%` }} /></div>}

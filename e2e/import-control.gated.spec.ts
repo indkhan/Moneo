@@ -55,7 +55,7 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     expect((await previewInspect).ok()).toBe(true);
     await expect(page.getByText("5000 rows",{exact:true})).toBeVisible({timeout:20_000});
     const confirmResponse=page.waitForResponse(response=>response.url().endsWith("/api/imports/confirm")&&response.request().method()==="POST");
-    await page.getByRole("button",{name:"Continue",exact:true}).click();
+    await page.getByRole("button",{name:"Start import",exact:true}).click();
     const response=await confirmResponse;expect(response.ok()).toBe(true);
     const {importId}=await response.json();expect(importId).toMatch(/^[0-9a-f-]{36}$/);
     const history=page.getByRole("region",{name:"Import history"}).locator("article").filter({hasText:filename});

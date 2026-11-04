@@ -458,7 +458,7 @@ export default function ImportPage() {
       </div>}
 
       <div className="flex flex-wrap items-center gap-3 border-t border-border pt-5">
-        {result && !stale && <button type="button" className={primary} disabled={busy || !mappingReady || !flaggedReady} onClick={() => void confirm()}>Continue</button>}
+        {result && !stale && <button type="button" className={primary} disabled={busy || !mappingReady || !flaggedReady} onClick={() => void confirm()}>Start import</button>}
         {mapping && (editorOpen || stale) && <button type="button" className={stale ? primary : secondary} disabled={busy} onClick={() => void inspect(file, mapping)}>Preview correction</button>}
         {result && !editorOpen && <button type="button" className={secondary} onClick={() => setEditorOpen(true)}>Correct</button>}
         <button type="button" className={secondary} onClick={clearFiles}>Cancel</button>
@@ -482,7 +482,7 @@ export default function ImportPage() {
                 <span className="flex items-center gap-3 text-xs text-muted-foreground">{new Date(item.created_at).toLocaleTimeString(undefined, { timeStyle: "short" })}<span role="status" className="rounded-lg bg-muted px-2.5 py-1 font-medium capitalize text-brand">{item.status}</span></span></div>
               {active(item.status) && <div className="space-y-1"><progress className="h-2 w-full overflow-hidden rounded-full accent-brand" aria-label={`Progress for ${item.filename}`} max={Math.max(item.total_rows, 1)} value={Math.min(processed, item.total_rows)} />
                 <p className="text-xs text-muted-foreground">{item.status === "queued" ? "Waiting to start" : `${Math.min(processed, item.total_rows)} of ${item.total_rows} processed`}. You can leave this page; the import keeps running.</p></div>}
-              <p className="text-sm text-muted-foreground">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows} for review · {item.rejected_rows} rejected · {item.total_rows} total</p>
+              <p className="text-sm text-muted-foreground">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows + (item.classification_review_rows ?? 0)} to review · {item.rejected_rows} rejected · {item.total_rows} total</p>
               {recent && item.status === "completed" && <p className="text-sm">{item.review_rows || item.classification_review_rows ? "Imported. A few rows need your decision before totals are complete." : "Imported. Nothing needs review. Undo is available if anything looks wrong."}</p>}
               {item.error && <p className="text-sm text-danger">{item.error}</p>}
               {item.status === "canceled" && <p className="text-sm text-muted-foreground">Stopped. Rows already imported are kept, and resuming will not duplicate them.</p>}

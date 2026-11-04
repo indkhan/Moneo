@@ -50,7 +50,7 @@ export default async function InvestigationPage({ searchParams }: { searchParams
   const money = (amount: string | null, currency: string) => amount === null ? "—" : spec?.metric === "count" ? amount : formatMoney(amount, currency, context.workspace.locale);
   const lastMonth = shift(monthStart, -1);
   const presets = [
-    { label: "This month vs last", from: monthStart, to: today, comparisonFrom: lastMonth, comparisonTo: endOfMonth(lastMonth) },
+    { label: "Month to date vs all of last month", from: monthStart, to: today, comparisonFrom: lastMonth, comparisonTo: endOfMonth(lastMonth) },
     { label: "Last month vs month before", from: lastMonth, to: endOfMonth(lastMonth), comparisonFrom: shift(monthStart, -2), comparisonTo: endOfMonth(shift(monthStart, -2)) },
     { label: "Last 3 months vs previous 3", from: shift(monthStart, -3), to: endOfMonth(lastMonth), comparisonFrom: shift(monthStart, -6), comparisonTo: endOfMonth(shift(monthStart, -4)) },
     { label: "This year vs last", from: `${today.slice(0, 4)}-01-01`, to: today, comparisonFrom: `${Number(today.slice(0, 4)) - 1}-01-01`, comparisonTo: shift(today, -12) },
