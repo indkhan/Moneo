@@ -1,0 +1,27 @@
+Act as the review sub-agent for this task.
+
+User explicitly requests Claude Opus 5.5 low to run Moneo and independently find additional UI/UX/usability improvements toward an excellent 10/10 experience, then ADD them to existing reports and things-to-do. Work in current shared checkout C:\Users\mgsuk\.t3\worktrees\Moneo\t3-7d9fff38. Read AGENTS.md. Existing audit .qa/user-testing/REPORT.md, PAGE-AUDIT-INDEX.md, page-ui-ux-changes.csv (272 recommendations from 27 page agents), findings.csv (18 baseline issues), execution-results.csv, test-plan.csv (299 cases/18 walkthroughs/11 personas), page-audits/*.md, screenshots and evidence. Tracked generators in scripts/user-testing/. Read existing findings critically, don't just repeat. Run app localhost:3000 (may already run), read e2e/README.md; .env contains persistent synthetic QA user credentials, never expose them, never delete user or reset workspace. Prior tests 1218 pass, lint pass; browser suite 36/69 pass, 30 backend setup/cleanup failures plus 2 UI assertions and 1 fixed-date test failure, recovery journals must be preserved. Existing reports often source-only, so prioritize LIVE user walkthroughs desktop+phone, task completion, navigation/discovery, visual hierarchy/clutter, financial clarity/trust, onboarding, forms/errors/undo, keyboard/focus/accessibility, AI interaction continuity and loading. Use shared T3 browser: preview_status first, preview_open if necessary, obey tool rules; read relevant skills. Cover all app surfaces meaningfully, populated detail states where safely available, record exact tested vs blocked scope. No real bank consent, auth emails, destructive resets, financial data deletion or paid model calls just to test unless necessary and authorized by task scope; synthetic reversible QA actions are fine. No application fixes requested: update audit artifacts and actionable backlog only. Distinguish reproduced defects, observed usability issues, source-supported risks and design suggestions. Add NEW findings with stable IDs, route/persona/viewport, evidence/repro, user impact, priority, concrete proposed change and acceptance criteria; mark duplicate/corrected previous findings instead of inflating. Produce .qa/user-testing/CLAUDE-SECOND-OPINION.md plus CSV of additions and a consolidated prioritized deduplicated things-to-do CSV/Markdown; link these from REPORT.md and PAGE-AUDIT-INDEX.md while preserving original evidence. Keep identifying results ignored per privacy gate. Commit any safe tracked generator/docs changes separately as required by AGENTS; don't force-add private evidence. Validate CSV parses and any changes with relevant checks. Do work yourself, no further subagents. Finish with clear counts, top improvements, tested/blocked coverage, artifact paths, commits. Do not assert actual 10/10 merely from subjective review.
+
+---
+
+find things for each page and give me what change will make that page be 10/10
+
+---
+
+<task-notification>
+<task-id>ba6kzhjiy</task-id>
+<tool-use-id>toolu_01CBejKhNwDLqtAGaVoQ3v6v</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-7d9fff38\c999a3dc-8c82-4ab4-a851-61c3726ed048\tasks\ba6kzhjiy.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for sweep to progress" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>boxe1nbmc</task-id>
+<tool-use-id>toolu_01DCUNPuM4eNMnsLvT5zdzrB</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-7d9fff38\c999a3dc-8c82-4ab4-a851-61c3726ed048\tasks\boxe1nbmc.output</output-file>
+<status>completed</status>
+<summary>Background command "Run read-only desktop and phone sweep" completed (exit code 0)</summary>
+</task-notification>
