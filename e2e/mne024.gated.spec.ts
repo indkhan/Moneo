@@ -122,7 +122,7 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     const firstPage = await conversations.getByRole("link").count();
     await page.getByRole("button", { name: "Older conversations", exact: true }).click();
     await expect.poll(() => conversations.getByRole("link").count()).toBeGreaterThan(firstPage);
-    await expect(conversations.getByText("Synthetic new arrival", { exact: true })).toBeVisible();
+    await expect(conversations.getByRole("link", { name: /^Synthetic new arrival/ })).toBeVisible();
     page.setDefaultTimeout(30_000);
     for (const destination of ["B", "New", "navigation"] as const) {
       await page.goto(`/ai?conversation=${selected}`, { waitUntil: "domcontentloaded" });

@@ -72,7 +72,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   const rules=async()=>{const details=page.locator('details').filter({hasText:'Rules ('});if(!await details.evaluate(node=>(node as HTMLDetailsElement).open))await details.locator('summary').first().click();const disabled=details.locator('details');if(await disabled.count()&&!await disabled.evaluate(node=>(node as HTMLDetailsElement).open))await disabled.locator('summary').click();return details.locator('li').filter({hasText:'cedar cooperative'});};
   await selectCedar();
   await queue().getByRole('button',{name:'Suggest with AI',exact:true}).click();
-  await expect(queue().getByRole('status')).toContainText('unavailable');
+  await expect(queue().getByRole('status').filter({ hasText: 'unavailable' })).toContainText('unavailable');
   await expect(queue().getByRole('combobox',{name:'Category',exact:true})).toBeEnabled();
   // Controlled delayed response validates browser draft ownership, not model quality.
   let fulfill!:()=>Promise<void>;let requested!:()=>void;
@@ -80,7 +80,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await page.route('**/api/money/organization/suggestions',async route=>{fulfill=()=>route.fulfill({json:{providerStatus:'available',proposals:rows.filter(row=>row.description.includes('CEDAR')).map(row=>({transactionId:row.id,basis:'provider-suggestion',merchantId:null,merchantName:'Obsolete suggestion',categoryId:category,evidenceQuote:'CEDAR COOPERATIVE'}))}});requested();});
   await queue().getByRole('button',{name:'Suggest with AI',exact:true}).click();await requestStarted;
   await pick('Merchant','Cedar Cooperative');await fulfill();
-  await expect(queue().getByRole('status')).toContainText('draft changed');
+  await expect(queue().getByRole('status').filter({ hasText: 'draft changed' })).toContainText('draft changed');
   await expect(queue().getByRole('combobox',{name:'Merchant',exact:true})).toHaveValue('Cedar Cooperative');
   await page.unroute('**/api/money/organization/suggestions');
   await pick('Category','QA Groceries');
@@ -108,7 +108,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   expect((await db`select count(*)::int count from public.categories where workspace_id=${workspace!} and lower(name)='qa groceries'`)[0].count).toBe(1);
   const originalSources=[...await db`select id,original_row from public.source_transactions where workspace_id=${workspace!} order by id`];
   await importCsv('organization-rule-reuse.csv','date,description,amount,id\n2026-09-04,CARD PAYMENT CEDAR COOPERATIVE REF:103,-3.00,cedar-103\n');
-  const suggested=()=>cedar().getByRole('button',{name:'Cedar Cooperative · QA Groceries',exact:true});
+  const suggested=()=>cedar().getByRole('button',{name:/^Select 1 like this: Cedar Cooperative/});
   await expect(suggested()).toBeVisible();
   await (await rules()).getByRole('button',{name:'Disable',exact:true}).click();await expect(page.getByText('Disabled (1)')).toBeVisible();
   await expect(suggested()).toHaveCount(0);

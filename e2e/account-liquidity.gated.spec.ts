@@ -27,6 +27,7 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     writeFileSync(recovery, JSON.stringify({ project, user, workspace, checking, savings, goal }));
     const now = new Date().toISOString(), today = now.slice(0, 10);
     const tomorrow = new Date(Date.parse(`${today}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+    const formattedTomorrow = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${tomorrow}T00:00:00Z`));
     const late = new Date(Date.parse(`${today}T00:00:00Z`) + 2 * 86400000).toISOString().slice(0, 10);
     await db.begin(async tx => {
       await tx`insert into public.workspace_settings(workspace_id,timezone,locale,ai_data_scopes,summary_cadence) values(${workspace!},'UTC','en-GB','{}','none') on conflict(workspace_id) do update set timezone='UTC',locale='en-GB',ai_data_scopes='{}',summary_cadence='none'`;
@@ -51,7 +52,7 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     await page.goto(`/?account=${checking}`);
     const home = page.getByRole("region", { name: "Available funds" });
     await expect(home).toContainText("EUR 600.00"); await expect(home).toContainText("Checking QA funding shortfall: EUR 400.00");
-    await expect(home).toContainText(tomorrow); await expect(home).toContainText("-EUR 400.00");
+    await expect(home).toContainText(formattedTomorrow); await expect(home).toContainText("-EUR 400.00");
     await expect(page.getByText("Recurring bill QA", { exact: false }).first()).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("home-checking.png"), fullPage: true });
     await home.getByRole("combobox", { name: "Paying account", exact: true }).selectOption(savings);

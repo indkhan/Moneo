@@ -9,7 +9,10 @@ test.setTimeout(120_000);
 
 const order = (page: Page) => page.locator("[data-widget]").evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.widget));
 // The grid only moves once hydrated.
-const open = (page: Page) => page.goto("/", { waitUntil: "networkidle" });
+const open = async (page: Page) => {
+  await page.goto("/", { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Customize", exact: true }).click();
+};
 const saved = (page: Page) => page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === "/");
 
 test("Home widgets are moved, resized, hidden and added back in place, and stay that way", async ({ page }) => {
@@ -50,9 +53,10 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
   expect(wider ? changed > width : changed < width).toBe(true);
 
   await page.reload({ waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Customize", exact: true }).click();
   await expect(goals).toBeVisible({ timeout: 30_000 });
   expect(await order(page)).toEqual(after);
-  expect((await goals.boundingBox())!.width).toBe(changed);
+  expect((await goals.boundingBox())!.width).toBeCloseTo(changed, 2);
 
   // Hide it, undo, then hide it for good and add it back.
   await goals.hover();
@@ -100,6 +104,7 @@ test("Home widgets are moved, resized, hidden and added back in place, and stay 
   await goals.getByRole("button", { name: "Hide Goals" }).click();
   await hidden;
   await page.reload({ waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Customize", exact: true }).click();
   await expect(page.locator("[data-widget]:visible").first()).toBeVisible({ timeout: 30_000 });
   await expect(goals).toHaveCount(0);
   await page.getByRole("button", { name: "Add widget" }).click();
@@ -144,6 +149,7 @@ test("a long press drags a widget on a phone, and a swipe still scrolls", async 
   expect(await order(page)).toEqual(after);
 
   await page.reload({ waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Customize", exact: true }).click();
   await expect(page.locator("[data-widget]:visible").first()).toBeVisible({ timeout: 30_000 });
   expect((await order(page)).indexOf(first)).toBeGreaterThan(0);
   await context.close();

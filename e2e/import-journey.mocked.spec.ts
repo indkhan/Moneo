@@ -151,7 +151,7 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await expect(page.getByText("august.csv (1 of 1)")).toBeVisible();
     await expect(page.getByText("Checking").first()).toBeVisible();
     await expect(
-      page.getByText("2 rows", { exact: false }),
+      page.getByText("2 rows", { exact: true }),
     ).toBeVisible();
     await expect(page.getByText("Salary Acme")).toBeVisible();
     await expect(page.getByText("AMZN MKTP DE")).toBeVisible();
@@ -176,7 +176,7 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await page
       .getByRole("button", { name: "Preview correction" })
       .click();
-    await expect(page.getByText("Checking (corrected)")).toBeVisible();
+    await expect(page.getByText("Checking (corrected)", { exact: true })).toBeVisible();
     expect(inspectCalls).toBe(2);
 
     // 4. Continue — confirm the import; history shows exact row counts and

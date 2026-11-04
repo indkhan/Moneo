@@ -4,7 +4,7 @@ import { hasSupabaseEnv } from "./fixtures";
 test("failed sign-in callback explains how to retry", async ({ page }) => {
   await page.goto("/auth/callback");
   await expect(page).toHaveURL(/\/login\?error=sign-in$/);
-  await expect(page.getByRole("alert")).toContainText("The sign-in link could not be verified. Request a new link and try again.");
+  await expect(page.locator("main").getByRole("alert")).toContainText("The sign-in link could not be verified. Request a new link and try again.");
   await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeEnabled();
 });
 
@@ -28,7 +28,7 @@ test("sign-in shows pending feedback and allows retry after a rejected request w
     await expect.poll(() => requests).toBe(1);
     await expect(page.getByRole("button", { name: "Working…", exact: true })).toBeDisabled();
     release();
-    await expect(page.getByRole("alert")).toContainText("Too many attempts. Wait a few minutes and try again.");
+    await expect(page.locator("main").getByRole("alert")).toContainText("Too many attempts. Wait a few minutes and try again.");
     const retry = page.getByRole("button", { name: "Send sign-in link", exact: true });
     await expect(retry).toBeEnabled();
     await retry.click();

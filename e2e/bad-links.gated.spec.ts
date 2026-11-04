@@ -9,7 +9,7 @@ for (const [path, text] of [
   ["/plan/spending?month=2026-13", "invalid month"],
   ["/money/organization?review=not-a-uuid", "out of date"],
   ["/money/organization?cursor=not-a-cursor", "out of date"],
-  ["/money/investigations?from=not-a-date&to=2026-13-40", "use real dates"],
+  ["/money/investigations?from=not-a-date&to=2026-13-40", "a real date"],
 ] as const) test(`${path} recovers in place`, async ({ page }) => {
   await page.goto(path);
   await expect(page.locator("main").getByRole("alert").first()).toContainText(text);
