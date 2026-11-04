@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import { InsightSettings } from "./insights";
 import { requireWorkspace } from "@/lib/auth";
@@ -47,7 +48,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <div className="min-w-0 space-y-8">
         <section id="account" className={card}><h2 className="text-sm font-medium">Account</h2>
           <p className="mt-1 break-words text-sm text-muted-foreground">Signed in as {user.email}</p>
-          <form action={signOut} className="mt-4"><button className="min-h-10 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">Sign out</button></form>
+          <div className="mt-4 flex flex-wrap gap-3"><Link href="/reset-password" className="inline-flex min-h-10 items-center rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">Change password</Link>
+            <form action={signOut}><button className="min-h-10 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">Sign out</button></form></div>
         </section>
         <SettingsForm settings={settings} currency={workspace.display_currency} />
         <div id="relevance" className="scroll-mt-20"><Suspense fallback={<SkeletonCard lines={4} />}><InsightSettings /></Suspense></div>
