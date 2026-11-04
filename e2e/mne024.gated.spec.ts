@@ -123,11 +123,12 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     await page.getByRole("button", { name: "Older conversations", exact: true }).click();
     await expect.poll(() => conversations.getByRole("link").count()).toBeGreaterThan(firstPage);
     await expect(conversations.getByText("Synthetic new arrival", { exact: true })).toBeVisible();
+    page.setDefaultTimeout(30_000);
     for (const destination of ["B", "New", "navigation"] as const) {
       await page.goto(`/ai?conversation=${selected}`, { waitUntil: "domcontentloaded" });
       await expect(page.locator("html")).toHaveAttribute("data-mne024-ready", "true");
       await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
-      let release!: () => void;
+      let release!: () => void; // A held reply also blocks context.close, so a failure below can show up only as the test timeout.
       delayedReply = new Promise<void>(resolve => { release = resolve; });
       const started = new Promise<void>(resolve => { delayedStarted = resolve; });
       const question = `Synthetic delayed ${destination}`, answer = `Synthetic delayed answer ${destination}`;
@@ -140,7 +141,8 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
       else await page.getByRole("navigation", { name: "Conversations" }).locator(`a[href="/ai?conversation=${other}"]`).click();
       await expect(page.locator("main").getByRole("heading", { name: destination === "New" ? "New chat" : `Synthetic thread ${other}`, exact: true })).toBeVisible();
       if (destination === "navigation") {
-        await page.getByRole("link", { name: "Settings", exact: true }).click();
+        // The dev tools button covers this rail link in development, so go by keyboard.
+        await page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link", { name: "Settings", exact: true }).press("Enter");
         await expect(page).toHaveURL(/\/settings$/);
       }
       await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
