@@ -10,9 +10,9 @@ import { cardWidgetKey, homeLayout, isBuiltinWidget, widgetLabel } from "@/lib/f
 import { CARD_SIZES, CARD_SIZE_KEYS, cardSize } from "@/lib/cards/sizes";
 import { publishCard, setCardSize, unpublishCard } from "@/app/dashboard-actions";
 import { DeleteArtifactButton } from "../delete-artifact-button";
-import { ArtifactChat } from "./artifact-chat";
+import { ArtifactChat, BuildCardButton } from "./artifact-chat";
 
-type Search = { v?: string; full?: string; tab?: string; start?: string; card?: string; cv?: string };
+type Search = { v?: string; full?: string; tab?: string; card?: string; cv?: string };
 type CardRow = { id: string; title: string; size: string; published_version: number | null; artifact_card_versions: { version: number; title: string }[] };
 
 export default async function ArtifactPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
@@ -22,7 +22,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   const [{ id }, search] = await Promise.all([params, searchParams]);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const [artifact, versions, cards, layout, chat] = await Promise.all([
-    supabase.from("artifacts").select("id, title").eq("workspace_id", workspace.id).eq("id", id).is("deleted_at", null).maybeSingle(),
+    supabase.from("artifacts").select("id, title, first_prompt").eq("workspace_id", workspace.id).eq("id", id).is("deleted_at", null).maybeSingle(),
     supabase.from("artifact_versions").select("version, prompt").eq("workspace_id", workspace.id).eq("artifact_id", id).order("version"),
     supabase.from("artifact_cards").select("id, title, size, published_version, artifact_card_versions(version, title)").eq("workspace_id", workspace.id).eq("artifact_id", id).is("deleted_at", null).order("created_at"),
     supabase.from("dashboard_layouts").select("items").eq("workspace_id", workspace.id).maybeSingle(),
@@ -38,6 +38,8 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
     conversationId = created.data.id as string;
   }
   const history = await loadConversation(supabase, workspace.id, conversationId);
+  // Sent once, by the page the creator lands on. Any later request needs a press, so no link can spend money.
+  const start = !history.messages.length && !history.running ? artifact.data.first_prompt ?? undefined : undefined;
 
   const pages = versions.data ?? [];
   const current = pages.find(item => String(item.version) === search.v) ?? pages.at(-1);
@@ -57,7 +59,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   // Neighbours in the preview are the user's own Home widgets, so the card is seen where it will sit.
   const neighbours = homeItems.filter(isBuiltinWidget).filter(key => key !== "overview").map(widgetLabel);
   const buildCard = "Create a Home card from this artifact, keeping its purpose, design and live data. Use the existing page and conversation as context. Save it as a draft for me to preview before adding it to Home.";
-  const tabLink = (name: "page" | "cards", label: string) => <Link href={at({ tab: name, start: name === "cards" && !cards.data?.length && !history.running ? buildCard : undefined })} aria-current={tab === name ? "page" : undefined}
+  const tabLink = (name: "page" | "cards", label: string) => <Link href={at({ tab: name })} aria-current={tab === name ? "page" : undefined}
     className="rounded-md px-3 py-1 text-muted-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground">{label}</Link>;
 
   return <main className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-4 overflow-hidden p-4 lg:grid-cols-[minmax(300px,400px)_1fr] lg:grid-rows-1">
@@ -69,7 +71,7 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
         </div>
         <DeleteArtifactButton id={id} title={artifact.data.title} label="" className="mt-6" />
       </div>
-      <ArtifactChat conversationId={conversationId} initial={history.messages} running={history.running ?? null} start={search.start?.slice(0, 4000)} />
+      <ArtifactChat conversationId={conversationId} initial={history.messages} running={history.running ?? null} start={start} />
     </aside>
     <section aria-label="Artifact" className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border">
       <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-1.5 text-xs">
@@ -81,9 +83,9 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
           <Link href={at({ full: "1" })} className="ml-2 inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted"><Maximize2 className="size-3.5" aria-hidden="true" />Full screen</Link>
         </span>}
       </div>
-      {tab === "page" ? <div className="min-h-0 flex-1">{frame ?? <p role="status" className="p-6 text-sm text-muted-foreground">{history.running || search.start ? "Building your artifact… Follow the progress in the chat." : "No page yet. Describe what to build in the chat."}</p>}</div>
+      {tab === "page" ? <div className="min-h-0 flex-1">{frame ?? <p role="status" className="p-6 text-sm text-muted-foreground">{history.running || start ? "Building your artifact… Follow the progress in the chat." : "No page yet. Describe what to build in the chat."}</p>}</div>
         : <div className="min-h-0 flex-1 space-y-8 overflow-y-auto bg-background p-4">
-          {!cards.data?.length && <p role="status" className="text-sm text-muted-foreground">{history.running || search.start ? "Building your Home card… Follow the progress in the chat." : "No Home card was created. Click Home cards to build one."}</p>}
+          {!cards.data?.length && (history.running || start ? <p role="status" className="text-sm text-muted-foreground">Follow the progress in the chat.</p> : <BuildCardButton prompt={buildCard} />)}
           {(cards.data as CardRow[] | null)?.map(card => {
             const all = card.artifact_card_versions.map(item => item.version).sort((a, b) => a - b);
             const newest = all.at(-1) ?? 0;

@@ -625,6 +625,7 @@ export const artifacts = pgTable("artifacts", {
   id: uuid("id").defaultRandom().primaryKey(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
+  firstPrompt: text("first_prompt"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -632,6 +633,7 @@ export const artifacts = pgTable("artifacts", {
   index("artifacts_workspace_live").on(table.workspaceId, table.updatedAt.desc()).where(sql`${table.deletedAt} is null`),
   unique("artifacts_id_workspace_key").on(table.id, table.workspaceId),
   check("artifacts_title_check", sql`length(btrim(${table.title})) between 1 and 120`),
+  check("artifacts_first_prompt_check", sql`length(${table.firstPrompt}) <= 4000`),
 ]);
 
 export const artifactVersions = pgTable("artifact_versions", {
