@@ -54,7 +54,7 @@ function SourceFields({ row }: { row: SourceRow }) {
     <div key={column} className="contents"><dt className="font-medium text-muted-foreground">{column}</dt><dd className="break-all">{value || "—"}</dd></div>)}</dl>;
 }
 
-function SourceRowReview({ row, mapping, onDecision }: { row: { rowNumber: number; message: string; sourceRow: SourceRow }; mapping: ImportMapping;
+function SourceRowReview({ row, nextRow, mapping, onDecision }: { row: { rowNumber: number; message: string; sourceRow: SourceRow }; nextRow?: number; mapping: ImportMapping;
   onDecision: (decision: NonNullable<ImportMapping["rowDecisions"]>[number]) => void }) {
   const previous = mapping.rowDecisions?.find(item => item.rowNumber === row.rowNumber);
   const [values, setValues] = useState<SourceRow>({ ...row.sourceRow, ...(previous?.action === "correct" ? previous.values : {}) });
@@ -67,8 +67,9 @@ function SourceRowReview({ row, mapping, onDecision }: { row: { rowNumber: numbe
     if (column) mappedColumns.push(column);
   }
   const correction = parserReview ? { ...changes, ...Object.fromEntries(mappedColumns.map(column => [column, values[column] ?? ""])) } : changes;
-  return <article className="space-y-4 rounded-lg border border-warning/40 bg-card p-4 text-sm">
-    <div><h3 className="font-medium">Source row {row.rowNumber}</h3><p className="text-muted-foreground">{row.message.replace(/^Row \d+: /, "")}</p></div>
+  return <article id={`flagged-row-${row.rowNumber}`} tabIndex={-1} className="scroll-mt-20 space-y-4 rounded-lg border border-warning/40 bg-card p-4 text-sm outline-none">
+    <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="font-medium">Source row {row.rowNumber}</h3><p className="text-muted-foreground">{row.message.replace(/^Row \d+: /, "")}</p></div>
+      {nextRow != null && <a className="underline" href={`#flagged-row-${nextRow}`}>Next flagged row</a>}</div>
     {parserReview && <p>This row has a different number of cells than the headers. Check each cell against the original row before correcting it.</p>}
     <div className="grid gap-3 sm:grid-cols-3">{Object.keys(row.sourceRow).filter(column => !column.startsWith("__moneo_csv_")).map(column => <label key={column} className="grid gap-1 font-medium">{column}<input aria-label={`Source row ${row.rowNumber} ${column}`} className={input} value={values[column]} onChange={event => setValues({ ...values, [column]: event.target.value })} /></label>)}</div>
     <div className="flex flex-wrap items-end gap-3">
@@ -110,11 +111,14 @@ export default function ImportPage() {
   const [preview, setPreview] = useState<UndoPreview | null>(null);
   const controlRequests = useRef(new Map<string, string>());
   const inspectionRequest = useRef<AbortController | null>(null);
+  const reviewHeading = useRef<HTMLHeadingElement>(null);
   const historyRequest = useRef(0);
   const historyApplied = useRef(new Map<string, number>());
   const file = files[index];
 
   useEffect(() => () => inspectionRequest.current?.abort(), []);
+  // The review appears far below the upload, so keyboard and screen-reader users are taken to it.
+  useEffect(() => { if (inspection) reviewHeading.current?.focus(); }, [inspection]);
   useEffect(() => {
     if (!edited) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -387,7 +391,8 @@ export default function ImportPage() {
 
     {file && inspection && <section className="space-y-6 rounded-xl border border-border bg-card p-4 sm:p-6" aria-label="Statement review">
       <div className="space-y-1">
-        <h2 className="truncate text-sm font-medium text-foreground" title={`${file.name} (${index + 1} of ${files.length})`}>{file.name} <span className="font-normal text-muted-foreground">({index + 1} of {files.length})</span></h2>
+        <p role="status" className="sr-only">{result ? `Statement ready to review. ${unresolved.length ? `${unresolved.length} flagged rows need a decision.` : "No flagged rows."}` : "Statement read. Choose its columns."}</p>
+        <h2 ref={reviewHeading} tabIndex={-1} className="truncate text-sm font-medium text-foreground outline-none" title={`${file.name} (${index + 1} of ${files.length})`}>{file.name} <span className="font-normal text-muted-foreground">({index + 1} of {files.length})</span></h2>
         {files.length > 1 && <p className="text-sm text-muted-foreground">Next: {files.slice(index + 1).map(item => item.name).join(", ") || "none"}</p>}
         <p className="text-sm text-muted-foreground">{inspection.format ? `Recognized ${inspection.format} statement` : inspection.interpretation === "proposed" ? "Columns proposed automatically. Check the preview." : inspection.interpretation === "reviewed" ? "Your reviewed mapping" : "Unrecognized layout"} · {extension}</p>
       </div>
@@ -443,7 +448,7 @@ export default function ImportPage() {
           {result.acceptedRows != null && <p className="text-sm text-muted-foreground">{result.acceptedRows} accepted · {result.correctedRows ?? 0} corrected · {result.excludedRows?.length ?? 0} excluded · {unresolved.length} unresolved</p>}
         </div>
         {!!unresolved.length && <p role="alert" className="text-sm text-muted-foreground">Correct each row or exclude it with a reason. The original row is always kept.</p>}
-        {unresolved.map(row => <SourceRowReview key={row.rowNumber} row={row} mapping={mapping!} onDecision={decision => setRowDecision(decision.rowNumber, decision)} />)}
+        {unresolved.map((row, rowIndex) => <SourceRowReview key={row.rowNumber} row={row} nextRow={unresolved[rowIndex + 1]?.rowNumber} mapping={mapping!} onDecision={decision => setRowDecision(decision.rowNumber, decision)} />)}
         {decisions.filter(row => row.action === "correct").map(row => <details key={row.rowNumber} className="rounded-lg border border-border p-4 text-sm"><summary className="cursor-pointer">Corrected source row {row.rowNumber}</summary>
           <div className="mt-3"><SourceFields row={row.values} /></div>
           <button type="button" className="mt-3 underline" onClick={() => setRowDecision(row.rowNumber)}>Reset review for row {row.rowNumber}</button>
