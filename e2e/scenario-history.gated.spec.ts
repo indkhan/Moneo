@@ -68,7 +68,7 @@ test("scenario comparison, edits, removal and undo preserve actual cash", async 
     await page.getByRole("button", { name: "Save scenario", exact: true }).click();
     await expect(page.getByRole("link", { name: "Reviewed decision", exact: true })).toBeVisible();
     await page.goto("/settings");
-    await page.getByLabel("Date and number locale", { exact: true }).selectOption("de-DE");
+    await page.getByRole("combobox", { name: /^Date and number locale/ }).selectOption("de-DE");
     await page.getByRole("combobox", { name: "Appearance", exact: true }).selectOption("dark");
     await page.getByRole("button", { name: "Save preferences", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "Preferences saved." })).toBeVisible({ timeout: 30_000 });
