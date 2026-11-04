@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6KJHPB68WG1195F673BB9F2",
+  "session_id": "1f5b93db-242e-445e-8356-5b7733cbccb3",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-04T15:23:55.8971752Z",
+  "branch": "t3/user-testing-audit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/home-grid.tsx",
+    "app/page.tsx",
+    "app/waiting-for-you-list.tsx",
+    "app/waiting-for-you.test.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "d31399c7cee3",
+  "checkpoint_transcript_start": 220,
+  "transcript_lines_at_start": 220,
+  "compact_transcript_start": 51,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "redaction": {
+    "replacements": 157,
+    "layers": {
+      "betterleaks": 3,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 3,
+      "credentialed_uri": 0,
+      "entropy": 228,
+      "key_context": 1,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
