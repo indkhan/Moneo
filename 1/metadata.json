@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6KNJ35M42WTDNE6FVCDS4RK",
+  "session_id": "64d783ab-53ac-41ca-8d34-df07b2fe9ba1",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-04T16:16:37.0210488Z",
+  "branch": "t3/user-testing-audit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/money/accounts/own-accounts.tsx",
+    "app/money/accounts/page.tsx",
+    "app/money/wealth/form.tsx",
+    "app/plan/assumptions.tsx",
+    "app/plan/currency/page.tsx",
+    "app/plan/goals.tsx",
+    "app/plan/spending/page.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "6edeaa37fc52",
+  "checkpoint_transcript_start": 1934,
+  "transcript_lines_at_start": 1934,
+  "compact_transcript_start": 273,
+  "token_usage": {
+    "input_tokens": 4,
+    "cache_creation_tokens": 3735,
+    "cache_read_tokens": 1167110,
+    "output_tokens": 2207,
+    "api_call_count": 2
+  },
+  "redaction": {
+    "replacements": 28,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 30,
+      "key_context": 4,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 12
+  }
+}
