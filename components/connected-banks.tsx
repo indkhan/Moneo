@@ -147,10 +147,12 @@ export function ConnectedBanks() {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ aspspName, country: aspspCountry }) }));
   async function loadBanks() {
     setBusy("banks"); setError(null); setBanks(null); setBank("");
-    const response = await fetch(`/api/bank/aspsps?country=${country}`);
-    const body = await response.json().catch(() => ({}));
-    if (response.ok) setBanks(body.banks); else setError(body.error ?? "Banks could not be loaded");
-    setBusy(null);
+    try {
+      const response = await fetch(`/api/bank/aspsps?country=${country}`);
+      const body = await response.json().catch(() => ({}));
+      if (response.ok) setBanks(body.banks); else setError(body.error ?? "Banks could not be loaded");
+    } catch { setError("Banks could not be loaded. Check your connection and try again."); }
+    finally { setBusy(null); }
   }
 
   return <section aria-labelledby="connected-banks" className="scroll-mt-20 space-y-4 rounded-xl border border-border bg-card p-6">
@@ -160,7 +162,7 @@ export function ConnectedBanks() {
     </div>
     {message && <p role="status" className="text-sm text-foreground">{message}</p>}
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-    {!data ? <p className="text-sm text-muted-foreground">Loading…</p> : <>
+    {!data ? (error ? <Button variant="outline" className="min-h-10" onClick={() => { setError(null); void load(); }}>Try again</Button> : <p className="text-sm text-muted-foreground">Loading…</p>) : <>
       {data.connections.length > 0 && <ul className="space-y-3">{data.connections.map(connection => {
         const consent = consentState(connection);
         return <li key={connection.id} className="space-y-3 rounded-lg border border-border p-4">

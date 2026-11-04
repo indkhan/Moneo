@@ -7,7 +7,7 @@ import { currentOn, debtPayments, loadWealthItems, wealthEvidence, type WealthIt
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { formatMoney as formatCurrency } from "@/lib/finance/format";
 import { SourceCoverageDetails } from "@/app/source-coverage";
-import { Sparkline } from "@/app/money/accounts/sparkline";
+import { NetWorthChart } from "@/app/net-worth-chart";
 import { WealthForm } from "./form";
 import { removeWealthItem, undoWealthEvent } from "./actions";
 import { currentNetWorth, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./net-worth";
@@ -68,8 +68,8 @@ export default async function WealthPage() {
           {([["Accounts", now.accounts], ["Investments & assets", now.assets], ["Debts", now.debts]] as const).map(([label, map]) => <div key={label}>
             <dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-0.5 font-mono tabular-nums">{formatMoney(map.get(currency) ?? 0n, currency)}</dd></div>)}
         </dl>
-        <Sparkline width={480} height={56} className="mt-5 w-full text-brand" label={`Recorded net worth in ${currency} at each month end`}
-          points={series.map(point => ({ date: point.date, value: netWorth(point).get(currency) ?? 0n }))} />
+        <div className="mt-5"><NetWorthChart label={`Recorded net worth in ${currency} at each month end`}
+          points={series.map(point => { const value = netWorth(point).get(currency) ?? 0n; return { date: point.date, label: point.date, amount: formatMoney(value, currency), y: Number(value) }; })} /></div>
         <p className="mt-1 flex justify-between text-xs text-muted-foreground"><span>{series[0].date}</span><span>{today}</span></p>
       </div>) : <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No recorded balances or valuations yet.</p>}
       <p className="text-xs text-muted-foreground">Per currency, no exchange rates. Accounts are the balances shown on Accounts, including activity recorded since each balance was set; earlier months use the balances recorded then. Values inside an account balance aren’t counted twice.{unbalanced > 0 ? ` ${unbalanced} account${unbalanced === 1 ? " has" : "s have"} no usable balance and ${unbalanced === 1 ? "is" : "are"} left out.` : ""}{dated > 0 ? ` ${dated} valuation${dated === 1 ? " is" : "s are"} dated before today and left out of current net worth.` : ""}</p>

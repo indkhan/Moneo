@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { saveWealthItemSafely } from "./actions";
 import { SafeForm } from "@/components/safe-form";
 import type { WealthItem } from "@/lib/finance/wealth";
@@ -5,12 +8,14 @@ import { formatInputAmount } from "@/lib/finance/format";
 
 export function WealthForm({ kind, item, accounts, assumptions, pending, today, currency }: { kind: WealthItem["kind"]; item?: WealthItem;
   accounts: { id: string; name: string; type: string; currency_code: string; archived_at?:string|null }[]; assumptions: { id: string; label: string }[]; pending: { id: string; label: string }[]; today: string; currency: string }) {
-  const code = item?.currency_code ?? currency;
+  // Which accounts can hold this value follows the currency as it is typed.
+  const [code, setCode] = useState(item?.currency_code ?? currency);
+  const [ids] = useState(() => ({ id: item?.id ?? crypto.randomUUID(), requestId: crypto.randomUUID() }));
   const field = "mt-1 block min-h-10 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground";
   return <SafeForm action={saveWealthItemSafely} className="mt-4 grid gap-x-4 gap-y-3 text-sm sm:grid-cols-2 [&_label]:text-muted-foreground">
-    <input type="hidden" name="id" value={item?.id ?? crypto.randomUUID()} /><input type="hidden" name="version" value={item?.version ?? 0} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><input type="hidden" name="kind" value={kind} />
+    <input type="hidden" name="id" value={ids.id} suppressHydrationWarning /><input type="hidden" name="version" value={item?.version ?? 0} /><input type="hidden" name="requestId" value={ids.requestId} suppressHydrationWarning /><input type="hidden" name="kind" value={kind} />
     <label>Name<input name="name" required maxLength={120} defaultValue={item?.name} className={field} /></label>
-    <label>Currency<input name="currency" required maxLength={3} readOnly={!!item} defaultValue={code} className={field} /></label>
+    <label>Currency<input name="currency" required maxLength={3} readOnly={!!item} value={code} onChange={event => setCode(event.target.value.toUpperCase())} className={field} /></label>
     <label>Valuation as of<input name="asOf" required type="date" max={today} defaultValue={item?.as_of ?? today} className={field} /></label>
     {kind === "holding" ? <><label>Quantity<input name="quantity" required defaultValue={item?.quantity_text ?? ""} placeholder="0.125" className={field} /></label><label>Unit price in currency<input name="unitPrice" required defaultValue={item?.unit_price_text ?? ""} placeholder="80.04" className={field} /></label></> : <label>{kind === "debt" ? "Outstanding principal (negative amount)" : "Asset value"}<input name="amount" required defaultValue={item ? formatInputAmount(item.amount_minor, code) : ""} placeholder={kind === "debt" ? "-1000.00" : "1000.00"} className={field} /></label>}
     {kind !== "debt" && <label>Total cost basis (optional)<input name="costBasis" defaultValue={item?.cost_basis_minor ? formatInputAmount(item.cost_basis_minor, code) : ""} className={field} /></label>}

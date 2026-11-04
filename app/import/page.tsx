@@ -327,13 +327,11 @@ export default function ImportPage() {
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="space-y-5">
       <div><p className="eyebrow">Money · Import</p><h1 className="mt-2 page-title">Import financial data</h1><p className="mt-2 text-sm text-muted-foreground">Drop CSV or XLSX statements. Only rows that need a decision are shown, and every import can be undone.</p></div>
-      <ol className="flex flex-wrap gap-x-6 gap-y-2 text-sm" aria-label="Import steps">{STEPS.map((label, i) =>
+      {file && <ol className="flex flex-wrap gap-x-6 gap-y-2 text-sm" aria-label="Import steps">{STEPS.map((label, i) =>
         <li key={label} aria-current={i === step ? "step" : undefined} className={`flex items-center gap-2 ${i === step ? "font-medium text-foreground" : i < step ? "text-foreground" : "text-muted-foreground"}`}>
           <span className={`grid size-6 place-items-center rounded-full text-xs ${i === step ? "bg-brand text-white" : i < step ? "bg-muted text-brand" : "border border-border"}`}>{i < step ? "✓" : i + 1}</span>{label}
-        </li>)}</ol>
+        </li>)}</ol>}
     </header>
-
-    <ConnectedBanks />
 
     <label className={`relative block rounded-xl border border-dashed border-border bg-card text-center transition-colors hover:bg-muted/40 focus-within:ring-2 focus-within:ring-brand ${file ? "p-5" : "p-10"}`}>
       <span className="block text-base font-semibold">{file ? "Drop more statements to replace this selection" : "Drop statements here, or click to choose"}</span>
@@ -349,6 +347,7 @@ export default function ImportPage() {
           event.target.value = "";
         }} />
     </label>
+    {!file && <p className="text-sm text-muted-foreground">Or <a className="underline" href="#connected-banks">connect a bank</a> to sync automatically.</p>}
 
     {busy && <p role="status" className="text-sm text-muted-foreground">{interpreting ? `Reading ${file?.name ?? "statement"}…` : "Working…"}{interpreting && <button type="button" className="ml-3 underline" onClick={clearFiles}>Cancel interpretation</button>}</p>}
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
@@ -466,6 +465,8 @@ export default function ImportPage() {
       </div>
     </section>}
 
+    <ConnectedBanks />
+
     <section className="space-y-4" aria-label="Import history">
       <h2 className="text-sm font-medium text-foreground">Import history</h2>
       {error === HISTORY_UNAVAILABLE && <button type="button" className="text-sm underline" onClick={() => void loadHistory()}>Reload history</button>}
@@ -491,7 +492,7 @@ export default function ImportPage() {
                 {item.status === "completed" && <Link className="font-medium text-brand underline" href={`/ai/agents?import=${item.id}`}>Watch the agent team</Link>}
                 {active(item.status) && <button className="underline" type="button" disabled={busy} onClick={() => void control(item, "cancel")}>Stop import</button>}
                 {["failed", "canceled"].includes(item.status) && <button className="underline" type="button" disabled={busy} onClick={() => void control(item, "resume")}>{item.status === "canceled" ? "Resume import" : "Retry"}</button>}
-                {item.status === "completed" && <button className="underline" type="button" disabled={busy} onClick={() => void showUndo(item.id)}>Undo import</button>}</div>
+                {item.status === "completed" && <button className="ml-auto text-danger underline" type="button" disabled={busy} onClick={() => void showUndo(item.id)}>Undo import</button>}</div>
               {undoId === item.id && preview && <div className="space-y-3 rounded-lg bg-muted p-4 text-sm">
                 <p><strong>Undo impact:</strong> remove {preview.deletable_transactions} transactions and {preview.deletable_balances} balance snapshots. This import will disappear from history. The source file and matched links are kept.</p>
                 {preview.blockers.length > 0
