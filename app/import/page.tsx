@@ -96,6 +96,8 @@ export default function ImportPage() {
   // `stale`: the shown preview no longer matches the mapping; `editorOpen`: the column editor is visible.
   const [stale, setStale] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  // The user changed the mapping, row decisions or workbook tables, so discarding them needs a warning.
+  const [edited, setEdited] = useState(false);
   const [splitAmounts, setSplitAmounts] = useState(false);
   const [moreColumnsOpen, setMoreColumnsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -113,6 +115,12 @@ export default function ImportPage() {
   const file = files[index];
 
   useEffect(() => () => inspectionRequest.current?.abort(), []);
+  useEffect(() => {
+    if (!edited) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [edited]);
 
   // Merge rules keep a delayed or reordered status response from regressing a newer state.
   function mergeHistory(updates: HistoryUpdate[], requestOrder: number) {
@@ -218,10 +226,18 @@ export default function ImportPage() {
     }
   }
 
+  const discardConfirmed = () => !edited || window.confirm("Discard your changes to this statement?");
+
+  function skipFile() {
+    if (!discardConfirmed()) return;
+    setEdited(false); setInspection(null); setMapping(null); setIndex(index + 1);
+    void inspect(files[index + 1]);
+  }
+
   function clearFiles() {
     inspectionRequest.current?.abort();
     inspectionRequest.current = null;
-    setFiles([]); setIndex(0); setInspection(null); setMapping(null); setEditorOpen(false); setStale(false); setBusy(false); setInterpreting(false); setError("");
+    setEdited(false); setFiles([]); setIndex(0); setInspection(null); setMapping(null); setEditorOpen(false); setStale(false); setBusy(false); setInterpreting(false); setError("");
   }
 
   // Runs one user action with the shared busy flag and surfaces its error.
@@ -244,6 +260,7 @@ export default function ImportPage() {
       if (!response.ok) throw new Error(result.error ?? "Import failed");
       if (result.importId) setConfirmedIds(ids => [result.importId, ...ids.filter(id => id !== result.importId)]);
       await loadHistory();
+      setEdited(false);
       setInspection(null);
       setMapping(null);
       if (index + 1 < files.length) {
@@ -259,12 +276,12 @@ export default function ImportPage() {
   // Replaces (or with no decision, clears) the review of one source row.
   function setRowDecision(rowNumber: number, decision?: NonNullable<ImportMapping["rowDecisions"]>[number]) {
     setMapping(current => current && ({ ...current, rowDecisions: [...(current.rowDecisions ?? []).filter(item => item.rowNumber !== rowNumber), ...(decision ? [decision] : [])] }));
-    setStale(true); setRowsReviewed(false);
+    setStale(true); setRowsReviewed(false); setEdited(true);
   }
 
   function edit(change: Partial<ImportMapping>) {
     setMapping(current => current && ({ ...current, ...change }));
-    setStale(true);
+    setStale(true); setEdited(true);
   }
 
   async function control(item: ImportStatus, action: "cancel" | "resume") {
@@ -354,6 +371,8 @@ export default function ImportPage() {
       <input className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed" type="file" accept=".csv,.xlsx" multiple disabled={!hydrated || busy} aria-label="Financial statement files"
         onChange={(event) => {
           const selected = Array.from(event.target.files ?? []);
+          if (!selected.length || !discardConfirmed()) { event.target.value = ""; return; }
+          setEdited(false);
           setFiles(selected);
           setIndex(0);
           setInspection(null);
@@ -373,7 +392,7 @@ export default function ImportPage() {
         <p className="text-sm text-muted-foreground">{inspection.format ? `Recognized ${inspection.format} statement` : inspection.interpretation === "proposed" ? "Columns proposed automatically. Check the preview." : inspection.interpretation === "reviewed" ? "Your reviewed mapping" : "Unrecognized layout"} · {extension}</p>
       </div>
       {inspection.workbook && <WorkbookScopeReview key={`${index}:${file.name}:${file.lastModified}:${file.size}`} inventory={inspection.workbook.inventory} initialScope={inspection.workbookScope} busy={busy}
-        onEdit={() => { setMapping(null); setEditorOpen(false); setStale(false); setRowsReviewed(false); setInspection(previous => previous ? {...previous,preview:null} : null); }}
+        onEdit={() => { setEdited(true); setMapping(null); setEditorOpen(false); setStale(false); setRowsReviewed(false); setInspection(previous => previous ? {...previous,preview:null} : null); }}
         onPreview={scope => void inspect(file, undefined, scope)} />}
       {inspection.aiError && <p className="text-sm text-muted-foreground">Automatic interpretation unavailable. Choose the columns below.</p>}
       {inspection.previewError && <p role="alert" className="text-sm text-danger">{inspection.previewError}</p>}
@@ -490,7 +509,8 @@ export default function ImportPage() {
         {result && !stale && <button type="button" className={primary} disabled={busy || !mappingReady || !flaggedReady} onClick={() => void confirm()}>Start import</button>}
         {mapping && (editorOpen || stale) && <button type="button" className={stale ? primary : secondary} disabled={busy} onClick={() => void inspect(file, mapping)}>Preview correction</button>}
         {result && !editorOpen && <button type="button" className={secondary} onClick={() => setEditorOpen(true)}>Correct</button>}
-        <button type="button" className={secondary} onClick={clearFiles}>Cancel</button>
+        {index + 1 < files.length && <button type="button" className={secondary} disabled={busy} onClick={skipFile}>Skip this file</button>}
+        <button type="button" className={secondary} onClick={() => { if (discardConfirmed()) clearFiles(); }}>{files.length > 1 ? "Cancel all files" : "Cancel"}</button>
         {result && !stale && !mappingReady && <p className="text-sm text-muted-foreground">{!mapping?.numericConvention ? "Choose the number format to continue." : namesMissing ? "Name every account to continue." : "Confirm the timezone to continue."}</p>}
       </div>
     </section>}
