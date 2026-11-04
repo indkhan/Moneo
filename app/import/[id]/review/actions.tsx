@@ -3,9 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function ReviewActions({ importId, sourceId, frozenId = null, frozenName, unavailable = false, destinations = [] }: {
-  importId: string; sourceId: string; frozenId?: string | null; frozenName?: string; unavailable?: boolean;
-  destinations?: { id: string; name: string; version: number }[];
+// fetch rejects only when the request never completed, so nothing was saved.
+const failureMessage = (cause: unknown) => cause instanceof TypeError ? "Could not reach Moneo. Check your connection and try again; your choices are still here." : cause instanceof Error ? cause.message : "Review failed";
+// A decided card disappears on refresh, so keyboard focus moves to the updated progress summary.
+const focusProgress = () => document.getElementById("review-progress")?.focus();
+
+export function ReviewActions({ importId, sourceId, rowNumber, frozenId = null, frozenName, unavailable = false, destinations = [] }: {
+  importId: string; sourceId: string; rowNumber: number; frozenId?: string | null; frozenName?: string; unavailable?: boolean;
+  destinations?: { id: string; name: string; currency_code: string; version: number }[];
 }) {
   const router = useRouter();
   const [destinationId, setDestinationId] = useState("");
@@ -27,8 +32,9 @@ export function ReviewActions({ importId, sourceId, frozenId = null, frozenName,
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Review failed");
       router.refresh();
+      focusProgress();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Review failed");
+      setError(failureMessage(cause));
     } finally {
       setBusy(false);
     }
@@ -37,21 +43,21 @@ export function ReviewActions({ importId, sourceId, frozenId = null, frozenName,
   return <div className="flex flex-wrap items-center gap-3">
     {frozenName && <p className="w-full text-sm text-muted-foreground">Planned account: {frozenName}</p>}
     {unavailable && <p className="w-full text-sm text-muted-foreground">The planned account is unavailable. Pick an active account in the same currency to accept this row.</p>}
-    {!!destinations.length && <label className="flex w-full flex-wrap items-center gap-2 text-sm font-medium">Reviewed destination
-      <select className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm font-normal" value={destinationId} onChange={event => setDestinationId(event.target.value)} disabled={busy}>
+    {!!destinations.length && <label className="flex w-full min-w-0 flex-wrap items-center gap-2 text-sm font-medium">Account for this row
+      <select className="min-h-10 w-full min-w-0 rounded-lg sm:w-auto sm:max-w-md border border-border bg-card px-3 py-2 text-sm font-normal" value={destinationId} onChange={event => setDestinationId(event.target.value)} disabled={busy}>
         <option value="">{unavailable ? "Choose an account" : "Keep planned account"}</option>
-        {destinations.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+        {destinations.map(account => <option key={account.id} value={account.id}>{account.name} ({account.currency_code})</option>)}
       </select>
     </label>}
-    <button className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50" type="button" disabled={busy || (unavailable && !destinationId)} onClick={() => void decide("accept")}>Accept as new</button>
-    <button className="min-h-10 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" type="button" disabled={busy} onClick={() => void decide("reject")}>Reject</button>
-    <p className="w-full text-xs text-muted-foreground">Reject leaves this row out of your totals and keeps the original. To reverse a decision, undo the whole import from Import history.</p>
+    <button className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50" type="button" aria-label={`Accept as new, row ${rowNumber}`} disabled={busy || (unavailable && !destinationId)} onClick={() => void decide("accept")}>Accept as new</button>
+    <button className="min-h-10 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" type="button" aria-label={`Reject, row ${rowNumber}`} disabled={busy} onClick={() => void decide("reject")}>Reject</button>
+    <p className="w-full text-xs text-muted-foreground">Reject leaves this row out of your totals and keeps the original. One row cannot be reopened afterwards: to redo a decision, undo the whole import from Import history and import the file again.</p>
     {error && <p role="alert" className="w-full text-sm text-danger">{error}</p>}
   </div>;
 }
 
-export function ClassificationActions({ importId, transactionId, version, reasons, eventId }: {
-  importId: string; transactionId: string; version: number; reasons?: string[]; eventId?: string;
+export function ClassificationActions({ importId, transactionId, version, reasons, eventId, name }: {
+  importId: string; transactionId: string; version: number; reasons?: string[]; eventId?: string; name: string;
 }) {
   const router = useRouter();
   const [kind, setKind] = useState("ordinary");
@@ -66,7 +72,8 @@ export function ClassificationActions({ importId, transactionId, version, reason
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Review failed");
       router.refresh();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Review failed"); }
+      focusProgress();
+    } catch (cause) { setError(failureMessage(cause)); }
     finally { setBusy(false); }
   }
   return <div className="space-y-4 text-sm">
@@ -77,7 +84,7 @@ export function ClassificationActions({ importId, transactionId, version, reason
       {reasons?.includes("fee_semantics") && <label className="flex items-start gap-2"><input type="checkbox" checked={feeIncluded} onChange={event => setFeeIncluded(event.target.checked)} />The booked amount already includes the fee, so no extra fee transaction is needed.</label>}
       <p className="text-muted-foreground">Unknown or separate fees stay under review. <a className="underline" href={`/money/transactions?transaction=${transactionId}`}>Open the transaction to link or inspect it</a></p>
     </>}
-    <button type="button" className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50" disabled={busy} onClick={() => void submit()}>{eventId ? "Undo classification review" : "Confirm type"}</button>
+    <button type="button" className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50" aria-label={`${eventId ? "Undo classification review" : "Confirm type"} for ${name}`} disabled={busy} onClick={() => void submit()}>{eventId ? "Undo classification review" : "Confirm type"}</button>
     {error && <p role="alert" className="text-danger">{error}</p>}
   </div>;
 }
