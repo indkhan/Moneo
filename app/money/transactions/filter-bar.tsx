@@ -6,6 +6,7 @@ import { formatInputAmount } from "@/lib/finance/format";
 import { parseManualAmount } from "./input";
 import { compileFilterQuery } from "./nl-filter";
 import { calendarDate } from "@/lib/finance/calendar";
+import { PhoneCollapse } from "@/components/phone-collapse";
 
 type Named = { id: string; name: string };
 export type FilterValues = Partial<Record<"q" | "from" | "to" | "account" | "category" | "merchant" | "status" | "kind" | "direction" | "tag" | "event" | "minAmount" | "maxAmount" | "sort" | "group", string>>;
@@ -38,7 +39,7 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
         params.set(key, key === "minAmount" || key === "maxAmount" ? parseManualAmount(value, currency).toString() : value);
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Check the amount"); return; }
-    for (const key of ["sort", "group"] as const) if (values[key]) params.set(key, values[key]!);
+    if (values.sort) params.set("sort", values.sort);
     setError("");
     router.push(`/money/transactions${params.size ? `?${params}` : ""}`);
   }
@@ -52,19 +53,24 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
     router.push(`/money/transactions${query.size ? `?${query}` : ""}`);
   }
 
+  const filtering = Object.entries(values).some(([key, value]) => value && key !== "q" && key !== "sort" && key !== "group");
   return <div className="space-y-2">
-  <form onSubmit={ask} role="search" aria-label="Describe transactions" className="flex gap-2">
+  <form onSubmit={ask} role="search" aria-label="Describe transactions" className="flex gap-2 max-md:hidden">
     <input name="ask" maxLength={200} placeholder="Ask, e.g. coffee over 5 last month" aria-label="Describe what to find" className={`${control} flex-1`} />
     <button className="min-h-10 whitespace-nowrap rounded-[10px] border border-input px-3 text-[13px] hover:bg-muted">Find</button>
   </form>
   <form onSubmit={submit} role="search" aria-label="Filter transactions" className="space-y-2">
-    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
       <input id="ledger-search" name="q" defaultValue={values.q} placeholder="Search descriptions  ( / )" aria-label="Search descriptions" maxLength={200} className={control} />
+    <PhoneCollapse label="Filters" open={filtering}>
+<div className="space-y-2">
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
       <input name="from" type="date" defaultValue={values.from} aria-label="From date" className={control} />
       <input name="to" type="date" defaultValue={values.to} aria-label="To date" className={control} />
       <select name="account" value={account} onChange={event => setAccount(event.target.value)} aria-label="Account" className={control}><option value="">All accounts</option>{accounts.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
       <select name="category" defaultValue={values.category ?? ""} aria-label="Category" className={control}><option value="">All categories</option><option value="none">Uncategorized</option>{categories.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
       <select name="merchant" defaultValue={values.merchant ?? ""} aria-label="Merchant" className={control}><option value="">All merchants</option><option value="none">Unknown</option>{merchants.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
+      {/* The links beside the results do this from md up. */}
+      <select name="group" defaultValue={values.group ?? ""} aria-label="Group by" className={`${control} md:hidden`}><option value="">No grouping</option><option value="category">Group by category</option><option value="merchant">Group by merchant</option><option value="month">Group by month</option></select>
       <div className="flex gap-2 lg:col-span-2 lg:justify-end">
         <button type="button" aria-expanded={more} onClick={() => setMore(!more)} className="min-h-10 whitespace-nowrap rounded-[10px] border border-input px-3 text-[13px] hover:bg-muted">{more ? "Fewer" : "More"}</button>
         <button className="min-h-10 whitespace-nowrap rounded-[10px] bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90">Apply filters</button>
@@ -79,6 +85,8 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
       <input name="tag" defaultValue={values.tag} placeholder="Tag" aria-label="Filter by tag" maxLength={40} className={control} />
       <input name="event" defaultValue={values.event} placeholder="Trip / event group" aria-label="Filter by spending group" maxLength={120} className={control} />
     </div>
+</div>
+    </PhoneCollapse>
     {more && <p className="text-xs text-muted-foreground">Amounts are signed: -50 to -10 finds purchases between 10 and 50.</p>}
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
   </form>

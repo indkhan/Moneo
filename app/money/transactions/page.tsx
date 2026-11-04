@@ -9,6 +9,7 @@ import { EditingHistory } from "./editing-history";
 import { DEFAULT_SORT, SORT_ORDER, cursorClause, nextCursorForRow, parseTransactionParams, toQueryParams, toggleSort, type ParsedTransactionParams, type TransactionGroup } from "./filters";
 import { invalidStoredViewScope, parseStoredFilters, parseViewId, savedViewToParams } from "../views/validate";
 import { SavedViewsPanel } from "../views/panel";
+import { PhoneCollapse } from "@/components/phone-collapse";
 import { FilterBar } from "./filter-bar";
 import { LedgerTable, type LedgerRow } from "./ledger-table";
 import { TransactionDrawer } from "./drawer";
@@ -57,7 +58,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const header = (count?: number | null) => <header className="flex flex-wrap items-end justify-between gap-4">
     <div className="flex flex-col gap-1"><p className="eyebrow">{count != null ? `${count.toLocaleString(workspace.locale)} ${count === 1 ? "transaction" : "transactions"} · ` : ""}{activeCount} {activeCount === 1 ? "account" : "accounts"}</p><h1 className="page-title">Transactions</h1></div>
     <div className="flex flex-wrap gap-2 text-[13px]">
-      <Link href="/import" className="inline-flex h-11 items-center rounded-xl border border-input px-4 hover:bg-muted">Import CSV / Excel</Link>
+      <Link href="/import" className="inline-flex h-11 items-center rounded-xl border border-input px-4 hover:bg-muted max-md:hidden">Import CSV / Excel</Link>
       <a href="#add-transaction" className="inline-flex h-11 items-center rounded-xl bg-primary px-4 font-medium text-primary-foreground hover:opacity-90">Add transaction</a>
     </div>
   </header>;
@@ -133,10 +134,10 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const filterValues = Object.fromEntries(shareable);
   const activeAccounts = (accounts ?? []).filter(account => !account.archived_at);
 
-  return <main className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-6 text-foreground sm:px-8 lg:py-8">
+  return <main className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-4 text-foreground max-md:flex max-md:flex-col sm:px-8 md:py-6 lg:py-8">
     {header(filters.cursor ? null : count)}
     {viewId && !activeView ? <p role="alert" className="text-sm">Saved view not found. Showing normal filters.</p> : null}
-    <SavedViewsPanel views={viewRows} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} />
+    <div className="max-md:order-last"><PhoneCollapse label="Saved views" open={!!activeView}><SavedViewsPanel views={viewRows} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} /></PhoneCollapse></div>
     <div className="grid gap-6">
       <div className="min-w-0 space-y-4">
         <FilterBar key={shareable.toString()} values={filterValues} accounts={accounts ?? []} categories={categories ?? []} merchants={merchants ?? []} displayCurrency={workspace.display_currency} timezone={workspace.timezone} />
@@ -146,7 +147,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             {chips.map(([key, label]) => <li key={key}><Link href={withParams(shareable, { [key]: null })} scroll={false} aria-label={`Remove filter ${label}`} className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-xs hover:bg-muted">{label}<span aria-hidden>×</span></Link></li>)}
             {chips.length ? <li><Link href="/money/transactions" className="px-1 text-xs text-muted-foreground underline">Clear all</Link></li> : null}
           </ul>
-          <div className="flex items-center gap-3 max-lg:w-full max-lg:flex-wrap max-lg:justify-between">
+          <div className="flex items-center gap-3 max-md:hidden max-lg:w-full max-lg:flex-wrap max-lg:justify-between">
             {count !== null ? <span className="font-mono text-xs text-muted-foreground max-lg:whitespace-nowrap">{filters.cursor ? `${count.toLocaleString(workspace.locale)} from here` : `${count.toLocaleString(workspace.locale)} ${count === 1 ? "transaction" : "transactions"}`}</span> : null}
             <nav aria-label="Group by" className="flex items-center gap-1 text-xs"><span className="text-muted-foreground">Group</span>
               {GROUPS.map(option => <Link key={option.value} scroll={false} aria-current={(filters.group ?? "") === option.value ? "true" : undefined}

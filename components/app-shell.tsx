@@ -152,7 +152,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
       </div>
     </nav>
     <div className={cn("min-w-0 pb-16 lg:pb-0 lg:pl-22 lg:transition-[padding] lg:[html[data-ai-panel]_&]:pr-112", artifactEditor && "flex h-full flex-col")}>
-      <header className="sticky top-0 z-20 shrink-0 border-b border-border bg-background/90 backdrop-blur">
+      <header className="shrink-0 border-b border-border bg-background/90 backdrop-blur lg:sticky lg:top-0 lg:z-20">
         <div className="flex h-19 items-center gap-3 px-4 sm:px-6 lg:px-8">
           <button type="button" onClick={() => setPalette(true)} aria-label="Search or ask Moneo" className="flex h-11 min-w-0 max-w-[620px] flex-1 items-center gap-2.5 rounded-xl border border-input bg-card px-3.5 text-left text-sm text-muted-foreground hover:text-foreground">
             <Search className="size-4 shrink-0" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">Search pages, accounts or ask Moneo…</span>
