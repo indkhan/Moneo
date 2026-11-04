@@ -4,6 +4,8 @@ import { requireWorkspace } from "@/lib/auth";
 import { usageLabel, type ReportedUsage } from "@/lib/ai/usage";
 import { answerCardIds } from "@/lib/ai/open-proposals";
 
+export const metadata = { title: "Activity log" };
+
 const FILTERS = { all: "All", attention: "Needs attention", imports: "Imports", analyses: "Analyses", chats: "Chats" } as const;
 type Filter = keyof typeof FILTERS;
 type Kind = "imports" | "analyses" | "chats";

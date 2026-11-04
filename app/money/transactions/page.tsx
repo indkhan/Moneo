@@ -17,6 +17,8 @@ import { kindLabel, statusLabel } from "./labels";
 import { summarizeGroups, orderByGroup } from "./grouping";
 import { ledgerTable, scopeLedger } from "./scope";
 
+export const metadata = { title: "Transactions" };
+
 const PAGE_SIZE = 50;
 // ponytail: subtotals scan at most this many matching rows (PostgREST max rows); an RPC aggregate lifts the cap if ledgers grow.
 const GROUP_SCAN_LIMIT = 1000;

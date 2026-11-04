@@ -5,6 +5,8 @@ import { categoryPreviewSchema, loadCategoryPreview } from "@/lib/finance/edit-p
 import { BulkEditor } from "@/app/money/transactions/bulk-editor";
 import { formatMoney } from "@/lib/finance/format";
 
+export const metadata = { title: "Review changes" };
+
 export default async function ActionPreview({ searchParams }: { searchParams: Promise<{ ids?: string; category?: string }> }) {
   const { supabase, workspace, settings } = await requireWorkspace();
   const params = await searchParams;

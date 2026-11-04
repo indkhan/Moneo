@@ -30,7 +30,7 @@ it("renders the rail, section tabs and mobile navigation, and skips the frame on
   expect(html).toContain('aria-label="Main"');
   expect(html).toContain('aria-label="Main mobile"');
   expect(html).toMatch(/aria-current="page"[^>]*href="\/money\/transactions"/);
-  expect(html).toContain('aria-label="Activity"');
+  expect(html).toContain('aria-label="Transactions"');
   expect(html).toContain("Skip to content");
   expect(html).toContain('aria-label="Search or ask Moneo"');
   path.current = "/login";

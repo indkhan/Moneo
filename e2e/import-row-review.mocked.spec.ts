@@ -1,5 +1,9 @@
 import { test, expect } from "@playwright/test";
-import { mockInspectResponse } from "./fixtures";
+import { mockInspectResponse, e2eStorageStatePath } from "./fixtures";
+
+// Pages need a session; the data behind them stays mocked.
+const signedIn = e2eStorageStatePath();
+if (signedIn) test.use({ storageState: signedIn });
 
 test("reviews a corrected observation and explicit exclusion before confirmation", async ({ page }) => {
   let inspected = false;

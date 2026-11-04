@@ -9,6 +9,8 @@ import type { InvestigationSpec } from "@/lib/finance/investigation";
 import { kindLabel, statusLabel } from "../transactions/labels";
 import { parseInvestigationParams } from "./input";
 
+export const metadata = { title: "Investigations" };
+
 const field = "min-h-9 w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm";
 const destination = (spec: InvestigationSpec) => `/money/investigations?${new URLSearchParams({ query: JSON.stringify(spec) })}`;
 const METRICS: Record<string, string> = { spending: "Spending", income: "Income", net: "Net (in minus out)", signed: "Signed total", absolute: "Total movement", count: "Number of transactions" };

@@ -10,6 +10,8 @@ import { ConnectedBanks } from "@/components/connected-banks";
 import { AiUsage } from "./ai-usage";
 import { parseUsageWindow } from "@/lib/ai/usage";
 
+export const metadata = { title: "Settings" };
+
 type Workspace = Awaited<ReturnType<typeof requireWorkspace>>;
 const card = "scroll-mt-20 rounded-xl border border-border bg-card p-6";
 const sectionNav = [

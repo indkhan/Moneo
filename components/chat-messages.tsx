@@ -61,7 +61,7 @@ export function ChatMessages({ messages, pending, compact = false }: { messages:
   const assistant = (body: React.ReactNode) => <div className="min-w-0"><p className="mb-2 flex items-center gap-2 text-xs text-ai"><Sparkle className="size-3.5 fill-current" aria-hidden="true" />Moneo</p>{body}</div>;
   return <div className={`min-w-0 max-w-full ${compact ? "space-y-6" : "space-y-8"}`} aria-live="polite">
     {messages.map(item => <article key={item.id}>
-      <time className="sr-only" dateTime={item.created_at}>{item.created_at}</time>
+      <time className="sr-only" dateTime={item.created_at} suppressHydrationWarning>{new Date(item.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>
       {item.call ? <VoiceCallCard call={item.call} createdAt={item.created_at} /> : item.role === "user" ? <><MessageFiles files={item.attachments} /><p className={bubble}><Spoken show={item.spoken} />{item.content}</p></> : assistant(<>{item.plan && <Plan steps={item.plan} done collapsed />}<AiToolActivity tools={item.tools ?? []} /><AiMessage content={item.content} />{item === messages.at(-1) && !pending && <FollowUps items={item.followUps ?? []} compact={compact} />}</>)}
     </article>)}
     {pending && <article className={compact ? "space-y-6" : "space-y-8"}>

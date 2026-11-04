@@ -12,6 +12,8 @@ import { publishCard, setCardSize, unpublishCard } from "@/app/dashboard-actions
 import { DeleteArtifactButton } from "../delete-artifact-button";
 import { ArtifactChat, BuildCardButton } from "./artifact-chat";
 
+export const metadata = { title: "Artifact" };
+
 type Search = { v?: string; full?: string; tab?: string; card?: string; cv?: string };
 type CardRow = { id: string; title: string; size: string; published_version: number | null; artifact_card_versions: { version: number; title: string }[] };
 

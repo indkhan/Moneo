@@ -13,6 +13,8 @@ import { balanceTrend, shownBalance } from "./history";
 import { Sparkline } from "./sparkline";
 import { OwnAccounts } from "./own-accounts";
 
+export const metadata = { title: "Accounts" };
+
 const field = "min-h-9 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm";
 const TREND_DAYS = 90;
 type Resolved = ReturnType<typeof resolveBalances>[number];

@@ -4,6 +4,8 @@ import { requireWorkspace } from "@/lib/auth";
 import { loadAgentRun } from "@/lib/ai/agent-state";
 import { MissionControl } from "@/components/mission-control";
 
+export const metadata = { title: "Agent run" };
+
 export default async function AgentRunPage({ params }: { params: Promise<{ id: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { redirect("/login"); }

@@ -5,6 +5,8 @@ import { reviewFreshness } from "@/lib/finance/review-freshness";
 import { ReviewVerification } from "@/components/review-verification";
 import { AiMessage } from "@/components/ai-message";
 
+export const metadata = { title: "Saved review" };
+
 function truncate(value: string | null | undefined, max = 280) {
   if (!value) return "";
   return value.length > max ? `${value.slice(0, max)}…` : value;

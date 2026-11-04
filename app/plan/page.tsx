@@ -20,6 +20,8 @@ import { WhatIfSection } from "./what-if";
 import { AssumptionList } from "./assumptions";
 import { button, card, eyebrow, field } from "./ui";
 
+export const metadata = { title: "Plan" };
+
 const pill = "inline-flex h-11 items-center gap-1 rounded-xl border border-input px-4 text-[13px] font-medium hover:bg-muted";
 
 type Plan = Awaited<ReturnType<typeof evaluatePlan>>;

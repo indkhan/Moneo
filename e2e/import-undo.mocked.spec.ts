@@ -1,4 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { e2eStorageStatePath } from "./fixtures";
+
+// Pages need a session; the data behind them stays mocked.
+const signedIn = e2eStorageStatePath();
+if (signedIn) test.use({ storageState: signedIn });
 
 test("undo removes an import from history immediately and after reload", async ({ page }) => {
   const item = { id: "00000000-0000-4000-8000-000000000053", filename: "Synthetic undo.csv",

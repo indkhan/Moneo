@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Suspense, use, useEffect, useState } from "react";
+import { Suspense, use, useEffect, useState, useSyncExternalStore } from "react";
 import {
   ArrowLeftRight, Bell, ChartLine, ChartPie, Coins, CreditCard, LayoutGrid, Layers, ListChecks, Menu, MessageSquare,
   Network, Repeat, Search, SearchCheck, SlidersHorizontal, Tags, Target, TrendingUp, Upload, type LucideIcon,
@@ -22,8 +22,8 @@ type NavItem = { label: string; href: string; icon: LucideIcon; go?: string };
 type RailItem = NavItem & { items?: NavItem[] };
 const rail: RailItem[] = [
   { label: "Overview", href: "/", icon: LayoutGrid, go: "h" },
-  { label: "Activity", href: "/money/transactions", icon: ArrowLeftRight, items: [
-    { label: "Transactions", href: "/money/transactions", icon: ArrowLeftRight, go: "t" },
+  { label: "Transactions", href: "/money/transactions", icon: ArrowLeftRight, items: [
+    { label: "Ledger", href: "/money/transactions", icon: ArrowLeftRight, go: "t" },
     { label: "Organization", href: "/money/organization", icon: Tags, go: "o" },
     { label: "Investigations", href: "/money/investigations", icon: SearchCheck },
     { label: "Import", href: "/import", icon: Upload, go: "i" },
@@ -43,11 +43,14 @@ const rail: RailItem[] = [
   ] },
   { label: "Artifacts", href: "/ai/artifacts", icon: Layers },
 ];
+const noChanges = () => () => {};
+const isApple = () => /mac|iphone|ipad/i.test(navigator.userAgent);
 const settingsItem: NavItem = { label: "Settings", href: "/settings", icon: SlidersHorizontal, go: "s" };
 // The attention view of the activity feed, linked directly: /notifications only redirects there.
 const notificationsItem: NavItem = { label: "Notifications", href: "/ai/activity?filter=attention", icon: Bell, go: "n" };
 const allItems: NavItem[] = [...rail.flatMap(item => item.items ?? [item]), settingsItem, notificationsItem];
-const mobileTabs = ["/", "/money/transactions", "/plan", "/ai"].map(href => rail.find(item => item.href === href)!);
+// Ask is the sparkle button in the header on every screen, so the fourth place goes to Accounts.
+const mobileTabs = ["/", "/money/transactions", "/money/accounts", "/plan"].map(href => rail.find(item => item.href === href)!);
 
 /** The nav item whose href is the longest prefix of the path ("/" only matches itself). */
 export function activeItem(pathname: string) {
@@ -128,6 +131,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [router]);
+  const apple = useSyncExternalStore(noChanges, isApple, () => false);
 
   if (pathname === "/login" || pathname === "/privacy" || pathname === "/terms" || pathname.startsWith("/privacy/") || pathname.startsWith("/terms/")) return <>{children}</>;
 
@@ -156,7 +160,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
         <div className="flex h-19 items-center gap-3 px-4 sm:px-6 lg:px-8">
           <button type="button" onClick={() => setPalette(true)} aria-label="Search or ask Moneo" className="flex h-11 min-w-0 max-w-[620px] flex-1 items-center gap-2.5 rounded-xl border border-input bg-card px-3.5 text-left text-sm text-muted-foreground hover:text-foreground">
             <Search className="size-4 shrink-0" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">Search pages, accounts or ask Moneo…</span>
-            <span className="hidden gap-0.5 sm:flex" aria-hidden="true"><Kbd>⌘</Kbd><Kbd>K</Kbd></span>
+            <span className="hidden gap-0.5 sm:flex" aria-hidden="true"><Kbd>{apple ? "⌘" : "Ctrl"}</Kbd><Kbd>K</Kbd></span>
           </button>
           <div className="ml-auto flex items-center gap-2">
             <AiPanel />

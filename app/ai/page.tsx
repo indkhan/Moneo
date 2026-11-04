@@ -6,6 +6,8 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { ChatWorkspace } from "@/components/chat-workspace";
 
+export const metadata = { title: "Ask" };
+
 export default async function AiPage({ searchParams }: { searchParams: Promise<{ conversation?: string; threadsBefore?: string; messagesBefore?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch (cause) {

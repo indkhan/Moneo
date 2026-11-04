@@ -13,6 +13,8 @@ import { saveSpendingPlan, saveSpendingPlanSafely, setRollover, toggleSpendingPl
 import { PlanningHistory } from "../history";
 import { button, card, field, linkButton, percentOf } from "../ui";
 
+export const metadata = { title: "Spending limits" };
+
 type Db = Awaited<ReturnType<typeof requireWorkspace>>["supabase"];
 
 async function loadLimitHistory(supabase: Db, workspaceId: string, from: string) {

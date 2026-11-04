@@ -9,6 +9,8 @@ import {versionedRows} from '../transactions/input';
 import {dismissReview,toggleRule} from './actions';
 import {OrganizationQueue,ApprovalForm,UndoReviewForm} from './review-form';
 
+export const metadata = { title: "Organization" };
+
 const snapshotSchema=z.object({id:z.uuid(),version:z.number().int().nonnegative(),description:z.string(),posted_on:z.iso.date(),amount_minor:z.string().regex(/^-?\d+$/),currency_code:z.string().regex(/^[A-Z]{3}$/),merchant_id:z.uuid().nullable(),category_id:z.uuid().nullable()}).passthrough();
 export default async function OrganizationPage({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}) {
  const {supabase,workspace}=await requireWorkspace();const params=await searchParams;

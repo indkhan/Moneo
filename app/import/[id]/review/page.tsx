@@ -7,6 +7,8 @@ import { formatMoney } from "@/lib/finance/format";
 import { mappingSchema, mapImportReviewRow, type SourceRow } from "@/lib/import/csv";
 import { PendingSettlement } from "./pending-settlement";
 
+export const metadata = { title: "Review import" };
+
 // Original source evidence as a compact field list; internal parser columns stay hidden.
 function SourceFields({ row }: { row: SourceRow }) {
   return <dl className="grid gap-x-4 gap-y-1 rounded-lg bg-muted p-3 text-xs sm:grid-cols-[max-content_1fr]">{Object.entries(row ?? {}).filter(([column]) => !column.startsWith("__moneo_csv_")).map(([column, value]) =>

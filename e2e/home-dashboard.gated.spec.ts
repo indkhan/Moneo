@@ -136,7 +136,8 @@ test("a long press drags a widget on a phone, and a swipe still scrolls", async 
 
   // A quick swipe over a widget scrolls the page and moves nothing.
   const after = await order(page);
-  const from = (await page.locator(`[data-widget="${first}"]`).boundingBox())!;
+  await page.evaluate(() => scrollTo(0, 0));
+  const from = (await page.locator("[data-widget]:visible").first().boundingBox())!;
   const top = await page.evaluate(() => scrollY);
   await touch("touchStart", from.x + 40, from.y + 30);
   for (let step = 1; step <= 6; step++) await touch("touchMove", from.x + 40, from.y + 30 - step * 20);

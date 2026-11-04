@@ -18,11 +18,13 @@
 // real row persistence, duplicate-detection against Postgres, background
 // workflow polling.
 import { test, expect } from "@playwright/test";
-import {
-  AUGUST_CSV,
+import { AUGUST_CSV,
   mockCompletedImport,
-  mockInspectResponse,
-} from "./fixtures";
+  mockInspectResponse, e2eStorageStatePath } from "./fixtures";
+
+// Pages need a session; the data behind them stays mocked.
+const signedIn = e2eStorageStatePath();
+if (signedIn) test.use({ storageState: signedIn });
 
 test.describe("deterministic import journey (mocked AI mapping, no credentials)", () => {
   test("requires a reviewed numeric convention and previews it before confirmation", async ({ page }) => {

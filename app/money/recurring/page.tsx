@@ -13,6 +13,8 @@ import { DetectedPatterns } from "./detected";
 import { OccurrenceReview } from "./occurrences";
 import { RecurringReview } from "./review";
 
+export const metadata = { title: "Recurring" };
+
 type Schedule = { id: string; name: string; category: { name: string } | null; account_id: string | null; amount_minor: string; currency_code: string; cadence: string; starts_on: string; ends_on: string | null; schedule_anchor_on: string | null; source: string };
 const UPCOMING_DAYS = 30;
 

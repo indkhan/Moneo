@@ -44,19 +44,8 @@ test.describe("core journey smoke (no session, no live AI)", () => {
     ).toBeVisible();
   });
 
-  test("import page renders picker and an honest history error without credentials", async ({
-    page,
-  }) => {
+  test("a signed-out link to the import page goes to login and remembers it", async ({ page }) => {
     await page.goto("/import");
-    await expect(
-      page.getByRole("heading", { name: "Import financial data" }),
-    ).toBeVisible();
-    await expect(
-      page.getByLabel("Financial statement files"),
-    ).toBeVisible();
-    // An unavailable authenticated history must not look like an empty ledger.
-    await expect(page.getByRole("alert").filter({ hasText: "Import history is unavailable. Try again." })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Reload history" })).toBeVisible();
-    await expect(page.getByText("No imports yet.")).toHaveCount(0);
+    await expect(page).toHaveURL(/login[?]next=%2Fimport$/);
   });
 });

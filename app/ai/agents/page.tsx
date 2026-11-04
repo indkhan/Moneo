@@ -6,6 +6,8 @@ import { TeamFlow } from "@/components/team-flow";
 import { StartAgentRun } from "./start-run";
 import { IouReview } from "@/app/iou-review";
 
+export const metadata = { title: "Agent team" };
+
 export default async function AgentRunsPage({ searchParams }: { searchParams: Promise<{ import?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { redirect("/login"); }

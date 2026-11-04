@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { addFxRate, addFxRateSafely, setDisplayCurrency, setDisplayCurrencySafely } from "./actions";
 
+export const metadata = { title: "Currency" };
+
 export default async function CurrencyPage() {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try {

@@ -6,6 +6,8 @@ import { artifactExamples } from "@/lib/ai/artifact-examples";
 import { ArtifactPrompt } from "./artifact-prompt";
 import { DeleteArtifactButton } from "./delete-artifact-button";
 
+export const metadata = { title: "Artifacts" };
+
 // Match chat's recovery window: older running requests were interrupted.
 const runningSince = () => new Date(Date.now() - 6 * 60_000).toISOString();
 

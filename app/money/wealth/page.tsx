@@ -12,6 +12,8 @@ import { WealthForm } from "./form";
 import { removeWealthItem, undoWealthEvent } from "./actions";
 import { currentNetWorth, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./net-worth";
 
+export const metadata = { title: "Wealth" };
+
 const MONTHS = 12;
 const sections = [["holding", "Investments"], ["asset", "Assets"], ["debt", "Debts"]] as const;
 
