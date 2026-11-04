@@ -19,12 +19,12 @@ export function AccountForm({ account, requestId }: { account: Account; requestI
   const [edited, setEdited] = useState(false);
   return <form action={action} onChange={() => setEdited(true)} className="flex min-w-0 flex-wrap items-center gap-2">
     <Hidden account={account} requestId={requestId} />
-    <input aria-label="Name" name="name" defaultValue={account.name} required maxLength={120}
+    <input aria-label={`Name of ${account.name}`} name="name" defaultValue={account.name} required maxLength={120}
       className="min-h-9 min-w-0 flex-1 basis-48 rounded-lg border border-transparent bg-transparent px-2 py-1 text-base font-semibold hover:border-border focus:border-border focus:bg-card" />
-    <select aria-label="Account type" name="type" defaultValue={account.type} className={quiet}>{accountTypes.map(type => <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}</select>
-    {edited && <button disabled={pending} className={quiet} name="operation" value="edit">Save changes</button>}
+    <select aria-label={`Type of ${account.name}`} name="type" defaultValue={account.type} className={quiet}>{accountTypes.map(type => <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}</select>
+    {edited && <button disabled={pending} aria-label={`Save changes to ${account.name}`} className={quiet} name="operation" value="edit">{pending ? "Saving…" : "Save changes"}</button>}
     <details className="relative"><summary className={`${quiet} inline-flex cursor-pointer list-none items-center`}>More</summary>
-      <button disabled={pending} className={`${quiet} absolute right-0 z-10 mt-1 whitespace-nowrap border border-border bg-card shadow-sm`} name="operation" value={account.archived_at ? "restore" : "archive"}>{account.archived_at ? "Restore account" : "Archive account"}</button>
+      <button disabled={pending} className={`${quiet} absolute right-0 z-10 mt-1 whitespace-nowrap border border-border bg-card shadow-sm`} name="operation" value={account.archived_at ? "restore" : "archive"} aria-label={`${account.archived_at ? "Restore" : "Archive"} ${account.name}. History is kept.`}>{account.archived_at ? "Restore account" : "Archive account"}</button>
     </details>
     <ErrorText error={state.error} />
   </form>;
@@ -45,15 +45,16 @@ export function BalanceForm({ accountId, name, currency, today, expectedSnapshot
   review?: { id: string; label: string; covered: unknown }[];
 }) {
   const [state, action, pending] = useActionState(updateBalance, {});
+  const [asOf, setAsOf] = useState(today);
   return <form action={action} className="flex flex-wrap items-end gap-2">
     <input type="hidden" name="accountId" value={accountId} /><input type="hidden" name="requestId" value={requestId} />
     <input type="hidden" name="expectedSnapshotId" value={expectedSnapshotId} /><input type="hidden" name="expectedVersion" value={expectedVersion} />
     <label className="grid gap-1 text-xs text-muted-foreground">Booked balance ({currency})
       <input name="amount" required inputMode="decimal" placeholder={placeholder} aria-label={`${name} balance`} className={`${field} w-36 font-mono text-foreground`} /></label>
     <label className="grid gap-1 text-xs text-muted-foreground">As of
-      <input name="asOf" type="date" required defaultValue={today} max={today} aria-label="Balance as of" className={`${field} text-foreground`} /></label>
-    <button disabled={pending} className="min-h-9 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">Save balance</button>
-    {review.length ? <details className="w-full text-xs" open>
+      <input name="asOf" type="date" required value={asOf} onChange={event => setAsOf(event.target.value)} max={today} aria-label={`${name} balance as of`} className={`${field} text-foreground`} /></label>
+    <button disabled={pending} className="min-h-9 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">{pending ? "Saving…" : "Save balance"}</button>
+    {review.length && asOf === today ? <details className="w-full text-xs" open>
       <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Today&apos;s activity ({review.length})</summary>
       <input type="hidden" name="coveredTransactions" value={JSON.stringify(review.map(row => row.covered))} />
       <ul className="mt-2 max-h-40 divide-y divide-border overflow-auto">{review.map(row => <li key={row.id} className="py-1">{row.label}</li>)}</ul>

@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 vi.mock("@/components/safe-form", () => ({ SafeForm: ({ children }: { children: React.ReactNode }) => children }));
-vi.mock("./actions", () => ({ editAccount: async () => ({}), updateBalance: async () => ({}), undoBalance: async () => {}, undoMoneyMetadata: async () => {}, addAccount: async () => {}, addAccountSafely: async () => ({}), addOwnAccountSafely: async () => ({}), addOwnAccount: async () => {}, removeOwnAccount: async () => {}, findTransfersBetweenOwnAccounts: async () => {} }));
+vi.mock("./actions", () => ({ editAccount: async () => ({}), updateBalance: async () => ({}), undoBalanceSafely: async () => ({}), undoMoneyMetadataSafely: async () => ({}), removeOwnAccountSafely: async () => ({}), findTransfersSafely: async () => ({}), addAccount: async () => {}, addAccountSafely: async () => ({}), addOwnAccountSafely: async () => ({}), addOwnAccount: async () => {}, removeOwnAccount: async () => {}, findTransfersBetweenOwnAccounts: async () => {} }));
 const query = (data: unknown[]) => { const q = { select: () => q, eq: () => q, order: () => q, limit: () => q, then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data, error: null }).then(resolve) }; return q; };
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({
   workspace: { id: "w", locale: "en-US", timezone: "UTC", display_currency: "EUR" },
@@ -35,6 +35,7 @@ it("lists balances with as-of date, trend, rename suggestion, balance update and
   expect(html).toContain("No balance yet");
   expect(html).toContain("From 1 of 2 accounts");
   expect(html).toContain("Fix 1 balance");
+  expect(html).toContain("on 2026-10-16, 3 recorded");
   expect(html).toContain('name="expectedSnapshotId" value="s2"');
   expect(html).toContain("Undo balance");
   expect(html).toContain("Archived accounts (1)");

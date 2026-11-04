@@ -10,6 +10,12 @@ export function shownBalance(balance: ReturnType<typeof resolveBalances>[number]
 import { calendarDate } from "@/lib/finance/calendar";
 import type { Point } from "./sparkline";
 
+/** The first and last recorded balance in words, for anyone who can't read the line. */
+export function trendSummary(points: Point[], money: (value: bigint) => string) {
+  const first = points[0], last = points.at(-1)!;
+  return `${money(first.value)} on ${first.date} to ${money(last.value)} on ${last.date}, ${points.length} recorded`;
+}
+
 // Recorded (non-undone) balances, last one per calendar day, from `from` onward plus the
 // last observation before it so the line starts at a real value. Optional `current` caps it.
 export function balanceTrend(snapshots: BalanceSnapshot[], accountId: string, currency: string, timeZone: string, from: string, current?: Point): Point[] {
