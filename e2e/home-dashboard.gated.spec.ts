@@ -15,7 +15,6 @@ const saved = (page: Page) => page.waitForResponse(response => response.request(
 test("Home widgets are moved, resized, hidden and added back in place, and stay that way", async ({ page }) => {
   await open(page);
   await expect(page.getByRole("link", { name: "Edit layout" })).toHaveCount(0);
-  const grid = page.locator("[data-widget]");
   await expect(page.locator("[data-widget]:visible").first()).toBeVisible({ timeout: 30_000 });
   // Start from Goals at the end, so the moves below are predictable.
   if (!(await order(page)).includes("goals")) {
@@ -119,7 +118,6 @@ test("a long press drags a widget on a phone, and a swipe still scrolls", async 
     await cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
     await page.waitForTimeout(20);
   };
-  const before = await order(page);
   // An empty workspace leaves some widgets without content, and so without height.
   const [first, second] = await page.locator("[data-widget]:visible").evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.widget));
   await page.locator(`[data-widget="${first}"]`).evaluate(node => node.scrollIntoView({ block: "start" }));
