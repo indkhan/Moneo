@@ -68,8 +68,8 @@ test("manual exact entries, reviewed bulk tags, batch undo and manual source res
   const detail = page.getByRole("complementary", { name: "Transaction details" });
   await detail.getByText("Split into categories", { exact: true }).click();
   const editor = detail.locator("details").filter({ has: page.getByText("Split into categories", { exact: true }) });
-  await editor.getByRole("textbox", { name: "Signed decimal amount (EUR)", exact: true }).nth(0).fill("-0.60");
-  await editor.getByRole("textbox", { name: "Signed decimal amount (EUR)", exact: true }).nth(1).fill("-0.40");
+  await editor.getByRole("textbox", { name: "Amount (EUR)", exact: true }).nth(0).fill("0.60");
+  await editor.getByRole("textbox", { name: "Amount (EUR)", exact: true }).nth(1).fill("0.40");
   await editor.getByRole("button", { name: "Preview splits", exact: true }).click();
   await expect(editor).toContainText("2 allocations totaling exactly");
   await editor.getByRole("button", { name: "Confirm splits", exact: true }).click();
