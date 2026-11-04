@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { editAccount, updateBalance } from "./actions";
 import { accountTypes } from "./naming";
 
@@ -16,13 +16,16 @@ const ErrorText = ({ error }: { error?: string }) => error ? <p role="alert" cla
 // Inline rename/type: the name looks like text until focused. Archive keeps all history.
 export function AccountForm({ account, requestId }: { account: Account; requestId: string }) {
   const [state, action, pending] = useActionState(editAccount, {});
-  return <form action={action} className="flex min-w-0 flex-wrap items-center gap-2">
+  const [edited, setEdited] = useState(false);
+  return <form action={action} onChange={() => setEdited(true)} className="flex min-w-0 flex-wrap items-center gap-2">
     <Hidden account={account} requestId={requestId} />
     <input aria-label="Name" name="name" defaultValue={account.name} required maxLength={120}
       className="min-h-9 min-w-0 flex-1 basis-48 rounded-lg border border-transparent bg-transparent px-2 py-1 text-base font-semibold hover:border-border focus:border-border focus:bg-card" />
     <select aria-label="Account type" name="type" defaultValue={account.type} className={quiet}>{accountTypes.map(type => <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}</select>
-    <button disabled={pending} className={quiet} name="operation" value="edit">Save changes</button>
-    <button disabled={pending} className={quiet} name="operation" value={account.archived_at ? "restore" : "archive"}>{account.archived_at ? "Restore account" : "Archive account"}</button>
+    {edited && <button disabled={pending} className={quiet} name="operation" value="edit">Save changes</button>}
+    <details className="relative"><summary className={`${quiet} inline-flex cursor-pointer list-none items-center`}>More</summary>
+      <button disabled={pending} className={`${quiet} absolute right-0 z-10 mt-1 whitespace-nowrap border border-border bg-card shadow-sm`} name="operation" value={account.archived_at ? "restore" : "archive"}>{account.archived_at ? "Restore account" : "Archive account"}</button>
+    </details>
     <ErrorText error={state.error} />
   </form>;
 }

@@ -5,14 +5,17 @@ import { formatInputAmount } from "@/lib/finance/format";
 import { confirmSeries, declineSeries } from "./actions";
 import { ActionForm, ScheduleDialog } from "./forms";
 import { formatMoney as formatCurrency, seriesKey } from "./series";
-import { loadSuggestions, MAX_TRANSACTIONS, seriesDecision, type Suggestion } from "./suggestions";
+import { loadSuggestions, MAX_TRANSACTIONS, rankSuggestions, seriesDecision, type Suggestion } from "./suggestions";
 
 // Detection reads up to 10k postings in serial keyset pages, so the page streams this section.
 export async function DetectedPatterns({ supabase, workspace, names, today, categories }: { supabase: SupabaseClient; workspace: { id: string; locale: string }; names: Record<string, string>; today: string; categories: string[] }) {
   const formatMoney = (amount: string | bigint, currency: string) => formatCurrency(amount, currency, workspace.locale);
   const { pending, reviewed, invalidated, truncated, cutoff, observedFrom, observedTo, detected, queryError, storedError, detectError } = await loadSuggestions(supabase, workspace);
 
-  const card = ({ series, related, status, assumption, evidence }: Suggestion) => {
+  const { likely, lessLikely } = rankSuggestions(pending);
+  const unlikely = new Set(lessLikely);
+  const card = (item: Suggestion) => {
+    const { series, related, status, assumption, evidence } = item;
     const decision = seriesDecision({ series, evidence });
     const hidden = { accountId: decision.accountId, label: decision.label, cadence: decision.cadence, currencyCode: decision.currencyCode,
       sourceEvidence: JSON.stringify(decision.evidence), runAnchorId: decision.runAnchorId, evidenceLimited: String(decision.evidenceLimited) };
@@ -34,7 +37,7 @@ export async function DetectedPatterns({ supabase, workspace, names, today, cate
           : <>{formatMoney(series.amountMinMinor, series.currencyCode)} to {formatMoney(series.amountMaxMinor, series.currencyCode)}</>}</span>
         <div className="flex gap-2">
           {status !== "confirmed" && !blocked && <ScheduleDialog title={`Confirm ${series.label}`} trigger="Confirm" submitLabel="Confirm recurring" action={confirmSeries} hidden={hidden} categories={categories}
-            triggerClassName="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+            triggerClassName={unlikely.has(item) ? "rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted" : "rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"}
             defaults={{ name: series.label, amount: formatInputAmount(amount < 0n ? -amount : amount, series.currencyCode), direction: amount < 0n ? "out" : "in", cadence: series.cadence, startsOn: next ?? today, category: "", currencyCode: series.currencyCode }} />}
           {status !== "dismissed" && !blocked && <ActionForm action={declineSeries} hidden={hidden} className="flex flex-col gap-1"><button className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted">Not recurring</button></ActionForm>}
         </div>
@@ -65,7 +68,8 @@ export async function DetectedPatterns({ supabase, workspace, names, today, cate
       </div>
       {truncated && <p className="text-xs text-muted-foreground">History limit reached. All postings on or before {cutoff} were excluded to retain complete posting dates. Older patterns may be absent.</p>}
       {!queryError && !detectError && !pending.length && <p className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">{detected.length ? "All detected patterns are reviewed." : "No recurring payments found yet. Import more history to improve detection."}</p>}
-      {pending.map(card)}
+      {likely.map(card)}
+      {lessLikely.length > 0 && <details className="space-y-3"><summary className="cursor-pointer text-sm font-medium">Less likely <span className="text-muted-foreground">({lessLikely.length})</span></summary><p className="mt-2 text-xs text-muted-foreground">Amounts that vary a lot, or another pattern for a merchant listed above.</p><div className="mt-3 space-y-3">{lessLikely.map(card)}</div></details>}
       <details className="text-xs text-muted-foreground"><summary className="cursor-pointer hover:text-foreground">How detection works</summary><p className="mt-2">Looks at up to {MAX_TRANSACTIONS.toLocaleString(workspace.locale)} recent posted transactions. Statement intervals, missing statements and account completeness are unknown. Pending items, transfers and unresolved classifications are excluded. A pattern needs at least three payments, so yearly ones need two years of history. Confirming creates one forecast assumption; schedules you edited in Plan are kept. Regular purchases can look like this too, so check the evidence before confirming.</p></details>
     </section>
 

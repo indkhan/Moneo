@@ -69,7 +69,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
       const response = await stranger.goto(path);
       // loading.tsx may stream headers before the owned-resource lookup finishes.
       expect([200, 404]).toContain(response?.status());
-      await expect(stranger.getByRole("heading", { name: "404", exact: true })).toBeVisible();
+      await expect(stranger.getByRole("heading", { name: "This page isn’t here", exact: true })).toBeVisible();
       await expect(stranger.locator('meta[name="robots"]').first()).toHaveAttribute("content", "noindex");
       await expect(stranger.locator("body")).not.toContainText(secret);
     }
@@ -83,11 +83,14 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     await article.getByLabel("Name", { exact: true }).fill(`${secret} renamed`);
     await article.getByRole("button", { name: "Save changes", exact: true }).click();
     await expect(article.first().getByLabel("Name", { exact: true })).toHaveValue(`${secret} renamed`);
+    // The saved row remounts when its version changes, so wait for that before opening its menu.
+    await expect(page.getByRole("button", { name: "Save changes", exact: true })).toHaveCount(0);
+    await page.locator("article").getByText("More", { exact: true }).first().click();
     await page.getByRole("button", { name: "Archive account", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Restore account", exact: true })).toBeVisible();
+    await expect(page.locator("button", { hasText: "Restore account" })).toHaveCount(1);
     await expect(page.locator("article")).toContainText("Archived");
     await page.getByRole("button", { name: "Undo", exact: true }).first().click();
-    await expect(page.getByRole("button", { name: "Archive account", exact: true })).toBeVisible();
+    await expect(page.locator("button", { hasText: "Archive account" })).toHaveCount(1);
     await page.getByRole("button", { name: "Undo", exact: true }).first().click();
     await expect(page.locator("article").getByLabel("Name", { exact: true }).first()).toHaveValue(secret);
     await page.goto("/money/transactions");
