@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { formatMoney } from "@/lib/finance/format";
-import { bulkEditTransactions } from "./actions";
+import { SafeForm } from "@/components/safe-form";
+import { bulkEditTransactionsSafely } from "./actions";
 
 type Target = { id: string; version: number; description: string; amount_minor: string; currency_code: string; category_id: string | null; merchant_id: string | null; tags: string[] | null; event_name: string | null };
 type Named = { id: string; name: string };
@@ -33,7 +34,7 @@ export function BulkBar({ targets, categories, merchants, query, requestId, loca
   const change = (fn: () => void) => { fn(); setPreview(false); };
   const control = "min-h-9 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm text-foreground";
   return <section aria-label="Bulk edit" className="sticky bottom-4 z-20 rounded-xl border border-border bg-card p-3 shadow-lg">
-    <form action={bulkEditTransactions} className="space-y-3">
+    <SafeForm action={bulkEditTransactionsSafely} className="space-y-3">
       <input type="hidden" name="rows" value={JSON.stringify(targets.map(row => ({ id: row.id, version: row.version })))} />
       <input type="hidden" name="requestId" value={requestId} /><input type="hidden" name="query" value={query} />
       <input type="hidden" name="mode" value={mode} /><input type="hidden" name="value" value={value} /><input type="hidden" name="newCategory" value={newCategory} />
@@ -55,8 +56,8 @@ export function BulkBar({ targets, categories, merchants, query, requestId, loca
         <p className="font-medium">{targets.length} selected transactions: set {MODES[mode].toLowerCase()} to {next}.</p>
         <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto">{targets.map(row => <li key={row.id}>{row.description} · {formatMoney(row.amount_minor, row.currency_code, locale)} · currently {current(row)}</li>)}</ul>
         <p className="mt-2 text-muted-foreground">Amounts, currencies, source records and transfer/refund links stay the same. You can undo the whole batch from batch history.</p>
-        <button name="confirmed" value="true" className="mt-3 rounded-lg bg-brand px-4 py-2 font-medium text-white">Apply to {targets.length} transactions</button>
+        <input type="hidden" name="confirmed" value="true" /><button className="mt-3 rounded-lg bg-brand px-4 py-2 font-medium text-white">Apply to {targets.length} transactions</button>
       </div>}
-    </form>
+    </SafeForm>
   </section>;
 }

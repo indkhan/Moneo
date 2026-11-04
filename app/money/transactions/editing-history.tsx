@@ -1,6 +1,7 @@
 import { requireWorkspace } from "@/lib/auth";
 import { formatMoney as formatCurrency } from "@/lib/finance/format";
-import { restoreManualTransaction, undoManualTransaction, undoTransactionBatch } from "./actions";
+import { SafeForm } from "@/components/safe-form";
+import { restoreManualTransactionSafely, undoManualTransactionSafely, undoTransactionBatchSafely } from "./actions";
 import { describePatch } from "./labels";
 
 export async function EditingHistory({ query, names }: { query: string; names: Parameters<typeof describePatch>[1] }) {
@@ -23,8 +24,8 @@ export async function EditingHistory({ query, names }: { query: string; names: P
       const original = entry.original_record as { description: string; amount_minor: string; currency_code: string; posted_on: string };
       return <li key={entry.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 text-sm">
         <p>{original.posted_on} · {original.description} · {formatMoney(original.amount_minor, original.currency_code)}{entry.undone_at ? " · Undone" : ""}</p>
-        {entry.undone_at ? <form action={restoreManualTransaction}><input type="hidden" name="entryId" value={entry.id} /><input type="hidden" name="entryVersion" value={entry.version} /><button className="underline">Restore manual entry</button></form>
-          : versions.get(entry.transaction_id) === 0 ? <form action={undoManualTransaction}><input type="hidden" name="entryId" value={entry.id} /><input type="hidden" name="entryVersion" value={entry.version} /><input type="hidden" name="version" value={0} /><button className="underline">Undo manual entry</button></form> : <span className="text-muted-foreground">Later changes preserved</span>}
+        {entry.undone_at ? <SafeForm action={restoreManualTransactionSafely}><input type="hidden" name="entryId" value={entry.id} /><input type="hidden" name="entryVersion" value={entry.version} /><button className="underline">Restore manual entry</button></SafeForm>
+          : versions.get(entry.transaction_id) === 0 ? <SafeForm action={undoManualTransactionSafely}><input type="hidden" name="entryId" value={entry.id} /><input type="hidden" name="entryVersion" value={entry.version} /><input type="hidden" name="version" value={0} /><button className="underline">Undo manual entry</button></SafeForm> : <span className="text-muted-foreground">Later changes preserved</span>}
       </li>;
     })}</ul>
     <ul className="mt-3 space-y-3">{(batches ?? []).map(batch => {
@@ -32,7 +33,7 @@ export async function EditingHistory({ query, names }: { query: string; names: P
       const targets = selection.filter(row => versions.has(row.id)).map(row => ({ id: row.id, version: versions.get(row.id)! }));
       return <li key={batch.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 text-sm">
         <div><p>Bulk edit · {selection.length} transactions · {new Date(batch.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{batch.undone ? " · Undone" : ""}</p><p className="text-muted-foreground">{describePatch(batch.patch, names)}</p></div>
-        {!batch.undone && targets.length === selection.length && <form action={undoTransactionBatch}><input type="hidden" name="batchId" value={batch.id} /><input type="hidden" name="rows" value={JSON.stringify(targets)} /><input type="hidden" name="query" value={query} /><button className="underline">Undo batch</button></form>}
+        {!batch.undone && targets.length === selection.length && <SafeForm action={undoTransactionBatchSafely}><input type="hidden" name="batchId" value={batch.id} /><input type="hidden" name="rows" value={JSON.stringify(targets)} /><input type="hidden" name="query" value={query} /><button className="underline">Undo batch</button></SafeForm>}
       </li>;
     })}</ul>
     {!entries?.length && !batches?.length && <p className="mt-3 text-sm text-muted-foreground">No manual entries or bulk changes yet.</p>}

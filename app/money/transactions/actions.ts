@@ -266,5 +266,18 @@ export async function undoTransactionSplits(form: FormData) {
   redirect(`${returnPath(form)}&transaction=${z.uuid().parse(form.get("id"))}`);
 }
 
+export async function quickEditTransactionSafely(_state: SafeState, form: FormData) { return safely(form, quickEditTransaction); }
+export async function undoCorrectionSafely(_state: SafeState, form: FormData) { return safely(form, undoCorrection); }
+export async function verifiedLinkSafely(_state: SafeState, form: FormData) { return safely(form, verifiedLink); }
+export async function undoVerifiedLinkSafely(_state: SafeState, form: FormData) { return safely(form, undoVerifiedLink); }
+export async function undoManualTransactionSafely(_state: SafeState, form: FormData) { return safely(form, undoManualTransaction); }
+export async function restoreManualTransactionSafely(_state: SafeState, form: FormData) { return safely(form, restoreManualTransaction); }
+export async function applyCategoryToSimilarSafely(_state: SafeState, form: FormData) { return safely(form, applyCategoryToSimilar); }
+export async function undoTransactionBatchSafely(_state: SafeState, form: FormData) { return safely(form, undoTransactionBatch); }
+export async function markRefundSafely(_state: SafeState, form: FormData) { return safely(form, markRefund); }
+export async function markOwnAccountTransferSafely(_state: SafeState, form: FormData) { return safely(form, markOwnAccountTransfer); }
+export async function clearLinkSafely(_state: SafeState, form: FormData) { return safely(form, clearLink); }
+export async function splitTransactionSafely(_state: SafeState, form: FormData) { return safely(form, splitTransaction); }
+export async function undoTransactionSplitsSafely(_state: SafeState, form: FormData) { return safely(form, undoTransactionSplits); }
 export async function createManualTransactionSafely(_state: SafeState, form: FormData) { return safely(form, createManualTransaction); }
 export async function bulkEditTransactionsSafely(_state: SafeState, form: FormData) { return safely(form, bulkEditTransactions); }
