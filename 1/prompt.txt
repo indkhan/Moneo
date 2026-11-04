@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bi3qyv86x</task-id>
+<tool-use-id>toolu_01UsaEx1hCFtDDrgLMSo9NdS</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\bdb49bc3b4b3e01d\64d783ab-53ac-41ca-8d34-df07b2fe9ba1\tasks\bi3qyv86x.output</output-file>
+<status>failed</status>
+<summary>Background command "Start dev server" failed with exit code 1</summary>
+</task-notification>
