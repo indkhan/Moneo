@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { verifiedLink } from "./actions";
+import { verifiedLinkSafely } from "./actions";
+import { SafeForm } from "@/components/safe-form";
 import { parseManualAmount } from "./input";
 import { formatMoney as formatCurrency } from "@/lib/finance/format";
 import { comparisonMinor, transferPrincipal, type LinkRate } from "@/lib/finance/verified-links";
@@ -32,7 +33,7 @@ export function VerifiedLinkEditor({ primary, candidates, rates, categories, ope
     }
   } catch(error) { preview=error instanceof Error?error.message:"Review the posting evidence"; }
   const changed=()=>setReviewed(false);
-  return <form action={verifiedLink} className="space-y-3 rounded-lg border p-3">
+  return <SafeForm action={verifiedLinkSafely} className="space-y-3 rounded-lg border p-3">
     <h4 className="font-medium">Verified {operation}</h4><p className="text-xs text-muted-foreground">Source amounts and categories remain intact. The latest 100 eligible postings are shown. Undo splits before linking; refund originals require completed classification review.</p>
     <input type="hidden" name="id" value={primary.id}/><input type="hidden" name="version" value={primary.version}/><input type="hidden" name="otherVersion" value={other?.version??""}/><input type="hidden" name="operation" value={operation}/><input type="hidden" name="requestId" value={requestId}/><input type="hidden" name="query" value={query}/><input type="hidden" name="fees" value={JSON.stringify(operation==="transfer"?fees:[])}/>
     <label className="block text-sm">{operation==="transfer"?"Transfer counterpart":"Refund original"}<select name="otherId" required value={otherId} onChange={event=>{setOtherId(event.target.value);changed();}} className="mt-1 w-full rounded border p-2"><option value="">Choose source</option>{candidates.map(row=><option key={row.id} value={row.id}>{row.posted_on} · {row.description} · {formatMoney(row.amount_minor,row.currency_code)}</option>)}</select></label>
@@ -45,5 +46,5 @@ export function VerifiedLinkEditor({ primary, candidates, rates, categories, ope
       <label className="block text-sm">Fee source evidence<input value={notes[index]} maxLength={500} onChange={event=>{setNotes(notes.map((value,i)=>i===index?event.target.value:value));changed();}} className="mt-1 w-full rounded border p-1"/></label>
     </fieldset>)}
     <p role="status" className="rounded bg-muted p-3 text-sm">{preview}</p><label className="flex gap-2 text-sm"><input type="checkbox" name="confirmed" value="true" checked={reviewed} onChange={event=>setReviewed(event.target.checked)}/>I reviewed the source postings, FX evidence and fee impact</label><button disabled={!valid||!reviewed} className="rounded border px-3 py-2 text-sm disabled:opacity-50">Confirm verified {operation}</button>
-  </form>;
+  </SafeForm>;
 }

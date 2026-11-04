@@ -22,12 +22,14 @@ const detected = (card: Card) => /^recurring_(new|price):/.test(card.conflict_ke
  */
 export function RecurringCards({ cards, onDecided }: { cards: Card[]; onDecided?: (id: string, undone?: boolean) => void }) {
   const [loaded, setLoaded] = useState<Loaded>();
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const ids = cards.filter(detected).map(card => card.id).join(",");
   useEffect(() => {
     if (!ids) return;
-    loadRecurringCards(ids.split(",")).then(setLoaded, () => setLoaded({ details: {}, categories: [], locale: undefined }));
-  }, [ids]);
-  return <div>{cards.map(card => detected(card)
+    loadRecurringCards(ids.split(",")).then(setLoaded, () => { setLoaded({ details: {}, categories: [], locale: undefined }); setFailed(true); });
+  }, [ids, attempt]);
+  return <div>{failed && <p role="alert" className="text-sm text-danger">Could not load these payments. <button type="button" className="underline" onClick={() => { setFailed(false); setAttempt(value => value + 1); }}>Try again</button></p>}{cards.map(card => detected(card)
     ? <RecurringCard key={card.id} card={card} loaded={loaded} onDecided={onDecided} />
     : <IouCard key={card.id} id={card.id} initial={{ ...card, status: "proposed", kind: "recurring_edit" }} onDecided={onDecided} />)}</div>;
 }

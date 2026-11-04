@@ -22,7 +22,7 @@ test("manual exact entries, reviewed bulk tags, batch undo and manual source res
     const manual = page.locator("form").filter({ has: page.getByRole("button", { name: "Add transaction", exact: true }) });
     await manual.getByRole("combobox", { name: "Account", exact: true }).selectOption({ label: `${account} (EUR)` });
     await manual.getByLabel("Description", { exact: true }).fill(description);
-    await manual.getByLabel("Signed decimal amount").fill(index ? "-20.00" : "-12.34");
+    await manual.getByLabel("Amount").fill(index ? "20.00" : "12.34");
     await manual.getByRole("button", { name: "Add transaction", exact: true }).click();
     await page.waitForURL(/transaction=[0-9a-f-]{36}/, { timeout: 30_000 });
     const detail = page.getByRole("complementary", { name: "Transaction details" });
@@ -54,7 +54,7 @@ test("manual exact entries, reviewed bulk tags, batch undo and manual source res
   const manual = page.locator("form").filter({ has: page.getByRole("button", { name: "Add transaction", exact: true }) });
   await manual.getByRole("combobox", { name: "Account", exact: true }).selectOption({ label: `${account} (EUR)` });
   await manual.getByLabel("Description", { exact: true }).fill(untouched);
-  await manual.getByLabel("Signed decimal amount").fill("-1.00");
+  await manual.getByLabel("Amount").fill("1.00");
   await manual.getByRole("button", { name: "Add transaction", exact: true }).click();
   await page.waitForURL(/transaction=[0-9a-f-]{36}/, { timeout: 30_000 });
   const originalUrl = page.url();
@@ -68,8 +68,8 @@ test("manual exact entries, reviewed bulk tags, batch undo and manual source res
   const detail = page.getByRole("complementary", { name: "Transaction details" });
   await detail.getByText("Split into categories", { exact: true }).click();
   const editor = detail.locator("details").filter({ has: page.getByText("Split into categories", { exact: true }) });
-  await editor.getByRole("textbox", { name: "Signed decimal amount (EUR)", exact: true }).nth(0).fill("-0.60");
-  await editor.getByRole("textbox", { name: "Signed decimal amount (EUR)", exact: true }).nth(1).fill("-0.40");
+  await editor.getByRole("textbox", { name: "Amount (EUR)", exact: true }).nth(0).fill("0.60");
+  await editor.getByRole("textbox", { name: "Amount (EUR)", exact: true }).nth(1).fill("0.40");
   await editor.getByRole("button", { name: "Preview splits", exact: true }).click();
   await expect(editor).toContainText("2 allocations totaling exactly");
   await editor.getByRole("button", { name: "Confirm splits", exact: true }).click();

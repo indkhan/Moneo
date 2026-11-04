@@ -5,11 +5,13 @@ import {revalidatePath} from 'next/cache';
 import {requireWorkspace} from '@/lib/auth';
 import {loadOrganizationSuggestions} from '@/lib/import/organization-loader';
 import {versionedRows} from '../transactions/input';
+import {safely,type SafeState} from '@/lib/safe-action';
+import {readableError} from '@/lib/ai/agent-apply';
 
-type ReviewState={error?:string};
+type ReviewState={error?:string;reviewId?:string};
 const target=z.union([z.uuid(),z.literal('keep'),z.literal('')]);
 export async function createReview(_state:ReviewState,form:FormData):Promise<ReviewState> {
- let reviewId:string;
+ let reviewId:string|undefined;
  try {
   const {supabase,workspace}=await requireWorkspace();
   const rows=versionedRows.parse(JSON.parse(z.string().max(5000).parse(form.get('rows'))));
@@ -19,7 +21,7 @@ export async function createReview(_state:ReviewState,form:FormData):Promise<Rev
   const merchantName=merchant==='new'?z.string().trim().min(1).max(100).parse(form.get('merchantName')):null;
   const requestId=z.uuid().parse(form.get('requestId'));
   const current=await loadOrganizationSuggestions(supabase,workspace.id,rows);
-  if(current.proposals.length!==rows.length)throw new Error('Corrections or complete source organization take precedence');
+  if(current.proposals.length!==rows.length)return {error:'Some entries changed meanwhile, so nothing was applied. Reload and try again, or fix them one by one in Transactions.'};
   const patch:Record<string,string|null>={};
   if(merchant!=='keep'&&merchant!=='new')patch.merchant_id=merchant||null;
   if(categoryName){
@@ -39,7 +41,12 @@ export async function createReview(_state:ReviewState,form:FormData):Promise<Rev
   const saveRule=ruleKey!==null&&form.get('saveRule')==='true';
   const applied=await supabase.rpc('apply_organization_review',{p_review_id:reviewId,p_save_rule:saveRule});
   if(applied.error)throw applied.error;
- } catch {return {error:'Could not apply this. Some entries changed meanwhile; reload and try again, or fix them one by one in Transactions.'};}
+ } catch(cause) {
+  if(cause instanceof z.ZodError)return {error:'Check the selection and the category or merchant, then try again.'};
+  // The review exists but was not applied; pressing Apply again would make a second one, so point at the first.
+  if(reviewId)return {reviewId,error:'Saved as a review, but not applied: '+readableError(cause)};
+  return {error:'Nothing was applied: '+readableError(cause)};
+ }
  revalidatePath('/','layout');redirect('/money/organization?review='+reviewId);
 }
 export async function applyReview(_state:ReviewState,form:FormData):Promise<ReviewState> {
@@ -67,6 +74,8 @@ export async function undoReview(_state:ReviewState,form:FormData):Promise<Revie
  }catch{return {error:'Undo could not be applied. A transaction or saved rule may have a later edit; undo that change first.'};}
  revalidatePath('/','layout');redirect('/money/organization?review='+reviewId);
 }
+export async function dismissReviewSafely(_state:SafeState,form:FormData){return safely(form,dismissReview);}
+export async function toggleRuleSafely(_state:SafeState,form:FormData){return safely(form,toggleRule);}
 export async function toggleRule(form:FormData) {
  const {supabase,workspace}=await requireWorkspace();
  const {error}=await supabase.rpc('save_organization_rule',{p_workspace:workspace.id,p_key:z.string().trim().min(3).max(1000).parse(form.get('key')),

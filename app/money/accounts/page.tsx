@@ -6,10 +6,11 @@ import { requireWorkspace } from "@/lib/auth";
 import { balanceReviewRows, loadBalanceEvidence, resolveBalances, type BalanceSnapshot } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatInputAmount, formatMoney } from "@/lib/finance/format";
-import { addAccountSafely, undoBalance, undoMoneyMetadata } from "./actions";
+import { addAccountSafely, undoBalanceSafely, undoMoneyMetadataSafely } from "./actions";
+import { AddAccountPanel } from "./add-account-panel";
 import { AccountForm, BalanceForm, RenameSuggestion } from "./account-form";
 import { accountTypes, suggestAccountName } from "./naming";
-import { balanceTrend, shownBalance } from "./history";
+import { balanceTrend, shownBalance, trendSummary } from "./history";
 import { Sparkline } from "./sparkline";
 import { OwnAccounts } from "./own-accounts";
 
@@ -31,8 +32,8 @@ function describeEvent(event: MetaEvent) {
   return `${event.entity_type === "account" ? "Account" : "Saved view"} ${String(after.name ?? before.name ?? "")}${changes.length ? `: ${changes.join(", ")}` : ""}`;
 }
 
-export default async function AccountsPage({ searchParams }: { searchParams?: Promise<{ transfers?: string }> } = {}) {
-  const { transfers } = (await searchParams) ?? {};
+export default async function AccountsPage({ searchParams }: { searchParams?: Promise<{ transfers?: string; saved?: string }> } = {}) {
+  const { transfers, saved } = (await searchParams) ?? {};
   const { supabase, workspace } = await requireWorkspace();
   const [evidence, { data: history, error: historyError }, { data: views, error: viewsError }, { data: bankAccounts, error: bankError }, { data: identifiers, error: identifierError }] = await Promise.all([
     loadBalanceEvidence(supabase, workspace.id),
@@ -82,14 +83,15 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
     const manual = ordered.filter((snapshot): snapshot is BalanceSnapshot & { id: string } => Boolean(snapshot.actor_id && snapshot.id)).slice(0, 5);
     const suggestion = suggestAccountName(account.name);
     const asOf = account.balance.as_of ? calendarDate(account.balance.as_of, timeZone) : null;
-    return <article key={account.id} className="px-4 py-4 sm:px-5">
+    return <article key={account.id} id={`account-${account.id}`} aria-label={account.name} className="scroll-mt-24 px-4 py-4 sm:px-5">
+      {saved === `balance:${account.id}` || saved === `account:${account.id}` ? <p role="status" className="mb-2 px-2 text-sm text-success">{saved.startsWith("balance") ? `Balance saved for ${account.name}.` : `${account.name} saved.`}</p> : null}
       <div className="flex flex-wrap items-start gap-x-6 gap-y-2">
         <div className="min-w-0 flex-1 basis-80">
           <AccountForm key={`${account.id}:${account.version}`} account={{ id: account.id, name: account.name, type: account.type ?? "checking", version: account.version ?? 1, archived_at: account.archived_at ?? null }} requestId={randomUUID()} />
           <p className="mt-1 flex flex-wrap items-center gap-x-3 px-2 text-xs text-muted-foreground">
             <span>{account.currency_code}</span>
             {account.archived_at ? <span>Archived</span> : null}
-            <Link className="hover:text-foreground hover:underline" href={`/money/transactions?account=${account.id}`}>Transactions</Link>
+            <Link aria-label={`Transactions in ${account.name}`} className="hover:text-foreground hover:underline" href={`/money/transactions?account=${account.id}`}>Transactions</Link>
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -101,24 +103,26 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
           </div>
         </div>
       </div>
+      {trend.length > 1 ? <details className="mt-2 px-2 text-xs text-muted-foreground"><summary className="cursor-pointer hover:text-foreground">{trendSummary(trend, value => formatMoney(value, account.currency_code, locale))}</summary><ul className="mt-1 space-y-0.5">{trend.map(point => <li key={point.date} className="font-mono">{point.date} · {formatMoney(point.value, account.currency_code, locale)}</li>)}</ul><p className="mt-1">Only the balances recorded on these dates, not one for every day.</p></details> : null}
+      {account.balance.status === "ambiguous" ? <div className="mt-2 px-2 text-xs"><p className="text-warning">Moneo can’t tell whether activity on that date came before or after this balance, so it’s left out of the total. Enter the balance your bank shows now to settle it.</p><details className="mt-1 text-muted-foreground"><summary className="cursor-pointer hover:text-foreground">Why</summary><p className="mt-1">{account.balance.warnings.join(" ")}</p></details></div> : null}
       {account.balance.status === "stale" ? <p className="mt-2 px-2 text-xs text-muted-foreground">Last recorded balance plus later activity; update it to confirm.</p> : null}
       {account.balance.unconfirmed_rows ? <p className="mt-2 px-2 text-xs text-warning">{account.balance.warnings.at(-1)}.</p> : null}
       {suggestion ? <div className="mt-2 px-2"><RenameSuggestion account={{ id: account.id, name: account.name, type: account.type ?? "checking", version: account.version ?? 1, archived_at: account.archived_at ?? null }} suggestion={suggestion} requestId={randomUUID()} /></div> : null}
-      {!account.archived_at && !synced.has(JSON.stringify([account.name, account.currency_code])) ? <details className="mt-2 px-2 text-sm" open={account.balance.status === "missing" && active.length === 1}>
-        <summary className="cursor-pointer text-xs font-medium text-brand">Update balance</summary>
+      {!account.archived_at && !synced.has(JSON.stringify([account.name, account.currency_code])) ? <details className="mt-2 px-2 text-sm" open={(account.balance.status === "missing" && active.length === 1) || account.balance.status === "ambiguous"}>
+        <summary className="cursor-pointer text-xs font-medium text-brand">{account.balance.status === "ambiguous" ? "Review balance" : "Update balance"}</summary>
         <div className="mt-3 space-y-3">
           <BalanceForm accountId={account.id} name={account.name} currency={account.currency_code} today={today} requestId={randomUUID()}
             expectedSnapshotId={latest?.id ?? ""} expectedVersion={latest?.version ?? 0}
             placeholder={amount !== null ? formatInputAmount(amount, account.currency_code) : "0.00"}
             review={balanceReviewRows(evidence.ledger, account.id, evidence.asOf, timeZone).map(covered => ({ id: covered.id, covered,
               label: `${descriptions.get(covered.id) ?? "Recorded posting"} · ${formatMoney(covered.amount_minor, covered.currency_code, locale)}` }))} />
-          <p className="text-xs text-muted-foreground">The booked balance your bank shows. Earlier balances stay in history.</p>
+          <p className="text-xs text-muted-foreground">Booked balance is what your bank shows as settled, without pending items or any overdraft limit. Earlier balances stay in history.</p>
           {manual.length ? <ul className="divide-y divide-border text-xs">{manual.map(snapshot => <li key={snapshot.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
             <span className={snapshot.undone_at ? "text-muted-foreground line-through" : ""}>{formatMoney(snapshot.amount_minor, snapshot.currency_code, locale)} · as of {calendarDate(snapshot.as_of, timeZone)}{snapshot.boundary_kind === "reviewed_activity" ? " · activity reviewed" : ""}</span>
-            {snapshot.undone_at ? <span className="text-muted-foreground">Undone</span> : snapshot.id === newestActive?.id && latest ? <form action={undoBalance}>
+            {snapshot.undone_at ? <span className="text-muted-foreground">Undone</span> : snapshot.id === newestActive?.id && latest ? <SafeForm action={undoBalanceSafely}>
               <input type="hidden" name="snapshotId" value={snapshot.id} /><input type="hidden" name="expectedVersion" value={snapshot.version ?? 1} />
               <input type="hidden" name="expectedLatestId" value={latest.id} /><input type="hidden" name="expectedLatestVersion" value={latest.version ?? 1} />
-              <button className="underline">Undo balance</button></form> : null}
+              <button aria-label={`Undo balance of ${formatMoney(snapshot.amount_minor, snapshot.currency_code, locale)} for ${account.name}`} className="underline">Undo balance</button></SafeForm> : null}
           </li>)}</ul> : null}
         </div>
       </details> : null}
@@ -129,9 +133,8 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
     <header className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1"><p className="eyebrow">Money · balances and sources</p><h1 className="page-title">Accounts</h1></div>
-        <details className="group relative">
-          <summary className="inline-flex h-11 cursor-pointer list-none items-center rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90">Add account</summary>
-          <SafeForm action={addAccountSafely} className="absolute right-0 z-10 mt-2 grid w-72 gap-3 rounded-xl border border-border bg-card p-4 shadow-lg">
+        <AddAccountPanel>
+          <SafeForm action={addAccountSafely} className="absolute right-0 z-10 mt-2 grid w-72 max-w-[calc(100vw-2rem)] gap-3 rounded-xl border border-border bg-card p-4 shadow-lg">
             <label className="grid gap-1 text-sm">Name<input name="name" className={field} maxLength={120} required /></label>
             <div className="flex gap-3">
               <label className="grid flex-1 gap-1 text-sm">Type<select name="type" className={field}>{accountTypes.map(type => <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}</select></label>
@@ -139,12 +142,13 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
             </div>
             <p className="text-xs text-muted-foreground">Currency can’t be changed later.</p>
             <button className="min-h-9 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">Add account</button>
+            <button type="button" data-close className="min-h-9 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted">Cancel</button>
           </SafeForm>
-        </details>
+        </AddAccountPanel>
       </div>
       {totals.size ? <dl className="rounded-xl border border-border bg-card px-5 py-4"><dt className="text-xs text-muted-foreground">Total{counted === active.length ? ` across ${active.length} active ${active.length === 1 ? "account" : "accounts"}` : ""}</dt>
         {[...totals].map(([currency, amount]) => <dd key={currency} className="mt-1 font-mono text-2xl font-semibold tabular-nums">{formatMoney(amount, currency, locale)}</dd>)}<dd className="mt-1"><CoverageNote counted={counted} total={active.length} /></dd></dl>
-        : active.length ? <p className="rounded-xl border border-warning/40 bg-card px-5 py-4 text-sm text-warning">Total unavailable: no account has a usable balance yet.</p> : null}
+        : active.length ? <p className="rounded-xl border border-warning/40 bg-card px-5 py-4 text-sm text-warning">Total unavailable: {active.length} {active.length === 1 ? "account needs" : "accounts need"} a usable balance. <a className="underline" href="#needs-balance">Review {active.length === 1 ? "it" : "them"}</a>.</p> : null}
     </header>
 
     {active.length ? <section id="needs-balance" className="scroll-mt-20 divide-y divide-border rounded-xl border border-border bg-card" aria-label="Your accounts">{active.map(row)}</section>
@@ -158,7 +162,7 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
     {events.length ? <section><h2 className="text-sm font-medium text-muted-foreground">Account and saved view history</h2>
       <ul className="mt-2 divide-y divide-border text-sm">{events.map(event => <li key={event.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
         <span>{describeEvent(event)} <span className="text-muted-foreground">· {when.format(new Date(event.created_at))}{event.undone_at ? " · Undone" : event.undo_of ? " · Restored by undo" : ""}</span></span>
-        {canUndo(event) ? <form action={undoMoneyMetadata}><input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="version" value={versions.get(event.entity_id)} /><input type="hidden" name="requestId" value={randomUUID()} /><button className={field}>Undo</button></form> : null}
+        {canUndo(event) ? <SafeForm action={undoMoneyMetadataSafely}><input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="version" value={versions.get(event.entity_id)} /><input type="hidden" name="requestId" value={randomUUID()} /><button aria-label={`Undo: ${describeEvent(event)}`} className={field}>Undo</button></SafeForm> : null}
       </li>)}</ul>
     </section> : null}
   </main>;

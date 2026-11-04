@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { formatInputAmount } from "@/lib/finance/format";
-import { parseManualAmount } from "./input";
+import { amountBounds, shownBounds } from "./input";
 import { compileFilterQuery } from "./nl-filter";
 import { calendarDate } from "@/lib/finance/calendar";
 import { PhoneCollapse } from "@/components/phone-collapse";
@@ -26,6 +26,8 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
   const [error, setError] = useState("");
   const currency = accounts.find(row => row.id === account)?.currency_code ?? displayCurrency;
   const decimal = (minor?: string) => minor === undefined ? "" : formatInputAmount(minor, currency);
+  const [direction, setDirection] = useState(values.direction ?? "");
+  const shown = shownBounds(values.direction, values.minAmount, values.maxAmount);
   const [more, setMore] = useState(Boolean(values.minAmount || values.maxAmount || values.status || values.kind || values.direction || values.tag || values.event));
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -35,9 +37,11 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
     try {
       for (const [key, raw] of form) {
         const value = String(raw).trim();
-        if (!value) continue;
-        params.set(key, key === "minAmount" || key === "maxAmount" ? parseManualAmount(value, currency).toString() : value);
+        if (value && key !== "minAmount" && key !== "maxAmount") params.set(key, value);
       }
+      const { minAmount, maxAmount } = amountBounds(direction, String(form.get("minAmount") ?? "").trim(), String(form.get("maxAmount") ?? "").trim(), currency);
+      if (minAmount !== undefined) params.set("minAmount", minAmount.toString());
+      if (maxAmount !== undefined) params.set("maxAmount", maxAmount.toString());
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Check the amount"); return; }
     if (values.sort) params.set("sort", values.sort);
     setError("");
@@ -55,17 +59,18 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
 
   const filtering = Object.entries(values).some(([key, value]) => value && key !== "q" && key !== "sort" && key !== "group");
   return <div className="space-y-2">
-  <form onSubmit={ask} role="search" aria-label="Describe transactions" className="flex gap-2 max-md:hidden">
+  <form onSubmit={ask} role="search" aria-label="Describe transactions" className="flex flex-wrap gap-2 max-md:hidden">
     <input name="ask" maxLength={200} placeholder="Ask, e.g. coffee over 5 last month" aria-label="Describe what to find" className={`${control} flex-1`} />
     <button className="min-h-10 whitespace-nowrap rounded-[10px] border border-input px-3 text-[13px] hover:bg-muted">Find</button>
+    <p className="basis-full text-xs text-muted-foreground">Find turns plain words into the filters shown below; words it doesn’t recognise search descriptions.</p>
   </form>
   <form onSubmit={submit} role="search" aria-label="Filter transactions" className="space-y-2">
       <input id="ledger-search" name="q" defaultValue={values.q} placeholder="Search descriptions  ( / )" aria-label="Search descriptions" maxLength={200} className={control} />
     <PhoneCollapse label="Filters" open={filtering}>
 <div className="space-y-2">
-    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-      <input name="from" type="date" defaultValue={values.from} aria-label="From date" className={control} />
-      <input name="to" type="date" defaultValue={values.to} aria-label="To date" className={control} />
+    <div className="grid items-end gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <label className="grid gap-1 text-xs text-muted-foreground">From<input name="from" type="date" defaultValue={values.from} aria-label="From date" className={`${control} text-foreground`} /></label>
+      <label className="grid gap-1 text-xs text-muted-foreground">To<input name="to" type="date" defaultValue={values.to} aria-label="To date" className={`${control} text-foreground`} /></label>
       <select name="account" value={account} onChange={event => setAccount(event.target.value)} aria-label="Account" className={control}><option value="">All accounts</option>{accounts.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
       <select name="category" defaultValue={values.category ?? ""} aria-label="Category" className={control}><option value="">All categories</option><option value="none">Uncategorized</option>{categories.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
       <select name="merchant" defaultValue={values.merchant ?? ""} aria-label="Merchant" className={control}><option value="">All merchants</option><option value="none">Unknown</option>{merchants.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
@@ -77,9 +82,9 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
       </div>
     </div>
     <div hidden={!more} className="grid gap-2 sm:grid-cols-3 lg:grid-cols-7">
-      <input key={`min-${currency}`} name="minAmount" defaultValue={decimal(values.minAmount)} placeholder={`Min amount (${currency})`} aria-label={`Minimum amount in ${currency}`} inputMode="decimal" className={control} />
-      <input key={`max-${currency}`} name="maxAmount" defaultValue={decimal(values.maxAmount)} placeholder={`Max amount (${currency})`} aria-label={`Maximum amount in ${currency}`} inputMode="decimal" className={control} />
-      <select name="direction" defaultValue={values.direction ?? ""} aria-label="Direction" className={control}><option value="">Money in and out</option><option value="income">Money in</option><option value="outflow">Money out</option></select>
+      <input key={`min-${currency}`} name="minAmount" defaultValue={decimal(shown.from)} placeholder={`From amount (${currency})`} aria-label={`Smallest amount in ${currency}`} inputMode="decimal" className={control} />
+      <input key={`max-${currency}`} name="maxAmount" defaultValue={decimal(shown.to)} placeholder={`To amount (${currency})`} aria-label={`Largest amount in ${currency}`} inputMode="decimal" className={control} />
+      <select name="direction" value={direction} onChange={event => setDirection(event.target.value)} aria-label="Direction" className={control}><option value="">Money in and out</option><option value="income">Money in</option><option value="outflow">Money out</option></select>
       <select name="status" defaultValue={values.status ?? ""} aria-label="Status" className={control}><option value="">Any status</option><option value="posted">Posted</option><option value="pending">Pending</option></select>
       <select name="kind" defaultValue={values.kind ?? ""} aria-label="Type" className={control}><option value="">Any type</option><option value="ordinary">Regular</option><option value="transfer">Transfer</option><option value="refund">Refund</option></select>
       <input name="tag" defaultValue={values.tag} placeholder="Tag" aria-label="Filter by tag" maxLength={40} className={control} />
@@ -87,7 +92,7 @@ export function FilterBar({ values, accounts, categories, merchants, displayCurr
     </div>
 </div>
     </PhoneCollapse>
-    {more && <p className="text-xs text-muted-foreground">Amounts are signed: -50 to -10 finds purchases between 10 and 50.</p>}
+    {more && <p className="text-xs text-muted-foreground">{direction ? `Type plain amounts: 10 to 50 finds ${direction === "income" ? "money in" : "purchases"} of 10 to 50.` : "Choose Money out or Money in to search by plain amounts. Without one, amounts are signed: -50 to -10 finds purchases of 10 to 50."}</p>}
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
   </form>
   </div>;

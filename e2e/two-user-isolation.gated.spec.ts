@@ -80,21 +80,21 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     await expect(page.locator("body")).toContainText(secret);
     await page.goto("/money/accounts");
     const article = page.locator("article").filter({ has: page.locator(`input[name="name"][value*="${secret}"]`) });
-    await article.getByLabel("Name", { exact: true }).fill(`${secret} renamed`);
-    await article.getByRole("button", { name: "Save changes", exact: true }).click();
-    await expect(article.first().getByLabel("Name", { exact: true })).toHaveValue(`${secret} renamed`);
+    await article.getByLabel(/^Name of /).fill(`${secret} renamed`);
+    await article.getByRole("button", { name: /^Save changes/ }).click();
+    await expect(article.first().getByLabel(/^Name of /)).toHaveValue(`${secret} renamed`);
     // The saved row remounts when its version changes, so wait for that before opening its menu.
-    await expect(page.getByRole("button", { name: "Save changes", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Save changes/ })).toHaveCount(0);
     await page.locator("article").getByText("More", { exact: true }).first().click();
-    await page.getByRole("button", { name: "Archive account", exact: true }).click();
+    await page.getByRole("button", { name: /^Archive / }).click();
     await expect(page.locator("button", { hasText: "Restore account" })).toHaveCount(1);
     await expect(page.locator("article")).toContainText("Archived");
-    await page.getByRole("button", { name: "Undo", exact: true }).first().click();
+    await page.getByRole("button", { name: /^Undo: / }).first().click();
     await expect(page.locator("button", { hasText: "Archive account" })).toHaveCount(1);
     // The history list refreshes after the page; wait, so the next Undo is the rename and not the one just used.
     await page.waitForLoadState("networkidle");
-    await page.getByRole("button", { name: "Undo", exact: true }).first().click();
-    await expect(page.locator("article").getByLabel("Name", { exact: true }).first()).toHaveValue(secret);
+    await page.getByRole("button", { name: /^Undo: / }).first().click();
+    await expect(page.locator("article").getByLabel(/^Name of /).first()).toHaveValue(secret);
     await page.goto("/money/transactions");
     const views = page.getByRole("region", { name: "Saved views" });
     await views.getByText(`Manage ${secret}`, { exact: true }).click();
@@ -105,7 +105,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     await views.getByRole("button", { name: `Delete saved view ${secret} renamed view`, exact: true }).click();
     await expect(views.getByRole("link", { name: `${secret} renamed view`, exact: true })).toHaveCount(0);
     await page.goto("/money/accounts");
-    await page.getByRole("button", { name: "Undo", exact: true }).first().click();
+    await page.getByRole("button", { name: /^Undo: / }).first().click();
     await expect.poll(async () => (await db`select removed_at from public.transaction_views where id=${savedView}`)[0].removed_at).toBeNull();
     await page.goto("/money/transactions");
     await expect(views.getByRole("link", { name: `${secret} renamed view`, exact: true })).toBeVisible();
