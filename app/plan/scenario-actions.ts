@@ -1,4 +1,5 @@
 "use server";
+import { safely, type SafeState } from "@/lib/safe-action";
 import { z } from "zod";
 import { scheduleCadences } from "@/lib/finance/cadences";
 import { redirect } from "next/navigation";
@@ -41,3 +42,7 @@ export async function undoScenarioRecord(form: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout"); redirect("/plan");
 }
+export async function removeScenarioRecordSafely(_state: SafeState, form: FormData) { return safely(form, removeScenarioRecord); }
+export async function undoScenarioRecordSafely(_state: SafeState, form: FormData) { return safely(form, undoScenarioRecord); }
+export async function updateScenarioSafely(_state: SafeState, form: FormData) { return safely(form, updateScenario); }
+export async function updateScenarioEventSafely(_state: SafeState, form: FormData) { return safely(form, updateScenarioEvent); }

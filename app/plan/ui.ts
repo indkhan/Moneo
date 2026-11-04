@@ -3,6 +3,7 @@ import { parseManualAmount } from "@/app/money/transactions/input";
 import type { scheduleCadences } from "@/lib/finance/cadences";
 
 export const field = "min-h-10 rounded-[10px] border border-input bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-brand focus:ring-2 focus:ring-brand/15";
+export const formLabel = "grid gap-1 text-xs font-medium text-muted-foreground";
 export const stackedField = "mt-1 w-full " + field;
 export const button = "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-[13px] font-medium text-primary-foreground hover:opacity-90";
 export const linkButton = "text-sm font-medium text-brand hover:underline";
