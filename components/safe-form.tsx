@@ -17,7 +17,8 @@ export function SafeForm({ action, className, children }: { action: (state: Safe
   }, [pending, state.error]);
   return <form ref={form} className={className} onSubmit={event => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    // The pressed button's name and value count, so one form can hold several choices.
+    const data = new FormData(event.currentTarget, (event.nativeEvent as SubmitEvent).submitter);
     startTransition(() => submit(data));
   }}>
     <fieldset disabled={pending} className="contents">{children}</fieldset>

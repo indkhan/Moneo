@@ -8,10 +8,13 @@ import { CardSkeleton, HomeCard } from "@/components/cards/home-card";
 import { loadConversation } from "@/lib/ai/conversation-history";
 import { cardWidgetKey, homeLayout, isBuiltinWidget, widgetLabel } from "@/lib/finance/dashboard";
 import { CARD_SIZES, CARD_SIZE_KEYS, cardSize } from "@/lib/cards/sizes";
-import { publishCard, setCardSize, unpublishCard } from "@/app/dashboard-actions";
+import { publishCardSafely, setCardSizeSafely, unpublishCardSafely } from "@/app/dashboard-actions";
+import { SafeForm } from "@/components/safe-form";
 import { DeleteArtifactButton } from "../delete-artifact-button";
 import { ArtifactChat, SendButton } from "./artifact-chat";
 import { ExitFullScreen, PendingSubmit, RenameArtifact } from "./artifact-controls";
+
+const cardControl = "flex flex-wrap items-center gap-2";
 
 export const metadata = { title: "Artifact" };
 
@@ -119,13 +122,14 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
                   <span className={onHome ? "text-brand" : "text-muted-foreground"}>{onHome ? card.published_version === shown ? "On Home" : `Home shows v${card.published_version}` : "Not on Home"}</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span role="group" aria-label={`Size of ${card.title}. Applies on Home straight away.`} title="Applies on Home straight away" className="inline-flex rounded-lg border border-border p-0.5">{CARD_SIZE_KEYS.map(key => <form key={key} action={setCardSize.bind(null, card.id, key)}>
-                    <PendingSubmit aria-pressed={size === key} className="min-h-7 min-w-7 rounded-md px-2 py-0.5 font-mono text-xs text-muted-foreground aria-pressed:bg-primary aria-pressed:text-primary-foreground">{CARD_SIZES[key].label}</PendingSubmit></form>)}</span>
+                  <SafeForm action={setCardSizeSafely} className={cardControl}><input type="hidden" name="id" value={card.id} />
+                    <span role="group" aria-label={`Size of ${card.title}. Applies on Home straight away.`} title="Applies on Home straight away" className="inline-flex rounded-lg border border-border p-0.5">{CARD_SIZE_KEYS.map(key =>
+                      <PendingSubmit key={key} name="size" value={key} aria-pressed={size === key} className="min-h-7 min-w-7 rounded-md px-2 py-0.5 font-mono text-xs text-muted-foreground aria-pressed:bg-primary aria-pressed:text-primary-foreground">{CARD_SIZES[key].label}</PendingSubmit>)}</span></SafeForm>
                   {!onHome || card.published_version !== shown
-                    ? <form action={publishCard.bind(null, card.id, shown, card.published_version)}><PendingSubmit className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 font-medium text-primary-foreground hover:opacity-90">
-                      {onHome ? <><RefreshCw className="size-3.5" aria-hidden="true" />Update on Home</> : <><HousePlus className="size-3.5" aria-hidden="true" />Add to Home</>}</PendingSubmit></form>
+                    ? <SafeForm action={publishCardSafely} className={cardControl}><input type="hidden" name="id" value={card.id} /><input type="hidden" name="version" value={shown} /><input type="hidden" name="shown" value={card.published_version ?? ""} /><PendingSubmit className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 font-medium text-primary-foreground hover:opacity-90">
+                      {onHome ? <><RefreshCw className="size-3.5" aria-hidden="true" />Update on Home</> : <><HousePlus className="size-3.5" aria-hidden="true" />Add to Home</>}</PendingSubmit></SafeForm>
                     : <span className="inline-flex items-center gap-1 px-2 text-brand"><Check className="size-3.5" aria-hidden="true" />On Home</span>}
-                  {onHome && <form action={unpublishCard.bind(null, card.id)}><PendingSubmit className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 hover:bg-muted"><X className="size-3.5" aria-hidden="true" />Remove from Home</PendingSubmit></form>}
+                  {onHome && <SafeForm action={unpublishCardSafely} className={cardControl}><input type="hidden" name="id" value={card.id} /><PendingSubmit className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 hover:bg-muted"><X className="size-3.5" aria-hidden="true" />Remove from Home</PendingSubmit></SafeForm>}
                 </div>
               </div>
               {/* The card in its Home slot, between the user's own widgets, with live data. */}
