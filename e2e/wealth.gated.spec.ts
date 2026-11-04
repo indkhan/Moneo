@@ -9,14 +9,14 @@ test("fractional wealth valuation, cost basis, audited edit, removal and undo", 
   const name = `Fractional holding QA ${crypto.randomUUID().slice(0, 8)}`;
   await page.goto("/money/wealth");
   await page.locator("summary").filter({ hasText: /^Add investment / }).click();
-  const form = page.locator("form").filter({ has: page.getByRole("button", { name: "Add holding", exact: true }) });
+  const form = page.locator("form").filter({ has: page.getByRole("button", { name: "Add investment", exact: true }) });
   await form.getByRole("textbox", { name: "Name", exact: true }).fill(name);
-  await form.getByRole("textbox", { name: "Currency", exact: true }).fill("EUR");
+  await form.getByRole("combobox", { name: "Currency", exact: true }).fill("EUR");
   await form.getByRole("textbox", { name: "Quantity", exact: true }).fill("0.125");
   await form.getByRole("textbox", { name: "Unit price in currency", exact: true }).fill("80.04");
   await form.getByRole("textbox", { name: "Total cost basis (optional)", exact: true }).fill("8.00");
   await form.getByRole("checkbox", { name: "I confirm this standalone value is not already included in an account balance.", exact: true }).check();
-  await form.getByRole("button", { name: "Add holding", exact: true }).click();
+  await form.getByRole("button", { name: "Add investment", exact: true }).click();
   const article = page.getByRole("article").filter({ has: page.getByRole("heading", { name, exact: true }) });
   await expect(article).toContainText("EUR 10.01", { timeout: 30_000 });
   await expect(article).toContainText("valuation gain/loss EUR 2.01");
@@ -24,12 +24,12 @@ test("fractional wealth valuation, cost basis, audited edit, removal and undo", 
   await article.getByRole("textbox", { name: "Unit price in currency", exact: true }).fill("80.00");
   await article.getByRole("button", { name: "Save wealth edit", exact: true }).click();
   await expect(article).toContainText("EUR 10.00", { timeout: 30_000 });
-  await article.getByRole("button", { name: "Remove wealth record (keep history)", exact: true }).click();
+  await article.getByRole("button", { name: /^Remove .* \(keep history\)$/ }).click();
   await expect(article).toHaveCount(0, { timeout: 30_000 });
-  await page.locator("summary").filter({ hasText: /^Wealth source history and undo$/ }).click();
-  await page.getByRole("listitem").filter({ hasText: name }).first().getByRole("button", { name: "Undo wealth change", exact: true }).click();
+  // Removing opens the history with its undo.
+  await page.getByRole("listitem").filter({ hasText: name }).first().getByRole("button", { name: `Undo ${name} change`, exact: true }).click();
   await expect(article).toContainText("EUR 10.00", { timeout: 30_000 });
-  await article.getByRole("button", { name: "Remove wealth record (keep history)", exact: true }).click();
+  await article.getByRole("button", { name: /^Remove .* \(keep history\)$/ }).click();
   await expect(article).toHaveCount(0, { timeout: 30_000 });
 });
 
@@ -48,20 +48,20 @@ test("dated assets and signed debt repayment assumptions preserve source history
   await page.locator("summary").filter({ hasText: /^Add asset / }).click();
   const assetForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Add asset", exact: true }) });
   await assetForm.getByRole("textbox", { name: "Name", exact: true }).fill(assetName);
-  await assetForm.getByRole("textbox", { name: "Currency", exact: true }).fill("EUR");
-  await assetForm.getByRole("textbox", { name: "Asset value", exact: true }).fill("500.00");
+  await assetForm.getByRole("combobox", { name: "Currency", exact: true }).fill("EUR");
+  await assetForm.getByRole("textbox", { name: "Asset value (EUR)", exact: true }).fill("500.00");
   await assetForm.getByRole("checkbox", { name: "I confirm this standalone value is not already included in an account balance.", exact: true }).check();
   await assetForm.getByRole("button", { name: "Add asset", exact: true }).click();
   const asset = page.getByRole("article").filter({ has: page.getByRole("heading", { name: assetName, exact: true }) });
   await expect(asset).toContainText("EUR 500.00", { timeout: 30_000 });
-  await asset.getByRole("button", { name: "Remove wealth record (keep history)", exact: true }).click();
+  await asset.getByRole("button", { name: /^Remove .* \(keep history\)$/ }).click();
   await expect(asset).toHaveCount(0, { timeout: 30_000 });
   const debtName = `Manual debt QA ${suffix}`;
   await page.locator("summary").filter({ hasText: /^Add debt / }).click();
   const debtForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Add debt", exact: true }) });
   await debtForm.getByRole("textbox", { name: "Name", exact: true }).fill(debtName);
-  await debtForm.getByRole("textbox", { name: "Currency", exact: true }).fill("EUR");
-  await debtForm.getByRole("textbox", { name: "Outstanding principal (negative amount)", exact: true }).fill("-100.00");
+  await debtForm.getByRole("combobox", { name: "Currency", exact: true }).fill("EUR");
+  await debtForm.getByRole("textbox", { name: "Amount you still owe (EUR)", exact: true }).fill("100.00");
   await debtForm.getByRole("textbox", { name: "Nominal annual interest rate (%)", exact: true }).fill("12");
   await debtForm.getByRole("textbox", { name: "Monthly repayment (positive amount)", exact: true }).fill("60.00");
   await debtForm.getByRole("combobox", { name: "Pay from liquid account", exact: true }).selectOption({ label: `${account} (EUR)` });
@@ -71,6 +71,6 @@ test("dated assets and signed debt repayment assumptions preserve source history
   await expect(debt).toContainText("-EUR 100.00", { timeout: 30_000 });
   await expect(debt).toContainText("EUR 1.00 assumed interest");
   await expect(debt).toContainText("EUR 41.41 payment");
-  await debt.getByRole("button", { name: "Remove wealth record (keep history)", exact: true }).click();
+  await debt.getByRole("button", { name: /^Remove .* \(keep history\)$/ }).click();
   await expect(debt).toHaveCount(0, { timeout: 30_000 });
 });
