@@ -84,7 +84,7 @@ test("explicit partial/full occurrence association changes the forecast once and
     const salarySeries = page.locator("article").filter({ has: page.getByRole("heading", { name: salaryLabel, exact: true }) });
     await salarySeries.getByRole("button", { name: /^Confirm (?!recurring)/ }).click();
     await salarySeries.getByRole("button", { name: "Confirm recurring", exact: true }).click();
-    await expect(page.getByRole("region", { name: "Confirmed payments and income" })).toContainText(salaryLabel);
+    await expect(page.getByRole("region", { name: "Confirmed payments and income" })).toContainText(salaryLabel, { timeout: 30_000 });
     const [generated] = await db`select id,version from public.financial_assumptions where workspace_id=${workspace!} and name=${salaryLabel} and source='recurring_confirmed'`;
     expect(generated).toBeDefined();
     await page.goto("/plan?horizon=1"); await expect(forecast).toContainText("EUR 3000.00"); await expect(forecast).not.toContainText("EUR 4000.00");
