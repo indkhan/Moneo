@@ -4,6 +4,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { reviewFreshness } from "@/lib/finance/review-freshness";
 import { ReviewVerification } from "@/components/review-verification";
 import { AiMessage } from "@/components/ai-message";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 export const metadata = { title: "Saved review" };
 
@@ -74,15 +75,19 @@ export default async function AnalysisActivityDetail({ params }: { params: Promi
       )}
       {analysisError && (
         <p role="alert" className="mt-4 text-sm text-danger">
-          Could not load the saved review: {truncate(analysisError.message, 200)}
+          Could not load the saved review. Reload to try again.
         </p>
       )}
       {!analysis && job.status === "completed" && !analysisError && (
         <p className="mt-4 text-muted-foreground">The completed review has no saved analysis yet.</p>
       )}
-      {!analysis && job.status !== "completed" && (
+      {job.status === "failed" || job.status === "canceled" ? (
         <p className="mt-4 text-muted-foreground">
-          This review has not completed. Track progress from <Link className="underline" href="/ai">AI</Link>.
+          This review did not finish and will not continue. <Link className="underline" href="/ai">Run a new review</Link>.
+        </p>
+      ) : !analysis && job.status !== "completed" && (
+        <p role="status" className="mt-4 text-muted-foreground">
+          Still working: {job.stage.replaceAll("_", " ")}. This page updates by itself.<AutoRefresh />
         </p>
       )}
       {analysis && (

@@ -2,6 +2,7 @@ import { expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const tables: string[] = [];
+const filters: [string, string][] = [];
 const rows: Record<string, unknown[]> = {
   imports: [
     { id: "i1", filename: "failed.csv", status: "failed", total_rows: 1, new_rows: 0, matched_rows: 0, review_rows: 0, classification_review_rows: 0, rejected_rows: 0, error: "Bad file", created_at: "2026-10-02T10:00:00Z" },
@@ -12,7 +13,8 @@ const rows: Record<string, unknown[]> = {
 vi.mock("@/lib/auth", () => ({ requireWorkspace: async () => ({ workspace: { id: "w", locale: "en-US", timezone: "UTC" }, supabase: { from: (table: string) => {
   tables.push(table);
   const query: Record<string, unknown> = { then: (resolve: (value: unknown) => void) => resolve({ data: rows[table] ?? [], error: null }) };
-  for (const method of ["select", "eq", "neq", "in", "order", "limit"]) query[method] = () => query;
+  for (const method of ["select", "eq", "neq", "in", "not", "order", "limit"]) query[method] = () => query;
+  query.or = (value: string) => { filters.push([table, value]); return query; };
   return query;
 } } }) }));
 
@@ -43,4 +45,12 @@ it("flags a chat reply whose cards are still open, even after the user left befo
     expect(attention).toContain("/ai?conversation=y");
     expect(attention).not.toContain("Chat reply completed");
   } finally { rows.chat_requests.pop(); delete rows.agent_proposals; }
+});
+
+it("asks for unresolved imports directly under Needs attention, so old ones cannot fall out of a sample", async () => {
+  filters.length = 0;
+  await render();
+  expect(filters).toEqual([]);
+  await render("attention");
+  expect(filters).toContainEqual(["imports", "status.eq.failed,review_rows.gt.0,classification_review_rows.gt.0"]);
 });

@@ -1,5 +1,6 @@
 "use server";
 
+import { safely, type SafeState } from "@/lib/safe-action";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -37,3 +38,5 @@ export async function deleteArtifact(id: string) {
   revalidatePath("/");
   redirect("/ai/artifacts");
 }
+
+export async function createArtifactSafely(_state: SafeState, form: FormData) { return safely(form, createArtifact); }

@@ -23,15 +23,19 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const filter: Filter = requested && requested in FILTERS ? requested as Filter : "all";
   const wants = (kind: Kind) => filter === "all" || filter === "attention" || filter === kind;
   const none = Promise.resolve({ data: null, error: null });
+  // Needs attention asks for what is unresolved directly, so older work cannot fall out of a recent sample.
+  const attention = filter === "attention";
+  const heldCards = attention ? await supabase.from("agent_proposals").select("chat_request_id").eq("workspace_id", workspace.id).in("status", ["proposed", "failed"]).not("chat_request_id", "is", null).limit(100) : { data: [], error: null };
+  const heldRequests = [...new Set((heldCards.data ?? []).map(row => row.chat_request_id as string))];
 
   const [imports, jobs, saved, conversations, requests] = await Promise.all([
-    wants("imports") ? supabase.from("imports").select("id, filename, status, total_rows, new_rows, matched_rows, review_rows, classification_review_rows, rejected_rows, error, created_at")
-      .eq("workspace_id", workspace.id).neq("status", "undone").order("created_at", { ascending: false }).limit(20) : none,
-    wants("analyses") ? supabase.from("background_jobs").select("id, status, stage, error, created_at, updated_at")
-      .eq("workspace_id", workspace.id).eq("kind", "financial_review").order("created_at", { ascending: false }).limit(20) : none,
+    wants("imports") ? (query => attention ? query.or("status.eq.failed,review_rows.gt.0,classification_review_rows.gt.0").limit(100) : query.limit(20))(supabase.from("imports").select("id, filename, status, total_rows, new_rows, matched_rows, review_rows, classification_review_rows, rejected_rows, error, created_at")
+      .eq("workspace_id", workspace.id).neq("status", "undone").order("created_at", { ascending: false })) : none,
+    wants("analyses") ? (query => attention ? query.eq("status", "failed").limit(100) : query.limit(20))(supabase.from("background_jobs").select("id, status, stage, error, created_at, updated_at")
+      .eq("workspace_id", workspace.id).eq("kind", "financial_review").order("created_at", { ascending: false })) : none,
     wants("analyses") ? supabase.from("saved_analyses").select("job_id, title").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20) : none,
     wants("chats") ? supabase.from("conversations").select("id, title, created_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(20) : none,
-    wants("chats") ? supabase.from("chat_requests").select("id, conversation_id, status, error, usage, answer, updated_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(30) : none,
+    wants("chats") ? (query => attention ? query.or(`status.eq.failed${heldRequests.length ? `,id.in.(${heldRequests.join(",")})` : ""}`).limit(100) : query.limit(30))(supabase.from("chat_requests").select("id, conversation_id, status, error, usage, answer, updated_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false })) : none,
   ]);
   // A reply whose cards are still open needs attention, so cards from a chat that finished after the user left stay findable.
   const cards = new Map((requests.data ?? []).map(row => [row.id, row.status === "completed" ? answerCardIds(row.answer) : []]));
@@ -39,7 +43,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const open = await (cardIds.length ? supabase.from("agent_proposals").select("id").eq("workspace_id", workspace.id).in("id", cardIds).in("status", ["proposed", "failed"]) : none);
   const openIds = new Set((open.data ?? []).map(row => row.id as string));
   const waiting = (id: string) => (cards.get(id) ?? []).filter(card => openIds.has(card)).length;
-  const errors = [imports, jobs, saved, conversations, requests, open].map(result => result.error).filter(Boolean);
+  const errors = [heldCards, imports, jobs, saved, conversations, requests, open].map(result => result.error).filter(Boolean);
   const titles = new Map((saved.data ?? []).map(row => [row.job_id, row.title]));
 
   const items: Item[] = [
@@ -60,8 +64,8 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
       detail: [row.usage ? usageLabel(row.usage as ReportedUsage) : "", row.status === "failed" ? truncate(row.error) : ""].filter(Boolean).join(" · ") || words(row.status),
       href: `/ai?conversation=${row.conversation_id}`, attention: row.status === "failed" || waiting(row.id) > 0, quiet: row.status !== "failed" && !waiting(row.id) })),
   ];
-  const visible = items.filter(item => filter === "attention" ? item.attention : filter === "all" ? !item.quiet : item.kind === filter)
-    .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 50);
+  const matching = items.filter(item => filter === "attention" ? item.attention : filter === "all" ? !item.quiet : item.kind === filter).sort((a, b) => b.at.localeCompare(a.at));
+  const visible = attention ? matching : matching.slice(0, 50);
   const day = (iso: string) => new Date(iso).toLocaleDateString(workspace.locale, { timeZone: workspace.timezone, dateStyle: "medium" });
   const groups = visible.reduce((map, item) => map.set(day(item.at), [...(map.get(day(item.at)) ?? []), item]), new Map<string, Item[]>());
 
@@ -74,7 +78,8 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
     <nav aria-label="Activity filters" className="flex flex-wrap gap-2">{Object.entries(FILTERS).map(([key, label]) =>
       <Link key={key} href={key === "all" ? "/ai/activity" : `/ai/activity?filter=${key}`} aria-current={filter === key ? "page" : undefined}
         className={`rounded-full border px-3 py-1.5 text-sm ${filter === key ? "border-brand bg-brand text-white" : "border-border bg-card hover:bg-muted"}`}>{label}</Link>)}</nav>
-    {errors.length > 0 && <p role="alert" className="rounded-xl border border-border bg-card p-4 text-sm text-danger">Could not load part of this activity: {truncate(errors[0]?.message ?? "Unavailable")}</p>}
+    {errors.length > 0 && <p role="alert" className="rounded-xl border border-border bg-card p-4 text-sm text-danger">Could not load part of this activity, so it may be incomplete. Reload to try again.</p>}
+    {!attention && (matching.length > 50 || (imports.data?.length === 20 || jobs.data?.length === 20 || conversations.data?.length === 20)) && <p className="text-xs text-muted-foreground">Showing recent activity only. Everything unresolved is under <Link className="underline" href="/ai/activity?filter=attention">Needs attention</Link>.</p>}
     {!errors.length && !visible.length && <p className="text-muted-foreground">{filter === "attention" ? "Nothing needs your attention." : <>No activity yet. <Link className="underline" href="/import">Import a statement</Link> or run a review from <Link className="underline" href="/ai">AI</Link>.</>}</p>}
     {[...groups].map(([label, entries]) => <section key={label} aria-label={label} className="space-y-2">
       <h2 className="eyebrow">{label}</h2>

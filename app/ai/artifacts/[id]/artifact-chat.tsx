@@ -48,10 +48,12 @@ export function ArtifactChat({ conversationId, initial, running: initialRunning,
 
   // A build that kept running while the user was away: check until its answer is saved.
   const resuming = running && !pending;
-  usePolling(() => void fetch(`/api/conversations/${conversationId}`, { cache: "no-store" }).then(response => response.ok ? response.json() as Promise<Loaded> : null).then(data => {
-    if (!data || data.running) return;
+  const [unreachable, setUnreachable] = useState(false);
+  usePolling(() => void fetch(`/api/conversations/${conversationId}`, { cache: "no-store" }).then(response => { if (!response.ok) throw new Error(); return response.json() as Promise<Loaded>; }).then(data => {
+    setUnreachable(false);
+    if (data.running) return;
     setMessages(data.messages); setRunning(null); router.refresh();
-  }).catch(() => {}), 3000, !!resuming);
+  }).catch(() => setUnreachable(true)), 3000, !!resuming);
 
   function onStart(_id: string, question: string, attachments: ChatAttachment[], spoken: boolean) { live.current = { question, attachments, tools: [], spoken }; setPending(live.current); }
   function onEvent(_id: string, event: ChatStreamEvent) {
@@ -79,6 +81,7 @@ export function ArtifactChat({ conversationId, initial, running: initialRunning,
       {messages.length || pending || resuming ? <ChatMessages compact messages={messages} pending={pending ?? (resuming ? RESUMED_RUN : undefined)} />
         : <p className="text-sm text-muted-foreground">Describe what to build. Ask for a Home card any time, e.g. “add this to Home as a small card”.</p>}
     </div>
+    {unreachable && resuming && <p role="alert" className="text-xs text-warning">Could not check on this build. It may still be running. Moneo keeps trying.</p>}
     <ChatForm conversationId={conversationId} selectionKey={`moneo-artifact-${conversationId}`} autoSend={request} placeholder="Change the page or a card…" onStart={onStart} onEvent={onEvent} onDone={onDone} />
   </div>;
 }

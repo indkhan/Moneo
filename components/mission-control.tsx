@@ -73,6 +73,8 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
   const [run, setRun] = useState(initial);
   const [notice, setNotice] = useState("");
   const [pending, startTransition] = useTransition();
+  const [lost, setLost] = useState(false);
+  const [controlling, setControlling] = useState<"cancel" | "resume" | null>(null);
   const router = useRouter();
   const active = ACTIVE.has(run.status);
 
@@ -83,17 +85,30 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
   useEffect(() => {
     if (!active) return;
     let stopped = false;
-    const tick = async () => { try { const response = await fetch(`/api/agents/runs/${initial.id}`, { cache: "no-store" }); if (response.ok && !stopped) setRun(await response.json()); } catch { /* next tick retries */ } };
+    let failures = 0;
+    // Polling keeps trying, but after a few misses the page says its progress may be out of date.
+    const tick = async () => {
+      try {
+        const response = await fetch(`/api/agents/runs/${initial.id}`, { cache: "no-store" });
+        if (!response.ok) throw new Error();
+        const next = await response.json();
+        if (!stopped) { setRun(next); failures = 0; setLost(false); }
+      } catch { failures += 1; if (failures >= 3 && !stopped) setLost(true); }
+    };
     const timer = window.setInterval(() => void tick(), 1200);
     return () => { stopped = true; window.clearInterval(timer); };
   }, [active, initial.id]);
 
   async function control(action: "cancel" | "resume") {
-    setNotice("");
-    const response = await fetch(`/api/agents/runs/${run.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) setNotice(body.error ?? "Request failed");
-    await refresh();
+    if (controlling) return;
+    setNotice(""); setControlling(action);
+    try {
+      const response = await fetch(`/api/agents/runs/${run.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setNotice(body.error ?? "That did not work. Try again.");
+      await refresh();
+    } catch { setNotice("Could not reach Moneo. Check your connection and try again."); }
+    finally { setControlling(null); }
   }
 
   function decide(ids: string[], decision: "accept" | "reject") {
@@ -146,9 +161,11 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
         <h1 className="flex flex-wrap items-center gap-3 page-title">Agent team {pill(run.status)}</h1>
         <p className="text-sm text-muted-foreground">{run.trigger === "import" ? "Started when your import finished" : "Started manually"} · {new Date(run.created_at).toLocaleString(locale)} · {model}</p>
       </div>
-      {active && <button type="button" onClick={() => void control("cancel")} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"><Square className="size-3.5" aria-hidden="true" />Stop</button>}
-      {(run.status === "canceled" || run.status === "failed") && <button type="button" onClick={() => void control("resume")} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"><Play className="size-3.5" aria-hidden="true" />Resume</button>}
+      {active && <button type="button" disabled={!!controlling} onClick={() => void control("cancel")} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"><Square className="size-3.5" aria-hidden="true" />{controlling === "cancel" ? "Stopping…" : "Stop"}</button>}
+      {(run.status === "canceled" || run.status === "failed") && <button type="button" disabled={!!controlling} onClick={() => void control("resume")} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"><Play className="size-3.5" aria-hidden="true" />{controlling === "resume" ? "Resuming…" : "Resume"}</button>}
     </header>
+    {lost && active && <p role="alert" className="rounded-lg bg-warning-soft p-3 text-sm text-warning">Lost contact with this run, so its progress may be out of date. Moneo keeps trying.</p>}
+    {active && <p className="text-xs text-muted-foreground">Stopping keeps changes already made; they stay in history with Undo. Sure category changes are made automatically. Everything else waits for your decision.</p>}
     {active && team}
     {run.error && <p role="alert" className="rounded-lg bg-danger-soft p-3 text-sm text-danger">{run.error}</p>}
 
@@ -173,7 +190,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
         <ul className="space-y-2">{manual.filter(item => item.kind === kind).map(item => {
           const decidable = reviewable && kind === "budget" && (item.status === "proposed" || item.status === "failed");
           return <li key={item.id} className={`rounded-2xl border bg-card px-5 py-[18px] ${item.status === "accepted" ? "border-brand/40" : "border-border"} ${item.status === "rejected" ? "opacity-60" : ""}`}>
-            <div className="flex items-start gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2"><p className="text-[15px] font-medium">{item.title}</p>
                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title="Heuristic confidence, not a probability"><span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted"><span className="block h-full bg-brand" style={{ width: `${item.confidence}%` }} /></span>{item.confidence}</span>

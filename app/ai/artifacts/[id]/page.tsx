@@ -66,8 +66,8 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
   const tabLink = (name: "page" | "cards", label: string) => <Link href={at({ tab: name })} aria-current={tab === name ? "page" : undefined}
     className="rounded-md px-3 py-1 text-muted-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground">{label}</Link>;
 
-  return <main className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-4 overflow-hidden p-4 lg:grid-cols-[minmax(300px,400px)_1fr] lg:grid-rows-1">
-    <aside className="flex min-h-0 min-w-0 flex-col gap-3">
+  return <main className="grid gap-4 p-4 max-lg:h-full max-lg:overflow-y-auto lg:h-full lg:min-h-0 lg:grid-cols-[minmax(300px,400px)_1fr] lg:grid-rows-1 lg:overflow-hidden">
+    <aside className="flex min-w-0 flex-col gap-3 max-lg:h-[70dvh] lg:min-h-0">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <Link href="/ai/artifacts" className="text-xs text-muted-foreground hover:underline">← Artifacts</Link>
@@ -77,12 +77,12 @@ export default async function ArtifactPage({ params, searchParams }: { params: P
       </div>
       <ArtifactChat conversationId={conversationId} initial={history.messages} running={history.running ?? null} artifactId={start ? id : undefined} />
     </aside>
-    <section aria-label="Artifact" className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border">
+    <section aria-label="Artifact" className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border max-lg:h-[85dvh] lg:min-h-0">
       <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-1.5 text-xs">
         <nav aria-label="View" className="flex gap-1">{tabLink("page", "Page")}{tabLink("cards", `Home cards${cards.data?.length ? ` · ${cards.data.length}` : ""}`)}</nav>
         {tab === "page" && current && <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap">
           {current.version > 1 ? <Link href={at({ v: String(current.version - 1) })} aria-label="Previous version" className="rounded p-1 hover:bg-muted"><ChevronLeft className="size-3.5" /></Link> : <span className="p-1 opacity-30"><ChevronLeft className="size-3.5" /></span>}
-          v{current.version} of {latest}
+          <span title="Older designs still show today’s data">Design v{current.version} of {latest}</span>
           {current.version < latest ? <Link href={at({ v: String(current.version + 1) })} aria-label="Next version" className="rounded p-1 hover:bg-muted"><ChevronRight className="size-3.5" /></Link> : <span className="p-1 opacity-30"><ChevronRight className="size-3.5" /></span>}
           <Link href={at({ full: "1" })} className="ml-2 inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted"><Maximize2 className="size-3.5" aria-hidden="true" />Full screen</Link>
         </span>}
