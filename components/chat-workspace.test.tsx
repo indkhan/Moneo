@@ -13,7 +13,9 @@ const render = () => renderToStaticMarkup(<ChatWorkspace initial={initial} newCo
 it("renders the saved chat with client-side paging, search, rename and delete controls", () => {
   search.value = "";
   const html = render();
-  expect(html).toContain("<h1 class=\"min-w-0 flex-1 truncate font-display text-2xl font-semibold tracking-tight\">Rent check</h1>");
+  expect(html).toMatch(/<h1 [^>]*>Rent check<\/h1>/);
+  expect(html).toContain('aria-label="Deep review"');
+  expect(html).toContain(">Close</button>");
   expect(html).toContain("How much rent?");
   expect(html).toContain('aria-current="page"');
   expect(html).toContain("Search chats");

@@ -57,6 +57,8 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   const [reviewOpen, setReviewOpen] = useState(false);
   const loading = useRef(new Set<string>());
   const menu = useRef<HTMLDetailsElement>(null);
+  const reviewDialog = useRef<HTMLDialogElement>(null);
+  const [searching, setSearching] = useState(false);
   const end = useRef<HTMLDivElement>(null);
 
   const params = useSearchParams();
@@ -101,7 +103,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     if (!q) return;
     const controller = new AbortController();
     const timer = setTimeout(() => json<{ threads: HistoryThread[] }>(`/api/conversations?${new URLSearchParams({ view: "threads", q })}`, { signal: controller.signal })
-      .then(data => setResults(data.threads)).catch(cause => { if (!controller.signal.aborted) setNotice(cause.message); }), 250);
+      .then(data => { setResults(data.threads); setSearching(false); }).catch(cause => { if (!controller.signal.aborted) { setResults(null); setSearching(false); setNotice(cause.message); } }), 250);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [query]);
 
@@ -200,10 +202,11 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
   const sidebar = (prefix: string) => <>
     <Link href={href("new")} onClick={event => open(event, null)} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-medium text-primary-foreground hover:opacity-90"><Plus className="size-4" aria-hidden="true" />New chat</Link>
     <label className="relative mt-3 block"><span className="sr-only">Search chats</span><Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground" aria-hidden="true" />
-      <input id={`${prefix}-search`} type="search" value={query} onChange={event => { setQuery(event.target.value); if (!event.target.value.trim()) setResults(null); }} maxLength={100} placeholder="Search chats" className="w-full rounded-lg border border-border bg-background py-2 pr-2 pl-8 text-sm focus:border-muted-foreground/40 focus:outline-none" /></label>
+      <input id={`${prefix}-search`} type="search" value={query} onChange={event => { setQuery(event.target.value); setSearching(!!event.target.value.trim()); if (!event.target.value.trim()) setResults(null); }} maxLength={100} placeholder="Search chats" className="w-full rounded-lg border border-border bg-background py-2 pr-2 pl-8 text-sm focus:border-muted-foreground/40 focus:outline-none" /></label>
     <p className="eyebrow mt-5 px-2.5 pb-1.5">Conversations</p>
-    <nav aria-label="Conversations" className="space-y-0.5">
-      {results && !results.length && <p className="px-3 py-2 text-sm text-muted-foreground">No chats match “{query.trim()}”.</p>}
+    <nav aria-label="Conversations" aria-busy={searching} className={`space-y-0.5 ${searching ? "opacity-60" : ""}`}>
+      {searching && <p className="px-3 py-1 text-xs text-muted-foreground">Searching…</p>}
+      {!searching && results && !results.length && <p className="px-3 py-2 text-sm text-muted-foreground">No chats match “{query.trim()}”.</p>}
       {list.map(thread => editing === thread.id
         ? <form key={thread.id} onSubmit={event => void rename(event, thread)} className="flex items-center gap-1 px-1 py-0.5">
           <label className="sr-only" htmlFor={`${prefix}-rename-${thread.id}`}>Chat title</label>
@@ -213,7 +216,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
         </form>
         : <div key={thread.id} className={`group flex items-center rounded-[10px] ${selectedId === thread.id ? "bg-muted" : "hover:bg-muted/60"}`}>
           <Link href={href(thread.id)} prefetch={false} onClick={event => open(event, thread.id)} onPointerEnter={() => load(thread.id)} onFocus={() => load(thread.id)} aria-current={selectedId === thread.id ? "page" : undefined}
-            className={`min-w-0 flex-1 truncate px-2.5 py-2.5 text-[13px] ${selectedId === thread.id ? "text-foreground" : "text-foreground/85 group-hover:text-foreground"}`}>{thread.title}{pending[thread.id] && <span className="sr-only"> (answering)</span>}</Link>
+            className={`min-w-0 flex-1 truncate px-2.5 py-2.5 text-[13px] ${selectedId === thread.id ? "text-foreground" : "text-foreground/85 group-hover:text-foreground"}`}>{thread.title}{pending[thread.id] && <span className="sr-only"> (answering)</span>}<span className="block text-[11px] text-muted-foreground">{new Date(thread.created_at).toLocaleDateString(locale, { timeZone: timezone, dateStyle: "medium" })}</span></Link>
           <span className="flex shrink-0 pr-1 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
             <button type="button" onClick={() => setEditing(thread.id)} aria-label={`Rename ${thread.title}`} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground"><Pencil className="size-3.5" aria-hidden="true" /></button>
             <button type="button" onClick={() => void remove(thread)} aria-label={`Delete ${thread.title}`} className="rounded-md p-1.5 text-muted-foreground hover:text-danger"><Trash2 className="size-3.5" aria-hidden="true" /></button>
@@ -226,7 +229,7 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
       <Link href="/ai/activity?filter=attention" className="block rounded-lg px-3 py-2 hover:bg-muted hover:text-foreground">Notifications</Link>
     </div>
   </>;
-  const summary = "flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground [&::-webkit-details-marker]:hidden";
+  const summary = "flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground max-sm:min-h-11 [&::-webkit-details-marker]:hidden";
   const empty = !entry?.messages.length && !active;
   const unavailable = selectedId && !entry ? errors[selectedId] : undefined;
 
@@ -236,10 +239,16 @@ export function ChatWorkspace({ initial, newConversationId, selectionKey, locale
     <section className="flex min-w-0 flex-1 flex-col">
       {/* Each spoken question is a normal chat request, so its answer joins this chat as it lands. */}
       {calling ? <VoiceCall key={activeId} conversationId={activeId} onAnswer={(question, answer) => onDone(activeId, question, answer, [])} onEnded={() => void callEnded(activeId)} onClose={() => setCalling(false)} /> : <>
-      <div className="relative flex items-center gap-2 border-b border-border px-4 py-4 sm:px-8">
+      <div className="relative flex flex-wrap items-center gap-2 border-b border-border px-4 py-4 sm:px-8">
         <details ref={menu} className="lg:hidden"><summary className={summary} aria-label="Show conversations"><Menu className="size-4" aria-hidden="true" /></summary><div className="absolute inset-x-4 top-full z-20 max-h-[70dvh] overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-lg">{sidebar("mobile")}</div></details>
-        <h1 className="min-w-0 flex-1 truncate font-display text-2xl font-semibold tracking-tight">{title}</h1>
-        <details onToggle={event => { if (event.currentTarget.open) setReviewOpen(true); }}><summary className={summary}><Sparkles className="size-4" aria-hidden="true" />Run a deep review</summary><div className="absolute inset-x-4 top-full z-20 mx-auto max-h-[75dvh] max-w-3xl overflow-y-auto rounded-2xl border border-border bg-card shadow-lg">{reviewOpen && <AnalysisPanel locale={locale} timezone={timezone} />}</div></details>
+        {/* On phones the title gets its own row, so the actions cannot squeeze it down to a few letters. */}
+        <h1 title={title} className="min-w-0 flex-1 truncate font-display text-2xl font-semibold tracking-tight max-sm:order-last max-sm:basis-full max-sm:text-xl">{title}</h1>
+        <button type="button" aria-haspopup="dialog" onClick={() => { if (menu.current) menu.current.open = false; setReviewOpen(true); reviewDialog.current?.showModal(); }} className={`${summary} max-sm:ml-auto`}><Sparkles className="size-4" aria-hidden="true" />Run a deep review</button>
+        {/* A modal dialog: the browser moves focus in, keeps it there, closes on Escape and returns focus to the button. It stays mounted, so a running review keeps its place when closed. */}
+        <dialog ref={reviewDialog} aria-label="Deep review" className="m-auto max-h-[85dvh] w-[calc(100vw-2rem)] max-w-3xl overflow-y-auto rounded-2xl border border-border bg-card text-foreground shadow-lg backdrop:bg-black/50">
+          <div className="sticky top-0 z-10 flex justify-end bg-card p-2"><button type="button" onClick={() => reviewDialog.current?.close()} className="flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" aria-hidden="true" />Close</button></div>
+          {reviewOpen && <AnalysisPanel locale={locale} timezone={timezone} />}
+        </dialog>
         <button type="button" onClick={() => setCalling(true)} className={summary}><Phone className="size-4" aria-hidden="true" />Call</button>
       </div>
       <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col px-4 sm:px-8">
