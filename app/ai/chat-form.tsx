@@ -31,6 +31,8 @@ export function ChatForm({ conversationId, selectionKey, empty = false, scope, p
       if (draftLoaded.current) { if (message) sessionStorage.setItem(draftKey, message); else sessionStorage.removeItem(draftKey); return; }
       draftLoaded.current = true;
       const saved = sessionStorage.getItem(draftKey);
+      // Storage is only readable after hydration, so the restore has to happen here.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (saved) setMessage(current => current || saved);
     } catch { /* storage can be blocked; drafts are a convenience */ }
   }, [message, draftKey]);
