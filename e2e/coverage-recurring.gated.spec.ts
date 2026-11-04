@@ -131,11 +131,11 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
       // Paid today for a future slot: provenance-only Plan toggles must not pay it twice.
       const schedule=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} invoice 0`,exact:true})});
-      await schedule.getByRole("button",{name:"Disable",exact:true}).click();
+      await schedule.getByRole("button",{name:/^Disable /}).click();
       await expect(forecast).toContainText("EUR 2000.00");
       const disabledSchedule=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} invoice 0 (disabled)`,exact:true})});
-      await disabledSchedule.getByRole("button",{name:"Enable",exact:true}).click();
-      await expect(schedule.getByRole("button",{name:"Disable",exact:true})).toBeVisible();
+      await disabledSchedule.getByRole("button",{name:/^Enable /}).click();
+      await expect(schedule.getByRole("button",{name:/^Disable /})).toBeVisible();
       await expect(disabledSchedule).toHaveCount(0);
       await page.goto("/plan?horizon=365");
       await expect(forecast).toContainText(expected);
