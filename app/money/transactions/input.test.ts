@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { bulkInput, parseManualAmount, splitInput } from "./input";
+import { amountBounds, bulkInput, directedAmount, parseManualAmount, shownBounds, splitInput } from "./input";
+
+describe("plain amounts with a direction", () => {
+  it("signs a positive amount by direction and refuses a minus sign", () => {
+    expect(directedAmount("12.34", "out", "EUR")).toBe(-1234n);
+    expect(directedAmount("12.34", "in", "EUR")).toBe(1234n);
+    expect(directedAmount("25", "out", "JPY")).toBe(-25n);
+    expect(() => directedAmount("-12.34", "out", "EUR")).toThrow(/minus/);
+  });
+  it("turns 10 to 50 money out into the signed range and back", () => {
+    const { minAmount, maxAmount } = amountBounds("outflow", "10", "50", "EUR");
+    expect([minAmount, maxAmount]).toEqual([-5000n, -1000n]);
+    expect(shownBounds("outflow", "-5000", "-1000")).toEqual({ from: "1000", to: "5000" });
+    expect(amountBounds("outflow", "", "50", "EUR")).toEqual({ minAmount: -5000n, maxAmount: undefined });
+    expect(amountBounds("outflow", "10", "", "EUR")).toEqual({ minAmount: undefined, maxAmount: -1000n });
+  });
+  it("keeps money in positive and undirected amounts signed as typed", () => {
+    expect(amountBounds("income", "10", "50", "EUR")).toEqual({ minAmount: 1000n, maxAmount: 5000n });
+    expect(amountBounds("", "-50", "-10", "EUR")).toEqual({ minAmount: -5000n, maxAmount: -1000n });
+    expect(shownBounds(undefined, "-5000", "-1000")).toEqual({ from: "-5000", to: "-1000" });
+  });
+});
 
 describe("manual and bulk transaction inputs", () => {
   it("preserves large exact money and currency precision without interpreting ambiguous separators", () => {

@@ -42,7 +42,7 @@ test("source correction invalidates the inferred forecast obligation and undo re
     await manual.getByRole("combobox",{name:"Account",exact:true}).selectOption({label:`${accountNames[i===3?1:0]} (EUR)`});
     await manual.getByLabel("Description",{exact:true}).fill(i===3?credit:label);
     await manual.getByLabel("Posting date",{exact:true}).fill(i===3?"2026-09-15":`2026-0${i+7}-15`);
-    await manual.getByLabel("Signed decimal amount").fill(i===3?"10.00":"-10.00");
+    await manual.getByLabel("Direction").selectOption(i===3?"in":"out");await manual.getByLabel("Amount").fill("10.00");
     await manual.getByRole("button",{name:"Add transaction",exact:true}).click();
     await page.waitForURL(/transaction=[0-9a-f-]{36}/,{timeout:30_000});sourceUrls.push(page.url());
   }

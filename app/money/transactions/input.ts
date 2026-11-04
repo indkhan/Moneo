@@ -10,6 +10,29 @@ export function parseManualAmount(value: string, currency: string): bigint {
   return minor;
 }
 
+const magnitude = (value: string, currency: string) => { const minor = parseManualAmount(value, currency); return minor < 0n ? -minor : minor; };
+
+/** A positive amount plus a direction, as people say it, to the signed minor units the ledger stores. */
+export function directedAmount(value: string, direction: string, currency: string): bigint {
+  const minor = parseManualAmount(value, currency);
+  if (minor < 0n) throw new Error("Enter the amount without a minus sign, and choose Money out or Money in");
+  return direction === "out" ? -minor : minor;
+}
+
+/** The ledger's signed min/max for a "from 10 to 50" typed with a direction. Without a direction the amounts stay signed as typed. */
+export function amountBounds(direction: string, from: string, to: string, currency: string) {
+  if (direction !== "outflow" && direction !== "income") return { minAmount: from ? parseManualAmount(from, currency) : undefined, maxAmount: to ? parseManualAmount(to, currency) : undefined };
+  const low = from ? magnitude(from, currency) : undefined, high = to ? magnitude(to, currency) : undefined;
+  return direction === "income" ? { minAmount: low, maxAmount: high } : { minAmount: high === undefined ? undefined : -high, maxAmount: low === undefined ? undefined : -low };
+}
+
+/** The reverse of amountBounds, to show a filter back as it was typed. */
+export function shownBounds(direction: string | undefined, minAmount?: string, maxAmount?: string) {
+  if (direction !== "outflow") return { from: minAmount, to: maxAmount };
+  const positive = (minor?: string) => minor === undefined ? undefined : minor.replace(/^-/, "");
+  return { from: positive(maxAmount), to: positive(minAmount) };
+}
+
 export const versionedRows = z.array(z.object({ id: z.uuid(), version: z.number().int().min(0).max(2147483647) }).strict()).min(1).max(50)
   .refine(rows => new Set(rows.map(row => row.id)).size === rows.length, "Select each transaction once");
 

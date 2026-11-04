@@ -22,7 +22,7 @@ test("manual exact entries, reviewed bulk tags, batch undo and manual source res
     const manual = page.locator("form").filter({ has: page.getByRole("button", { name: "Add transaction", exact: true }) });
     await manual.getByRole("combobox", { name: "Account", exact: true }).selectOption({ label: `${account} (EUR)` });
     await manual.getByLabel("Description", { exact: true }).fill(description);
-    await manual.getByLabel("Signed decimal amount").fill(index ? "-20.00" : "-12.34");
+    await manual.getByLabel("Amount").fill(index ? "20.00" : "12.34");
     await manual.getByRole("button", { name: "Add transaction", exact: true }).click();
     await page.waitForURL(/transaction=[0-9a-f-]{36}/, { timeout: 30_000 });
     const detail = page.getByRole("complementary", { name: "Transaction details" });
@@ -54,7 +54,7 @@ test("manual exact entries, reviewed bulk tags, batch undo and manual source res
   const manual = page.locator("form").filter({ has: page.getByRole("button", { name: "Add transaction", exact: true }) });
   await manual.getByRole("combobox", { name: "Account", exact: true }).selectOption({ label: `${account} (EUR)` });
   await manual.getByLabel("Description", { exact: true }).fill(untouched);
-  await manual.getByLabel("Signed decimal amount").fill("-1.00");
+  await manual.getByLabel("Amount").fill("1.00");
   await manual.getByRole("button", { name: "Add transaction", exact: true }).click();
   await page.waitForURL(/transaction=[0-9a-f-]{36}/, { timeout: 30_000 });
   const originalUrl = page.url();

@@ -24,7 +24,7 @@ test("dated FX transfer keeps canonical source and an included fee through guard
     await page.goto("/money/transactions"); await page.getByText("Add a manual transaction",{exact:true}).click();
     const manual=page.locator("form").filter({has:page.getByRole("button",{name:"Add transaction",exact:true})});
     await manual.getByRole("combobox",{name:"Account",exact:true}).selectOption({label:`${accounts[index]} (${index?"USD":"EUR"})`});
-    await manual.getByLabel("Description",{exact:true}).fill(description); await manual.getByLabel("Signed decimal amount").fill(index?"110.00":"-101.00");
+    await manual.getByLabel("Description",{exact:true}).fill(description); await manual.getByLabel("Direction").selectOption(index?"in":"out"); await manual.getByLabel("Amount").fill(index?"110.00":"101.00");
     await manual.getByRole("button",{name:"Add transaction",exact:true}).click(); await page.waitForURL(/transaction=[0-9a-f-]{36}/,{timeout:30_000}); urls.push(page.url());
   }
   await page.goto(urls[0]); const detail=page.getByRole("complementary",{name:"Transaction details"});
@@ -43,7 +43,7 @@ test("dated FX transfer keeps canonical source and an included fee through guard
     const manual=page.locator("form").filter({has:page.getByRole("button",{name:"Add transaction",exact:true})});
     await manual.getByRole("combobox",{name:"Account",exact:true}).selectOption({label:`${accounts[index?0:1]} (${index?"EUR":"USD"})`});
     await manual.getByLabel("Description",{exact:true}).fill(description); await manual.getByLabel("Posting date",{exact:true}).fill(index?"2026-10-02":"2026-09-01");
-    await manual.getByLabel("Signed decimal amount").fill(index?"50.00":"-110.00"); await manual.getByRole("button",{name:"Add transaction",exact:true}).click();
+    await manual.getByLabel("Direction").selectOption(index?"in":"out"); await manual.getByLabel("Amount").fill(index?"50.00":"110.00"); await manual.getByRole("button",{name:"Add transaction",exact:true}).click();
     await page.waitForURL(/transaction=[0-9a-f-]{36}/,{timeout:30_000}); refundUrls.push(page.url());
   }
   for(const url of refundUrls.slice(1)) {
