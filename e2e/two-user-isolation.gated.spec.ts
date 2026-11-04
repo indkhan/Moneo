@@ -91,6 +91,8 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     await expect(page.locator("article")).toContainText("Archived");
     await page.getByRole("button", { name: "Undo", exact: true }).first().click();
     await expect(page.locator("button", { hasText: "Archive account" })).toHaveCount(1);
+    // The history list refreshes after the page; wait, so the next Undo is the rename and not the one just used.
+    await page.waitForLoadState("networkidle");
     await page.getByRole("button", { name: "Undo", exact: true }).first().click();
     await expect(page.locator("article").getByLabel("Name", { exact: true }).first()).toHaveValue(secret);
     await page.goto("/money/transactions");

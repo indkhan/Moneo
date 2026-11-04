@@ -25,8 +25,8 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const none = Promise.resolve({ data: null, error: null });
   // Needs attention asks for what is unresolved directly, so older work cannot fall out of a recent sample.
   const attention = filter === "attention";
-  const heldCards = attention ? await supabase.from("agent_proposals").select("chat_request_id").eq("workspace_id", workspace.id).in("status", ["proposed", "failed"]).not("chat_request_id", "is", null).limit(100) : { data: [], error: null };
-  const heldRequests = [...new Set((heldCards.data ?? []).map(row => row.chat_request_id as string))];
+  const heldCards = attention ? await supabase.from("agent_proposals").select("chat_request_id").eq("workspace_id", workspace.id).in("status", ["proposed", "failed"]).not("chat_request_id", "is", null).order("created_at", { ascending: false }).limit(1000) : { data: [], error: null };
+  const heldRequests = [...new Set((heldCards.data ?? []).map(row => row.chat_request_id as string))].slice(0, 100);
 
   const [imports, jobs, saved, conversations, requests] = await Promise.all([
     wants("imports") ? (query => attention ? query.or("status.eq.failed,review_rows.gt.0,classification_review_rows.gt.0").limit(100) : query.limit(20))(supabase.from("imports").select("id, filename, status, total_rows, new_rows, matched_rows, review_rows, classification_review_rows, rejected_rows, error, created_at")
@@ -79,6 +79,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
       <Link key={key} href={key === "all" ? "/ai/activity" : `/ai/activity?filter=${key}`} aria-current={filter === key ? "page" : undefined}
         className={`rounded-full border px-3 py-1.5 text-sm ${filter === key ? "border-brand bg-brand text-white" : "border-border bg-card hover:bg-muted"}`}>{label}</Link>)}</nav>
     {errors.length > 0 && <p role="alert" className="rounded-xl border border-border bg-card p-4 text-sm text-danger">Could not load part of this activity, so it may be incomplete. Reload to try again.</p>}
+    {attention && (imports.data?.length === 100 || jobs.data?.length === 100 || requests.data?.length === 100) && <p className="text-xs text-muted-foreground">Showing the latest 100 of each kind. Resolve these to see older ones.</p>}
     {!attention && (matching.length > 50 || (imports.data?.length === 20 || jobs.data?.length === 20 || conversations.data?.length === 20)) && <p className="text-xs text-muted-foreground">Showing recent activity only. Everything unresolved is under <Link className="underline" href="/ai/activity?filter=attention">Needs attention</Link>.</p>}
     {!errors.length && !visible.length && <p className="text-muted-foreground">{filter === "attention" ? "Nothing needs your attention." : <>No activity yet. <Link className="underline" href="/import">Import a statement</Link> or run a review from <Link className="underline" href="/ai">AI</Link>.</>}</p>}
     {[...groups].map(([label, entries]) => <section key={label} aria-label={label} className="space-y-2">

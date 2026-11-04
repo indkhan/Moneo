@@ -17,13 +17,14 @@ function SourceFields({ row }: { row: SourceRow }) {
 
 const PAGE_SIZE = 100;
 
-export default async function ImportReviewPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ from?: string }> }) {
+export default async function ImportReviewPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ after?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); }
   catch { redirect("/login"); }
   const { id } = await params;
-  const requestedFrom = Number((await searchParams).from);
-  const from = Number.isSafeInteger(requestedFrom) && requestedFrom > 0 ? requestedFrom : 0;
+  // By row number, not offset: deciding rows shrinks the list, and an offset would then skip the ones left.
+  const requestedAfter = Number((await searchParams).after);
+  const after = Number.isSafeInteger(requestedAfter) && requestedAfter > 0 ? requestedAfter : 0;
   const { supabase, workspace } = context;
   const { data: imported } = await supabase.from("imports").select("id, filename, status, total_rows, new_rows, matched_rows, rejected_rows, route_accounts, mapping, review_rows, classification_review_rows")
     .eq("workspace_id", workspace.id).eq("id", id).maybeSingle();
@@ -36,7 +37,7 @@ export default async function ImportReviewPage({ params, searchParams }: { param
     supabase.from("source_transactions")
       .select("id, row_number, original_row, external_id, normalized_row")
       .eq("workspace_id", workspace.id).eq("import_id", id).eq("status", "review")
-      .order("row_number").range(from, from + PAGE_SIZE - 1),
+      .gt("row_number", after).order("row_number").limit(PAGE_SIZE),
     supabase.from("accounts").select("id, name, currency_code, version, archived_at")
       .eq("workspace_id", workspace.id).order("name").limit(1000),
     supabase.from("transactions")
@@ -53,7 +54,7 @@ export default async function ImportReviewPage({ params, searchParams }: { param
     <Link href="/import" className="text-sm underline">← Import history</Link>
     <div><p className="eyebrow">Money · Import review</p><h1 className="mt-2 page-title">Review: {imported.filename}</h1><p className="mt-2 text-sm text-muted-foreground">{imported.review_rows} unclear rows are left out of your totals until you decide.</p></div>
     {error && <p role="alert" className="text-sm text-danger">Could not load review rows: {error.message}</p>}
-    {!error && !rows?.length && <p className="text-sm text-muted-foreground">No rows awaiting review.</p>}
+    {!error && !rows?.length && <p className="text-sm text-muted-foreground">{after > 0 ? <>No more rows after this point. <Link className="underline" href={`/import/${id}/review`}>Back to the first rows</Link></> : "No rows awaiting review."}</p>}
     {rows?.map((row) => {
       const normalized = row.normalized_row as { accountId?: string | null; row?: { currencyCode: string; status: string } } | null;
       let currency = normalized?.row?.currencyCode;
@@ -81,10 +82,10 @@ export default async function ImportReviewPage({ params, searchParams }: { param
         unavailable={!frozen || !!frozen.archived_at || frozen.currency_code !== currency}
         destinations={destinations.error ? [] : (destinations.data ?? []).filter(account => !account.archived_at && account.currency_code === currency)} />}
     </article>; })}
-    {(from > 0 || rows?.length === PAGE_SIZE) && <nav aria-label="Review rows" className="flex flex-wrap items-center gap-4 text-sm">
-      <span className="text-muted-foreground">Rows {from + 1} to {from + (rows?.length ?? 0)} of the {imported.review_rows} to review</span>
-      {from > 0 && <Link className="underline" href={`/import/${id}/review?from=${Math.max(0, from - PAGE_SIZE)}`}>Previous {PAGE_SIZE}</Link>}
-      {rows?.length === PAGE_SIZE && <Link className="underline" href={`/import/${id}/review?from=${from + PAGE_SIZE}`}>Next {PAGE_SIZE}</Link>}
+    {(after > 0 || rows?.length === PAGE_SIZE) && <nav aria-label="Review rows" className="flex flex-wrap items-center gap-4 text-sm">
+      <span className="text-muted-foreground">Showing {rows?.length ?? 0} of the {imported.review_rows} left to review</span>
+      {after > 0 && <Link className="underline" href={`/import/${id}/review`}>Back to the first rows</Link>}
+      {rows?.length === PAGE_SIZE && <Link className="underline" href={`/import/${id}/review?after=${rows.at(-1)!.row_number}`}>Next {PAGE_SIZE}</Link>}
     </nav>}
     <section className="space-y-4" aria-label="Source coverage and reviewed interpretation">
       <h2 className="text-sm font-medium">Source coverage</h2>

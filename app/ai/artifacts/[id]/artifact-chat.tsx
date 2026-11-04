@@ -36,6 +36,8 @@ export function ArtifactChat({ conversationId, initial, running: initialRunning,
   const scroll = useRef<HTMLDivElement>(null);
   useEffect(() => { if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; }, [messages.length, pending]);
   const [request, setRequest] = useState<string>();
+  const [claimFailed, setClaimFailed] = useState(false);
+  const [claimAttempt, setClaimAttempt] = useState(0);
   useEffect(() => {
     const listener = (event: Event) => setRequest((event as CustomEvent<string>).detail);
     window.addEventListener(SEND_EVENT, listener);
@@ -43,8 +45,10 @@ export function ArtifactChat({ conversationId, initial, running: initialRunning,
   }, []);
   // The creation request, if this page is the first to claim it.
   useEffect(() => {
-    if (artifactId) void claimFirstPrompt(artifactId).then(prompt => { if (prompt) setRequest(prompt); }, () => {});
-  }, [artifactId]);
+    if (!artifactId) return;
+    // Nothing to claim means another page or a lost response took it; the refreshed page then offers Send it again.
+    claimFirstPrompt(artifactId).then(prompt => { setClaimFailed(false); if (prompt) setRequest(prompt); else router.refresh(); }, () => setClaimFailed(true));
+  }, [artifactId, claimAttempt, router]);
 
   // A build that kept running while the user was away: check until its answer is saved.
   const resuming = running && !pending;
@@ -82,6 +86,7 @@ export function ArtifactChat({ conversationId, initial, running: initialRunning,
         : <p className="text-sm text-muted-foreground">Describe what to build. Ask for a Home card any time, e.g. “add this to Home as a small card”.</p>}
     </div>
     {unreachable && resuming && <p role="alert" className="text-xs text-warning">Could not check on this build. It may still be running. Moneo keeps trying.</p>}
+    {claimFailed && <p role="alert" className="text-sm text-danger">Could not start your request. <button type="button" onClick={() => setClaimAttempt(count => count + 1)} className="underline">Try again</button></p>}
     <ChatForm conversationId={conversationId} selectionKey={`moneo-artifact-${conversationId}`} autoSend={request} placeholder="Change the page or a card…" onStart={onStart} onEvent={onEvent} onDone={onDone} />
   </div>;
 }
