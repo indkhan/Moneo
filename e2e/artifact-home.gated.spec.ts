@@ -64,7 +64,8 @@ test("an artifact card previews natively, goes on Home at its size, reacts to it
     await page.route(`**/api/cards/${cardId}?*`, async route => {
       const response = await route.fetch();
       if (new URL(route.request().url()).searchParams.get("size") === "M") await new Promise(resolve => setTimeout(resolve, 800));
-      await route.fulfill({ response });
+      // The page may have cancelled this older request while it was held back.
+      await route.fulfill({ response }).catch(() => {});
     });
     const resize = page.getByRole("button", { name: new RegExp(`^Resize ${title} card`) });
     await resize.focus();

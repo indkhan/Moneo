@@ -7,6 +7,9 @@ test.skip(!hasSupabaseEnv() || !state, gatedSkipReason());
 test("goal contributions, recorded savings and audit undo remain separate from cash reservations", async ({ page }) => {
   test.setTimeout(90_000);
   const name = `Goal QA ${crypto.randomUUID().slice(0, 8)}`;
+  // Only contributions after today count, so the dates move with the run. The 15th has no month-end clamping.
+  const today = new Date();
+  const monthsAhead = (months: number) => new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + months, 15)).toISOString().slice(0, 10);
   await page.goto("/plan");
   await page.getByPlaceholder("Goal name", { exact: true }).fill(name);
   await page.getByPlaceholder("Target amount", { exact: true }).fill("1000.00");
@@ -15,12 +18,12 @@ test("goal contributions, recorded savings and audit undo remain separate from c
   await expect(goal).toBeVisible({ timeout: 30_000 });
   await goal.getByText("Edit goal and contribution plan", { exact: true }).click();
   await goal.getByLabel("Planned monthly contribution (EUR)", { exact: true }).fill("300.00");
-  await goal.getByLabel("First contribution date", { exact: true }).fill("2026-10-31");
+  await goal.getByLabel("First contribution date", { exact: true }).fill(monthsAhead(1));
   await goal.getByLabel("Saved so far (EUR)", { exact: true }).fill("100.00");
   await goal.getByLabel("Savings as of", { exact: true }).fill("2026-10-01");
-  await goal.getByLabel("Target date", { exact: true }).fill("2027-01-31");
+  await goal.getByLabel("Target date", { exact: true }).fill(monthsAhead(4));
   await goal.getByRole("button", { name: "Save goal plan", exact: true }).click();
-  await expect(goal).toContainText("Expected completion 2026-12-31", { timeout: 30_000 });
+  await expect(goal).toContainText(`Expected completion ${monthsAhead(3)}`, { timeout: 30_000 });
   await expect(goal).toContainText("Cash set asideEUR 0.00");
   await page.reload();
   await expect(goal).toContainText("Saved so far as of 2026-10-01");
