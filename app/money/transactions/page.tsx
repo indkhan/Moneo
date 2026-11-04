@@ -139,6 +139,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   return <main className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-4 text-foreground max-md:flex max-md:flex-col sm:px-8 md:py-6 lg:py-8">
     {header(filters.cursor ? null : count)}
     {viewId && !activeView ? <p role="alert" className="text-sm">Saved view not found. Showing normal filters.</p> : null}
+    {/^\d+$/.test(params.applied ?? "") ? <p role="status" className="rounded-xl border border-border bg-card px-4 py-3 text-sm">Updated {params.applied} {params.applied === "1" ? "transaction" : "transactions"}. Showing that category. Undo the batch under <a className="underline" href="#editing-history">Editing history</a>, or <Link className="underline" href="/ai">return to the conversation</Link>.</p> : null}
     <div className="max-md:order-last"><PhoneCollapse label="Saved views" open={!!activeView}><SavedViewsPanel views={viewRows} activeViewId={activeView?.id ?? null} activeViewName={activeView?.name ?? null} saveDefaults={saveDefaults} /></PhoneCollapse></div>
     <div className="grid gap-6">
       <div className="min-w-0 space-y-4">
@@ -184,6 +185,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
           </form>}
         </details>
         <Suspense fallback={<p className="text-sm text-muted-foreground">Loading batch history…</p>}>
+          <div id="editing-history" className="scroll-mt-24" />
           <EditingHistory query={current.toString()} names={{ categories: categoryNames, merchants: merchantNames }} />
         </Suspense>
       </div>

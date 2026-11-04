@@ -1,5 +1,6 @@
 "use server";
 
+import { safely, type SafeState } from "@/lib/safe-action";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
@@ -264,3 +265,5 @@ export async function undoTransactionSplits(form: FormData) {
   revalidatePath("/", "layout");
   redirect(`${returnPath(form)}&transaction=${z.uuid().parse(form.get("id"))}`);
 }
+
+export async function bulkEditTransactionsSafely(_state: SafeState, form: FormData) { return safely(form, bulkEditTransactions); }

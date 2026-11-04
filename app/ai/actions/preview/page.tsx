@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireWorkspace } from "@/lib/auth";
 import { requireAiScope } from "@/lib/settings";
 import { categoryPreviewSchema, loadCategoryPreview } from "@/lib/finance/edit-preview";
-import { BulkEditor } from "@/app/money/transactions/bulk-editor";
+import { CategoryApproval } from "./category-approval";
 import { formatMoney } from "@/lib/finance/format";
 
 export const metadata = { title: "Review changes" };
@@ -22,10 +22,10 @@ export default async function ActionPreview({ searchParams }: { searchParams: Pr
   const categories = await supabase.from("categories").select("id, name").eq("workspace_id", workspace.id).in("id", categoryIds);
   if (categories.error) throw categories.error;
   return <main className="mx-auto max-w-3xl space-y-5 p-6"><h1 className="page-title">Review proposed category changes</h1>
-    <p>Set {preview.rows.length} selected transactions to {preview.category.name}. Check each entry and preview its current category before applying.</p>
+    <p>Set {preview.rows.length} selected transactions to {preview.category.name}. Nothing changes until you apply.</p>
     <p className="text-sm">Selected amounts: {Object.entries(preview.totals).map(([currency, amount]) => formatMoney(amount, currency, workspace.locale)).join(" · ")}. Separate currencies remain separate.</p>
     <p className="text-sm text-muted-foreground">{preview.warning}</p>
-    <BulkEditor rows={preview.rows} categories={categories.data} query="" requestId={crypto.randomUUID()} initialSelected={preview.rows.map(row => row.id)} initialCategory={preview.category.id} locale={workspace.locale} />
+    <CategoryApproval rows={preview.rows} category={preview.category} names={Object.fromEntries(categories.data.map(row => [row.id, row.name]))} requestId={crypto.randomUUID()} locale={workspace.locale} />
     <Link href="/ai" className="inline-block text-sm underline">Return to conversation</Link>
   </main>;
 }
