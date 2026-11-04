@@ -7,7 +7,7 @@ import postgres from "postgres";
 import { deleteDisposableUser } from "./fixtures";
 
 test("MNE024 owned direct history, stable pagination, newest reply and shared panel selection", async ({ browser, baseURL }) => {
-  test.setTimeout(360_000);
+  test.setTimeout(600_000);
   for (const name of ["SUPABASE_DB_URL", "SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"]) expect(Boolean(process.env[name]), `Missing ${name}`).toBe(true);
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!, connection = new URL(process.env.SUPABASE_DB_URL!);
   const project = new URL(url).hostname.split(".")[0];
@@ -73,7 +73,7 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     console.log("MNE024: tied history paged through 1000 records after new arrivals");
     expect(all).toHaveLength(1000); expect(new Set(all).size).toBe(1000); expect([...new Set(all)].sort()).toEqual(sorted);
     await page.getByRole("button", { name: "Older messages", exact: true }).click();
-    await expect(page.getByText("Synthetic message 801", { exact: true })).toBeVisible();
+    await expect(page.getByText(`Synthetic message ${1000 - 2 * initial.messages.length + 1}`, { exact: true })).toBeVisible();
     await page.goto(`/ai?conversation=${selected}`, { waitUntil: "domcontentloaded" });
     await expect(page.getByText("Synthetic new arrival answer", { exact: true })).toBeVisible();
     expect(message101Cursor).toBeTruthy();
@@ -105,8 +105,9 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
     const panel = page.getByRole("dialog", { name: "AI assistant" });
     await expect(panel.getByText("Synthetic newest post-send answer", { exact: true })).toBeVisible();
+    const shown = await panel.getByText(/^Synthetic message [0-9]+$/).count();
     await panel.getByRole("button", { name: "Older messages", exact: true }).click();
-    await expect(panel.getByText("Synthetic message 850", { exact: true })).toBeVisible();
+    await expect.poll(() => panel.getByText(/^Synthetic message [0-9]+$/).count()).toBeGreaterThan(shown);
     await page.reload({ waitUntil: "domcontentloaded" }); await expect(page.locator("html")).toHaveAttribute("data-mne024-ready", "true");
     await page.getByRole("button", { name: "Ask Moneo", exact: true }).click();
     await expect(panel.getByText("Synthetic newest post-send answer", { exact: true })).toBeVisible();

@@ -50,7 +50,8 @@ test("source correction invalidates the inferred forecast obligation and undo re
   const series=page.locator("article").filter({has:page.getByRole("heading",{name:label,exact:true})});
   await expect(series).toContainText("3 payments found");
   await series.getByRole("button",{name:"Confirm",exact:true}).click();
-  await expect(series).toContainText("Confirmed",{timeout:30_000});
+  await series.getByRole("button",{name:"Confirm recurring",exact:true}).click();
+  await expect(page.getByRole("region",{name:"Bills and subscriptions"})).toContainText(label,{timeout:30_000});
   await page.goto("/plan");
   const assumption=page.locator("li").filter({has:page.getByRole("heading",{name:label,exact:true})});
   await expect(assumption).toContainText("Detected from your transactions");await expect(assumption).toContainText("Used in forecast");
@@ -64,7 +65,7 @@ test("source correction invalidates the inferred forecast obligation and undo re
   await transfer.getByRole("checkbox").check();await transfer.getByRole("button",{name:"Confirm verified transfer",exact:true}).click();
   await expect(detail.getByText("Transfer pair:",{exact:false})).toBeVisible({timeout:30_000});
   await page.goto("/money/recurring");
-  await expect(page.getByRole("heading",{name:"Confirmed source evidence changed",exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"Payments behind a confirmed schedule changed",exact:true})).toBeVisible();
   await page.goto("/plan");
   const disabled=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} (disabled)`,exact:true})});
   await expect(disabled).toContainText("Not used in forecast");
@@ -73,8 +74,8 @@ test("source correction invalidates the inferred forecast obligation and undo re
   await page.goto(sourceUrls[2]);await detail.getByRole("button",{name:"Undo verified link",exact:true}).click();
   await expect(detail.getByRole("heading",{name:"Verified transfer",exact:true})).toBeVisible({timeout:30_000});
   await expect(detail.locator('pre[aria-label="Original source evidence"]')).toContainText('"amount_minor": "-1000"');
-  await page.goto("/money/recurring");await expect(series).toContainText("Confirmed");
-  await expect(page.getByRole("heading",{name:"Confirmed source evidence changed",exact:true})).not.toBeVisible();
+  await page.goto("/money/recurring");await expect(page.getByRole("region",{name:"Bills and subscriptions"})).toContainText(label);
+  await expect(page.getByRole("heading",{name:"Payments behind a confirmed schedule changed",exact:true})).not.toBeVisible();
   await page.goto("/plan");await expect(assumption).toContainText("Used in forecast");
   await expect(assumption).toContainText("Detected from your transactions");
   await expect(forecast).toContainText("EUR 990.00");

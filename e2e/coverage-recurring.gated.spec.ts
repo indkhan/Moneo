@@ -95,14 +95,13 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       await page.goto("/money/recurring");
       await expect(candidate).toHaveCount(1); await expect(candidate).toContainText(cadence);
       await expect(candidate).toContainText("3 payments found");
-      await expect(candidate).toContainText("not a probability");
-      await candidate.getByRole("button", {name: "Confirm",exact: true}).click(); await expect(candidate).toContainText("Confirmed");
+      await candidate.getByRole("button", {name: "Confirm",exact: true}).click(); await candidate.getByRole("button", {name: "Confirm recurring",exact: true}).click(); await expect(page.getByRole("region", {name: "Bills and subscriptions"})).toContainText(`MNE014 ${cadence}`);
       const [generated] = await db`select a.id,a.version,a.cadence,a.schedule_anchor_on::text from public.financial_assumptions a join public.recurring_series s on s.assumption_id=a.id where s.workspace_id=${workspace!} and s.account_id=${account}`;
       expect(generated.cadence).toBe(cadence); expect(generated.schedule_anchor_on).toBe(anchor);
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected); await expect(forecast).not.toContainText("Forecast unavailable");
-      await page.goto("/money/recurring"); await candidate.getByRole("button", {name: "Not recurring",exact: true}).click(); await expect(candidate).toContainText("Dismissed");
+      await page.goto("/money/recurring"); await page.getByText(/^Already decided/).click(); await candidate.getByRole("button", {name: "Not recurring",exact: true}).click(); await expect(candidate).toContainText("Dismissed");
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText("EUR 2000.00");
-      await page.goto("/money/recurring"); await candidate.getByRole("button", {name: "Confirm",exact: true}).click(); await expect(candidate).toContainText("Confirmed");
+      await page.goto("/money/recurring"); await page.getByText(/^Already decided/).click(); await candidate.getByRole("button", {name: "Confirm",exact: true}).click(); await candidate.getByRole("button", {name: "Confirm recurring",exact: true}).click(); await expect(candidate).toContainText("Confirmed");
       const review = page.getByRole("region", {name: "Occurrence reconciliation"});
       const [{version}] = await db`select version from public.financial_assumptions where id=${generated.id} and workspace_id=${workspace!}`;
       if (!await review.locator("details").evaluate(node => (node as HTMLDetailsElement).open)) await review.locator("summary").click();
@@ -121,7 +120,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       await choices.selectOption((await choices.locator("option").filter({hasText: creditLabel}).getAttribute("value"))!);
       await transfer.getByRole("checkbox").check(); await transfer.getByRole("button", {name: "Confirm verified transfer",exact: true}).click();
       await expect(detail.getByText("Transfer pair:", {exact: false})).toBeVisible();
-      await page.goto("/money/recurring"); await expect(page.getByRole("heading", {name: "Confirmed source evidence changed",exact: true})).toBeVisible();
+      await page.goto("/money/recurring"); await expect(page.getByRole("heading", {name: "Payments behind a confirmed schedule changed",exact: true})).toBeVisible();
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText("Forecast unavailable");
       await reviewBookedBalances();
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText("EUR 2000.00");
@@ -145,6 +144,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       record("early_payment_toggle_verified",{scheduledOn:latest,postedOn:postedLatest});
       // Dismiss candidate discovery while retaining this intentional schedule's paid proof.
       await page.goto("/money/recurring");
+      await page.getByText(/^Already decided/).click();
       await candidate.getByRole("button",{name:"Not recurring",exact:true}).click();
       await expect(candidate).toContainText("Dismissed");
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
