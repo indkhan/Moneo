@@ -76,3 +76,18 @@ it("accepts settlement only through the atomic normalized settlement RPC", async
     p_pending_version: 0, p_expected_released_minor: "0", p_released_minor: "2000", p_note: settlement.note, p_request_id: settlement.requestId,
     p_expected_route_id: null, p_account_id: null, p_expected_account_version: null }]);
 });
+
+it("undo targets the exact owned decision receipt instead of accepting or reparsing", async () => {
+  fixture.source = { id: "source", status: "accepted", normalized_row: {} };
+  const decisionId = "11111111-1111-4111-a111-111111111111";
+  const response = await POST(new Request("http://localhost/review", { method: "POST", body: JSON.stringify({ sourceId: "source", action: "undo", decisionId }) }), { params: Promise.resolve({ id: "import" }) });
+  expect(response.status).toBe(200);
+  expect(fixture.calls).toEqual([{ rpcName: "undo_import_row_decision", p_decision_id: decisionId }]);
+});
+
+it("refuses undo without an exact decision receipt", async () => {
+  fixture.source = { id: "source", status: "accepted", normalized_row: {} };
+  const response = await POST(new Request("http://localhost/review", { method: "POST", body: JSON.stringify({ sourceId: "source", action: "undo" }) }), { params: Promise.resolve({ id: "import" }) });
+  expect(response.status).toBe(400);
+  expect(fixture.calls).toHaveLength(0);
+});

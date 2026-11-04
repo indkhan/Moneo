@@ -16,3 +16,8 @@ it("never shows database or schema text", () => {
   for (const raw of ['duplicate key value violates unique constraint "x"', '[{"code":"invalid_type","path":["sourceId"]}]', "Normalize the reviewed original before acceptance"])
     expect(reviewErrorMessage(raw)).toBe("This decision could not be saved, and nothing changed. Refresh the page and try again.");
 });
+
+it("explains row-undo dependencies without exposing database details", () => {
+  for (const message of ["Undo dependent reviewed balances in Accounts before reopening this row", "Undo later transaction changes before reopening this row", "This transaction has other source evidence; open Transactions to review it"])
+    expect(reviewErrorMessage(message)).toBe(message);
+});

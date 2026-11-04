@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
-import { ClassificationActions, ReviewActions } from "./actions";
+import { ClassificationActions, ReviewActions, UndoRowDecision } from "./actions";
 import { formatMoney } from "@/lib/finance/format";
 import { mappingSchema, mapImportReviewRow, type SourceRow } from "@/lib/import/csv";
 import { PendingSettlement } from "./pending-settlement";
@@ -59,7 +59,11 @@ export default async function ImportReviewPage({ params, searchParams }: { param
     (historyBefore ? historyQuery.lt("created_at", historyBefore) : historyQuery).order("created_at", { ascending: false }).limit(HISTORY_SIZE),
     decidedQuery,
   ]);
-  const decided = decidedRows.data?.filter(row => !decisions.some(item => item.rowNumber === row.row_number)) ?? [];
+  const decided = decidedRows.data?.filter(row => !decisions.some(item => item.rowNumber === row.row_number && item.action === "exclude")) ?? [];
+  const decisionSources = [...(decidedRows.data ?? []), ...(rows ?? [])].map(row => row.id);
+  const decisionEvents = decisionSources.length ? await supabase.from("import_row_decisions")
+    .select("id, source_id, action, created_at, undone_at").eq("workspace_id", workspace.id)
+    .in("source_id", decisionSources).order("created_at", { ascending: false }).limit(1000) : null;
   const complete = imported.status === "completed" && !imported.review_rows && !imported.classification_review_rows;
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
@@ -93,6 +97,7 @@ export default async function ImportReviewPage({ params, searchParams }: { param
       const eligible = destinations.error ? [] : (destinations.data ?? []).filter(account => !account.archived_at && account.currency_code === currency);
       return <article className="space-y-4 rounded-xl border border-border bg-card p-4 sm:p-6" key={row.id}>
       <h2 className="text-sm font-medium">Source row {row.row_number}</h2>
+      {(decisionEvents?.data ?? []).filter(event => event.source_id === row.id && event.undone_at).map(event => <p className="text-xs text-muted-foreground" key={event.id}>Previously {event.action === "accepted" ? "accepted" : "rejected"}; reopened {new Date(event.undone_at!).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}. Original evidence is unchanged.</p>)}
       {interpreted ? <p className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><span className="min-w-0 break-words"><span className="font-medium">{interpreted.description}</span> <span className="font-mono text-xs text-muted-foreground">{interpreted.postedOn}</span></span><span className="font-mono font-medium tabular-nums">{formatMoney(BigInt(interpreted.amountMinor), interpreted.currencyCode, workspace.locale)}</span></p>
         : <p role="alert" className="text-sm">Moneo could not read this row. Check the original below before deciding.</p>}
       <p className="text-sm text-muted-foreground">Held back because it may overlap something you already have. It is not in your totals yet.</p>
@@ -124,16 +129,21 @@ export default async function ImportReviewPage({ params, searchParams }: { param
     </section>
     <section aria-labelledby="decided-rows" className="space-y-4">
       <h2 id="decided-rows" className="scroll-mt-20 text-sm font-medium">Decided rows</h2>
-      <p className="text-sm text-muted-foreground">Rows you accepted or rejected on this page. A single row cannot be reopened. To redo a decision, finish the remaining rows, undo the whole import from <Link className="underline" href="/import">Import history</Link>, then import the file again. Undo shows what it would remove and refuses if other records depend on it. To fix one accepted transaction, open it instead.</p>
+      <p className="text-sm text-muted-foreground">Rows you accepted or rejected on this page. Undo decision returns one row to review and preserves its history. Later edits or dependent records must be resolved first. For older decisions without a receipt, undo the whole import from <Link className="underline" href="/import">Import history</Link>, then import the file again. Undo shows what it would remove and refuses if other records depend on it. To fix one accepted transaction, open it instead.</p>
       {decidedRows.error && <p role="alert" className="text-sm text-danger">Could not load decided rows. <Link className="underline" href={`/import/${id}/review`}>Try again</Link></p>}
       {!decidedRows.error && !decided.length && <p className="text-sm text-muted-foreground">{decidedAfter ? "No more decided rows." : "None yet."}</p>}
+      {decisionEvents?.error && <p role="alert" className="text-sm text-danger">Could not load decision history. Reload before undoing a decision.</p>}
       {decided.map(row => {
+        const events = decisionEvents?.data?.filter(event => event.source_id === row.id) ?? [];
+        const activeDecision = events.find(event => !event.undone_at);
         const interpreted = (row.normalized_row as { row?: { postedOn: string; description: string; amountMinor: string; currencyCode: string } } | null)?.row;
         const transactionId = (row.transaction_sources as unknown as { transaction_id: string }[])[0]?.transaction_id;
         return <article key={row.id} className="space-y-2 rounded-lg border border-border p-4 text-sm">
           <h3 className="font-medium">Row {row.row_number} · {row.status === "rejected" ? "Rejected, not in your totals" : "Accepted"}</h3>
           {interpreted && <p className="break-words">{interpreted.description} · {interpreted.postedOn} · {formatMoney(BigInt(interpreted.amountMinor), interpreted.currencyCode, workspace.locale)}</p>}
           {row.status === "accepted" && transactionId && <Link className="underline" href={`/money/transactions?transaction=${transactionId}`}>Open the transaction</Link>}
+          {events.length > 0 && <ol className="space-y-1 text-xs text-muted-foreground" aria-label={`Decision history for row ${row.row_number}`}>{events.map(event => <li key={event.id}>{event.action === "accepted" ? "Accepted" : "Rejected"} {new Date(event.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{event.undone_at ? ` - reopened ${new Date(event.undone_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}` : ""}</li>)}</ol>}
+          {activeDecision && imported.status === "completed" ? <UndoRowDecision importId={id} sourceId={row.id} decisionId={activeDecision.id} rowNumber={row.row_number} /> : !decisionEvents?.error && <p className="text-xs text-muted-foreground">This older decision has no undo receipt. Open an accepted transaction to correct it, or use Undo import in Import history.</p>}
           <details><summary className="cursor-pointer text-muted-foreground">Original row</summary><div className="mt-2"><SourceFields row={row.original_row as SourceRow} /></div></details>
         </article>;
       })}
