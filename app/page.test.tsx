@@ -35,7 +35,7 @@ const render = async (account?: string) => renderToStaticMarkup(await resolveTre
 it("Home labels pooled EUR600 separately and surfaces checking EUR400 deficit/date/bill", async () => {
   const html = await render("checking");
   expect(html).toContain("Aggregate headroom"); expect(html).toContain("EUR 600.00");
-  expect(html).toContain("Checking funding shortfall: EUR 400.00"); expect(html).toContain("2026-10-08");
+  expect(html).toContain("Checking funding shortfall: EUR 400.00"); expect(html).toContain("Oct 8, 2026");
   expect(html).toContain("Recurring bill"); expect(html).toContain("Chosen-account headroom");
   expect(html).toContain("-EUR 400.00"); expect(html).not.toContain("Available to spend</h2>");
   expect(html).toContain("/plan?account=checking");

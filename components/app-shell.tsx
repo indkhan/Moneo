@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Suspense, use, useEffect, useState, useSyncExternalStore } from "react";
 import {
   ArrowLeftRight, Bell, ChartLine, ChartPie, Coins, CreditCard, LayoutGrid, Layers, ListChecks, Menu, MessageSquare,
-  Network, Repeat, Search, SearchCheck, SlidersHorizontal, Tags, Target, TrendingUp, Upload, type LucideIcon,
+  Network, Repeat, Search, SearchCheck, SlidersHorizontal, Sparkles, Tags, Target, TrendingUp, Upload, type LucideIcon,
 } from "lucide-react";
 import { signOut } from "@/app/settings/actions";
 import { AiPanel } from "@/components/ai-panel";
@@ -17,10 +17,11 @@ import { cn } from "@/lib/utils";
 /** Streamed from the root layout; null when signed out or the lookup failed. */
 export type ShellData = { accounts: { id: string; name: string }[]; counts: Partial<Record<string, number>> } | null;
 
-type NavItem = { label: string; href: string; icon: LucideIcon; go?: string };
+/** `about` says what a page is for where its name alone leaves people guessing. */
+type NavItem = { label: string; href: string; icon: LucideIcon; go?: string; about?: string };
 /** A rail entry; one with `items` is a section whose pages show as tabs under the header. */
 type RailItem = NavItem & { items?: NavItem[] };
-const rail: RailItem[] = [
+const money: RailItem[] = [
   { label: "Overview", href: "/", icon: LayoutGrid, go: "h" },
   { label: "Transactions", href: "/money/transactions", icon: ArrowLeftRight, items: [
     { label: "Ledger", href: "/money/transactions", icon: ArrowLeftRight, go: "t" },
@@ -36,18 +37,19 @@ const rail: RailItem[] = [
     { label: "Currency", href: "/plan/currency", icon: Coins },
   ] },
   { label: "Wealth", href: "/money/wealth", icon: TrendingUp, go: "w" },
-  { label: "Ask", href: "/ai", icon: MessageSquare, go: "c" },
-  { label: "Agents", href: "/ai/agents", icon: Network, items: [
-    { label: "Agent team", href: "/ai/agents", icon: Network, go: "m" },
-    { label: "Activity log", href: "/ai/activity", icon: ListChecks },
-  ] },
-  { label: "Artifacts", href: "/ai/artifacts", icon: Layers },
 ];
+const ai: RailItem = { label: "AI", href: "/ai", icon: Sparkles, items: [
+  { label: "Ask", href: "/ai", icon: MessageSquare, go: "c", about: "Chat about your money" },
+  { label: "Agents", href: "/ai/agents", icon: Network, go: "m", about: "Reviews that suggest changes for you to accept" },
+  { label: "Artifacts", href: "/ai/artifacts", icon: Layers, about: "Saved reports and tools" },
+  { label: "Activity log", href: "/ai/activity", icon: ListChecks, about: "What background work did, and when" },
+] };
+const rail = [...money, ai];
 const noChanges = () => () => {};
 const isApple = () => /mac|iphone|ipad/i.test(navigator.userAgent);
 const settingsItem: NavItem = { label: "Settings", href: "/settings", icon: SlidersHorizontal, go: "s" };
 // The attention view of the activity feed, linked directly: /notifications only redirects there.
-const notificationsItem: NavItem = { label: "Notifications", href: "/ai/activity?filter=attention", icon: Bell, go: "n" };
+const notificationsItem: NavItem = { label: "Needs attention", href: "/ai/activity?filter=attention", icon: Bell, go: "n" };
 const allItems: NavItem[] = [...rail.flatMap(item => item.items ?? [item]), settingsItem, notificationsItem];
 // Ask is the sparkle button in the header on every screen, so the fourth place goes to Accounts.
 const mobileTabs = ["/", "/money/transactions", "/money/accounts", "/plan"].map(href => rail.find(item => item.href === href)!);
@@ -93,7 +95,7 @@ function MenuLink({ item, current, shell, onNavigate }: { item: NavItem; current
   const Icon = item.icon;
   return <IntentLink href={item.href} onClick={onNavigate} aria-current={current === item ? "page" : undefined}
     className={cn("flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm", current === item ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted")}>
-    <Icon className="size-4 shrink-0" aria-hidden="true" /><span className="mr-auto truncate">{item.label}</span>
+    <Icon className="size-4 shrink-0" aria-hidden="true" /><span className="mr-auto min-w-0"><span className="block truncate">{item.label}</span>{item.about && <span className="block truncate text-xs font-normal text-muted-foreground">{item.about}</span>}</span>
     <Suspense><Count shell={shell} hrefs={[item.href]} /></Suspense>
   </IntentLink>;
 }
@@ -143,7 +145,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
     { id: "import", label: "Import a statement", group: "Actions", keywords: "upload csv xlsx file", run: () => router.push("/import") },
     { id: "shortcuts", label: "Keyboard shortcuts", group: "Actions", hint: "?", run: () => setHelp(true) },
     { id: "sign-out", label: "Sign out", group: "Actions", keywords: "log out logout account", run: () => void signOut() },
-    ...allItems.map(item => ({ id: item.href, label: item.label, group: "Pages", keywords: railFor(item)?.label,
+    ...allItems.map(item => ({ id: item.href, label: item.label, group: "Pages", keywords: [railFor(item)?.label, item.about, item === notificationsItem && "notifications"].filter(Boolean).join(" "),
       hint: item.go && `G ${item.go.toUpperCase()}`, run: () => router.push(item.href) })),
   ];
   const paletteProps = { open: palette, onClose: () => setPalette(false), onAsk: (question: string) => window.dispatchEvent(new CustomEvent<AskSeed>(ASK_EVENT, { detail: { question } })),
@@ -155,7 +157,10 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
     <nav aria-label="Main" className="scrollbar-none fixed inset-y-0 left-0 z-30 hidden w-22 flex-col items-center gap-5 overflow-y-auto border-r border-border bg-sidebar px-3 py-5 lg:flex">
       <Link href="/" aria-label="Moneo home" className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-lime font-display text-[22px] font-bold tracking-tighter text-[#0f1011]">m</Link>
       <div className="flex flex-col items-center gap-0.5">
-        {rail.map(item => <RailLink key={item.href} item={item} active={section === item} shell={shell} />)}
+        <p className="eyebrow pb-1 text-[10px]">Money</p>
+        {money.map(item => <RailLink key={item.href} item={item} active={section === item} shell={shell} />)}
+        <div className="my-2 h-px w-10 bg-border" aria-hidden="true" />
+        <RailLink item={ai} active={section === ai} shell={shell} />
         <RailLink item={settingsItem} active={current === settingsItem} shell={shell} />
       </div>
     </nav>
@@ -168,13 +173,13 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
           </button>
           <div className="ml-auto flex items-center gap-2">
             <AiPanel />
-            <IntentLink href={notificationsItem.href} aria-label="Notifications"
+            <IntentLink href={notificationsItem.href} aria-label={notificationsItem.label} title={notificationsItem.label}
               className="flex size-11 items-center justify-center rounded-xl border border-input hover:bg-muted"><Bell className="size-[18px]" strokeWidth={1.6} aria-hidden="true" /></IntentLink>
             <Link href={settingsItem.href} aria-label="Settings" className="flex size-11 items-center justify-center rounded-full bg-input text-muted-foreground hover:text-foreground lg:hidden"><SlidersHorizontal className="size-[18px]" aria-hidden="true" /></Link>
           </div>
         </div>
-        {section?.items && <nav aria-label={section.label} className="scrollbar-none flex gap-1 overflow-x-auto px-4 pb-3 sm:px-6 lg:px-8">
-          {section.items.map(item => <IntentLink key={item.href} href={item.href} aria-current={current === item ? "page" : undefined}
+        {section?.items && !artifactEditor && <nav aria-label={section.label} className="scrollbar-none flex gap-1 overflow-x-auto px-4 pb-3 sm:px-6 lg:px-8">
+          {section.items.map(item => <IntentLink key={item.href} href={item.href} title={item.about} aria-current={current === item ? "page" : undefined}
             className={cn("flex h-11 shrink-0 items-center gap-2 rounded-[10px] lg:h-9 px-3.5 text-[13px]", current === item ? "bg-foreground font-medium text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
             {item.label}<Suspense><Count shell={shell} hrefs={[item.href]} /></Suspense>
           </IntentLink>)}
@@ -191,6 +196,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
     </nav>
     <Modal open={menu} onClose={() => setMenu(false)} label="Navigation" className="inset-x-0 bottom-0 top-auto w-full lg:hidden">
       <nav aria-label="All pages" className="max-h-[80vh] w-full space-y-4 overflow-y-auto rounded-t-2xl border-t border-border bg-card p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        <p className="eyebrow px-3">Money</p>
         {rail.map(item => <div key={item.href} className="space-y-0.5">
           {item.items && <p className="eyebrow px-3 pb-1">{item.label}</p>}
           {(item.items ?? [item]).map(child => <MenuLink key={child.href} item={child} current={current} shell={shell} onNavigate={() => setMenu(false)} />)}

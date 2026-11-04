@@ -27,7 +27,7 @@ export async function AiUsage({ window }: { window: UsageWindow }) {
       : <p className="mt-4 text-sm text-muted-foreground">No AI chat requests with token counts in this period.</p>}
     <p className="mt-4 text-sm text-muted-foreground">
       {unreported ? `${format.format(unreported)} ${unreported === 1 ? "request" : "requests"} had no token count and ${unreported === 1 ? "is" : "are"} left out. ` : ""}
-      Costs are not recorded.{data.length === ROW_LIMIT ? ` Showing the latest ${format.format(ROW_LIMIT)} requests.` : ""}
+      {data.length === ROW_LIMIT ? ` Showing the latest ${format.format(ROW_LIMIT)} requests.` : ""}
     </p>
   </>;
 }

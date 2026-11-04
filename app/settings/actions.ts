@@ -12,7 +12,10 @@ import { modelForSettings } from "@/lib/ai/provider";
 import { minorDigits } from "@/lib/finance/fx";
 import { revokeBankSessions } from "@/lib/bank/server";
 
-export async function saveSettings(_previous: { error?: string; saved?: boolean }, form: FormData): Promise<{ error?: string; saved?: boolean }> {
+export type SaveSettingsState = { error?: string; field?: string; saved?: boolean };
+
+export async function saveSettings(_previous: SaveSettingsState, form: FormData): Promise<SaveSettingsState> {
+  let field: string | undefined;
   try {
     const { supabase, workspace, settings: previous } = await requireWorkspace();
     const settings = settingsSchema.parse({
@@ -21,11 +24,13 @@ export async function saveSettings(_previous: { error?: string; saved?: boolean 
       ai_data_scopes: form.getAll("ai_data_scopes"), muted_insight_types: form.getAll("muted_insight_types"),
       summary_cadence: form.get("summary_cadence"), summary_time: form.get("summary_time"),
     });
-    const currency = z.string().regex(/^[A-Z]{3}$/, "Use a three-letter currency code").parse(form.get("display_currency"));
+    field = "display_currency";
+    const currency = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, "Use a three-letter currency code, such as EUR").parse(form.get("display_currency"));
     minorDigits(currency);
     // Typed models are free text, so each newly changed one must answer before it is saved.
     for (const agent of AI_AGENT_KEYS) {
       if (!settings.ai_models[agent] || settings.ai_models[agent] === previous?.ai_models[agent]) continue;
+      field = `model:${agent}`;
       const check = await generateText({ model: await modelForSettings(settings, agent), prompt: "Reply with the single word OK.",
         maxOutputTokens: 512, maxRetries: 0, abortSignal: AbortSignal.timeout(15000) })
         .catch(error => APICallError.isInstance(error) && error.statusCode === 429 ? "rate-limited" as const : null);
@@ -33,13 +38,16 @@ export async function saveSettings(_previous: { error?: string; saved?: boolean 
       if (check === "rate-limited") continue;
       if (!check?.text.trim()) throw new Error(`Model "${settings.ai_models[agent]}" did not respond; check the name and its API key`);
     }
+    field = undefined;
     const result = await supabase.rpc("save_workspace_preferences", { p_workspace_id: workspace.id, p_display_currency: currency, p_preferences: settings });
     if (result.error) throw new Error("Preferences could not be saved; your previous settings are preserved");
     (await cookies()).set("moneo-theme", settings.theme, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 31536000 });
     revalidatePath("/", "layout");
     return { saved: true };
   } catch (error) {
-    return { error: error instanceof z.ZodError ? error.issues.map(issue => issue.message).join(". ") : error instanceof Error ? error.message : "Preferences could not be saved" };
+    const zodField = error instanceof z.ZodError ? error.issues[0]?.path[0] : undefined;
+    return { error: error instanceof z.ZodError ? error.issues.map(issue => issue.message).join(". ") : error instanceof Error ? error.message : "Preferences could not be saved",
+      field: typeof zodField === "string" ? zodField : field };
   }
 }
 

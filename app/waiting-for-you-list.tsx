@@ -26,7 +26,7 @@ export function groupRepeats(proposals: OpenProposal[]) {
   return [...groups.values()];
 }
 
-function RepeatGroup({ proposals }: { proposals: OpenProposal[] }) {
+function RepeatGroup({ proposals, locale }: { proposals: OpenProposal[]; locale?: string }) {
   const [pending, start] = useBusy();
   const [dismissed, setDismissed] = useState(false);
   const [error, setError] = useState<string>();
@@ -44,7 +44,7 @@ function RepeatGroup({ proposals }: { proposals: OpenProposal[] }) {
     <p className="mt-2 text-sm text-muted-foreground">These look like the same purchase. Add only the ones that really happened.</p>
     {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
     <button type="button" disabled={pending} onClick={dismiss} className="mt-2 min-h-9 rounded-lg border border-border px-4 text-sm hover:bg-muted disabled:opacity-50">Dismiss all {proposals.length}</button>
-    {proposals.map(proposal => <IouCard key={proposal.id} id={proposal.id} initial={proposal} />)}
+    {proposals.map(proposal => <IouCard key={proposal.id} id={proposal.id} initial={proposal} locale={locale} />)}
   </details>;
 }
 
@@ -52,18 +52,18 @@ function RepeatGroup({ proposals }: { proposals: OpenProposal[] }) {
  * What waits for a decision: loans, expenses and balances as single cards; recurring, uncategorized and flagged items as one
  * summary card each that opens them in a sheet. Filtered-out cards stay mounted (hidden), so a card decided here keeps its outcome.
  */
-export function WaitingForYouList({ proposals: all, review = { uncategorized: 0, findings: [] } }: { proposals: OpenProposal[]; review?: HomeReview }) {
+export function WaitingForYouList({ proposals: all, review = { uncategorized: 0, findings: [] }, locale }: { proposals: OpenProposal[]; review?: HomeReview; locale?: string }) {
   const [filter, setFilter] = useState<Filter>();
   const [expanded, setExpanded] = useState(false);
   const recurring = all.filter(proposal => proposal.kind === "recurring_edit");
   const proposals = all.filter(proposal => proposal.kind !== "recurring_edit");
   const entries: { key: string; filter?: Filter; node: React.ReactNode }[] = [
-    ...review.uncategorized > 0 ? [{ key: "uncategorized", node: <SummaryCard title={`${plural(review.uncategorized, "transaction needs", "transactions need")} a category`} detail="Grouped by merchant, with a suggestion where the app has one."><UncategorizedSheet total={review.uncategorized} /></SummaryCard> }] : [],
+    ...review.uncategorized > 0 ? [{ key: "uncategorized", node: <SummaryCard title={`${plural(review.uncategorized, "transaction needs", "transactions need")} a category`} detail="Grouped by merchant, with a suggestion where the app has one."><UncategorizedSheet total={review.uncategorized} locale={locale} /></SummaryCard> }] : [],
     ...recurring.length > 0 ? [{ key: "recurring", node: <SummaryCard title={`${plural(recurring.length, "recurring change", "recurring changes")} to confirm`} detail="Payments that repeat, and price changes on ones you confirmed."><RecurringSheet proposals={recurring} /></SummaryCard> }] : [],
-    ...review.findings.length > 0 ? [{ key: "findings", node: <SummaryCard title={`${plural(review.findings.length, "thing looks", "things look")} off`} detail="Possible duplicates, fees and unusual charges from your latest syncs."><FindingsSheet findings={review.findings} /></SummaryCard> }] : [],
-    ...groupRepeats(proposals).map(group => ({ key: group[0].id, filter: filterOf(group[0].kind), node: group.length === 1 ? <IouCard id={group[0].id} initial={group[0]} /> : <RepeatGroup proposals={group} /> })),
+    ...review.findings.length > 0 ? [{ key: "findings", node: <SummaryCard title={`${plural(review.findings.length, "thing looks", "things look")} off`} detail="Possible duplicates, fees and unusual charges from your latest syncs."><FindingsSheet findings={review.findings} locale={locale} /></SummaryCard> }] : [],
+    ...groupRepeats(proposals).map(group => ({ key: group[0].id, filter: filterOf(group[0].kind), node: group.length === 1 ? <IouCard id={group[0].id} initial={group[0]} locale={locale} /> : <RepeatGroup proposals={group} locale={locale} /> })),
   ];
-  const count = entries.length;
+  const count = filter ? entries.filter(entry => entry.filter === filter).length : entries.length;
   const present = FILTERS.filter(([key]) => proposals.some(proposal => filterOf(proposal.kind) === key));
   const chip = (active: boolean) => `h-11 rounded-full border px-3.5 lg:h-9 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai ${active ? "border-foreground bg-foreground text-background" : "border-input text-muted-foreground hover:bg-muted hover:text-foreground"}`;
   return <details open aria-label="Waiting for you" className="group">

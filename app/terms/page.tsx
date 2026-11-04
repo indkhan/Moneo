@@ -16,7 +16,7 @@ export default function TermsPage() {
             <span className="font-display text-base font-semibold tracking-tight">Moneo</span>
           </Link>
         </div>
-        <div className="rounded-2xl border border-border bg-card p-8">
+        <div className="rounded-2xl border border-border bg-card p-5 sm:p-8">
           <p className="eyebrow">Terms</p>
           <h1 className="mt-2 page-title">Terms of use</h1>
           <p className="mt-3 rounded-lg border border-warning/40 bg-warning-soft px-3 py-2 text-sm text-warning">
@@ -29,7 +29,7 @@ export default function TermsPage() {
             </section>
             <section>
               <h2 className="text-sm font-medium text-foreground">Your responsibilities</h2>
-              <p className="mt-1">Provide accurate information, keep your sign-in details private, and only import data you have the right to use. You remain responsible for your financial decisions.</p>
+              <p className="mt-1">Provide accurate information, keep your password and emailed sign-in links private, and only import data you have the right to use. If someone else may have access, <Link href="/login?mode=forgot" className="underline hover:text-foreground">reset your password</Link>. You remain responsible for your financial decisions.</p>
             </section>
             <section>
               <h2 className="text-sm font-medium text-foreground">No financial advice or money movement</h2>
@@ -41,15 +41,15 @@ export default function TermsPage() {
             </section>
             <section>
               <h2 className="text-sm font-medium text-foreground">Availability and changes</h2>
-              <p className="mt-1">As a pre-launch app, Moneo may be unavailable, reset test data, or change features at any time. Final limits, pricing, and support terms will be published at launch. Questions: <a href="mailto:mgsukhan@gmail.com" className="underline hover:text-foreground">mgsukhan@gmail.com</a>.</p>
+              <p className="mt-1">As a pre-launch app, Moneo may be unavailable, reset test data, or change features at any time, so keep your own copies of the statements and files you import. Final limits, pricing, and support terms will be published at launch. Questions: <a href="mailto:mgsukhan@gmail.com" className="underline hover:text-foreground">mgsukhan@gmail.com</a>.</p>
             </section>
             <p className="text-xs">Last updated: 4 November 2026 · This is a pre-launch draft, not legal advice.</p>
           </div>
         </div>
-        <p className="mt-4 text-center text-sm text-muted-foreground">
-          <Link href="/privacy" className="underline hover:text-foreground">Privacy</Link>
+        <p className="mt-4 flex flex-wrap items-center justify-center gap-x-1 text-sm text-muted-foreground">
+          <Link href="/privacy" className="inline-flex min-h-11 items-center px-2 underline hover:text-foreground">Privacy</Link>
           <span aria-hidden="true"> · </span>
-          <Link href="/" className="underline hover:text-foreground">Back to Moneo</Link>
+          <Link href="/" className="inline-flex min-h-11 items-center px-2 underline hover:text-foreground">Back to Moneo</Link>
         </p>
       </div>
     </main>

@@ -16,7 +16,7 @@ export default function PrivacyPage() {
             <span className="font-display text-base font-semibold tracking-tight">Moneo</span>
           </Link>
         </div>
-        <div className="rounded-2xl border border-border bg-card p-8">
+        <div className="rounded-2xl border border-border bg-card p-5 sm:p-8">
           <p className="eyebrow">Privacy</p>
           <h1 className="mt-2 page-title">Privacy notice</h1>
           <p className="mt-3 rounded-lg border border-warning/40 bg-warning-soft px-3 py-2 text-sm text-warning">
@@ -37,7 +37,7 @@ export default function PrivacyPage() {
             </section>
             <section>
               <h2 className="text-sm font-medium text-foreground">AI and third parties</h2>
-              <p className="mt-1">When you use AI features, the context needed to answer is sent to the model provider (OpenAI or OpenRouter, depending on the model you choose); voice calls send your audio to OpenAI. <Link href="/settings#ai" className="underline hover:text-foreground">Settings</Link> controls what AI can read. Your workspace is stored with our hosting and database providers (Vercel and Supabase). Bank connections run through Enable Banking with your consent. They bring data in only and never move money, and you can disconnect them in <Link href="/settings#banks" className="underline hover:text-foreground">Settings</Link>.</p>
+              <p className="mt-1">When you use AI features, the context needed to answer is sent to the model provider (OpenAI or OpenRouter, depending on the model you choose); voice calls send your audio to OpenAI. Mapping an import can send its column headers and up to eight sample rows. <Link href="/settings#ai" className="underline hover:text-foreground">Settings</Link> controls what AI can read. Your workspace is stored with our hosting and database providers (Vercel and Supabase). Bank connections run through Enable Banking with your consent. They bring data in only and never move money, and you can disconnect them in <Link href="/settings#banks" className="underline hover:text-foreground">Settings</Link>.</p>
             </section>
             <section>
               <h2 className="text-sm font-medium text-foreground">What we do not do</h2>
@@ -54,10 +54,10 @@ export default function PrivacyPage() {
             <p className="text-xs">Last updated: 4 November 2026 · This is a pre-launch draft, not legal advice.</p>
           </div>
         </div>
-        <p className="mt-4 text-center text-sm text-muted-foreground">
-          <Link href="/terms" className="underline hover:text-foreground">Terms</Link>
+        <p className="mt-4 flex flex-wrap items-center justify-center gap-x-1 text-sm text-muted-foreground">
+          <Link href="/terms" className="inline-flex min-h-11 items-center px-2 underline hover:text-foreground">Terms</Link>
           <span aria-hidden="true"> · </span>
-          <Link href="/" className="underline hover:text-foreground">Back to Moneo</Link>
+          <Link href="/" className="inline-flex min-h-11 items-center px-2 underline hover:text-foreground">Back to Moneo</Link>
         </p>
       </div>
     </main>

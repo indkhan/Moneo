@@ -19,7 +19,8 @@ import { getSupabaseConfig } from "@/lib/env";
 import { convertFx, minorDigits } from "@/lib/finance/fx";
 import { loadBalanceEvidence, resolveBalances } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
-import { describeMissingInputs, formatMoney } from "@/lib/finance/format";
+import { describeMissingInputs } from "@/lib/finance/format";
+import { displayFormat } from "@/lib/display-format";
 import { evaluatePlanForWorkspace } from "@/lib/finance/model";
 import { SourceCoverageDetails } from "./source-coverage";
 import { AgentBriefing, loadAgentBriefing } from "./agent-briefing";
@@ -48,7 +49,8 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   const { supabase, workspace } = context;
   const displayCurrency: string = workspace.display_currency;
   const locale = workspace.locale;
-  const money = (amount: bigint | string | number, currency: string) => formatMoney(amount, currency, locale);
+  const display = displayFormat(locale, workspace.timezone);
+  const { money } = display;
   const today = calendarDate(new Date(), workspace.timezone);
   const balanceEvidencePromise = loadBalanceEvidence(supabase, workspace.id);
   const allWealthPromise = loadWealthItems(supabase, workspace.id, true);
@@ -131,14 +133,9 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   // The change needs last month's end on record; without it there is nothing to compare with.
   const monthBase = trend.find(point => point.date === monthEnds(today, 1)[0])?.value ?? null;
   const monthChange = monthBase === null ? 0n : trend.at(-1)!.value - monthBase;
-  const fullDate = (date: string) => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
-  const dayMonth = (date: string) => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
-  const ago = (iso: string) => {
-    const minutes = Math.round((Date.parse(balanceEvidence.asOf) - Date.parse(iso)) / 60000), format = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-    return minutes < 60 ? format.format(-Math.max(minutes, 0), "minute") : minutes < 1440 ? format.format(-Math.round(minutes / 60), "hour") : format.format(-Math.round(minutes / 1440), "day");
-  };
-  const dateTile = (date: string) => { const at = new Date(`${date}T00:00:00Z`); return { month: new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" }).format(at), day: date.slice(8, 10) }; };
-  const monthLabel = (date: string) => new Intl.DateTimeFormat(locale, { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
+  const { date: fullDate, dayMonth, monthYear: monthLabel } = display;
+  const ago = (iso: string) => display.ago(iso, balanceEvidence.asOf);
+  const dateTile = (date: string) => ({ month: display.shortMonth(date), day: date.slice(8, 10) });
 
   const upcoming = (projection.input?.events ?? []).filter(event => event.expectedMinor < 0n && event.source !== "estimated").sort((a, b) => a.date.localeCompare(b.date));
   const upcomingMinor = upcoming.reduce((sum, event) => sum + event.expectedMinor, 0n);
@@ -172,7 +169,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
             {monthChange !== 0n && <span className="font-mono text-sm text-muted-foreground"><span className={monthChange > 0n ? "text-brand" : "text-warning"}>{monthChange > 0n ? "+" : ""}{money(monthChange, displayCurrency)}</span> this month{monthBase !== null && monthBase > 0n ? ` · ${monthChange > 0n ? "+" : ""}${(Number(monthChange * 1000n / monthBase) / 10).toFixed(1)}%` : ""}</span>}</div>
           : <p className="text-sm text-muted-foreground">Net worth unavailable in {displayCurrency}.</p>}
         {/* A partial total must say so: an account whose balance needs review is left out, not counted as zero. */}
-        {convertedCount > 0 && <CoverageNote counted={accountsCounted} total={accounts.length} />}
+        <CoverageNote counted={accountsCounted} total={accounts.length} />
         {missingInputs.length > 0 && <details className={`text-xs ${convertedCount ? "text-warning" : "text-muted-foreground"}`}><summary className="cursor-pointer text-brand">{convertedCount ? `Not counted: ${missing.length === 1 ? "1 item" : `${missing.length} items`}` : "See what is missing"}</summary><ul className="mt-2 list-disc space-y-1 pl-4">{missing.map(item => <li key={item}>{item}</li>)}</ul><Link href="/money/accounts" className="mt-2 mr-3 inline-block underline">Review balances</Link><Link href="/money/wealth" className="mt-2 inline-block underline">Review dated valuations</Link></details>}
         {convertedCount > 0 && trend.length > 1 && <div><NetWorthChart label={`Net worth in ${displayCurrency} at each month end`}
             points={trend.map(point => ({ date: point.date, label: point.date === today ? `Today, ${fullDate(today)}` : fullDate(point.date), amount: money(point.value, displayCurrency), y: Number(point.value) }))} />
@@ -191,7 +188,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     </section>,
     spending: <Suspense fallback={<SectionFallback title="Cash flow · 6 months" />}><CashFlowPanel {...sectionProps} /></Suspense>,
     recent: <Suspense fallback={<SectionFallback title="Recent transactions" />}><RecentTransactions db={supabase} workspaceId={workspace.id} locale={locale} names={accountNames} /></Suspense>,
-    planning: projection.liquidity && <section aria-label="Available funds"><HomeLiquidity liquidity={projection.liquidity} accountId={accountId} names={accountNames} locale={locale} coverage={<SourceCoverageDetails coverage={projection.sourceCoverage} />} /></section>,
+    planning: projection.liquidity && <section aria-label="Available funds"><HomeLiquidity liquidity={projection.liquidity} accountId={accountId} names={accountNames} locale={locale} coverage={<SourceCoverageDetails coverage={projection.sourceCoverage} locale={locale} />} /></section>,
     accounts: <section aria-labelledby="home-accounts" className={card}>
       <div className="flex flex-wrap items-center justify-between gap-2"><h2 id="home-accounts" className="text-sm font-medium"><Link href="/money/accounts" className="hover:underline">Accounts</Link></h2>
         <div className="flex gap-2"><Link href="/import" className="rounded-lg border border-input px-2.5 py-1 text-xs hover:bg-muted">Import file</Link><Link href="/import#connected-banks" className="rounded-lg border border-input px-2.5 py-1 text-xs hover:bg-muted">Connect bank</Link></div></div>
@@ -220,7 +217,7 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
     goals: <section className={card}>
       <div className="flex items-baseline justify-between gap-2"><h2 className="text-sm font-medium">Goals</h2><Link href="/plan" className="text-sm font-medium text-brand hover:underline">Plan</Link></div>
       <p className="mt-1 text-xs text-muted-foreground">Reserving money for a goal does not move it.</p>
-      <ul className="mt-2 divide-y divide-border">{(goals.data ?? []).map(goal => { const reservations = (allocations.data ?? []).filter(row => row.goal_id === goal.id); const comparable = reservations.every(row => accounts.find(account => account.id === row.account_id)?.currency_code === goal.currency_code); const reserved = reservations.reduce((sum, row) => sum + BigInt(row.amount_minor), 0n); return <li key={goal.id} className="py-2 text-sm"><Link href="/plan" className="font-medium hover:underline">{goal.name}</Link><p className="text-xs text-muted-foreground">{comparable ? money(reserved, goal.currency_code) : "Reservation conversion required"} reserved of {money(goal.target_minor, goal.currency_code)}{goal.target_date ? ` · target ${goal.target_date}` : ""}</p></li>; })}</ul>
+      <ul className="mt-2 divide-y divide-border">{(goals.data ?? []).map(goal => { const reservations = (allocations.data ?? []).filter(row => row.goal_id === goal.id); const comparable = reservations.every(row => accounts.find(account => account.id === row.account_id)?.currency_code === goal.currency_code); const reserved = reservations.reduce((sum, row) => sum + BigInt(row.amount_minor), 0n); return <li key={goal.id} className="py-2 text-sm"><Link href="/plan" className="font-medium hover:underline">{goal.name}</Link><p className="text-xs text-muted-foreground">{comparable ? money(reserved, goal.currency_code) : "Reservation conversion required"} reserved of {money(goal.target_minor, goal.currency_code)}{goal.target_date ? ` · target ${fullDate(goal.target_date)}` : ""}</p></li>; })}</ul>
       {!goals.data?.length && <p className="mt-3 text-sm text-muted-foreground">No goals yet. <Link href="/plan" className="underline">Create a goal</Link>.</p>}
     </section>,
     agents: <Suspense fallback={<SectionFallback title="Agent team" />}><AgentBriefing db={supabase} workspaceId={workspace.id} timeZone={workspace.timezone} /></Suspense>,
@@ -232,14 +229,14 @@ export default async function Home({ searchParams }: { searchParams?: Promise<{ 
   return (
     <main className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-6 text-foreground sm:px-8 lg:py-8">
       <header className="mb-2 flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1"><p className="eyebrow">{new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))} · {new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`))}</p><h1 className="page-title">Overview</h1></div>
+        <div className="flex flex-col gap-1"><p className="eyebrow">{display.weekday(today)} · {display.longDate(today)}</p><h1 className="page-title">Overview</h1></div>
         {/* One tap to a live call in a new chat; cards it makes land in Waiting for you. */}
-        <IntentLink href="/ai?conversation=new&call=1" className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" strokeWidth={1.8} aria-hidden="true" />Call Moneo</IntentLink>
+        <IntentLink href="/ai?conversation=new&call=1" aria-label="Call Moneo: starts a voice call using your microphone" title="Starts a voice call in a new chat using your microphone. You can stop it at any time, or type in Ask instead." className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90"><Phone className="size-4" strokeWidth={1.8} aria-hidden="true" />Call Moneo</IntentLink>
       </header>
       {/* Stored cards come with the page, so they never push the grid down; the slow detection streams after and reloads only if it changed a card. */}
       <Suspense fallback={null}><RecurringDetection supabase={supabase} workspace={workspace} /></Suspense>
       <HomeGrid version={saved.version} items={ordered} sizes={sizes} labels={labels} options={Object.fromEntries(keys.map(key => [key, sizeOptions(key)]))}
-        widgets={Object.fromEntries(ordered.map(key => [key, widgets[key]]))} afterFirst={<WaitingForYou proposals={waiting} review={review} />} />
+        widgets={Object.fromEntries(ordered.map(key => [key, widgets[key]]))} afterFirst={<WaitingForYou proposals={waiting} review={review} locale={locale} />} />
     </main>
   );
 }

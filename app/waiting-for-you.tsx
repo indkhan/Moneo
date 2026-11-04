@@ -16,8 +16,8 @@ export const loadReview = cache((supabase: SupabaseClient, workspace: Workspace)
 export const detectRecurring = cache((supabase: SupabaseClient, workspace: Workspace) => syncRecurringProposals({ supabase, workspace }).catch(() => false));
 
 /** Every open standalone card and review summary on Home; hidden when nothing waits. */
-export const WaitingForYou = ({ proposals, review }: { proposals: OpenProposal[]; review?: HomeReview }) =>
-  proposals.length || review?.uncategorized || review?.findings.length ? <WaitingForYouList proposals={proposals} review={review} /> : null;
+export const WaitingForYou = ({ proposals, review, locale }: { proposals: OpenProposal[]; review?: HomeReview; locale?: string }) =>
+  proposals.length || review?.uncategorized || review?.findings.length ? <WaitingForYouList proposals={proposals} review={review} locale={locale} /> : null;
 
 /** Renders nothing; when detection raised or closed a recurring card, reloads the page once so the list matches. Put it under Suspense. */
 export async function RecurringDetection({ supabase, workspace }: { supabase: SupabaseClient; workspace: Workspace }) {

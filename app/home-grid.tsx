@@ -45,6 +45,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options, afte
   const [notice, setNotice] = useState<Notice | null>(null);
   const [adding, setAdding] = useState<string[]>([]);
   const [menu, setMenu] = useState(false);
+  const [customizing, setCustomizing] = useState(false);
   const [said, setSaid] = useState("");
   const grid = useRef<HTMLDivElement>(null);
   const rects = useRef(new Map<string, { x: number; y: number }>());
@@ -79,7 +80,8 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options, afte
   const remember = () => { for (const [node, at] of measure()) rects.current.set(node.dataset.widget!, at); };
 
   useEffect(() => {
-    if (!notice) return;
+    // Something to act on stays until it is used, dismissed or replaced: slow readers must not lose Undo.
+    if (!notice || notice.action) return;
     const timer = setTimeout(() => setNotice(null), 6000);
     return () => clearTimeout(timer);
   }, [notice]);
@@ -235,11 +237,15 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options, afte
 
   return <DndContext id="home-grid" sensors={sensors} autoScroll={autoScroll} collisionDetection={nearestWidget} onDragStart={dragStart} onDragMove={dragMove} onDragEnd={dragEnd} onDragCancel={() => dragEnd(null)}
     accessibility={{ announcements, screenReaderInstructions: { draggable: "Use the arrow keys to move this widget one place at a time." } }}>
+    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+      {customizing && <p className="mr-auto text-sm text-muted-foreground">Drag a widget by its handle, or focus the handle and use the arrow keys. On a phone, hold a widget to drag it.</p>}
+      <button type="button" aria-pressed={customizing} onClick={() => setCustomizing(on => !on)} className="min-h-11 rounded-lg px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground lg:min-h-9">{customizing ? "Done" : "Customize"}</button>
+    </div>
     <SortableContext items={shown} strategy={stay}>
       <div ref={grid} className="grid gap-4 lg:grid-cols-6">
         {shown.map((key, index) => {
           const size = resizing?.key === key ? resizing.size : layout.sizes[key] ?? "M";
-          return <Fragment key={key}><Widget id={key} label={labels[key] ?? "Widget"} size={size} lifted={drag?.id === key} options={options[key] ?? []} selected={selected === key} resizing={resizing?.key === key}
+          return <Fragment key={key}><Widget id={key} label={labels[key] ?? "Widget"} size={size} lifted={drag?.id === key} options={options[key] ?? []} selected={selected === key || customizing} resizing={resizing?.key === key}
             onHide={() => hide(key)} onMoveKey={event => moveKey(key, event)} onResizeStart={event => startResize(key, event)} onResizeKey={event => resizeKey(key, event)}>
             <HomeCardSize.Provider value={layout.sizes[key] ?? null}>{widgets[key] ?? <SectionFallback title={labels[key] ?? "Widget"} />}</HomeCardSize.Provider>
           </Widget>{index === 0 && afterFirst && <div className="min-w-0 lg:col-span-6">{afterFirst}</div>}</Fragment>;
@@ -262,6 +268,7 @@ export function HomeGrid({ version, items, sizes, widgets, labels, options, afte
     {notice && <div role="status" className="fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-50 lg:bottom-6 mx-auto flex w-fit max-w-[calc(100%-2rem)] items-center gap-4 rounded-xl bg-foreground px-4 py-3 text-sm text-background shadow-lg">
       <span>{notice.text}</span>
       {notice.action && <button type="button" onClick={notice.action.run} className="font-medium underline-offset-2 hover:underline">{notice.action.label}</button>}
+      {notice.action && <button type="button" aria-label="Dismiss" onClick={() => setNotice(null)} className="-mr-1 rounded p-1 hover:bg-background/20"><X className="size-4" aria-hidden="true" /></button>}
     </div>}
   </DndContext>;
 }
@@ -281,9 +288,9 @@ function Widget({ id, label, size, lifted, options, selected, resizing, children
     {/* First child only when the widget has nothing to show: it then takes no space in the grid. */}
     <div data-tools className={`absolute -top-3 left-1/2 z-10 flex -translate-x-1/2 items-center rounded-full border border-border bg-card shadow-sm ${tools}`}>
       <button type="button" ref={setActivatorNodeRef} {...attributes} aria-label={`Move ${label}`} data-grip title="Drag to move" onMouseDown={onMouseDown} onKeyDown={onMoveKey}
-        className="flex h-7 cursor-grab items-center rounded-l-full px-2.5 text-muted-foreground hover:text-foreground active:cursor-grabbing"><GripHorizontal className="size-4" aria-hidden="true" /></button>
+        className="flex h-7 cursor-grab items-center rounded-l-full px-2.5 pointer-coarse:h-11 pointer-coarse:px-4 text-muted-foreground hover:text-foreground active:cursor-grabbing"><GripHorizontal className="size-4" aria-hidden="true" /></button>
       <button type="button" aria-label={`Hide ${label}`} title="Hide" onClick={onHide}
-        className="flex h-7 items-center rounded-r-full border-l border-border px-2 text-muted-foreground hover:text-foreground"><X className="size-3.5" aria-hidden="true" /></button>
+        className="flex h-7 items-center rounded-r-full border-l border-border px-2 pointer-coarse:h-11 pointer-coarse:px-4 text-muted-foreground hover:text-foreground"><X className="size-3.5" aria-hidden="true" /></button>
     </div>
     {options.length > 1 && <button type="button" aria-label={`Resize ${label}, now ${size}`} title="Drag to resize" onPointerDown={onResizeStart} onKeyDown={onResizeKey}
       className={`absolute top-1/2 -right-2 z-10 hidden h-12 w-4 -translate-y-1/2 cursor-ew-resize touch-none items-center justify-center lg:flex ${tools}`}>
