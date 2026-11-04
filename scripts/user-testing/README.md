@@ -11,3 +11,5 @@ Execute the sequential walkthroughs with the persistent QA user only. Never rese
 Browser automation can verify deterministic interactions and layout. A screenshot or semantic check does not establish assistive-technology compatibility, provider quality, deployed scheduling or real banking behavior. Preserve those limitations in the execution report.
 
 After collecting the 27 independent page reports in `.qa/user-testing/page-audits/`, run `node scripts/user-testing/build-page-audit.mjs` to generate `page-ui-ux-changes.csv` and `PAGE-AUDIT-INDEX.md`. The exporter verifies every page has findings. The CSV retains complete evidence, proposed changes and acceptance criteria; source-supported recommendations must not be represented as reproduced defects. Page recommendations may overlap and should be consolidated before implementation.
+
+Follow-up reviews add their results beside the originals under ignored `.qa/user-testing/` and mark duplicates or corrections of earlier findings. When crawling the app, do not follow links with a `start` query: `/ai/artifacts/[id]?start=` sends its prompt to the model on page load.
