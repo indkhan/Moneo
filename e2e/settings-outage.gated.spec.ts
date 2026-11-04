@@ -35,6 +35,7 @@ test("settings save revocation and display changes with an unchanged unavailable
     await db`insert into public.workspace_settings(workspace_id,ai_models,ai_data_scopes,summary_cadence) values(${workspace.id},${db.json({ chat: syntheticModel })},array['accounts','transactions','planning','imports']::text[],'weekly')`;
     const page = await context.newPage();
     await page.goto(settingsUrl);
+    await page.getByText("Advanced: choose AI models", { exact: true }).click();
     await expect(page.getByLabel("Chat assistant model")).toHaveValue(syntheticModel);
     await page.locator('input[name="ai_data_scopes"]').evaluateAll(inputs => inputs.forEach(input => { if ((input as HTMLInputElement).checked) (input as HTMLInputElement).click(); }));
     await expect(page.locator('input[name="ai_data_scopes"]:checked')).toHaveCount(0);

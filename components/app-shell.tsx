@@ -99,7 +99,7 @@ function MenuLink({ item, current, shell, onNavigate }: { item: NavItem; current
 }
 
 // Accounts arrive with the streamed shell data; until then the palette lists pages and actions.
-function AccountCommands({ shell, base, ...props }: { shell: Promise<ShellData>; base: Command[]; open: boolean; onClose: () => void; onAsk: (question: string) => void }) {
+function AccountCommands({ shell, base, ...props }: { shell: Promise<ShellData>; base: Command[]; open: boolean; onClose: () => void; onAsk: (question: string) => void; onSearch: (text: string) => void }) {
   const router = useRouter();
   const accounts: Command[] = (use(shell)?.accounts ?? []).map(account => ({ id: `account:${account.id}`, label: account.name, group: "Accounts", keywords: "account transactions",
     run: () => router.push(`/money/transactions?account=${encodeURIComponent(account.id)}`) }));
@@ -137,13 +137,17 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
 
   const commands: Command[] = [
     { id: "new-chat", label: "New AI chat", group: "Actions", keywords: "ask conversation assistant", run: () => router.push("/ai?conversation=new") },
+    { id: "add-transaction", label: "Add a transaction", group: "Actions", keywords: "new expense income manual", run: () => router.push("/money/transactions#add-transaction") },
+    { id: "add-account", label: "Add an account", group: "Actions", keywords: "new bank wallet cash", run: () => router.push("/money/accounts") },
+    { id: "set-limit", label: "Set a spending limit", group: "Actions", keywords: "budget plan", run: () => router.push("/plan/spending") },
     { id: "import", label: "Import a statement", group: "Actions", keywords: "upload csv xlsx file", run: () => router.push("/import") },
     { id: "shortcuts", label: "Keyboard shortcuts", group: "Actions", hint: "?", run: () => setHelp(true) },
     { id: "sign-out", label: "Sign out", group: "Actions", keywords: "log out logout account", run: () => void signOut() },
     ...allItems.map(item => ({ id: item.href, label: item.label, group: "Pages", keywords: railFor(item)?.label,
       hint: item.go && `G ${item.go.toUpperCase()}`, run: () => router.push(item.href) })),
   ];
-  const paletteProps = { open: palette, onClose: () => setPalette(false), onAsk: (question: string) => window.dispatchEvent(new CustomEvent<AskSeed>(ASK_EVENT, { detail: { question } })) };
+  const paletteProps = { open: palette, onClose: () => setPalette(false), onAsk: (question: string) => window.dispatchEvent(new CustomEvent<AskSeed>(ASK_EVENT, { detail: { question } })),
+    onSearch: (text: string) => router.push(`/money/transactions?q=${encodeURIComponent(text)}`) };
 
   const artifactEditor = /^\/ai\/artifacts\/[^/]+$/.test(pathname);
   return <div className={cn("min-h-screen bg-background", artifactEditor && "h-dvh overflow-hidden")}>
