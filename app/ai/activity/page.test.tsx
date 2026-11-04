@@ -34,6 +34,20 @@ it("filters the shared feed and queries only the sources a filter shows", async 
   expect(await render("chats")).toContain("Chat reply completed");
 });
 
+it("names what waits and keeps usage out of the attention row", async () => {
+  const card = "00000000-0000-4000-8000-000000000012";
+  rows.chat_requests.push({ id: "c3", conversation_id: "z", status: "completed", error: null, usage: { model: "secret-model", total_tokens: 5 }, updated_at: "2026-10-05T10:00:00Z",
+    answer: ["Added.", "```moneo-proposals", JSON.stringify([card]), "```"].join(String.fromCharCode(10)) });
+  rows.agent_proposals = [{ id: card, title: "Move Rent to Housing" }];
+  try {
+    const attention = await render("attention");
+    expect(attention).toContain("Needs your attention");
+    expect(attention).toContain("Move Rent to Housing");
+    expect(attention).toContain("Ready to review");
+    expect(attention).not.toContain("secret-model");
+  } finally { rows.chat_requests.pop(); delete rows.agent_proposals; }
+});
+
 it("flags a chat reply whose cards are still open, even after the user left before it finished", async () => {
   const card = "00000000-0000-4000-8000-000000000010", decided = "00000000-0000-4000-8000-000000000011";
   rows.chat_requests.push({ id: "c2", conversation_id: "y", status: "completed", error: null, usage: null, updated_at: "2026-10-04T10:00:00Z",
