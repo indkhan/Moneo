@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { bpsToPercent, percentOf, percentToBps, positiveMinor } from "./ui";
+import { bpsToPercent, percentOf, percentToBps, planningChange, planningTitle, positiveMinor } from "./ui";
 
 it("converts percent input to exact basis points and back", () => {
   expect(percentToBps("10")).toBe(1000);
@@ -22,4 +22,13 @@ it("clamps progress shares", () => {
   expect(percentOf(300n, 200n)).toBe(100);
   expect(percentOf(-5n, 200n)).toBe(0);
   expect(percentOf(5n, 0n)).toBe(0);
+});
+
+it("names a history row and says what its undo would restore", () => {
+  const base = { category_id: "food", currency_code: "EUR", limit_minor: "10000", enabled: true, rollover: false, rollover_from: "2026-11-01" };
+  expect(planningTitle(base, new Map([["food", "Food"]]))).toBe("Food (EUR)");
+  expect(planningTitle({ name: "Rent" })).toBe("Rent");
+  expect(planningChange(base, { ...base, limit_minor: "20000" })).toBe("EUR 100.00 → EUR 200.00");
+  expect(planningChange(base, { ...base, enabled: false, rollover: true })).toBe("Disabled, Rollover on");
+  expect(planningChange(null, base)).toBe("EUR 100.00");
 });

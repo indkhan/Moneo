@@ -89,7 +89,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
         record("booked_balances_reviewed",{amountsMinor:["200000","0"]});
       };
       const candidate = page.locator("article").filter({hasText: `${label} invoice`});
-      const forecast = page.locator("section").filter({has: page.getByRole("heading", {name: "Liquid balance horizon",exact: true})});
+      const forecast = page.locator("section").filter({has: page.getByRole("heading", { name: /^Your cash over the next/ })});
       expect(latest > today).toBe(true); expect(postedLatest).toBe(today); expect(futureCount).toBeGreaterThan(0);
       const expected = `EUR ${(2000 - (futureCount-1) * 20).toFixed(2)}`;
       await page.goto("/money/recurring");
@@ -131,11 +131,11 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
       // Paid today for a future slot: provenance-only Plan toggles must not pay it twice.
       const schedule=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} invoice 0`,exact:true})});
-      await schedule.getByRole("button",{name:"Disable",exact:true}).click();
+      await schedule.getByRole("button",{name:/^Disable /}).click();
       await expect(forecast).toContainText("EUR 2000.00");
       const disabledSchedule=page.locator("li").filter({has:page.getByRole("heading",{name:`${label} invoice 0 (disabled)`,exact:true})});
-      await disabledSchedule.getByRole("button",{name:"Enable",exact:true}).click();
-      await expect(schedule.getByRole("button",{name:"Disable",exact:true})).toBeVisible();
+      await disabledSchedule.getByRole("button",{name:/^Enable /}).click();
+      await expect(schedule.getByRole("button",{name:/^Disable /})).toBeVisible();
       await expect(disabledSchedule).toHaveCount(0);
       await page.goto("/plan?horizon=365");
       await expect(forecast).toContainText(expected);

@@ -58,9 +58,10 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     await home.getByRole("button", { name: "Evaluate account", exact: true }).click();
     await expect(home).toContainText("Checking QA funding shortfall: EUR 400.00");
     await page.goto(`/plan?account=${checking}&horizon=3`);
-    const forecast = page.locator("section").filter({ has: page.getByRole("heading", { name: "Liquid balance horizon", exact: true }) });
+    const forecast = page.locator("section").filter({ has: page.getByRole("heading", { name: /^Your cash over the next/ }) });
     await expect(forecast).toContainText("Checking QA funding shortfall: EUR 400.00"); await expect(forecast).toContainText("EUR 600.00");
     await expect(forecast).toContainText("Recurring bill QA"); await expect(forecast).toContainText(tomorrow);
+    await forecast.getByText("Try a transfer", { exact: true }).click();
     await forecast.getByRole("combobox", { name: "Fund from (optional)", exact: true }).selectOption(savings);
     await forecast.getByLabel("Funding date", { exact: true }).fill(tomorrow);
     await forecast.getByLabel("Funding amount (EUR)", { exact: true }).fill("400.00");
@@ -69,7 +70,7 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
     await expect(forecast).toContainText("Internal funding in"); await page.screenshot({ path: testInfo.outputPath("plan-timely.png"), fullPage: true });
     await forecast.getByLabel("Funding date", { exact: true }).fill(late); await forecast.getByRole("button", { name: "Evaluate account", exact: true }).click();
     // GET navigation can commit the loading shell before the streamed plan arrives.
-    await expect(forecast.getByRole("heading", { name: "Liquid balance horizon", exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(forecast.getByRole("heading", { name: /^Your cash over the next/ })).toBeVisible({ timeout: 30_000 });
     await expect(forecast).toContainText("Checking QA funding shortfall: EUR 400.00"); await expect(forecast.getByLabel("Funding date", { exact: true })).toHaveValue(late);
     await page.screenshot({ path: testInfo.outputPath("plan-late.png"), fullPage: true });
     // Exact disposable donor reservation: only EUR100 can leave savings without invading protected funds.

@@ -55,7 +55,7 @@ test("reviewed pending settlement releases the obsolete hold and undo preserves 
     expect((await auth.auth.signInWithPassword({ email, password })).error).toBeNull();
     await context.addCookies([...cookies].map(([name, value]) => ({ name, value, domain: "localhost", path: "/", sameSite: "Lax" as const })));
     const page = await context.newPage();
-    const forecast = page.locator("section").filter({ has: page.getByRole("heading", { name: "Liquid balance horizon", exact: true }) });
+    const forecast = page.locator("section").filter({ has: page.getByRole("heading", { name: /^Your cash over the next/ }) });
     await page.goto("/plan"); await expect(forecast).toContainText("EUR 60.00");
     await page.goto(`/import/${postedImport}/review`);
     const hold = page.getByRole("region", { name: "Pending hold resolution", exact: true });

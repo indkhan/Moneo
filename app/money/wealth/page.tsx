@@ -1,4 +1,7 @@
 import { CoverageNote } from "@/components/coverage-note";
+import { PhoneCollapse } from "@/components/phone-collapse";
+import { SafeForm } from "@/components/safe-form";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireWorkspace } from "@/lib/auth";
@@ -9,12 +12,13 @@ import { formatMoney as formatCurrency } from "@/lib/finance/format";
 import { SourceCoverageDetails } from "@/app/source-coverage";
 import { NetWorthChart } from "@/app/net-worth-chart";
 import { WealthForm } from "./form";
-import { removeWealthItem, undoWealthEvent } from "./actions";
+import { removeWealthItemSafely, undoWealthEventSafely } from "./actions";
 import { currentNetWorth, loadWealthEvents, monthEnds, netWorth, netWorthSeries, removedOn, valuationHistory } from "./net-worth";
 
 export const metadata = { title: "Wealth" };
 
 const MONTHS = 12;
+const HISTORY = 50;
 const sections = [["holding", "Investments"], ["asset", "Assets"], ["debt", "Debts"]] as const;
 
 function sum(items: WealthItem[]) {
@@ -23,10 +27,11 @@ function sum(items: WealthItem[]) {
   return totals;
 }
 
-export default async function WealthPage() {
+export default async function WealthPage({ searchParams }: { searchParams?: Promise<{ removed?: string; history?: string }> } = {}) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); } catch { redirect("/login"); }
   const { supabase, workspace } = context;
+  const params = (await searchParams) ?? {};
   const db = supabase as SupabaseClient;
   const formatMoney = (amount: Parameters<typeof formatCurrency>[0], currency: string) => formatCurrency(amount, currency, workspace.locale);
   const today = calendarDate(new Date(), workspace.timezone);
@@ -40,8 +45,8 @@ export default async function WealthPage() {
   ]);
   for (const result of [accounts, assumptions, pending]) if (result.error) throw result.error;
   const active = items.filter(item => !item.removed_at);
-  const choices = { accounts: accounts.data ?? [], assumptions: (assumptions.data ?? []).map(item => ({ id: item.id, label: `${item.name} · ${formatMoney(item.amount_minor, item.currency_code)} · ${item.starts_on}` })),
-    pending: (pending.data ?? []).map(item => ({ id: item.id, label: `${item.description} · ${formatMoney(item.amount_minor, item.currency_code)} · ${item.posted_on}` })), today, currency: workspace.display_currency };
+  const choices = { accounts: accounts.data ?? [], assumptions: (assumptions.data ?? []).map(item => ({ id: item.id, currency_code: item.currency_code, label: `${item.name} · ${formatMoney(item.amount_minor, item.currency_code)} · ${item.starts_on}` })),
+    pending: (pending.data ?? []).map(item => ({ id: item.id, currency_code: item.currency_code, label: `${item.description} · ${formatMoney(item.amount_minor, item.currency_code)} · ${item.posted_on}` })), today, currency: workspace.display_currency, locale: workspace.locale };
   const itemById = new Map(items.map(item => [item.id, item]));
 
   const series = netWorthSeries({ dates: monthEnds(today, MONTHS), timeZone: workspace.timezone,
@@ -54,25 +59,37 @@ export default async function WealthPage() {
   const unbalanced = resolved.filter(account => account.balance.amount_minor === null).length;
   const totals = netWorth(now);
   const currencies = [...totals.keys()].sort((a, b) => Number(b === workspace.display_currency) - Number(a === workspace.display_currency) || a.localeCompare(b));
-  const dated = active.filter(item => !item.linked_account_id && !currentOn(item, today)).length;
+  const outdated = active.filter(item => !item.linked_account_id && !currentOn(item, today));
+  const dated = outdated.length;
+  const chartPoints = (currency: string) => series.flatMap(point => { const value = netWorth(point).get(currency); return value === undefined ? [] : [{ date: point.date, value }]; });
+  const history = params.history === "all" ? events : events.slice(0, HISTORY);
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="flex flex-col gap-1"><p className="eyebrow">Investments · assets · debts</p><h1 className="page-title">Wealth</h1></header>
 
     <section aria-label="Net worth" className="space-y-4">
-      {currencies.length ? currencies.map(currency => <div key={currency} className="rounded-xl border border-border bg-card p-6">
+      {currencies.map(currency => { const recorded = chartPoints(currency); const values = recorded.map(point => point.value); const low = values.reduce((a, b) => b < a ? b : a, values[0]), high = values.reduce((a, b) => b > a ? b : a, values[0]); return <div key={currency} className="rounded-xl border border-border bg-card p-6">
         <h2 className="text-sm text-muted-foreground">Net worth ({currency})</h2>
-        <p className="mt-1 font-mono text-4xl font-semibold tracking-tight tabular-nums">{formatMoney(totals.get(currency) ?? 0n, currency)}</p>
+        <p className="mt-1 break-words font-mono text-3xl font-semibold tracking-tight tabular-nums sm:text-4xl">{formatMoney(totals.get(currency) ?? 0n, currency)}</p>
         <div className="mt-1"><CoverageNote counted={resolved.length - unbalanced} total={resolved.length} /></div>
-        <dl className="mt-5 grid grid-cols-3 gap-4 border-t border-border pt-4 text-sm">
+        <dl className="mt-5 grid gap-4 sm:grid-cols-3 border-t border-border pt-4 text-sm">
           {([["Accounts", now.accounts], ["Investments & assets", now.assets], ["Debts", now.debts]] as const).map(([label, map]) => <div key={label}>
-            <dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-0.5 font-mono tabular-nums">{formatMoney(map.get(currency) ?? 0n, currency)}</dd></div>)}
+            <dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-0.5 break-words font-mono tabular-nums">{formatMoney(map.get(currency) ?? 0n, currency)}</dd></div>)}
         </dl>
         <div className="mt-5"><NetWorthChart label={`Recorded net worth in ${currency} at each month end`}
-          points={series.map(point => { const value = netWorth(point).get(currency) ?? 0n; return { date: point.date, label: point.date, amount: formatMoney(value, currency), y: Number(value) }; })} /></div>
-        <p className="mt-1 flex justify-between text-xs text-muted-foreground"><span>{series[0].date}</span><span>{today}</span></p>
-      </div>) : <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No recorded balances or valuations yet.</p>}
-      <p className="text-xs text-muted-foreground">Per currency, no exchange rates. Accounts are the balances shown on Accounts, including activity recorded since each balance was set; earlier months use the balances recorded then. Values inside an account balance aren’t counted twice.{unbalanced > 0 ? ` ${unbalanced} account${unbalanced === 1 ? " has" : "s have"} no usable balance and ${unbalanced === 1 ? "is" : "are"} left out.` : ""}{dated > 0 ? ` ${dated} valuation${dated === 1 ? " is" : "s are"} dated before today and left out of current net worth.` : ""}</p>
+          points={recorded.map(point => ({ date: point.date, label: point.date === today ? "Today" : point.date, amount: formatMoney(point.value, currency), y: Number(point.value) }))} /></div>
+        <p className="mt-1 flex justify-between text-xs text-muted-foreground"><span>{recorded[0].date}</span><span>Today</span></p>
+        <p className="mt-1 text-xs text-muted-foreground">Lowest {formatMoney(low, currency)} · highest {formatMoney(high, currency)}. Months with nothing recorded in {currency} are left out of the line.</p>
+        <details className="mt-2"><summary className="min-h-11 cursor-pointer content-center text-sm underline">Net worth by month</summary>
+          <table className="mt-2 w-full text-sm"><caption className="sr-only">Recorded net worth in {currency} at each month end</caption><thead><tr className="border-b border-border text-left text-xs text-muted-foreground"><th scope="col" className="py-1.5 font-medium">Date</th><th scope="col" className="py-1.5 text-right font-medium">Net worth</th></tr></thead>
+            <tbody>{series.map(point => { const value = netWorth(point).get(currency); return <tr key={point.date} className="border-b border-border last:border-0"><th scope="row" className="py-1.5 text-left font-normal">{point.date === today ? "Today" : point.date}</th><td className="py-1.5 text-right font-mono tabular-nums">{value === undefined ? "Nothing recorded" : formatMoney(value, currency)}</td></tr>; })}</tbody></table>
+        </details>
+      </div>; })}
+      {dated > 0 && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/60 px-4 py-3 text-sm"><p>Older valuations left out of today&apos;s net worth: <span className="font-mono tabular-nums">{[...sum(outdated)].map(([currency, amount]) => formatMoney(amount, currency)).join(" · ")}</span></p><a href={`#item-${outdated[0].id}`} className="inline-flex min-h-11 items-center font-medium text-brand underline">Review valuations</a></div>}
+      {unbalanced > 0 && <p className="text-sm">{unbalanced} account{unbalanced === 1 ? " has" : "s have"} no usable balance and {unbalanced === 1 ? "is" : "are"} left out. <Link href="/money/accounts" className="font-medium text-brand underline">Review account balances</Link></p>}
+      {!currencies.length && !active.length && <div className="rounded-xl border border-border bg-card p-6 text-sm"><p className="font-medium">Add your first item</p><p className="mt-1 text-muted-foreground">Net worth is your accounts plus investments and assets, minus debts. Start with one below.</p></div>}
+      {!currencies.length && active.length > 0 && <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No recorded balances or valuations count today yet.</p>}
+      <PhoneCollapse label="How this is worked out"><p className="text-xs text-muted-foreground">Per currency, no exchange rates. Accounts are the balances shown on Accounts, including activity recorded since each balance was set; earlier months use the balances recorded then. Values inside an account balance aren’t counted twice.{dated > 0 ? ` ${dated} valuation${dated === 1 ? " is" : "s are"} dated before today and left out of current net worth.` : ""}</p></PhoneCollapse>
     </section>
 
     <section aria-label="Add wealth" className="flex flex-wrap gap-2">{sections.map(([kind, title]) => <details key={kind} className="group rounded-lg border border-border bg-card open:basis-full open:p-5"><summary className="cursor-pointer px-3 py-1.5 text-sm font-medium group-open:p-0">Add {kind === "holding" ? "investment" : kind}<span className="sr-only"> ({title})</span></summary><WealthForm kind={kind} {...choices} /></details>)}</section>
@@ -82,10 +99,10 @@ export default async function WealthPage() {
       if (!rows.length) return null;
       return <section key={kind} aria-label={title} className="space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-sm font-medium">{title} <span className="font-normal text-muted-foreground">{rows.length}</span></h2>
-          <p className="font-mono text-sm text-muted-foreground tabular-nums">{[...sum(rows)].map(([currency, amount]) => formatMoney(amount, currency)).join(" · ")}</p></div>
+          <p className="font-mono text-sm text-muted-foreground tabular-nums">{[...sum(rows.filter(item => currentOn(item, today)))].map(([currency, amount]) => formatMoney(amount, currency)).join(" · ")}</p></div>
         <div className="divide-y divide-border rounded-xl border border-border bg-card">{rows.map(item => {
           const payments = (() => { try { return item.kind === "debt" && item.next_payment_on && BigInt(item.monthly_payment_minor ?? "0") > 0n ? debtPayments({ principalMinor: BigInt(item.amount_minor), annualRate: item.annual_rate_text!, monthlyPaymentMinor: BigInt(item.monthly_payment_minor!), nextPaymentOn: item.next_payment_on }, today, 365) : []; } catch { return null; } })();
-          return <article key={item.id} className="space-y-2 px-5 py-4">
+          return <article key={item.id} id={`item-${item.id}`} className="scroll-mt-24 space-y-2 px-5 py-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-medium">{item.name}</h3>
               <p className="font-mono font-semibold tabular-nums">{formatMoney(item.amount_minor, item.currency_code)}</p></div>
             <p className="text-xs text-muted-foreground">As of {item.as_of}{item.kind === "holding" ? ` · ${item.quantity_text} × ${item.currency_code} ${item.unit_price_text}` : ""}{item.kind === "debt" ? ` · ${item.annual_rate_text}% a year · ${formatMoney(item.monthly_payment_minor ?? "0", item.currency_code)}/month` : ""}{item.linked_account_id ? " · Inside an account balance" : currentOn(item, today) ? "" : " · Outdated, not in current net worth"}</p>
@@ -94,19 +111,18 @@ export default async function WealthPage() {
             {item.sourceCoverage && <SourceCoverageDetails coverage={item.sourceCoverage} />}
             <div className="flex flex-wrap items-start gap-4">
               <details className="min-w-0 flex-1"><summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">Edit valuation and details</summary><WealthForm kind={item.kind} item={item} {...choices} /></details>
-              <form action={removeWealthItem}><input type="hidden" name="id" value={item.id} /><input type="hidden" name="version" value={item.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><button aria-label="Remove wealth record (keep history)" className="text-sm text-muted-foreground hover:text-foreground">Remove</button></form>
+              <SafeForm action={removeWealthItemSafely}><input type="hidden" name="id" value={item.id} /><input type="hidden" name="version" value={item.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><button aria-label={`Remove ${item.name} (keep history)`} className="min-h-11 text-sm text-muted-foreground hover:text-foreground">Remove</button></SafeForm>
             </div>
           </article>;
         })}</div>
       </section>;
     })}
-    {!active.length && <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">Nothing added yet. Add an investment, asset or debt above.</p>}
-
-    <details className="rounded-xl border border-border bg-card px-5 py-4"><summary className="cursor-pointer text-sm font-medium">Wealth source history and undo</summary><ul className="mt-3 divide-y divide-border">{events.slice(0, 50).map(event => {
+    {params.removed === "1" && <p role="status" className="text-sm">Removed from your net worth. Its history is kept, and Undo below brings it back.</p>}
+    <details id="wealth-history" open={params.removed === "1" || params.history === "all"} className="scroll-mt-24 rounded-xl border border-border bg-card px-5 py-4"><summary className="cursor-pointer text-sm font-medium">Wealth source history and undo</summary><ul className="mt-3 divide-y divide-border">{history.map(event => {
       const { after, before } = event; const current = itemById.get(event.item_id);
       return <li key={event.id} className="flex flex-wrap items-center justify-between gap-3 py-2 text-sm"><span><span className="font-medium">{after.name}</span> <span className="font-mono tabular-nums">{before ? formatMoney(before.amount_minor, before.currency_code) : "New"} → {formatMoney(after.amount_minor, after.currency_code)}</span>{after.removed_at ? " · Removed" : ""}
         <span className="block text-xs text-muted-foreground">Valued {after.as_of} · saved {new Date(event.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{event.undone_at ? " · Undone" : ""}</span></span>
-        {!event.undone_at && current && <form action={undoWealthEvent}><input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="version" value={current.version} /><button className="text-sm text-muted-foreground hover:text-foreground">Undo wealth change</button></form>}</li>;
-    })}</ul>{!events.length && <p className="mt-2 text-sm text-muted-foreground">Every add, edit and removal appears here with undo.</p>}</details>
+        {!event.undone_at && current && <SafeForm action={undoWealthEventSafely}><input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="version" value={current.version} /><button aria-label={`Undo ${after.name} change`} className="min-h-11 text-sm text-muted-foreground hover:text-foreground">Undo</button></SafeForm>}</li>;
+    })}</ul>{history.length < events.length && <a href="/money/wealth?history=all#wealth-history" className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-brand underline">Show all {events.length} changes</a>}{!events.length && <p className="mt-2 text-sm text-muted-foreground">Every add, edit and removal appears here with undo.</p>}</details>
   </main>;
 }
