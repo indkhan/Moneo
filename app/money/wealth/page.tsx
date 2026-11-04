@@ -1,3 +1,4 @@
+import { CoverageNote } from "@/components/coverage-note";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireWorkspace } from "@/lib/auth";
@@ -60,6 +61,7 @@ export default async function WealthPage() {
       {currencies.length ? currencies.map(currency => <div key={currency} className="rounded-xl border border-border bg-card p-6">
         <h2 className="text-sm text-muted-foreground">Net worth ({currency})</h2>
         <p className="mt-1 font-mono text-4xl font-semibold tracking-tight tabular-nums">{formatMoney(totals.get(currency) ?? 0n, currency)}</p>
+        <div className="mt-1"><CoverageNote counted={resolved.length - unbalanced} total={resolved.length} /></div>
         <dl className="mt-5 grid grid-cols-3 gap-4 border-t border-border pt-4 text-sm">
           {([["Accounts", now.accounts], ["Investments & assets", now.assets], ["Debts", now.debts]] as const).map(([label, map]) => <div key={label}>
             <dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-0.5 font-mono tabular-nums">{formatMoney(map.get(currency) ?? 0n, currency)}</dd></div>)}

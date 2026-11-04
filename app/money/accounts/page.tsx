@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CoverageNote } from "@/components/coverage-note";
 import { randomUUID } from "node:crypto";
 import { requireWorkspace } from "@/lib/auth";
 import { balanceReviewRows, loadBalanceEvidence, resolveBalances, type BalanceSnapshot } from "@/lib/finance/balances";
@@ -52,10 +53,11 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
   for (const snapshot of evidence.snapshots) snapshotsByAccount.set(snapshot.account_id, [...(snapshotsByAccount.get(snapshot.account_id) ?? []), snapshot]);
 
   const totals = new Map<string, bigint>();
-  let partial = false;
+  let counted = 0;
   for (const account of active) {
     const { amount } = shownBalance(account.balance);
-    if (amount === null || account.balance.status === "ambiguous") { partial = true; continue; }
+    if (amount === null || account.balance.status === "ambiguous") continue;
+    counted += 1;
     totals.set(account.currency_code, (totals.get(account.currency_code) ?? 0n) + BigInt(amount));
   }
 
@@ -137,11 +139,12 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
           </form>
         </details>
       </div>
-      {totals.size ? <dl className="rounded-xl border border-border bg-card px-5 py-4"><dt className="text-xs text-muted-foreground">Total across {active.length} active {active.length === 1 ? "account" : "accounts"}{partial ? " (partial)" : ""}</dt>
-        {[...totals].map(([currency, amount]) => <dd key={currency} className="mt-1 font-mono text-2xl font-semibold tabular-nums">{formatMoney(amount, currency, locale)}</dd>)}</dl> : null}
+      {totals.size ? <dl className="rounded-xl border border-border bg-card px-5 py-4"><dt className="text-xs text-muted-foreground">Total{counted === active.length ? ` across ${active.length} active ${active.length === 1 ? "account" : "accounts"}` : ""}</dt>
+        {[...totals].map(([currency, amount]) => <dd key={currency} className="mt-1 font-mono text-2xl font-semibold tabular-nums">{formatMoney(amount, currency, locale)}</dd>)}<dd className="mt-1"><CoverageNote counted={counted} total={active.length} /></dd></dl>
+        : active.length ? <p className="rounded-xl border border-warning/40 bg-card px-5 py-4 text-sm text-warning">Total unavailable: no account has a usable balance yet.</p> : null}
     </header>
 
-    {active.length ? <section className="divide-y divide-border rounded-xl border border-border bg-card" aria-label="Your accounts">{active.map(row)}</section>
+    {active.length ? <section id="needs-balance" className="scroll-mt-20 divide-y divide-border rounded-xl border border-border bg-card" aria-label="Your accounts">{active.map(row)}</section>
       : <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No accounts yet. Use Add account or <Link className="underline" href="/import">import a statement</Link>.</p>}
 
     <OwnAccounts identifiers={identifiers ?? []} accounts={active.map(account => ({ id: account.id, name: account.name }))} transfers={transfers}

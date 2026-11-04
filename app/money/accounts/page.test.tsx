@@ -32,7 +32,8 @@ it("lists balances with as-of date, trend, rename suggestion, balance update and
   expect(html).toContain("<polyline");
   expect(html).toContain("Rename to “Revolut Current”");
   expect(html).toContain("No balance yet");
-  expect(html).toContain("Total across 2 active accounts (partial)");
+  expect(html).toContain("From 1 of 2 accounts");
+  expect(html).toContain("Fix 1 balance");
   expect(html).toContain('name="expectedSnapshotId" value="s2"');
   expect(html).toContain("Undo balance");
   expect(html).toContain("Archived accounts (1)");
