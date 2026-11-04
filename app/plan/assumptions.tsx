@@ -1,8 +1,8 @@
 import { scheduleCadences } from "@/lib/finance/cadences";
 import { SafeForm } from "@/components/safe-form";
 import { formatInputAmount, formatMoney } from "@/lib/finance/format";
-import { addAssumptionSafely, deleteAssumption, toggleAssumption, updateAssumption } from "./actions";
-import { button, cadenceLabels, field, linkButton } from "./ui";
+import { addAssumptionSafely, deleteAssumptionSafely, toggleAssumptionSafely, updateAssumptionSafely } from "./actions";
+import { button, cadenceLabels, field, formLabel, linkButton } from "./ui";
 
 type Assumption = { id: string; account_id: string | null; name: string; amount_minor: string; currency_code: string; cadence: string; starts_on: string; schedule_anchor_on: string | null; ends_on: string | null; source: string; confirmed: boolean; enabled: boolean; version: number };
 const label = (cadence: string) => cadenceLabels[cadence as keyof typeof cadenceLabels] ?? cadence;
@@ -13,7 +13,7 @@ function Metadata({ item }: { item: Assumption }) {
 }
 
 export function AssumptionList({ assumptions, error, accounts, names, locale, today }: {
-  assumptions: Assumption[]; error?: string; accounts: { id: string; name: string }[]; names: Map<string, string>; locale?: string; today: string;
+  assumptions: Assumption[]; error?: string; accounts: { id: string; name: string; currency_code: string }[]; names: Map<string, string>; locale?: string; today: string;
 }) {
   return <>
     {error && <p role="alert">Could not load assumptions: {error}</p>}
@@ -24,20 +24,21 @@ export function AssumptionList({ assumptions, error, accounts, names, locale, to
       {item.schedule_anchor_on && <p className="text-muted-foreground">Calendar anchor: {item.schedule_anchor_on}. Month-end dates shift to the last valid day.</p>}
       <p className="mt-1 text-muted-foreground">{item.source === "recurring_confirmed" ? "Detected from your transactions" : "Added by you"} · {item.confirmed ? "Confirmed" : "Estimated"} · {item.enabled ? "Used in forecast" : "Not used in forecast"}</p>
       <div className="mt-2 flex flex-wrap items-start gap-4">
-        <form action={toggleAssumption}><Metadata item={item} /><input type="hidden" name="enabled" value={item.enabled ? "false" : "true"} /><button className={linkButton}>{item.enabled ? "Disable" : "Enable"}</button></form>
-        <form action={deleteAssumption}><Metadata item={item} /><button className={linkButton}>Remove</button></form>
+        <SafeForm action={toggleAssumptionSafely}><Metadata item={item} /><input type="hidden" name="enabled" value={item.enabled ? "false" : "true"} /><button aria-label={`${item.enabled ? "Disable" : "Enable"} ${item.name}`} className={linkButton}>{item.enabled ? "Disable" : "Enable"}</button></SafeForm>
+        <SafeForm action={deleteAssumptionSafely}><Metadata item={item} /><button aria-label={`Remove ${item.name}`} className={linkButton}>Remove</button></SafeForm>
         <details><summary className="cursor-pointer text-sm underline">Edit</summary>
-          <form action={updateAssumption} className="mt-3 flex flex-wrap gap-2"><Metadata item={item} />
+          <SafeForm action={updateAssumptionSafely} className="mt-3 flex flex-wrap gap-2"><Metadata item={item} />
             <input name="name" required maxLength={120} defaultValue={item.name} aria-label={`Edit ${item.name} name`} className={field} />
-            <input name="amount" required inputMode="decimal" defaultValue={formatInputAmount(item.amount_minor, item.currency_code)} aria-label={`Edit ${item.name} amount`} className={field + " w-28"} />
+            <select name="direction" defaultValue={BigInt(item.amount_minor) < 0n ? "out" : "in"} aria-label={`Edit ${item.name} money in or out`} className={field}><option value="out">Expense</option><option value="in">Income</option></select>
+            <input name="amount" required inputMode="decimal" defaultValue={formatInputAmount(BigInt(item.amount_minor) < 0n ? -BigInt(item.amount_minor) : item.amount_minor, item.currency_code)} aria-label={`Edit ${item.name} amount (${item.currency_code})`} className={field + " w-28"} />
             <select name="cadence" defaultValue={item.cadence} aria-label={`Edit ${item.name} cadence`} className={field}>{cadenceOptions}</select>
             <input type="date" name="startsOn" required defaultValue={item.starts_on} aria-label={`Edit ${item.name} start date`} className={field} />
             <input type="date" name="endsOn" defaultValue={item.ends_on ?? ""} aria-label={`Edit ${item.name} end date`} className={field} />
-            <button className={linkButton}>Save</button></form>
+            <button className={linkButton}>Save</button></SafeForm>
         </details>
       </div>
     </li>)}</ul>
     {!accounts.length ? <p className="text-muted-foreground">Add an account before creating a dated assumption.</p>
-      : <SafeForm action={addAssumptionSafely} className="flex flex-wrap items-end gap-3 rounded-lg bg-muted/50 p-4"><input name="name" required aria-label="Assumption name" placeholder="Rent, salary…" maxLength={120} className={field} /><select name="direction" aria-label="Money in or out" defaultValue="out" className={field}><option value="out">Expense</option><option value="in">Income</option></select><input name="amount" required inputMode="decimal" aria-label="Assumption amount" placeholder="1200.00" className={field} /><select name="accountId" aria-label="Account" className={field}>{accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select><select name="cadence" aria-label="Cadence" defaultValue="monthly" className={field}>{cadenceOptions}</select><input type="date" name="startsOn" defaultValue={today} required aria-label="Start date" className={field} /><button className={button}>Add assumption</button></SafeForm>}
+      : <SafeForm action={addAssumptionSafely} className="flex flex-wrap items-end gap-3 rounded-lg bg-muted/50 p-4"><label className={formLabel}>Assumption name<input name="name" required placeholder="Rent, salary…" maxLength={120} className={field} /></label><label className={formLabel}>Money in or out<select name="direction" defaultValue="out" className={field}><option value="out">Expense</option><option value="in">Income</option></select></label><label className={formLabel}>Assumption amount, in the account currency<input name="amount" required inputMode="decimal" placeholder="1200.00" className={field} /></label><label className={formLabel}>Account<select name="accountId" className={field}>{accounts.map(account => <option key={account.id} value={account.id}>{account.name} ({account.currency_code})</option>)}</select></label><label className={formLabel}>Cadence<select name="cadence" defaultValue="monthly" className={field}>{cadenceOptions}</select></label><label className={formLabel}>Start date<input type="date" name="startsOn" defaultValue={today} required className={field} /></label><button className={button}>Add assumption</button></SafeForm>}
   </>;
 }
