@@ -46,8 +46,6 @@ export function AiMessage({ content }: { content: string }) {
     // A reply sits inside a page that already has its h1.
     h1: ({ children }) => <h2>{children}</h2>,
     img: () => null,
-    // The page around an answer owns the only h1.
-    h1: ({ children }) => <h2>{children}</h2>,
     pre: ({ children }) => {
       const code = isValidElement<{ className?: string; children?: unknown }>(children) ? children.props : null;
       if (code?.className?.includes("language-moneo-chart") && typeof code.children === "string") return <ChatChart source={code.children} />;
