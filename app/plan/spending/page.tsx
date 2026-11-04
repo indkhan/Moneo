@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CurrencySelect } from "@/components/currency-select";
 import { SafeForm } from "@/components/safe-form";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
@@ -8,12 +9,21 @@ import { allPages } from "@/lib/all-pages";
 import { monthPrefix, nextMonthStart, budgetProgress, type MonthlyLimit, type SpendingPlanTransaction } from "@/lib/finance/spending-plans";
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { SourceCoverageDetails } from "@/app/source-coverage";
-import { formatMoney } from "@/lib/finance/format";
-import { saveSpendingPlanSafely, setRollover, toggleSpendingPlan } from "./actions";
+import { formatInputAmount, formatMoney } from "@/lib/finance/format";
+import { saveSpendingPlanSafely, setRolloverSafely, toggleSpendingPlanSafely } from "./actions";
+import { MonthPicker } from "./month-picker";
 import { PlanningHistory } from "../history";
 import { button, card, field, linkButton, percentOf } from "../ui";
 
 export const metadata = { title: "Spending limits" };
+
+/** Why a limit's remaining amount is unknown, and where to fix it. */
+function partialReason(limitation: string | null) {
+  if (limitation === "Historical target unavailable") return { text: "No limit was recorded for this month, so the amount left is unknown." };
+  if (limitation?.includes("classification")) return { text: "Only classified spending is shown, so the amount left is unknown.", href: "/import", action: "Review classifications" };
+  if (limitation?.includes("coverage")) return { text: "Your imports may not cover this whole period, so the amount left is unknown.", href: "/import", action: "Review imports" };
+  return { text: "The carry-over from earlier months could not be worked out, so the amount left is unknown." };
+}
 
 type Db = Awaited<ReturnType<typeof requireWorkspace>>["supabase"];
 
@@ -54,7 +64,7 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
   const { supabase, workspace } = context;
   const currentMonth = monthPrefix(new Date(), workspace.timezone);
   const params = await searchParams;
-  const requestedMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).safeParse(params.month);
+  const requestedMonth = z.string().regex(/^(20\d\d|2100)-(0[1-9]|1[0-2])$/).safeParse(params.month);
   const invalidMonth = !!params.month && !requestedMonth.success;
   const month = requestedMonth.success ? requestedMonth.data : currentMonth;
   const from = `${month}-01`;
@@ -83,21 +93,22 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
     return { ...plan, name: names.get(plan.category_id) ?? "Unknown category", sourceCoverage, periodEnabled: month === currentMonth ? plan.enabled : known?.enabled ?? null, spent: result.spentMinor, limit,
       allowance: result.allowanceMinor, rolloverResult: result.rolloverResult, remaining: result.remainingMinor, partial: result.partial, limitation: result.limitation };
   });
-  const needsReview = rows.filter(row => row.status === "posted" && row.reviewReasons?.length).length;
+  // Rollover loads earlier months too; this count is about the month on screen.
+  const needsReview = rows.filter(row => row.status === "posted" && row.reviewReasons?.length && row.postedOn >= from && row.postedOn < next).length;
+  const monthName = (value: string) => new Intl.DateTimeFormat(workspace.locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}-01T00:00:00Z`));
 
   return <main className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-6 text-foreground sm:px-8 lg:py-8">
     <header className="flex flex-wrap items-end justify-between gap-4">
-      <div><p className="eyebrow"><Link href="/plan" className="hover:text-foreground">Plan</Link> · {month}</p>
+      <div><p className="eyebrow"><Link href="/plan" className="hover:text-foreground">Plan</Link> · {monthName(month)}</p>
         <h1 className="mt-1 page-title">Spending limits</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Monthly category limits for {month}. Counts posted spending minus refunds; transfers, pending items and income are left out.</p></div>
-      <form method="get" className="flex flex-wrap items-end gap-2"><label className="grid gap-1 text-xs font-medium text-muted-foreground">Calendar month<input type="month" name="month" defaultValue={month} required className={field} /></label><button className={button}>View month</button></form>
+        <p className="mt-2 text-sm text-muted-foreground">Monthly category limits for {monthName(month)}. Counts posted spending minus refunds; transfers, pending items and income are left out.</p></div>
+      <MonthPicker month={month} className={field} />
     </header>
     {invalidMonth && <p role="alert" className="text-sm">That link has an invalid month, so this is the current month.</p>}
-    {month !== currentMonth && <p className="text-sm text-muted-foreground">Viewing a {month > currentMonth ? "future" : "past"} month. Edits apply to the current month ({currentMonth}).</p>}
-    {needsReview > 0 && <p role="status" className="text-sm text-warning">Some spending is not counted yet: {needsReview} transactions need review. <Link href="/import" className="underline">Review imports</Link></p>}
-    <section className={card} aria-labelledby="limits-heading">
+    {month !== currentMonth && <p role="status" className="rounded-lg bg-muted/60 px-4 py-3 text-sm">Viewing {month > currentMonth ? "a future" : "a past"} month. Changes apply to {monthName(currentMonth)}, and saving takes you back there.</p>}
+    {needsReview > 0 && <p role="status" className="text-sm text-warning">Some spending in {monthName(month)} is not counted yet: {needsReview} transactions need review. <Link href="/import" className="underline">Review imports</Link></p>}
+    {progress.length > 0 && <section className={card} aria-labelledby="limits-heading">
       <h2 id="limits-heading" className="text-sm font-medium">Category limits</h2>
-      {!progress.length && <p className="text-muted-foreground">No spending limits yet. Set one below.</p>}
       <ul className="divide-y divide-border">{progress.map(plan => {
         const money = (amount: bigint) => formatMoney(amount, plan.currency_code, workspace.locale);
         const cap = plan.allowance ?? plan.limit;
@@ -107,38 +118,41 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
             <h3 className="font-medium">{plan.name}{plan.periodEnabled === false ? " (disabled that month)" : ""}</h3>
             <p className="font-mono text-sm text-muted-foreground">{money(plan.spent)} of {cap === null ? "Unknown historical target" : money(cap)}</p>
           </div>
-          {plan.periodEnabled !== false && cap !== null && cap > 0n && <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={`${plan.name} plan used`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentOf(plan.spent, cap)}>
+          {plan.periodEnabled !== false && cap !== null && cap > 0n && <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={`${plan.name} limit used`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentOf(plan.spent, cap)} aria-valuetext={`${money(plan.spent)} spent of ${money(cap)}`}>
             <div className={`h-full rounded-full ${over ? "bg-foreground" : plan.partial ? "bg-muted-foreground" : "bg-brand"}`} style={{ width: `${percentOf(plan.spent, cap)}%` }} /></div>}
           <p className={`font-mono text-sm ${over ? "font-semibold" : "font-medium"}`}>{plan.periodEnabled !== false
-            ? (plan.partial ? plan.limitation : plan.remaining === null ? "Historical target unavailable" : plan.remaining >= 0n ? `${money(plan.remaining)} left` : `${money(-plan.remaining)} over plan`)
+            ? (plan.partial ? plan.limitation : plan.remaining === null ? "Historical target unavailable" : plan.remaining >= 0n ? `${money(plan.remaining)} left${plan.spent === 0n ? ", nothing spent yet" : ""}` : `${money(-plan.remaining)} over plan`)
             : "Disabled: not counted as a target."}</p>
-          {plan.partial && <p className="text-sm text-muted-foreground">Only classified spending is shown, so the amount left is unknown. {plan.limitation?.includes("classification") && <Link href="/import" className="text-brand underline">Review classifications</Link>}</p>}
-          {plan.rolloverResult?.status === "available" && <p className="text-sm text-muted-foreground">Carried over: {money(plan.rolloverResult.carriedMinor)}. Total allowance: {money(plan.rolloverResult.allowanceMinor)}.</p>}
+          {plan.partial && (() => { const reason = partialReason(plan.limitation); return <p className="text-sm text-muted-foreground">{reason.text} {reason.href && <Link href={reason.href} className="text-brand underline">{reason.action}</Link>}</p>; })()}
+          {plan.rolloverResult?.status === "available" && <p className="text-sm text-muted-foreground">{plan.limit !== null && `Monthly limit: ${money(plan.limit)}. `}Carried over: {money(plan.rolloverResult.carriedMinor)}. Total allowance: {money(plan.rolloverResult.allowanceMinor)}.</p>}
           <SourceCoverageDetails coverage={plan.sourceCoverage} />
           <details><summary className="cursor-pointer text-sm underline">Edit limit and rollover</summary>
             <div className="mt-3 flex flex-wrap items-start gap-x-6 gap-y-3">
               <SafeForm action={saveSpendingPlanSafely} className="flex flex-wrap items-end gap-2">
                 <input type="hidden" name="planId" value={plan.id} /><input type="hidden" name="version" value={plan.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} />
                 <input type="hidden" name="categoryId" value={plan.category_id} /><input type="hidden" name="currency" value={plan.currency_code} />
-                <input name="amount" required inputMode="decimal" aria-label={`Edit ${plan.name} limit`} placeholder="0.00" className={field + " w-28"} />
-                <button className={linkButton}>Update limit</button>
+                <label className="grid gap-1 text-sm">Monthly limit for {monthName(currentMonth)} ({plan.currency_code})<input name="amount" required inputMode="decimal" defaultValue={formatInputAmount(plan.limit_minor, plan.currency_code)} className={field + " w-28"} /></label>
+                <button aria-label={`Update ${plan.name} limit`} className={linkButton}>Update limit</button>
               </SafeForm>
-              <form action={toggleSpendingPlan}><input type="hidden" name="planId" value={plan.id} /><input type="hidden" name="version" value={plan.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><input type="hidden" name="enabled" value={plan.enabled ? "false" : "true"} /><button className={linkButton}>{plan.enabled ? "Disable" : "Enable"}</button></form>
-              <form action={setRollover} className="flex w-full flex-wrap items-end gap-3 text-sm"><input type="hidden" name="planId" value={plan.id} /><input type="hidden" name="version" value={plan.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><label className="flex gap-2"><input type="checkbox" name="rollover" defaultChecked={plan.rollover} />Carry remaining budget into the next month</label><label className="grid gap-1 text-xs">Rollover starts<input type="month" name="rolloverFrom" required defaultValue={plan.rollover_from.slice(0, 7)} className={field} /></label><button className={linkButton}>Save rollover rule</button><p className="w-full text-sm text-muted-foreground">Leftover and overspent amounts both carry over. Disabled months reset the carry.</p></form>
+              <SafeForm action={toggleSpendingPlanSafely}><input type="hidden" name="planId" value={plan.id} /><input type="hidden" name="version" value={plan.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><input type="hidden" name="enabled" value={plan.enabled ? "false" : "true"} /><button aria-label={`${plan.enabled ? "Disable" : "Enable"} ${plan.name}`} className={linkButton}>{plan.enabled ? "Disable" : "Enable"}</button></SafeForm>
+              <SafeForm action={setRolloverSafely} className="flex w-full flex-wrap items-end gap-3 text-sm"><input type="hidden" name="planId" value={plan.id} /><input type="hidden" name="version" value={plan.version} /><input type="hidden" name="requestId" value={crypto.randomUUID()} /><label className="flex gap-2"><input type="checkbox" name="rollover" defaultChecked={plan.rollover} />Carry remaining budget into the next month</label><label className="grid gap-1 text-xs">Rollover starts<input type="month" name="rolloverFrom" required defaultValue={plan.rollover_from.slice(0, 7)} className={field} /></label><button className={linkButton}>Save rollover rule</button><p className="w-full text-sm text-muted-foreground">Leftover and overspent amounts both carry over. Disabled months reset the carry.</p></SafeForm>
             </div>
           </details>
         </li>;
       })}</ul>
-    </section>
+    </section>}
+    {!categories.length && <section className={card}><h2 className="text-sm font-medium">Create your first spending limit</h2><p className="text-sm text-muted-foreground">A limit belongs to a category, and you have none yet. <Link href="/money/organization" className="text-brand underline">Organize your transactions</Link> to set them up.</p></section>}
     {!!categories.length && <section className={card} aria-labelledby="new-limit-heading">
-      <h2 id="new-limit-heading" className="text-sm font-medium">Set a monthly limit</h2>
+      <h2 id="new-limit-heading" className="text-sm font-medium">{progress.length ? "Set a monthly limit" : "Create your first spending limit"}</h2>
+      <p className="text-sm text-muted-foreground">A limit is a target for a category. It reserves nothing and moves no money.</p>
       <SafeForm action={saveSpendingPlanSafely} className="flex flex-wrap items-end gap-3">
         <label className="grid gap-1 text-sm font-medium">Category<select name="categoryId" aria-label="Category" className={field}>{categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-        <label className="grid gap-1 text-sm">Currency<input name="currency" defaultValue={workspace.display_currency} required maxLength={3} aria-label="Currency code" className={field + " w-20"} /></label>
+        <label className="grid gap-1 text-sm">Currency<CurrencySelect name="currency" label="Currency" defaultValue={workspace.display_currency} locale={workspace.locale} /></label>
         <label className="grid gap-1 text-sm">Monthly limit<input name="amount" required inputMode="decimal" placeholder="400.00" aria-label="Monthly limit" className={field + " w-32"} /></label>
         <button className={button}>Set limit</button>
+        <p className="basis-full text-xs text-muted-foreground">Enter the amount with a dot for decimals, like 400.00.</p>
       </SafeForm>
     </section>}
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading history…</p>}><PlanningHistory entityType="spending_plan" destination="/plan/spending" /></Suspense>
+    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading history…</p>}><PlanningHistory entityType="spending_plan" destination="/plan/spending" categories={names} /></Suspense>
   </main>;
 }
