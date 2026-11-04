@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
+import { deleteDisposableUser } from "./fixtures";
 
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires disposable Supabase auth and applied migration 202610060003");
 test("explicit partial/full occurrence association changes the forecast once and retains undo history", async ({ browser }) => {
@@ -111,18 +112,8 @@ test("explicit partial/full occurrence association changes the forecast once and
         expect(owned.data.user?.user_metadata).toMatchObject({qa_test: "recurring-occurrences", run_id: runId});
         expect((await db`select count(*)::int as count from storage.objects where owner_id=${user}`)[0].count).toBe(0);
       }
-      if (workspace && user) await db.begin(async tx => {
-        expect((await tx`select id from public.workspaces where id=${workspace!} and owner_id=${user!}`).length).toBe(1);
-        for (const table of ["recurring_occurrence_settlements", "recurring_series_transactions", "recurring_series", "financial_assumptions", "balance_snapshots", "transactions", "forecast_preference_events", "forecast_preferences", "workspace_settings", "accounts", "planning_events"]) {
-          if(table==="transactions") await tx`update public.transactions set transfer_id=null,refund_of_id=null where workspace_id=${workspace!}`;
-          await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
-          expect((await tx`select count(*)::int as count from ${tx("public." + table)} where workspace_id=${workspace!}`)[0].count).toBe(0);
-        }
-        await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
-        expect((await tx`select count(*)::int as count from public.workspaces where id=${workspace!}`)[0].count).toBe(0);
-      });
       if (user) {
-        expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();
+        await deleteDisposableUser(db, user);
         expect((await db`select count(*)::int as count from auth.users where id=${user}`)[0].count).toBe(0);
         unlinkSync(recovery);
       }

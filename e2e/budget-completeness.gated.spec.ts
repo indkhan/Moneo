@@ -6,6 +6,7 @@ import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
 import { buildPlanningReview, type ReviewTransaction } from "../lib/finance/review";
 import { monthPrefix } from "../lib/finance/spending-plans";
+import { deleteDisposableUser } from "./fixtures";
 
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires disposable Supabase auth and database fixtures");
 test("native and AI budget completeness follow real classification correction and undo", async ({ browser, baseURL }) => {
@@ -71,14 +72,7 @@ test("native and AI budget completeness follow real classification correction an
     expect((await db`select count(*)::int as count from public.correction_events where workspace_id=${workspace!} and undone`)[0].count).toBe(2);
   } finally {
     await context.close();
-    if (workspace) await db.begin(async tx => {
-      for (const table of ["correction_events", "spending_plans", "spending_plan_limits", "transactions", "accounts", "categories", "workspace_settings", "planning_events"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
-      const tables = await tx`select table_name from information_schema.columns where table_schema='public' and column_name='workspace_id'`;
-      for (const { table_name } of tables) expect((await tx`select count(*)::int as count from ${tx("public." + table_name)} where workspace_id=${workspace!}`)[0].count, table_name).toBe(0);
-      expect((await tx`select count(*)::int as count from storage.objects where owner_id=${user}`)[0].count).toBe(0);
-      await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user}`;
-    });
-    expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();
+    await deleteDisposableUser(db, user);
     expect((await db`select count(*)::int as count from auth.users where id=${user}`)[0].count).toBe(0);
     unlinkSync(recovery); await db.end();
   }

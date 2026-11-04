@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
+import { deleteDisposableUser } from "./fixtures";
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires real disposable Supabase authentication and database fixtures");
 
 test("source correction invalidates the inferred forecast obligation and undo restores it",async({browser})=>{
@@ -87,21 +88,7 @@ test("source correction invalidates the inferred forecast obligation and undo re
         expect(owned.data.user?.user_metadata).toMatchObject({qa_test:"recurring-source",run_id:runId});
         expect((await db`select count(*)::int as count from storage.objects where owner_id=${user}`)[0].count).toBe(0);
       }
-      if(workspace&&user)await db.begin(async tx=>{
-        expect((await tx`select id from public.workspaces where id=${workspace!} and owner_id=${user!}`).length).toBe(1);
-        for(const table of ["transaction_link_fees","transaction_links","correction_events","recurring_occurrence_settlements","recurring_series_transactions","recurring_series"]) {
-          await tx`delete from ${tx("public."+table)} where workspace_id=${workspace!}`;
-          expect((await tx`select count(*)::int as count from ${tx("public."+table)} where workspace_id=${workspace!}`)[0].count).toBe(0);
-        }
-        await tx`update public.transactions set transfer_id=null,refund_of_id=null where workspace_id=${workspace!}`;
-        for(const table of ["financial_assumptions","manual_transaction_entries","balance_snapshots","transactions","forecast_preference_events","forecast_preferences","accounts","planning_events"]) {
-          await tx`delete from ${tx("public."+table)} where workspace_id=${workspace!}`;
-          expect((await tx`select count(*)::int as count from ${tx("public."+table)} where workspace_id=${workspace!}`)[0].count).toBe(0);
-        }
-        await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
-        expect((await tx`select count(*)::int as count from public.workspaces where id=${workspace!}`)[0].count).toBe(0);
-      });
-      if(user){expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();expect((await db`select count(*)::int as count from auth.users where id=${user}`)[0].count).toBe(0);unlinkSync(recovery);}
+      if(user){await deleteDisposableUser(db, user);expect((await db`select count(*)::int as count from auth.users where id=${user}`)[0].count).toBe(0);unlinkSync(recovery);}
       if(migrationLedger)expect(await db`select version,name,statements from supabase_migrations.schema_migrations order by version`).toEqual(migrationLedger);
     } finally {await db.end();}
   }

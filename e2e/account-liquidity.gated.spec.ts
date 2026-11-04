@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
+import { deleteDisposableUser } from "./fixtures";
 
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires disposable synthetic auth and reviewed migration head");
 test("Home and Plan retain paying-account gaps, timely funding, donor protections and recurring bills", async ({ browser }, testInfo) => {
@@ -33,6 +34,8 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
       for (const [account, amount] of [[checking, "10000"], [savings, "100000"]]) await tx`insert into public.balance_snapshots(workspace_id,account_id,amount_minor,currency_code,as_of,provenance,boundary_kind,covered_transactions,actor_id) values(${workspace!},${account},${amount},'EUR',${now},'synthetic reviewed opening','reviewed_activity','[]'::jsonb,${user!})`;
       await tx`insert into public.financial_assumptions(workspace_id,account_id,kind,name,amount_minor,currency_code,cadence,starts_on,source,confirmed,enabled) values(${workspace!},${checking},'expense','Recurring bill QA',-50000,'EUR','monthly',${tomorrow},'recurring_confirmed',true,true)`;
       await tx`insert into public.forecast_preferences(workspace_id,currency_code,uncertainty_bps) values(${workspace!},'EUR',0)`;
+      // Available funds is not a default Home widget, so this user has added it.
+      await tx`insert into public.dashboard_layouts(workspace_id,items) values(${workspace!},${["planning", "upcoming"]})`;
       await tx`insert into public.goals(id,workspace_id,name,target_minor,currency_code) values(${goal},${workspace!},'Protected savings QA',90000,'EUR')`;
     });
     const cookies = new Map<string, string>();
@@ -99,11 +102,7 @@ test("Home and Plan retain paying-account gaps, timely funding, donor protection
   } finally {
     await context.close().catch(() => {});
     try {
-      if (workspace) await db.begin(async tx => {
-        for (const table of ["insight_dismissals", "goal_reservation_events", "goal_allocations", "goal_events", "goals", "planning_events", "financial_assumptions", "forecast_preference_events", "forecast_preferences", "balance_snapshots", "accounts", "categories"]) await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
-        await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
-      });
-      if (user) expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();
+      if (user) await deleteDisposableUser(db, user);
       if (workspace) expect((await db`select count(*)::int as count from public.workspaces where id=${workspace}`)[0].count).toBe(0);
       if (user) expect((await admin.auth.admin.getUserById(user)).data.user).toBeNull();
       if (user) {

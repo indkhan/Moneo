@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
+import { deleteDisposableUser } from "./fixtures";
 
 test("MNE024 owned direct history, stable pagination, newest reply and shared panel selection", async ({ browser, baseURL }) => {
   test.setTimeout(360_000);
@@ -214,8 +215,7 @@ test("MNE024 owned direct history, stable pagination, newest reply and shared pa
     await context.close().catch(() => {});
     await db`delete from public.messages where id in ${db(messageIds.length ? messageIds : [randomUUID()])} and workspace_id in ${db(workspaceIds.length ? workspaceIds : [randomUUID()])}`;
     await db`delete from public.conversations where id in ${db(threadIds.length ? threadIds : [randomUUID()])} and workspace_id in ${db(workspaceIds.length ? workspaceIds : [randomUUID()])}`;
-    for (let i = 0; i < workspaceIds.length; i++) await db`delete from public.workspaces where id=${workspaceIds[i]} and owner_id=${userIds[i]}`;
-    for (const id of userIds) expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
+    for (const id of userIds) await deleteDisposableUser(db, id);
     await db.end(); unlinkSync(journal);
   }
 });

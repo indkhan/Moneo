@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { randomUUID, randomBytes } from "node:crypto";
 import postgres from "postgres";
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { deleteDisposableUser } from "./fixtures";
 
 test.skip(!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.SUPABASE_DB_URL || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
   "Requires configured Supabase admin/auth/database for disposable real users; no stored auth state or email needed");
@@ -142,19 +143,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
   } finally {
     for (const context of contexts) await context.close();
     if (storagePath) expect((await admin.storage.from("imports").remove([storagePath])).error).toBeNull();
-    for (const workspace of workspaces) await db.begin(async tx => {
-      await tx`delete from public.money_metadata_events where workspace_id=${workspace}`;
-      await tx`delete from public.transaction_views where workspace_id=${workspace}`;
-      await tx`delete from public.saved_analyses where workspace_id=${workspace}`;
-      await tx`delete from public.background_jobs where workspace_id=${workspace}`;
-      await tx`delete from public.source_transactions where workspace_id=${workspace}`;
-      await tx`delete from public.imports where workspace_id=${workspace}`;
-      await tx`delete from public.transactions where workspace_id=${workspace}`;
-      await tx`delete from public.accounts where workspace_id=${workspace}`;
-      await tx`delete from public.categories where workspace_id=${workspace}`;
-      await tx`delete from public.workspaces where id=${workspace} and owner_id in ${tx(users)}`;
-    });
-    for (const user of users) expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();
+    for (const user of users) await deleteDisposableUser(db, user);
     if (users.length) expect((await db`select id from auth.users where id in ${db(users)}`).length).toBe(0);
     if (existsSync(recoveryPath)) unlinkSync(recoveryPath);
     await db.end();

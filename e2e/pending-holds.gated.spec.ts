@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
+import { deleteDisposableUser } from "./fixtures";
 
 test("reviewed pending settlement releases the obsolete hold and undo preserves both source observations", async ({ browser }) => {
   test.setTimeout(180_000);
@@ -87,15 +88,7 @@ test("reviewed pending settlement releases the obsolete hold and undo preserves 
     // Playwright may already have closed the context after a test timeout.
     // Cleanup must still remove the exact synthetic database/auth fixtures.
     await context.close().catch(() => {});
-    if (workspace) await db.begin(async tx => {
-      await tx`delete from public.pending_hold_resolutions where workspace_id=${workspace!}`;
-      await tx`delete from public.balance_snapshots where workspace_id=${workspace!}`;
-      await tx`delete from public.transaction_sources where source_transaction_id in (select id from public.source_transactions where workspace_id=${workspace!})`;
-      for (const table of ["transactions", "source_transactions", "imports", "data_sources", "accounts", "workspace_settings"])
-        await tx`delete from ${tx("public." + table)} where workspace_id=${workspace!}`;
-      await tx`delete from public.workspaces where id=${workspace!} and owner_id=${user!}`;
-    });
-    if (user) { expect((await admin.auth.admin.deleteUser(user)).error).toBeNull(); unlinkSync(journal); }
+    if (user) { await deleteDisposableUser(db, user); unlinkSync(journal); }
     await db.end();
   }
 });

@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import postgres from "postgres";
+import { deleteDisposableUser } from "./fixtures";
 
 test.skip(!process.env.SUPABASE_DB_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, "Requires real disposable Supabase authentication");
 
@@ -52,11 +53,7 @@ test("settings save revocation and display changes with an unchanged unavailable
     await expect(page.getByText("Preferences saved.")).toHaveCount(0);
   } finally {
     await context.close().catch(() => {});
-    await db.begin(async tx => {
-      await tx`delete from public.workspace_settings where workspace_id=${workspace.id}`;
-      await tx`delete from public.workspaces where id=${workspace.id} and owner_id=${user}`;
-    });
-    expect((await admin.auth.admin.deleteUser(user)).error).toBeNull();
+    await deleteDisposableUser(db, user);
     unlinkSync(recovery); await db.end();
   }
 });
