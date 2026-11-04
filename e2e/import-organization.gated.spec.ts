@@ -65,7 +65,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   const impact=()=>page.getByRole('region',{name:'Organization impact preview'});
   // One step: Apply is the approval; the rule box is ticked by default.
   const apply=async(saveRule:boolean)=>{
-   const box=queue().getByRole('checkbox',{name:'Do the same for future entries',exact:false});if(saveRule)await box.check();else await box.uncheck();
+   const box=queue().getByRole('checkbox',{name:'Suggest the same for future entries',exact:false});if(saveRule)await box.check();else await box.uncheck();
    await queue().getByRole('button',{name:/^Apply to \d+$/}).click();await expect(impact().getByRole('heading',{name:/^Applied/})).toBeVisible();
   };
   const rules=async()=>{const details=page.locator('details').filter({hasText:'Rules ('});if(!await details.evaluate(node=>(node as HTMLDetailsElement).open))await details.locator('summary').first().click();const disabled=details.locator('details');if(await disabled.count()&&!await disabled.evaluate(node=>(node as HTMLDetailsElement).open))await disabled.locator('summary').click();return details.locator('li').filter({hasText:'cedar cooperative'});};
@@ -124,7 +124,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
   await expect.poll(async()=>{const [row]=await db`select category_id,note,version from public.transactions where id=${moss.id} and workspace_id=${workspace!}`;return row;}).toMatchObject({category_id:category,note:'Retained owner correction',version:1});
   await page.keyboard.press('Escape');await expect(detail).toHaveCount(0);await page.goto('/money/organization');
   await expect(page).toHaveURL(/\/money\/organization$/);
-  await expect(page.getByRole('heading',{name:'Organize spending',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Organize transactions',exact:true})).toBeVisible();
   await expect(page.getByRole('region',{name:'Organization suggestions'}).getByRole('listitem').filter({hasText:'MOSS TRAVEL'})).toHaveCount(0);
   expect([...await db`select id,original_row from public.source_transactions where workspace_id=${workspace!} and id=any(${originalSources.map(row=>row.id)}) order by id`]).toEqual(originalSources);
   await page.screenshot({path:testInfo.outputPath('native-organization-rules-correction.png'),fullPage:true});

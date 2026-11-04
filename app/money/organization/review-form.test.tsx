@@ -4,7 +4,7 @@ import {OrganizationQueue} from './review-form';
 vi.mock('./actions',()=>({createReview:vi.fn(),applyReview:vi.fn(),undoReview:vi.fn()}));
 const state=vi.hoisted(()=>[] as unknown[]);
 vi.mock('react',async importOriginal=>({...await importOriginal<typeof import('react')>(),
- useActionState:()=>[{},vi.fn(),false],useRef:(value:unknown)=>({current:value}),
+ useActionState:()=>[{},vi.fn(),false],useRef:(value:unknown)=>({current:value}),useEffect:()=>{},
  useState:(value:unknown)=>{const index=state.length;state.push(value);return [value,(next:unknown)=>{state[index]=next;}];},
 }));
 const id='00000000-0000-4000-8000-000000000001';
