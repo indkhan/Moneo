@@ -23,7 +23,8 @@ test("a signed-out link returns after sign-in, sign out ends the session, and De
     await page.goto("/money/accounts?from=link");
     await expect(page).toHaveURL(/\/login\?next=/);
     await signIn();
-    await expect(page).toHaveURL(/\/money\/accounts\?from=link$/);
+    // The first sign-in can wait on a dev compile.
+    await expect(page).toHaveURL(/\/money\/accounts\?from=link$/, { timeout: 30_000 });
 
     await page.goto("/settings");
     await page.locator("#account").getByRole("button", { name: "Sign out", exact: true }).click();
@@ -32,7 +33,7 @@ test("a signed-out link returns after sign-in, sign out ends the session, and De
     await expect(page).toHaveURL(/\/login\?next=%2Fsettings$/);
 
     await signIn();
-    await expect(page).toHaveURL(/\/settings$/);
+    await expect(page).toHaveURL(/\/settings$/, { timeout: 30_000 });
     const section = page.getByRole("region", { name: "Delete account" });
     await expect(section.getByRole("button", { name: "Delete account", exact: true })).toBeDisabled();
     await section.getByLabel("Type DELETE to confirm").fill("DELETE");
