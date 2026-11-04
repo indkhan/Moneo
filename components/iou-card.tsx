@@ -43,6 +43,8 @@ export function IouCard({ id, initial, locale = "en-GB", onAccount, onDecided }:
       else if (decision === "accept") loadIouProposal(id).then(loaded => loaded && setProposal(loaded), () => {});
     } catch (cause) { setProposal(before); setError(cause instanceof Error ? cause.message : "Could not save"); onDecided?.(id, true); }
   });
+  // Many cards can be open at once, so a screen reader's button list needs more than "Add". Recurring cards keep their own short names.
+  const named = (verb: string) => recurring ? undefined : `${verb}: ${proposal.title}`;
   const open = proposal.status === "proposed" || proposal.status === "failed";
   const done = transaction ? <>Added. {proposal.result?.href && <Link href={proposal.result.href} className="underline">Open transaction</Link>}
     {proposal.result?.createdAccount && <> A Cash account was created; <Link href="/money/accounts" className="underline">set its balance</Link> to count it in net worth.</>}</>
@@ -66,8 +68,8 @@ export function IouCard({ id, initial, locale = "en-GB", onAccount, onDecided }:
           {!chosen && <option value="">{createsCash ? "New Cash account" : "Choose an account"}</option>}
           {proposal.accounts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select></label>}
-      <button type="button" disabled={pending || needsChoice} onClick={() => decide("accept")} className="min-h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">{proposal.conflict_key?.startsWith("recurring_new:") ? "Yes, recurring" : recurring ? "Confirm" : balance ? "Save" : createsCash ? "Create Cash account and add" : "Add"}</button>
-      <button type="button" disabled={pending} onClick={() => decide("reject")} className="min-h-9 rounded-lg border border-border px-4 text-sm hover:bg-muted disabled:opacity-50">{proposal.conflict_key?.startsWith("recurring_new:") ? "Not recurring" : proposal.conflict_key?.startsWith("recurring_price:") ? "Keep old amount" : "Dismiss"}</button>
+      <button type="button" aria-label={named(balance ? "Save" : createsCash ? "Create Cash account and add" : "Add")} disabled={pending || needsChoice} onClick={() => decide("accept")} className="min-h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">{proposal.conflict_key?.startsWith("recurring_new:") ? "Yes, recurring" : recurring ? "Confirm" : balance ? "Save" : createsCash ? "Create Cash account and add" : "Add"}</button>
+      <button type="button" aria-label={named("Dismiss")} disabled={pending} onClick={() => decide("reject")} className="min-h-9 rounded-lg border border-border px-4 text-sm hover:bg-muted disabled:opacity-50">{proposal.conflict_key?.startsWith("recurring_new:") ? "Not recurring" : proposal.conflict_key?.startsWith("recurring_price:") ? "Keep old amount" : "Dismiss"}</button>
     </div> : <p role="status" className="mt-2 text-sm">{proposal.status === "accepted" ? done : recurring ? "Dismissed. It won’t be suggested again." : "Dismissed. Nothing was changed."}</p>}
   </section>;
 }

@@ -28,7 +28,7 @@ export function SummaryCard({ title, detail, children }: { title: string; detail
   if (cleared && !open) return null;
   return <Cleared.Provider value={setCleared}><section aria-label={title} className="my-3 flex flex-wrap items-center gap-3 rounded-xl border border-ai-border bg-ai-soft p-4">
     <div className="min-w-0 flex-1"><p className="font-medium">{title}</p><p className="mt-0.5 text-sm text-muted-foreground">{detail}</p></div>
-    <button type="button" onClick={() => setOpen(true)} className={`${primary} inline-flex items-center gap-1`}>Review<ChevronRight className="size-4" aria-hidden="true" /></button>
+    <button type="button" aria-label={`Review: ${title}`} onClick={() => setOpen(true)} className={`${primary} inline-flex items-center gap-1`}>Review<ChevronRight className="size-4" aria-hidden="true" /></button>
     {/* Closing refreshes Home so the counts match what was decided. */}
     {open && <dialog ref={dialog} aria-label={title} onClose={() => { setOpen(false); router.refresh(); }}
       className="m-auto mb-0 max-h-[85dvh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border border-border bg-background p-5 text-foreground backdrop:bg-black/40 sm:mb-auto sm:rounded-2xl">
