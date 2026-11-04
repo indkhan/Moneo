@@ -39,7 +39,7 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await expect(page.getByLabel("Financial statement files")).toBeEnabled();
     await page.getByLabel("Financial statement files").setInputFiles({ name: "synthetic.csv", mimeType: "text/csv", buffer: Buffer.from(AUGUST_CSV) });
     await expect(page.getByRole("button", { name: "Start import", exact: true })).toBeDisabled();
-    await page.getByRole("combobox", { name: "Source numeric convention" }).selectOption("decimal-comma");
+    await page.getByRole("combobox", { name: "Number format in your file" }).selectOption("decimal-comma");
     await expect(page.getByRole("button", { name: "Start import", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Preview correction" }).click();
     await expect(page.getByRole("button", { name: "Start import", exact: true })).toBeEnabled();

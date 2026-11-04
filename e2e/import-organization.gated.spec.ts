@@ -41,7 +41,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
    await page.getByLabel('Account name',{exact:true}).fill('Organization imported account');
    await page.getByText('More columns (optional)').click();
    for(const name of ['Date','Description','Amount','Transaction ID'])await page.getByRole('combobox',{name,exact:true}).selectOption(name==='Transaction ID'?'id':name.toLowerCase());
-   await page.getByRole('combobox',{name:'Source numeric convention'}).selectOption('decimal-dot');
+   await page.getByRole('combobox',{name:'Number format in your file'}).selectOption('decimal-dot');
    const previewed=page.waitForResponse(response=>response.url().endsWith('/api/imports/inspect')&&response.request().method()==='POST');
    await page.getByRole('button',{name:'Preview correction',exact:true}).click();expect((await previewed).ok()).toBe(true);
    const confirmed=page.waitForResponse(response=>response.url().endsWith('/api/imports/confirm')&&response.request().method()==='POST');

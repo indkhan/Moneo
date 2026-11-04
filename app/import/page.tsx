@@ -322,6 +322,8 @@ export default function ImportPage() {
   );
 
   const result = inspection?.preview;
+  const sourceAmountColumn = mapping?.amountColumn ?? mapping?.debitColumn;
+  const sourceAmount = sourceAmountColumn && inspection?.sample.map(row => row[sourceAmountColumn]).find(Boolean);
   const unresolved = result?.unresolvedRows ?? [];
   const decisions = mapping?.rowDecisions ?? [];
   const namesMissing = !!mapping && (mapping.accountRoutes?.length ? mapping.accountRoutes.some(route => !route.accountName.trim()) : !mapping.accountName.trim());
@@ -399,16 +401,18 @@ export default function ImportPage() {
           <p className="text-xs text-muted-foreground">Proposed from the bank and account. Rename before continuing; existing accounts with the same name and currency are reused.</p>
         </fieldset>
         <div className="grid content-start gap-3">
-          <label className="grid gap-1.5 text-sm font-medium">Source numeric convention
+          <label className="grid gap-1.5 text-sm font-medium">Number format in your file
             <select className={input} value={mapping.numericConvention ?? ""} onChange={event => edit({ numericConvention: event.target.value as ImportMapping["numericConvention"] || undefined })}>
               <option value="">Select number format</option>
               <option value="decimal-dot">1,234.56</option>
               <option value="decimal-comma">1.234,56</option>
             </select>
           </label>
+          {sourceAmount && <p className="text-xs text-muted-foreground">An amount from your file: <span className="font-mono">{sourceAmount}</span>. Compare it with the preview below.</p>}
           {result?.timestampReviewRequired && <div className="space-y-2 rounded-lg border border-warning/40 p-3 text-sm">
-            <p>The file has times without a timezone. A wrong one can shift dates and balance order.</p>
-            <label className="grid gap-1.5 font-medium">Source timestamp timezone<input className={input} value={mapping.timestampTimezone ?? ""} onChange={event => edit({ timestampTimezone: event.target.value, timestampTimezoneConfirmed: false })} /></label>
+            <p>The file has times without a timezone. A wrong one can move entries near midnight to another day and change balance order.</p>
+            <label className="grid gap-1.5 font-medium">Timezone used by the statement<input className={input} list="import-timezones" placeholder="e.g. Europe/Berlin" value={mapping.timestampTimezone ?? ""} onChange={event => edit({ timestampTimezone: event.target.value, timestampTimezoneConfirmed: false })} /></label>
+            <datalist id="import-timezones">{Intl.supportedValuesOf("timeZone").map(zone => <option key={zone} value={zone} />)}</datalist>
             <label className="flex gap-2"><input type="checkbox" checked={mapping.timestampTimezoneConfirmed ?? false} onChange={event => setMapping({ ...mapping, timestampTimezoneConfirmed: event.target.checked })} />This timezone matches the statement.</label>
           </div>}
         </div>

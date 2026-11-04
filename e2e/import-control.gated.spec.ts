@@ -50,7 +50,7 @@ test("durable import Stop, Resume, byte deduplication, undo and reimport preserv
     await page.getByRole("combobox",{name:"Amount",exact:true}).selectOption("amount");
     await page.getByText("More columns (optional)").click();
     await page.getByRole("combobox",{name:"Transaction ID",exact:true}).selectOption("id");
-    await page.getByRole("combobox",{name:"Source numeric convention"}).selectOption("decimal-dot");
+    await page.getByRole("combobox",{name:"Number format in your file"}).selectOption("decimal-dot");
     const previewInspect=page.waitForResponse(response=>response.url().endsWith("/api/imports/inspect")&&response.request().method()==="POST");
     await page.getByRole("button",{name:"Preview correction",exact:true}).click();
     expect((await previewInspect).ok()).toBe(true);

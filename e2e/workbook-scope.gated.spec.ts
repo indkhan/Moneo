@@ -59,11 +59,11 @@ test("reviewed workbook scope imports only selected financial tables with exact 
     await scope.getByRole("button",{name:"Preview selected tables",exact:true}).click();
     const selectedJson=await (await selected).json();expect(selectedJson.sample.map((r:{Description:string})=>r.Description)).toEqual(["Selected checking","Selected second table","Selected savings"]);
     await page.getByLabel("Account name",{exact:true}).fill("Reviewed workbook cash");
-    await page.getByRole("combobox",{name:"Source numeric convention"}).selectOption("decimal-dot");
+    await page.getByRole("combobox",{name:"Number format in your file"}).selectOption("decimal-dot");
     const preview=page.waitForResponse(r=>r.url().endsWith("/api/imports/inspect")&&r.request().method()==="POST");
     await page.getByRole("button",{name:"Preview correction",exact:true}).click();expect((await preview).ok()).toBe(true);
     await expect(page.getByText("3 rows",{exact:true})).toBeVisible();
-    await expect(page.getByLabel("Source timestamp timezone",{exact:true})).toHaveValue("Europe/Berlin");
+    await expect(page.getByLabel("Timezone used by the statement",{exact:true})).toHaveValue("Europe/Berlin");
     await page.getByRole("checkbox",{name:"This timezone matches the statement."}).check();
     const confirm=page.waitForResponse(r=>r.url().endsWith("/api/imports/confirm")&&r.request().method()==="POST");
     await page.getByRole("button",{name:"Start import",exact:true}).click();const response=await confirm;expect(response.ok()).toBe(true);const {importId}=await response.json();
