@@ -1,0 +1,63 @@
+ok we have so many findings and all of that give me summary of it with what needs fixing and what to work on and all of that so that the ui is nice , no bugs and we fix all the problems and make the ui and ux excelent give me list of stuff looking at gpt and claude findings and otehr findings
+
+---
+
+1. yes with showsn as per the recommndation
+2. as per the recommeneation
+3. i dont get part 3 
+4. mgsukhan@gmail.com
+explain part thre and give me how are you planning to implement it step by step in consice
+
+---
+
+yes i agree
+no let mgsukhan@gmail.com be the account 
+yes start with step 1 and when everything is done and you make pr with everything with all the stuff also mention the speed before and after and before making a pr get a review from gpt 6.1 sol and if any problme work on them and then make the final pr
+
+---
+
+and before each step think what is the best way to do it and if any point any question ask me
+
+---
+
+ANOTHER THING TO LOOK AT IS THAT DRAG AND DROP ON HOME IS NOT FULLY WORKING U CAN NOT BRING ANYTHIN ANYWHERE
+
+---
+
+<task-notification>
+<task-id>b9ct2pz8n</task-id>
+<tool-use-id>toolu_01XqtJ2WbD6DMt4ND687sJQC</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-7d9fff38\64d783ab-53ac-41ca-8d34-df07b2fe9ba1\tasks\b9ct2pz8n.output</output-file>
+<status>completed</status>
+<summary>Background command "Run full browser suite for baseline" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b7zyz538s</task-id>
+<tool-use-id>toolu_01E9dSf6UbMaKrVpNQWp3GdW</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-7d9fff38\64d783ab-53ac-41ca-8d34-df07b2fe9ba1\tasks\b7zyz538s.output</output-file>
+<status>completed</status>
+<summary>Background command "Rerun the remaining failing browser specs" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bz6wjndu9</task-id>
+<tool-use-id>toolu_01Q19twgMmMgtau5yFtxgcCU</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-7d9fff38\64d783ab-53ac-41ca-8d34-df07b2fe9ba1\tasks\bz6wjndu9.output</output-file>
+<status>completed</status>
+<summary>Background command "Rerun the five remaining specs" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b0jut82n9</task-id>
+<tool-use-id>toolu_01U4nkYVa8iebK4nTkZhv77Y</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-7d9fff38\64d783ab-53ac-41ca-8d34-df07b2fe9ba1\tasks\b0jut82n9.output</output-file>
+<status>completed</status>
+<summary>Background command "Rerun coverage and import specs with longer limits" completed (exit code 0)</summary>
+</task-notification>
