@@ -129,7 +129,7 @@ test("two real users isolate pages, APIs, files and cancellations; account/view 
     expect(foreignDismissals.data).toEqual([]);
     expect((await sessions[1].from("insight_dismissals").insert({ workspace_id: workspace, evidence_key: "b".repeat(64), insight_type: "data_quality" })).error).not.toBeNull();
     await page.goto("/settings");
-    await page.getByLabel("Minimum spending change", { exact: true }).fill("90071992547409.93");
+    await page.getByLabel("Minimum spending increase", { exact: true }).fill("90071992547409.93");
     await page.getByLabel("Upcoming payment lookahead (days)", { exact: true }).fill("30");
     await page.getByLabel("Maximum insights", { exact: true }).fill("20");
     await page.getByRole("button", { name: "Save insight preferences", exact: true }).click();
