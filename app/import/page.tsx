@@ -6,6 +6,7 @@ import type { ImportMapping, SourceRow, WorkbookScope } from "@/lib/import/csv";
 import { WorkbookScopeReview, type WorkbookSheet } from "./workbook-scope";
 import { formatMoney } from "@/lib/finance/format";
 import { ConnectedBanks } from "@/components/connected-banks";
+import { PhoneCollapse } from "@/components/phone-collapse";
 
 type Preview = {
   accountName: string;
@@ -338,10 +339,10 @@ export default function ImportPage() {
   return <main className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-6 sm:px-8 lg:py-8">
     <header className="space-y-5">
       <div><p className="eyebrow">Money · Import</p><h1 className="mt-2 page-title">Import financial data</h1><p className="mt-2 text-sm text-muted-foreground">Drop CSV or XLSX statements. Only rows that need a decision are shown. Afterwards you can review each import and undo it if nothing depends on it.</p></div>
-      {file && <ol className="flex flex-wrap gap-x-6 gap-y-2 text-sm" aria-label="Import steps">{STEPS.map((label, i) =>
+      {file && <PhoneCollapse label={`Step ${step + 1} of ${STEPS.length}: ${STEPS[step]}`}><ol className="flex flex-wrap gap-x-6 gap-y-2 text-sm" aria-label="Import steps">{STEPS.map((label, i) =>
         <li key={label} aria-current={i === step ? "step" : undefined} className={`flex items-center gap-2 ${i === step ? "font-medium text-foreground" : i < step ? "text-foreground" : "text-muted-foreground"}`}>
           <span className={`grid size-6 place-items-center rounded-full text-xs ${i === step ? "bg-brand text-white" : i < step ? "bg-muted text-brand" : "border border-border"}`}>{i < step ? "✓" : i + 1}</span>{label}
-        </li>)}</ol>}
+        </li>)}</ol></PhoneCollapse>}
     </header>
 
     <label className={`relative block rounded-xl border border-dashed border-border bg-card text-center transition-colors hover:bg-muted/40 focus-within:ring-2 focus-within:ring-brand ${file ? "p-5" : "p-10"}`}>
@@ -363,7 +364,7 @@ export default function ImportPage() {
     {busy && <p role="status" className="text-sm text-muted-foreground">{interpreting ? `Reading ${file?.name ?? "statement"}…` : "Working…"}{interpreting && <button type="button" className="ml-3 underline" onClick={clearFiles}>Cancel interpretation</button>}</p>}
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
 
-    {file && inspection && <section className="space-y-6 rounded-xl border border-border bg-card p-6" aria-label="Statement review">
+    {file && inspection && <section className="space-y-6 rounded-xl border border-border bg-card p-4 sm:p-6" aria-label="Statement review">
       <div className="space-y-1">
         <h2 className="truncate text-sm font-medium text-foreground" title={`${file.name} (${index + 1} of ${files.length})`}>{file.name} <span className="font-normal text-muted-foreground">({index + 1} of {files.length})</span></h2>
         {files.length > 1 && <p className="text-sm text-muted-foreground">Next: {files.slice(index + 1).map(item => item.name).join(", ") || "none"}</p>}
@@ -435,14 +436,15 @@ export default function ImportPage() {
 
       {result && <div className="space-y-2">
         <h3 className="text-sm font-semibold">Mapping preview</h3>
-        <div className="overflow-x-auto rounded-lg border border-border bg-card"><table className="w-full table-fixed text-left text-sm [&_th]:bg-muted/60 [&_th]:px-3 [&_th]:py-2 [&_th]:text-sm [&_th]:font-medium [&_th]:text-muted-foreground [&_td]:px-3 [&_td]:py-2.5 [&_td]:align-top"><colgroup><col className="w-24" /><col /><col className="w-28" /><col className="w-20" /><col className="w-28" /><col className="w-28" /></colgroup><thead><tr><th>Date</th><th>Description</th><th className="text-right">Amount</th><th>Status</th><th>Merchant</th><th>Category</th></tr></thead><tbody>
-          {result.examples.slice(0, 10).map((row, i) => <tr key={i} className="border-t border-border">
-            <td className="whitespace-nowrap tabular-nums text-muted-foreground">{row.postedOn}</td>
-            <td className="max-w-0"><span title={row.description} className="line-clamp-2 break-words">{row.description}</span></td>
+        {/* One table restyled as stacked rows on phones, so every value stays readable without sideways scrolling. */}
+        <div className="rounded-lg border border-border bg-card md:overflow-x-auto"><table className="w-full text-left text-sm max-md:block md:table-fixed [&_th]:bg-muted/60 [&_th]:px-3 [&_th]:py-2 [&_th]:text-sm [&_th]:font-medium [&_th]:text-muted-foreground md:[&_td]:px-3 md:[&_td]:py-2.5 md:[&_td]:align-top"><colgroup className="max-md:hidden"><col className="w-24" /><col /><col className="w-28" /><col className="w-20" /><col className="w-28" /><col className="w-28" /></colgroup><thead className="max-md:hidden"><tr><th>Date</th><th>Description</th><th className="text-right">Amount</th><th>Status</th><th>Merchant</th><th>Category</th></tr></thead><tbody className="max-md:block">
+          {result.examples.slice(0, 10).map((row, i) => <tr key={i} className="border-border max-md:grid max-md:grid-cols-[1fr_auto] max-md:gap-x-3 max-md:gap-y-1 max-md:p-3 [&:not(:first-child)]:border-t md:border-t">
+            <td className="whitespace-nowrap tabular-nums text-muted-foreground max-md:text-xs">{row.postedOn}</td>
+            <td className="break-words max-md:order-first max-md:col-span-2 max-md:font-medium md:max-w-0"><span title={row.description} className="md:line-clamp-2">{row.description}</span></td>
             <td className={`whitespace-nowrap text-right tabular-nums font-medium ${BigInt(row.amountMinor) < 0n ? "text-foreground" : "text-success"}`}>{formatMinor(row.amountMinor, row.currencyCode)}</td>
-            <td><span className="inline-block rounded-full bg-muted px-2 py-0.5 text-xs capitalize">{row.status ?? "posted"}</span></td>
-            <td className="truncate" title={row.merchant ?? ""}>{row.merchant ?? "—"}</td>
-            <td className="truncate" title={row.category ?? ""}>{row.category ?? "Uncategorized"}</td>
+            <td className="max-md:col-span-2"><span className="inline-block rounded-full bg-muted px-2 py-0.5 text-xs capitalize">{row.status ?? "posted"}</span></td>
+            <td className="break-words max-md:col-span-2 max-md:text-xs max-md:text-muted-foreground md:truncate" title={row.merchant ?? ""}><span className="md:hidden">Merchant: </span>{row.merchant ?? "—"}</td>
+            <td className="break-words max-md:col-span-2 max-md:text-xs max-md:text-muted-foreground md:truncate" title={row.category ?? ""}><span className="md:hidden">Category: </span>{row.category ?? "Uncategorized"}</td>
           </tr>)}
         </tbody></table></div>
         <p className="text-xs text-muted-foreground">First {Math.min(result.examples.length, 10)} interpreted entries. Signs, dates and amounts should match your statement.</p>
@@ -450,7 +452,8 @@ export default function ImportPage() {
 
       {editorOpen && mapping && <div className="space-y-4 rounded-lg border border-border p-4">
         <h3 className="text-sm font-semibold">Columns</h3>
-        <div className="overflow-x-auto rounded-lg border border-border bg-card"><table className="w-full text-left text-sm [&_td]:max-w-64 [&_td]:truncate [&_td]:px-3 [&_td]:py-2 [&_th]:bg-muted/60 [&_th]:px-3 [&_th]:py-2 [&_th]:text-sm [&_th]:font-medium [&_th]:text-muted-foreground"><thead><tr>{inspection.headers.map((header) => <th key={header} title={header}>{header}</th>)}</tr></thead><tbody>
+        <p className="text-xs text-muted-foreground md:hidden">Your file's first rows. Swipe sideways to see every column.</p>
+        <div tabIndex={0} role="region" aria-label="First rows of your file" className="overflow-x-auto rounded-lg border border-border bg-card"><table className="w-full text-left text-sm [&_td]:max-w-64 [&_td]:truncate [&_td]:px-3 [&_td]:py-2 [&_th]:bg-muted/60 [&_th]:px-3 [&_th]:py-2 [&_th]:text-sm [&_th]:font-medium [&_th]:text-muted-foreground"><thead><tr>{inspection.headers.map((header) => <th key={header} title={header}>{header}</th>)}</tr></thead><tbody>
           {inspection.sample.slice(0, 3).map((row, i) => <tr className="border-t border-border" key={i}>{inspection.headers.map((header) => <td key={header} title={row[header]}>{row[header]}</td>)}</tr>)}
         </tbody></table></div>
         <div className="grid gap-3 sm:grid-cols-3">
