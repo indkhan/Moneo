@@ -5,12 +5,46 @@ import { ChevronDown } from "lucide-react";
 import { IouCard } from "@/components/iou-card";
 import type { OpenProposal } from "@/lib/ai/open-proposals";
 import type { HomeReview } from "@/lib/ai/home-review";
+import { useBusy } from "@/components/use-busy";
+import { decideAgentProposals } from "@/app/ai/agents/actions";
 import { FindingsSheet, RecurringSheet, SummaryCard, UncategorizedSheet } from "./home-review";
 
 const FILTERS = [["loans", "Loans"], ["transactions", "Transactions"], ["balances", "Balances"]] as const;
 type Filter = (typeof FILTERS)[number][0];
 const filterOf = (kind: string): Filter => kind.startsWith("iou_") ? "loans" : kind === "transaction_create" ? "transactions" : "balances";
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
+/** Identical expense proposals together, in first-seen order: adding each by habit would record one purchase many times. */
+export function groupRepeats(proposals: OpenProposal[]) {
+  const groups = new Map<string, OpenProposal[]>();
+  for (const proposal of proposals) {
+    const key = proposal.kind === "transaction_create" ? `${proposal.title}|${proposal.detail}` : proposal.id;
+    groups.set(key, [...(groups.get(key) ?? []), proposal]);
+  }
+  return [...groups.values()];
+}
+
+function RepeatGroup({ proposals }: { proposals: OpenProposal[] }) {
+  const [pending, start] = useBusy();
+  const [dismissed, setDismissed] = useState(false);
+  const [error, setError] = useState<string>();
+  if (dismissed) return <p role="status" className="my-3 text-sm text-muted-foreground">Dismissed {proposals.length} repeats. Nothing was changed.</p>;
+  const dismiss = () => start(async () => {
+    setError(undefined);
+    try {
+      const outcomes = await decideAgentProposals(proposals.map(proposal => proposal.id), "reject");
+      const failed = outcomes.find(outcome => outcome.error);
+      if (failed) setError(failed.error); else setDismissed(true);
+    } catch { setError("Could not dismiss these. Try again."); }
+  });
+  return <details aria-label="Similar proposals" className="my-3 rounded-xl border border-ai-border bg-ai-soft/40 p-4">
+    <summary className="cursor-pointer font-medium">{proposals.length} similar: {proposals[0].title}</summary>
+    <p className="mt-2 text-sm text-muted-foreground">These look like the same purchase. Add only the ones that really happened.</p>
+    {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
+    <button type="button" disabled={pending} onClick={dismiss} className="mt-2 min-h-9 rounded-lg border border-border px-4 text-sm hover:bg-muted disabled:opacity-50">Dismiss all {proposals.length}</button>
+    {proposals.map(proposal => <IouCard key={proposal.id} id={proposal.id} initial={proposal} />)}
+  </details>;
+}
 
 /**
  * What waits for a decision: loans, expenses and balances as single cards; recurring, uncategorized and flagged items as one
@@ -39,6 +73,8 @@ export function WaitingForYouList({ proposals: all, review = { uncategorized: 0,
       <RecurringSheet proposals={recurring} /></SummaryCard>}
     {review.findings.length > 0 && <SummaryCard title={`${plural(review.findings.length, "thing looks", "things look")} off`} detail="Possible duplicates, fees and unusual charges from your latest syncs.">
       <FindingsSheet findings={review.findings} /></SummaryCard>}
-    {proposals.map(proposal => <div key={proposal.id} hidden={!!filter && filterOf(proposal.kind) !== filter}><IouCard id={proposal.id} initial={proposal} /></div>)}
+    {groupRepeats(proposals).map(group => <div key={group[0].id} hidden={!!filter && filterOf(group[0].kind) !== filter}>
+      {group.length === 1 ? <IouCard id={group[0].id} initial={group[0]} /> : <RepeatGroup proposals={group} />}
+    </div>)}
   </details>;
 }

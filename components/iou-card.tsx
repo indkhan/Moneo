@@ -8,7 +8,6 @@ import { loadIouProposal, type ChatProposal } from "@/app/ai/iou-actions";
 import { formatMoney } from "@/lib/finance/format";
 
 type Proposal = Pick<ChatProposal, "id" | "title" | "detail" | "status"> & Partial<ChatProposal> & { conflict_key?: string };
-const NEW_CASH = "";
 
 /** A loan, repayment or expense waiting for a yes/no. Nothing is saved until Add is pressed. */
 export function IouCard({ id, initial, onAccount, onDecided }: { id: string; initial?: Proposal; onAccount?: (id: string, accountId: string | undefined) => void; onDecided?: (id: string, undone?: boolean) => void }) {
@@ -26,7 +25,10 @@ export function IouCard({ id, initial, onAccount, onDecided }: { id: string; ini
   const transaction = proposal.kind === "transaction_create";
   const balance = proposal.kind === "balance_set";
   const recurring = proposal.kind === "recurring_edit";
-  const chosen = account ?? proposal.selected ?? NEW_CASH;
+  const chosen = account ?? proposal.selected ?? "";
+  // Stated cash with no cash account yet: accepting creates one, and the button says so.
+  const createsCash = transaction && !chosen && !!proposal.createsCash;
+  const needsChoice = transaction && !chosen && !createsCash;
   // Shows the decision at once (the action also re-renders the slow Home page) and puts the card back if saving fails.
   const decide = (decision: "accept" | "reject") => start(async () => {
     const before = proposal;
@@ -58,12 +60,12 @@ export function IouCard({ id, initial, onAccount, onDecided }: { id: string; ini
     </details>}
     {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
     {open ? <div className="mt-3 flex flex-wrap items-center gap-2">
-      {transaction && proposal.accounts && <label className="flex items-center gap-2 text-sm"><span className="text-muted-foreground">From</span>
-        <select value={chosen} onChange={event => { setAccount(event.target.value); onAccount?.(id, event.target.value || undefined); }} disabled={pending} className="min-h-9 rounded-lg border border-border bg-background px-2 text-sm">
-          {proposal.needsCash && <option value={NEW_CASH}>Cash (new account)</option>}
+      {transaction && proposal.accounts && <label className="flex w-full min-w-0 items-center gap-2 text-sm sm:w-auto"><span className="text-muted-foreground">From</span>
+        <select value={chosen} onChange={event => { setAccount(event.target.value); onAccount?.(id, event.target.value || undefined); }} disabled={pending} className="min-h-9 w-full min-w-0 flex-1 truncate rounded-lg border border-border bg-background px-2 text-sm sm:w-auto sm:max-w-64">
+          {!chosen && <option value="">{createsCash ? "New Cash account" : "Choose an account"}</option>}
           {proposal.accounts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select></label>}
-      <button type="button" disabled={pending} onClick={() => decide("accept")} className="min-h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">{proposal.conflict_key?.startsWith("recurring_new:") ? "Yes, recurring" : recurring ? "Confirm" : balance ? "Save" : "Add"}</button>
+      <button type="button" disabled={pending || needsChoice} onClick={() => decide("accept")} className="min-h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">{proposal.conflict_key?.startsWith("recurring_new:") ? "Yes, recurring" : recurring ? "Confirm" : balance ? "Save" : createsCash ? "Create Cash account and add" : "Add"}</button>
       <button type="button" disabled={pending} onClick={() => decide("reject")} className="min-h-9 rounded-lg border border-border px-4 text-sm hover:bg-muted disabled:opacity-50">{proposal.conflict_key?.startsWith("recurring_new:") ? "Not recurring" : proposal.conflict_key?.startsWith("recurring_price:") ? "Keep old amount" : "Dismiss"}</button>
     </div> : <p role="status" className="mt-2 text-sm">{proposal.status === "accepted" ? done : recurring ? "Dismissed. It won’t be suggested again." : "Dismissed. Nothing was changed."}</p>}
   </section>;

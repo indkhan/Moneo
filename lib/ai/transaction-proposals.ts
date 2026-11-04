@@ -22,6 +22,8 @@ export const transactionInputSchema = z.object({
 export const transactionCreateSchema = z.object({
   direction: z.enum(["spent", "received"]), amountMinor: z.string().regex(/^[1-9]\d{0,17}$/), currencyCode: z.string().regex(/^[A-Z]{3}$/),
   date: z.iso.date(), description: z.string().trim().min(1).max(200), accountId: z.uuid().nullable(), categoryId: z.uuid().nullable(),
+  // The user said they paid in cash, so accepting may create a Cash account. Without it, no account means ask.
+  paidInCash: z.boolean().optional(),
 }).strict();
 
 export async function liveAccounts(supabase: SupabaseClient, workspaceId: string, currency: string) {
@@ -31,12 +33,25 @@ export async function liveAccounts(supabase: SupabaseClient, workspaceId: string
   return (data ?? []) as Account[];
 }
 
-/** The account a named payment method points to, else the first cash account; null means a Cash account is created on accept. */
-export function chooseAccount(accounts: Account[], named?: string) {
+/**
+ * The account a named payment method points to. Stated cash goes to the cash account, and card spend to the card account
+ * used most recently when there are several. Anything else is null: the card asks, rather than guessing where money went.
+ */
+export function chooseAccount(accounts: Account[], named?: string, lastUsed?: string | null) {
   const word = named?.toLocaleLowerCase("en");
-  const matches = word ? accounts.filter(account => account.name.toLocaleLowerCase("en").includes(word) || account.type === word
-    || (word.includes("card") && ["checking", "credit"].includes(account.type))) : [];
-  return (matches.length === 1 ? matches[0] : accounts.find(account => account.type === "cash"))?.id ?? null;
+  if (!word) return null;
+  if (word.includes("cash")) return accounts.find(account => account.type === "cash")?.id ?? null;
+  const matches = accounts.filter(account => account.name.toLocaleLowerCase("en").includes(word) || account.type === word
+    || (word.includes("card") && ["checking", "credit"].includes(account.type)));
+  return (matches.length === 1 ? matches[0] : matches.find(account => account.id === lastUsed))?.id ?? null;
+}
+
+async function lastUsedAccount(supabase: SupabaseClient, workspaceId: string, accounts: Account[]) {
+  const ids = accounts.filter(account => account.type !== "cash").map(account => account.id);
+  if (ids.length < 2) return null;
+  const { data, error } = await supabase.from("transactions").select("account_id").eq("workspace_id", workspaceId).in("account_id", ids).order("posted_on", { ascending: false }).limit(1);
+  if (error) throw new Error(error.message);
+  return (data?.[0]?.account_id as string | undefined) ?? null;
 }
 
 /** Stores a pending "add this transaction" proposal. Nothing reaches the ledger until the owner accepts. */
@@ -49,8 +64,10 @@ export async function proposeTransaction({ supabase, workspace, chatRequestId }:
     input.category ? supabase.from("categories").select("id, name").eq("workspace_id", workspace.id).ilike("name", input.category).limit(1) : null]);
   if (categories?.error) throw new Error(categories.error.message);
   const category = categories?.data?.[0] as { id: string; name: string } | undefined;
+  const lastUsed = input.account?.toLocaleLowerCase("en").includes("card") ? await lastUsedAccount(supabase, workspace.id, accounts) : null;
   const payload = transactionCreateSchema.parse({ direction: input.direction, amountMinor: wealthAmount(input.amount, input.currency).toString(), currencyCode: input.currency,
-    date, description: input.description, accountId: chooseAccount(accounts, input.account), categoryId: category?.id ?? null });
+    date, description: input.description, accountId: chooseAccount(accounts, input.account, lastUsed), categoryId: category?.id ?? null,
+    ...(input.account?.toLocaleLowerCase("en").includes("cash") ? { paidInCash: true } : {}) });
   const amount = formatMoney(payload.amountMinor, payload.currencyCode, workspace.locale);
   const title = `${payload.direction === "spent" ? "Spent" : "Received"} ${amount} · ${payload.description}`.slice(0, 200);
   const { data, error } = await supabase.from("agent_proposals").insert({ workspace_id: workspace.id, agent: "chat", kind: "transaction_create", ...(chatRequestId ? { chat_request_id: chatRequestId } : {}), 
@@ -63,7 +80,7 @@ export async function proposeTransaction({ supabase, workspace, chatRequestId }:
 export async function transactionAccountOptions(supabase: SupabaseClient, workspaceId: string, payload: unknown) {
   const parsed = transactionCreateSchema.parse(payload);
   const accounts = await liveAccounts(supabase, workspaceId, parsed.currencyCode);
-  return { accounts: accounts.map(({ id, name }) => ({ id, name })), selected: parsed.accountId, needsCash: !accounts.some(account => account.type === "cash") };
+  return { accounts: accounts.map(({ id, name }) => ({ id, name })), selected: parsed.accountId, createsCash: !!parsed.paidInCash && !accounts.some(account => account.type === "cash") };
 }
 
 /** Records the accepted proposal as an audited manual transaction; the proposal id is the request id, so accepting twice cannot duplicate it. */
@@ -71,6 +88,7 @@ export async function applyTransactionProposal({ supabase, workspace }: Context,
   const parsed = transactionCreateSchema.parse(payload);
   let accountId = accountOverride ?? parsed.accountId, createdAccount = false;
   if (!accountId) {
+    if (!parsed.paidInCash) throw new Error("Choose an account for this transaction");
     const cash = (await liveAccounts(supabase, workspace.id, parsed.currencyCode)).find(account => account.type === "cash");
     if (cash) accountId = cash.id;
     else {

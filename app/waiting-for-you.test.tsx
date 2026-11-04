@@ -4,6 +4,7 @@ import { expect, it, vi } from "vitest";
 import { openStandaloneProposals } from "@/lib/ai/open-proposals";
 import { syncRecurringProposals } from "@/lib/ai/recurring-proposals";
 import { RecurringDetection, WaitingForYou, loadWaitingForYou } from "./waiting-for-you";
+import { groupRepeats } from "./waiting-for-you-list";
 
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("@/app/ai/agents/actions", () => ({ decideAgentProposals: vi.fn() }));
@@ -22,7 +23,7 @@ it("is hidden when nothing is waiting", async () => {
 
 it("lists transaction and balance cards with their count, open and filterable", async () => {
   vi.mocked(openStandaloneProposals).mockResolvedValue([
-    { id: "t", kind: "transaction_create", title: "Spent €12.00 · Lunch", detail: "Today", status: "proposed", accounts: [{ id: "a", name: "Wallet" }], selected: "a", needsCash: false },
+    { id: "t", kind: "transaction_create", title: "Spent €12.00 · Lunch", detail: "Today", status: "proposed", accounts: [{ id: "a", name: "Wallet" }], selected: "a", createsCash: false },
     { id: "b", kind: "balance_set", title: "Cash is €40.00", detail: "", status: "failed" },
   ]);
   const html = await render();
@@ -67,4 +68,11 @@ it("folds recurring cards, uncategorized rows and findings into one summary card
 it("shows summary cards even when no single card waits", () => {
   expect(renderToStaticMarkup(WaitingForYou({ proposals: [], review: { uncategorized: 0, findings: [] } }))).toBe("");
   expect(renderToStaticMarkup(WaitingForYou({ proposals: [], review: { uncategorized: 1, findings: [] } }))).toContain("1 transaction needs a category");
+});
+
+it("groups identical expense proposals but keeps others apart", () => {
+  const expense = (id: string, title: string, detail = "Today") => ({ id, kind: "transaction_create", title, detail, status: "proposed" });
+  const groups = groupRepeats([expense("a", "Spent €12.40 · Netto"), expense("b", "Spent €5.00 · Starbucks"), expense("c", "Spent €12.40 · Netto"), expense("d", "Spent €12.40 · Netto", "2026-11-01"),
+    { id: "e", kind: "balance_set", title: "Spent €12.40 · Netto", detail: "Today", status: "proposed" }]);
+  expect(groups.map(group => group.map(item => item.id))).toEqual([["a", "c"], ["b"], ["d"], ["e"]]);
 });
