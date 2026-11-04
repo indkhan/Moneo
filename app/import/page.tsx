@@ -482,7 +482,7 @@ export default function ImportPage() {
 
       {editorOpen && mapping && <div className="space-y-4 rounded-lg border border-border p-4">
         <h3 className="text-sm font-semibold">Columns</h3>
-        <p className="text-xs text-muted-foreground md:hidden">Your file's first rows. Swipe sideways to see every column.</p>
+        <p className="text-xs text-muted-foreground md:hidden">The first rows of your file. Swipe sideways to see every column.</p>
         <div tabIndex={0} role="region" aria-label="First rows of your file" className="overflow-x-auto rounded-lg border border-border bg-card"><table className="w-full text-left text-sm [&_td]:max-w-64 [&_td]:truncate [&_td]:px-3 [&_td]:py-2 [&_th]:bg-muted/60 [&_th]:px-3 [&_th]:py-2 [&_th]:text-sm [&_th]:font-medium [&_th]:text-muted-foreground"><thead><tr>{inspection.headers.map((header) => <th key={header} title={header}>{header}</th>)}</tr></thead><tbody>
           {inspection.sample.slice(0, 3).map((row, i) => <tr className="border-t border-border" key={i}>{inspection.headers.map((header) => <td key={header} title={row[header]}>{row[header]}</td>)}</tr>)}
         </tbody></table></div>
