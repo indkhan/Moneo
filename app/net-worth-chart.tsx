@@ -20,7 +20,7 @@ export function NetWorthChart({ points, label }: { points: NetWorthPoint[]; labe
   const move = (step: number) => setActive(current => Math.max(0, Math.min(points.length - 1, (current ?? points.length) + step)));
   return <div className="relative" onPointerLeave={() => setActive(null)}>
     <svg role="img" aria-label={`${label}. Use the arrow keys to read each point.`} tabIndex={0} onBlur={() => setActive(null)}
-      onKeyDown={event => { const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0; if (step) { event.preventDefault(); move(step); } }} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="h-[140px] w-full cursor-crosshair touch-none overflow-visible rounded text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      onKeyDown={event => { const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0; if (step) { event.preventDefault(); move(step); } }} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="h-[140px] w-full cursor-crosshair touch-pan-y overflow-visible rounded text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       onPointerMove={event => pick(event.clientX, event.currentTarget.getBoundingClientRect())} onPointerDown={event => pick(event.clientX, event.currentTarget.getBoundingClientRect())}>
       <defs><linearGradient id={gradient} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="currentColor" stopOpacity={0.22} /><stop offset="100%" stopColor="currentColor" stopOpacity={0} /></linearGradient></defs>
       <polygon points={`0,${HEIGHT} ${line} ${WIDTH},${HEIGHT}`} fill={`url(#${gradient})`} />
