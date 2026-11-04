@@ -61,7 +61,7 @@ test("dated assets and signed debt repayment assumptions preserve source history
   const debtForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Add debt", exact: true }) });
   await debtForm.getByRole("textbox", { name: "Name", exact: true }).fill(debtName);
   await debtForm.getByRole("combobox", { name: "Currency", exact: true }).fill("EUR");
-  await debtForm.getByRole("textbox", { name: "Amount you still owe (EUR)", exact: true }).fill("100.00");
+  await debtForm.getByRole("textbox", { name: /^Amount you still owe \(EUR\)/ }).fill("100.00");
   await debtForm.getByRole("textbox", { name: "Nominal annual interest rate (%)", exact: true }).fill("12");
   await debtForm.getByRole("textbox", { name: "Monthly repayment (positive amount)", exact: true }).fill("60.00");
   await debtForm.getByRole("combobox", { name: "Pay from liquid account", exact: true }).selectOption({ label: `${account} (EUR)` });

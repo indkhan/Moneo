@@ -32,7 +32,7 @@ test("dated FX transfer keeps canonical source and an included fee through guard
   const counterpart=form.getByRole("combobox",{name:"Transfer counterpart",exact:true});
   const candidateValue=await counterpart.locator("option").filter({hasText:descriptions[1]}).getAttribute("value"); await counterpart.selectOption(candidateValue!);
   const rate=form.getByRole("combobox",{name:"Dated FX evidence",exact:true}); const rateValue=await rate.locator("option").filter({hasText:source}).getAttribute("value"); await rate.selectOption(rateValue!);
-  const fee=form.locator("fieldset").first(); await fee.getByRole("textbox",{name:"Fee amount",exact:true}).fill("1.00"); await fee.getByRole("textbox",{name:"Fee source evidence",exact:true}).fill("Explicit 1.00 EUR fee included in debit source");
+  const fee=form.getByRole("group",{name:`Fee on ${descriptions[0]}`,exact:false}); await fee.getByRole("textbox",{name:"Fee amount",exact:true}).fill("1.00"); await fee.getByRole("textbox",{name:"Fee source evidence",exact:true}).fill("Explicit 1.00 EUR fee included in debit source");
   await expect(form.getByRole("status")).toContainText("EUR 1.00"); await form.getByRole("checkbox").check(); await form.getByRole("button",{name:"Confirm verified transfer",exact:true}).click();
   await expect(detail.locator("p",{hasText:"Transfer pair:"})).toBeVisible({timeout:30_000}); await expect(detail.locator('pre[aria-label="Original source evidence"]')).toContainText('"amount_minor": "-10100"');
   await detail.getByRole("button",{name:"Undo verified link",exact:true}).click(); await expect(detail.getByRole("heading",{name:"Verified transfer",exact:true})).toBeVisible({timeout:30_000});

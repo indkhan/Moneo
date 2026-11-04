@@ -52,7 +52,7 @@ test("scenario comparison, edits, removal and undo preserve actual cash", async 
     // Independently known cash1000 minus a single200 hypothetical event, zero uncertainty/buffer.
     await expect(page.locator("body")).toContainText("Compared with the real plan: -EUR 200.00 change", { timeout: 30_000 });
     await page.getByText("Edit scenario event", { exact: true }).click();
-    await page.getByLabel("Change (EUR)", { exact: true }).fill("-300.00");
+    await page.getByLabel("Change (EUR), minus for money out", { exact: true }).fill("-300.00");
     await page.getByRole("button", { name: "Save scenario event", exact: true }).click();
     await expect(page.locator("body")).toContainText("Compared with the real plan: -EUR 300.00 change", { timeout: 30_000 });
     await page.getByRole("button", { name: "Remove scenario event", exact: true }).click();
