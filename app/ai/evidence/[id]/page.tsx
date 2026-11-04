@@ -16,15 +16,15 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const view = await readEvidenceView(context, id, parsed.data.metric).catch(() => null);
   if (!view) notFound();
   const { receipt, metric, freshness, supportingRecords } = view;
-  const sourceOffset = parsed.data.sourcePage * 100, metricOffset = parsed.data.metricPage * 50;
-  const visible = supportingRecords.slice(sourceOffset, sourceOffset + 100);
+  const sourceOffset = parsed.data.sourcePage * 25, metricOffset = parsed.data.metricPage * 50;
+  const visible = supportingRecords.slice(sourceOffset, sourceOffset + 25);
   const raw = (value: unknown) => JSON.stringify(value, null, 2);
   const amount = (item: typeof receipt.metrics[number]) => item.valueMinor === null ? "Unavailable" : item.unit === "count" ? `${item.valueMinor} records (${item.currency} scope)` : formatMoney(item.valueMinor, item.currency);
   const href = (extra: Record<string, string>) => `/ai/evidence/${id}?${new URLSearchParams({ ...(metric ? { metric: metric.id } : {}), ...extra })}`;
   return <main className="mx-auto max-w-5xl space-y-6 px-5 py-8 lg:px-8">
     <Link href="/ai" className="text-sm underline">AI and saved reviews</Link>
     <header><p className="eyebrow">Retained financial evidence</p><h1 className="mt-2 page-title">Calculation and supporting records</h1>
-      <p className="mt-2 text-sm text-muted-foreground">Captured <time dateTime={receipt.fetchedAt}>{receipt.fetchedAt}</time>. This original dated result remains available when source records change.</p></header>
+      <p className="mt-2 text-sm text-muted-foreground">Captured <time dateTime={receipt.fetchedAt}>{new Date(receipt.fetchedAt).toLocaleString(context.workspace.locale, { timeZone: context.workspace.timezone, dateStyle: "medium", timeStyle: "short" })}</time> from {supportingRecords.length} {supportingRecords.length === 1 ? "record" : "records"}. This original dated result stays available when those records change.</p></header>
     <div role="status" className="rounded-lg border border-border bg-card p-4"><strong className="capitalize">Evidence {freshness.status}</strong><p className="mt-1 text-sm">{freshness.reason}</p></div>
     {metric ? <section className="rounded-lg border border-border bg-card p-5"><h2 className="text-lg font-semibold">{metric.label}</h2><p className="mt-3 text-xl font-semibold">{amount(metric)}</p>
       <p className="mt-2 text-sm">Period {metric.period.from} to {metric.period.to}</p>
@@ -41,7 +41,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <a href={source.href} className="mt-2 inline-block text-sm underline">Open supporting record</a><details className="mt-3"><summary className="cursor-pointer text-sm">Original dated record</summary><pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words text-xs">{raw(source.record).slice(0, 100000)}</pre>
           {raw(source.record).length > 100000 && <p className="mt-2 text-sm">This preview is shortened. Open the complete original record below.</p>}
           <a href={`/api/evidence/${id}?${new URLSearchParams({ source: source.id })}`} className="mt-2 inline-block text-sm underline">Complete original record as JSON</a></details></article>)}</div>
-      {sourceOffset + 100 < supportingRecords.length && <Link href={href({ sourcePage: String(parsed.data.sourcePage + 1) })} className="mt-4 inline-block text-sm underline">More supporting records</Link>}
+      {sourceOffset + 25 < supportingRecords.length && <Link href={href({ sourcePage: String(parsed.data.sourcePage + 1) })} className="mt-4 inline-block text-sm underline">More supporting records</Link>}
       {parsed.data.sourcePage > 0 && <Link href={href({ sourcePage: String(parsed.data.sourcePage - 1) })} className="ml-4 mt-4 inline-block text-sm underline">Previous supporting records</Link>}</section>
     <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Calculation identity</summary><p className="mt-2 break-all">{receipt.id} · {receipt.calculationVersion}</p></details>
   </main>;

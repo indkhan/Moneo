@@ -137,7 +137,7 @@ export function AppShell({ children, shell }: { children: React.ReactNode; shell
 
   const commands: Command[] = [
     { id: "new-chat", label: "New AI chat", group: "Actions", keywords: "ask conversation assistant", run: () => router.push("/ai?conversation=new") },
-    { id: "add-transaction", label: "Add a transaction", group: "Actions", keywords: "new expense income manual", run: () => router.push("/money/transactions#add-transaction") },
+    { id: "add-transaction", label: "Add a transaction", group: "Actions", keywords: "new expense income manual", run: () => router.push("/money/transactions?add=1#add-transaction") },
     { id: "add-account", label: "Add an account", group: "Actions", keywords: "new bank wallet cash", run: () => router.push("/money/accounts") },
     { id: "set-limit", label: "Set a spending limit", group: "Actions", keywords: "budget plan", run: () => router.push("/plan/spending") },
     { id: "import", label: "Import a statement", group: "Actions", keywords: "upload csv xlsx file", run: () => router.push("/import") },

@@ -136,7 +136,7 @@ export default async function SpendingPlansPage({ searchParams }: { searchParams
         <label className="grid gap-1 text-sm font-medium">Category<select name="categoryId" aria-label="Category" className={field}>{categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label className="grid gap-1 text-sm">Currency<input name="currency" defaultValue={workspace.display_currency} required maxLength={3} aria-label="Currency code" className={field + " w-20"} /></label>
         <label className="grid gap-1 text-sm">Monthly limit<input name="amount" required inputMode="decimal" placeholder="400.00" aria-label="Monthly limit" className={field + " w-32"} /></label>
-        <button className={button}>Save plan</button>
+        <button className={button}>Set limit</button>
       </SafeForm>
     </section>}
     <Suspense fallback={<p className="text-sm text-muted-foreground">Loading history…</p>}><PlanningHistory entityType="spending_plan" destination="/plan/spending" /></Suspense>

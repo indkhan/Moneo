@@ -44,6 +44,6 @@ export function TeamFlow({ statuses, finished }: { statuses?: Partial<Record<Age
         <span className="text-sm font-medium">{live && finished ? "Ready: review the proposals below" : "Review each proposal: accept or dismiss"}</span>
       </Stage>
     </ol>
-    {!live && <p className="text-xs text-muted-foreground">Agents with nothing to do are skipped. Nothing changes until you accept.</p>}
+    {!live && <p className="text-xs text-muted-foreground">Agents with nothing to do are skipped. Category changes it is sure of happen automatically and can be undone. Everything else waits for your decision.</p>}
   </section>;
 }

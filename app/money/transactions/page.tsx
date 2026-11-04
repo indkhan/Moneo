@@ -61,7 +61,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     <div className="flex flex-col gap-1"><p className="eyebrow">{count != null ? `${count.toLocaleString(workspace.locale)} ${count === 1 ? "transaction" : "transactions"} · ` : ""}{activeCount} {activeCount === 1 ? "account" : "accounts"}</p><h1 className="page-title">Transactions</h1></div>
     <div className="flex flex-wrap gap-2 text-[13px]">
       <Link href="/import" className="inline-flex h-11 items-center rounded-xl border border-input px-4 hover:bg-muted max-md:hidden">Import CSV / Excel</Link>
-      <a href="#add-transaction" className="inline-flex h-11 items-center rounded-xl bg-primary px-4 font-medium text-primary-foreground hover:opacity-90">Add transaction</a>
+      <a href="?add=1#add-transaction" className="inline-flex h-11 items-center rounded-xl bg-primary px-4 font-medium text-primary-foreground hover:opacity-90">Add transaction</a>
     </div>
   </header>;
 
@@ -170,7 +170,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
           {next ? <Link className="underline" href={withParams(viewBase, { cursor: next })}>Next page</Link> : null}
           <p className="ml-auto hidden text-xs text-muted-foreground sm:block"><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>Enter</kbd> open · <kbd>x</kbd> select · <kbd>/</kbd> search · <kbd>Esc</kbd> close</p>
         </div>
-        <details id="add-transaction" className="scroll-mt-24 rounded-xl border border-border bg-card p-5">
+        <details id="add-transaction" open={params.add === "1"} className="scroll-mt-24 rounded-xl border border-border bg-card p-5">
           <summary className="cursor-pointer text-sm font-medium">Add a manual transaction</summary>
           {!activeAccounts.length ? <p className="mt-3 text-sm text-muted-foreground">Add or restore an active account before entering a transaction.</p> : <form action={createManualTransaction} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 [&_input]:min-h-10 [&_input]:rounded-lg [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:px-3 [&_input]:text-sm [&_select]:min-h-10 [&_select]:rounded-lg [&_select]:border [&_select]:border-border [&_select]:bg-card [&_select]:px-3 [&_select]:text-sm">
             <input type="hidden" name="requestId" value={crypto.randomUUID()} />

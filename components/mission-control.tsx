@@ -182,7 +182,7 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
       </div>
       <p className="text-xs text-muted-foreground">{reviewable ? "Flagged items and recurring payments are decided on Home; category limits here. Accepted changes use the same audited actions as the rest of Moneo, so history and Undo keep working." : "Results stream in as agents work."}</p>
       {notice && <p role="status" className="text-sm">{notice}</p>}
-      {kinds.map(kind => <details key={kind} open className="space-y-2 group">
+      {kinds.map((kind, index) => <details key={kind} open={index === 0 || openIds(kind).length > 0} className="space-y-2 group">
         <summary className="flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden"><ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden="true" /><h3 className="eyebrow">{KIND_LABELS[kind]} ({manual.filter(item => item.kind === kind).length})</h3>{reviewable && openIds(kind).length > 0 && <span className="ml-auto flex gap-1.5">
           <button type="button" disabled={pending} onClick={event => { event.preventDefault(); decide(openIds(kind), "reject"); }} className="h-8 rounded-[10px] border border-input px-3 text-xs hover:bg-muted disabled:opacity-50">Reject all</button>
           <button type="button" disabled={pending} onClick={event => { event.preventDefault(); decide(openIds(kind), "accept"); }} className="h-8 rounded-[10px] bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">Accept all</button>
@@ -203,8 +203,8 @@ export function MissionControl({ initial, locale }: { initial: AgentRunView; loc
                 <AskAbout label="Ask why" question={`The ${AGENTS[item.agent as AgentId]?.name ?? "agent"} proposed “${item.title}”. Check the underlying transactions and tell me whether I should accept it.`} about={{ kind: "agent_proposal", id: item.id, label: item.title.slice(0, 80) }} className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" />
               </div>
               {decidable && <div className="flex shrink-0 gap-1.5">
-                <button type="button" disabled={pending} onClick={() => decide([item.id], "reject")} className="h-11 rounded-xl border border-input px-4 text-[13px] hover:bg-muted">Reject</button>
-                <button type="button" disabled={pending} onClick={() => decide([item.id], "accept")} className="h-11 rounded-xl bg-foreground px-[18px] text-[13px] font-medium text-background hover:opacity-90">Accept</button>
+                <button type="button" disabled={pending} onClick={() => decide([item.id], "reject")} aria-label={`Reject ${item.title}`} className="h-11 rounded-xl border border-input px-4 text-[13px] hover:bg-muted">Reject</button>
+                <button type="button" disabled={pending} onClick={() => decide([item.id], "accept")} aria-label={`Accept ${item.title}`} className="h-11 rounded-xl bg-foreground px-[18px] text-[13px] font-medium text-background hover:opacity-90">Accept</button>
               </div>}
             </div>
           </li>;

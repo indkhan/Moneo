@@ -21,7 +21,7 @@ test("budget rollover rules persist and undo while historical missing targets st
   await page.goto("/plan/spending");
   await page.getByRole("combobox", { name: "Category", exact: true }).selectOption(categoryId);
   await page.getByRole("textbox", { name: "Monthly limit", exact: true }).fill("100.00");
-  await page.getByRole("button", { name: "Save plan", exact: true }).click();
+  await page.getByRole("button", { name: "Set limit", exact: true }).click();
   const plan = page.locator("li").filter({ has: page.getByRole("heading", { name, exact: true }) });
   await expect(plan).toBeVisible({ timeout: 30_000 });
   await plan.getByText("Edit limit and rollover", { exact: true }).click();

@@ -111,7 +111,10 @@ export async function addAssumption(form: FormData) {
   const { data: account, error: accountError } = await supabase.from("accounts").select("currency_code")
     .eq("workspace_id", workspace.id).eq("id", accountId).is("archived_at", null).single();
   if (accountError || !account) throw new Error("Account not found");
-  const amount = parseManualAmount(String(form.get("amount") ?? ""), account.currency_code);
+  const typed = parseManualAmount(String(form.get("amount") ?? ""), account.currency_code);
+  // The form asks Income or Expense, so people type a plain amount; storage stays signed.
+  const size = typed < 0n ? -typed : typed;
+  const amount = form.get("direction") === "in" ? size : form.get("direction") === "out" ? -size : typed;
   const { error } = await supabase.from("financial_assumptions").insert({
     workspace_id: workspace.id, account_id: accountId, name, kind: amount >= 0n ? "income" : "expense",
     amount_minor: amount.toString(), currency_code: account.currency_code, cadence,

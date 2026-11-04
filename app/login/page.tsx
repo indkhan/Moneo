@@ -14,7 +14,7 @@ const nextPath = () => safeNextPath(new URLSearchParams(window.location.search).
 
 const copy: Record<Mode, { title: string; hint: string; button: string }> = {
   "sign-in": { title: "Sign in to Moneo", hint: "Use your email and password.", button: "Sign in" },
-  "sign-up": { title: "Create your account", hint: "Choose an email and password.", button: "Create account" },
+  "sign-up": { title: "Create your account", hint: "Choose an email and a password of at least 8 characters.", button: "Create account" },
   "magic-link": { title: "Sign in to Moneo", hint: "Enter your email to receive a sign-in link.", button: "Send sign-in link" },
   forgot: { title: "Reset your password", hint: "We'll email you a link to set a new password.", button: "Send reset link" },
 };
@@ -76,6 +76,7 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-background px-5 py-12">
       <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-8">
         <div className="mb-8 flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-lime font-display text-[22px] font-bold tracking-tighter text-[#0f1011]">m</span><span className="font-display text-lg font-semibold tracking-tight">Moneo</span></div>
+        <p className="mb-5 text-sm text-muted-foreground">See all your money in one place, import statements, plan ahead and ask questions. Your workspace is private, and Moneo can never move your money.</p>
         <p className="eyebrow">Your workspace</p>
         <h1 className="mt-2 page-title">{copy[mode].title}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{copy[mode].hint}</p>
