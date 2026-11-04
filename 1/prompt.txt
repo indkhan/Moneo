@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bq8g44gbm</task-id>
+<tool-use-id>toolu_01ATFcTHkWc4pzVywwSxPiZf</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\C--Users-mgsuk--t3-worktrees-Moneo-t3-7d9fff38\64d783ab-53ac-41ca-8d34-df07b2fe9ba1\tasks\bq8g44gbm.output</output-file>
+<status>completed</status>
+<summary>Background command "Reset QA user and run full browser suite" completed (exit code 0)</summary>
+</task-notification>
