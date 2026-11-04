@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import {resolveReviewRequest, type ReviewRequest} from "@/lib/finance/review-request";
 import type {ReviewProgress} from "@/lib/finance/review-controller";
 import {calendarDate} from "@/lib/finance/calendar";
@@ -105,7 +106,7 @@ export function AnalysisPanel({ locale, timezone }: { locale: string; timezone: 
       <label className="text-sm">Planning evidence (optional)<select name="planning" className="ml-2 rounded-lg border border-border bg-background p-2"><option value="">Spending only</option><option value="goals">Goals</option><option value="7">7-day forecast</option><option value="30">30-day forecast</option></select></label>
       <button type="submit" disabled={busy} className="justify-self-start rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">{busy ? "Starting…" : "Run review"}</button>
     </form>
-    {jobs.length > 0 && <label className="mt-4 block text-sm">Saved reviews<select aria-label="Saved reviews" value={jobId ?? ""} onChange={event => { setReview(null); setJobId(event.target.value); }} className="ml-2 max-w-full rounded-lg border border-border bg-background p-2">{jobs.map(job => <option key={job.id} value={job.id}>{job.created_at ? `${new Date(job.created_at).toLocaleString(locale, { timeZone: timezone, dateStyle: "medium", timeStyle: "short" })} · ` : ""}{label(job.status)}</option>)}</select>{jobs.length === 20 && <a href="/ai/activity?filter=analyses" className="ml-2 underline">Older reviews</a>}</label>}
+    {jobs.length > 0 && <label className="mt-4 block text-sm">Saved reviews<select aria-label="Saved reviews" value={jobId ?? ""} onChange={event => { setReview(null); setJobId(event.target.value); }} className="ml-2 max-w-full rounded-lg border border-border bg-background p-2">{jobs.map(job => <option key={job.id} value={job.id}>{job.created_at ? `${new Date(job.created_at).toLocaleString(locale, { timeZone: timezone, dateStyle: "medium", timeStyle: "short" })} · ` : ""}{label(job.status)}</option>)}</select>{jobs.length === 20 && <Link href="/ai/activity?filter=analyses" className="ml-2 underline">Older reviews</Link>}</label>}
     {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
     {lost && <p role="alert" className="mt-3 text-sm text-danger">Could not check this review. It may still be running. <button type="button" onClick={() => setAttempt(count => count + 1)} className="underline">Check again</button></p>}
     {review && <div className="mt-4"><p role="status" className="text-sm">{review.cancel_requested && ["queued", "running"].includes(review.status) ? "Stop requested. Waiting for active work to finish stopping." : label(review.status)}</p>
