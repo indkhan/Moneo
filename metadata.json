@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.12.1",
+  "checkpoint_id": "01M6M23B6ZM434ANXD5PVMN7SP",
+  "strategy": "manual-commit",
+  "branch": "t3/user-testing-audit",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "app/ai/actions/preview/category-approval.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 6,
+    "cache_creation_tokens": 9766,
+    "cache_read_tokens": 2010903,
+    "output_tokens": 5542,
+    "api_call_count": 3
+  },
+  "redaction": {
+    "replacements": 30,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 30,
+      "key_context": 6,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
