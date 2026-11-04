@@ -17,6 +17,16 @@ export async function createArtifact(form: FormData) {
   redirect(`/ai/artifacts/${artifact.data.id}`);
 }
 
+/** Hands over the creation request once, whoever asks first; everyone after gets nothing. */
+export async function claimFirstPrompt(id: string) {
+  const artifactId = z.uuid().parse(id);
+  const { supabase, workspace } = await requireWorkspace();
+  const { data, error } = await supabase.from("artifacts").update({ first_prompt_claimed_at: new Date().toISOString() })
+    .eq("workspace_id", workspace.id).eq("id", artifactId).is("first_prompt_claimed_at", null).not("first_prompt", "is", null).select("first_prompt").maybeSingle();
+  if (error) throw error;
+  return (data?.first_prompt as string | undefined) ?? null;
+}
+
 /** Soft delete: the artifact leaves the gallery and its cards leave Home; its versions are kept. */
 export async function deleteArtifact(id: string) {
   const artifactId = z.uuid().parse(id);

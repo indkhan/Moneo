@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { applyTransactionProposal, chooseAccount, proposeTransaction } from "@/lib/ai/transaction-proposals";
+import { applyTransactionProposal, chooseAccount, proposeTransaction, transactionAccountOptions } from "@/lib/ai/transaction-proposals";
 
 type Rows = Record<string, unknown[]>;
 function fakeDb(rows: Rows) {
@@ -60,4 +60,10 @@ it("accepting records a negative manual transaction keyed by the proposal and cr
   expect(ready.calls[0]).toMatchObject({ name: "create_manual_transaction", args: { p_account_id: cash.id, p_amount_minor: "-1000", p_request_id: "p" } });
   expect(applied).toMatchObject({ href: "/money/transactions?transaction=tx", createdAccount: false });
   expect(calls).toHaveLength(0);
+});
+
+it("offers an existing Cash account to a stated-cash proposal made before it existed", async () => {
+  const payload = { direction: "spent", amountMinor: "1000", currencyCode: "EUR", date: "2026-10-01", description: "Lunch", accountId: null, categoryId: null, paidInCash: true };
+  expect(await transactionAccountOptions((fakeDb({ accounts: [cash] }).context as unknown as { supabase: never }).supabase, "w", payload)).toMatchObject({ selected: cash.id, createsCash: false });
+  expect(await transactionAccountOptions((fakeDb({ accounts: [bank] }).context as unknown as { supabase: never }).supabase, "w", payload)).toMatchObject({ selected: null, createsCash: true });
 });

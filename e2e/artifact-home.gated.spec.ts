@@ -160,6 +160,29 @@ test("an empty Home cards tab sends the build request only after a press", async
   }
 });
 
+test("a new artifact sends its first request once, and a failed one takes a press", async ({ page }) => {
+  const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
+  const [{ id: workspaceId }] = await db`select w.id from public.workspaces w join auth.users u on u.id = w.owner_id where u.email = ${process.env.E2E_USER_EMAIL!}`;
+  const [{ id }] = await db`insert into public.artifacts (workspace_id, title, first_prompt) values (${workspaceId}, 'First request QA', 'Build the first page') returning id`;
+  const requests: string[] = [];
+  await page.route("**/api/chat", async route => { requests.push(route.request().postDataJSON().message); await route.fulfill({ status: 500, json: { error: "Synthetic failure" } }); });
+  try {
+    await page.goto(`/ai/artifacts/${id}`);
+    await expect.poll(() => requests).toEqual(["Build the first page"]);
+    await page.reload();
+    const again = page.getByRole("button", { name: "Send it again", exact: true });
+    await expect(again).toBeVisible();
+    await page.waitForTimeout(1000);
+    expect(requests).toHaveLength(1);
+    await again.click();
+    await expect.poll(() => requests).toHaveLength(2);
+  } finally {
+    await page.unrouteAll({ behavior: "wait" });
+    await db`delete from public.artifacts where id = ${id}`;
+    await db.end();
+  }
+});
+
 test("an unfinished artifact shows progress on return and keeps scrolling inside chat", async ({ page }) => {
   const db = postgres(process.env.SUPABASE_DB_URL!, { max: 1, onnotice: () => {} });
   const [{ id: workspaceId }] = await db`select w.id from public.workspaces w join auth.users u on u.id = w.owner_id where u.email = ${process.env.E2E_USER_EMAIL!}`;

@@ -47,7 +47,7 @@ export function chooseAccount(accounts: Account[], named?: string, lastUsed?: st
 }
 
 async function lastUsedAccount(supabase: SupabaseClient, workspaceId: string, accounts: Account[]) {
-  const ids = accounts.filter(account => account.type !== "cash").map(account => account.id);
+  const ids = accounts.filter(account => ["checking", "credit"].includes(account.type)).map(account => account.id);
   if (ids.length < 2) return null;
   const { data, error } = await supabase.from("transactions").select("account_id").eq("workspace_id", workspaceId).in("account_id", ids).order("posted_on", { ascending: false }).limit(1);
   if (error) throw new Error(error.message);
@@ -80,7 +80,9 @@ export async function proposeTransaction({ supabase, workspace, chatRequestId }:
 export async function transactionAccountOptions(supabase: SupabaseClient, workspaceId: string, payload: unknown) {
   const parsed = transactionCreateSchema.parse(payload);
   const accounts = await liveAccounts(supabase, workspaceId, parsed.currencyCode);
-  return { accounts: accounts.map(({ id, name }) => ({ id, name })), selected: parsed.accountId, createsCash: !!parsed.paidInCash && !accounts.some(account => account.type === "cash") };
+  // A Cash account may have appeared since this was proposed, for instance by accepting another stated-cash card.
+  const cash = parsed.paidInCash ? accounts.find(account => account.type === "cash") : undefined;
+  return { accounts: accounts.map(({ id, name }) => ({ id, name })), selected: parsed.accountId ?? cash?.id ?? null, createsCash: !!parsed.paidInCash && !cash };
 }
 
 /** Records the accepted proposal as an audited manual transaction; the proposal id is the request id, so accepting twice cannot duplicate it. */
