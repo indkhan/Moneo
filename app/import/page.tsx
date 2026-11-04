@@ -106,6 +106,7 @@ export default function ImportPage() {
   const [error, setError] = useState("");
   const [rowsReviewed, setRowsReviewed] = useState(false);
   const [history, setHistory] = useState<ImportStatus[]>([]);
+  const [historyState, setHistoryState] = useState<"loading" | "loaded" | "failed">("loading");
   const [confirmedIds, setConfirmedIds] = useState<string[]>([]);
   const [undoId, setUndoId] = useState<string | null>(null);
   const [preview, setPreview] = useState<UndoPreview | null>(null);
@@ -155,8 +156,8 @@ export default function ImportPage() {
       const response = await fetch("/api/imports", { cache: "no-store", signal: AbortSignal.timeout(10_000) });
       if (!response.ok) throw new Error("History unavailable");
       mergeHistory(await response.json(), requestOrder);
-      setError((current) => current === HISTORY_UNAVAILABLE ? "" : current);
-    } catch { setError(HISTORY_UNAVAILABLE); }
+      setHistoryState("loaded");
+    } catch { setHistoryState("failed"); }
   }
 
   useEffect(() => {
@@ -164,7 +165,8 @@ export default function ImportPage() {
     fetch("/api/imports", { cache: "no-store", signal: AbortSignal.timeout(10_000) }).then(async (response) => {
       if (!response.ok) throw new Error("History unavailable");
       mergeHistory(await response.json(), requestOrder);
-    }).catch(() => setError(HISTORY_UNAVAILABLE));
+      setHistoryState("loaded");
+    }).catch(() => setHistoryState("failed"));
   }, []);
   // ponytail: one small status read per active import every 3 s, paused in hidden tabs; batch ids if many run at once.
   useEffect(() => {
@@ -179,7 +181,7 @@ export default function ImportPage() {
           return await response.json() as ImportStatus;
         }));
         mergeHistory(updates, requestOrder);
-      } catch { setError(HISTORY_UNAVAILABLE); }
+      } catch { setHistoryState("failed"); }
     }, 3000);
     return () => clearInterval(timer);
   }, [history]);
@@ -524,8 +526,10 @@ export default function ImportPage() {
 
     <section className="space-y-4" aria-label="Import history">
       <h2 className="text-sm font-medium text-foreground">Import history</h2>
-      {error === HISTORY_UNAVAILABLE && <button type="button" className="text-sm underline" onClick={() => void loadHistory()}>Reload history</button>}
-      {!visibleHistory.length && error !== HISTORY_UNAVAILABLE && <p className="text-sm text-muted-foreground">No imports yet.</p>}
+      {historyState === "failed" && <div className="space-y-1"><p role="alert" className="text-sm text-danger">{HISTORY_UNAVAILABLE}</p><button type="button" className="text-sm underline" onClick={() => void loadHistory()}>Reload history</button></div>}
+      {historyState === "loading" && <p role="status" className="text-sm text-muted-foreground">Loading imports…</p>}
+      {historyState === "loaded" && !visibleHistory.length && <p className="text-sm text-muted-foreground">No imports yet.</p>}
+      {visibleHistory.length > 0 && <p className="text-sm text-muted-foreground">{history.length >= 30 ? "Your 30 most recent imports. " : ""}Already imported rows were in Moneo before and are not added twice. Left out rows stay on record but are not in your totals.</p>}
       {[...days].map(([label, items]) => <div key={label} className="space-y-3">
         <h3 className="eyebrow">{label}</h3>
         <ol className="space-y-3 border-l border-border pl-5">{items.map((item) => {
@@ -538,11 +542,11 @@ export default function ImportPage() {
                 <span className="flex items-center gap-3 text-xs text-muted-foreground">{new Date(item.created_at).toLocaleTimeString(undefined, { timeStyle: "short" })}<span role="status" className="rounded-lg bg-muted px-2.5 py-1 font-medium capitalize text-brand">{item.status}</span></span></div>
               {active(item.status) && <div className="space-y-1"><progress className="h-2 w-full overflow-hidden rounded-full accent-brand" aria-label={`Progress for ${item.filename}`} max={Math.max(item.total_rows, 1)} value={Math.min(processed, item.total_rows)} />
                 <p className="text-xs text-muted-foreground">{item.status === "queued" ? "Waiting to start" : `${Math.min(processed, item.total_rows)} of ${item.total_rows} processed`}. You can leave this page; the import keeps running.</p></div>}
-              <p className="text-sm text-muted-foreground">{item.new_rows} new · {item.matched_rows} matched · {item.review_rows + (item.classification_review_rows ?? 0)} to review · {item.rejected_rows} rejected · {item.total_rows} total</p>
+              <p className="text-sm text-muted-foreground">{item.new_rows} new · {item.matched_rows} already imported · {item.review_rows} to review · {item.rejected_rows} left out · {item.total_rows} total{item.classification_review_rows ? `. ${item.classification_review_rows} new rows need a transaction type.` : ""}</p>
               {recent && item.status === "completed" && <p className="text-sm">{item.review_rows || item.classification_review_rows ? "Imported. A few rows need your decision before totals are complete." : "Imported. Nothing needs review. If anything looks wrong, Undo import shows what it would remove."}</p>}
               {item.error && <p className="text-sm text-danger">{item.error}</p>}
               {item.status === "canceled" && <p className="text-sm text-muted-foreground">Stopped. Rows already imported are kept, and resuming will not duplicate them.</p>}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm"><Link className="underline" href={`/import/${item.id}/review`}>Review rows and source coverage{item.classification_review_rows ? ` · ${item.classification_review_rows} to categorize` : ""}</Link>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm"><Link className="underline" href={`/import/${item.id}/review`}>Review rows and source coverage{item.classification_review_rows ? ` · ${item.classification_review_rows} need a type` : ""}</Link>
                 <Link className="underline" href={`/money/organization?import=${item.id}`}>Organize imported spending</Link>
                 {item.status === "completed" && <Link className="font-medium text-brand underline" href={`/ai/agents?import=${item.id}`}>Watch the agent team</Link>}
                 {active(item.status) && <button className="underline" type="button" disabled={busy} onClick={() => void control(item, "cancel")}>Stop import</button>}

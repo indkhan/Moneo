@@ -187,7 +187,7 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await expect(page.getByText("august.csv")).toBeVisible();
     await expect(
       page.getByText(
-        "2 new · 0 matched · 0 to review · 0 rejected · 2 total",
+        "2 new · 0 already imported · 0 to review · 0 left out · 2 total",
       ),
     ).toBeVisible();
     await expect(
