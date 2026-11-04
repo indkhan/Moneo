@@ -107,7 +107,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       if (!await review.locator("details").evaluate(node => (node as HTMLDetailsElement).open)) await review.locator("summary").click();
       await review.getByRole("combobox", {name: "Schedule",exact: true}).selectOption(`${generated.id}:${version}`);
       await review.getByLabel("Scheduled occurrence date", {exact: true}).fill(latest);
-      await review.getByRole("combobox", {name: "Transaction",exact: true}).selectOption(`${ids[2]}:0`);
+      await review.getByRole("combobox", {name: /^Transaction(?: |$)/}).selectOption(`${ids[2]}:0`);
       await review.getByRole("combobox", {name: "Payment",exact: true}).selectOption("full");
       await review.getByRole("button", {name: "Mark fully paid",exact: true}).click(); await expect(review).toContainText("recorded full settlement");
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
@@ -145,7 +145,7 @@ for (const cadence of ["weekly", "biweekly", "monthly", "quarterly", "yearly"] a
       // Dismiss candidate discovery while retaining this intentional schedule's paid proof.
       await page.goto("/money/recurring");
       await page.getByText(/^Already decided/).click();
-      await candidate.getByRole("button",{name:"Not recurring",exact:true}).click();
+      await candidate.getByRole("button",{name:/^Not recurring:/}).click();
       await expect(candidate).toContainText("Dismissed");
       await page.goto("/plan?horizon=365"); await expect(forecast).toContainText(expected);
       await page.goto(`/money/transactions?transaction=${ids[2]}&linkSearch=${encodeURIComponent(creditLabel)}`);

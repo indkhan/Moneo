@@ -49,7 +49,7 @@ test("source correction invalidates the inferred forecast obligation and undo re
   await page.goto("/money/recurring");
   const series=page.locator("article").filter({has:page.getByRole("heading",{name:label,exact:true})});
   await expect(series).toContainText("3 payments found");
-  await series.getByRole("button",{name:"Confirm",exact:true}).click();
+  await series.getByRole("button",{name:/^Confirm (?!recurring)/}).click();
   await series.getByRole("button",{name:"Confirm recurring",exact:true}).click();
   await expect(page.getByRole("region",{name:"Confirmed payments and income"})).toContainText(label,{timeout:30_000});
   await page.goto("/plan");

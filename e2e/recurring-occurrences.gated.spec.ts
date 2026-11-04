@@ -51,7 +51,7 @@ test("explicit partial/full occurrence association changes the forecast once and
     if (!await review.locator("details").evaluate(node => (node as HTMLDetailsElement).open)) await review.locator("summary").click();
     await review.getByRole("combobox", { name: "Schedule", exact: true }).selectOption(`${assumption}:1`);
     await review.getByLabel("Scheduled occurrence date", { exact: true }).fill(today);
-    await review.getByRole("combobox", { name: "Transaction", exact: true }).selectOption(`${transaction}:0`);
+    await review.getByRole("combobox", { name: /^Transaction(?: |$)/ }).selectOption(`${transaction}:0`);
     await review.getByRole("combobox", { name: "Payment", exact: true }).selectOption("partial");
     await review.getByRole("button", { name: "Record partial payment", exact: true }).click();
     await expect(review).toContainText("recorded partial settlement");
@@ -63,7 +63,7 @@ test("explicit partial/full occurrence association changes the forecast once and
     if (!await review.locator("details").evaluate(node => (node as HTMLDetailsElement).open)) await review.locator("summary").click();
     await review.getByRole("combobox", { name: "Schedule", exact: true }).selectOption(`${assumption}:1`);
     await review.getByLabel("Scheduled occurrence date", { exact: true }).fill(today);
-    await review.getByRole("combobox", { name: "Transaction", exact: true }).selectOption(`${transaction}:0`);
+    await review.getByRole("combobox", { name: /^Transaction(?: |$)/ }).selectOption(`${transaction}:0`);
     await review.getByRole("combobox", { name: "Payment", exact: true }).selectOption("full");
     await review.getByRole("button", { name: "Mark fully paid", exact: true }).click();
     await expect(review).toContainText("recorded full settlement");
@@ -92,7 +92,7 @@ test("explicit partial/full occurrence association changes the forecast once and
     if (!await review.locator("details").evaluate(node => (node as HTMLDetailsElement).open)) await review.locator("summary").click();
     await review.getByRole("combobox", { name: "Schedule", exact: true }).selectOption(`${generated.id}:${generated.version}`);
     await review.getByLabel("Scheduled occurrence date", { exact: true }).fill(salaryToday);
-    await review.getByRole("combobox", { name: "Transaction", exact: true }).selectOption(`${salaryTransaction}:0`);
+    await review.getByRole("combobox", { name: /^Transaction(?: |$)/ }).selectOption(`${salaryTransaction}:0`);
     await review.getByRole("combobox", { name: "Payment", exact: true }).selectOption("full");
     await review.getByRole("button", { name: "Mark fully paid", exact: true }).click();
     const salarySettlement = review.getByRole("listitem").filter({ hasText: salaryLabel });
