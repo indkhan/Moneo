@@ -6,7 +6,7 @@ import { requireWorkspace } from "@/lib/auth";
 import { balanceReviewRows, loadBalanceEvidence, resolveBalances, type BalanceSnapshot } from "@/lib/finance/balances";
 import { calendarDate } from "@/lib/finance/calendar";
 import { formatInputAmount, formatMoney } from "@/lib/finance/format";
-import { addAccount, addAccountSafely, undoBalance, undoMoneyMetadata } from "./actions";
+import { addAccountSafely, undoBalance, undoMoneyMetadata } from "./actions";
 import { AccountForm, BalanceForm, RenameSuggestion } from "./account-form";
 import { accountTypes, suggestAccountName } from "./naming";
 import { balanceTrend, shownBalance } from "./history";

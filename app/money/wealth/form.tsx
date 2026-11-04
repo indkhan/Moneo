@@ -1,4 +1,4 @@
-import { saveWealthItem, saveWealthItemSafely } from "./actions";
+import { saveWealthItemSafely } from "./actions";
 import { SafeForm } from "@/components/safe-form";
 import type { WealthItem } from "@/lib/finance/wealth";
 import { formatInputAmount } from "@/lib/finance/format";

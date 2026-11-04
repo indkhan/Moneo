@@ -3,7 +3,7 @@ import { SafeForm } from "@/components/safe-form";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireWorkspace } from "@/lib/auth";
-import { addFxRate, addFxRateSafely, setDisplayCurrency, setDisplayCurrencySafely } from "./actions";
+import { addFxRateSafely, setDisplayCurrencySafely } from "./actions";
 
 export const metadata = { title: "Currency" };
 

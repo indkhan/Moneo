@@ -9,7 +9,7 @@ import { monthPrefix, nextMonthStart, budgetProgress, type MonthlyLimit, type Sp
 import { buildSourceCoverage, loadSourceCoverageMetadata } from "@/lib/finance/source-coverage";
 import { SourceCoverageDetails } from "@/app/source-coverage";
 import { formatMoney } from "@/lib/finance/format";
-import { saveSpendingPlan, saveSpendingPlanSafely, setRollover, toggleSpendingPlan } from "./actions";
+import { saveSpendingPlanSafely, setRollover, toggleSpendingPlan } from "./actions";
 import { PlanningHistory } from "../history";
 import { button, card, field, linkButton, percentOf } from "../ui";
 

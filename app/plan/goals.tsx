@@ -3,7 +3,7 @@ import { SafeForm } from "@/components/safe-form";
 import { buildSourceCoverage } from "@/lib/finance/source-coverage";
 import { goalContributionProjection } from "@/lib/finance/goals";
 import { formatInputAmount, formatMoney } from "@/lib/finance/format";
-import { createGoal, createGoalSafely, setAllocation } from "./actions";
+import { createGoalSafely, setAllocation } from "./actions";
 import { GoalPlanEditor, type Goal } from "./goal-plan";
 import { button, card, eyebrow, field, linkButton, percentOf } from "./ui";
 
