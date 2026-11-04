@@ -1,7 +1,7 @@
 import { SafeForm } from "@/components/safe-form";
 import { requireWorkspace } from "@/lib/auth";
-import { formatMoney } from "@/lib/finance/format";
 import { undoPlanningEventSafely } from "./actions";
+import { planningChange, planningTitle } from "./ui";
 
 export async function PlanningHistory({ entityType, destination, open, categories }: { entityType: "assumption" | "spending_plan"; destination: "/plan" | "/plan/spending"; open?: boolean; categories?: Map<string, string> }) {
   const { supabase, workspace } = await requireWorkspace();
@@ -21,14 +21,15 @@ export async function PlanningHistory({ entityType, destination, open, categorie
       const after = event.after as Record<string, string | boolean | null> | null;
       const before = event.before as Record<string, string | boolean | null> | null;
       const value = after ?? before;
-      const amount = value?.[entityType === "assumption" ? "amount_minor" : "limit_minor"];
+      const title = planningTitle(value, categories);
+      const change = planningChange(before, after, workspace.locale);
       const version = versions.get(event.entity_id);
       return <li key={event.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
-        <div><p className="font-medium">{String(value?.name ?? "Spending plan")} · {after?.removed_at ? "Removed" : !before ? "Created" : "Changed"}</p>
-          <p className="text-muted-foreground">{typeof amount === "string" && typeof value?.currency_code === "string" ? `${formatMoney(amount, value.currency_code, workspace.locale)} · ` : ""}{new Date(event.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{event.undone ? " · Undone" : ""}</p></div>
+        <div><p className="font-medium">{title} · {after?.removed_at ? "Removed" : !before ? "Created" : "Changed"}</p>
+          <p className="text-muted-foreground">{change ? `${change} · ` : ""}{new Date(event.created_at).toLocaleString(workspace.locale, { timeZone: workspace.timezone })}{event.undone ? " · Undone" : ""}</p></div>
         {!event.undone && version !== undefined && <SafeForm action={undoPlanningEventSafely}>
           <input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="version" value={version} /><input type="hidden" name="destination" value={destination} />
-          <button className="font-medium text-brand hover:underline">Undo</button>
+          <button aria-label={`Undo ${title} change`} className="font-medium text-brand hover:underline">Undo</button>
         </SafeForm>}
       </li>;
     })}</ul>
