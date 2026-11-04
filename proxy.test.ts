@@ -24,7 +24,7 @@ it("forwards refreshed cookies to rendering and the browser without caching sess
     const adapter = vi.mocked(createServerClient).mock.calls[0][2].cookies!;
     expect(adapter.getAll!()).toEqual([{ name: "session", value: "expired" }]);
     adapter.setAll!([{ name: "session", value: "fresh", options: { httpOnly: true, path: "/" } }], { "Cache-Control": "private, no-store" });
-    return { data: null, error: null };
+    return { data: { claims: { sub: "user" } }, error: null };
   });
   vi.mocked(createServerClient).mockReturnValue({ auth: { getClaims } } as unknown as ReturnType<typeof createServerClient>);
   const response = await proxy(request);
@@ -33,4 +33,29 @@ it("forwards refreshed cookies to rendering and the browser without caching sess
   expect(response.headers.get("x-middleware-request-cookie")).toBe("session=fresh");
   expect(response.cookies.get("session")).toMatchObject({ value: "fresh", httpOnly: true });
   expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+});
+
+function withClaims(result: { data: unknown; error: unknown }) {
+  vi.mocked(createServerClient).mockReturnValue({ auth: { getClaims: vi.fn(async () => result) } } as unknown as ReturnType<typeof createServerClient>);
+}
+
+it("sends a signed-out page request to login and remembers where it was going", async () => {
+  withClaims({ data: null, error: null });
+  const response = await proxy(new NextRequest("http://localhost:3000/money/accounts?account=1"));
+  expect(response.status).toBe(307);
+  expect(new URL(response.headers.get("location")!).pathname).toBe("/login");
+  expect(new URL(response.headers.get("location")!).searchParams.get("next")).toBe("/money/accounts?account=1");
+});
+
+it("leaves public pages and API routes to answer for themselves", async () => {
+  withClaims({ data: null, error: null });
+  for (const path of ["/login", "/reset-password", "/privacy", "/terms", "/auth/callback", "/api/chat"]) {
+    expect((await proxy(new NextRequest(`http://localhost:3000${path}`))).headers.get("location")).toBeNull();
+  }
+});
+
+it("does not sign anyone out during an auth outage", async () => {
+  const { AuthRetryableFetchError } = await import("@supabase/supabase-js");
+  withClaims({ data: null, error: new AuthRetryableFetchError("down", 503) });
+  expect((await proxy(new NextRequest("http://localhost:3000/plan"))).headers.get("location")).toBeNull();
 });

@@ -2,12 +2,15 @@
 
 import { useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
+import { safeNextPath } from "@/lib/safe-next";
 import { createClient } from "@/lib/supabase-client";
 
 type Mode = "sign-in" | "sign-up" | "magic-link" | "forgot";
 
 const subscribeToCallback = () => () => {};
 const callbackError = () => new URLSearchParams(window.location.search).get("error") === "sign-in";
+const accountDeleted = () => new URLSearchParams(window.location.search).has("deleted");
+const nextPath = () => safeNextPath(new URLSearchParams(window.location.search).get("next"));
 
 const copy: Record<Mode, { title: string; hint: string; button: string }> = {
   "sign-in": { title: "Sign in to Moneo", hint: "Use your email and password.", button: "Sign in" },
@@ -25,6 +28,7 @@ export default function LoginPage() {
   const [pending, setPending] = useState(false);
   const submitting = useRef(false);
   const failedCallback = useSyncExternalStore(subscribeToCallback, callbackError, () => false);
+  const deleted = useSyncExternalStore(subscribeToCallback, accountDeleted, () => false);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -34,7 +38,8 @@ export default function LoginPage() {
     setMessage("");
     try {
       const auth = createClient().auth;
-      const callback = `${window.location.origin}/auth/callback`;
+      const next = nextPath();
+      const callback = `${window.location.origin}/auth/callback${next === "/" ? "" : `?next=${encodeURIComponent(next)}`}`;
       if (mode === "magic-link") {
         const { error } = await auth.signInWithOtp({ email, options: { emailRedirectTo: callback } });
         setMessage(error?.message ?? "Check your email for the sign-in link.");
@@ -46,7 +51,7 @@ export default function LoginPage() {
           ? await auth.signInWithPassword({ email, password })
           : await auth.signUp({ email, password, options: { emailRedirectTo: callback } });
         if (error) setMessage(error.message);
-        else if (data.session) { router.replace("/"); router.refresh(); }
+        else if (data.session) { router.replace(next); router.refresh(); }
         // Only reached when the Supabase project still requires email confirmation.
         else setMessage("Check your email to confirm your account.");
       }
@@ -83,7 +88,7 @@ export default function LoginPage() {
           </>}
           <button disabled={pending} className="min-h-10 w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">{pending ? "Working…" : copy[mode].button}</button>
         </form>
-        <p role="status" className="mt-4 min-h-5 text-sm text-muted-foreground">{message ?? (failedCallback ? "The sign-in link could not be verified. Request a new link and try again." : "")}</p>
+        <p role="status" className="mt-4 min-h-5 text-sm text-muted-foreground">{message ?? (failedCallback ? "The sign-in link could not be verified. Request a new link and try again." : deleted ? "Your account and data were deleted." : "")}</p>
         <div className="mt-4 flex flex-col items-center gap-2 text-sm text-muted-foreground">
           {mode !== "sign-in" && <button type="button" onClick={() => switchTo("sign-in")} className={link}>Sign in with password</button>}
           {mode !== "sign-up" && <button type="button" onClick={() => switchTo("sign-up")} className={link}>Create an account</button>}
