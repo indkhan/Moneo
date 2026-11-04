@@ -40,26 +40,36 @@ test("individual accept and reject undo retain source and decision history and r
     const page = await context.newPage(); page.setDefaultTimeout(30_000);
     await page.goto(`/import/${imported}/review`);
     const decided = page.getByRole("region", { name: "Decided rows" });
-    const undo = async () => {
-      await decided.getByRole("button", { name: "Undo decision, row 2", exact: true }).click();
-      await decided.getByRole("button", { name: "Confirm undo decision", exact: true }).click();
+    const act = async (click: () => Promise<unknown>, status: number, result: Record<string, unknown>) => {
+      const [response] = await Promise.all([
+        page.waitForResponse(response => new URL(response.url()).pathname === `/api/imports/${imported}/review` && response.request().method() === "POST"),
+        click(),
+      ]);
+      expect(response.status()).toBe(status);
+      expect(await response.json()).toMatchObject(result);
     };
-    await page.getByRole("button", { name: "Accept as new, row 2", exact: true }).click();
-    await expect(decided).toContainText("Row 2");
+    const undo = async (refused = false) => {
+      await decided.getByRole("button", { name: "Undo decision, row 2", exact: true }).click();
+      await act(() => decided.getByRole("button", { name: "Confirm undo decision", exact: true }).click(), refused ? 409 : 200,
+        refused ? { error: "Undo later transaction changes before reopening this row" } : { status: "review" });
+    };
+    await act(() => page.getByRole("button", { name: "Accept as new, row 2", exact: true }).click(), 200, { status: "accepted" });
+    await expect(decided).toContainText("Row 2", { timeout: 30_000 });
     await undo();
     await expect(page.getByRole("button", { name: "Accept as new, row 2", exact: true })).toBeVisible();
     await expect(page.getByText(/Previously accepted; reopened/)).toBeVisible();
     expect((await db`select id,original_row,status from public.source_transactions where id=${source}`)[0]).toEqual({ id: source, original_row: original, status: "review" });
     expect((await db`select count(*)::int count from public.transactions where workspace_id=${workspace}`)[0].count).toBe(0);
-    await page.getByRole("button", { name: "Reject, row 2", exact: true }).click();
-    await expect(decided).toContainText("Rejected, not in your totals");
+    await act(() => page.getByRole("button", { name: "Reject, row 2", exact: true }).click(), 200, { status: "rejected" });
+    await expect(decided).toContainText("Rejected, not in your totals", { timeout: 30_000 });
     await undo();
     await expect(page.getByRole("button", { name: "Accept as new, row 2", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Accept as new, row 2", exact: true }).click();
-    await expect(decided).toContainText("Row 2");
+    await act(() => page.getByRole("button", { name: "Accept as new, row 2", exact: true }).click(), 200, { status: "accepted" });
+    await expect(decided).toContainText("Row 2", { timeout: 30_000 });
     const [{ transaction_id: target }] = await db`select transaction_id from public.transaction_sources where source_transaction_id=${source}`;
+    await expect(decided.getByRole("link", { name: "Open the transaction", exact: true })).toHaveAttribute("href", `/money/transactions?transaction=${target}`);
     await db`update public.transactions set description='Later reviewed edit' where id=${target}`;
-    await undo();
+    await undo(true);
     await expect(decided.getByRole("alert")).toContainText("Undo later transaction changes");
     expect((await db`select status,original_row from public.source_transactions where id=${source}`)[0]).toEqual({ status: "accepted", original_row: original });
     const events = await db`select action,undone_at is not null undone from public.import_row_decisions where source_id=${source} order by created_at`;
