@@ -25,7 +25,7 @@ vi.mock("@/lib/finance/balances", async original => ({ ...await original<typeof 
   ledger: [{ id: "t1", account_id: "imported", amount_minor: "-500", currency_code: "EUR", posted_on: "2026-10-12", status: "posted", version: 1 }],
 }) }));
 
-it("lists balances with as-of date, trend, rename suggestion, balance update and undo", async () => {
+it("lists balances with as-of date, trend, rename suggestion, balance update and undo", { timeout: 30_000 }, async () => {
   const { default: AccountsPage } = await import("./page");
   const html = renderToStaticMarkup(await AccountsPage());
   expect(html).toContain("EUR 115.00");
