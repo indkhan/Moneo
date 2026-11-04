@@ -1,5 +1,5 @@
 'use client';
-import {useActionState,useRef,useState} from 'react';
+import { Fragment,useActionState,useRef,useState} from 'react';
 import {createReview,applyReview,undoReview} from './actions';
 import {formatMoney} from '@/lib/finance/format';
 import type {OrganizationProposal} from '@/lib/import/organization';
@@ -14,6 +14,13 @@ function choice(targets:Target[],name:string):[string,string]{
  const found=targets.find(target=>target.name.toLowerCase()===trimmed.toLowerCase());
  return found?[found.id,'']:['new',trimmed];
 }
+/** Same-description entries together, newest first in each group, so one press can select a run of them. */
+export function groupedByDescription<T extends { row: { description: string; posted_on: string } }>(items: T[]) {
+  const groups = new Map<string, T[]>();
+  for (const item of items) { const key = item.row.description.trim().toLocaleLowerCase("en"); groups.set(key, [...(groups.get(key) ?? []), item]); }
+  return [...groups.values()].map(group => [...group].sort((a, b) => b.row.posted_on.localeCompare(a.row.posted_on)));
+}
+
 export function OrganizationQueue({items,merchants,categories,requestId,locale}:{items:Item[];merchants:Target[];categories:Target[];requestId:string;locale:string}) {
  const [state,action,pending]=useActionState(createReview,{});
  const [selected,setSelected]=useState<string[]>([]);
@@ -67,7 +74,9 @@ export function OrganizationQueue({items,merchants,categories,requestId,locale}:
    {assistance&&<p role="status" className="basis-full text-sm">{assistance}</p>}
    {state.error&&<p role="alert" className="basis-full text-sm text-danger">{state.error}</p>}
   </div>
-  <ul className="divide-y divide-border">{items.map(({row,proposal})=>{const hint=suggestion(proposal).filter(Boolean).join(' · ');
+  <ul className="divide-y divide-border">{groupedByDescription(items).map(group=><Fragment key={group[0].row.id}>
+   {group.length>1&&<li className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-muted/40 px-4 py-2.5 text-sm"><label className="flex min-h-10 min-w-0 items-center gap-3 font-medium"><input type="checkbox" checked={group.every(({row})=>selected.includes(row.id))} onChange={event=>toggle(group.map(({row})=>row.id),event.target.checked)} /><span className="min-w-0 break-words">{group[0].row.description}: all {group.length}</span></label><span className="font-mono text-xs text-muted-foreground">{group.at(-1)!.row.posted_on} to {group[0].row.posted_on}</span></li>}
+   {group.map(({row,proposal})=>{const hint=suggestion(proposal).filter(Boolean).join(' · ');
    return <li key={row.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
     <input type="checkbox" aria-label={'Select '+row.description} checked={selected.includes(row.id)} onChange={event=>toggle([row.id],event.target.checked)} />
     <span className="font-mono text-xs text-muted-foreground">{row.posted_on}</span>
@@ -75,7 +84,7 @@ export function OrganizationQueue({items,merchants,categories,requestId,locale}:
     {proposal.financialReviewRequired&&<a className="text-xs text-muted-foreground underline" href={'/money/transactions?transaction='+row.id}>Review its amount first</a>}
     {hint&&<button type="button" onClick={()=>applySuggestion(proposal)} title="Select similar entries and use this suggestion" className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground">{hint}</button>}
     <span className="font-mono">{formatMoney(row.amount_minor,row.currency_code,locale)}</span>
-   </li>;})}</ul>
+   </li>;})}</Fragment>)}</ul>
  </form>;
 }
 export function ApprovalForm({reviewId,canSaveRule}:{reviewId:string;canSaveRule:boolean}) {

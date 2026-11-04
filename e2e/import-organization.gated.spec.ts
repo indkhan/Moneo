@@ -44,7 +44,7 @@ test('noisy imported spending retains exact sources through reviewed organizatio
    const previewed=page.waitForResponse(response=>response.url().endsWith('/api/imports/inspect')&&response.request().method()==='POST');
    await page.getByRole('button',{name:'Preview correction',exact:true}).click();expect((await previewed).ok()).toBe(true);
    const confirmed=page.waitForResponse(response=>response.url().endsWith('/api/imports/confirm')&&response.request().method()==='POST');
-   await page.getByRole('button',{name:'Continue',exact:true}).click();const response=await confirmed;expect(response.ok()).toBe(true);
+   await page.getByRole('button',{name:'Start import',exact:true}).click();const response=await confirmed;expect(response.ok()).toBe(true);
    const {importId}=await response.json();expect(importId).toMatch(/^[0-9a-f-]{36}$/);
    await expect.poll(async()=>{const [row]=await db`select status from public.imports where id=${importId} and workspace_id=${workspace!}`;return row.status;},{timeout:60000}).toBe('completed');
    await page.reload();
