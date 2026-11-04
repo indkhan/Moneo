@@ -62,14 +62,20 @@ try {
       return { ...migration, sql: isolated(text) };
     });
     await replayMigrations(tx, isolatedMigrations, "fresh");
-    for (const file of regressionFiles) await tx.unsafe(isolated(readFileSync(`supabase/tests/${file}`, "utf8")));
+    for (const file of regressionFiles) {
+      try { await tx.unsafe(isolated(readFileSync(`supabase/tests/${file}`, "utf8"))); }
+      catch (cause) { throw new Error(`Fresh SQL regression ${file}: ${cause.message}`, { cause }); }
+    }
     fresh = await metadata(tx, schema);
   });
   assert.equal((await db`select 1 from pg_namespace where nspname=${schema}`).length, 0, "QA schema must be rolled back");
   console.log(`PASS: fresh replay ${migrations.length} migrations and ${regressionFiles.length} SQL regressions; disposable schema rollback verified`);
   await rolledBack(async tx => {
     await replayMigrations(tx, pending, "upgrade");
-    for (const file of regressionFiles) await tx.unsafe(readFileSync(`supabase/tests/${file}`, "utf8"));
+    for (const file of regressionFiles) {
+      try { await tx.unsafe(readFileSync(`supabase/tests/${file}`, "utf8")); }
+      catch (cause) { throw new Error(`Upgrade SQL regression ${file}: ${cause.message}`, { cause }); }
+    }
     upgraded = await metadata(tx, "public");
   });
   for (const key of Object.keys(fresh)) assert.deepEqual(normalize(fresh[key], key === "functions"), normalize(upgraded[key], key === "functions"), `${key}: fresh and upgraded schema differ`);
