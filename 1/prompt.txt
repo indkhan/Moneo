@@ -1,0 +1,26 @@
+<task-notification>
+<task-id>bgf9jtdpy</task-id>
+<tool-use-id>toolu_01UXSXUeAuQKrPXVpnwTMtN9</tool-use-id>
+<output-file>C:\Users\mgsuk\AppData\Local\Temp\claude\bdb49bc3b4b3e01d\64d783ab-53ac-41ca-8d34-df07b2fe9ba1\tasks\bgf9jtdpy.output</output-file>
+<status>completed</status>
+<summary>Background command "Commit and run full browser suite" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Delegated task node:delegated-task:command%3Amcp%3A11fc7156-7e64-43be-9922-d1be91f6c95d%3Adelegate-task%3Aaa68139d-ac82-48b7-8d49-69dcba32c816 (Review second audit batch) [completed]:
+1. **P1 — Subsequent wealth saves reuse a completed operation’s IDs.** `app/money/wealth/form.tsx:13–16`  
+   The client component retains both IDs in state across server refreshes. After saving a new asset, the “Add asset” form can submit the same entity ID, request ID and version `0` again. An edit form likewise retains its request ID after a successful save. Depending on RPC replay handling, the next save is ignored or rejected instead of recording the new value. **Fix:** reset/remount forms after success and issue a fresh request ID for each new operation, retaining it only for retries of that operation.
+
+2. **P2 — A failed claim silently strands the initial build on the current page.** `app/ai/artifacts/[id]/artifact-chat.tsx:46`  
+   If `claimFirstPrompt` fails, its rejection is swallowed. The server-rendered page still has `start=true`, so it continues displaying “Building your artifact…” without sending anything or exposing the retry button. This also happens when the claim commits but its response is lost. **Fix:** surface claim failure and refresh the claim state or offer an explicit retry; use a durable request identifier to recover a committed claim safely.
+
+3. **P2 — Resolving import rows makes offset pagination skip unresolved rows.** `app/import/[id]/review/page.tsx:39`  
+   With 200 held rows, resolve the first 100 and follow “Next 100.” The query still offsets by 100, but only 100 unresolved rows remain, so it returns an empty page and skips all remaining decisions. Partial resolution similarly skips part of the next batch. **Fix:** paginate using a stable `row_number` cursor rather than an offset into the shrinking unresolved set.
+
+4. **P2 — “Needs attention” still silently omits unresolved work.** `app/ai/activity/page.tsx:28–39`  
+   The proposal lookup caps results at 100 before deduplicating request IDs, without ordering or pagination. A single request with many proposals can consume that entire allowance, hiding other completed chats with open proposals. The subsequent attention queries also cap results at 100 without offering navigation. **Fix:** paginate unresolved results and retrieve distinct associated request IDs, with a visible continuation when more items exist.
+
+Read-only inspection; no tests, servers, browser sessions or database operations were run.
+
+**Block the PR:** Yes—the wealth save regression should be fixed before merge.
