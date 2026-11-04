@@ -35,6 +35,11 @@ const input = "min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-s
 const primary = "min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50";
 const secondary = "min-h-10 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50";
 const active = (status: string) => status === "queued" || status === "running";
+const MORE_COLUMNS: [string, keyof ImportMapping][] = [
+  ["Currency", "currencyColumn"], ["Balance", "balanceColumn"], ["Account name or number", "accountColumn"], ["Product", "productColumn"],
+  ["Transaction type", "typeColumn"], ["Fee", "feeColumn"], ["Merchant", "merchantColumn"], ["Category", "categoryColumn"],
+  ["Transaction ID", "externalIdColumn"], ["Status", "statusColumn"],
+];
 
 function formatMinor(value: string, currency: string) {
   const amount = BigInt(value);
@@ -90,6 +95,8 @@ export default function ImportPage() {
   // `stale`: the shown preview no longer matches the mapping; `editorOpen`: the column editor is visible.
   const [stale, setStale] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [splitAmounts, setSplitAmounts] = useState(false);
+  const [moreColumnsOpen, setMoreColumnsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [interpreting, setInterpreting] = useState(false);
   const [error, setError] = useState("");
@@ -184,7 +191,7 @@ export default function ImportPage() {
       setInspection(result);
       if (result.needsWorkbookSelection) { setMapping(null); setEditorOpen(false); setStale(false); return; }
       const column = (name: string) => result.headers.find((header: string) => header.toLowerCase() === name);
-      setMapping(result.mapping ?? {
+      const nextMapping: ImportMapping = result.mapping ?? {
         accountName: result.suggestedAccountName ?? target.name.replace(/\.(csv|xlsx)$/i, ""),
         currencyCode: "EUR",
         dateColumn: column("completed date") ?? column("date") ?? column("started date") ?? "",
@@ -193,7 +200,11 @@ export default function ImportPage() {
         dateFormat: "iso",
         amountSign: "signed",
         ...(result.workbookScope ? {workbookScope: result.workbookScope} : {}),
-      });
+      };
+      setMapping(nextMapping);
+      setSplitAmounts(!nextMapping.amountColumn && !!(nextMapping.debitColumn || nextMapping.creditColumn));
+      // A column set by a proposal must stay visible, so its section starts open.
+      setMoreColumnsOpen(MORE_COLUMNS.some(([, key]) => nextMapping[key]));
       // A proposed reversed sign is easy to miss, so it opens the editor; a reviewed one is the user's choice.
       const needsEditor = !result.mapping || !result.preview || (!corrected && result.mapping.amountSign === "outflow-positive");
       setEditorOpen(needsEditor);
@@ -373,7 +384,7 @@ export default function ImportPage() {
           {result.dateRange.from && <span className="text-muted-foreground">· {result.dateRange.from} → {result.dateRange.to}</span>}
         </div>
         <p className="text-sm text-muted-foreground">
-          {mapping?.amountSign === "outflow-positive" ? "Positive amounts = outgoing" : "Positive amounts = incoming"}
+          {mapping?.debitColumn ? "Separate money out and money in columns" : mapping?.amountSign === "outflow-positive" ? "Positive amounts = outgoing" : "Positive amounts = incoming"}
           {result.pendingRows ? ` · ${result.pendingRows} pending` : ""}
           {result.classificationReviewRows ? ` · ${result.classificationReviewRows} need category review after import` : ""}
         </p>
@@ -443,17 +454,28 @@ export default function ImportPage() {
           {inspection.sample.slice(0, 3).map((row, i) => <tr className="border-t border-border" key={i}>{inspection.headers.map((header) => <td key={header} title={row[header]}>{row[header]}</td>)}</tr>)}
         </tbody></table></div>
         <div className="grid gap-3 sm:grid-cols-3">
-          <label className="grid gap-1.5 text-sm">Currency code<input className={input} maxLength={3} value={mapping.currencyCode} onChange={(e) => edit({ currencyCode: e.target.value.toUpperCase() })} /></label>
-          {chooseColumn("Date", "dateColumn")}{chooseColumn("Description", "descriptionColumn")}
-          {chooseColumn("Amount", "amountColumn", true)}
-          {chooseColumn("Debit", "debitColumn", true)}{chooseColumn("Credit", "creditColumn", true)}
-          {chooseColumn("Currency", "currencyColumn", true)}{chooseColumn("Balance", "balanceColumn", true)}
-          {chooseColumn("Source account", "accountColumn", true)}{chooseColumn("Product", "productColumn", true)}
-          {chooseColumn("Source financial type", "typeColumn", true)}{chooseColumn("Source fee evidence", "feeColumn", true)}
-          {chooseColumn("Merchant", "merchantColumn", true)}{chooseColumn("Category", "categoryColumn", true)}{chooseColumn("External ID", "externalIdColumn", true)}{chooseColumn("Status (posted/pending/completed)", "statusColumn", true)}
+          {chooseColumn("Date", "dateColumn")}
           <label className="grid gap-1.5 text-sm">Date format<select className={input} value={mapping.dateFormat} onChange={(e) => edit({ dateFormat: e.target.value as ImportMapping["dateFormat"] })}><option value="iso">YYYY-MM-DD</option><option value="dmy">DD/MM/YYYY</option><option value="mdy">MM/DD/YYYY</option></select></label>
-          <label className="grid gap-1.5 text-sm">Amount signs<select className={input} value={mapping.amountSign} onChange={(e) => edit({ amountSign: e.target.value as ImportMapping["amountSign"] })}><option value="signed">Positive is incoming</option><option value="outflow-positive">Positive is outgoing</option></select></label>
+          {chooseColumn("Description", "descriptionColumn")}
         </div>
+        <fieldset className="space-y-3"><legend className="text-sm font-medium">How does your file show amounts?</legend>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            <label className="flex min-h-10 items-center gap-2"><input type="radio" name="amount-layout" checked={!splitAmounts} onChange={() => { setSplitAmounts(false); edit({ debitColumn: undefined, creditColumn: undefined }); }} />One column, like -12.50 or 12.50</label>
+            <label className="flex min-h-10 items-center gap-2"><input type="radio" name="amount-layout" checked={splitAmounts} onChange={() => { setSplitAmounts(true); edit({ amountColumn: undefined }); }} />Two columns, money out and money in</label>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {splitAmounts ? <>{chooseColumn("Money out", "debitColumn")}{chooseColumn("Money in", "creditColumn")}</> : <>
+              {chooseColumn("Amount", "amountColumn")}
+              <label className="grid gap-1.5 text-sm">Amount signs<select className={input} value={mapping.amountSign} onChange={(e) => edit({ amountSign: e.target.value as ImportMapping["amountSign"] })}><option value="signed">Positive is incoming (a purchase is -12.50)</option><option value="outflow-positive">Positive is outgoing (a purchase is 12.50)</option></select></label>
+            </>}
+            <label className="grid gap-1.5 text-sm">Currency code<input className={input} maxLength={3} value={mapping.currencyCode} onChange={(e) => edit({ currencyCode: e.target.value.toUpperCase() })} /></label>
+          </div>
+        </fieldset>
+        <details open={moreColumnsOpen} onToggle={event => setMoreColumnsOpen(event.currentTarget.open)}>
+          <summary className="cursor-pointer text-sm font-medium">More columns (optional)</summary>
+          <p className="mt-2 text-sm text-muted-foreground">Choose these only if your file has them. Currency is for files with several currencies, and Account and Product split one file across accounts. Transaction type holds words like Transfer or Refund. Fee is a separate charge on the row. Transaction ID is the bank reference, which helps spot duplicates.</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">{MORE_COLUMNS.map(([label, key]) => chooseColumn(label, key, true))}</div>
+        </details>
       </div>}
 
       <div className="flex flex-wrap items-center gap-3 border-t border-border pt-5">

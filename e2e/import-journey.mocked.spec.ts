@@ -287,5 +287,12 @@ test.describe("deterministic import journey (mocked AI mapping, no credentials)"
     await expect(page.getByRole("combobox", { name: "Description", exact: true })).toHaveValue("Description");
     await expect(page.getByRole("combobox", { name: "Amount", exact: true })).toHaveValue("Amount");
     await expect(page.getByRole("button", { name: "Start import" })).toHaveCount(0);
+    // Advanced columns start folded, and the amount layouts cannot both be filled.
+    await expect(page.getByRole("combobox", { name: "Transaction ID", exact: true })).toHaveCount(0);
+    await page.getByRole("radio", { name: "Two columns, money out and money in" }).check();
+    await expect(page.getByRole("combobox", { name: "Amount", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Money out", exact: true })).toHaveValue("");
+    await page.getByRole("radio", { name: "One column, like -12.50 or 12.50" }).check();
+    await expect(page.getByRole("combobox", { name: "Amount", exact: true })).toHaveValue("");
   });
 });

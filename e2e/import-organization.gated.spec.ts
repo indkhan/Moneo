@@ -39,7 +39,8 @@ test('noisy imported spending retains exact sources through reviewed organizatio
    await page.getByLabel('Financial statement files').setInputFiles({name:filename,mimeType:'text/csv',buffer:Buffer.from(csv)});expect((await inspected).ok()).toBe(true);
    await expect(page.getByText('Automatic interpretation unavailable. Choose the columns below.',{exact:true})).toBeVisible({timeout:20000});
    await page.getByLabel('Account name',{exact:true}).fill('Organization imported account');
-   for(const name of ['Date','Description','Amount','External ID'])await page.getByRole('combobox',{name,exact:true}).selectOption(name==='External ID'?'id':name.toLowerCase());
+   await page.getByText('More columns (optional)').click();
+   for(const name of ['Date','Description','Amount','Transaction ID'])await page.getByRole('combobox',{name,exact:true}).selectOption(name==='Transaction ID'?'id':name.toLowerCase());
    await page.getByRole('combobox',{name:'Source numeric convention'}).selectOption('decimal-dot');
    const previewed=page.waitForResponse(response=>response.url().endsWith('/api/imports/inspect')&&response.request().method()==='POST');
    await page.getByRole('button',{name:'Preview correction',exact:true}).click();expect((await previewed).ok()).toBe(true);

@@ -27,6 +27,7 @@ test("explicit Unicode merchants import without splitting a character and retain
   await expect(page.getByText("Automatic interpretation unavailable. Choose the columns below.")).toBeVisible();
   await page.getByLabel("Account name", { exact: true }).fill(`Unicode QA ${suffix}`);
   await page.getByRole("combobox", { name: "Source numeric convention" }).selectOption("decimal-dot");
+  await page.getByText("More columns (optional)").click();
   for (const column of ["Date", "Description", "Amount", "Currency", "Merchant"]) {
     await page.getByRole("combobox", { name: column, exact: true }).selectOption(column);
   }
