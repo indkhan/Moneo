@@ -111,6 +111,7 @@ export function UncategorizedSheet({ total, locale = "en-GB" }: { total: number;
   const [data, setData] = useState<Awaited<ReturnType<typeof loadUncategorizedGroups>>>();
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [done, setDone] = useState<Record<string, string>>({});
+  const [remember, setRemember] = useState(false);
   const { pending, error, run } = useDecide();
   // A failed load says so; treating it as empty would report everything as reviewed.
   const [failed, setFailed] = useState(false);
@@ -125,19 +126,22 @@ export function UncategorizedSheet({ total, locale = "en-GB" }: { total: number;
   const apply = (groups: UncategorizedGroup[]) => run(async () => {
     const keys = groups.map(group => group.key);
     const restore = (failed: string[]) => setDone(current => Object.fromEntries(Object.entries(current).filter(([key]) => !failed.includes(key))));
-    setDone(current => ({ ...current, ...Object.fromEntries(groups.map(group => [group.key, `${group.count} categorized`])) }));
+    const outcome = (count: number) => `${count} categorized${remember ? ", future entries too" : ""}`;
+    setDone(current => ({ ...current, ...Object.fromEntries(groups.map(group => [group.key, outcome(group.count)])) }));
     try {
-      const { applied, error } = await categorizeGroups(groups.map(group => ({ rows: group.rows, categoryId: pick(group), key: group.key })));
+      const { applied, error } = await categorizeGroups(groups.map(group => ({ rows: group.rows, categoryId: pick(group), key: group.key })), remember);
       restore(keys.filter(key => !(key in applied)));
-      setDone(current => ({ ...current, ...Object.fromEntries(Object.entries(applied).map(([key, count]) => [key, `${count} categorized`])) }));
+      setDone(current => ({ ...current, ...Object.fromEntries(Object.entries(applied).map(([key, count]) => [key, outcome(count)])) }));
       return error;
     } catch (cause) { restore(keys); throw cause; }
   });
   const open = data.groups.filter(group => !done[group.key]);
   const suggested = open.filter(group => group.suggested && pick(group) === group.suggested);
   return <div>
-    <div className="mt-2 flex flex-wrap items-center gap-2"><p className="mr-auto text-sm text-muted-foreground">Each choice also teaches a rule, so the next sync sorts these by itself. Every batch can be undone.</p>
+    <div className="mt-2 flex flex-wrap items-center gap-2"><p className="mr-auto text-sm text-muted-foreground">Every batch can be undone.</p>
       {suggested.length > 0 && <button type="button" disabled={pending} className={primary} onClick={() => apply(suggested)}>Apply {suggested.length} suggested</button>}</div>
+    <label className="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" className="size-4" checked={remember} disabled={pending} onChange={event => setRemember(event.target.checked)} />Do the same for future entries</label>
+    <p className="mt-1 text-xs text-muted-foreground">{remember ? "Applying also saves a rule, so future entries with the same description get this category." : "Applying changes only these transactions. Future entries stay uncategorized."}</p>
     {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
     <ul className="mt-2 divide-y divide-border">{data.groups.map(group => <li key={group.key} className="flex flex-wrap items-center gap-2 py-3">
       <div className="w-full min-w-0"><p className="break-words text-sm font-medium">{group.label}</p>
