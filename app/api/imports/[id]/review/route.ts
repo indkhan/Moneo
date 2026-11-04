@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { mapRows, parseCsv, parseExcel } from "@/lib/import/csv";
 import { importRowPayload } from "@/lib/import/row";
+import { reviewErrorMessage } from "@/lib/import/review-error";
 import { pendingSettlementSchema } from "@/lib/finance/pending-holds";
 
 const reviewSchema = z.object({ sourceId: z.string().min(1), action: z.enum(["accept", "reject"]),
@@ -52,9 +53,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       } : { p_action: action }), p_expected_route_id: expectedRouteId ?? null,
       p_account_id: accountId ?? null, p_expected_account_version: expectedAccountVersion ?? null,
     });
-    if (result.error) return Response.json({ error: result.error.message }, { status: result.error.code === "PT409" ? 409 : 400 });
+    if (result.error) return Response.json({ error: reviewErrorMessage(result.error.message) }, { status: result.error.code === "PT409" ? 409 : 400 });
     return Response.json({ status: result.data.status });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Review failed" }, { status: 400 });
+    return Response.json({ error: reviewErrorMessage(error instanceof Error ? error.message : "") }, { status: 400 });
   }
 }

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { requireWorkspace } from "@/lib/auth";
+import { reviewErrorMessage } from "@/lib/import/review-error";
 
 const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("review"), transactionId: z.uuid(), version: z.number().int().nonnegative(),
@@ -31,6 +32,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (result.error) throw result.error;
     return Response.json(result.data);
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Classification review failed" }, { status: 400 });
+    // Supabase errors are plain objects, so read their message rather than testing for Error.
+    return Response.json({ error: reviewErrorMessage((error as { message?: string })?.message ?? "") }, { status: 400 });
   }
 }
