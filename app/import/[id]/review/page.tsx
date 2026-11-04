@@ -15,11 +15,15 @@ function SourceFields({ row }: { row: SourceRow }) {
     <div key={column} className="contents"><dt className="font-medium text-muted-foreground">{column}</dt><dd className="break-all">{String(value) || "—"}</dd></div>)}</dl>;
 }
 
-export default async function ImportReviewPage({ params }: { params: Promise<{ id: string }> }) {
+const PAGE_SIZE = 100;
+
+export default async function ImportReviewPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ from?: string }> }) {
   let context: Awaited<ReturnType<typeof requireWorkspace>>;
   try { context = await requireWorkspace(); }
   catch { redirect("/login"); }
   const { id } = await params;
+  const requestedFrom = Number((await searchParams).from);
+  const from = Number.isSafeInteger(requestedFrom) && requestedFrom > 0 ? requestedFrom : 0;
   const { supabase, workspace } = context;
   const { data: imported } = await supabase.from("imports").select("id, filename, status, total_rows, new_rows, matched_rows, rejected_rows, route_accounts, mapping, review_rows, classification_review_rows")
     .eq("workspace_id", workspace.id).eq("id", id).maybeSingle();
@@ -32,7 +36,7 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
     supabase.from("source_transactions")
       .select("id, row_number, original_row, external_id, normalized_row")
       .eq("workspace_id", workspace.id).eq("import_id", id).eq("status", "review")
-      .order("row_number").limit(100),
+      .order("row_number").range(from, from + PAGE_SIZE - 1),
     supabase.from("accounts").select("id, name, currency_code, version, archived_at")
       .eq("workspace_id", workspace.id).order("name").limit(1000),
     supabase.from("transactions")
@@ -53,10 +57,12 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
     {rows?.map((row) => {
       const normalized = row.normalized_row as { accountId?: string | null; row?: { currencyCode: string; status: string } } | null;
       let currency = normalized?.row?.currencyCode;
+      let interpreted: { postedOn: string; description: string; amountMinor: bigint | string; currencyCode: string } | null = (normalized?.row as never) ?? null;
       let frozenId = normalized?.accountId ?? null;
       if (!normalized) try {
         const mapped = mapImportReviewRow(row.original_row as SourceRow, row.row_number, imported.mapping);
         currency = mapped.currencyCode;
+        interpreted = mapped;
         frozenId = Object.entries(imported.route_accounts ?? {}).find(([key]) => {
           const route = JSON.parse(key);
           return route[0] === mapped.accountName && route[1] === mapped.currencyCode;
@@ -65,15 +71,21 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
       const frozen = destinations.data?.find(account => account.id === frozenId);
       return <article className="space-y-4 rounded-xl border border-border bg-card p-6" key={row.id}>
       <h2 className="text-sm font-medium">Source row {row.row_number}</h2>
-      {row.external_id && <p className="text-sm text-muted-foreground">Source ID: {row.external_id}</p>}
-      <SourceFields row={row.original_row as SourceRow} />
+      {interpreted ? <p className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><span className="min-w-0 break-words"><span className="font-medium">{interpreted.description}</span> <span className="font-mono text-xs text-muted-foreground">{interpreted.postedOn}</span></span><span className="font-mono font-medium tabular-nums">{formatMoney(BigInt(interpreted.amountMinor), interpreted.currencyCode, workspace.locale)}</span></p>
+        : <p role="alert" className="text-sm">Moneo could not read this row. Check the original below before deciding.</p>}
+      <p className="text-sm text-muted-foreground">Held back because it may overlap something you already have. It is not in your totals yet.</p>
+      <details className="text-sm"><summary className="cursor-pointer text-muted-foreground">Original row{row.external_id ? ` · source ID ${row.external_id}` : ""}</summary><div className="mt-2"><SourceFields row={row.original_row as SourceRow} /></div></details>
+      {imported.status === "completed" && row.external_id && frozenId && currency && normalized?.row?.status === "posted" &&
+        <Suspense fallback={<p className="text-sm text-muted-foreground">Checking for matching pending payments…</p>}><PendingSettlement importId={id} sourceId={row.id} externalId={row.external_id} accountId={frozenId} currency={currency} /></Suspense>}
       {imported.status === "completed" && <ReviewActions importId={id} sourceId={row.id} frozenId={frozenId} frozenName={frozen?.name}
         unavailable={!frozen || !!frozen.archived_at || frozen.currency_code !== currency}
         destinations={destinations.error ? [] : (destinations.data ?? []).filter(account => !account.archived_at && account.currency_code === currency)} />}
-      {imported.status === "completed" && row.external_id && frozenId && currency && normalized?.row?.status === "posted" &&
-        <Suspense fallback={<p className="text-sm text-muted-foreground">Checking for matching pending payments…</p>}><PendingSettlement importId={id} sourceId={row.id} externalId={row.external_id} accountId={frozenId} currency={currency} /></Suspense>}
     </article>; })}
-    {rows?.length === 100 && <p className="text-sm text-muted-foreground">Showing the first 100 rows.</p>}
+    {(from > 0 || rows?.length === PAGE_SIZE) && <nav aria-label="Review rows" className="flex flex-wrap items-center gap-4 text-sm">
+      <span className="text-muted-foreground">Rows {from + 1} to {from + (rows?.length ?? 0)} of the {imported.review_rows} to review</span>
+      {from > 0 && <Link className="underline" href={`/import/${id}/review?from=${Math.max(0, from - PAGE_SIZE)}`}>Previous {PAGE_SIZE}</Link>}
+      {rows?.length === PAGE_SIZE && <Link className="underline" href={`/import/${id}/review?from=${from + PAGE_SIZE}`}>Next {PAGE_SIZE}</Link>}
+    </nav>}
     <section className="space-y-4" aria-label="Source coverage and reviewed interpretation">
       <h2 className="text-sm font-medium">Source coverage</h2>
       <p className="text-sm text-muted-foreground">{imported.new_rows + imported.matched_rows} accepted · {imported.rejected_rows} excluded · {imported.review_rows} unresolved · {imported.total_rows} original observations</p>

@@ -45,6 +45,7 @@ export function ReviewActions({ importId, sourceId, frozenId = null, frozenName,
     </label>}
     <button className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50" type="button" disabled={busy || (unavailable && !destinationId)} onClick={() => void decide("accept")}>Accept as new</button>
     <button className="min-h-10 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted" type="button" disabled={busy} onClick={() => void decide("reject")}>Reject</button>
+    <p className="w-full text-xs text-muted-foreground">Reject leaves this row out of your totals and keeps the original. To reverse a decision, undo the whole import from Import history.</p>
     {error && <p role="alert" className="w-full text-sm text-danger">{error}</p>}
   </div>;
 }
@@ -70,13 +71,13 @@ export function ClassificationActions({ importId, transactionId, version, reason
   }
   return <div className="space-y-4 text-sm">
     {!eventId && <>
-      <label className="grid gap-1.5 font-medium">Reviewed financial meaning<select className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm font-normal" value={kind} onChange={event => setKind(event.target.value)}>
+      <label className="grid gap-1.5 font-medium">Transaction type<select className="min-h-10 rounded-lg border border-border bg-card px-3 py-2 text-sm font-normal" value={kind} onChange={event => setKind(event.target.value)}>
         <option value="ordinary">Income or expense (not an internal movement)</option><option value="refund">Refund</option><option value="transfer">Internal transfer (link both legs first)</option>
       </select></label>
       {reasons?.includes("fee_semantics") && <label className="flex items-start gap-2"><input type="checkbox" checked={feeIncluded} onChange={event => setFeeIncluded(event.target.checked)} />The booked amount already includes the fee, so no extra fee transaction is needed.</label>}
       <p className="text-muted-foreground">Unknown or separate fees stay under review. <a className="underline" href={`/money/transactions?transaction=${transactionId}`}>Open the transaction to link or inspect it</a></p>
     </>}
-    <button type="button" className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50" disabled={busy} onClick={() => void submit()}>{eventId ? "Undo classification review" : "Confirm reviewed meaning"}</button>
+    <button type="button" className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50" disabled={busy} onClick={() => void submit()}>{eventId ? "Undo classification review" : "Confirm type"}</button>
     {error && <p role="alert" className="text-danger">{error}</p>}
   </div>;
 }
