@@ -2,12 +2,11 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { Modal } from "@/components/command-palette";
-import { recurringCadences } from "@/lib/finance/cadences";
+import { cadenceWords, recurringCadences } from "@/lib/finance/cadences";
 import type { ActionState } from "./actions";
 
 type Action = (state: ActionState, form: FormData) => Promise<ActionState>;
 const inputClass = "min-h-10 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm";
-const cadenceWords: Record<string, string> = { weekly: "Every week", biweekly: "Every two weeks", monthly: "Every month", quarterly: "Every quarter", yearly: "Every year" };
 
 function Hidden({ values }: { values: Record<string, string> }) {
   return <>{Object.entries(values).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}</>;
@@ -19,6 +18,7 @@ export function ActionForm({ action, hidden = {}, className, children }: { actio
   return <form action={submit} className={className}>
     <Hidden values={hidden} />
     <fieldset disabled={pending} className="contents">{children}</fieldset>
+    {pending && <p role="status" className="basis-full text-xs text-muted-foreground">Saving…</p>}
     {state.error && <p role="alert" className="basis-full text-xs text-danger">{state.error}</p>}
   </form>;
 }
@@ -26,12 +26,13 @@ export function ActionForm({ action, hidden = {}, className, children }: { actio
 export type ScheduleDefaults = { name: string; amount: string; direction: "out" | "in"; cadence: string; startsOn: string; category: string; currencyCode?: string };
 
 /** Opens a dialog to confirm, edit or add a recurring payment: how much, which way, how often, the next date and a category. */
-export function ScheduleDialog({ title, trigger, triggerClassName, action, remove, hidden = {}, defaults, accounts, categories, submitLabel, onDone }: {
-  title: string; trigger: React.ReactNode; triggerClassName?: string; action: Action; remove?: Action; hidden?: Record<string, string>; defaults: ScheduleDefaults;
+export function ScheduleDialog({ title, trigger, triggerLabel, triggerClassName, action, remove, hidden = {}, defaults, accounts, categories, submitLabel, onDone }: {
+  title: string; trigger: React.ReactNode; triggerLabel?: string; triggerClassName?: string; action: Action; remove?: Action; hidden?: Record<string, string>; defaults: ScheduleDefaults;
   accounts?: { id: string; name: string; currencyCode: string }[]; categories: string[]; submitLabel: string; onDone?: () => void;
 }) {
   // When it was opened; a submission that succeeds after that closes it. The action refreshes the page.
   const [openedAt, setOpenedAt] = useState<number | null>(null);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [state, submit, pending] = useActionState<ActionState, FormData>(action, {});
   const [removed, removeSubmit, removing] = useActionState<ActionState, FormData>(remove ?? (async () => ({})), {});
   const [values, setValues] = useState(defaults);
@@ -45,9 +46,9 @@ export function ScheduleDialog({ title, trigger, triggerClassName, action, remov
   const summary = values.amount && values.startsOn ? `${cadenceWords[values.cadence] ?? ""}: ${values.amount} ${currencyCode} ${values.direction === "out" ? "going out" : "coming in"}, next on ${values.startsOn}` : "";
   const listId = `categories-${title.replace(/\W/g, "")}`;
   return <>
-    <button type="button" className={triggerClassName} onClick={() => { setValues(defaults); setOpenedAt(Date.now()); }}>{trigger}</button>
+    <button type="button" aria-label={triggerLabel} className={triggerClassName} onClick={() => { setValues(defaults); setConfirmingRemove(false); setOpenedAt(Date.now()); }}>{trigger}</button>
     <Modal open={open} onClose={close} label={title} className="inset-0 size-full items-center justify-center px-4">
-      <form action={submit} className="grid w-full max-w-md gap-3 rounded-xl border border-border bg-card p-5 shadow-xl">
+      <form action={submit} className="grid max-h-[calc(100dvh-2rem)] w-full max-w-md gap-3 overflow-y-auto rounded-xl border border-border bg-card p-5 shadow-xl">
         <Hidden values={{ ...hidden, shownStartsOn: defaults.startsOn, ...(currencyCode ? { currencyCode } : {}) }} />
         <h2 className="text-base font-semibold">{title}</h2>
         {summary && <p className="rounded-lg bg-muted px-3 py-2 text-sm">{summary}</p>}
@@ -68,8 +69,9 @@ export function ScheduleDialog({ title, trigger, triggerClassName, action, remov
         <div className="flex flex-wrap items-center gap-2">
           <button disabled={pending || removing} className="min-h-10 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">{pending ? "Saving…" : submitLabel}</button>
           <button type="button" onClick={close} className="min-h-10 rounded-lg border border-border px-4 text-sm hover:bg-muted">Cancel</button>
-          {remove && <button formAction={removeSubmit} formNoValidate disabled={pending || removing} className="ml-auto min-h-10 rounded-lg px-3 text-sm text-danger hover:bg-muted disabled:opacity-50">{removing ? "Removing…" : "Remove from recurring"}</button>}
+          {remove && !confirmingRemove && <button type="button" onClick={() => setConfirmingRemove(true)} className="ml-auto min-h-10 rounded-lg px-3 text-sm text-danger hover:bg-muted">Remove from recurring</button>}
         </div>
+        {remove && confirmingRemove && <div role="group" aria-label="Confirm removal" className="space-y-2 rounded-lg border border-border p-3 text-sm"><p>This stops {values.name}’s future forecast dates. Past transactions and marked payments stay.</p><button formAction={removeSubmit} formNoValidate disabled={pending || removing} className="min-h-10 rounded-lg px-3 text-danger hover:bg-muted disabled:opacity-50">{removing ? "Removing…" : `Yes, remove ${values.name}`}</button></div>}
       </form>
     </Modal>
   </>;

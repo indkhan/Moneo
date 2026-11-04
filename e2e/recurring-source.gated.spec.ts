@@ -51,7 +51,7 @@ test("source correction invalidates the inferred forecast obligation and undo re
   await expect(series).toContainText("3 payments found");
   await series.getByRole("button",{name:"Confirm",exact:true}).click();
   await series.getByRole("button",{name:"Confirm recurring",exact:true}).click();
-  await expect(page.getByRole("region",{name:"Bills and subscriptions"})).toContainText(label,{timeout:30_000});
+  await expect(page.getByRole("region",{name:"Confirmed payments and income"})).toContainText(label,{timeout:30_000});
   await page.goto("/plan");
   const assumption=page.locator("li").filter({has:page.getByRole("heading",{name:label,exact:true})});
   await expect(assumption).toContainText("Detected from your transactions");await expect(assumption).toContainText("Used in forecast");
@@ -74,7 +74,7 @@ test("source correction invalidates the inferred forecast obligation and undo re
   await page.goto(sourceUrls[2]);await detail.getByRole("button",{name:"Undo verified link",exact:true}).click();
   await expect(detail.getByRole("heading",{name:"Verified transfer",exact:true})).toBeVisible({timeout:30_000});
   await expect(detail.locator('pre[aria-label="Original source evidence"]')).toContainText('"amount_minor": "-1000"');
-  await page.goto("/money/recurring");await expect(page.getByRole("region",{name:"Bills and subscriptions"})).toContainText(label);
+  await page.goto("/money/recurring");await expect(page.getByRole("region",{name:"Confirmed payments and income"})).toContainText(label);
   await expect(page.getByRole("heading",{name:"Payments behind a confirmed schedule changed",exact:true})).not.toBeVisible();
   await page.goto("/plan");await expect(assumption).toContainText("Used in forecast");
   await expect(assumption).toContainText("Detected from your transactions");
